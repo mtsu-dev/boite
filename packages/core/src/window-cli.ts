@@ -13,7 +13,7 @@ import { Usage } from './cli-args.ts';
 /** How long a window command may wait: the owner has 10 minutes to answer the consent card. */
 export const WINDOW_REQUEST_TIMEOUT_MS = 11 * 60_000;
 
-const WINDOW_HELP = `boite window <command> [args] [--json]
+export const WINDOW_HELP = `boite window <command> [args] [--json]
   list                           the desktop windows: id, process, PID, size, state;
                                  titles only for apps the project allows
   screenshot <target> [--output <file.png>] [--max <px>] [--crop x,y,w,h]

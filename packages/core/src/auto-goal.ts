@@ -2,7 +2,7 @@
  * Automatic goals (`docs/internals/goals.md`): a long enough prompt, or
  * `boite goal track`, becomes a reviewed goal with a card on the project's
  * board. Reached through `auto-goal-entry.ts`, which loads it lazily. The
- * machine's `autoGoals` setting turns both off. The goal it starts is an
+ * machine's `autoGoals` setting turns both on; they are off without it. The goal it starts is an
  * ordinary one: running and reviewing it is `activity.ts`.
  */
 import { AUTO_GOAL_MIN_CHARS, isComposerActivity } from '@boite/contracts';
@@ -19,7 +19,7 @@ import { addGoalCard } from './todos.ts';
  * prompt, no command, holds at least `autoGoalMinChars` characters.
  */
 export function startsAutoGoal(text: string, settings: Pick<Settings, 'autoGoals' | 'autoGoalMinChars'>): boolean {
-  if (settings.autoGoals === false || isComposerActivity(text) || nativeCommandPrompt(text)) return false;
+  if (settings.autoGoals !== true || isComposerActivity(text) || nativeCommandPrompt(text)) return false;
   return text.trim().length >= (settings.autoGoalMinChars ?? AUTO_GOAL_MIN_CHARS.default);
 }
 
@@ -54,7 +54,7 @@ export function autoGoal(core: Core, activity: ActivityStore, threadId: string, 
 export function track(core: Core, activity: ActivityStore, threadId: string): ThreadActivity {
   const thread = core.journal.getThread(threadId);
   if (!thread || thread.archived) throw refused('goal track needs an existing, unarchived conversation');
-  if (core.settings.get().autoGoals === false) throw refused('goal track needs automatic goals, which the owner turned off on this machine (Settings, General, Agent replies)', { reason: 'auto-goals-off' });
+  if (core.settings.get().autoGoals !== true) throw refused('goal track needs automatic goals, which are off on this machine (Settings, General, Agent replies)', { reason: 'auto-goals-off' });
   if (activity.busy(threadId)) throw refused('this conversation already has a goal or a loop; it must finish or be removed first', { reason: 'busy' });
   const last = lastPrompt(core, threadId);
   if (!last) throw refused('this conversation has no prompt of the user to track', { reason: 'no-prompt' });

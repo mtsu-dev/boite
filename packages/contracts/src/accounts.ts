@@ -251,6 +251,13 @@ export interface Account {
   createdAt: Timestamp;
 }
 
+/** A provider's logged-in login, the default location first. */
+export function loggedInAccount(accounts: readonly Account[]): Account | undefined {
+  const usable = accounts.filter(account => account.status !== 'unauthenticated');
+  return usable.find(a => a.isolationDir === null && a.status === 'ok') ?? usable.find(a => a.status === 'ok')
+    ?? usable.find(a => a.isolationDir === null) ?? usable[0];
+}
+
 export interface AccountsRpcMethods {
   'quotas.list': { params: { refresh?: boolean; requestId?: string }; result: AccountQuota[] };
   'quotas.configure': { params: { accountId: AccountId; enabled: boolean }; result: AccountQuota[] };

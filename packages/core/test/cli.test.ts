@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_ENV, EXPERIMENT_STAGES, type ExperimentId, type FeatureStage } from '@boite/contracts';
+import { AGENT_ENV, EXPERIMENT_STAGES, privateTerminalComposerId, type ExperimentId, type FeatureStage } from '@boite/contracts';
 import { runCli, splitLine } from '../src/cli.ts';
+import { parse } from '../src/cli-args.ts';
 import { continuationInput } from '../src/continuation.ts';
+import * as cwdCheck from '../src/threads/cwd.ts';
 import type { CliIo } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnResult } from '../src/drivers/index.ts';
@@ -42,6 +44,12 @@ async function boite(args: string[], env: Record<string, string> = {}): Promise<
   };
   const code = await runCli(args, io);
   return { code, out, err };
+}
+
+function ownerBoite(args: string[]): Promise<Run> {
+  return boite([...args, '--core', harness.url], {
+    [AGENT_ENV.threadId]: '', [AGENT_ENV.token]: '', [AGENT_ENV.coreUrl]: '', BOITE_TOKEN: harness.token,
+  });
 }
 
 beforeEach(async () => {
@@ -132,7 +140,7 @@ test('threads commands discover, send and reply using the calling thread identit
   expect(listed.code).toBe(0);
   const contact = JSON.parse(listed.out).agents[0];
   expect(contact).toMatchObject({ status: 'idle', lastCompletedAt: null, projectArchived: false, paused: false });
-  expect((await boite(['threads', 'list'])).out).toContain('contacting this inactive thread is allowed but discouraged');
+  expect((await boite(['threads', 'list'])).out.match(/contacting an inactive thread is allowed but discouraged/g)).toHaveLength(1);
   // Bots' brains and the user's notes still say `boite agents list`: it answers the same, with nothing extra.
   const legacy = await boite(['agents', 'list', '--json']);
   expect([legacy.code, legacy.err, JSON.parse(legacy.out).agents]).toEqual([0, '', JSON.parse(listed.out).agents]);
@@ -295,7 +303,7 @@ test('a mochi reads its memory, notes facts, keeps its routines and its desk fro
   const elsewhere = await client.call('projects.add', { path: join(harness.dataDir, 'elsewhere'), name: 'Elsewhere' });
   const outside = await client.call('threads.create', { projectId: elsewhere.id, providerId: 'echo', accountId: harness.core.threads.require(worker).accountId, title: 'Outside' });
   expect((await boite(['bot', 'watch', outside.id])).err).toContain('is not in a project entrusted to Ada');
-  expect((await boite(['bot', 'inbox'])).err).toContain('mochi expects memory, remember, routines, schedule, unschedule, watch or unwatch');
+  expect((await boite(['bot', 'inbox'])).err).toContain('mochi expects memory, remember, routines, schedule, unschedule, watch, unwatch or new-session');
   // An ordinary thread is no agent's.
   threadId = worker;
   expect((await boite(['bot', 'routines'])).err).toContain("no mochi's thread");
@@ -370,9 +378,90 @@ describe('usage', () => {
     // A lone help after a command is the same request, never a question titled "help".
     const ask = await boite(['ask', 'help']);
     expect(ask.code).toBe(0);
-    expect(ask.out).toContain('usage: boite');
+    expect(ask.out).toContain('boite ask <question>');
+    expect(ask.out).not.toContain('delegate spawn');
     const client = await harness.connect();
     expect(await client.call('questions.list', { threadId })).toEqual([]);
+  });
+
+  test('command help works in every spelling and JSON without a core', async () => {
+    for (const command of ['ask', 'thread', 'delegate', 'task', 'settings', 'where', 'workflow', 'window', 'logs', 'team', 'secret', 'mochi']) {
+      const env = { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' };
+      const forms = [[command, 'help'], [command, '--help'], ['help', command]];
+      const results = await Promise.all(forms.map(args => boite([...args, '--json', '--core', 'http://127.0.0.1:1'], env)));
+      for (const result of results) expect([result.code, result.err]).toEqual([0, '']);
+      expect(new Set(results.map(result => JSON.parse(result.out).help)).size).toBe(1);
+      expect(JSON.parse(results[0]!.out).help).toBeString();
+    }
+    const client = await harness.connect();
+    const finished = client.next('turn.finished', turn => turn.threadId === threadId);
+    await client.call('turns.start', { threadId, prompt: 'hello' });
+    await finished;
+    const literal = await boite(['ask', '--', 'help']);
+    expect([literal.code, literal.err]).toEqual([0, '']);
+    expect(await client.call('questions.list', { threadId })).toMatchObject([{ text: 'help' }]);
+  });
+
+  test('allow and deny help and flag hints name their own command without a core', async () => {
+    const env = { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' };
+    for (const command of ['allow', 'deny']) {
+      const synopsis = `boite ${command} <id> <request-id>`;
+      for (const form of [[command, '--help'], [command, 'help'], ['help', command]]) {
+        const result = await boite([...form, '--core', 'http://127.0.0.1:1'], env);
+        expect([form.join(' '), result.code, result.err]).toEqual([form.join(' '), 0, '']);
+        expect(result.out.startsWith(synopsis + ' ')).toBe(true);
+        expect(result.out).not.toContain('allow|deny');
+        expect(result.out).not.toContain('need no --thread');
+      }
+      const hint = await boite([command, '--nope', '--core', 'http://127.0.0.1:1'], env);
+      expect(hint.code).toBe(2);
+      expect(hint.err).toBe(`unknown flag --nope\nusage: ${synopsis}\nSee boite ${command} help.\n`);
+    }
+  });
+
+  test('a usage error names the synopsis of its own action, or only the command help', async () => {
+    const offline = { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' };
+    const cases: [string[], Record<string, string>, string, string][] = [
+      // Refused while parsing, so offline.
+      [['delegate', 'result', '--limit', '20000', '--core', 'http://127.0.0.1:1'], offline, '--limit needs an integer from 1 to 16000', 'boite delegate result <child> <turn> [offset] [--limit <characters>]'],
+      [['thread', 'restore', '--bad', '--core', 'http://127.0.0.1:1'], offline, 'unknown flag --bad', 'boite thread restore <id>'],
+      // Refused by the command once connected.
+      [['settings', 'open', 'accounts', 'extra', '--why', 'a login'], {}, 'settings open takes one page, with an optional #card', 'boite settings open <page>[#<card>] --why <text>'],
+    ];
+    for (const [args, env, message, synopsis] of cases) {
+      const result = await boite(args, env);
+      const command = synopsis.split(' ')[1];
+      expect([args.join(' '), result.code, result.err]).toEqual([args.join(' '), 2, `${message}\nusage: ${synopsis}\nSee boite ${command} help.\n`]);
+    }
+    // No action, or one the manual does not know: the command's help, never another action's synopsis.
+    for (const args of [['delegate', '--limit', '20000'], ['thread', 'frob', '--bad']]) {
+      const result = await boite([...args, '--core', 'http://127.0.0.1:1'], offline);
+      expect(result.code).toBe(2);
+      expect(result.err).toEndWith(`\nusage: boite ${args[0]} <action> [args] [--json]\nSee boite ${args[0]} help.\n`);
+    }
+  });
+
+  test('desktop subcommand help needs no connection and never launches a program', async () => {
+    for (const action of ['run', 'snapshot']) {
+      const result = await boite(['--json', 'desktop', action, '--help'], { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' });
+      expect([result.code, result.err]).toEqual([0, '']);
+      expect(JSON.parse(result.out).help).toContain('boite desktop');
+    }
+    const launch = spyOn(harness.core.desktops, 'run').mockRejectedValue(new Error('must not launch'));
+    try {
+      expect((await boite(['desktop', 'run', '--help'])).code).toBe(0);
+      expect(launch).not.toHaveBeenCalled();
+    } finally { launch.mockRestore(); }
+    expect(parse(['desktop', 'run', 'app', '--help']).positional).toEqual(['desktop', 'run', 'app', '--help']);
+    expect(parse(['desktop', 'type', '@e1', '--', '--help']).help).toBeUndefined();
+  });
+
+  test('a plugin command receives its own help operands', () => {
+    for (const operand of ['help', '--help']) {
+      const parsed = parse(['example-plugin-command', operand]);
+      expect(parsed.positional).toEqual(['example-plugin-command', operand]);
+      expect(parsed.help).toBeUndefined();
+    }
   });
 
   test('outside a thread it says which variable is missing', async () => {
@@ -380,6 +469,30 @@ describe('usage', () => {
     expect(run.code).toBe(1);
     expect(run.err).toContain(AGENT_ENV.threadId);
   });
+});
+
+test('workflow show reports state and opens only the explicitly selected result', async () => {
+  const client = await harness.connect();
+  const run = await client.call('workflows.start', { threadId, requestId: 'cli-show', plan: {
+    name: 'Probe', steps: [{ id: 'first', task: 'First workflow brief.' }, { id: 'second', task: 'Second workflow brief.' }],
+  } });
+  await waitFor(() => harness.core.workflows.get(threadId, run.id).status === 'done');
+  const brief = await boite(['workflow', 'show', run.id, '--json']);
+  expect([brief.code, brief.err]).toEqual([0, '']);
+  const shown = JSON.parse(brief.out);
+  expect(shown).not.toHaveProperty('plan');
+  expect(shown.nodes.map((node: { instances: unknown[] }) => node.instances)).toMatchObject([[{ key: 'first', status: 'done' }], [{ key: 'second', status: 'done' }]]);
+  expect(shown.nodes[0].instances[0]).not.toHaveProperty('result');
+  const list = JSON.parse((await boite(['workflow', 'list', '--json'])).out);
+  expect(list).toMatchObject([{ id: run.id, name: 'Probe', status: 'done' }]);
+  expect(list[0]).not.toHaveProperty('plan');
+  expect(list[0]).not.toHaveProperty('nodes');
+  const selected = JSON.parse((await boite(['workflow', 'show', run.id, 'first', '--json'])).out);
+  expect(selected.nodes).toHaveLength(1);
+  expect(selected.nodes[0].instances[0].result).toContain('First workflow brief.');
+  const details = JSON.parse((await boite(['workflow', 'show', run.id, '--details', '--json'])).out);
+  expect(details.nodes).toHaveLength(2);
+  expect(details.plan.name).toBe('Probe');
 });
 
 describe('where', () => {
@@ -468,6 +581,22 @@ describe('panel', () => {
 });
 
 describe('tasks', () => {
+  test('concurrent adds keep both tasks with distinct ids', async () => {
+    const results = await Promise.all(['left', 'right'].map(text => boite(['task', 'add', text])));
+    expect(results.map(result => result.code)).toEqual([0, 0]);
+    const list = JSON.parse((await boite(['task', 'list', '--json'])).out);
+    expect(list.map((task: { id: string }) => task.id)).toEqual(['t1', 't2']);
+    expect(list.map((task: { text: string }) => task.text).sort()).toEqual(['left', 'right']);
+  });
+
+  test('a task id printed by a provider takes precedence over the numeric alias', async () => {
+    harness.core.activity.tasks(threadId, [
+      { id: '0', text: 'Provider task', status: 'pending' },
+      { id: 't0', text: 'CLI task', status: 'pending' },
+    ]);
+    expect(await boite(['task', 'done', '0'])).toEqual({ code: 0, out: '0 [x] Provider task\nt0 [ ] CLI task\n', err: '' });
+  });
+
   test('add, start, done and list round trip through the thread activity', async () => {
     expect((await boite(['task', 'list'])).out).toBe('tasks: none\n');
     expect((await boite(['task', 'add', 'read', 'the', 'docs'])).out).toBe('t1 [ ] read the docs\n');
@@ -535,7 +664,7 @@ describe('access', () => {
   });
 });
 
-test('ask draws a card that does not stop the agent, and the answer comes back as the next prompt', async () => {
+test('ask draws a card that does not stop the agent, and the CLI can answer with an option and text', async () => {
   const none = await boite(['ask', 'Deploy now?']);
   expect(none.code).toBe(1);
   expect(none.err).toContain('no turn to ask in');
@@ -555,12 +684,188 @@ test('ask draws a card that does not stop the agent, and the answer comes back a
   expect((await client.call('threads.get', { threadId })).status).toBe('idle');
 
   const next = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-  await client.call('questions.answer', { threadId, questionId, optionIds: ['2'], text: 'after lunch' });
+  const answer = await ownerBoite(['answer', threadId, questionId, '2', '--text', 'after lunch', '--json']);
+  expect([answer.code, answer.err]).toEqual([0, '']);
+  expect(JSON.parse(answer.out)).toMatchObject({ optionIds: ['2'], text: 'after lunch' });
   expect((await next).status).toBe('done');
   const prompts = harness.core.journal.listMessages(threadId).filter((m) => m.role === 'user').map((m) => (m.parts[0]?.type === 'text' ? m.parts[0].text : ''));
   expect(prompts).toEqual(['hello', '> Deploy now?\n\nlater\nafter lunch']);
   const card = harness.core.journal.listMessages(threadId).flatMap((m) => m.parts).find((p) => p.type === 'question');
   expect(card).toMatchObject({ async: true, answer: { optionIds: ['2'], text: 'after lunch' } });
+});
+
+test('the owner CLI lists and restores its deleted conversations', async () => {
+  expect((await ownerBoite(['thread', 'remove', threadId])).code).toBe(0);
+  const list = await ownerBoite(['thread', 'deleted', '--json']);
+  expect([list.code, list.err]).toEqual([0, '']);
+  expect(JSON.parse(list.out)).toMatchObject([{ id: threadId }]);
+  expect((await ownerBoite(['thread', 'restore', threadId])).out).toBe(`restored: ${threadId}\n`);
+  expect((await ownerBoite(['thread', 'deleted', '--json'])).out).toBe('[]\n');
+});
+
+test('owner CLI sends wait behind an active turn and deduplicate retries', async () => {
+  const client = await harness.connect();
+  await client.call('turns.start', { threadId, prompt: 'First [sleep:500]' });
+  const args = ['thread', 'send', threadId, 'Second prompt', '--request-id', 'cli-second-turn', '--json'];
+  const responses = await Promise.all([ownerBoite(args), ownerBoite(args)]);
+  expect(responses.map(response => [response.code, response.err])).toEqual([[0, ''], [0, '']]);
+  expect(responses.map(response => JSON.parse(response.out).status)).toEqual(['queued', 'queued']);
+  const changed = await ownerBoite(args.map(argument => argument === 'Second prompt' ? 'Different prompt' : argument));
+  expect(changed.err).toContain('different content');
+  await waitFor(() => harness.core.journal.turnRequest(threadId, 'cli-second-turn') !== null);
+  expect(JSON.parse((await ownerBoite(args)).out).status).toBe('sent');
+  expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user')).toHaveLength(2);
+});
+
+test('owner CLI queues incognito sends across a reconnect without publishing the private queue', async () => {
+  const client = await harness.connect();
+  const project = await client.call('projects.drafts', {});
+  const { accountId } = harness.core.threads.require(threadId);
+  const privateThread = await client.call('threads.create', { projectId: project.id, accountId, providerId: 'echo', incognito: true });
+  await client.call('turns.start', { threadId: privateThread.id, prompt: 'First [sleep:500]' });
+  const args = ['thread', 'send', privateThread.id, 'Private follow-up', '--request-id', 'cli-private-turn', '--json'];
+  const initial = await ownerBoite(args);
+  expect([initial.code, initial.err]).toEqual([0, '']);
+  expect(JSON.parse(initial.out).status).toBe('queued');
+  expect(await client.call('composer.list', {})).toEqual([]);
+  expect(harness.core.journal.db.query('SELECT value FROM composer_records').all()).toEqual([]);
+  const retry = await ownerBoite(args);
+  expect([retry.code, retry.err]).toEqual([0, '']);
+  await waitFor(() => harness.core.journal.turnRequest(privateThread.id, 'cli-private-turn') !== null);
+  expect(JSON.parse((await ownerBoite(args)).out).status).toBe('sent');
+  expect(harness.core.journal.listMessages(privateThread.id).filter(message => message.role === 'user')).toHaveLength(2);
+});
+
+test('owner CLI resumes its incognito queue after the account signs back in', async () => {
+  const client = await harness.connect();
+  const project = await client.call('projects.drafts', {});
+  const { accountId } = harness.core.threads.require(threadId);
+  const account = harness.core.accounts.require(accountId);
+  const thread = await client.call('threads.create', { projectId: project.id, accountId, providerId: 'echo', incognito: true });
+  harness.core.journal.putAccount({ ...account, status: 'unauthenticated' });
+  const first = ['thread', 'send', thread.id, 'First private prompt', '--request-id', 'cli-private-held', '--json'];
+  const next = ['thread', 'send', thread.id, 'Next private prompt', '--request-id', 'cli-private-next', '--json'];
+  expect(JSON.parse((await ownerBoite(first)).out).status).toBe('queued');
+  await waitFor(() => harness.core.composer.storage.get('inputs', privateTerminalComposerId(thread.id)).value?.input.paused === true);
+  expect(harness.core.journal.listTurns(thread.id)).toEqual([]);
+  expect(JSON.parse((await ownerBoite(next)).out).status).toBe('held');
+
+  harness.core.journal.putAccount(account);
+  expect(JSON.parse((await ownerBoite(first)).out).status).toBe('queued');
+  await waitFor(() => harness.core.journal.turnRequest(thread.id, 'cli-private-next') !== null);
+  expect(JSON.parse((await ownerBoite(first)).out).status).toBe('sent');
+  expect(JSON.parse((await ownerBoite(next)).out).status).toBe('sent');
+  const prompts = harness.core.journal.listMessages(thread.id).filter(message => message.role === 'user').map(message => message.parts[0]);
+  expect(prompts).toMatchObject([{ text: 'First private prompt' }, { text: 'Next private prompt' }]);
+});
+
+test('owner CLI follows a selection change during the folder check', async () => {
+  const client = await harness.connect();
+  const { journal, composer } = harness.core;
+  const ensure = cwdCheck.ensureThreadCwd;
+  const release = Promise.withResolvers<void>();
+  let checking = false;
+  const check = spyOn(cwdCheck, 'ensureThreadCwd').mockImplementation(async (core, thread) => {
+    checking = true;
+    await release.promise;
+    return ensure(core, thread);
+  });
+  try {
+    const sent = await ownerBoite(['thread', 'send', threadId, 'Use current permission', '--request-id', 'cli-folder-selection', '--json']);
+    expect(JSON.parse(sent.out).status).toBe('queued');
+    await waitFor(() => checking);
+    await client.call('threads.update', { threadId, permissionMode: 'yolo' });
+    release.resolve();
+    await waitFor(() => journal.lastTurn(threadId) !== null || composer.storage.get('inputs', threadId).value?.input.paused === true);
+    expect(journal.listTurns(threadId)).toMatchObject([{ execution: { permissionMode: 'yolo' } }]);
+  } finally { release.resolve(); check.mockRestore(); }
+});
+
+test('owner CLI sends using the fallback account when the thread account is signed out', async () => {
+  const client = await harness.connect();
+  const thread = harness.core.threads.require(threadId);
+  const fallback = await client.call('accounts.add', { providerId: 'echo', label: 'Fallback' });
+  harness.core.journal.putAccount({ ...harness.core.accounts.require(thread.accountId), status: 'unauthenticated' });
+  const sent = await ownerBoite(['thread', 'send', threadId, 'Use the other account', '--request-id', 'cli-fallback-turn']);
+  expect([sent.code, sent.err]).toEqual([0, '']);
+  await waitFor(() => harness.core.journal.turnRequest(threadId, 'cli-fallback-turn') !== null);
+  expect(harness.core.journal.lastTurn(threadId)?.execution).toMatchObject({ accountId: fallback.id, accountLeft: 'signed-out' });
+});
+
+test('owner CLI holds queued text when the conversation folder is gone', async () => {
+  const client = await harness.connect();
+  const { projectId, accountId } = harness.core.threads.require(threadId);
+  const folder = join(cwd, 'removed-subfolder');
+  mkdirSync(folder);
+  const moved = await client.call('threads.create', { projectId: projectId!, accountId, providerId: 'echo', cwd: folder });
+  rmdirSync(folder);
+  const args = ['thread', 'send', moved.id, 'Keep this text', '--request-id', 'cli-missing-folder', '--json'];
+  expect((await ownerBoite(args)).code).toBe(0);
+  await waitFor(() => harness.core.composer.storage.get('inputs', moved.id).value?.input.paused === true || harness.core.journal.lastTurn(moved.id) !== null);
+  expect(harness.core.journal.listTurns(moved.id)).toEqual([]);
+  const receipt = await ownerBoite(args);
+  expect(JSON.parse(receipt.out)).toMatchObject({ status: 'held', reason: expect.stringContaining(folder) });
+});
+
+test('owner CLI delivers to a reachable shared worktree whose project folder is gone', async () => {
+  const client = await harness.connect();
+  const source = join(harness.dataDir, 'shared-source');
+  mkdirSync(source);
+  for (const args of [['init', '-q'], ['commit', '-q', '--allow-empty', '-m', 'init']]) {
+    const run = Bun.spawnSync({ cmd: ['git', ...args], cwd: source, stdout: 'pipe', stderr: 'pipe', windowsHide: true, env: {
+      ...process.env, GIT_AUTHOR_NAME: 'boite test', GIT_AUTHOR_EMAIL: 'test@boite.invalid', GIT_COMMITTER_NAME: 'boite test', GIT_COMMITTER_EMAIL: 'test@boite.invalid',
+    } });
+    if (!run.success) throw new Error(`git ${args.join(' ')} failed: ${run.stderr.toString()}`);
+  }
+  const project = await client.call('projects.add', { path: source, name: 'shared-source' });
+  const shared = join(harness.dataDir, 'shared');
+  await client.call('settings.set', { worktreeStorage: { mode: 'shared', directory: shared } });
+  const { accountId } = harness.core.threads.require(threadId);
+  const thread = await client.call('threads.create', { projectId: project.id, accountId, providerId: 'echo', worktree: {} });
+  expect(thread.cwd.startsWith(shared)).toBe(true);
+  renameSync(source, `${source}-away`);
+  const args = ['thread', 'send', thread.id, 'Work in the shared worktree', '--request-id', 'cli-shared-worktree', '--json'];
+  expect(JSON.parse((await ownerBoite(args)).out).status).toBe('queued');
+  await waitFor(() => harness.core.journal.turnRequest(thread.id, 'cli-shared-worktree') !== null || harness.core.composer.storage.get('inputs', thread.id).value?.input.paused === true);
+  expect([JSON.parse((await ownerBoite(args)).out).reason, harness.core.journal.turnRequest(thread.id, 'cli-shared-worktree') !== null]).toEqual([undefined, true]);
+  await waitFor(() => harness.core.journal.lastTurn(thread.id)?.status !== 'running');
+  expect(JSON.parse((await ownerBoite(args)).out).status).toBe('sent');
+  expect(harness.core.journal.listMessages(thread.id).filter(message => message.role === 'user').map(message => message.parts[0])).toMatchObject([{ text: 'Work in the shared worktree' }]);
+});
+
+test('owner CLI thread new selects an explicit provider and rejects an unknown source', async () => {
+  const client = await harness.connect();
+  const projectId = harness.core.threads.require(threadId).projectId!;
+  await client.call('threads.remove', { threadId });
+  expect(await client.call('threads.list', { includeArchived: true })).toEqual([]);
+  const request = ['thread', 'new', projectId, 'First prompt', '--model', 'echo/echo', '--json'];
+  const missing = await ownerBoite([...request, '--thread', 'thr_missing']);
+  expect(missing.code).toBe(1);
+  expect(missing.err).toContain('thr_missing');
+  expect(await client.call('threads.list', { includeArchived: true })).toEqual([]);
+  const created = await ownerBoite(request);
+  expect([created.code, created.err]).toEqual([0, '']);
+  expect(JSON.parse(created.out).thread).toMatchObject({ providerId: 'echo', model: 'echo', projectId });
+});
+
+test('repeating an owner CLI creation request keeps its conversation and first turn', async () => {
+  const projectId = harness.core.threads.require(threadId).projectId!;
+  const client = await harness.connect();
+  await client.call('threads.remove', { threadId });
+  const request = ['thread', 'new', projectId, 'First line\nDetails', '--request-id', 'cli-first-turn', '--json'];
+  const results = await Promise.all([ownerBoite(request), ownerBoite(request)]);
+  expect(results.map(result => [result.code, result.err])).toEqual([[0, ''], [0, '']]);
+  const [first, second] = results.map(result => JSON.parse(result.out));
+  expect(second.thread.id).toBe(first.thread.id);
+  expect(second.turn.id).toBe(first.turn.id);
+  await client.call('threads.update', { threadId: first.thread.id, permissionMode: 'yolo' });
+  const retried = await ownerBoite(request);
+  expect([retried.code, retried.err]).toEqual([0, '']);
+  expect(JSON.parse(retried.out)).toMatchObject({ thread: { id: first.thread.id }, turn: { id: first.turn.id } });
+  const changed = await ownerBoite(request.map(word => word === 'First line\nDetails' ? 'First line\nDifferent details' : word));
+  expect(changed.code).toBe(1);
+  expect(changed.err).toContain('different content');
+  expect(harness.core.journal.listThreads()).toHaveLength(1);
 });
 
 test('ask list reads its own pending questions without publishing a question named list', async () => {

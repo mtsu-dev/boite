@@ -585,38 +585,40 @@
        (its menu says it whole). Only what still cannot fit, a long effort
        beside a notice, wraps onto a second row of 44 px targets. The row
        starts 8 px down: a chip now sits under the field's microphone and
-       send, and their 44 px targets must not meet. */
-    .chips { flex: 1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 6px; min-width: 0; min-height: var(--touch-target); padding-block: 8px 4px; }
+       send, and their 44 px targets must not meet. The chips' sides and
+       gaps are a phone's closest: at 6 and 8 px, the bare context ring left
+       a 390 px row for a row of its own, which took the conversation's
+       height. */
+    .chips { flex: 1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 4px; min-width: 0; min-height: var(--touch-target); padding-block: 8px 4px; }
     .bar > :global(.options) { align-self: flex-start; }
     .chips :global(*) { max-width: 100%; }
     .chips > .line > :global(*) { flex: none; }
-    /* Counted at its floor when the row is laid out, then grown back to its name's width. */
-    .chips > .line > :global(.picker) { flex: 1 1 0; min-width: 76px; max-width: max-content; }
+    /* Counted at its floor when the row is laid out, then grown back to its name's width; a name
+       shorter than the floor is counted at its own width, not followed by the floor's empty rest. */
+    .chips > .line > :global(.picker) { flex: 1 1 76px; min-width: 0; max-width: max-content; }
     .chips :global(:is(.picker, .effort, .permission) > .trigger > :is(.chevron, .lucide-chevron-down)) { display: none; }
     /* Each setting reads as a control at rest: a quiet surface and a hairline
        around its icon, its value and its chevron, 36 px drawn in a 44 px target. */
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) {
       position: relative;
       height: 36px;
-      padding: 0 8px;
-      gap: 5px;
+      padding: 0 7px;
+      gap: 4px;
       border: 1px solid var(--color-border);
       border-radius: var(--radius-full);
       background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
     }
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger)::after { content: ''; position: absolute; inset: -4px 0; }
-    .chips :global(.picker > .trigger) { min-width: 0; max-width: 100%; }
+    .chips :global(.picker > .trigger) { min-width: var(--touch-target); max-width: 100%; }
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; }
     .chips :global(.picker > .trigger > svg) { flex: none; }
     .bar .chips :global(.picker > .trigger.connect) { padding: 0 12px; background: var(--color-active); color: var(--color-foreground); }
   }
   /* A 360 px phone: the "+" takes a 32 px column, its 44 px target kept by
-     the icon button's hit zone, and the chips' sides close in. */
+     the icon button's hit zone. */
   @media (max-width: 379px) {
     .bar { gap: 0; padding-inline: 4px; }
     .bar :global(.options .opener) { margin-inline: -2px; }
-    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) { padding: 0 7px; gap: 4px; }
-    .chips { column-gap: 4px; }
     /* The bolt says effort: its word goes so the model's name stays whole. */
     .chips :global(.effort > .trigger .name) { display: none; }
   }

@@ -83,11 +83,12 @@ the VPN or the Wi-Fi.
 - In the [agent's browser](browser.md), press Show, tap to click, drag to
   scroll and type in the field below the preview.
 
-Provider accounts, keyboard shortcuts, resource limits, the brain,
-the task manager, worktrees, diagnostics, voice engines, server settings,
-forks and moving a conversation stay on the desktop. The terminal is the
-owner's: a phone connected as the owner has it, with each shell in its own
-tab, and a paired device has none.
+Tap a conversation's title to move it when the menu offers Move. Its plan
+appears in the chat. On a phone connected as the owner, Settings includes
+Accounts, Providers, Brain, Worktrees, Voice and Diagnostics. The task manager
+is in Diagnostics for the owner and has its own Settings entry on a paired
+phone. The owner can open the terminal, with each shell in its own tab.
+Keyboard shortcut settings, server settings and conversation forks are on desktop.
 
 ## What a phone may do
 
@@ -97,7 +98,7 @@ A paired phone is limited to this:
 | --- | --- |
 | Read, start and answer conversations and the agents' cards | Change settings or sign agents in |
 | Add a project on a machine of the group | Use Boite's data folder or folders like `.git` and `.ssh` as one |
-| Read the Changes and Files panels | Edit files, open the terminal or Tasks |
+| Read the plan in a conversation, the task manager in Settings and the Changes and Files panels | Edit files or open the terminal |
 | Click and type in the agent's browser, on sites signed in on that machine | Run scripts in it |
 | See the devices in Machines | Add or remove machines and devices |
 

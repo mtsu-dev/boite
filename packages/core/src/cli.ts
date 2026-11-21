@@ -15,17 +15,20 @@ import { isAbsolute, join, resolve } from 'node:path';
 // the words, the flags and the help. Each command loads its own module, the
 // client and the contracts once it runs (scripts/architecture/cli-startup.ts).
 import { AGENT_ENV } from '../../contracts/src/agent-door.ts';
-import { AGENT_PICTURE_MAX_BYTES, AGENT_SETTING_KEYS } from '../../contracts/src/agent-setting-requests.ts';
+import { AGENT_SETTING_KEYS } from '../../contracts/src/agent-setting-requests.ts';
 import { SETTINGS_PAGES } from '../../contracts/src/setting-requests.ts';
-import type { AgentTask, GitChange, PanelSurface, RpcParams, SettingsReading, Todo } from '@boite/contracts';
+import type { AgentTask, AgentTaskChange, GitChange, PanelSurface, RpcParams, SettingsReading, Todo } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import { CORE_VERSION } from './version.ts';
 import { resolveDataDir } from './paths.ts';
-import { contextRequest, parse, requiredText, ShortUsage, Usage, type Parsed } from './cli-args.ts';
-import { BOT_HELP, CONTROL_HELP, PLUGIN_COMMAND_TIMEOUT_MS, PLUGIN_HELP, isControlCommand, isPluginCommandWord, ownerWithoutThread } from './cli-commands.ts';
+import { canonicalCommand, contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
+import { PLUGIN_COMMAND_TIMEOUT_MS, isControlCommand, isPluginCommandWord, ownerWithoutThread } from './cli-commands.ts';
+import { cliHelp, cliUsageError, DEFAULT_HELP } from './cli-help.ts';
 import type { Caller } from './control-cli.ts';
 
-/** The command families, loaded when a command runs, never for `boite help`: one split boundary (cli-families.ts). */
+export { USAGE } from './cli-help.ts';
+
+/** Command implementations share one lazy boundary (cli-families.ts). */
 const families = () => import('./cli-families.ts');
 
 export interface CliIo {
@@ -36,221 +39,6 @@ export interface CliIo {
   /** Everything piped in, for a command that reads `-`. */
   stdin?(): Promise<string>;
 }
-
-export const USAGE = `usage: boite <command> [args] [--json]
-
-  mcp                            serve bounded thread-scoped tools over MCP stdio
-  where                          this thread, project, cwd, branch
-  thread move <project>          move this thread to another project (name,
-                                 id or folder) when this turn ends
-  thread new <project> <brief>   start a thread in a project; its first answer
-                                 comes back to you (--worktree, --title <title>,
-                                 --machine <name> from an agent thread: on
-                                 another machine of the group, in a project
-                                 there, once its owner allows it. From a
-                                 terminal use --core <url>; --model
-                                 <provider/model>, --effort <level>, --speed
-                                 <tier> from boite delegate models, with the
-                                 same --machine for that machine's; refused
-                                 when it lacks them, never another model);
-                                 a mochi names an entrusted remote project
-                                 as <machine>/<project>
-  projects                       the projects added to Boite
-  projects add <folder>          add an existing folder as a project, so thread
-                                 new and thread move can name it (--name <name>;
-                                 --machine <name> from an agent thread: a folder
-                                 of another machine of the group, its absolute
-                                 path there, once its owner allows it; a mochi
-                                 adds a folder of its own machine while its
-                                 addProjects setting is on, and holds it at
-                                 once)
-  projects archive|unarchive|remove <p>
-                                 the owner's; removing leaves the folder on disk
-${CONTROL_HELP}
-  attach <file>                  publish a file in chat, up to 512 MB
-  show <file>[:line]             open a file in the panel, at a line
-  diff [file]                    open the changes, or one file's diff
-  browse <url>                   open a url in a new tab of this conversation's browser
-  browser help                   inspect, test and capture the built-in browser
-  device help                    open an iOS Simulator or Android emulator in the
-                                 user's Device panel, capture and drive it
-  window help                    capture a desktop window (Unity, a game) as a PNG
-                                 or a contact sheet, or show it in the Window panel
-  desktop help                   a private virtual desktop (Linux) to run GUI apps
-                                 and drive them through agent-desktop
-  pr list|refresh                this conversation's linked pull requests
-  pr link|unlink <url>           attach or remove a PR link; does not change GitHub
-  pr watch [<url|number>]        wake this thread when the PR's checks fail or
-                                 pass, a review or comment lands, it starts
-                                 to conflict or leaves the merge queue
-                                 unmerged; end your turn instead of polling
-  pr unwatch [<url|number>]      stop one watch, or all of this thread's
-  view <file.html>               draw an HTML page in your answer, where a
-                                 line ![title](file.html) places it
-                                 (--title <text>); view help has the rules
-                                 and the app's look, view example a full page
-  view check <file.html>         check at desktop and phone widths without
-                                 publishing; save PNGs in the cwd
-                                 (--script <checks.js>, --scheme dark|light)
-  preview <file.html>             open a local HTML artifact with its assets
-  preview-close <file.html>       stop serving a local HTML preview
-  open trace|tasks|changes|files|workflow [dir|run-id]
-  status                         git status of the working directory
-  server check|update|cancel      check or update this server, or cancel the
-                                 pending update; no thread needed as owner
-  journal-check [table rowid]     bounded read-only journal diagnostics, owner only
-  logs [--min-level warn] [--since 2h]
-                                 Boite's own diagnostics: did the app, its shell
-                                 or a client fail? logs help has the filters,
-                                 logs problems groups them, logs export writes
-                                 the anonymized file a developer reads
-  issue draft|submit --title <t> --description <text>
-                                 report a Boite bug on GitHub with that export;
-                                 show the user the draft before submit
-  ask <question> [option ...]    ask the user without stopping; the answer
-                                 arrives later as a message (--multiple);
-                                 --open <url> adds an Open button for a page
-                                 the user must sign in to, in your browser
-  ask list                      read this thread's pending questions
-  secret list                    compatibility: reports that no keys are stored
-  secret ask <NAME> --why <text> ask the user for a key on a card; prints
-                                 saved secret:<ref>, declined, cancelled or timed_out
-  secret write|run|pipe <ref>    use it without seeing it; boite secret help
-  state [settings [page|key]|limits|machines|updates|inbox|tasks|version|route]
-                                 what the user sees in Boite, read-only: settings
-                                 with what each does, limits, machines, updates,
-                                 the Activity inbox, the task manager
-  settings [key|page]            Boite settings you may ask about: value, page,
-                                 the name the user's app shows; first, the
-                                 language the app speaks; experiments last
-  settings request <key> <value> --why <text>
-                                 a card with the switch or value itself, for
-                                 the user to change in the chat; value is JSON
-                                 or a bare word (experiment.<id> true|false);
-                                 the outcome arrives as a message (applied,
-                                 changed or refused); --machine <name> asks
-                                 about another machine of the group
-                                 (groupThreads, groupBots)
-  settings open <page>[#<card>] --why <text>
-                                 a card with a button to that Settings page,
-                                 for what is not one value: a provider login,
-                                 a pairing (pages: ${SETTINGS_PAGES.join(', ')})
-  settings mochi [key]           a mochi's settings a card may change:
-                                 ${AGENT_SETTING_KEYS.slice(0, 5).join(', ')},
-                                 ${AGENT_SETTING_KEYS.slice(5, 9).join(', ')},
-                                 ${AGENT_SETTING_KEYS.slice(9).join(', ')}
-                                 (--mochi <name>; yours in your own conversation)
-  settings mochi request <key> <value> --why <text>
-                                 a card asking the user to change one, for you
-                                 or --mochi <name>: name Ada, status paused,
-                                 model codex/gpt-6.1-sol (<provider>/<model>,
-                                 any provider), projects +boite -old
-                                 (+<machine>/<name> for a project of another
-                                 machine of the group), instructions with
-                                 --instructions-file <path>, avatar with
-                                 --picture <image>; the outcome
-                                 arrives as a message (applied, changed, refused)
-  settings mochi picture <image>
-                                 give a mochi a face at once, no card: yours, or
-                                 --mochi <name>; a PNG, JPEG, WebP or GIF of at
-                                 most ${AGENT_PICTURE_MAX_BYTES / 1024} KB, or a robot code, one or two
-                                 characters, "" for the robot its id draws
-  settings mochi create <name>   ask for the mochi the user asked for, on your
-                                 own route or --model <provider/model>
-                                 (--effort, --project a,b, --domain <text>,
-                                 --instructions-file <path>): the owner reads
-                                 a card, or the mochi is created at once where
-                                 the setting agentBotCreation is free
-${PLUGIN_HELP}
-  task list                      the agent's task list
-  task add <text>                add a task (id t1, t2, ...)
-  task start|done|remove <id>    move or drop one task
-  task clear                     drop every task
-  todo list                      the project's todo list
-  todo add <text>                add a card for the user
-  todo claim <id>                mark a card finished, awaiting the user
-  goal track                     a reviewed goal and checklist on the user's
-                                 last prompt, unless automatic goals are off
-  threads find <words>           locate threads by words of their chat, title,
-                                 project, branch or model
-  threads read <thread>          its conversation (--last <n>, --before <ms>; --entry <id> --offset <n>: the rest of a cut entry; --entry <id> --tool <id> [--offset <n>]: your own thread's tool output)
-  threads send <thread> <text>   message it; --wait blocks for its answer
-  threads reply <message-id> <text>
-  threads log <thread>           what you and that thread said to each other
-  threads wait [thread]          the next message (--timeout <s>, default 90)
-  threads inbox                  every exchange and its delivery state
-                                 <thread>: <thread-id>, <machine>/<thread-id>
-  threads contacts               other owners' Boites linked as contacts
-  threads ask <text>             ask the Contacts mochi for a contact's thread
-                                 (--contact <c>, --to <c>/<thread>, --new, --share);
-                                 the answer names the thread to write to
-  contacts [help]                the Contacts mochi's own commands
-${BOT_HELP}
-  team <command>                 a mochi's teams: post, read, propose (boite team help)
-  --request-id <id>              reuse to retry threads send|reply or delegate spawn|send
-  delegate models                models, reasoning levels and speeds a subagent can use
-                                 (--refresh: read again; --machine <name>: another
-                                 machine's, for thread new or spawn --machine --model)
-  delegate spawn <brief>         start a subagent on one bounded job; its result
-                                 comes back as a message (--model <provider/model>,
-                                 --effort <level>, --speed <tier>, --title <title>,
-                                 --profile <id>, --worktree for a git worktree of
-                                 its own from your checkout's HEAD (the project's
-                                 for a mochi), and a context mode: --context
-                                 light|neutral, --keep|--drop <parts>, --tools
-                                 <Tool,...>, --rules <text>|--rules-file <path>)
-                                 --project <p> places a mochi's child in an entrusted project
-                                 --machine <name> runs it on another machine of the
-                                 group, in its project named like yours or --project
-  delegate list                  every subagent, workflow and council: state, model, time
-  delegate council <request>     several models answer it
-                                 alone, read-only, each with a score out of 10, on code
-                                 or anything else, with or without git; the answers
-                                 come back as one message (--models <a>[:<effort>],
-                                 <b>[:<effort>][,...] from delegate models, --effort
-                                 <level> (xhigh) for members without one,
-                                 --request-file <path> instead of the text,
-                                 --role <member>=<text> for one member, repeatable,
-                                 --timeout <minutes per round> (30))
-  delegate council again <id> [<what changed>]
-                                 one more round: the same members, efforts and roles,
-                                 from zero (--send-changes sends them what changed,
-                                 --request-file <path> replaces the request)
-  delegate council table <id>    the "Council review" section with every round's scores
-  delegate send <thread-id> <text>
-                                 steer or reuse a subagent, or ask the parent;
-                                 to a subagent that asks something, the answer
-  delegate stop [thread-id]      stop one subagent or council (cnl_...), or all of them
-  delegate resume [thread-id]    continue stopped subagents, or one, and the
-                                 workflows a pause or a restart held
-  delegate wait [thread-id]      block until children finish or one asks something
-                                 (--timeout <s>, default 600, max 3600); only with
-                                 nothing else to do
-  delegate result <child> <turn> [offset]
-                                 read a bounded page of full assistant text
-  delegate profiles              the owner's named routes
-  workflow help                  the plan format, with an example
-  workflow check|run <plan>      validate, or start, a JSON plan (file or inline)
-  workflow list|show [run-id]    runs of this thread, or one run's steps and results
-  workflow extend <run-id> <steps>
-  workflow pause|resume|stop <run-id>
-  workflow retry <run-id> [step]
-  workflow output <json>         a step's structured result, checked on the spot
-  workflow templates             plans kept for this project
-  workflow save <name> <plan|run-id>
-  workflow start <template>      run a kept plan by name or id
-
-  Outside a thread, threads, thread, questions, answer, permissions, allow,
-  deny and projects need no --thread: the owner drives every thread, and a
-  message it sends is its own prompt. Inside a mochi's conversation they reach
-  the threads of the projects entrusted to it, and its messages reach them as
-  that mochi's.
-
-  --core <url>                   another core, with its token in BOITE_TOKEN
-                                 (an owner token, or a paired device's session)
-  --thread <id> --data-dir <dir> --channel <stable|dev>
-                                 drive a thread from outside it, as the owner
-  --                             ends Boite's flags: the words after it are the command's`;
 
 const STATUS_LETTER: Record<GitChange['status'], string> = {
   added: 'A',
@@ -342,20 +130,6 @@ export function splitLine(spec: string): { path: string; line: number | undefine
 
 function absolute(cwd: string, path: string): string {
   return isAbsolute(path) ? path : resolve(cwd, path);
-}
-
-function nextTaskId(tasks: AgentTask[]): string {
-  let max = 0;
-  for (const task of tasks) {
-    const match = /^t(\d+)$/.exec(task.id);
-    if (match) max = Math.max(max, Number(match[1]));
-  }
-  return `t${max + 1}`;
-}
-
-/** `3` names `t3`; anything else is an id as the list prints it. */
-function taskId(raw: string): string {
-  return /^\d+$/.test(raw) ? `t${raw}` : raw;
 }
 
 function taskRow(task: AgentTask): string {
@@ -485,6 +259,8 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), ...(parsed.speed === undefined ? {} : { speed: parsed.speed }), ...(parsed.profile === undefined ? {} : { profile: parsed.profile }),
         ...(parsed.worktree === true ? { worktree: true } : {}), ...(parsed.refresh === true ? { refresh: true } : {}), ...(parsed.machine === undefined ? {} : { machine: parsed.machine }),
         ...(parsed.context === undefined ? {} : { context: contextRequest(parsed, readRules) }),
+        ...(parsed.limit === undefined ? {} : { limit: parsed.limit }),
+        owner: !agentCaller,
         cwd: io.cwd,
       }, print);
     },
@@ -729,8 +505,6 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
     state: async () => (await families()).stateCommand(client, threadId, rest, print),
     ask: async () => {
-      // An agent once ran `boite ask help` for this text and drew a card reading "help".
-      if (rest.length === 1 && rest[0] === 'help') { print([USAGE], { help: USAGE }); return; }
       if (rest.length === 1 && rest[0] === 'list') {
         await (await families()).controlCommand(client, caller, threadId, { ...parsed, positional: ['questions', threadId] }, print);
         return;
@@ -749,25 +523,17 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
     task: async () => {
       const action = want(0, 'list, add, start, done, remove or clear');
-      const tasks = await client.call('threads.tasks.get', { threadId });
       if (action === 'list') {
+        const tasks = await client.call('threads.tasks.get', { threadId });
         print(tasks.length === 0 ? ['tasks: none'] : tasks.map(taskRow), tasks);
         return;
       }
-      let next: AgentTask[];
-      if (action === 'add') {
-        const text = requiredText(rest, 1, 'task add needs a text');
-        next = [...tasks, { id: nextTaskId(tasks), text, status: 'pending' }];
-      } else if (action === 'clear') next = [];
-      else if (action === 'start' || action === 'done' || action === 'remove') {
-        const id = taskId(want(1, 'a task id'));
-        if (!tasks.some((task) => task.id === id)) throw new Error(`no task ${id}`);
-        const status: AgentTask['status'] = action === 'start' ? 'in_progress' : 'completed';
-        next = action === 'remove'
-          ? tasks.filter((task) => task.id !== id)
-          : tasks.map((task) => (task.id === id ? { ...task, status } : task));
-      } else throw new Usage(`task: unknown action ${action}`);
-      const activity = await client.call('threads.tasks.set', { threadId, tasks: next });
+      let change: AgentTaskChange;
+      if (action === 'add') change = { action, text: requiredText(rest, 1, 'task add needs a text') };
+      else if (action === 'clear') change = { action };
+      else if (action === 'start' || action === 'done' || action === 'remove') change = { action, id: want(1, 'a task id') };
+      else throw new Usage(`task: unknown action ${action}`);
+      const activity = await client.call('threads.tasks.change', { threadId, ...change });
       print(activity.tasks.length === 0 ? ['tasks: none'] : activity.tasks.map(taskRow), activity.tasks);
     },
     todo: async () => {
@@ -804,13 +570,9 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
   let parsed: Parsed;
   try {
     parsed = parse(argv);
-    if (parsed.positional.length === 0 || parsed.positional[0] === 'help') throw new Usage('');
+    if (parsed.help === undefined && parsed.positional.length === 0) throw new Usage('');
   } catch (error) {
-    if (error instanceof Usage) {
-      io.err((error.message.length === 0 ? USAGE : `${error.message}\n${USAGE}`) + '\n');
-      // `boite help` asked for this text; a bare `boite` or a bad flag did not.
-      return error.message.length === 0 && argv.length > 0 ? 0 : 2;
-    }
+    if (error instanceof Usage) return cliUsageError(io, error);
     throw error;
   }
 
@@ -818,14 +580,15 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
     io.out((parsed.json ? JSON.stringify(value) : lines.join('\n')) + '\n');
   };
 
-  // `boite mochi help` reads no mochi: any thread, a delegated child included, gets it without the core.
-  if (parsed.positional[0] === 'bot' && (parsed.positional.length === 1 || (parsed.positional.length === 2 && parsed.positional[1] === 'help'))) {
-    print([BOT_HELP], { help: BOT_HELP });
-    return 0;
-  }
-
   let client: CoreClient | null = null;
   try {
+    const help = parsed.help ?? (parsed.positional.length === 1 && DEFAULT_HELP.has(parsed.positional[0]!) ? parsed.positional : undefined);
+    if (help) {
+      const text = await cliHelp(help);
+      if (!help.length && !parsed.json) io.err(text + '\n');
+      else print([text], { help: text });
+      return 0;
+    }
     if (parsed.positional[0] === 'journal-check' && (io.env[AGENT_ENV.coreUrl] || io.env[AGENT_ENV.token] || io.env[AGENT_ENV.threadId])) throw new Error('boite journal-check is owner-only outside the agent environment');
     if (parsed.positional[0] === 'mcp' && (!io.env[AGENT_ENV.coreUrl] || !io.env[AGENT_ENV.token] || !io.env[AGENT_ENV.threadId])) {
       throw new Error('boite mcp requires the thread-bound agent environment; owner credential fallback is disabled');
@@ -856,8 +619,8 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
     return 0;
   } catch (error) {
     if (error instanceof Usage) {
-      io.err(error instanceof ShortUsage ? `${error.message}\n` : `${error.message}\n${USAGE}\n`);
-      return 2;
+      const [command, action] = error.command === undefined ? canonicalCommand(parsed.positional) : [error.command, error.action];
+      return cliUsageError(io, error, command, action);
     }
     io.err(`error: ${(error as Error).message}\n`);
     return 1;

@@ -1,4 +1,4 @@
-import type { Message, MessagePart, MoveNotice, ThreadLink, ThreadSummary } from '@boite/contracts';
+import type { Message, MessagePart, MoveNotice, NewConversationNotice, ThreadLink, ThreadSummary } from '@boite/contracts';
 import { QUOTE } from './markdown';
 import { FenceScan, fenceLanguage, openFence } from './fences';
 
@@ -248,6 +248,24 @@ export function movedBy(message: Message): MoveNotice | null {
   if (message.role !== 'system') return null;
   for (const part of message.parts) if (part.type === 'text' && part.moved?.by === 'agent') return part.moved;
   return null;
+}
+
+/** The core's line where a mochi's new conversation began (`agents.session.new`), drawn as a marker, not a message. */
+export function newConversationOf(message: Message): NewConversationNotice | null {
+  if (message.role !== 'system') return null;
+  for (const part of message.parts) if (part.type === 'text' && part.newConversation) return part.newConversation;
+  return null;
+}
+
+/**
+ * The first of the new-conversation markers that end `timeline`, or null. The
+ * thread's closing line belongs to the turn they follow, so it stands above
+ * the first of them rather than under the last.
+ */
+export function closingMarkerOf(timeline: readonly Message[]): string | null {
+  let at: string | null = null;
+  for (let index = timeline.length - 1; index >= 0 && newConversationOf(timeline[index]!); index--) at = timeline[index]!.id;
+  return at;
 }
 
 /** The core's line for a thread the agent started (`boite thread new`). */

@@ -57,11 +57,16 @@ function roles(options: { hold?: boolean; prompts?: string[]; answer?: string } 
   return { release: () => { for (const release of held.splice(0)) release(); } };
 }
 
-/** A desktop app with `experiments` on, and its echo conversation. */
+/**
+ * A desktop app with `experiments` on, and its echo conversation. Automatic
+ * goals are off on a fresh machine: the first app turns them on as the owner
+ * would; a test that turned them off keeps them off.
+ */
 async function desktop(experiments: ExperimentId[] = []) {
   const client = await connect(h.url, h.token, { client: { version: 'test', name: 'shell' } });
   clients.push(client);
   await client.call('client.preferences', report(experiments));
+  if (h.core.settings.get().autoGoals === undefined) await client.call('settings.set', { autoGoals: true });
   const { threadId, accountId } = await echoThread(h, client);
   return { client, threadId, accountId };
 }
@@ -94,6 +99,28 @@ test('a prompt of 1500 characters with the experiment on starts a reviewed goal 
   expect(list).toHaveLength(1);
   expect(list[0]).toMatchObject({ text: 'Fix the login page.', status: 'open', goalThreadId: threadId });
   held.release();
+});
+
+test('a fresh machine starts no automatic goal and refuses goal track until the owner turns them on', async () => {
+  h = await startTestCore();
+  roles();
+  const client = await connect(h.url, h.token, { client: { version: 'test', name: 'shell' } });
+  clients.push(client);
+  const { threadId } = await echoThread(h, client);
+  expect(h.core.settings.get().autoGoals).toBeUndefined();
+  await client.call('turns.start', { threadId, prompt: prompt(5000) });
+  await waitFor(() => h.core.journal.listTurns(threadId).some(turn => turn.status === 'done'));
+  expect(goalOf(threadId)).toBeNull();
+  const refused = await boite(threadId, ['goal', 'track']);
+  expect(refused.code).toBe(1);
+  expect(refused.err).toContain('automatic goals, which are off on this machine');
+  expect(goalOf(threadId)).toBeNull();
+  expect(await cards(client, threadId)).toEqual([]);
+  // Turned on, the same thread's next long prompt starts one.
+  await client.call('settings.set', { autoGoals: true });
+  await client.call('turns.start', { threadId, prompt: prompt(1500) });
+  await waitFor(() => goalOf(threadId) !== null);
+  expect(goalOf(threadId)).toMatchObject({ auto: true });
 });
 
 test('1499 characters, the owner\'s setting off, or a command start no goal', async () => {
@@ -148,6 +175,7 @@ test('a queued long prompt keeps the decision it was queued with across a core r
   restartDir = mkdtempSync(join(tmpdir(), 'auto-goal-restart-'));
   h = await startTestCore({ dataDir: restartDir });
   const a = await h.connect();
+  await a.call('settings.set', { autoGoals: true });
   const { threadId } = await echoThread(h, a);
   h.core.composer.stop();
   const text = prompt(1600);
@@ -196,7 +224,7 @@ test('goal track starts once on the last prompt, then refuses; refuses with the 
   const plain = await echoThread(h, client, 'plain');
   await client.call('turns.start', { threadId: plain.threadId, prompt: 'Two things' });
   await waitFor(() => h.core.threads.runner.handles.has(plain.threadId));
-  expect((await boite(plain.threadId, ['goal', 'track'])).err).toContain('the owner turned off on this machine');
+  expect((await boite(plain.threadId, ['goal', 'track'])).err).toContain('automatic goals, which are off on this machine');
   expect(goalOf(plain.threadId)).toBeNull();
   held.release();
 });

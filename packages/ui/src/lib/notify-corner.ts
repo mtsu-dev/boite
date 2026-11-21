@@ -35,15 +35,17 @@ function shown(selector: string): HTMLElement | null {
 }
 
 /**
- * Phones reserve room at the bottom of their timeline or list. Desktops
+ * Phones reserve room at the bottom of the screen in front. Desktops
  * stack toasts then cards down from the top-right corner. Returns the cards
  * it placed.
  */
 function placeToasts(): HTMLElement[] {
   const up = toasts.filter((toast) => toast.offsetHeight > 0);
   const phone = innerWidth <= 720;
-  // On a phone the list screen lies over the thread, which still lays out under it.
-  const over = phone ? shown('[data-testid=mobile-list]') || shown('[data-testid=timeline]') : null;
+  // The list and the panel cover the thread, whose timeline still lays out under them.
+  const over = phone
+    ? shown('[data-testid=mobile-list]') ?? shown('[data-corner-anchor=panel]') ?? shown('[data-testid=timeline]')
+    : null;
   // Last first: on a phone the first card to arrive sits lowest; on a desktop the newest sits under the toasts.
   const slotted = over || !phone ? cards.filter((card) => card.offsetHeight > 0).reverse() : [];
   const room = [...up, ...slotted].reduce((sum, node) => sum + node.offsetHeight + 8, 0);

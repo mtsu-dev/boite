@@ -1,4 +1,5 @@
-import type { RpcParams, ThreadId, ThreadSummary } from '@boite/contracts';
+import { createHash } from 'node:crypto';
+import { ownerThreadRequestKey, type OwnerThreadRequest, type RpcParams, type ThreadId, type ThreadSummary } from '@boite/contracts';
 import { invalidParams, refused } from '../errors.ts';
 
 /** How long a creation's request id answers with the thread it made: well past a reconnect. */
@@ -29,11 +30,23 @@ export class CreationRequests {
     const key = JSON.stringify([params.projectId, params.providerId, params.accountId, params.title ?? null, params.cwd ?? null,
       params.model ?? null, params.effort ?? null, params.speed ?? null, params.permissionMode ?? 'default', params.worktree ?? null,
       params.incognito === true, params.context ?? null]);
+    return this.#once(id, key, create, lookup, 'clientRequestId was already used for another conversation');
+  }
+
+  async onceFromPrompt(params: OwnerThreadRequest, create: () => Promise<ThreadSummary>, lookup: (threadId: ThreadId) => ThreadSummary | null): Promise<ThreadSummary> {
+    const id = params?.clientRequestId;
+    if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw invalidParams('clientRequestId must contain 8 to 128 URL-safe characters');
+    if (typeof params.prompt !== 'string' || !params.prompt.trim()) throw invalidParams('threads.createFromPrompt.prompt: expected non-empty text');
+    const key = createHash('sha256').update(ownerThreadRequestKey(params)).digest('hex');
+    return this.#once(id, key, create, lookup, 'clientRequestId was already used for different content');
+  }
+
+  async #once(id: string, key: string, create: () => Promise<ThreadSummary>, lookup: (threadId: ThreadId) => ThreadSummary | null, mismatch: string): Promise<ThreadSummary> {
     const now = Date.now();
     for (const [stale, receipt] of this.receipts) if (receipt.expiresAt <= now) this.receipts.delete(stale);
     const previous = this.receipts.get(id);
     if (previous) {
-      if (previous.key !== key) throw refused('clientRequestId was already used for another conversation', { field: 'clientRequestId', expected: 'a new id for a different conversation' });
+      if (previous.key !== key) throw refused(mismatch, { field: 'clientRequestId', expected: 'a new id for a different conversation' });
       const threadId = await previous.created;
       const thread = lookup(threadId);
       if (thread === null) throw refused('the conversation this request started was deleted since', { field: 'clientRequestId', threadId, reason: 'deleted' });
