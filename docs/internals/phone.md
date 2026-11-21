@@ -342,9 +342,9 @@ a folder is read before then. That core checks the path, absolute and an
 existing directory there, and refuses Boite's data folder, a folder inside it,
 the home folder, a folder that contains it, a disk root, and a folder that is or is inside `.git`, `.ssh`, `.gnupg`, `.aws`, `.azure`,
 `.kube` or `.docker`, so a device's reads, which start from its projects, never begin in
-one of them. The refusal names the path and the reason. It adds no reach the device lacked: it already starts agents that
-run commands in those projects. `settings.set` and `accounts.add` stay the
-owner's.
+one of them. The refusal names the path and the reason. A paired device can
+already start agents that run commands in those projects. `settings.set` and
+`accounts.add` stay the owner's.
 
 A paired device reads and moves the project's todos for the board
 ([board.md](board.md)): `todos.list`, `todos.add`, `todos.update` and

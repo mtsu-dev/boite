@@ -101,6 +101,7 @@ test('a letter whose words sit in its thread title, not its text, is held all th
   expect(flag.status).toBe('open');
   expect(['secret', 'injection']).toContain(flag.kind);
 }, 60000);
+
 test('a shared project\'s refusal and the reviewer\'s doubt raise one open flag each, which a cut closes', async () => {
   const { host, hostClient, guestId, bot, facts } = await opened();
   const ctx = { shared: { id: 'shp_test' }, source: { kind: 'human', project: { ownerCoreId: guestId, coreId: guestId, projectId: 'prj_remote' } } } as never;
