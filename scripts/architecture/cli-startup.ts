@@ -20,6 +20,7 @@ export const CLI_STARTUP: ReadonlySet<string> = new Set([
   ...CLI_ENTRIES,
   'packages/core/src/cli-args.ts',
   'packages/core/src/cli-commands.ts',
+  'packages/core/src/cli-help.ts',
   'packages/core/src/ids.ts',
   'packages/core/src/paths.ts',
   'packages/core/src/version.ts',

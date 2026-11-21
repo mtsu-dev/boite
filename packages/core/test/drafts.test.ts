@@ -124,6 +124,17 @@ describe('an incognito draft', () => {
     expect(harness.core.journal.getThread(thread.id)).toBeNull();
   });
 
+  test('goes at once, folder included, when the drafts project is removed; the other drafts stay saved', async () => {
+    const drafts = await client.call('projects.drafts', {});
+    const accountId = await echoAccount();
+    const secret = await client.call('threads.create', { projectId: drafts.id, providerId: 'echo', accountId, incognito: true });
+    const kept = await client.call('threads.create', { projectId: drafts.id, providerId: 'echo', accountId });
+    await client.call('projects.remove', { projectId: drafts.id });
+    expect(existsSync(secret.cwd)).toBe(false);
+    expect(harness.core.journal.db.query('SELECT id FROM threads WHERE id = ?').get(secret.id)).toBeNull();
+    expect(harness.core.journal.db.query('SELECT id FROM threads WHERE id = ?').get(kept.id)).not.toBeNull();
+  });
+
   test('reserves its published folder while filesystem deletion is pending', async () => {
     const drafts = await client.call('projects.drafts', {});
     const accountId = await echoAccount();

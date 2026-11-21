@@ -1,8 +1,10 @@
+import type { AgentTask, AgentTaskChange } from './agent-tasks';
 import type { ContextPreset, ContextRequest, ThreadContextMode } from './context-mode';
 import type { AgentLetter } from './coordination';
 import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, TurnId } from './ids';
 import type { AgentShape } from './imports';
 import type { Attachment, Message, MoveNotice, PendingMove, PreviewReference } from './messages';
+import type { OwnerThreadRequest } from './owner-thread';
 import type { PermissionRequest } from './permissions';
 import type { PluginActor } from './plugins';
 import type { ThreadCapabilities } from './providers';
@@ -382,12 +384,6 @@ export interface AgentCommand {
   hint: string | null;
 }
 
-export interface AgentTask {
-  id: string;
-  text: string;
-  status: 'pending' | 'in_progress' | 'completed';
-}
-
 /** One review of a reviewed goal (`/goal2`): a fresh conversation that judged the work. */
 export interface GoalVerdict {
   round: number;
@@ -638,6 +634,8 @@ export interface ThreadsRpcMethods {
   /** The agent's task list, whole, as the tasks surface shows it. */
   'threads.tasks.set': { params: { threadId: ThreadId; tasks: AgentTask[] }; result: ThreadActivity };
   'threads.tasks.get': { params: { threadId: ThreadId }; result: AgentTask[] };
+  /** Edit the current list in one call, resolving the task id on the core. */
+  'threads.tasks.change': { params: AgentTaskChange & { threadId: ThreadId }; result: ThreadActivity };
 
   'threads.list': { params: { projectId?: ProjectId; includeArchived?: boolean }; result: ThreadSummary[] };
   /**
@@ -697,6 +695,8 @@ export interface ThreadsRpcMethods {
     };
     result: ThreadSummary;
   };
+  /** Owner terminal only. Retries resolve the same creation and first turn before choosing defaults again. */
+  'threads.createFromPrompt': { params: OwnerThreadRequest; result: { thread: ThreadSummary; turn: Turn; project: string } };
   /** The system prompt, tools and parameters of a Claude thread's last request, read from its transcript. Refused on other providers. */
   'threads.agentShape': { params: { threadId: ThreadId }; result: AgentShape };
   /** Supported operations and their current availability for this thread. */
@@ -889,7 +889,7 @@ export interface ThreadsRpcEvents {
    * as `thread.updated`.
    */
   'thread.load': { threadId: ThreadId; load: ThreadLoad };
-  'thread.removed': { threadId: ThreadId; undoable?: boolean };
+  'thread.removed': { threadId: ThreadId; /** It can come back (trash, removed project): its records stay. */ undoable?: boolean };
   /** The owner-only deletion list changed, including purge and removal with a project. */
   'thread.deletionsUpdated': Record<string, never>;
   /** The agent's `/name` commands, whole, each time the list it reports changes. */

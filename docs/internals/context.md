@@ -53,7 +53,7 @@ finite or below zero writes nothing.
 
 | Provider | The reading | The window | The divider |
 |---|---|---|---|
-| Claude | `usage` on each `assistant` message of the SDK stream, the last one wins; `conversation_reset` (`/clear`) sets it to 0 at once, keeping the window | `modelUsage[<model>].contextWindow` on the result message, the thread's model first, else the one model the turn ran on | the `compact_boundary` system message, with `pre_tokens` and `post_tokens` |
+| Claude | `usage` on each `assistant` message of the SDK stream, the last one wins; `conversation_reset` (`/clear`) sets it to 0 at once and `compact_boundary` to its `post_tokens`, both keeping the window; a request after a compaction measures again | `modelUsage[<model>].contextWindow` on the result message, the thread's model first, else the one model the turn ran on | the `compact_boundary` system message, with `pre_tokens` and `post_tokens` |
 | echo | 100 plus one token per character of the prompt | 2000 | `[compact]` in the prompt draws one, 1800 to 300 tokens, and lowers the reading to 300 |
 | Codex | `tokenUsage.last.totalTokens` in `thread/tokenUsage/updated` | `tokenUsage.modelContextWindow` when reported | completed `contextCompaction` items |
 | Muse Code | `usedTokens` in `session/contextUsage` | `windowTokens` when reported | completed `compaction` items, with `tokensBefore` and `tokensAfter` |
@@ -706,7 +706,8 @@ applies both every 6 hours, and the end of a turn trims a thread once it holds
 checkpoints are kept for the newest 50 turns of a conversation". The same
 pass, and the removal of a thread's checkpoints, then deletes the shared
 files no thread links to any more.
-They survive restarts and leave with a permanently removed project or thread.
+They survive restarts and leave with a purged thread; a removed project keeps
+them for when its folder comes back.
 
 Each snapshot is limited to 20000 files and 128 MiB of saved content. A file
 above 16 MiB is not copied: the snapshot keeps only its metadata, so a change

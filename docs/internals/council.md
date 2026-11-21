@@ -26,7 +26,7 @@ boite delegate council table <id>
 
 | Flag | Default | Limits |
 | --- | --- | --- |
-| `--models` | `claude/claude-opus-5-5`, `codex/gpt-6.1-sol`, `antigravity/gemini-4-argon` | 2 to 6 members; the same provider may sit several times, the same model twice only at two efforts |
+| `--models` | `claude/claude-opus-5-5`, `codex/gpt-6.2-sol`, `antigravity/gemini-4-argon` | 2 to 6 members; the same provider may sit several times, the same model twice only at two efforts |
 | `<provider/model>:<effort>` | the level `--effort` gives | A level the model lacks refuses the council and lists the model's levels |
 | `--effort` | `xhigh` | For the members written without a level. A model without it runs at its strongest level below it, and a warning says so |
 | `--request-file` | none | The request, read from a UTF-8 file, relative to where the command runs. Refused with a request typed in the command, when empty, or past 12,000 characters, with the size it holds |
@@ -35,8 +35,8 @@ boite delegate council table <id>
 
 ```sh
 boite delegate council --request-file .boite-briefs/council/brief.md \
-  --models claude/claude-opus-5-5:max,codex/gpt-6.1-sol:max,claude/claude-fable-5-2:high \
-  --role "codex/gpt-6.1-sol:max=Look for races."
+  --models claude/claude-opus-5-5:max,codex/gpt-6.2-sol:max,claude/claude-fable-5-2:high \
+  --role "codex/gpt-6.2-sol:max=Look for races."
 ```
 
 A member's role follows the request in what that member reads, and no other
@@ -95,7 +95,9 @@ the work completes. If that work fails, that request cannot start, a later turn
 fails or the round ends first, what the member wrote so far is its answer, and a
 note says why. A member through with its round, and a council that ends, leave no
 background work or scheduled wake behind. A round nobody answers still goes back
-to the parent. A closed round leaves the council in `waiting`.
+to the parent. Use Close round in the salon to end the current round and
+leave the council in `waiting`. `boite delegate stop <council-id>` ends
+the whole council.
 
 ## Answers and the table
 

@@ -1,12 +1,14 @@
 import type { Database } from 'bun:sqlite';
 import type { ThreadSummary } from '@boite/contracts';
 import { toThread, type ThreadRow } from './rows.ts';
+import { writeThreadUsage } from './usage-slots.ts';
 
 /** Whole thread rows a client can see, with the time of their last prompt. Callers add `AND ...` filters. */
 export const VISIBLE_THREADS = `SELECT *,
   EXISTS (SELECT 1 FROM threads parent WHERE parent.id = threads.parent_thread_id AND parent.agent_session_id IS NOT NULL) AS parent_is_bot,
   (SELECT MAX(created_at) FROM messages WHERE thread_id = threads.id AND role = 'user') AS last_user_message_at
-  FROM threads WHERE id NOT IN (SELECT thread_id FROM thread_deletions)`;
+  FROM threads WHERE id NOT IN (SELECT thread_id FROM thread_deletions)
+    AND (project_id IS NULL OR project_id NOT IN (SELECT id FROM projects WHERE removed_at IS NOT NULL))`;
 
 /**
  * Visible threads matching `filter`, in creation order. Every read of whole
@@ -41,6 +43,14 @@ export function restoreDeletedRows(db: Database, rootId: string, admit: (thread:
 
 /** The one write of a whole thread row. `Journal.putThread` admits it first. */
 export function writeThread(db: Database, thread: ThreadSummary): void {
+  // The usage page's slots follow a thread's project, provider and model, in one transaction (`usage-slots.ts`).
+  db.transaction(() => {
+    writeThreadUsage(db, { id: thread.id, project_id: thread.projectId, provider_id: thread.providerId, model: thread.model });
+    writeThreadRow(db, thread);
+  })();
+}
+
+function writeThreadRow(db: Database, thread: ThreadSummary): void {
   db.query(
     `INSERT OR REPLACE INTO threads
      (id, project_id, title, title_source, provider_id, account_id, model, effort, cwd, branch, permission_mode, status, unread, archived, pinned, session_id, context, created_at, updated_at, session_generation, selection_version, speed, parent_thread_id, prompt_cache, agent_session_id, session_resume_at, title_state, branch_naming_pending, fork_origin, done_at, incognito, archived_at, context_mode, team_id, debate_id)

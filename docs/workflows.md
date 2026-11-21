@@ -73,7 +73,8 @@ its output, with Open conversation. Back to the graph returns to the run.
   Boite runs the cut steps again. After a crash, or when Boite stayed stopped
   for more than an hour, running runs pause until you or the agent resume
   them.
-- A phone can follow a run and stop it. Pause is not offered there.
+- The owner can pause, resume and stop from a phone. A paired phone can
+  follow the run and stop it.
 
 ## Templates
 

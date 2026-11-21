@@ -171,6 +171,8 @@ export function createBrowserFixture() {
       if (path === '/sent') return new Response(`<title>Sent</title><h1>Thanks ${new URL(request.url).searchParams.get('name')}</h1>`, { headers: { 'content-type': 'text/html' } });
       // A sign-in popup: it answers its opener, and closes itself on a click.
       if (path === '/popup') return new Response('<title>Popup</title>popup<button id="shut" onclick="if(event.isTrusted)window.close()">Done</button><script>if (opener) opener.postMessage("hello from " + location.search, "*")</script>', { headers: { 'content-type': 'text/html' } });
+      // A frame whose button opens a sign-in popup: served from localhost, another site than the page's, it runs in a process of its own.
+      if (path === '/frame-popup') return new Response('<title>Frame</title><button id="open" onclick="window.open(\'/popup?frame\', \'framed\')">Open popup</button>', { headers: { 'content-type': 'text/html' } });
       // Files a page offers for download: a script, and a program that names itself a picture.
       if (path === '/files') return new Response('<title>Files</title><a id="script" href="/download/tool.sh?token=secret">Script</a> <a id="saved" href="/download/notes.txt" download>Notes</a>', { headers: { 'content-type': 'text/html' } });
       // A frame of another site, so in another process, that downloads as soon as it loads.

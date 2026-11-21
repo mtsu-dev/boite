@@ -6,7 +6,7 @@ The Bun core owns execution, accounts, scheduling and persistence on the machine
 that owns the project folder. The Tauri shell owns windows, tray integration,
 native dialogs, desktop updates and local core startup. The Svelte UI connects
 to a local or remote core. The [phone client](phone.md), including the
-[Android client app](android.md), connects to an existing core. The separate
+[native Android app](android-native.md), connects to an existing core. The separate
 [Android server](android-server.md) runs a core and agents on the phone in
 Termux.
 
@@ -22,10 +22,11 @@ and `/health` reports the shell's version. Split JavaScript bundles must also
 match the SHA-256 captured at core startup. A mismatched core is stopped through
 `POST /shutdown` and replaced. Startup failure includes the last output lines.
 A resident core still starting after 60 seconds stays alive for the next endpoint
-request. After four seconds without a local response, the UI asks the shell to
-resolve the core again. A start that fails again, for example on a full disk, is
-asked after 8, 16 and 32 seconds, then every minute, until a core answers; the
-error toast gives the shell's reason meanwhile.
+request. After four seconds without a local response, the UI asks the shell
+to check the cached process and its health endpoint. A core that has exited
+is resolved again. A live core that cannot answer is reported without
+interrupting its turns. The next checks run after 8, 16 and 32 seconds, then
+every minute while the socket is reconnecting.
 
 The shell's bundle identifier selects the stable or dev data directory. Stable
 and nightly update tracks share the regular installation's data; Boite Dev is
@@ -88,6 +89,8 @@ Removing references collects unused assets; live records and pending uploads
 retain their bytes without loading attachment bodies during text saves.
 The core is the sole queue runner, including for incognito input. Private
 records and assets stay in memory, restricted to their originating connection.
+The core keeps the terminal's incognito queue in memory across reconnects;
+other connections receive no composer record for it.
 Private delivery receipts stay in memory to protect reconnects; durable receipts
 are stored in the journal.
 Batching, activity command parsing and permission auto-decisions live in contracts
@@ -127,8 +130,13 @@ An event-retention error keeps the pending statement and pass state for a
 retry after 30 s. Waiting for the WAL to catch up uses the same delay before
 any statistics or pruning work, without changing the batch size. Stopping
 retention or closing the journal prevents further ticks.
-Project removal explicitly clears thread-keyed tables; foreign keys are disabled.
-It and the purge of deleted conversations first keep each finished turn's time,
+Project removal sets `projects.removed_at`, archives the project's saved threads
+and hides the project and its threads from the app's lists. The saved history
+stays available for audits and usage. Adding the same folder again clears
+`removed_at` and reopens the saved threads that were open. Removal erases
+incognito threads and their transcripts, as on any close.
+Foreign keys are disabled, so a purge clears thread-keyed tables explicitly.
+The purge of deleted conversations first keeps each finished turn's time,
 provider, model and usage in `removed_turn_usage`, so
 [`usage.history`](usage.md#usagehistory) still counts them.
 A newer journal schema is refused before writing, with the file and both versions.
@@ -262,7 +270,7 @@ markers. Restore retains history and previous archive flags without restarting
 agents. The default deletion retention is 30 days; `threadDeletionRetentionDays`
 accepts 0 to 3650, with 0 disabling automatic purge. Startup and minute passes
 purge expired families transactionally. Reads and restoration also check expiry.
-Project removal purges its pending deletions. Files, worktrees and branches
+A removed project's pending deletions expire on their own schedule. Files, worktrees and branches
 stay on disk; the
 [settled worktree cleanup](development.md#settled-worktree-cleanup) later removes
 a deleted thread's worktree when nothing in it would be lost. See

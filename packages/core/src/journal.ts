@@ -30,6 +30,7 @@ import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
 import { copyStoredParts, foldStreamingParts, StreamBuffer } from './journal/stream-buffer.ts';
 import { requestSince } from './journal/request-since.ts';
 import { threadStats } from './journal/thread-stats.ts';
+import { eraseThreadUsage } from './journal/usage-slots.ts';
 import { keepRemovedTurnUsage, usageByBucket, usageByThread, usageOfTree, type UsageGroupRow, type UsageSumRow, type UsageThreadRow } from './journal/usage-sums.ts';
 import { sent, type Projection } from './journal/sent.ts';
 import { threadSessions, type NativeSession } from './threads/native-sessions.ts';
@@ -192,7 +193,8 @@ export class Journal {
 
   putProject(project: Project): void {
     this.db
-      .query('INSERT OR REPLACE INTO projects (id, name, path, created_at, archived, worktree_default) VALUES (?, ?, ?, ?, ?, ?)')
+      .query(`INSERT OR REPLACE INTO projects (id, name, path, created_at, archived, worktree_default, removed_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, (SELECT removed_at FROM projects WHERE id = ?1))`)
       .run(project.id, project.name, project.path, project.createdAt, project.archived === true ? 1 : 0, project.worktreeDefault === true ? 1 : 0);
   }
 
@@ -203,13 +205,6 @@ export class Journal {
         AND (parent_thread_id IS NULL OR EXISTS (SELECT 1 FROM threads parent WHERE parent.id = threads.parent_thread_id AND parent.agent_session_id IS NOT NULL))
         AND project_id IS NOT NULL AND id NOT IN (SELECT thread_id FROM thread_deletions) GROUP BY project_id`).all() as { project_id: string; count: number; done: number }[];
     return new Map(rows.map((row) => [row.project_id, { archived: row.count, done: row.done }]));
-  }
-
-  deleteProject(projectId: string): void {
-    for (const prefix of ['project-auto-archive-merged-pr:', 'project-auto-remove-worktrees:', 'todos:']) this.deleteSetting(`${prefix}${projectId}`);
-    this.db.query('DELETE FROM projects WHERE id = ?').run(projectId);
-    this.db.query('DELETE FROM project_icons WHERE project_id = ?').run(projectId);
-    this.db.query('DELETE FROM workflow_templates WHERE project_id = ?').run(projectId);
   }
 
   /** What every project's icon reads as, bytes left out: one small query per list. */
@@ -242,14 +237,31 @@ export class Journal {
       );
   }
 
+  /** A listed project; a removed one reads as gone. */
   getProject(projectId: string): Project | null {
-    const row = this.db.query('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRow | null;
+    const row = this.db.query('SELECT * FROM projects WHERE id = ? AND removed_at IS NULL').get(projectId) as ProjectRow | null;
     return row === null ? null : toProject(row);
   }
 
   listProjects(): Project[] {
-    const rows = this.db.query('SELECT * FROM projects ORDER BY rowid').all() as ProjectRow[];
+    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NULL ORDER BY rowid').all() as ProjectRow[];
     return rows.map(toProject);
+  }
+
+  /** The projects `projects.remove` took out of the lists, newest first. */
+  listRemovedProjects(): Project[] {
+    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NOT NULL ORDER BY removed_at DESC').all() as ProjectRow[];
+    return rows.map(toProject);
+  }
+
+  /** Hides a project and, with it, its threads (`VISIBLE_THREADS`); nothing is deleted. */
+  markProjectRemoved(projectId: string, at: number): void {
+    this.db.query('UPDATE projects SET removed_at = ? WHERE id = ?').run(at, projectId);
+  }
+
+  /** Lists a removed project again, unarchived, under `name`, with its saved threads. */
+  restoreRemovedProject(projectId: string, name: string): void {
+    this.db.query('UPDATE projects SET removed_at = NULL, archived = 0, name = ? WHERE id = ?').run(name, projectId);
   }
 
   // -- threads --------------------------------------------------------------
@@ -290,13 +302,6 @@ export class Journal {
     for (const thread of candidates) this.getThread(thread.id);
   }
 
-  deleteThreadsOfProject(projectId: string): string[] {
-    const rows = this.db.query('SELECT id FROM threads WHERE project_id = ?').all(projectId) as { id: string }[];
-    const ids = rows.map(row => row.id);
-    this.deleteThreads(ids, { keepUsage: true });
-    return ids;
-  }
-
   /** Hide the stopped family while keeping its rows and deletion time across restarts. */
   stageThreadDeletion(rootId: string, threads: ThreadSummary[]): void {
     this.flushDeltas();
@@ -314,7 +319,8 @@ export class Journal {
   listDeletedThreads(): DeletedThreadSummary[] {
     const rows = this.db.query(`SELECT t.*, d.deleted_at, (SELECT MAX(created_at) FROM messages WHERE thread_id = t.id AND role = 'user') AS last_user_message_at
       FROM threads t JOIN thread_deletions d ON t.id = d.thread_id
-      WHERE d.root_id = t.id ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
+      WHERE d.root_id = t.id AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = t.project_id AND p.removed_at IS NOT NULL)
+      ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
     return rows.map(row => ({ ...toThread(row), deletedAt: row.deleted_at }));
   }
 
@@ -358,6 +364,8 @@ export class Journal {
     this.db.transaction(() => {
       // A project removal or trash purge keeps what the usage page counts of the turns; an incognito erase does not.
       if (options.keepUsage === true) keepRemovedTurnUsage(this.db, threadIds);
+      // Their turns leave the usage page's slots; the copies just kept count again under no project.
+      eraseThreadUsage(this.db, threadIds);
       for (const table of ['background_observations', 'turn_requests', 'turns', 'messages', 'native_agent_messages', 'part_blobs', 'streaming_parts', 'media_previews', 'media_displays', 'processes', 'command_lines', 'coordination_letters', 'coordination_wakes', 'events', 'pending_questions']) {
         const query = this.db.query(`DELETE FROM ${table} WHERE thread_id = ?`);
         for (const id of threadIds) query.run(id);
@@ -372,7 +380,7 @@ export class Journal {
         this.db.query('DELETE FROM workflow_requests WHERE run_id IN (SELECT id FROM workflow_runs WHERE root_id = ?)').run(id);
         this.db.query('DELETE FROM workflow_runs WHERE root_id = ?').run(id);
         deleteComposerInput(this.db, id, this.collectComposerAssets);
-        for (const prefix of ['merged-pr-archive:', 'linked-pull-requests:', 'pr-watches:', 'activity:', 'activity-input:', 'activity-choice:', 'move-note:', 'compaction-tail:', 'session-totals:', 'brain-sent:', 'coordination-sent:', 'account-sessions:', 'memory-notices:', 'coordination:', 'coordination-autopause:', 'delegation:', 'delegation-turns:', 'delegation-episode:', 'delegation-worktree:', 'spawn-origin:', 'spawns:', 'worktree-removed:', 'remote-parent:', 'created-by:']) this.deleteSetting(`${prefix}${id}`);
+        for (const prefix of ['merged-pr-archive:', 'linked-pull-requests:', 'pr-watches:', 'activity:', 'activity-input:', 'activity-choice:', 'move-note:', 'compaction-tail:', 'history-start:', 'agents:handoff:', 'agents:new-session:', 'session-totals:', 'brain-sent:', 'coordination-sent:', 'account-sessions:', 'memory-notices:', 'coordination:', 'coordination-autopause:', 'delegation:', 'delegation-turns:', 'delegation-episode:', 'delegation-worktree:', 'spawn-origin:', 'spawns:', 'worktree-removed:', 'remote-parent:', 'created-by:']) this.deleteSetting(`${prefix}${id}`);
         this.db.query('DELETE FROM threads WHERE id = ?').run(id);
         this.db.query('DELETE FROM thread_deletions WHERE thread_id = ?').run(id);
       }
@@ -501,8 +509,8 @@ export class Journal {
   }
 
   /** The same sums per thread and provider over `[from, to)`. */
-  usageByThread(from: number, to: number): UsageThreadRow[] {
-    return usageByThread(this.db, from, to);
+  usageByThread(from: number, to: number, threadIds?: readonly string[]): UsageThreadRow[] {
+    return usageByThread(this.db, from, to, threadIds);
   }
 
   /** The same sums per provider and model over a thread and its descendants since `since` (a bot's spend). */

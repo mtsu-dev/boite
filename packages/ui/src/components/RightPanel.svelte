@@ -515,7 +515,7 @@
     </button>
   </header>
 
-  <div class="body">
+  <div class="body" data-corner-anchor={closing || rightPanel.floating ? undefined : 'panel'}>
     <!-- Keyed on the tab: the old surface leaves at once and the new one is
          there in the same frame, settling in. -->
     {#key active?.id}
