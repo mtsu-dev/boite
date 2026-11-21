@@ -30,6 +30,7 @@ import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
 import { copyStoredParts, foldStreamingParts, StreamBuffer } from './journal/stream-buffer.ts';
 import { requestSince } from './journal/request-since.ts';
 import { threadStats } from './journal/thread-stats.ts';
+import { eraseThreadUsage } from './journal/usage-slots.ts';
 import { keepRemovedTurnUsage, usageByBucket, usageByThread, usageOfTree, type UsageGroupRow, type UsageSumRow, type UsageThreadRow } from './journal/usage-sums.ts';
 import { sent, type Projection } from './journal/sent.ts';
 import { threadSessions, type NativeSession } from './threads/native-sessions.ts';
@@ -363,6 +364,8 @@ export class Journal {
     this.db.transaction(() => {
       // A project removal or trash purge keeps what the usage page counts of the turns; an incognito erase does not.
       if (options.keepUsage === true) keepRemovedTurnUsage(this.db, threadIds);
+      // Their turns leave the usage page's slots; the copies just kept count again under no project.
+      eraseThreadUsage(this.db, threadIds);
       for (const table of ['background_observations', 'turn_requests', 'turns', 'messages', 'native_agent_messages', 'part_blobs', 'streaming_parts', 'media_previews', 'media_displays', 'processes', 'command_lines', 'coordination_letters', 'coordination_wakes', 'events', 'pending_questions']) {
         const query = this.db.query(`DELETE FROM ${table} WHERE thread_id = ?`);
         for (const id of threadIds) query.run(id);
@@ -506,8 +509,8 @@ export class Journal {
   }
 
   /** The same sums per thread and provider over `[from, to)`. */
-  usageByThread(from: number, to: number): UsageThreadRow[] {
-    return usageByThread(this.db, from, to);
+  usageByThread(from: number, to: number, threadIds?: readonly string[]): UsageThreadRow[] {
+    return usageByThread(this.db, from, to, threadIds);
   }
 
   /** The same sums per provider and model over a thread and its descendants since `since` (a bot's spend). */

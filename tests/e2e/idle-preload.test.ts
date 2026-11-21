@@ -30,7 +30,7 @@ afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 async function load(): Promise<string> {
   await page.navigate(url);
   await page.waitFor('document.querySelector("[data-testid=thread-row]") && globalThis.__boiteTest?.workspace.active.loadingThreadId === null', 30_000);
-  await page.evaluate(`Promise.all(document.getAnimations().filter(animation => animation.timeline === document.timeline).map(animation => animation.finished.catch(() => {})))`);
+  await page.settleAnimations();
   await Bun.sleep(SETTLE_MS);
   return page.evaluate<string>(`(() => {
     const store = globalThis.__boiteTest.workspace.active;

@@ -7,8 +7,8 @@ list direct downloads by platform at the top of their notes: the Windows x64
 installer, macOS DMGs for Apple Silicon and Intel, and Linux x64/ARM64 packages.
 Choose `.deb` for Debian or Ubuntu, or AppImage for other supported distributions.
 [Installation notes](portability.md#installing-a-release) cover system requirements
-and macOS permissions. The Android client and Boite Server APKs appear when
-attached to that release; [Android setup](android.md) and
+and macOS permissions. The Android app and Boite Server APKs appear when
+attached to that release; [Android app](android-native.md) and
 [Android server setup](android-server.md) describe their different roles.
 
 > [!WARNING]

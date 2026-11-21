@@ -72,7 +72,6 @@ jobs:
       shellRust: ${{ steps.filter.outputs.shellRust }}
       server: ${{ steps.filter.outputs.server == 'true' && !inputs.skip-server }}
       size: ${{ steps.filter.outputs.size }}
-      android: ${{ steps.filter.outputs.android }}
       androidServer: ${{ steps.filter.outputs.androidServer }}
       e2e: ${{ steps.filter.outputs.e2e }}
       telemetry: ${{ steps.filter.outputs.telemetry }}
@@ -746,13 +745,6 @@ jobs:
     uses: ./.github/workflows/server-verify.yml
     with:
       enabled: ${{ needs.changes.outputs.server == 'true' }}
-
-  android:
-    name: Android
-    needs: changes
-    uses: ./.github/workflows/android.yml
-    with:
-      enabled: ${{ needs.changes.outputs.android == 'true' }}
 
   android-server:
     name: Android server

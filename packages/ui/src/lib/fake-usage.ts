@@ -1,4 +1,5 @@
-import type { ThreadId, TokenRates, Usage, UsageHistory, UsageHistoryRow, UsageHistoryThread, UsagePrice } from '@boite/contracts';
+import { USAGE_THREAD_TURNS_MAX } from '@boite/contracts';
+import type { ProjectId, ThreadId, TokenRates, Usage, UsageHistory, UsageHistoryProject, UsageHistoryRow, UsageHistoryThread, UsagePrice, UsagePricing, UsageThreadDetail, UsageThreadTurn } from '@boite/contracts';
 
 /**
  * The ledger `?fake=1` answers `usage.history` from: about a hundred days of
@@ -39,9 +40,22 @@ interface Profile {
   tokens: [number, number, number, number];
   /** Its turns write the one-hour cache, as Claude Code does. */
   hourCache?: boolean;
-  /** The threads its turns land in, most recent first. */
-  threads: { id: ThreadId; title: string }[];
+  /**
+   * The threads its turns land in, most recent first, in `p-boite` unless
+   * `project` says otherwise (null: no project); `parent` makes it a subagent.
+   */
+  threads: { id: ThreadId; title: string; project?: ProjectId | null; parent?: ThreadId }[];
 }
+
+/** The projects the ledger names besides the seeded ones (`seed.ts`): one removed since. */
+const LEDGER_PROJECTS: Record<string, { name: string; removed: boolean }> = {
+  'p-boite': { name: 'boite', removed: false },
+  'p-notes': { name: 'notes', removed: false },
+  'p-prototype': { name: 'prototype', removed: true },
+};
+
+/** Where the ledger says its rates came from, as the core's bundled table would. */
+const LEDGER_PRICING: UsagePricing = { origin: 'bundled', source: 'https://models.dev/api.json', updatedAt: Date.UTC(2026, 10, 12), models: 412 };
 
 const PROFILES: Profile[] = [
   {
@@ -59,8 +73,8 @@ const PROFILES: Profile[] = [
     threads: [
       { id: 't-trace', title: 'Finish the trace tab' },
       { id: 'u-claude-panel', title: 'Right panel with changes and files' },
-      { id: 'u-claude-cli', title: 'boite CLI for agents' },
-      { id: 'u-claude-phone', title: 'Phone settings split' },
+      { id: 'u-claude-cli', title: 'boite CLI for agents', parent: 't-trace' },
+      { id: 'u-claude-phone', title: 'Phone settings split', project: 'p-notes' },
       { id: 'u-claude-dictation', title: 'Dictation and attachments' },
       { id: 'u-claude-platform', title: 'Isolate the OS backends' },
       { id: 'u-claude-onboarding', title: 'First run without a provider' },
@@ -75,7 +89,7 @@ const PROFILES: Profile[] = [
       { id: 't-scheduler', title: 'Port the scheduler' },
       { id: 'u-codex-install', title: 'Managed Codex install' },
       { id: 'u-codex-quota', title: 'Read the Codex rate limits' },
-      { id: 'u-codex-review', title: 'Review the journal migration' },
+      { id: 'u-codex-review', title: 'Review the journal migration', parent: 't-scheduler' },
     ],
   },
   {
@@ -85,7 +99,7 @@ const PROFILES: Profile[] = [
     tokens: [5_800, 1_300, 21_000, 0],
     threads: [
       { id: 't-bench', title: 'Bench against legacy' },
-      { id: 'u-opencode-acp', title: 'ACP permission cards' },
+      { id: 'u-opencode-acp', title: 'ACP permission cards', project: 'p-prototype' },
     ],
   },
   {
@@ -95,7 +109,7 @@ const PROFILES: Profile[] = [
     tokens: [7_200, 1_600, 18_000, 0],
     threads: [
       { id: 'u-grok-search', title: 'Workspace search ranking' },
-      { id: 'u-grok-titles', title: 'Shorter thread titles' },
+      { id: 'u-grok-titles', title: 'Shorter thread titles', project: null },
     ],
   },
   {
@@ -157,6 +171,7 @@ function addUsage(into: Usage, from: Usage): void {
 interface Group {
   at: number;
   threadId: ThreadId;
+  parentId?: ThreadId;
   title: string;
   projectId: string | null;
   providerId: string;
@@ -204,8 +219,9 @@ function seededDay(day: Date, today: Date, now: number): Group[] {
       groups.push({
         at: day.getTime() + Math.min(DAY - 1, (13 + index) * 3_600_000),
         threadId: thread.id,
+        ...(thread.parent === undefined ? {} : { parentId: thread.parent }),
         title: thread.title,
-        projectId: 'p-boite',
+        projectId: thread.project === undefined ? 'p-boite' : thread.project,
         providerId: profile.providerId,
         model: model.id,
         turns,
@@ -219,7 +235,10 @@ function seededDay(day: Date, today: Date, now: number): Group[] {
   return groups.filter((group) => group.at <= now);
 }
 
-export function fakeUsageHistory(edges: number[], options: { seeded: boolean; finished: FakeFinishedTurn[]; now?: number; providerId?: string }): UsageHistory {
+interface LedgerOptions { seeded: boolean; finished: FakeFinishedTurn[]; now?: number }
+
+/** The ledger's groups over `[edges[0], edges[last])`. */
+function ledger(edges: readonly number[], options: LedgerOptions): Group[] {
   const now = options.now ?? Date.now();
   const first = edges[0]!;
   const last = edges[edges.length - 1]!;
@@ -237,12 +256,40 @@ export function fakeUsageHistory(edges: number[], options: { seeded: boolean; fi
     if (price !== null) usage.costUsdEquivalent = (usage.inputTokens * price.rates.input + usage.outputTokens * price.rates.output + usage.cacheReadTokens * price.rates.cacheRead + usage.cacheWriteTokens * price.rates.cacheWrite) / 1_000_000;
     groups.push({ ...turn, turns: 1, reported: 1, priced: usage.costUsdEquivalent === null ? 0 : 1, usage, price });
   }
+  return groups.filter((group) => group.at >= first && group.at < last);
+}
 
-  const rows = new Map<string, UsageHistoryRow>();
+/** A thread's totals over the groups given, named as `usage.history` names it. */
+function threadTotals(groups: readonly Group[], providerId?: string): Map<ThreadId, UsageHistoryThread> {
   const threads = new Map<ThreadId, UsageHistoryThread>();
   for (const group of groups) {
-    if (group.at < first || group.at >= last) continue;
-    if (options.providerId !== undefined && group.providerId !== options.providerId) continue;
+    const thread = threads.get(group.threadId) ?? { threadId: group.threadId, title: group.title, projectId: group.projectId, providerId: providerId ?? group.providerId, archived: group.threadId.startsWith('u-'), turns: 0, usage: emptyUsage() };
+    thread.turns += group.turns;
+    addUsage(thread.usage, group.usage);
+    threads.set(group.threadId, thread);
+  }
+  return threads;
+}
+
+/** Whether the ledger or this session's turns know `threadId`. */
+export function fakeUsageKnows(threadId: ThreadId, finished: readonly FakeFinishedTurn[]): boolean {
+  return finished.some((turn) => turn.threadId === threadId) || PROFILES.some((profile) => profile.threads.some((thread) => thread.id === threadId));
+}
+
+export function fakeUsageHistory(edges: number[], options: LedgerOptions & { providerId?: string; projectId?: ProjectId | null }): UsageHistory {
+  const groups = ledger(edges, options);
+  const projects = new Map<ProjectId | null, UsageHistoryProject>();
+  for (const group of groups) {
+    const known = group.projectId === null ? undefined : LEDGER_PROJECTS[group.projectId];
+    const project = projects.get(group.projectId) ?? { projectId: group.projectId, name: group.projectId === null ? null : known?.name ?? null, removed: group.projectId !== null && (known?.removed ?? true), turns: 0, usage: emptyUsage() };
+    project.turns += group.turns;
+    addUsage(project.usage, group.usage);
+    projects.set(group.projectId, project);
+  }
+  const kept = groups.filter((group) => (options.providerId === undefined || group.providerId === options.providerId)
+    && (options.projectId === undefined || group.projectId === options.projectId));
+  const rows = new Map<string, UsageHistoryRow>();
+  for (const group of kept) {
     let bucket = 0;
     while (edges[bucket + 1]! <= group.at) bucket += 1;
     const key = `${bucket}\u0000${group.providerId}\u0000${group.model ?? ''}`;
@@ -252,11 +299,54 @@ export function fakeUsageHistory(edges: number[], options: { seeded: boolean; fi
     row.priced += group.priced;
     addUsage(row.usage, group.usage);
     rows.set(key, row);
-    const thread = threads.get(group.threadId) ?? { threadId: group.threadId, title: group.title, projectId: group.projectId, providerId: group.providerId, archived: group.threadId.startsWith('u-'), turns: 0, usage: emptyUsage() };
-    thread.turns += group.turns;
-    addUsage(thread.usage, group.usage);
-    threads.set(group.threadId, thread);
   }
   const ordered = [...rows.values()].sort((a, b) => a.bucket - b.bucket || a.providerId.localeCompare(b.providerId) || (a.model ?? '').localeCompare(b.model ?? ''));
-  return { edges: [...edges], rows: ordered, threads: [...threads.values()] };
+  return { edges: [...edges], rows: ordered, threads: [...threadTotals(kept, options.providerId).values()], projects: [...projects.values()], pricing: { ...LEDGER_PRICING } };
+}
+
+/**
+ * `usage.thread` over the ledger: each group's turns spread one minute apart
+ * from its time, the group's usage shared between its reported turns.
+ */
+export function fakeUsageThread(threadId: ThreadId, edges: number[], options: LedgerOptions & { providerId?: string }): UsageThreadDetail {
+  const { providerId } = options;
+  const groups = ledger(edges, options).filter((group) => providerId === undefined || group.providerId === providerId);
+  const own = groups.filter((group) => group.threadId === threadId);
+  const turns: UsageThreadTurn[] = [];
+  let reported = 0;
+  let priced = 0;
+  for (const group of own) {
+    reported += group.reported;
+    priced += group.priced;
+    for (let index = 0; index < group.turns; index++) {
+      const share = (count: number) => Math.round(count / Math.max(1, group.reported));
+      const usage: Usage | null = index >= group.reported ? null : {
+        inputTokens: share(group.usage.inputTokens),
+        outputTokens: share(group.usage.outputTokens),
+        cacheReadTokens: share(group.usage.cacheReadTokens),
+        cacheWriteTokens: share(group.usage.cacheWriteTokens),
+        ...(group.usage.cacheWriteHourTokens ? { cacheWriteHourTokens: share(group.usage.cacheWriteHourTokens) } : {}),
+        costUsdEquivalent: group.usage.costUsdEquivalent === null ? null : group.usage.costUsdEquivalent / Math.max(1, group.reported),
+      };
+      turns.push({ turnId: `${threadId}-${group.at}-${group.model ?? 'default'}-${index}`, finishedAt: group.at + index * 60_000, providerId: group.providerId, model: group.model, usage, price: usage === null ? null : group.price });
+    }
+  }
+  turns.sort((a, b) => a.finishedAt - b.finishedAt);
+  const truncated = turns.length > USAGE_THREAD_TURNS_MAX;
+  const finished = options.finished.find((turn) => turn.threadId === threadId);
+  const named = PROFILES.flatMap((profile) => profile.threads.map((thread) => ({ ...thread, providerId: profile.providerId }))).find((thread) => thread.id === threadId);
+  const thread = threadTotals(own, providerId).get(threadId) ?? {
+    threadId,
+    title: named?.title ?? finished?.title ?? '',
+    projectId: named === undefined ? finished?.projectId ?? null : named.project === undefined ? 'p-boite' : named.project,
+    providerId: providerId ?? named?.providerId ?? finished?.providerId ?? '',
+    archived: threadId.startsWith('u-'),
+    turns: 0,
+    usage: emptyUsage(),
+  };
+  const cost = (entry: UsageHistoryThread) => entry.usage.costUsdEquivalent ?? 0;
+  const tokens = (entry: UsageHistoryThread) => entry.usage.inputTokens + entry.usage.outputTokens + entry.usage.cacheReadTokens + entry.usage.cacheWriteTokens;
+  const children = [...threadTotals(groups.filter((group) => group.parentId === threadId), providerId).values()]
+    .sort((a, b) => cost(b) - cost(a) || tokens(b) - tokens(a) || b.turns - a.turns);
+  return { thread, reported, priced, turns: truncated ? turns.slice(-USAGE_THREAD_TURNS_MAX) : turns, truncated, children };
 }

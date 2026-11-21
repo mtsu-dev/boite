@@ -4,7 +4,7 @@ A phone is a device of a [group](groups.md): added once on any machine of the
 group, it reaches all of them with one key of its own. It opens the UI served by
 a machine or the [app's own address](#the-app-on-its-own-address) and connects
 over authenticated WebSockets. Agents and the journal remain on the machine
-hosting the core. The [Android client app](android.md) opens this same UI;
+hosting the core. The [native Android app](android-native.md) carries this same UI;
 the separate [Android server](android-server.md) can host a core and agents on
 the phone itself in Termux.
 
@@ -593,7 +593,7 @@ forwarded header is trusted.
 
 On iPhone, open a machine's HTTPS address in Safari, choose Share, then Add to
 Home Screen. On Android, use Install Boite in Phone app or the browser's
-installation menu ([android.md](android.md)). Open the installed icon and add it
+installation menu. Open the installed icon and add it
 from inside Boite. On iPhone, installation does not copy the browser's
 localStorage, where Boite keeps its device key, so the installed app is added on
 its own even if Safari was. Its first screen offers **Scan the code** and **Paste
@@ -888,8 +888,8 @@ devices you intend to give that control.
   once is enough for every machine of its [group](groups.md).
 - The installed web app belongs to the origin it was installed from: it reaches
   the group of the machine serving it, and no other group.
-- There is no iOS package. The Android package opens the app's own address
-  ([android.md](android.md)), as the installed web app does from there.
+- There is no iOS package. The Android package carries the UI itself
+  ([android-native.md](android-native.md)).
 - Push is a notification channel, not background execution. The core must stay
   running to run agents and send notifications; delivery is not guaranteed.
 - The core must be reachable. A different network, a VPN, or a firewall that

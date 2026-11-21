@@ -2,8 +2,24 @@
 import { RpcErrorCode, type AgentResourceSnapshot, type MachineResourceSnapshot, type ResourceByteUsage, type ThreadId, type ThreadResources, type Usage } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { addUsage, emptyUsage } from './shared';
-import { fakeUsageHistory } from '../fake-usage';
+import { fakeUsageHistory, fakeUsageKnows, fakeUsageThread } from '../fake-usage';
 import type { FakeContext, FakeMethods } from './context';
+
+/** The edges `usage.history` and `usage.thread` take, checked as the core checks them. */
+function usageEdges(edges: unknown): number[] {
+  const valid = Array.isArray(edges) && edges.length >= 2 && edges.length <= 367 &&
+    edges.every((edge, index) => typeof edge === 'number' && Number.isFinite(edge) && (index === 0 || edge > (edges[index - 1] as number)));
+  if (!valid) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'edges: expected 2 to 367 strictly ascending timestamps in milliseconds' });
+  return edges as number[];
+}
+
+function usageProvider(providerId: unknown): string | undefined {
+  if (providerId === undefined) return undefined;
+  if (typeof providerId !== 'string' || !providerId.trim()) {
+    throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'providerId: expected a non-empty provider id', data: { field: 'providerId' } });
+  }
+  return providerId;
+}
 
 export function resources(ctx: FakeContext): ThreadResources[] {
   const out: ThreadResources[] = [];
@@ -109,14 +125,21 @@ export function resourceMethods(ctx: FakeContext) {
       return { byThread, total };
     },
     'usage.history': async (params) => {
-      const { edges } = params;
-      const valid = Array.isArray(edges) && edges.length >= 2 && edges.length <= 367 &&
-        edges.every((edge, index) => typeof edge === 'number' && Number.isFinite(edge) && (index === 0 || edge > edges[index - 1]!));
-      if (!valid) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'edges: expected 2 to 367 strictly ascending timestamps in milliseconds' });
-      if (params.providerId !== undefined && (typeof params.providerId !== 'string' || !params.providerId.trim())) {
-        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'providerId: expected a non-empty provider id' });
+      const edges = usageEdges(params?.edges);
+      const providerId = usageProvider(params.providerId);
+      if (params.projectId !== undefined && params.projectId !== null && (typeof params.projectId !== 'string' || !params.projectId.trim())) {
+        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'projectId: expected a project id or null' });
       }
-      return fakeUsageHistory(edges, { seeded: ctx.usageSeeded, finished: ctx.finished, providerId: params.providerId });
+      return fakeUsageHistory(edges, { seeded: ctx.usageSeeded, finished: ctx.finished, providerId, projectId: params.projectId });
+    },
+    'usage.thread': async (params) => {
+      const edges = usageEdges(params?.edges);
+      if (typeof params.threadId !== 'string' || !params.threadId.trim()) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'threadId: expected a thread id' });
+      const providerId = usageProvider(params.providerId);
+      if (!ctx.threads.has(params.threadId) && !fakeUsageKnows(params.threadId, ctx.finished)) {
+        throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no thread ${params.threadId}` });
+      }
+      return fakeUsageThread(params.threadId, edges, { seeded: ctx.usageSeeded, finished: ctx.finished, providerId });
     },
   } satisfies Partial<FakeMethods>;
 }

@@ -6,7 +6,7 @@ The Bun core owns execution, accounts, scheduling and persistence on the machine
 that owns the project folder. The Tauri shell owns windows, tray integration,
 native dialogs, desktop updates and local core startup. The Svelte UI connects
 to a local or remote core. The [phone client](phone.md), including the
-[Android client app](android.md), connects to an existing core. The separate
+[native Android app](android-native.md), connects to an existing core. The separate
 [Android server](android-server.md) runs a core and agents on the phone in
 Termux.
 

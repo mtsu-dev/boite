@@ -15,7 +15,7 @@ import { removeDir, startTestCore, waitFor } from './harness.ts';
  */
 const GATEWAY = process.env['BOITE_E2E_COUNCIL_PROXY_URL'] ?? '';
 const KEY = process.env['BOITE_E2E_COUNCIL_PROXY_KEY'] ?? '';
-const MODELS = (process.env['BOITE_E2E_COUNCIL_MODELS'] ?? 'claude/claude-opus-5-5,codex/gpt-6.1-sol,codex/antigravity/gemini-4-argon-high').split(',');
+const MODELS = (process.env['BOITE_E2E_COUNCIL_MODELS'] ?? 'claude/claude-opus-5-5,codex/gpt-6.2-sol,codex/antigravity/gemini-4-argon-high').split(',');
 const ROUND_MS = 10 * 60_000;
 const run = process.env['BOITE_E2E_COUNCIL'] === '1' && GATEWAY.length > 0 ? test : test.skip;
 

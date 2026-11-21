@@ -12,9 +12,7 @@ const screenText = 'document.querySelector("[data-testid=terminal-drawer] .xterm
 async function settled(page: BrowserPage): Promise<void> {
   await page.evaluate("document.fonts.ready");
   await page.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
-  await page.evaluate(
-    `Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`,
-  );
+  await page.settleAnimations();
   // The resize RPC follows the fit by 80 ms, and the program redraws after it.
   await new Promise((resolve) => setTimeout(resolve, 400));
 }

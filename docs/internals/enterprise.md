@@ -60,6 +60,7 @@ Windows registry policies are not read yet; the file is the only source.
 | `network.contacts` | `false` | Contact joins, invitations, exchanges over kept links, contact relays through groups and the Tailscale API are refused. Kept links are not dialed, and Funnel routes close at startup. |
 | `network.push` | `false` | Web Push subscriptions are refused and nothing is sent to subscriptions kept from before. |
 | `pullRequests` | `false` | Boite runs no `gh` command: pull request discovery, linking, watching and the merged-PR question stop. |
+| `modelPrices` | `false` | The core never fetches public model prices from models.dev. The usage page prices with the rates the core already has: the last fetched table, else the one shipped with the build. |
 
 `true` on a boolean key, or a missing key, leaves the choice to the user. A
 setting a key locks reads back with the locked value, and an attempt to change
