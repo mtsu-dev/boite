@@ -233,8 +233,10 @@ export class ResumePlanner {
   settle(threadId: ThreadId, entry: Omit<Entry, 'plan'>): void {
     if (this.#core.journal.isClosed()) return;
     const record = this.#load();
+    const previousRecovery = record[threadId]?.recovery;
     record[threadId] = entry;
     this.#save(record);
+    if (entry.recovery !== previousRecovery) this.#announce(threadId);
   }
 
   /** Drops the plan of the thread, when `which` accepts it. False when it had none. */

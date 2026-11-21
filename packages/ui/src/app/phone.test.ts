@@ -1,4 +1,4 @@
-import { expect, vi } from 'vitest';
+import { beforeAll, expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
@@ -7,6 +7,11 @@ import { OWNER_ONLY_COMMANDS, OWNER_ONLY_IN_ADVANCED, OWNER_ONLY_IN_SETTINGS, me
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
+// The app fetches Settings at idle. Compile its lazy subtree before timing the
+// access and navigation scenarios so a cold Vitest worker cannot delay the page.
+beforeAll(async () => {
+  await import('../components/SettingsShell.svelte');
+}, 120_000);
 
 async function openDisplayMenu(): Promise<void> {
   query<HTMLButtonElement>('[data-testid=grouping-options]').click();

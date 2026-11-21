@@ -586,6 +586,50 @@ test('a crash after a turn that failed on a full context resumes nothing, though
   } finally { await next.stop(); }
 });
 
+test('a missing working directory leaves manual recovery after a restart with a held team', async () => {
+  const h = await startTestCore();
+  const fail = Promise.withResolvers<TurnResult>();
+  const asked = scripted(() => fail.promise, done);
+  let next: Awaited<ReturnType<typeof restart>> | undefined;
+  try {
+    const client = await h.connect();
+    const folder = join(h.dataDir, 'missing-worktree');
+    mkdirSync(folder);
+    const project = await client.call('projects.add', { path: folder, name: 'missing-worktree' });
+    const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+    const { id: threadId } = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'orchestrator' });
+    const source = await client.call('turns.start', { threadId, prompt: 'save this interrupted work' });
+    await waitFor(() => asked.length === 1);
+    await removeDir(folder);
+    fail.resolve(failed());
+    await waitFor(() => turns(h, threadId)[0]?.status === 'error');
+    expect((await client.call('threads.get', { threadId })).retry).toBeNull();
+    h.core.journal.setSetting(`delegation:${threadId}`, { ...h.core.delegation.config(threadId), enabled: true, paused: true, pausedBy: 'restart', pausedAt: Date.now() + 60_000 });
+    client.close();
+    await crash(h);
+    mkdirSync(folder);
+    next = await restart(h);
+
+    const reopened = await next.connect();
+    await Bun.sleep(150);
+    const snapshot = await reopened.call('threads.get', { threadId });
+    expect(snapshot.retry).toBeNull();
+    expect(snapshot.turns.map(turn => turn.id)).toEqual([source.id]);
+    expect(asked).toHaveLength(1);
+    expect(snapshot.recovery).toEqual({
+      kind: 'interrupted', turnId: source.id, detail: 'the working directory is unavailable',
+    });
+    const resume = await reopened.call('turns.resume', { threadId, turnId: source.id });
+    const core = next.core;
+    await waitFor(() => core.journal.getTurn(resume.id)?.status === 'done');
+    expect(asked[1]?.prompt).toContain('save this interrupted work');
+  } finally {
+    fail.resolve(failed());
+    if (next) await next.stop();
+    else await h.stop();
+  }
+});
+
 
 test.each([
   { stage: 'planned', slowProbe: false, stop: false },

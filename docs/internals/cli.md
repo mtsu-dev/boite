@@ -435,6 +435,9 @@ or `sent` once delivered. Repeat the same `--request-id` to check or retry an
 accepted submission. Incognito prompts wait in the core's memory and survive
 the terminal closing. Retired conversations use direct submission. A prompt
 whose conversation folder cannot be recovered stays held with the reason.
+On an older core that has no outbox method, the CLI submits directly with the
+same request ID. Task edits use the older read and write methods if the core
+has no task-edit method.
 The owner can list and restore recoverable conversations with `thread deleted`
 and `thread restore <id>`.
 

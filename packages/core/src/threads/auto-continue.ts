@@ -160,13 +160,17 @@ export class AutoContinues {
     // context its own compaction cannot shrink stays full until someone
     // shrinks what fills it.
     if (result.refusal) return;
-    if (!result.contextFull) this.#resumes.offer(turn, { kind: 'interrupted', ...(result.cwdGone ? { detail: 'the working directory is unavailable' } : {}) });
     if (result.cwdGone || result.contextFull) {
       // Handled: a later start that finds work this thread held (a team, a workflow run) resumes nothing either.
-      const window = this.#resumes.entry(thread.id)?.resumedWindow;
-      this.#resumes.settle(thread.id, { streak: 0, handled: turn.id, ...(window !== undefined ? { resumedWindow: window } : {}) });
+      this.#resumes.settle(thread.id, {
+        streak: 0,
+        handled: turn.id,
+        resumedWindow: this.#resumes.entry(thread.id)?.resumedWindow,
+        recovery: result.contextFull ? undefined : { kind: 'interrupted', turnId: turn.id, detail: 'the working directory is unavailable' },
+      });
       return;
     }
+    this.#resumes.offer(turn, { kind: 'interrupted' });
     const error = (turn.error ?? result.error ?? 'unknown error').trim();
     const quoted = error.length > ERROR_QUOTE ? `${error.slice(0, ERROR_QUOTE)} [cut]` : error;
     this.#plan(thread.id, turn, 'error', `Your previous turn ended on an error before it finished: ${quoted}\n\nBoite resumed the thread by itself. ${CARRY_ON}`);
