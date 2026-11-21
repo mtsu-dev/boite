@@ -95,7 +95,9 @@ the work completes. If that work fails, that request cannot start, a later turn
 fails or the round ends first, what the member wrote so far is its answer, and a
 note says why. A member through with its round, and a council that ends, leave no
 background work or scheduled wake behind. A round nobody answers still goes back
-to the parent. A closed round leaves the council in `waiting`.
+to the parent. Use Close round in the salon to end the current round and
+leave the council in `waiting`. `boite delegate stop <council-id>` ends
+the whole council.
 
 ## Answers and the table
 

@@ -16,6 +16,7 @@ export interface DelegateOptions {
   requestId?: string;
   project?: string;
   timeout?: number;
+  limit?: number;
   title?: string;
   model?: string;
   effort?: string;
@@ -31,6 +32,7 @@ export interface DelegateOptions {
   context?: Record<string, unknown>;
   /** Where the command runs: `council --request-file` is read from there. */
   cwd?: string;
+  owner?: boolean;
 }
 
 /** The Council's commands (`council/cli.ts`), loaded when one runs. */
@@ -77,7 +79,7 @@ export function routeOf(agent: DelegatedAgent): string {
   return `${providerId}/${model ?? 'default'}${effort ? ` effort=${effort}` : ''}${speed ? ` speed=${speed}` : ''}${contextMode ? ` context=${contextMode.label}${contextMode.rules ? '+rules' : ''}` : ''}`;
 }
 
-function agentRow(agent: DelegatedAgent, now: number): string[] {
+function agentRow(agent: DelegatedAgent, now: number, detailed = true): string[] {
   const state = stateOf(agent);
   const wait = agent.thread.backgroundWait;
   const end = busy(agent) ? now : wait?.state === 'interrupted' ? wait.at : agent.lastTurn?.finishedAt ?? now;
@@ -89,6 +91,7 @@ function agentRow(agent: DelegatedAgent, now: number): string[] {
   for (const need of agent.needsInput ?? []) lines.push(needLine(agent.thread.id, need));
   if (agent.worktree) lines.push(`  ${worktreeLine(agent.worktree)}`);
   if (threadActive(agent.thread.status) || !agent.result) return lines;
+  if (!detailed) return [...lines, `  ${wait ? 'checkpoint' : 'result'}: ${agent.resultRef ? `boite delegate result ${agent.resultRef.agentId} ${agent.resultRef.turnId}` : 'boite delegate list --details'}`];
   // A turn ended on background work left a checkpoint, never the final result.
   return [...lines, `  ${wait ? 'checkpoint' : 'result'}: ${oneLine(agent.result, 300)}${agent.result.length > 300 && agent.resultRef ? ` (full: boite delegate result ${agent.resultRef.agentId} ${agent.resultRef.turnId})` : ''}`];
 }
@@ -102,15 +105,26 @@ function runRow(run: WorkflowRun, now: number): string {
 }
 
 const PAUSED_BY: Record<PauseOrigin, string> = {
-  owner: 'by the owner', stop: "by the owner's Stop", agent: 'by you (boite delegate resume)', restart: 'by a restart (boite delegate resume)',
+  owner: 'by the owner', stop: "by the owner's Stop", agent: 'by its agent', restart: 'by a restart',
 };
 
-function teamLine(view: DelegationView, runs: WorkflowRun[]): string {
+function delegationState(config: DelegationView['config'], owner = false): string {
+  if (!config.enabled) return 'off';
+  if (!config.paused) return 'on';
+  const by = config.pausedBy ?? 'owner';
+  const resume = owner || by === 'agent' || by === 'restart'
+    ? 'boite delegate resume'
+    : by === 'stop' ? 'boite delegate resume after the owner writes to this conversation again'
+      : 'the owner resumes it in Subagents > Settings';
+  return `paused ${PAUSED_BY[by]} (${resume})`;
+}
+
+function teamLine(view: DelegationView, runs: WorkflowRun[], owner?: boolean): string {
   const states = view.agents.map(stateOf);
   const count = (state: string) => states.filter(s => s === state).length;
   // `waiting` here is a wait on background work, counted apart; a permission request reads `approval`.
   const running = states.filter(s => s === 'queued' || s === 'running' || s === 'approval' || s === 'question').length + runs.filter(r => r.status === 'running').length;
-  const delegation = !view.config.enabled ? 'off' : view.config.paused ? `paused ${PAUSED_BY[view.config.pausedBy ?? 'owner']}` : 'on';
+  const delegation = delegationState(view.config, owner);
   return `subagents: ${delegation}; ${running} running, ${count('waiting')} waiting, ${count('done')} done, ${count('failed')} failed, ${count('stopped')} stopped${count('interrupted') ? `, ${count('interrupted')} interrupted` : ''}${runs.length ? `; ${runs.length} workflow${runs.length > 1 ? 's' : ''}` : ''}`;
 }
 
@@ -147,7 +161,7 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
     case 'profiles': {
       const view = await client.call('delegation.get', { threadId });
       print([
-        `subagents: ${!view.config.enabled ? 'off' : view.config.paused ? 'paused by the owner' : 'on'}`,
+        `subagents: ${delegationState(view.config, options.owner)}`,
         `any model: ${view.config.anyModel === false ? 'no, only these profiles' : 'yes, see boite delegate models'}`,
         ...(view.config.profiles.some(p => p.id === CONVERSATION_PROFILE_ID) ? [] : [`${CONVERSATION_PROFILE_ID} "This conversation's model"`]),
         ...view.config.profiles.map(p => `${p.id} ${JSON.stringify(p.name)} ${p.providerId}/${p.model} effort=${p.effort ?? 'default'}`),
@@ -156,6 +170,8 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
     }
     case 'list':
     case 'status': {
+      if (rest.length > 2 || (rest[1] !== undefined && rest[1] !== '--details')) throw new Usage('delegate list takes only --details');
+      const detailed = rest[1] === '--details';
       const [view, runs, councils] = await Promise.all([
         client.call('delegation.get', { threadId }),
         client.call('workflows.list', { threadId }).catch(() => [] as WorkflowRun[]),
@@ -165,13 +181,20 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
       const cli = councils.length ? await councilCli() : null;
       const busyTeam = view.agents.some(busy) || runs.some(r => r.status === 'running') || councils.some(c => c.status === 'running');
       print([
-        teamLine(view, runs),
-        ...view.agents.flatMap(agent => agentRow(agent, now)),
+        teamLine(view, runs, options.owner),
+        ...view.agents.flatMap(agent => agentRow(agent, now, detailed)),
         ...runs.map(run => runRow(run, now)),
         ...(cli ? councils.map(council => cli.councilRow(council, now)) : []),
         ...(!view.agents.length && !runs.length && !councils.length ? ['No subagent yet: boite delegate spawn "<brief>" starts one.']
           : busyTeam ? ['Results arrive as messages: keep working or end your turn, do not poll.'] : []),
-      ], { ...view, workflows: runs, councils });
+      ], detailed ? { ...view, workflows: runs, councils } : {
+        config: view.config,
+        agents: view.agents.map(({ thread, lastTurn, resultRef, machine, worktree, needsInput }) => ({
+          thread, lastTurn, resultRef, machine, worktree, needsInput,
+        })),
+        workflows: runs.map(({ id, name, status, pausedBy }) => ({ id, name, status, pausedBy })),
+        councils: councils.map(({ id, status }) => ({ id, status })),
+      });
       return;
     }
     case 'debate':
@@ -233,7 +256,7 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
     }
     case 'result': {
       const agentId = want(1, 'a child thread id'), turnId = want(2, 'the result turn id');
-      const result = await client.call('delegation.result', { threadId, agentId, turnId, ...(rest[3] === undefined ? {} : { offset: Number(rest[3]) }) });
+      const result = await client.call('delegation.result', { threadId, agentId, turnId, ...(rest[3] === undefined ? {} : { offset: Number(rest[3]) }), ...(options.limit === undefined ? {} : { limit: options.limit }) });
       print([result.text, `next offset: ${result.nextOffset ?? 'complete'}`, `total: ${result.total}`], result);
       return;
     }
@@ -245,7 +268,9 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
         return;
       }
       const result = await client.call('delegation.stop', { threadId, ...(rest[1] ? { agentId: rest[1] } : {}) });
-      print([`stopped: ${result.stopped}`, ...(rest[1] || result.stopped === 0 ? [] : ['The team is paused; boite delegate resume continues it.'])], result);
+      const config = rest[1] === undefined ? (await client.call('delegation.get', { threadId })).config : undefined;
+      print([`stopped: ${result.stopped}`, ...(config?.paused ? [`subagents: ${delegationState(config, options.owner)}`] : [])],
+        config === undefined ? result : { ...result, paused: config.paused, pausedBy: config.paused ? config.pausedBy ?? 'owner' : null });
       return;
     }
     case 'resume': {

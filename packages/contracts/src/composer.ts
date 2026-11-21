@@ -75,8 +75,19 @@ export interface ComposerRecord {
   value: ComposerValue | null;
 }
 
+const PRIVATE_TERMINAL_PREFIX = 'terminal-private:';
+
+/** An internal memory queue separate from a connection's private draft. */
+export const privateTerminalComposerId = (threadId: string): string => `${PRIVATE_TERMINAL_PREFIX}${threadId}`;
+export const composerInputThreadId = (id: string): string => id.startsWith(PRIVATE_TERMINAL_PREFIX) ? id.slice(PRIVATE_TERMINAL_PREFIX.length) : id;
+
 export interface ComposerRpcMethods {
   'composer.list': { params: {}; result: ComposerRecord[] };
+  /** Owner terminal submission. The request id also names the turn when the queue delivers it. */
+  'composer.enqueue': {
+    params: { threadId: string; prompt: string; clientRequestId: string };
+    result: { requestId: string; status: 'queued' | 'held' | 'sent'; turnId?: string; reason?: string };
+  };
   /** sendNow interrupts the active turn before delivering queued input as a new turn. Pending cards still hold delivery. */
   'composer.put': { params: Pick<ComposerRecord, 'section' | 'id' | 'value'> & { expectedRevision: number; sendNow?: true }; result: { accepted: boolean; record: ComposerRecord } };
   'composer.asset.put': { params: { attachment: Attachment; incognito?: true }; result: { assetId: string } };

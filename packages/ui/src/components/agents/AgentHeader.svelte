@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { ArrowLeft, Brain, ChevronDown, Ellipsis, Archive, Pause, Play, RotateCcw, Search, Settings2 } from '@lucide/svelte';
+  import { ArrowLeft, Brain, ChevronDown, Ellipsis, Archive, MessageSquarePlus, Pause, Play, RotateCcw, Search, Settings2 } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
   import { moodOf, liveState, liveStep, resetBuiltin, waitingOn, type AgentsView } from '../../lib/agents.svelte';
   import { confirmArchive } from '../../lib/agent-menu';
+  import { startNewConversation } from '../../lib/agent-new-session';
   import { dateTime } from '../../lib/schedule';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import type { Store } from '../../lib/store.svelte';
@@ -23,7 +24,7 @@
    * The top of an agent's conversation, in a thread header's pattern: on a
    * desktop its name where a thread's crumb starts, the chevron that opens
    * its view menu (find in the conversation, then its settings, its brain,
-   * pause and archive), and the same "Panels" door (`PanelDoor.svelte`),
+   * a new conversation, pause and archive), and the same "Panels" door (`PanelDoor.svelte`),
    * which opens on the desk. On a phone (`onback`) it is the screen's only
    * head: its
    * robot in its ring (breathing while it works), its name and one live line
@@ -79,6 +80,7 @@
     { id: 'settings', label: labels.settings, glyph: Settings2 },
     { id: 'brain', label: labels.brain, glyph: Brain },
     ...(store.owner && agent.status !== 'archived' ? [
+      ...(thread ? [{ id: 'new-session', label: labels.newConversation.menu, glyph: MessageSquarePlus }] : []),
       agent.status === 'paused' ? { id: 'resume', label: labels.resume, glyph: Play } : { id: 'pause', label: labels.pause, glyph: Pause },
       // A built-in bot is never archived: Reset takes the place of Archive.
       agent.builtin ? { id: 'reset', label: labels.builtin.reset, glyph: RotateCcw, danger: true } : { id: 'archive', label: labels.archive, glyph: Archive, danger: true },
@@ -98,6 +100,7 @@
     else if (id === 'pause') await setStatus('paused');
     else if (id === 'resume') await setStatus('active');
     else if (id === 'reset') await resetBuiltin(view, agent);
+    else if (id === 'new-session') await startNewConversation(view, agent, store);
     else if (id === 'archive' && await confirmArchive(agent.name)) await setStatus('archived');
   }
 </script>

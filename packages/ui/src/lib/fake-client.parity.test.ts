@@ -49,6 +49,15 @@ test('a second retitle while the first is writing is refused, as threads/retitle
   expect(await code(client.call('threads.retitle', { threadId: 't-trace' }))).toBe('answered');
 });
 
+test('adding a task at the core limit refuses it without changing the list', async () => {
+  const client = await fake();
+  const threadId = 't-trace';
+  const tasks = Array.from({ length: 200 }, (_, i) => ({ id: `t${i + 1}`, text: `Task ${i + 1}`, status: 'pending' as const }));
+  await client.call('threads.tasks.set', { threadId, tasks });
+  expect(await code(client.call('threads.tasks.change', { threadId, action: 'add', text: 'Too many tasks' }))).toBe(RpcErrorCode.Refused);
+  expect(await client.call('threads.tasks.get', { threadId })).toEqual(tasks);
+});
+
 test('a first-turn title reaches the client while the answer is still running', async () => {
   const client = await fake({ delayMs: 100, chunkSize: 16 });
   const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });

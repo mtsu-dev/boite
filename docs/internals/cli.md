@@ -422,14 +422,28 @@ http on loopback or a Tailscale address (100.64.0.0/10, fd7a:115c:a1e0::/48),
 since the first frame carries the token.
 
 The commands that drive other threads (`threads`, `thread show|send|stop|
-archive|unarchive|remove|rename`, `thread move <project> <id>`, `questions`,
+archive|unarchive|remove|rename|deleted|restore`, `thread move <project> <id>`, `questions`,
 `answer`, `permissions`, `allow`, `deny`, `projects archive|unarchive|remove`)
 and `thread new` need no `--thread` from a terminal. There they use the owner
-methods: `thread send` is the owner's own prompt, queued behind a running turn,
-and `thread new` copies the agent of `--thread`, else of the project's most
-recent thread (`--model` replaces the model, while `--effort` and `--speed`
-set its reasoning level and service tier). From a terminal, use `--core`
-to reach another machine; `--machine` is for an agent inside a thread.
+methods. `thread send` adds the owner's prompt to the conversation's outbox,
+behind an active turn. Its status is `queued`, `held` if the outbox is paused,
+or `sent` once delivered. Repeat the same `--request-id` to check or retry an
+accepted submission. Incognito prompts wait in the core's memory and survive
+the terminal closing. Retired conversations use direct submission. A prompt
+whose conversation folder cannot be recovered stays held with the reason.
+The owner can list and restore recoverable conversations with `thread deleted`
+and `thread restore <id>`.
+
+`thread new` copies the agent of `--thread`, else of the project's most
+recent thread or the most recent thread on this core. An explicit `--thread`
+must exist. With no source, the command picks a usable account. Use
+`--model <provider/model>` to select another provider or `--model <model>`
+for a model of the source provider. `--effort` and `--speed` set its reasoning
+level and service tier. Repeating the original arguments with the same
+`--request-id` returns the same conversation and first turn during the
+creation receipt's lifetime, up to one hour on the same running core. From a
+terminal, use `--core` to reach another machine. `--machine` is for an agent
+inside a thread.
 Inside the thread of
 a [mochi](mochis.md#projects-entrusted-to-a-mochi) the same words
 reach the threads of the projects the owner entrusted to it and the threads
@@ -476,13 +490,15 @@ boite projects archive|unarchive|remove <project>
 boite threads [list] [--project <p>] [--archived]
                                  the threads you may see and their machine
 boite thread show <id>           state, pending questions and permissions, last answer
-boite thread send <id> <text>    the owner's prompt, or the agent's letter
+boite thread send <id> <text> [--request-id <id>]
 boite thread done <id>           put a thread that is not at work in Done
 boite thread stop|archive|unarchive|remove <id>
+boite thread deleted             list conversations the owner can restore
+boite thread restore <id>       restore a conversation from that list
 boite thread rename <id> <title>
 boite thread move <project> <id> move another thread
 boite questions [<id>]           pending questions
-boite answer <id> <question-id> <option|text ...> [--skip]
+boite answer <id> <question-id> <option|text ...> [--text <note>] [--skip]
 boite permissions [<id>]         pending tool permissions
 boite allow|deny <id> <request-id>
 boite attach <file>               publish a file snapshot in chat, at most 512 MB
@@ -524,23 +540,38 @@ boite mochi routines
 boite mochi schedule <json>
 boite mochi unschedule <routine-id>
 boite mochi watch|unwatch <thread-id>
+boite mochi new-session [--note <text>]
 boite mochi event <mochi> [--key <key>] <text>
 boite team list|say|dm|read|propose|invite|leave
 boite delegate models [--machine <name>]
-boite delegate profiles|list
+boite delegate profiles
+boite delegate list [--details]
 boite delegate spawn <brief> [--model <provider/model>] [--effort <level>] [--speed <tier>] [--profile <id>] [--title <t>] [--worktree] [--machine <name> [--project <name>]] [context flags]
 boite delegate council <request>|--request-file <path> [--models <a>[:<effort>],<b>[:<effort>][,...]] [--effort <level>] [--role <member>=<text>]... [--timeout <minutes>]
 boite delegate council again <council-id> [<what-changed>] [--send-changes] [--request-file <path>]
 boite delegate council table <council-id>
 boite delegate send <thread-id> <text>
 boite delegate wait [thread-id] [--timeout <s>]
-boite delegate result <thread-id> <turn-id> [offset]
+boite delegate result <thread-id> <turn-id> [offset] [--limit <characters>]
 boite delegate stop [thread-id|council-id]
 boite delegate resume [thread-id]
-boite workflow help|check|run|list|show|extend|pause|resume|stop|retry
+boite workflow help|check|run|list|extend|pause|resume|stop|retry
+boite workflow show <run-id> [<step-or-execution>|--details]
 boite workflow output|templates|save|start
 boite help
 ```
+
+Use `boite <command> help`, `boite <command> --help` or `boite help <command>`
+for help without a core connection. Add `--json` for a JSON object with a
+`help` field. Use `--` before a literal argument that looks like a flag or help.
+
+`answer` accepts option IDs or labels alone, free text alone, or options
+followed by `--text <note>`. To attach files to an answer, use the conversation
+composer in the app. The app also provides steering, message editing, retry and
+changes to an existing conversation's model, effort or speed. CLI selection
+flags apply when starting a new thread. `settings mochi` reads settings or
+proposes changes from a conversation. Use the app's mochi menu to pause, resume
+or archive it as the owner.
 
 `threads ask "<what you need>"` sends a request to a contact's Contacts mochi
 ([contacts](contacts.md#the-contacts-mochi)), or, naming no contact, hands it
@@ -822,8 +853,8 @@ Smaller inline files with the same name and bytes reuse the existing copy. In a 
 opens a picture full size and downloads anything else. A picture's preview also
 opens it full size.
 
-Task ids are `t1`, `t2` and so on, allocated by the CLI; `start 2` and
-`start t2` mean the same. `task` rows print as `t1 [ ] text`, `[>]` in
+The core allocates task IDs `t1`, `t2` and so on. `start 2` selects the exact
+ID `2` when it exists and falls back to `t2` otherwise. `task` rows print as `t1 [ ] text`, `[>]` in
 progress, `[x]` completed. A todo is a card of the project's list, shared by
 every thread of the project: an agent adds one or claims one, which marks it
 finished and awaiting the user's confirmation; `done` and removal are the user's
@@ -846,7 +877,8 @@ Each extra argument is an option label; with none the question takes free
 text, and `--multiple` lets the user pick several. `--open <url>` adds an Open
 button for a page the user must sign in to (docs/internals/browser.md). The answer reaches the agent
 as a message that quotes the question, `> question` then the answer: steered
-into the running turn when the agent takes steering (Codex, pi, Muse, Grok),
+into the running turn when the agent takes steering (including Codex, pi,
+Muse, Grok and OpenCode 2),
 handed to Claude at the main agent's next tool call through the PostToolUse
 hook, otherwise sent as the next prompt once the thread is idle. A prompt the
 user queued meanwhile goes out after that turn, not in its place. Agents
@@ -1017,7 +1049,12 @@ with that path. It prints `picture: <name> (<id>) now wears <avatar>`, and any
 open card about that mochi's avatar settles.
 
 Exit codes: 0, 1 on a refusal or a failure (`error: ...` on stderr), 2 on a
-usage error (the usage text on stderr).
+usage error: on stderr the message, then the synopsis of the action asked for
+(`boite delegate result --limit 20000` names `delegate result`), else the
+command's form without an action, and `See boite <command> help.`. A command
+made only of actions, asked with none or an unknown one, points to its help
+without borrowing another action's line. No core is needed when parsing
+refuses the words.
 
 [Agent coordination](coordination.md) is on by default for ordinary
 conversations and mochis, across projects and linked machines. The owner can turn it off
@@ -1035,7 +1072,11 @@ routines` lists its routines, `mochi schedule <json>` saves one (`name`,
 `prompt`, `schedule`, with `id` to edit one, keeping what the edit leaves out, and `enabled`), `mochi unschedule
 <routine-id>` removes one. `mochi watch|unwatch <thread-id>` puts a thread of
 its projects on its desk or takes one off; a watched thread wakes the mochi at
-once, one it only wrote to waits for its routines. Use `--json` to
+once, one it only wrote to waits for its routines. `mochi new-session [--note
+<text>]` starts a new conversation in the same thread, at once when the
+thread is idle, else when the running turn ends; every word after `--note` is
+the handoff note (`AGENT_HANDOFF_MAX`, 4,000 characters) the next turn reads
+once ([A new conversation](mochis.md#a-new-conversation)). Use `--json` to
 preserve the structured result.
 
 `mochi event <mochi> [--key <key>] <text>` is the exception: it is for a service
@@ -1073,14 +1114,18 @@ model, and `send`,
 ([delegation](delegation.md#on-another-machine-of-the-group)).
 [Workflows](workflows.md) run a JSON plan of such children: `workflow help`
 prints the whole format, `workflow run` starts it and opens it in the panel,
-and the results come back as one message when the run ends.
+and the results come back as one message when the run ends. `workflow show`
+lists execution states. Pass a step ID or execution key to read its result,
+or `--details` to print the full run. `delegate list` also keeps results out
+of its summary. Use `delegate result` for a bounded page or `--details` on
+the list for the result previews.
 
 ## State
 
 `boite state` reads what the user sees in Boite, read-only, so an agent asked
 about Boite answers from it instead of guessing. Without a domain it prints one
-line each for the version, the gateway route, machines online, failing and
-available updates, the Activity inbox, the highest quota window and the task
+line each for the version, the gateway route, peers reached since startup,
+failing and available updates, the local inbox, the highest quota window and the task
 manager's processes and memory.
 
 ```sh
@@ -1088,7 +1133,7 @@ boite state settings advanced   # a Settings page, or one key, with what each se
 boite state limits              # each account's quota windows, from the last reading
 boite state machines            # group machines (answered since start) and paired devices
 boite state updates             # app, server and desktop updates, each agent's version and last error
-boite state inbox --json        # Activity's rows: questions, permissions, failures, stops, finished
+boite state inbox --json        # This core's questions, permissions, failures, stops and finished turns
 boite state tasks|version|route
 ```
 
@@ -1111,9 +1156,10 @@ show an email as its first letter and domain. Machines report whether this
 core reached them since it started; a paired device is connected while one of
 its sockets, direct or relayed, is open. Updates count an agent's release as
 available only when the app offers it (`harnessOffered`: not skipped). The
-inbox is Activity's own derivation (`activityEvents` in
-`packages/contracts/src/activity.ts`), with a sub-agent that shares its
-parent's event marked `nested`. The route names a Douane or CLIProxyAPI
+inbox uses the same rules as Activity (`activityEvents` in
+`packages/contracts/src/activity.ts`) for this core's threads. The app also
+includes requests from other connected machines and Contacts. A sub-agent
+that shares its parent's event is marked `nested`. The route names a Douane or CLIProxyAPI
 gateway by its origin, never its credentials, and reads Muse as served only
 when the gateway's last answer verified its native pool. From a terminal, the
 owner runs `boite state` without `--thread`.

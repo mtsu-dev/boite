@@ -5,7 +5,8 @@
  */
 
 /**
- * Whether this machine's contacts have a way in: the client is the owner. A paired device may call none of `contacts.*`.
+ * The rail is available to the owner.
+ * A paired device can send a human reply from a shared conversation.
  */
 export function contactsShown(store: { owner: boolean }): boolean {
   return store.owner;
