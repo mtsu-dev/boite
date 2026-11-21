@@ -196,9 +196,10 @@ test('protection changes run the native fixtures in two jobs, one per helper, be
     expect(job['runs-on']).toBe('windows-2025');
     expect(job.if).toBe(`needs.changes.outputs.core == 'true' && needs.changes.outputs.nativeWindows == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"windows-2025"')`);
     expect(job['timeout-minutes']).toBe(25);
-    expect(matrices.map((name) => job.steps.find((step) => step.name === name))).toEqual(matrices.map((name) => sdk.steps.find((step) => step.name === name)));
-    const names = job.steps.map((step) => step.name);
-    expect(matrices.map((name) => names.indexOf(name))).toEqual(matrices.map((name) => names.indexOf(name)).sort((a, b) => a - b));
+    // Each once, in this order, and the same step in both jobs.
+    const steps = job.steps.filter((step) => matrices.includes(step.name!));
+    expect(steps.map((step) => step.name)).toEqual(matrices);
+    expect(steps).toEqual(sdk.steps.filter((step) => matrices.includes(step.name!)));
   }
   // The diagnostics and the helper comparison need one run, with the SDK build.
   expect(mingw.steps.filter((step) => step.name).map((step) => step.name)).toEqual(matrices);

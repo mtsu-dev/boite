@@ -342,14 +342,15 @@ always reports `productionAccepted=false`; its non-blocking CI step does not
 replace the blocking native production protection tests. The production v2 helper has
 its own explicitly linked Null broker module; diagnostic reference hashes never
 attest that production executable. Required useful-tool, provider/shared and
-Muse MSP scenarios execute with both SDK and MinGW helpers. The Windows core
-job has a 30-minute budget for both matrices and the general suite. A run on
-2026-10-27 spent nearly eight minutes in setup/diagnostics, then exceeded its
-old 15-minute budget during the second provider matrix. Individual scenario
+Muse MSP scenarios execute with both SDK and MinGW helpers, one native job
+per helper with a 25-minute budget each; each Windows core shard has 20
+minutes for its half of the general suite. A run on 2026-10-27 spent nearly
+eight minutes in setup/diagnostics, then exceeded its old 15-minute budget
+during the second provider matrix. Individual scenario
 deadlines and all admission checks remain unchanged. Shared Git fixtures set
 their synthetic identity in each repository, including the commit consumer,
 and ignore host system/global Git configuration.
-Once the helpers build, provider preparation and both provider matrices run
+Once the helpers build, provider preparation and the provider matrix of a job run
 even if protected-tools tests fail. A failed preparation still blocks those
 matrices; cancellation stops them. Each test step retains its failing exit code.
 The setup ACL root contains only the private view, runtime and home. Synthetic
