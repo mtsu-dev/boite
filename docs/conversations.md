@@ -52,6 +52,12 @@ The Threads button in the app rail, and the Threads tab on a phone, show how
 many threads are at work across your machines. When subagents are at work too,
 a second, lighter number beside it counts them.
 
+A middle click on the Activity button in the app rail takes the finished
+threads off Activity on every machine, without opening it. Failures, stops,
+questions and permissions stay, and so does the button's number. On a phone,
+or without a middle button, Mark all as read at the top of Activity clears the
+finished threads along with failures and stops.
+
 ## Drafts without a project
 
 A new device opens a draft. Drafts live in `Documents/Boite`, and each
