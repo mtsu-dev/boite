@@ -1,5 +1,18 @@
 import { appendFileSync } from 'node:fs';
 
+/** The workflows a `ci` run executes: itself and the ones it calls. */
+export const CI_WORKFLOWS = ['.github/workflows/ci.yml', '.github/workflows/desktop.yml', '.github/workflows/server-verify.yml', '.github/workflows/android-server.yml'];
+
+/**
+ * Scripts only the nightly, a release or another workflow outside
+ * CI_WORKFLOWS runs, or only their tests import. `changes.test.ts` fails when
+ * a job of CI_WORKFLOWS or a package starts using one.
+ */
+export const REPOSITORY_SCRIPTS = ['changelog.ts', 'commit-ci.ts', 'feature-modules.ts', 'nightly-retry.ts', 'nightly.ts', 'pr-title.ts', 'server-provenance.ts'].map((name) => `scripts/ci/${name}`);
+
+/** The script tests the Windows installer job runs (desktop.yml), and the helper they share. */
+export const INSTALLER_SCRIPTS = ['installer-hooks.test.ts', 'installer-shortcuts.test.ts', 'installed-cli-windows.test.ts', 'stop-core.test.ts', 'installer-prerequisites.ts', 'installer-prerequisites.test.ts'].map((name) => `scripts/ci/${name}`);
+
 // Unknown files run the complete suite. Documentation-only PRs still get the
 // required job, so branch protection never waits for a filtered-out workflow.
 export function affectedChecks(files: string[]) {
@@ -8,7 +21,19 @@ export function affectedChecks(files: string[]) {
     if (
       /^(docs\/.*\.md|README\.md|AGENTS\.md|CONTRIBUTING\.md|SECURITY\.md|CODE_OF_CONDUCT\.md|LICENSE)$/.test(file) ||
       /^\.github\/(ISSUE_TEMPLATE\/|pull_request_template\.md$|topics\.json$|CODEOWNERS$|labeler\.yml$)/.test(file) ||
-      file === '.coderabbit.yaml'
+      file === '.coderabbit.yaml' ||
+      // Pictures and clips the docs show; code under docs/ still runs everything.
+      /^docs\/.*\.(png|gif|jpe?g|webp|svg|mp4|webm)$/.test(file) ||
+      // Repository checks, on every change, run oxlint, actionlint and the
+      // tests of scripts/ci. A workflow or a script no job of ci.yml or the
+      // workflows it calls reaches needs nothing more.
+      file === '.oxlintrc.json' ||
+      (/^\.github\/workflows\/[^/]+\.yml$/.test(file) && !CI_WORKFLOWS.includes(file)) ||
+      (/^scripts\/ci\/[^/]+\.test\.ts$/.test(file) && file !== 'scripts/ci/changes.test.ts' && !INSTALLER_SCRIPTS.includes(file)) ||
+      REPOSITORY_SCRIPTS.includes(file) ||
+      // The native Android app has its own workflow (mobile.yml); its
+      // package.json is a workspace member and stays a shared input.
+      (file.startsWith('apps/mobile/') && file !== 'apps/mobile/package.json')
     ) continue;
     if (file.startsWith('apps/android-server/termux/')) {
       // The release bundle: the core suite packs it, the web job type-checks
@@ -29,6 +54,19 @@ export function affectedChecks(files: string[]) {
       checks.desktop = checks.e2eTypes = true;
       // Stress fixtures use the same isolated core and browser harness.
       if (file.startsWith('tests/e2e/lib/')) checks.stress = true;
+    } else if (file.startsWith('tests/contract/')) {
+      // The scenarios both transports pass: the real core's contract tests
+      // and the fake client's (packages/ui/src/lib/fake-client.contract.test.ts).
+      checks.core = checks.web = true;
+    } else if (INSTALLER_SCRIPTS.includes(file)) {
+      checks.desktop = true;
+    } else if (file === 'scripts/ci/core-durations.json') {
+      // Recorded seconds only move files between shards of the same suite.
+      checks.core = true;
+    } else if (file === 'scripts/ci/ui-durations.json') {
+      checks.web = true;
+    } else if (file === 'scripts/ci/e2e-durations.json') {
+      checks.desktop = true;
     } else if (/^(Dockerfile$|\.dockerignore$|docker\/)/.test(file)) {
       checks.server = true;
     } else if (file.startsWith('packages/ui/')) {

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { affectedChecks, ciMode, lastGreen, needsCodeChecks, needsNativeWindows, needsWorkflowLint, plan } from './changes.ts';
+import { CI_WORKFLOWS, INSTALLER_SCRIPTS, REPOSITORY_SCRIPTS, affectedChecks, ciMode, lastGreen, needsCodeChecks, needsNativeWindows, needsWorkflowLint, plan } from './changes.ts';
 
 const none = { core: false, web: false, desktop: false, shellRust: false, server: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false };
 const allChecks = { core: true, web: true, desktop: true, shellRust: true, server: true, androidServer: true, telemetry: true, e2eTypes: true, stress: true };
@@ -81,6 +81,56 @@ test('shared inputs and unknown files fail open to every check', () => {
 test('docs-only changes keep the cheap check path', () => {
   expect(needsCodeChecks(['README.md', 'docs/internals/server.md', 'LICENSE'])).toBe(false);
   expect(needsCodeChecks(['SECURITY.md', 'CODE_OF_CONDUCT.md', '.github/CODEOWNERS', '.github/labeler.yml'])).toBe(false);
+  expect(needsCodeChecks(['docs/media/boite-dark.gif', 'docs/images/panel.png', 'docs/media/tour.webm'])).toBe(false);
+});
+
+test('what only the repository checks run selects no other job', () => {
+  for (const file of ['.oxlintrc.json', '.github/workflows/nightly.yml', '.github/workflows/mobile.yml', '.github/workflows/release.yml', 'scripts/ci/required-checks.test.ts', 'scripts/ci/nightly-retry.ts', 'scripts/ci/changelog.ts', 'apps/mobile/src-tauri/gen/android/app/build.gradle.kts']) {
+    expect(needsCodeChecks([file]), file).toBe(false);
+    expect(needsNativeWindows([file]), file).toBe(false);
+  }
+  // They still get actionlint.
+  expect(needsWorkflowLint(['.github/workflows/nightly.yml', 'scripts/ci/nightly.ts'])).toBe(true);
+  // What a ci run executes, the selection itself and a shared manifest keep every check.
+  for (const file of [...CI_WORKFLOWS.filter((path) => !path.endsWith('android-server.yml')), 'scripts/ci/changes.test.ts', 'apps/mobile/package.json']) {
+    expect(Object.values(affectedChecks([file])).every(Boolean), file).toBe(true);
+  }
+});
+
+const root = new URL('../../', import.meta.url).pathname;
+/** Tracked files with a match for `pattern`, each with its matches. */
+function grep(pattern: string): string[][] {
+  const result = Bun.spawnSync(['git', 'grep', '-ozE', pattern], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+  // 1 is no match; anything else is a failed search, not a clean tree.
+  expect([0, 1], result.stderr.toString()).toContain(result.exitCode);
+  return result.stdout.toString().split('\n').filter(Boolean).map((line) => line.split('\0'));
+}
+
+test('no job a ci run executes and no package uses a repository-only script', () => {
+  // A file is read by a ci job unless it selects none: a test of scripts/ci
+  // the repository checks alone run names the script it tests, harmlessly.
+  const reads = (file: string) => CI_WORKFLOWS.includes(file) || file.startsWith('.github/actions/') ||
+    (file.startsWith('scripts/ci/') ? !['scripts/ci/changes.ts', 'scripts/ci/changes.test.ts'].includes(file) && needsCodeChecks([file]) : !file.startsWith('.github/'));
+  const names = REPOSITORY_SCRIPTS.map((script) => script.slice('scripts/ci/'.length).replace(/\.ts$/, ''));
+  // A path to one: `scripts/ci/nightly.ts`, `../ci/nightly`, or `./nightly` beside it.
+  const users = grep(`(ci/|['"]\\./)(${names.join('|')})(\\.ts)?['"[:space:])]`).filter(([file]) => reads(file));
+  expect(users).toEqual([]);
+  // A script a ci workflow runs by name selects at least the job that runs it.
+  const named = grep('scripts/ci/[A-Za-z0-9_.-]+\\.(ts|mts|sh)').filter(([file]) => CI_WORKFLOWS.includes(file)).flatMap(([, ...hits]) => hits);
+  expect(named).toContain('scripts/ci/installer-hooks.test.ts');
+  for (const script of named) expect(needsCodeChecks([script]), script).toBe(true);
+  for (const script of INSTALLER_SCRIPTS) expect(affectedChecks([script]), script).toEqual({ ...none, desktop: true });
+});
+
+test('contract scenarios and recorded seconds select the suites that read them', () => {
+  for (const file of ['tests/contract/scenarios.ts', 'tests/contract/state.ts']) {
+    expect(affectedChecks([file])).toEqual({ ...none, core: true, web: true });
+    expect(needsNativeWindows([file])).toBe(false);
+  }
+  expect(affectedChecks(['scripts/ci/core-durations.json'])).toEqual({ ...none, core: true });
+  expect(affectedChecks(['scripts/ci/ui-durations.json'])).toEqual({ ...none, web: true });
+  expect(affectedChecks(['scripts/ci/e2e-durations.json'])).toEqual({ ...none, desktop: true });
+  expect(plan(affectedChecks(['scripts/ci/e2e-durations.json']), 'queue')).toMatchObject({ e2e: true });
 });
 
 test('workflow lint follows workflows, local actions and their decision scripts', () => {
