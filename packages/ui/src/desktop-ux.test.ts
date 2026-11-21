@@ -237,7 +237,7 @@ test("the rail counts the threads and subagents at work and a mochi's unread rep
     try {
       expect(getComputedStyle(pill).flexDirection).toBe('column');
       // Past the tile, on the rail: its ring keeps the rail's ground, whatever the tile's state sets for the single pill.
-      expect(getComputedStyle(pill).getPropertyValue('--count-ring').trim()).toBe('var(--rail-ground)');
+      expect((style.sheet!.cssRules[0] as CSSStyleRule).style.getPropertyValue('--count-ring').trim()).toBe('var(--rail-ground)');
       expect(pill.classList.contains('wide')).toBe(working > 9 || helpers > 9);
       expect(query('[data-testid=view-threads]').getAttribute('aria-label')).toBe(`${strings.sidebar.threads}, ${fill(strings.app.rail.workingMany, { count: String(working) })}, ${fill(strings.app.rail.subagentsMany, { count: String(helpers) })}`);
       // Ten subagents or more: a tighter pill, so the two digits keep clear of the glyph.
