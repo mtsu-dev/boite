@@ -719,12 +719,15 @@ pidfd_open, the guard's admission, signal 0 through the pidfd from the core,
 then SIGTERM and SIGKILL from the guard to that probe group, which confirms
 it ignores SIGTERM before the check. Closing the private probe socket also
 ends the probe if the signals are refused. A syscall filter that refuses any of them, signal 0 alone allowed
-included, sends groups to the watcher with `groups.late`. The launcher sits
-next to the compiled core (`bin/compile.ts` builds it, static, and fails
-without it) or in `native/build` from source (`bin/build-launcher.ts`, run by
-the test runner). Without it, on an older kernel or without glibc, the core
-logs `groups.late` once and the watcher ties those groups as described
-above. Terminals, `spawnChild` (node) and processes the keeper adopts still
+included, sends groups to the watcher with `groups.late`. The core looks for
+the launcher next to the executable that runs it, then in `native/build` from
+source (`bin/build-launcher.ts`, run by the test runner). `bin/compile.ts`
+builds it, static, beside the compiled core and fails without it; the Linux
+desktop packages install it beside `boite-core` as a second sidecar, and the
+server image builds it beside `bun`. The standalone server archive does not
+carry it yet, so those servers use the watcher. Without it, on an older kernel
+or without glibc, the core logs `groups.late` once and the watcher ties those
+groups as described above. Terminals, `spawnChild` (node) and processes the keeper adopts still
 go through the watcher only.
 
 `TraceCapability` exposes OS, mode (`events`, `poll`, `none`) and
