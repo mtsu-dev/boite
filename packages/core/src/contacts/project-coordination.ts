@@ -12,7 +12,7 @@ import { queryPayload, transcriptQuery } from '../coordination-lookup.ts';
  */
 export type ScopedAnswer = () => unknown;
 
-export async function projectCoordination(core: Core, threadId: string, peer: CoordinationPeer, method: 'directory' | 'search' | 'read', payload: unknown): Promise<ScopedAnswer> {
+export async function projectCoordination(core: Core, threadId: string, peer: CoordinationPeer, method: 'directory' | 'search' | 'read', payload: unknown, signal?: AbortSignal): Promise<ScopedAnswer> {
   const service = core.sharedProjects;
   if (!service.hasContact(peer.coreId)) {
     const answer = await core.coordination.request(peer, method as Operation, payload);
@@ -31,7 +31,7 @@ export async function projectCoordination(core: Core, threadId: string, peer: Co
   }
   if (method === 'search') {
     const query = (payload as { words: string[] }).words.join(' ');
-    const results = await Promise.all(scopes.map(scope => service.search({ ...scope, query })));
+    const results = await Promise.all(scopes.map(scope => service.search({ ...scope, query }, undefined, signal)));
     if (results.some(r => r.unavailable.length)) throw refused('shared project endpoint is unavailable');
     return () => live(results).flatMap(r => r.matches.filter(t => t.coreId === peer.coreId)).slice(0, 100);
   }

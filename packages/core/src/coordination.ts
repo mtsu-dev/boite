@@ -320,7 +320,7 @@ export class Coordination {
   }
   directory(threadId: string): Promise<{ agents: AgentContact[]; unavailable: string[] }> { return this.#lookups.directory(threadId); }
   /** Contacts here and on trusted machines whose fields or chat contain every word of the query. */
-  search(threadId: string, query: string): Promise<{ matches: AgentMatch[]; unavailable: string[] }> { return this.#lookups.search(threadId, query); }
+  search(threadId: string, query: string, signal?: AbortSignal): Promise<{ matches: AgentMatch[]; unavailable: string[] }> { return this.#lookups.search(threadId, query, signal); }
   /** Another reachable contact's conversation, text and tool names only. */
   read(threadId: string, target: AgentAddress, limit?: number, before?: number, entry?: string, offset?: number, tool?: string): Promise<AgentTranscript> { return this.#lookups.read(threadId, target, limit, before, entry, offset, tool); }
   /**
