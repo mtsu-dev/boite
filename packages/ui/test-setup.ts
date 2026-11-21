@@ -74,13 +74,16 @@ type ModuleMap = Map<string, Set<ModuleNode>>;
 // The module itself, not a `?url` or `?raw` import of its file.
 const ran = (modules: ModuleMap, file: string) => [...(modules.get(file) ?? [])].some((node) => node.id === file && (node.evaluated || node.promise));
 const self = fileURLToPath(import.meta.url).replaceAll('\\', '/');
+// Read on the first call, before any test: `vi.resetModules()` empties the map later.
+let readable: boolean | undefined;
 function reachedRegistry(): boolean {
   try {
     const modules = (globalThis as { __vitest_worker__?: { evaluatedModules?: { fileToModulesMap?: ModuleMap } } })
       .__vitest_worker__?.evaluatedModules?.fileToModulesMap;
     // A Vitest whose map is gone or changed shape, so that even this file is
     // not found in it, preloads for every file, as before.
-    if (!modules || !ran(modules, self)) return true;
+    readable ??= !!modules && ran(modules, self);
+    if (!modules || !readable) return true;
     return registries.some((file) => ran(modules, file));
   } catch {
     return true;
