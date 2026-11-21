@@ -5,47 +5,64 @@ use tauri::{
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, Runtime, Webview,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::browser;
 use crate::channel::Channel;
 use crate::local_core::CoreState;
 use crate::quota_window;
+use crate::quit_confirmation::{QuitConfirmation, QuitRequest};
 use crate::window::{product_label, show_main};
 
 #[derive(Default)]
-pub(crate) struct QuitGuard(AtomicBool);
+pub(crate) struct QuitGuard(Mutex<QuitConfirmation>);
 
 pub(crate) fn reset_quit_guard<R: Runtime>(app: &AppHandle<R>) {
     if let Some(guard) = app.try_state::<QuitGuard>() {
-        guard.0.store(false, Ordering::Release);
+        guard.0.lock().unwrap().disarm();
     }
 }
 
 /// Enabled only after the main UI has installed its confirmation listener.
 #[tauri::command]
-pub(crate) fn quit_guard(app: AppHandle, webview: Webview) -> Result<(), String> {
+pub(crate) fn quit_guard(app: AppHandle, webview: Webview, received: Option<u32>) -> Result<bool, String> {
     browser::only_main(&webview)?;
-    app.state::<QuitGuard>().0.store(true, Ordering::Release);
-    Ok(())
+    let state = app.state::<QuitGuard>();
+    let mut guard = state.0.lock().unwrap();
+    if let Some(id) = received { return Ok(guard.take(id)); }
+    guard.arm();
+    Ok(true)
 }
 
 pub(crate) fn request_quit<R: Runtime>(app: &AppHandle<R>) {
-    let guarded = app.state::<QuitGuard>().0.load(Ordering::Acquire);
+    let request = app.state::<QuitGuard>().0.lock().unwrap().request();
+    let guarded = request != QuitRequest::Immediate;
     crate::shell_log::info("shell", "shell.quit-requested",
         if guarded { "quit requested; the UI asks for confirmation first" } else { "quit requested; quitting now" },
         serde_json::json!({ "confirm": guarded }));
-    if guarded {
-        if let Err(error) = app.emit_to("main", "boite:quit-requested", ()) {
-            eprintln!("[shell] quit confirmation could not be requested: {error}");
-            crate::shell_log::warn("shell", "shell.quit-confirm-failed", format!("quit confirmation could not be requested, quitting now: {error}"), serde_json::json!({}));
-            quit(app);
-            return;
-        }
-        show_main(app);
-    } else {
+    let QuitRequest::Awaiting(id) = request else {
+        if request == QuitRequest::Pending { return; }
         quit(app);
+        return;
+    };
+    if let Err(error) = app.emit_to("main", "boite:quit-requested", id) {
+        crate::shell_log::warn("shell", "shell.quit-confirm-failed", format!("quit confirmation could not be requested, quitting now: {error}"), serde_json::json!({}));
+        quit(app);
+        return;
     }
+    show_main(app);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(3));
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if handle.state::<QuitGuard>().0.lock().unwrap().take(id) {
+                crate::shell_log::warn("shell", "shell.quit-confirm-timeout", "the main page did not acknowledge Quit", serde_json::json!({}));
+                quit(&handle);
+            }
+        });
+    });
 }
 
 /// Quits the client. The resident engine has a separate authenticated stop action.

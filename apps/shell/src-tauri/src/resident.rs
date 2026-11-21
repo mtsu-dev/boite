@@ -12,7 +12,9 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::time::Duration;
 
-use crate::local_core::health::{health, read_core_file, HEALTH_TIMEOUT};
+use crate::local_core::health::{health, same_core, CoreFile, HEALTH_TIMEOUT};
+#[cfg(test)]
+use crate::local_core::health::read_core_file;
 use crate::platform::process::Watched;
 
 /// What the core gets to drain its agents and close its journal. The core's
@@ -49,14 +51,20 @@ pub fn request_shutdown(port: u16, token: &str) -> Result<(), String> {
 /// Stops the core `<directory>/core.json` names, if it is running and answers
 /// as that core. `Ok(Some(pid))` once it is gone, `Ok(None)` when there was
 /// nothing to stop, `Err` when a core is still there after `grace` and a kill.
-pub fn stop_local_core(directory: &Path, grace: Duration) -> Result<Option<u32>, String> {
+#[cfg(test)]
+fn stop_local_core(directory: &Path, grace: Duration) -> Result<Option<u32>, String> {
     let file = directory.join("core.json");
     let Some(core) = read_core_file(&file)? else { return Ok(None) };
+    stop_identified_core(&core, &file, grace)
+}
+
+pub(crate) fn stop_identified_core(core: &CoreFile, file: &Path, grace: Duration) -> Result<Option<u32>, String> {
     let Some(pid) = core.pid else { return Ok(None) };
     // Opened before anything is asked of it: from here on the pid cannot name
     // another process, even if this one exits and Windows reuses the number.
     let Some(process) = Watched::open(pid) else { return Ok(None) };
-    if health(core.port, pid).is_none() {
+    let start = core.start();
+    if !same_core(pid, &start) || health(core.port, pid).is_none() || !same_core(pid, &start) {
         // A live pid that is not the core `core.json` described: a reused
         // number after a reboot, most likely. Not ours to stop.
         return Ok(None);
@@ -66,12 +74,13 @@ pub fn stop_local_core(directory: &Path, grace: Duration) -> Result<Option<u32>,
         Err(error) => {
             eprintln!("[shell] {error}; stopping pid {pid} without its consent");
             // A POSIX core drains on SIGTERM as well; Windows has no signal.
-            process.interrupt()
+            same_core(pid, &start) && process.interrupt()
         }
     };
     if asked && process.exited_within(grace) {
         return Ok(Some(pid));
     }
+    if !same_core(pid, &start) { return Ok(Some(pid)); }
     process.terminate();
     if process.exited_within(KILL_WAIT) {
         Ok(Some(pid))

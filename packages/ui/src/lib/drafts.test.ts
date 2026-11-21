@@ -43,6 +43,25 @@ test('a local core moving to another port keeps its drafts', async () => {
   expect(next.composerStates['t-trace']?.text).toBe('A local reply');
 });
 
+test('a saved draft does not replace an open blank private draft on reconnect', async () => {
+  const store = await ready('private-reconnect', true);
+  store.startDraft(null);
+  store.editComposerText('draft', 'Parked before reconnecting');
+  const parked = store.draft!.id;
+  store.startDraft(null, { fresh: true });
+  store.setDraftIncognito(true);
+  const privateDraft = store.draft!.id;
+  expect(store.draft?.incognito).toBe(true);
+
+  store.client?.close();
+  store.attach(new FakeClient({ delayMs: 0 }));
+  await store.connect();
+
+  expect(store.draft).toMatchObject({ id: privateDraft, incognito: true });
+  expect(store.composerStates.draft?.text).toBe('');
+  expect(store.draftEntries).toContainEqual(expect.objectContaining({ id: parked, text: 'Parked before reconnecting', active: false }));
+});
+
 test('storage failures keep the text in memory and explain that it could not be saved', async () => {
   const journal = await vi.importActual<typeof import('./draft-journal')>('./draft-journal');
   vi.mocked(readDraftJournal).mockImplementation(journal.readDraftJournal);

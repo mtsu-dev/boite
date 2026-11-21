@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { CORE_ALL, PORTABLE_ALL } from './changes.ts';
-import { ADVISORY, compareRuleset, jobChecks, loadWorkflow, requiredChecks, workflowChecks, type Job, type Workflow } from './required-checks.ts';
+import { ADVISORY, compareRuleset, jobChecks, loadWorkflow, requiredChecks, shardJobs, workflowChecks, type Job, type Workflow } from './required-checks.ts';
 
 const files = [...new Bun.Glob('*.yml').scanSync(`${import.meta.dir}/../../.github/workflows`)].sort();
 
@@ -54,11 +54,54 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
 test('every job a needs chain runs through is in the list, so a skip after a failed dependency comes with a failed check', () => {
   const names = requiredChecks(files);
   const ci = loadWorkflow('ci.yml');
-  for (const job of Object.values(ci.jobs)) {
+  const shards = shardJobs(ci.jobs);
+  for (const [id, job] of Object.entries(ci.jobs)) {
     for (const need of [job.needs ?? []].flat()) {
+      // A shard reports through the job that runs after it whatever its result.
+      if (shards.get(need) === id) continue;
       for (const check of jobChecks('ci.yml', need, ci.jobs[need]!)) expect(names).toContain(check);
     }
   }
+});
+
+// The Intel Mac's core suite runs in two shards, past the 15 minutes of one
+// job, under the one name the ruleset already requires (docs/internals/ci.md#check-names).
+test('a sharded check reports through one job of its name, which fails unless every shard passed', () => {
+  const ci = loadWorkflow('ci.yml');
+  const shards = shardJobs(ci.jobs);
+  expect([...shards]).toEqual([['core-macos-x64-1', 'macos-x64-core'], ['core-macos-x64-2', 'macos-x64-core']]);
+  type Step = { run?: string; env?: Record<string, string> };
+  const job = ci.jobs['macos-x64-core'] as Job & { steps: Step[] };
+  expect(job.name).toBe('Core tests (macOS x64)');
+  expect(job.needs).toEqual(['changes', 'core-macos-x64-1', 'core-macos-x64-2']);
+  // It runs whenever its shards do, after them, even when one failed, timed out or was cancelled.
+  for (const shard of ['core-macos-x64-1', 'core-macos-x64-2']) expect(job.if).toBe(`\${{ !cancelled() && ${ci.jobs[shard]!.if} }}`);
+  expect(job.steps).toHaveLength(1);
+  const [step] = job.steps;
+  expect(step!.env).toEqual({ RESULTS: '${{ needs.core-macos-x64-1.result }} ${{ needs.core-macos-x64-2.result }}' });
+  const exit = (results: string) => Bun.spawnSync(['bash', '-c', step!.run!], { env: { PATH: process.env.PATH, RESULTS: results }, stdout: 'pipe', stderr: 'pipe' }).exitCode;
+  expect(exit('success success')).toBe(0);
+  // A failed, timed out (cancelled), skipped or missing shard fails the check.
+  for (const results of ['failure success', 'success failure', 'cancelled success', 'success cancelled', 'skipped success', 'success skipped', 'success', '']) {
+    expect(exit(results), results).not.toBe(0);
+  }
+  // The shards themselves are left out of the ruleset; the names stay those pinned above.
+  const names = requiredChecks(files);
+  expect(names).toContain('Core tests (macOS x64)');
+  for (const name of ['Core tests (macOS x64) 1/2', 'Core tests (macOS x64) 2/2']) expect(names).not.toContain(name);
+});
+
+test('only a job after every result, named as its shards, covers them', () => {
+  const load = (jobs: Workflow['jobs']) => () => ({ on: { pull_request: null }, jobs });
+  const shard = (name: string) => ({ name, needs: 'plan', if: "needs.plan.outputs.a == 'true'" });
+  const after = "${{ !cancelled() && needs.plan.outputs.a == 'true' }}";
+  expect(requiredChecks(['x.yml'], load({ plan: { name: 'Plan' }, a1: shard('A 1/2'), a2: shard('A 2/2'), a: { name: 'A', needs: ['plan', 'a1', 'a2'], if: after } })))
+    .toEqual(['A', 'Plan']);
+  // A job that skips after a failed shard, or names other jobs, covers nothing.
+  expect(requiredChecks(['x.yml'], load({ plan: { name: 'Plan' }, a1: shard('A 1/2'), a: { name: 'A', needs: ['plan', 'a1'], if: "needs.plan.outputs.a == 'true'" } })))
+    .toEqual(['A', 'A 1/2', 'Plan']);
+  expect(requiredChecks(['x.yml'], load({ plan: { name: 'Plan' }, b: shard('B 1/2'), c: shard('A tests'), a: { name: 'A', needs: ['plan', 'b', 'c'], if: after } })))
+    .toEqual(['A', 'A tests', 'B 1/2', 'Plan']);
 });
 
 // A pull request runs the Linux checks and skips the rest, which passes the
@@ -85,7 +128,9 @@ test('only the plan decides which jobs run, the same way for a pull request and 
       expect(job.if).toBe("github.event_name == 'pull_request' && needs.changes.outputs.size == 'true'");
       continue;
     }
-    expect(job.if, id).toStartWith('needs.changes.outputs.');
+    // A sharded check's own job runs after its shards, on the same plan output.
+    const plan = shardJobs(ci.jobs).has(id) || ![...shardJobs(ci.jobs).values()].includes(id) ? job.if : /^\$\{\{ !cancelled\(\) && (.*) \}\}$/.exec(job.if ?? '')?.[1];
+    expect(plan, id).toStartWith('needs.changes.outputs.');
     expect(job.if, id).not.toContain('github.');
   }
   for (const id of ['desktop', 'server', 'android-server']) {

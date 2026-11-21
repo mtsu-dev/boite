@@ -250,13 +250,41 @@ jobs:
     timeout-minutes: 15
     steps: *core-steps
 
-  core-macos-x64:
-    name: Core tests (macOS x64)
+  core-macos-x64-1:
+    name: Core tests (macOS x64) 1/2
     needs: changes
     if: needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"macos-15-intel"')
     runs-on: macos-15-intel
     timeout-minutes: 15
+    env:
+      BOITE_TEST_SHARD: 1/2
     steps: *core-steps
+
+  core-macos-x64-2:
+    name: Core tests (macOS x64) 2/2
+    needs: changes
+    if: needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"macos-15-intel"')
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    env:
+      BOITE_TEST_SHARD: 2/2
+    steps: *core-steps
+
+  # The Intel Mac's suite took 13 min 55 s of its job's 15 (2026-11-20): it runs
+  # in two shards and reports under the name the ruleset requires, failing
+  # unless both passed (shardJobs in scripts/ci/required-checks.ts).
+  macos-x64-core:
+    name: Core tests (macOS x64)
+    needs: [changes, core-macos-x64-1, core-macos-x64-2]
+    if: ${{ !cancelled() && needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"macos-15-intel"') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ needs.core-macos-x64-1.result }} ${{ needs.core-macos-x64-2.result }}
+        run: |
+          echo "Core tests (macOS x64) 1/2 and 2/2: $RESULTS"
+          [ "$RESULTS" = 'success success' ]
 
   # The native protection fixtures, about 11 minutes of compiler and provider
   # matrices, run beside the Windows core shards rather than before them.
