@@ -84,7 +84,7 @@ const fillGuardQueue = `
   };`;
 describe('the launcher gates', () => {
   test('the core looks next to itself, then in the source tree build, and the kernel gate reads releases', () => {
-    expect(launcherCandidates('/opt/boite/boite-core')[0]).toBe('/opt/boite/boite-launch');
+    expect(launcherCandidates('/opt/boite/boite-core')[0]).toBe(join('/opt/boite', 'boite-launch'));
     expect(launcherCandidates()).toContain(DEV_LAUNCHER);
     expect(kernelSignalsGroups('6.9.0-1-amd64')).toBe(true);
     expect(kernelSignalsGroups('7.3.1-x')).toBe(true);
@@ -301,8 +301,9 @@ describe.skipIf(capability !== null)('the Linux launcher', () => {
 
   // A pid namespace of its own, where writing ns_last_pid hands a chosen number to the next process. Where one is
   // refused, the reason is in the skipped test's name.
-  const unshared = Bun.spawnSync(['unshare', '-Urpf', 'true'], { stdout: 'ignore', stderr: 'pipe' });
-  const noNamespace = unshared.exitCode === 0 ? '' : ` (skipped: unshare -Urpf refused: ${unshared.stderr.toString().trim() || `exit ${unshared.exitCode}`})`;
+  // The describe body runs even where the block is skipped, and Windows has no unshare.
+  const unshared = linux ? Bun.spawnSync(['unshare', '-Urpf', 'true'], { stdout: 'ignore', stderr: 'pipe' }) : null;
+  const noNamespace = unshared === null ? ' (skipped: not Linux)' : unshared.exitCode === 0 ? '' : ` (skipped: unshare -Urpf refused: ${unshared.stderr.toString().trim() || `exit ${unshared.exitCode}`})`;
   test.skipIf(noNamespace !== '')(`a number another route gets back from an earlier launched group is tied by the watcher${noNamespace}`, async () => {
     const dirIn = mkdtempSync(join(tmpdir(), 'boite-reuse-'));
     const pidFile = join(dirIn, 'pid');
