@@ -48,6 +48,10 @@ Recent in Display options.
 Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
 
+A thread with a pull request keeps its last badge on this device. When you
+reopen Boite, the badge can appear as soon as the thread is listed, and Boite
+updates it when it checks again.
+
 The Threads button in the app rail, and the Threads tab on a phone, show how
 many threads are at work across your machines. When subagents are at work too,
 a second, lighter number beside it counts them.
