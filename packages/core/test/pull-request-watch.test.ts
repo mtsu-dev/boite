@@ -676,23 +676,35 @@ for (const when of Object.keys(ownMergeCases) as (keyof typeof ownMergeCases)[])
     const cwd = join(harness!.dataDir, 'worktree');
     mkdirSync(cwd);
     core.journal.putThread({ ...core.threads.require(threadId), cwd, branch: 'feature' });
-    await owner.call('turns.start', { threadId, prompt: 'open the pull request' });
-    await settled(threadId);
-    await owner.call('threads.watchPullRequest', { threadId, url: URL });
-    await drive();
-    // The agent merges within its turn; or the user merges by hand, with the account the agent's gh uses, once it ended.
+    await owner.call('threads.subscribe', { threadId });
+    const holdTurn = async () => {
+      const asked = owner.next('question.asked', request => request.threadId === threadId, 3_000);
+      await owner.call('turns.start', { threadId, prompt: 'question' });
+      return (await asked).id;
+    };
+    // Put the first turn far enough in the past for a real gap, and off the second boundary.
+    const currentSecond = Math.floor(Date.now() / 1_000) * 1_000;
+    const firstTurnAt = currentSecond - 20_000 + 500;
+    const firstQuestionId = await pinned(firstTurnAt, async () => {
+      await owner.call('threads.watchPullRequest', { threadId, url: URL });
+      await drive();
+      if (when === 'in a turn') return holdTurn();
+      await owner.call('turns.start', { threadId, prompt: 'open the pull request' });
+      await settled(threadId);
+      return null;
+    });
     const last = core.journal.lastTurn(threadId)!;
-    github.closedAt = new Date(when === 'in a turn' ? last.startedAt! : last.finishedAt! + 10_000).toISOString();
+    const mergeAt = when === 'in a turn' ? last.startedAt! : last.finishedAt! + 10_000;
+    github.closedAt = new Date(Math.floor(mergeAt / 1_000) * 1_000).toISOString().replace('.000Z', 'Z');
+    const questionId = when === 'read in the next turn' ? await holdTurn() : firstQuestionId;
     github.state = 'MERGED';
     github.closedBy = 'meetsu';
-    // The watch reads the merge while another turn of the agent runs.
-    const busy = when === 'read in the next turn' ? spyOn(core.threads, 'isBusy').mockReturnValue(true) : null;
     await drive();
-    if (busy) {
-      // Told, not dropped: the wake waits for that turn to end.
-      expect(core.pullRequestWatches.of(threadId)).toEqual([expect.objectContaining({ url: URL })]);
+    if (questionId !== null) {
+      expect(core.pullRequestWatches.of(threadId)).toHaveLength(when === 'in a turn' ? 0 : 1);
       expect(wakes(threadId)).toHaveLength(0);
-      busy.mockRestore();
+      await owner.call('questions.skip', { threadId, questionId });
+      await settled(threadId);
       await drive();
     }
     await settled(threadId);
