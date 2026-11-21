@@ -48,6 +48,18 @@ completing the goal by hand stops the running reviewer, and resuming a goal
 paused during its review starts a new review. A core restart keeps the
 verdicts and drops the interrupted review; the resume starts a fresh one.
 
+A goal turn after the first does not start while the conversation's own work
+outside its turn runs: a subagent or another child at work here, one on another
+machine, or a workflow run at work (`threads/background-work.ts`, the check a
+background compaction makes too). The goal's reviewers and checklist tracker do
+not count, and neither do the agent's own background tasks, which may be a
+server that runs for hours. The turn that brings that work's result back
+schedules the next goal turn; a look every 30 seconds covers work that ends
+without waking the conversation. Before this, an orchestrator waiting on its
+lanes got a goal turn every few seconds, each answering that the lanes still
+ran, each followed by a checklist pass. The goal prompt tells the agent to end
+its turn while it waits.
+
 ## The checklist
 
 A reviewed goal also keeps the checklist of what the user asked for, so the
