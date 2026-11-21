@@ -1,4 +1,4 @@
-import { beforeAll, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, vi } from 'vitest';
 import { releaseVersion } from './release-version';
 import { loadLocale } from './src/lib/i18n.svelte';
 
@@ -58,13 +58,33 @@ vi.stubGlobal('matchMedia', (media: string) => ({
 // test renders after it landed, as the app does.
 await loadLocale('en');
 
+// Every part, deferred or idle, is a LazyComponent built when its registry
+// module runs. Counting them tells whether a test file's imports reach one:
+// most files (lib, store and plain component tests) reach none and skip the
+// preload below, which was about half the CPU time of such a file.
+const lazy = vi.hoisted(() => ({ built: 0 }));
+vi.mock('./src/lib/lazy-component.svelte', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./src/lib/lazy-component.svelte')>();
+  class LazyComponent<T> extends real.LazyComponent<T> {
+    constructor(loader: () => Promise<{ default: T }>) {
+      super(loader);
+      // One a test file builds for itself (Deferred.test.ts) is no part of the app.
+      const caller = new Error().stack?.split('\n').slice(1).find((frame) => !frame.includes('test-setup.ts')) ?? '';
+      if (!/\.test\.ts\b/.test(caller)) lazy.built++;
+    }
+  }
+  return { ...real, LazyComponent };
+});
+
 // The parts the app fetches once it is idle (`lib/deferred-parts.ts`) are here
 // before a test draws, as they are for a user's first open; a test of the
 // moment before they land asks for that state itself. In a hook, so it runs
 // once the test file is collected: that file's `vi.mock` calls then hold for
 // the store modules these parts import, which a top-level import here would
 // have cached unmocked.
-beforeAll(async () => {
+let preloaded = false;
+async function preloadParts(): Promise<void> {
+  preloaded = true;
   const { prefetchParts, parts } = await import('./src/lib/deferred-parts');
   const { mobileNavigation } = await import('./src/lib/mobile-navigation');
   prefetchParts();
@@ -75,4 +95,15 @@ beforeAll(async () => {
   const idle = await import('./src/lib/idle-parts');
   await Promise.all([idle.threadDecision.load(), idle.permissionCard.load()]);
   // A cold worker transforms these modules first: several seconds on a busy machine.
+}
+beforeAll(async () => {
+  if (lazy.built) await preloadParts();
 }, 120_000);
+// A file that imports a part's module inside a test: the tests after it get the parts.
+beforeEach(async () => {
+  if (lazy.built && !preloaded) await preloadParts();
+}, 120_000);
+// The test that imported it ran without them, which no test expects: say so.
+afterEach(() => {
+  if (lazy.built && !preloaded) throw new Error('this test imported a lazy part\'s module (lib/deferred-parts.ts and its kin) inside the test: import it at the top of the file, so the parts are preloaded before the test draws');
+});

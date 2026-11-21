@@ -751,6 +751,13 @@ Since 30.1.2 `focus()` refuses an element hidden by `display`, and jsdom never
 matches `:popover-open`, so its own sheet hides every `[popover]`. `test-setup.ts`
 shows them again; the app mounts a popover only while it is open.
 
+`test-setup.ts` also loads every deferred and idle part before a file's first
+test, as the app has them by a user's first open, but only for a file whose
+imports build a `LazyComponent` (a registry such as `lib/deferred-parts.ts`).
+The other files, about three in four, draw no part and skip it, which was
+about half the CPU time of a small file. A test that imports a registry inside
+its body fails with a message to import it at the top of the file instead.
+
 The UI keeps `typescript` 6 beside `@typescript/native` (TypeScript 7):
 svelte-check refuses `--tsgo` unless both are installed. As of 4.7.7 its
 `bin/ts-version-check.js` throws when the package named `typescript` is major
