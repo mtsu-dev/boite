@@ -43,6 +43,14 @@ const crash = async (body: string, prefix: string[] = [], bound = 0): Promise<Re
       const out = {};
       const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
       const gone = async (pid) => { while (alive(pid)) await Bun.sleep(20); };
+      // SIGSTOP takes effect only once the target is scheduled: until its state reads stopped it may still read its queue.
+      const { readFileSync: readStat } = await import('node:fs');
+      const halt = (pid) => {
+        process.kill(pid, 'SIGSTOP');
+        for (const until = Date.now() + 5000; !/\\) [tT] /.test(readStat('/proc/' + pid + '/stat', 'utf8'));) {
+          if (Date.now() > until) throw new Error('pid ' + pid + ' did not stop');
+        }
+      };
       ${body}
       console.log(JSON.stringify(out));
       process.kill(process.pid, 'SIGKILL');`],
@@ -263,7 +271,7 @@ describe.skipIf(capability !== null)('the Linux launcher', () => {
       out.kept = kept.pid; out.released = released.pid;
       out.guard = tie.guardPid;
       // A guard that reads nothing: its queue fills with drops of a tag no group has.
-      process.kill(out.guard, 'SIGSTOP');
+      halt(out.guard);
       const libc = dlopen('libc.so.6', { send: { args: [T.i32, T.ptr, T.u64, T.i32], returns: T.i64 } }).symbols;
       const junk = new Uint32Array([0xffffffff]);
       while (Number(libc.send(sock, ptr(junk), 4, 0x40 | 0x4000)) >= 0) {}
@@ -410,7 +418,7 @@ describe.skipIf(capability !== null)('the Linux launcher', () => {
       const kept = tie.spawn({ cmd: ['sleep', '82'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
       const released = tie.spawn({ cmd: ['sleep', '83'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
       out.kept = kept.pid; out.released = released.pid; out.guard = tie.guardPid;
-      process.kill(out.guard, 'SIGSTOP');
+      halt(out.guard);
       const libc = dlopen('libc.so.6', { send: { args: [T.i32, T.ptr, T.u64, T.i32], returns: T.i64 } }).symbols;
       const junk = new Uint32Array([0xffffffff]);
       while (Number(libc.send(sock, ptr(junk), 4, 0x40 | 0x4000)) >= 0) {}
@@ -419,6 +427,7 @@ describe.skipIf(capability !== null)('the Linux launcher', () => {
       out.result = tie.release(released.pid) ?? null;
       for (const fd of fill) closeSync(fd);
       out.held = tie.holds(released.pid);
+      out.sameGuard = tie.guardPid === out.guard;
       process.kill(out.guard, 'SIGCONT');
       await Bun.sleep(2600); // past the grace of a guard whose input closed
       out.releasedAlive = alive(released.pid); out.keptAlive = alive(kept.pid);`, ['sh', '-c', 'ulimit -n 256; exec "$@"', 'sh']);
@@ -426,6 +435,7 @@ describe.skipIf(capability !== null)('the Linux launcher', () => {
       expect({ released: out.releasedAlive, kept: out.keptAlive }).toEqual({ released: true, kept: true });
       expect(out.result).toBe(false);
       expect(out.held).toBe(true);
+      expect(out.sameGuard).toBe(true);
       // Still held, by the old guard too: both end with the core.
       await settle(() => !isAlive(out.kept as number) && !isAlive(out.released as number));
       expect([isAlive(out.kept as number), isAlive(out.released as number)]).toEqual([false, false]);
@@ -460,7 +470,7 @@ describe.skipIf(capability !== null)('the Linux launcher', () => {
       const old = tie.guardPid;
       writeFileSync(${JSON.stringify(pids)}, JSON.stringify([first.pid, second.pid, rejected.pid, old]));
       writeFileSync(${JSON.stringify(switchGuard)}, '');
-      process.kill(old, 'SIGSTOP');
+      halt(old);
       fill();
       out.failedDrop = tie.release(rejected.pid);
       out.keptOld = tie.guardPid === old;
@@ -530,7 +540,7 @@ describe.skipIf(capability !== null)('the Linux launcher', () => {
         stoppedGuard = tie.guardPid;
         writeFileSync(cleanup, JSON.stringify([...agents, initial, stoppedGuard]));
         rmSync(${JSON.stringify(shrink)});
-        process.kill(stoppedGuard, 'SIGSTOP');
+        halt(stoppedGuard);
         fill();
       });
       process.kill(initial, 'SIGKILL');
@@ -592,7 +602,7 @@ describe.skipIf(capability !== null)('the Linux launcher', () => {
       const first = tie.spawn({ cmd: ['sleep', '87'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
       const guard = tie.guardPid;
       writeFileSync(${JSON.stringify(pids)}, JSON.stringify([first.pid, guard]));
-      process.kill(guard, 'SIGSTOP');
+      halt(guard);
       const second = tie.spawn({ cmd: ['sleep', '88'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
       out.first = first.pid; out.second = second.pid; out.replaced = tie.guardPid !== guard;`, [], 8000);
     const [first, guard] = JSON.parse(readFileSync(pids, 'utf8')) as number[];
