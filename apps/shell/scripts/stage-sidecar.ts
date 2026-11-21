@@ -81,6 +81,15 @@ function buildLauncher(): string | null {
 }
 const launcher = buildLauncher();
 
+/**
+ * Linux only: `boite-launch`, which `compile.ts` builds beside the compiled
+ * core and which the core looks for beside its own executable before it ties an
+ * agent's group (packages/core/src/platform/linux-launcher.ts). Bundled as a
+ * second `externalBin` (tauri.bundle.linux.conf.json), so it lands in the same
+ * directory as the installed sidecar, mode 755.
+ */
+const groupLauncher = process.platform === 'linux' ? join(coreDist, 'boite-launch') : null;
+
 /** Windows only: the sidecar is the runtime, and the bundle it runs goes in this directory beside it. */
 const RUNTIME_SIDECAR = process.platform === 'win32';
 const BUNDLE_DIR = 'core';
@@ -175,9 +184,9 @@ function stageBundle(targetDir: string): void {
  * The one copy both destinations share: the sidecar under `exeName`,
  * every Worker beside it under its own name, which is the only name the core
  * looks for, and the `boite` shims the core puts on an agent's PATH, with
- * `boite.exe` on Windows.
+ * `boite.exe` on Windows and the group launcher under `launcherName` on Linux.
  */
-export function stageCore(targetDir: string, exeName: string): void {
+export function stageCore(targetDir: string, exeName: string, launcherName = 'boite-launch'): void {
   const exeSource = sidecar;
   const exeBytes = sizeOf(exeSource, `${exeSource} does not exist. Build it first: bun run build:core:exe`);
   const workers = WORKERS.map((name) => {
@@ -214,9 +223,16 @@ export function stageCore(targetDir: string, exeName: string): void {
     copyFileSync(launcher, join(targetDir, 'boite.exe'));
     console.log(`stage-sidecar: ${join(targetDir, 'boite.exe')} (${bytes} bytes)`);
   }
+  if (groupLauncher) {
+    const bytes = sizeOf(groupLauncher, `${groupLauncher} does not exist. Build it first: bun run build:core:exe`);
+    const target = join(targetDir, launcherName);
+    copyFileSync(groupLauncher, target);
+    chmodSync(target, 0o755);
+    console.log(`stage-sidecar: ${target} (${bytes} bytes)`);
+  }
 }
 
-stageCore(binaries, `boite-core-${triple}${suffix}`);
+stageCore(binaries, `boite-core-${triple}${suffix}`, `boite-launch-${triple}`);
 
 // Cargo may use a shared target directory. Snapshot its shell into this
 // checkout so a later build elsewhere cannot replace the executable under test.

@@ -571,6 +571,8 @@ export function ensureIndexes(db: Database): void {
   db.exec("CREATE INDEX IF NOT EXISTS agent_message_reading ON agent_entities (json_extract(data, '$.scope.kind'), json_extract(data, '$.scope.id'), created_at, id) WHERE kind = 'message'");
   db.exec('CREATE INDEX IF NOT EXISTS thread_deletions_by_date ON thread_deletions (deleted_at)');
   db.exec('CREATE INDEX IF NOT EXISTS processes_by_started ON processes (thread_id, started_at DESC)');
+  // The few rows still open, which each startup closes (`closeLiveProcesses`).
+  db.exec('CREATE INDEX IF NOT EXISTS processes_live ON processes (thread_id) WHERE exited_at IS NULL');
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_status ON turns (status)');
   db.exec("CREATE INDEX IF NOT EXISTS turns_active_by_thread ON turns (thread_id) WHERE status IN ('running', 'queued')");
   db.exec('CREATE INDEX IF NOT EXISTS messages_by_turn ON messages (thread_id, turn_id)');

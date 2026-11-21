@@ -428,6 +428,8 @@ export class Core {
     };
     this.accounts = new AccountStore(this);
     this.projects = new ProjectStore(this);
+    // What a previous core left open would read as running forever: its groups ended with it (platform/posix-group-watch.ts, the job on Windows).
+    this.journal.closeLiveProcesses(Date.now());
     this.procs = new ProcRegistry(this.journal, this.bus, undefined, {
       diagnostic: (message, context) => this.logs.warn(message, { source: 'guards', ...context }),
     });

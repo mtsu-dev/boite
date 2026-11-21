@@ -7,7 +7,7 @@ import { RpcErrorCode } from '@boite/contracts';
 import type { ProcessRecord, ThreadSummary } from '@boite/contracts';
 import { cpuRateOfGlobalJob, memoryLimitOfJob } from '../src/platform/windows/jobs.ts';
 import { commandLineOf, consoleHost, startedAs, whenCommandLineReads, type ProcessReads } from '../src/platform/windows/process-reads.ts';
-import { jobPacketAction, MSG_JOB_MEMORY_LIMIT, MSG_NEW_PROCESS } from '../src/platform/windows/jobs-packets.ts';
+import { jobPacketAction, listJobPids, MSG_JOB_MEMORY_LIMIT, MSG_NEW_PROCESS } from '../src/platform/windows/jobs-packets.ts';
 import { resolveMemoryLimits } from '../src/memory-limits.ts';
 import { nativeAgents } from '../src/native-agents.ts';
 import { nativeScopeOf } from '../src/platform/scoped.ts';
@@ -18,6 +18,20 @@ import type { TestCore } from './harness.ts';
 
 const onWindows = process.platform === 'win32';
 const describeWindows = onWindows ? describe : describe.skip;
+
+test('job membership is retried when the first buffer cannot hold all assigned processes', () => {
+  const assigned = 257;
+  const pids = listJobPids({queryJobInfo(_job, _kind, buffer) {
+    const view = new DataView(buffer.buffer);
+    view.setUint32(0, assigned, true);
+    if (buffer.byteLength < 8 + assigned * 8) return false;
+    view.setUint32(4, assigned, true);
+    for (let index = 0; index < assigned; index += 1) view.setBigUint64(8 + index * 8, BigInt(index + 1), true);
+    return true;
+  }}, 1);
+  expect(pids?.size).toBe(assigned);
+  expect(pids?.has(assigned)).toBe(true);
+});
 
 const STILL_ACTIVE = 259;
 /** Git for Windows' MSYS2 bash, the shell Claude Code runs its commands in. */

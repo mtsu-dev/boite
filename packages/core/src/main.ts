@@ -517,6 +517,8 @@ export function main(argv: string[]): void {
       // a rejection anywhere in the chain must not skip unlock() and the exit.
       const deadline = setTimeout(() => {
         try { core.log('error', `shutdown did not finish in ${SHUTDOWN_TIMEOUT_MS} ms, exiting`, { source: 'core', event: 'core.shutdown.timeout', durationMs: SHUTDOWN_TIMEOUT_MS }); } catch { /* The unlock and exit below still run. */ }
+        // SIGKILL to every agent group now: the watcher would end them only after its grace (platform/posix-group-watch.ts).
+        try { core.procs.platform.killTiedGroups?.(); } catch { /* The exit below still runs. */ }
         unlock();
         process.exit(1);
       }, SHUTDOWN_TIMEOUT_MS);

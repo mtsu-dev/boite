@@ -11,7 +11,7 @@ import type { ProcessPlatform } from './platform/types.ts';
 const HANGUP_GRACE_MS = 2_000;
 
 /**
- * Off Windows. Interactive jobs have groups of their own: on Linux the backend
+ * Interactive jobs have groups of their own: on Linux the backend
  * stops the shell's descendants first, before the shell exits and reparents
  * jobs that ignore its hang-up. Otherwise the hang-up a closed terminal sends,
  * which an interactive shell exits on and passes to its jobs where SIGTERM is
@@ -19,9 +19,11 @@ const HANGUP_GRACE_MS = 2_000;
  */
 export function hangUpShell(
   platform: ProcessPlatform, threadId: ThreadId, pid: number,
-  signal: (name: 'SIGHUP' | 'SIGKILL') => void, exited: Promise<unknown>,
+  signal: (name: 'SIGHUP' | 'SIGKILL' | 'SIGTERM') => void, exited: Promise<unknown>,
 ): void {
-  if (currentOs() === 'linux' && platform.terminateProcess(threadId, pid)) return;
+  const os = currentOs();
+  if (os === 'windows') { signal('SIGTERM'); return; }
+  if (os === 'linux' && platform.terminateProcess(threadId, pid)) return;
   signal('SIGHUP');
   const hard = setTimeout(() => {
     try { signal('SIGKILL'); } catch { /* already exited */ }

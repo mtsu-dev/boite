@@ -27,6 +27,31 @@ export const KILL_GRACE_MS = 2000;
 /** How often a stopping group is checked for members during the grace. */
 export const GROUP_POLL_MS = 100;
 
+/** Recheck a captured birth before every signal, even after its parent exited. */
+export function captureSignals<Birth>(tree: Iterable<readonly [number, Birth]>, birthOf: (pid: number) => Birth | null, signal: (pid: number, name: NodeJS.Signals) => void) {
+  const members = [...tree];
+  return (name: NodeJS.Signals | 0): number[] => {
+    const signalled: number[] = [];
+    for (const [pid, expected] of members) {
+      if (birthOf(pid) !== expected) continue;
+      try {
+        if (name !== 0) signal(pid, name);
+        signalled.push(pid);
+      } catch { /* Already gone, or not ours to signal. */ }
+    }
+    return signalled;
+  };
+}
+export async function stopCapturedTree(send: ReturnType<typeof captureSignals>): Promise<void> {
+  if (send('SIGTERM').length === 0) return;
+  const deadline = performance.now() + KILL_GRACE_MS;
+  while (send(0).length > 0) {
+    const left = deadline - performance.now();
+    if (left <= 0) { send('SIGKILL'); return; }
+    await Bun.sleep(Math.min(GROUP_POLL_MS, left));
+  }
+}
+
 export interface Signaller {
   /** `process.kill`: a negative pid names a process group, signal 0 only probes. Throws like it. */
   kill(pid: number, signal: NodeJS.Signals | 0): void;
@@ -104,11 +129,4 @@ export function stopGroup(
     };
     poll();
   });
-}
-
-/** A Bun child's kill: its whole group off Windows, the process itself on Windows. */
-export function killBunChild(proc: Bun.Subprocess): Promise<void> | undefined {
-  if (process.platform !== 'win32') return stopGroup(proc.pid, () => proc.exitCode === null && proc.signalCode === null);
-  if (proc.exitCode === null && proc.signalCode === null) proc.kill();
-  return undefined;
 }

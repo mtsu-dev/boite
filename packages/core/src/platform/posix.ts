@@ -8,6 +8,14 @@ import { androidServerUpdates } from './android-server-update.ts';
 import { findTailscaleCli } from './tailscale.ts';
 import { LinuxExecutionBoundary } from './linux-protected.ts';
 import { linuxGpus, linuxOsLabel, linuxVolumes, macosOsLabel, macosVolumes } from './posix-machine.ts';
+import { GroupWatch } from './posix-group-watch.ts';
+import { NativeTie } from './linux-launcher.ts';
+import { stopCapturedTree, stopGroup } from './posix-kill.ts';
+
+/** One watcher per core process, whatever the number of registries in it. */
+const groups = new GroupWatch();
+/** On Linux, the launcher's guard ties `spawn` and `spawnPiped` groups before the agent runs; the watcher keeps the rest. */
+const native = new NativeTie();
 
 /**
  * Why this machine cannot capture windows, or null on an X11 session. Pure,
@@ -32,7 +40,7 @@ export function windowCaptureRefusal(os: 'linux' | 'macos', env: Record<string, 
  */
 export function createPosixPlatform(
   os: 'linux' | 'macos',
-  load: Pick<LinuxLoad, 'add' | 'remove' | 'sample'> & Partial<Pick<LinuxLoad, 'killTree' | 'watchResources' | 'finishResources' | 'closeResources' | 'forget'>> | null = os === 'linux' ? new LinuxLoad(availableParallelism()) : null,
+  load: Pick<LinuxLoad, 'add' | 'remove' | 'sample'> & Partial<Pick<LinuxLoad, 'killTree' | 'captureTree' | 'watchResources' | 'finishResources' | 'closeResources' | 'forget'>> | null = os === 'linux' ? new LinuxLoad(availableParallelism()) : null,
 ): ProcessPlatform {
   const cgroups = os === 'linux' ? new CgroupMemoryReader() : null;
   return {
@@ -52,8 +60,14 @@ export function createPosixPlatform(
     capability: () => ({ os, mode: 'poll', note: 'direct children only; Job Objects are Windows-only' }),
     applySettings() {},
     attach: () => false,
+    detachedChildren: true,
+    stopChild: (pid, running) => stopGroup(pid, running),
     terminate: () => false,
     terminateProcess: (threadId, pid, startedAt) => load?.killTree?.(pid, threadId, startedAt) ?? false,
+    stopDescendants(threadId, pid) {
+      const send = load?.captureTree?.(pid, threadId);
+      return send ? stopCapturedTree(send) : undefined;
+    },
     terminateUnassigned() {},
     sample: (threadId) => load?.sample(threadId) ?? null,
     watchResources: (active) => load?.watchResources?.(active),
@@ -72,6 +86,16 @@ export function createPosixPlatform(
       load?.remove(threadId, pid);
       cgroups?.forget(pid);
     },
+    readyGroups: () => groups.ready(),
+    ...(os === 'linux' ? { readyLaunch: () => native.ready(), spawnTied: (options: Parameters<NativeTie['spawn']>[0]) => native.spawn(options) } : {}),
+    tieGroup: (pid) => { if (!native.claim(pid)) groups.add(pid); },
+    untieGroup: (pid, leaderExited) => {
+      if (native.holds(pid)) { if (leaderExited) { native.leaderExited(pid); return true; } return native.release(pid); }
+      if (leaderExited) groups.leaderExited(pid); else groups.remove(pid);
+      return true;
+    },
+    ...(os === 'linux' ? { onLaunchTrouble: (listener: (message: string) => void) => native.onTrouble(listener) } : {}),
+    killTiedGroups: () => { groups.killAll(); native.killAll(); },
     warm() {},
     forget(threadId) { load?.forget?.(threadId); },
     guardStatus: () => ({ running: false, hook: null, failure: null, audio: 'off', mutedPids: [] }),
