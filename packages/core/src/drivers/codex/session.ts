@@ -60,10 +60,12 @@ const STOP_GRACE_MS = 3_000;
 const SQLITE_INIT_ATTEMPTS = 3;
 const SQLITE_INIT_BACKOFF_MS = 500;
 const SQLITE_INIT_CLOSE_MS = 2_000;
-
-// ---------------------------------------------------------------------------
-// The session: one agent process per thread
-// ---------------------------------------------------------------------------
+/**
+ * How long the writer waits for `close` after `exit`. A tool the agent started
+ * can inherit its pipes and outlive it, and `close` waits for that tool; the
+ * rollout writer ended with the app-server process.
+ */
+const WRITER_CLOSE_GRACE_MS = 2_000;
 
 /**
  * One app-server per thread, initialized and opened once. Warm retention reuses
@@ -478,6 +480,7 @@ export class CodexSession {
       child.once('exit', (code) => {
         if (this.#child === child) this.#exitCode = code;
         resolve(code);
+        setTimeout(closed, WRITER_CLOSE_GRACE_MS).unref?.();
       });
       // `close` and not `exit`: stderr is flushed by then, so the sentence the
       // turn fails with carries the line the agent printed on its way out.
@@ -534,10 +537,7 @@ export class CodexSession {
     return exitSentence('codex agent', code, this.#lastStderr, diagnostic);
   }
 
-  /**
-   * End the accepted turn and release the child through the registry. Keep its
-   * writer discoverable until close, even when a replacement has been acquired.
-   */
+  /** Keep the writer discoverable until close or the exit grace deadline, even across replacement. */
   #drop(): void {
     if (this.#ended) return;
     this.#ended = true;

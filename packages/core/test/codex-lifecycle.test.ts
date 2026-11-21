@@ -10,7 +10,7 @@ const drain = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
 
 function fixture(warmProcessMinutes = 0) {
   const driver = createCodexDriver();
-  const children: { child: SpawnedChild; closing: boolean; close(): void }[] = [];
+  const children: { child: SpawnedChild; closing: boolean; close(): void; exit(): void }[] = [];
   const prompts: string[] = [];
   const opened: string[] = [];
   let owner: SpawnedChild | null = null;
@@ -47,9 +47,12 @@ function fixture(warmProcessMinutes = 0) {
         kill() { record.closing = true; return true; },
       }) as unknown as SpawnedChild;
       const record = { child, closing: false, close() {
+        record.exit();
+        child.emit('close', 0, null);
+      }, exit() {
+        // The process is gone, so its writer is too; `close` waits on every inherited pipe.
         if (owner === child) owner = null;
         child.emit('exit', 0, null);
-        child.emit('close', 0, null);
       } };
       children.push(record);
       return child;
@@ -116,4 +119,19 @@ describe('Codex writer lifecycle', () => {
       expect(f.prompts).toEqual(['first', 'retained event']);
     } finally { f.cleanup(); }
   });
+
+  test('a process that exits while a descendant keeps its pipes open still releases the next wake', async () => {
+    const f = fixture();
+    try {
+      const first = await f.driver.startTurn(f.ctx).done;
+      const next = f.driver.startTurn({ ...f.ctx, sessionId: first.sessionId, prompt: 'after exit' });
+      await drain();
+      expect(f.children).toHaveLength(1);
+      // A tool the agent started inherited stdout: `exit` arrives, `close` never does.
+      f.children[0]!.exit();
+      expect(await next.done).toMatchObject({ status: 'done', sessionId: first.sessionId });
+      expect(f.opened).toEqual(['thread/start', 'thread/resume']);
+      expect(f.prompts).toEqual(['first', 'after exit']);
+    } finally { f.cleanup(); }
+  }, 10_000);
 });
