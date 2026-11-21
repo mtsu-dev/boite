@@ -259,10 +259,18 @@ export async function cliHelp([command, action]: string[]): Promise<string> {
   return (entries.length ? entries : usageEntries(name)).join('\n\n') || 'usage: boite <command> [args] [--json]';
 }
 
-export function cliUsageError(io: CliIo, error: Usage, command = error.command): 2 {
+/** The one synopsis for a usage error: its action's, else the command's own form without an action (`ask <question>`,
+ * `where`). A command made only of actions, asked with none or an unknown one, gets its help, never another action's line. */
+function usageSynopsis(name: string, action?: string): string {
+  const synopsis = (entry: string) => entry.split('\n')[0]!.split(/ {2,}/)[0]!;
+  const named = action === undefined ? [] : usageEntries(name, commandName(action)).map(synopsis);
+  const bare = usageEntries(name).map(synopsis).filter(line => !/^\S+ \S+ [^\s<[-]/.test(line));
+  return named[0] ?? bare[0] ?? `boite ${name} <action> [args] [--json]`;
+}
+
+export function cliUsageError(io: CliIo, error: Usage, command = error.command, action = error.action): 2 {
   const name = commandName(command);
-  const entry = name && BUILTIN_COMMANDS.has(name) ? usageEntries(name)[0]?.split('\n')[0]?.split(/ {2,}/)[0] : undefined;
-  const hint = entry ? `usage: ${entry}\nSee boite ${name} help.\n` : 'usage: boite <command> [args] [--json]\nSee boite help.\n';
+  const hint = name && BUILTIN_COMMANDS.has(name) ? `usage: ${usageSynopsis(name, action)}\nSee boite ${name} help.\n` : 'usage: boite <command> [args] [--json]\nSee boite help.\n';
   const message = error.message.split('\n')[0];
   io.err((message ? message + '\n' : '') + (error instanceof ShortUsage ? '' : hint));
   return 2;

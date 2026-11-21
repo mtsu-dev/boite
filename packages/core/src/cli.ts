@@ -21,7 +21,7 @@ import type { AgentTask, AgentTaskChange, GitChange, PanelSurface, RpcParams, Se
 import type { CoreClient } from './client.ts';
 import { CORE_VERSION } from './version.ts';
 import { resolveDataDir } from './paths.ts';
-import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
+import { canonicalCommand, contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
 import { PLUGIN_COMMAND_TIMEOUT_MS, isControlCommand, isPluginCommandWord, ownerWithoutThread } from './cli-commands.ts';
 import { cliHelp, cliUsageError, DEFAULT_HELP } from './cli-help.ts';
 import type { Caller } from './control-cli.ts';
@@ -618,7 +618,10 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
     }
     return 0;
   } catch (error) {
-    if (error instanceof Usage) return cliUsageError(io, error, parsed.positional[0]);
+    if (error instanceof Usage) {
+      const [command, action] = error.command === undefined ? canonicalCommand(parsed.positional) : [error.command, error.action];
+      return cliUsageError(io, error, command, action);
+    }
     io.err(`error: ${(error as Error).message}\n`);
     return 1;
   } finally {

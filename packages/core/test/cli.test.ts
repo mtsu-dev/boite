@@ -419,6 +419,28 @@ describe('usage', () => {
     }
   });
 
+  test('a usage error names the synopsis of its own action, or only the command help', async () => {
+    const offline = { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' };
+    const cases: [string[], Record<string, string>, string, string][] = [
+      // Refused while parsing, so offline.
+      [['delegate', 'result', '--limit', '20000', '--core', 'http://127.0.0.1:1'], offline, '--limit needs an integer from 1 to 16000', 'boite delegate result <child> <turn> [offset] [--limit <characters>]'],
+      [['thread', 'restore', '--bad', '--core', 'http://127.0.0.1:1'], offline, 'unknown flag --bad', 'boite thread restore <id>'],
+      // Refused by the command once connected.
+      [['settings', 'open', 'accounts', 'extra', '--why', 'a login'], {}, 'settings open takes one page, with an optional #card', 'boite settings open <page>[#<card>] --why <text>'],
+    ];
+    for (const [args, env, message, synopsis] of cases) {
+      const result = await boite(args, env);
+      const command = synopsis.split(' ')[1];
+      expect([args.join(' '), result.code, result.err]).toEqual([args.join(' '), 2, `${message}\nusage: ${synopsis}\nSee boite ${command} help.\n`]);
+    }
+    // No action, or one the manual does not know: the command's help, never another action's synopsis.
+    for (const args of [['delegate', '--limit', '20000'], ['thread', 'frob', '--bad']]) {
+      const result = await boite([...args, '--core', 'http://127.0.0.1:1'], offline);
+      expect(result.code).toBe(2);
+      expect(result.err).toEndWith(`\nusage: boite ${args[0]} <action> [args] [--json]\nSee boite ${args[0]} help.\n`);
+    }
+  });
+
   test('desktop subcommand help needs no connection and never launches a program', async () => {
     for (const action of ['run', 'snapshot']) {
       const result = await boite(['--json', 'desktop', action, '--help'], { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' });

@@ -1048,7 +1048,12 @@ with that path. It prints `picture: <name> (<id>) now wears <avatar>`, and any
 open card about that mochi's avatar settles.
 
 Exit codes: 0, 1 on a refusal or a failure (`error: ...` on stderr), 2 on a
-usage error (the usage text on stderr).
+usage error: on stderr the message, then the synopsis of the action asked for
+(`boite delegate result --limit 20000` names `delegate result`), else the
+command's form without an action, and `See boite <command> help.`. A command
+made only of actions, asked with none or an unknown one, points to its help
+without borrowing another action's line. No core is needed when parsing
+refuses the words.
 
 [Agent coordination](coordination.md) is on by default for ordinary
 conversations and mochis, across projects and linked machines. The owner can turn it off

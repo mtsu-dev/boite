@@ -219,8 +219,12 @@ export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): P
   return {
     'composer.list': async () => copy([...state.records].filter(([key]) => state.visible(key, ctx)).map(([, row]) => row)),
     'composer.enqueue': async params => {
+      // The core's type checks first: a pattern test would read undefined or 12345678 as a request id.
+      if (typeof params?.threadId !== 'string' || typeof params.prompt !== 'string' || !params.prompt.trim() || typeof params.clientRequestId !== 'string') {
+        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'composer.enqueue: expected threadId, a non-empty prompt and clientRequestId' });
+      }
       const { threadId, prompt, clientRequestId: requestId } = params;
-      if (!prompt?.trim() || !/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw refusal('composer.enqueue: expected a non-empty prompt and an 8 to 128 character request id');
+      if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw refusal('clientRequestId must contain 8 to 128 URL-safe characters');
       const thread = ctx.thread(threadId);
       const id = `cli_${threadId}:${requestId}`;
       const previous = ctx.turnRequests.get(`${threadId}:${requestId}`);
