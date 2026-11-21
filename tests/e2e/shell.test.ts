@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { release, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
@@ -660,6 +660,15 @@ shellTest('the native file opener launches the original executable and rejects p
   writeFileSync(outside, 'must never open');
   const error = await page.evaluate<string>(`window.__TAURI_INTERNALS__.invoke('open_local_file', ${JSON.stringify({ directory: projectDir, path: outside })}).then(() => 'allowed', error => String(error))`);
   expect(error).toContain('expected a file inside');
+  // The chat-link command is registered and allowed in the main window, accepts the real local
+  // path as local, and refuses the same program and the outside file without running anything.
+  // A document it accepts would start the system viewer, whose PID this test cannot capture.
+  rmSync(marker);
+  const chatLink = (path: string): Promise<string> => page!.evaluate<string>(`window.__TAURI_INTERNALS__.invoke('open_chat_file', ${JSON.stringify({ directory: projectDir, path })}).then(() => 'opened', error => String(error))`);
+  expect(await chatLink('game fixture.exe')).toContain('expected a document');
+  expect(await chatLink(outside)).toContain('expected a file or folder inside');
+  await Bun.sleep(2_000);
+  expect(existsSync(marker)).toBe(false);
 }, TIMEOUT);
 
 shellTest(
