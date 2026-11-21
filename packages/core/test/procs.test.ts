@@ -6,6 +6,7 @@ import { Bus } from '../src/bus.ts';
 import { ProcRegistry } from '../src/procs.ts';
 import { createPosixPlatform } from '../src/platform/posix.ts';
 import type { ProcessPlatform } from '../src/platform/types.ts';
+import { NativeTie } from '../src/platform/linux-launcher.ts';
 import { Journal } from '../src/journal.ts';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -70,6 +71,35 @@ describe('procs', () => {
       await registry.close();
     }
   });
+  test('disown keeps the pids it could not release and can be retried', async () => {
+    const base = createPosixPlatform('linux', null);
+    let refused: number | undefined;
+    const removed: number[] = [];
+    const platform: ProcessPlatform = {
+      ...base,
+      untieGroup: (pid, exited) => (!exited && pid === refused) ? false : base.untieGroup!(pid, exited),
+      pidRemoved: (_threadId, pid) => { removed.push(pid); },
+    };
+    const registry = new ProcRegistry(harness.core.journal, new Bus(), platform);
+    const thread = 'partial-disown';
+    const children = [0, 1].map(() => registry.spawn(thread, process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { agentRoot: false }));
+    const kept = children[0]!.record.pid;
+    const released = children[1]!.record.pid;
+    try {
+      refused = kept;
+      expect(registry.disown(thread)).toEqual([kept]);
+      expect(removed).toEqual([released]);
+      expect(registry.liveOf(thread).map(record => record.pid)).toEqual([kept]);
+      refused = undefined;
+      expect(registry.disown(thread)).toEqual([]);
+      expect(removed).toEqual([released, kept]);
+      expect(registry.liveOf(thread)).toEqual([]);
+    } finally {
+      for (const child of children) child.proc.kill('SIGKILL');
+      await Promise.all(children.map(child => child.exited));
+      await registry.close();
+    }
+  });
   test('a managed stop hands its root to the tree backend only while that root has not exited', async () => {
     // On Windows the backend is taskkill /T /PID: a root that exited may have given its pid to a stranger.
     const handed: number[] = [];
@@ -109,6 +139,28 @@ describe('procs', () => {
       expect(fallback).not.toHaveBeenCalled();
     } finally { await registry.close(); }
   });
+  test('a managed stop hands the subtree stop the recorded lineage through an exited intermediate, never a sibling', async () => {
+    let sink!: Parameters<ProcessPlatform['retain']>[0];
+    const lineages: Array<{ pid: number; root: string | null; descendants: string[] }> = [];
+    const registry = new ProcRegistry(harness.core.journal, new Bus(), {
+      ...createPosixPlatform('linux', null), attach: () => true,
+      retain: (events) => { sink = events; },
+      terminateSubtree: (_id, pid, lineage) => { lineages.push({ pid, root: lineage?.root ?? null, descendants: [...lineage?.descendants ?? []].sort() }); },
+    });
+    try {
+      const threadId = 'recorded-lineage';
+      const child = registry.spawn(threadId, process.execPath, ['-e', 'setTimeout(() => {}, 30000)']);
+      const root = child.record.pid;
+      const at = Date.now() + 1000;
+      const exe = 'C:\\tool.exe';
+      sink.started(threadId, 200, { exe, commandLine: null, parentPid: root, startedAt: at, incarnation: '20' });
+      sink.started(threadId, 300, { exe, commandLine: null, parentPid: 200, startedAt: at + 1, incarnation: '30' });
+      sink.started(threadId, 400, { exe, commandLine: null, parentPid: 1, startedAt: at + 2, incarnation: '40' });
+      sink.exited(threadId, 200, { exitCode: 0, cpuMs: null, peakMemoryBytes: null, ioBytes: null, startedAt: at, incarnation: '20' });
+      await child.stop();
+      expect(lineages).toEqual([{ pid: root, root: null, descendants: ['200:20', '300:30'] }]);
+    } finally { await registry.close(); }
+  });
   test.skipIf(process.platform !== 'win32')('a managed stop ends only its native job subtree without taskkill', async () => {
     const registry = harness.core.procs;
     const fallback = spyOn(registry.platform, 'terminateUnassigned');
@@ -126,6 +178,34 @@ describe('procs', () => {
       const { value } = await reader.read();
       reader.releaseLock();
       const tool = Number(new TextDecoder().decode(value).trim());
+      expect(tool).toBeGreaterThan(0);
+      expect(isRunning(tool)).toBe(true);
+      await root.stop();
+      await waitFor(() => !isRunning(tool), 2000);
+      expect(sibling.proc.exitCode).toBeNull();
+      expect(fallback).not.toHaveBeenCalled();
+    } finally {
+      fallback.mockRestore();
+      await registry.stopAndWait(threadId);
+    }
+  }, 15_000);
+  test.skipIf(process.platform !== 'win32')('a managed stop ends a child the root started at once, before its job assignment', async () => {
+    const registry = harness.core.procs;
+    const fallback = spyOn(registry.platform, 'terminateUnassigned');
+    const threadId = 'native-early-child-stop';
+    const sibling = registry.spawn(threadId, process.execPath, ['-e', 'await Bun.sleep(30000)']);
+    // No stdin gate: the child can start before the registry assigns the root to the job.
+    const root = registry.spawn(threadId, process.execPath, ['-e', `
+      const tool = Bun.spawn([process.execPath, '-e', 'await Bun.sleep(30000)'], { stdout: 'ignore', stderr: 'ignore', windowsHide: true });
+      console.log(tool.pid);
+      await tool.exited;
+    `]);
+    let tool = 0;
+    try {
+      const reader = root.proc.stdout.getReader();
+      const { value } = await reader.read();
+      reader.releaseLock();
+      tool = Number(new TextDecoder().decode(value).trim());
       expect(tool).toBeGreaterThan(0);
       expect(isRunning(tool)).toBe(true);
       await root.stop();
@@ -270,6 +350,35 @@ describe('procs', () => {
     }
   }, 20000);
 
+  test.skipIf(process.platform !== 'linux' || new NativeTie().ready() !== null)('on Linux a core that dies before it ties a new spawn\'s group still takes that group with it', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'boite-crash-'));
+    const src = join(import.meta.dir, '..', 'src');
+    const pidFile = join(dataDir, 'pid');
+    const crashed = Bun.spawn({
+      cmd: [process.execPath, '-e', `
+        const { writeFileSync } = await import('node:fs');
+        const { Journal } = await import(${JSON.stringify(join(src, 'journal.ts'))});
+        const { Bus } = await import(${JSON.stringify(join(src, 'bus.ts'))});
+        const { ProcRegistry } = await import(${JSON.stringify(join(src, 'procs.ts'))});
+        const { registryPlatform } = await import(${JSON.stringify(join(src, 'platform', 'index.ts'))});
+        // Bun.spawn returned and the registry has the pid, but the core dies before it ties the group.
+        const platform = { ...registryPlatform(), tieGroup: (pid) => { writeFileSync(${JSON.stringify(pidFile)}, String(pid)); process.kill(process.pid, 'SIGKILL'); } };
+        const procs = new ProcRegistry(new Journal(${JSON.stringify(join(dataDir, 'journal.db'))}), new Bus(), platform);
+        procs.spawn('crashed', 'sleep', ['60']);`],
+      stdout: 'ignore', stderr: 'inherit',
+    });
+    await crashed.exited;
+    expect(crashed.signalCode).toBe('SIGKILL');
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    try {
+      expect(pid).toBeGreaterThan(0);
+      await waitFor(() => !isAlive(pid), 5000);
+    } finally {
+      try { process.kill(pid, 'SIGKILL'); } catch { /* gone, as it should be */ }
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 20000);
+
   test.skipIf(process.platform === 'win32')('off Windows a core that dies while it registers a spawn still takes that group with it', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'boite-crash-'));
     const src = join(import.meta.dir, '..', 'src');
@@ -335,6 +444,34 @@ describe('procs', () => {
       await waitFor(() => !isAlive(tool), 500);
     } finally {
       if (isAlive(tool)) process.kill(tool, 'SIGKILL');
+    }
+  });
+
+  test.skipIf(process.platform !== 'linux')('a thread stop leaves a descendant registered as another root alive, in its own session', async () => {
+    const threadId = 'posix-parent-root';
+    const otherId = 'posix-separate-root';
+    const root = harness.core.procs.spawn(threadId, 'sh', ['-c', 'setsid sh -c \'echo $$; exec sleep 30\' & wait']);
+    const reader = root.proc.stdout.getReader();
+    const { value } = await reader.read();
+    reader.releaseLock();
+    const other = Number(new TextDecoder().decode(value).trim());
+    expect(other).toBeGreaterThan(0);
+    let exited!: (code: number | null) => void;
+    const adopted = harness.core.procs.adopt(otherId, other, 'sleep', ['30'], {
+      running: () => isAlive(other),
+      kill: () => { if (isAlive(other)) process.kill(other, 'SIGKILL'); return undefined; },
+      exited: new Promise<number | null>(resolve => { exited = resolve; }),
+    });
+    try {
+      expect(isAlive(other)).toBe(true);
+      await harness.core.procs.stopAndWait(threadId);
+      expect(root.proc.exitCode ?? root.proc.signalCode).not.toBeNull();
+      expect(isAlive(other)).toBe(true);
+    } finally {
+      if (isAlive(other)) process.kill(other, 'SIGKILL');
+      await waitFor(() => !isAlive(other), 5000);
+      exited(null);
+      await adopted.exited;
     }
   });
 

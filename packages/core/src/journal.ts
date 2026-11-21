@@ -790,12 +790,8 @@ export class Journal {
   /** The exit of a process whose start wrote its row: the exit columns only. */
   finishProcess(record: ProcessRecord): void { this.processes.finish(record); }
 
-  /**
-   * At startup, before the registry spawns or adopts anything: the rows a
-   * previous core left open, a process alive when it stopped or died. Its
-   * exit was never seen, so no exit code; a process the keeper still holds
-   * is written live again when it is adopted. Returns the rows closed.
-   */
+  /** At startup, before any spawn or adoption: closes, with no exit code, the rows a previous core
+   * left open; a process the keeper still holds is written live again when adopted. Returns the count. */
   closeLiveProcesses(at: number): number { return this.processes.closeLive(at); }
 
   /** Keeps a thread's newest rows, its live rows and the rows its agent cards read. */

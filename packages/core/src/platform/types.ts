@@ -152,6 +152,16 @@ export interface HeldFileLock {
 /** Locks `file`, created if missing, or answers null while another holder has it, one in this process included. */
 export type FileLocker = (file: string) => HeldFileLock | null;
 
+/**
+ * What the registry recorded under a root: the root's incarnation, and the
+ * `pid:incarnation` of each process whose captured parent chain reaches it,
+ * through intermediates that may have exited since.
+ */
+export interface SubtreeLineage {
+  root: string | null;
+  descendants: ReadonlySet<string>;
+}
+
 /** OS services used by the shared process registry. No native imports here. */
 export interface ProcessPlatform {
   /** Model tool execution only. Trusted account/control processes never gain authority from this descriptor. */
@@ -203,7 +213,7 @@ export interface ProcessPlatform {
   /** A held Windows handle, or a matching registered/sampled POSIX birth. */
   terminateProcess(threadId: string, pid: number, startedAt?: number | null): boolean;
   /** Stop this assigned root and its live descendants using handles in the same job. */
-  terminateSubtree?(threadId: string, pid: number): void;
+  terminateSubtree?(threadId: string, pid: number, lineage?: SubtreeLineage): void;
   /** Stop descendants that may have left a POSIX process group, while their root can still identify them. */
   stopDescendants?(threadId: string, pid: number): Promise<void> | undefined;
   /**
@@ -247,11 +257,21 @@ export interface ProcessPlatform {
    * registry spawned `pid` as the leader of a process group of its own, which
    * then ends with the core, even a core that dies without stopping it.
    * `untieGroup` after the leader's exit (`leaderExited`: the group stays tied
-   * until it is empty) or when the keeper takes it over.
+   * until it is empty) or when the keeper takes it over; false when the group
+   * could not be let go of and still ends with the core.
    */
   readyGroups?(): string | null;
   tieGroup?(pid: number): void;
-  untieGroup?(pid: number, leaderExited: boolean): void;
+  untieGroup?(pid: number, leaderExited: boolean): boolean;
+  /**
+   * Linux: why `spawnTied` cannot tie groups before the agent runs, or null
+   * (linux-launcher.ts). `spawnTied` is then `Bun.spawn` through the launcher,
+   * and null when it cannot, for a plain `Bun.spawn` that `tieGroup` ties after.
+   */
+  readyLaunch?(): string | null;
+  /** Each time agent groups stay held by the core alone or cannot be let go of, why; unsubscribes. */
+  onLaunchTrouble?(listener: (message: string) => void): () => void;
+  spawnTied?(options: { cmd: string[]; cwd?: string; env: Record<string, string | undefined>; stdio: Array<'ignore' | 'pipe' | 'inherit' | number> }): import('bun').Subprocess | null;
   /** SIGKILL to every tied group at once, for a shutdown out of time. */
   killTiedGroups?(): void;
   /** A turn is starting: have the process drain and the protections ready before its first process. */

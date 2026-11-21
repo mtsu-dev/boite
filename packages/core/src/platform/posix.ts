@@ -10,10 +10,13 @@ import { LinuxExecutionBoundary } from './linux-protected.ts';
 import { linuxSecretPipeRecipient } from './linux-secret-pipe.ts';
 import { linuxGpus, linuxOsLabel, linuxVolumes, macosOsLabel, macosVolumes } from './posix-machine.ts';
 import { GroupWatch } from './posix-group-watch.ts';
+import { NativeTie } from './linux-launcher.ts';
 import { stopCapturedTree, stopGroup } from './posix-kill.ts';
 
 /** One watcher per core process, whatever the number of registries in it. */
 const groups = new GroupWatch();
+/** On Linux, the launcher's guard ties `spawn` and `spawnPiped` groups before the agent runs; the watcher keeps the rest. */
+const native = new NativeTie();
 
 /**
  * Why this machine cannot capture windows, or null on an X11 session. Pure,
@@ -85,9 +88,15 @@ export function createPosixPlatform(
       cgroups?.forget(pid);
     },
     readyGroups: () => groups.ready(),
-    tieGroup: (pid) => groups.add(pid),
-    untieGroup: (pid, leaderExited) => leaderExited ? groups.leaderExited(pid) : groups.remove(pid),
-    killTiedGroups: () => groups.killAll(),
+    ...(os === 'linux' ? { readyLaunch: () => native.ready(), spawnTied: (options: Parameters<NativeTie['spawn']>[0]) => native.spawn(options) } : {}),
+    tieGroup: (pid) => { if (!native.claim(pid)) groups.add(pid); },
+    untieGroup: (pid, leaderExited) => {
+      if (native.holds(pid)) { if (leaderExited) { native.leaderExited(pid); return true; } return native.release(pid); }
+      if (leaderExited) groups.leaderExited(pid); else groups.remove(pid);
+      return true;
+    },
+    ...(os === 'linux' ? { onLaunchTrouble: (listener: (message: string) => void) => native.onTrouble(listener) } : {}),
+    killTiedGroups: () => { groups.killAll(); native.killAll(); },
     warm() {},
     forget(threadId) { load?.forget?.(threadId); },
     guardStatus: () => ({ running: false, hook: null, failure: null, audio: 'off', mutedPids: [] }),

@@ -8,7 +8,7 @@
  * normal priority, with normal priority during bounded agent initialization.
  */
 import { cpus, totalmem } from 'node:os';
-import { dlopen, FFIType, ptr } from 'bun:ffi';
+import { ptr } from 'bun:ffi';
 import type { Pointer } from 'bun:ffi';
 import { KILL_EXIT_CODE, type TraceCapability } from '@boite/contracts';
 import type { JobsWorkerMessage, JobsWorkerStart } from './jobs-worker.ts';
@@ -18,13 +18,15 @@ import { StartupPriority } from './startup-priority.ts';
 import { processEventDiagnostic } from '../../process-event-diagnostics.ts';
 import { UNNAMED_PROCESS } from '../../process-identity.ts';
 import { listJobPids } from './jobs-packets.ts';
+import { type Kernel32, loadKernel32, loadNtdll, type Ntdll } from './jobs-ffi.ts';
 import { killJobSubtree } from './tree-kill.ts';
 import { cpuPercentForInterval } from '../cpu.ts';
 import { applyCpuCap, applyMemoryLimit, cpuRateOfJob, memoryLimitOfJob as readMemoryLimit,
   OFF_TOTAL_USER_TIME, OFF_TOTAL_KERNEL_TIME, OFF_ACTIVE_PROCESSES, ACCOUNTING_SIZE } from './job-limits.ts';
 import { commandLineOf, consoleHost, cpuMsOf, createdAtOfPid, creationIdentityOf, exitCodeOf, exitStatusOf, imageNameOf,
   ioBytesOf, parentPidOf, peakMemoryOf, startedAs, whenCommandLineReads, workingSetOf } from './process-reads.ts';
-import type { NativeProcessExit, ProcessSample, ProcessEventSink, ProcessLimits } from '../types.ts';
+
+import type { NativeProcessExit, ProcessSample, ProcessEventSink, ProcessLimits, SubtreeLineage } from '../types.ts';
 
 // -- Win32 constants --------------------------------------------------------
 
@@ -59,49 +61,6 @@ const INSPECT_ACCESS = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_TER
 const EVENTS_NOTE =
   'every process a thread launches, direct or not, is in its Job Object; exact start and exit events';
 
-function loadKernel32() {
-  return dlopen('kernel32.dll', {
-    CreateJobObjectW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
-    SetInformationJobObject: { args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
-    QueryInformationJobObject: {
-      args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32, FFIType.ptr],
-      returns: FFIType.i32,
-    },
-    AssignProcessToJobObject: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    IsProcessInJob: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    TerminateJobObject: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
-    TerminateProcess: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
-    CreateIoCompletionPort: { args: [FFIType.u64, FFIType.ptr, FFIType.u64, FFIType.u32], returns: FFIType.ptr },
-    PostQueuedCompletionStatus: { args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
-    OpenProcess: { args: [FFIType.u32, FFIType.i32, FFIType.u32], returns: FFIType.ptr },
-    CloseHandle: { args: [FFIType.ptr], returns: FFIType.i32 },
-    GetLastError: { args: [], returns: FFIType.u32 },
-    QueryFullProcessImageNameW: { args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    GetExitCodeProcess: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    GetProcessTimes: {
-      args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
-      returns: FFIType.i32,
-    },
-    K32GetProcessMemoryInfo: { args: [FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
-    GetProcessIoCounters: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    ReadProcessMemory: {
-      args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.u64, FFIType.ptr],
-      returns: FFIType.i32,
-    },
-  });
-}
-
-function loadNtdll() {
-  return dlopen('ntdll.dll', {
-    NtQueryInformationProcess: {
-      args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32, FFIType.ptr],
-      returns: FFIType.i32,
-    },
-  });
-}
-
-type Kernel32 = ReturnType<typeof loadKernel32>['symbols'];
-type Ntdll = ReturnType<typeof loadNtdll>['symbols'];
 
 /** `bun:ffi` brands a pointer; handles travel as plain numbers everywhere else here. */
 function asPointer(handle: number): Pointer {
@@ -136,6 +95,13 @@ function nativeApi(k32: Kernel32, nt: Ntdll | null) {
     /** Key 0 on the port: the drain's signal to stop. Thread job keys start at 2. */
     wakeToStop: (port: number): boolean => k32.PostQueuedCompletionStatus(asPointer(port), 0, 0n, null) !== 0,
     openProcess: (access: number, pid: number): number => asHandle(k32.OpenProcess(access, 0, pid)),
+    /** TH32CS_SNAPPROCESS; 0 for INVALID_HANDLE_VALUE. Discovery hints only (process-snapshot.ts). */
+    snapshot: (): number => {
+      const handle = BigInt(k32.CreateToolhelp32Snapshot(0x2, 0));
+      return handle === INVALID_HANDLE_VALUE || handle === 0n ? 0 : Number(handle);
+    },
+    firstProcess: (snapshot: number, entry: Uint8Array): boolean => k32.Process32FirstW(BigInt(snapshot), ptr(entry)) !== 0,
+    nextProcess: (snapshot: number, entry: Uint8Array): boolean => k32.Process32NextW(BigInt(snapshot), ptr(entry)) !== 0,
     close: (handle: number): void => {
       k32.CloseHandle(asPointer(handle));
     },
@@ -383,9 +349,13 @@ export function terminateJobProcess(threadId: string, pid: number): boolean {
   if (api === null) return false;
   return api.terminateProcess(entry.handle, KILL_EXIT_CODE);
 }
-export function terminateJobSubtree(threadId: string, pid: number): void {
+export function terminateJobSubtree(threadId: string, pid: number, lineage?: SubtreeLineage): void {
   const job = threadJobs.get(threadId);
-  if (native !== null && job) killJobSubtree(native, job.handle, pid);
+  if (native === null || !job) return;
+  const api = native;
+  // Another thread's job holds a separately registered scope, which its own stop ends.
+  const foreign = (handle: number) => [...threadJobs].some(([other, { handle: otherJob }]) => other !== threadId && api.inJob(otherJob, handle));
+  killJobSubtree(api, job.handle, pid, lineage, foreign);
 }
 
 /**

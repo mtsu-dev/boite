@@ -666,5 +666,69 @@ closes every trace row a previous core left open (`exited_at` set, no exit
 code), through the partial index `processes_live`, before anything spawns; a
 process the keeper still holds is written live again when it is adopted.
 
+On Linux 6.9 and later, `spawn` and `spawnPiped` tie the group before the
+agent runs instead (`platform/linux-launcher.ts`, `native/launch.c`). Bun
+starts the launcher in the agent's place as a session leader. It opens a
+pidfd on itself, hands it to the core's one guard over a socket (SCM_RIGHTS),
+waits for the guard to answer that it holds it, hands the same pidfd to the
+core over a close-on-exec status socket, and waits again, for the core's
+word that it holds that pidfd under the launch's tag; only then does it exec
+the agent. A core that could not read the pidfd (a read error, a truncated
+descriptor) never gives that word, so the launcher exits 127 and nothing
+untied ever ran. The spawn reads the status socket until the exec closes it;
+it throws a failed launch's errno in Bun's own shape, and any other outcome
+(no pidfd, a short or broken read, a launcher that ended without a word, a
+launcher stopped before its exec) stops the launch and throws `ELAUNCH`,
+ending the group through its pidfd when the core has one. A guard with no
+descriptor left refuses the group and the launch fails with `EMFILE` before
+the agent runs. So a core that dies right after `Bun.spawn` returns, before
+the registry has the pid, still takes the group.
+
+The guard and the core signal it only through the pidfd, with
+`PIDFD_SIGNAL_PROCESS_GROUP`, the same grace as above: never through a
+number the kernel may have handed out again. The empty probe after a
+leader's exit and a shutdown's SIGKILL go through the core's pidfd too. At
+the core's exit the guard counts a group as gone only on `ESRCH`; any other
+error keeps it to the SIGKILL.
+
+Because the core keeps its own pidfd of every group, a guard never costs a
+group its identity. A guard found gone (the next launch fails with EPIPE
+before the agent runs, or its exit is seen) or stopped while a launch waits
+on it is replaced by a new one that receives every group still held, the new
+guard first, then SIGKILL to the old one. While waiting for a socket to
+accept a request or produce a reply, the core looks every 50 ms whether the
+guard or launcher is stopped (`T` or `t` in
+`/proc/<pid>/stat`); a running one is waited for, so a slow guard is never a
+failure. A group the new guard refuses stays held by the core's pidfd: the
+core logs `groups.unguarded` and offers it again every second, without
+waiting for a spawn, until a guard takes it. When no new guard starts at
+all, every group is held that way. A drop the guard does not take at once (a
+full or broken socket) replaces it with a guard that never holds the group;
+when that replacement cannot start either, the old guard and the group stay
+as they were, the release returns false to its caller (`untieGroup`,
+`disown` for the keeper) with `groups.unguarded`. The registry keeps the
+failed entries so shutdown can stop them. A group launched under a number an earlier group still held
+is held under its own tag before that stale group is dropped, so a guard the
+drop replaces takes the new group along. What is left untied: groups that no
+guard holds at the moment the core dies, which is every group of a core
+that dies after its guard died and before a new guard took them back, or
+while a new guard refuses them.
+
+At its first launch the core checks the whole path on the launcher itself:
+pidfd_open, the guard's admission, signal 0 through the pidfd from the core,
+then SIGTERM and SIGKILL from the guard to that probe group, which confirms
+it ignores SIGTERM before the check. Closing the private probe socket also
+ends the probe if the signals are refused. A syscall filter that refuses any of them, signal 0 alone allowed
+included, sends groups to the watcher with `groups.late`. The core looks for
+the launcher next to the executable that runs it, then in `native/build` from
+source (`bin/build-launcher.ts`, run by the test runner). `bin/compile.ts`
+builds it, static, beside the compiled core and fails without it; the Linux
+desktop packages install it beside `boite-core` as a second sidecar, and the
+server image builds it beside `bun`. The standalone server archive does not
+carry it yet, so those servers use the watcher. Without it, on an older kernel
+or without glibc, the core logs `groups.late` once and the watcher ties those
+groups as described above. Terminals, `spawnChild` (node) and processes the keeper adopts still
+go through the watcher only.
+
 `TraceCapability` exposes OS, mode (`events`, `poll`, `none`) and
 failure notes; clients must read it before promising native capabilities.
