@@ -103,6 +103,8 @@ test('a Release core has every feature on before any app reported, as after a re
   const h = await core(RELEASE);
   const owner = await h.connect();
   const { threadId } = await echoThread(h, owner);
+  // Automatic goals have the owner's own switch, off on a fresh machine (the next test).
+  await owner.call('settings.set', { autoGoals: true });
   expect(h.core.clients.desktopExperiments()).toBeNull();
   expect((await owner.call('teams.list', {})).teams).toEqual([]);
   expect((await owner.call('council.list', {})).councils).toEqual([]);
@@ -111,17 +113,21 @@ test('a Release core has every feature on before any app reported, as after a re
   owner.close();
 });
 
-test('automatic goals follow the machine\'s own setting: on by default, off for prompts and goal track alike', async () => {
+test('automatic goals follow the machine\'s own setting: off by default, on only when true, for prompts and goal track alike', async () => {
   const { startsAutoGoal } = await import('../src/composer-activity.ts');
   const long = 'x'.repeat(2000);
-  expect(startsAutoGoal(long, {})).toBe(true);
+  expect(startsAutoGoal(long, {})).toBe(false);
+  expect(startsAutoGoal(long, { autoGoals: true })).toBe(true);
   expect(startsAutoGoal(long, { autoGoals: true, autoGoalMinChars: 3000 })).toBe(false);
   expect(startsAutoGoal(long, { autoGoals: false })).toBe(false);
   const h = await core(RELEASE);
   const owner = await h.connect();
   const { threadId } = await echoThread(h, owner);
+  expect(() => h.core.activity.track(threadId)).toThrow('goal track needs automatic goals, which are off on this machine');
+  await owner.call('settings.set', { autoGoals: true });
+  expect(() => h.core.activity.track(threadId)).toThrow('this conversation has no prompt of the user to track');
   await owner.call('settings.set', { autoGoals: false });
-  expect(() => h.core.activity.track(threadId)).toThrow('goal track needs automatic goals, which the owner turned off on this machine');
+  expect(() => h.core.activity.track(threadId)).toThrow('goal track needs automatic goals, which are off on this machine');
   expect(await owner.call('settings.set', { autoGoals: 'yes' } as never).catch((error: Error) => error.message)).toContain('autoGoals must be a boolean');
   owner.close();
 });
