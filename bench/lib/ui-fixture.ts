@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
@@ -12,7 +12,9 @@ export async function buildUiFixture(ui: string, outDir: string, fixture?: Fixtu
   const fromSvelte = createRequire(fromUi.resolve('svelte'));
   const { default: MagicString } = await import(fromSvelte.resolve('magic-string'));
   const main = join(ui, 'src/main.ts').replaceAll('\\', '/');
-  const bridge = `\nimport { store as __store } from './lib/store.svelte.ts';\nimport { rightPanel as __panel } from './lib/right-panel.svelte.ts';\nglobalThis.__bench = { store: __store, panel: __panel };\n`;
+  const androidBack = existsSync(join(ui, 'src/lib/android-back.ts'));
+  const backImport = androidBack ? "\nimport { answerAndroidBack as __back } from './lib/android-back.ts';" : '';
+  const bridge = `\nimport { store as __store } from './lib/store.svelte.ts';\nimport { rightPanel as __panel } from './lib/right-panel.svelte.ts';${backImport}\nglobalThis.__bench = { store: __store, panel: __panel${androidBack ? ', back: __back' : ''} };\n`;
   mkdirSync(outDir, { recursive: true });
   await build({
     root: ui,

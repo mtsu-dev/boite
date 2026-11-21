@@ -12,26 +12,31 @@ export const USAGE = `usage: boite <command> [args] [--json]
   where                          this thread, project, cwd, branch
   thread move <project>          move this thread to another project (name,
                                  id or folder) when this turn ends
-  thread new <project> <brief>   start a thread and receive its first answer
-                                 (--worktree, --title <title>, --core <url>
-                                 from a terminal). Agents can use --machine
-                                 <name> with that owner's permission. Mochis
-                                 use <machine>/<project> for entrusted projects.
-                                 Get --model <provider/model>, --effort <level>
-                                 and --speed <tier> from boite delegate models
-                                 with the same --machine. Unsupported routes fail.
+  thread new <project> <brief>   start a thread in a project; its first answer
+                                 comes back to you (--worktree, --title <title>,
+                                 --machine <name> from an agent thread: on
+                                 another machine of the group, in a project
+                                 there, once its owner allows it. From a
+                                 terminal use --core <url>; --model
+                                 <provider/model>, --effort <level>, --speed
+                                 <tier> from boite delegate models, with the
+                                 same --machine for that machine's; refused
+                                 when it lacks them, never another model);
+                                 a mochi names an entrusted remote project
+                                 as <machine>/<project>
   projects                       the projects added to Boite
-  projects add <folder>          add an existing folder (--name <name>).
-                                 Agents can use --machine <name> and an absolute
-                                 path there with that owner's permission. Mochis
-                                 with addProjects can add and hold a local folder.
+  projects add <folder>          add an existing folder as a project, so thread
+                                 new and thread move can name it (--name <name>;
+                                 --machine <name> from an agent thread: a folder
+                                 of another machine of the group, its absolute
+                                 path there, once its owner allows it; a mochi
+                                 adds a folder of its own machine while its
+                                 addProjects setting is on, and holds it at
+                                 once)
   projects archive|unarchive|remove <p>
                                  the owner's; removing leaves the folder on disk
-  projects recoveries            list files kept after worktree removal, owner only
 ${CONTROL_HELP}
   attach <file>                  publish a file in chat, up to 512 MB
-  proof <message-id> <output-line> <unchecked> [capture]
-                                 publish verification from a recorded command
   show <file>[:line]             open a file in the panel, at a line
   diff [file]                    open the changes, or one file's diff
   browse <url>                   open a url in a new tab of this conversation's browser
@@ -44,8 +49,13 @@ ${CONTROL_HELP}
                                  and drive them through agent-desktop
   pr list|refresh                this conversation's linked pull requests
   pr link|unlink <url>           attach or remove a PR link; does not change GitHub
-  pr watch [<url|number>]        wake on checks, reviews, comments, conflicts
-                                 or queue removal without merge. End the turn.
+  projects recoveries            list files kept after worktree removal, owner only
+  proof <message-id> <output-line> <unchecked> [capture]
+                                 publish verification from a recorded command
+  pr watch [<url|number>]        wake this thread when the PR's checks fail or
+                                 pass, a review or comment lands, it starts
+                                 to conflict or leaves the merge queue
+                                 unmerged; end your turn instead of polling
   pr unwatch [<url|number>]      stop one watch, or all of this thread's
   view <file.html>               draw an HTML page in your answer, where a
                                  line ![title](file.html) places it
@@ -62,17 +72,19 @@ ${CONTROL_HELP}
                                  pending update; no thread needed as owner
   journal-check [table rowid]     bounded read-only journal diagnostics, owner only
   logs [--min-level warn] [--since 2h]
-                                 Boite diagnostics. Use logs help for filters,
-                                 logs problems for groups, logs export for a
-                                 sanitized report.
+                                 Boite's own diagnostics: did the app, its shell
+                                 or a client fail? logs help has the filters,
+                                 logs problems groups them, logs export writes
+                                 the anonymized file a developer reads
   issue draft|submit --title <t> --description <text>
                                  report a Boite bug on GitHub with that export;
                                  show the user the draft before submit
-  ask <question> [option ...]    ask while you work (--multiple). The answer
-                                 arrives as a message. --open <url> adds a
-                                 button for sign-in in your browser.
+  ask <question> [option ...]    ask the user without stopping; the answer
+                                 arrives later as a message (--multiple);
+                                 --open <url> adds an Open button for a page
+                                 the user must sign in to, in your browser
   ask list                      read this thread's pending questions
-  secret list                    keys kept for this project, by name only
+  secret list                    compatibility: reports that no keys are stored
   secret ask <NAME> --why <text> ask the user for a key on a card; prints
                                  saved secret:<ref>, declined, cancelled or timed_out
   secret write|run|pipe <ref>    use it without seeing it; boite secret help
@@ -151,25 +163,28 @@ ${BOT_HELP}
   delegate models                models, reasoning levels and speeds a subagent can use
                                  (--refresh: read again; --machine <name>: another
                                  machine's, for thread new or spawn --machine --model)
-  delegate spawn <brief>         give a subagent a bounded job and get its result
-                                 (--model <provider/model>, --effort <level>,
-                                 --speed <tier>, --title <title>, --profile <id>,
-                                 --worktree from your HEAD or the mochi's project).
-                                 Context options include --context light|neutral,
-                                 --keep|--drop <parts>, --tools <Tool,...>,
-                                 --rules <text>|--rules-file <path>. Use --drop
-                                 guides for self-contained briefs. Mochis use
-                                 --project <p> for entrusted projects. --machine
-                                 <name> runs on a group machine in the matching
-                                 project or the one named by --project.
+  delegate spawn <brief>         start a subagent on one bounded job; its result
+                                 comes back as a message (--model <provider/model>,
+                                 --effort <level>, --speed <tier>, --title <title>,
+                                 --profile <id>, --worktree for a git worktree of
+                                 its own from your checkout's HEAD (the project's
+                                 for a mochi), and a context mode: --context
+                                 light|neutral, --keep|--drop <parts>, --tools
+                                 <Tool,...>, --rules <text>|--rules-file <path>;
+                                 --drop guides for a self-contained brief)
+                                 --project <p> places a mochi's child in an entrusted project
+                                 --machine <name> runs it on another machine of the
+                                 group, in its project named like yours or --project
   delegate list [--details]      every subagent, workflow and council: state, model, time
-  delegate council <request>     independent read-only answers with scores /10
-                                 in one message.
-                                 --models <model>[:<effort>],... from delegate
-                                 models, --effort <level> (xhigh) for other
-                                 members, --request-file <path>, repeat
-                                 --role <member>=<text>, --timeout <minutes>
-                                 per round (30).
+  delegate council <request>     several models answer it
+                                 alone, read-only, each with a score out of 10, on code
+                                 or anything else, with or without git; the answers
+                                 come back as one message (--models <a>[:<effort>],
+                                 <b>[:<effort>][,...] from delegate models, --effort
+                                 <level> (xhigh) for members without one,
+                                 --request-file <path> instead of the text,
+                                 --role <member>=<text> for one member, repeatable,
+                                 --timeout <minutes per round> (30))
   delegate council again <id> [<what changed>]
                                  one more round: the same members, efforts and roles,
                                  from zero (--send-changes sends them what changed,
@@ -221,11 +236,19 @@ const FAMILY_HELP = {
 const commandName = (command?: string): string => command === 'bot' ? 'mochi' : command ?? '';
 
 /** Read the same command entries as the full manual, without its other families. */
+/** The synopses of a command: a grouped name such as allow|deny is shown as the one asked for, and a prose
+ * paragraph (from a capitalized line until the next synopsis with a description or a section break) is never one. */
 function usageEntries(command: string, action?: string): string[] {
-  return USAGE.split(/\n(?= {2}\S)/).filter(entry => {
+  let prose = false;
+  return USAGE.split(/\n(?= {2}\S)/).flatMap(entry => {
+    if (/^ {2}[A-Z]/.test(entry)) prose = true;
+    else if (/^ {2}\S.*?\S {2,}\S/.test(entry)) prose = false;
+    const inProse = prose;
+    if (/\n\s*\n|\n\S/.test(entry)) prose = false;
     const [first, second] = entry.trim().split(/\s+/);
-    return first === command && (action === undefined || second?.split('|').includes(action));
-  }).map(entry => 'boite ' + entry.trim());
+    if (inProse || !first?.split('|').includes(command) || (action !== undefined && !second?.split('|').includes(action))) return [];
+    return ['boite ' + command + entry.trim().slice(first.length)];
+  });
 }
 
 export async function cliHelp([command, action]: string[]): Promise<string> {
@@ -239,10 +262,18 @@ export async function cliHelp([command, action]: string[]): Promise<string> {
   return (entries.length ? entries : usageEntries(name)).join('\n\n') || 'usage: boite <command> [args] [--json]';
 }
 
-export function cliUsageError(io: CliIo, error: Usage, command = error.command): 2 {
+/** The one synopsis for a usage error: its action's, else the command's own form without an action (`ask <question>`,
+ * `where`). A command made only of actions, asked with none or an unknown one, gets its help, never another action's line. */
+function usageSynopsis(name: string, action?: string): string {
+  const synopsis = (entry: string) => entry.split('\n')[0]!.split(/ {2,}/)[0]!;
+  const named = action === undefined ? [] : usageEntries(name, commandName(action)).map(synopsis);
+  const bare = usageEntries(name).map(synopsis).filter(line => !/^\S+ \S+ [^\s<[-]/.test(line));
+  return named[0] ?? bare[0] ?? `boite ${name} <action> [args] [--json]`;
+}
+
+export function cliUsageError(io: CliIo, error: Usage, command = error.command, action = error.action): 2 {
   const name = commandName(command);
-  const entry = name && BUILTIN_COMMANDS.has(name) ? usageEntries(name)[0]?.split('\n')[0]?.split(/ {2,}/)[0] : undefined;
-  const hint = entry ? `usage: ${entry}\nSee boite ${name} help.\n` : 'usage: boite <command> [args] [--json]\nSee boite help.\n';
+  const hint = name && BUILTIN_COMMANDS.has(name) ? `usage: ${usageSynopsis(name, action)}\nSee boite ${name} help.\n` : 'usage: boite <command> [args] [--json]\nSee boite help.\n';
   const message = error.message.split('\n')[0];
   io.err((message ? message + '\n' : '') + (error instanceof ShortUsage ? '' : hint));
   return 2;

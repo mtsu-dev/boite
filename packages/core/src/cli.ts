@@ -21,7 +21,7 @@ import type { AgentTask, AgentTaskChange, GitChange, PanelSurface, RpcParams, Se
 import type { CoreClient } from './client.ts';
 import { CORE_VERSION } from './version.ts';
 import { resolveDataDir } from './paths.ts';
-import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
+import { canonicalCommand, contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
 import { PLUGIN_COMMAND_TIMEOUT_MS, isControlCommand, isPluginCommandWord, ownerWithoutThread } from './cli-commands.ts';
 import { cliHelp, cliUsageError, DEFAULT_HELP } from './cli-help.ts';
 import type { Caller } from './control-cli.ts';
@@ -542,12 +542,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       else if (action === 'clear') change = { action };
       else if (action === 'start' || action === 'done' || action === 'remove') change = { action, id: want(1, 'a task id') };
       else throw new Usage(`task: unknown action ${action}`);
-      const { applyAgentTaskChange, isMethodNotFound } = await families();
-      const activity = await client.call('threads.tasks.change', { threadId, ...change }).catch(async (error: unknown) => {
-        if (!isMethodNotFound(error)) throw error;
-        const current = await client.call('threads.tasks.get', { threadId });
-        return client.call('threads.tasks.set', { threadId, tasks: applyAgentTaskChange(current, change) });
-      });
+      const activity = await client.call('threads.tasks.change', { threadId, ...change });
       print(activity.tasks.length === 0 ? ['tasks: none'] : activity.tasks.map(taskRow), activity.tasks);
     },
     todo: async () => {
@@ -632,7 +627,10 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
     }
     return 0;
   } catch (error) {
-    if (error instanceof Usage) return cliUsageError(io, error, parsed.positional[0]);
+    if (error instanceof Usage) {
+      const [command, action] = error.command === undefined ? canonicalCommand(parsed.positional) : [error.command, error.action];
+      return cliUsageError(io, error, command, action);
+    }
     io.err(`error: ${(error as Error).message}\n`);
     return 1;
   } finally {

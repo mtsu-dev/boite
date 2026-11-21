@@ -246,6 +246,9 @@ export class TurnRunner {
     if (sameSession && !keepalive) this.threads.autoCompact.turnFinished(next, finished);
     if (sameSession) this.threads.cacheKeepalive.turnFinished(next, finished);
     if (sameSession) this.threads.accountSessions.turnFinished(next, finished);
+    // A mochi's new conversation asked during the turn (`agents/new-session.ts`): last of what reads the
+    // session this turn ended on, before a wake or held answer starts the next turn on a fresh one.
+    this.#core.workforce.newSessions.applyWaiting(threadId, turnId);
     const woke = this.threads.deferred.pendingWakes.get(threadId);
     if (woke !== undefined) {
       this.threads.deferred.pendingWakes.delete(threadId);

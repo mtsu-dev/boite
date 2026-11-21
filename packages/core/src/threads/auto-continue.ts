@@ -156,10 +156,17 @@ export class AutoContinues {
     // A refusal has its own retry: a spent usage window resumes at its reset or
     // not at all (`limit-resume.ts`), capacity got its tries in the turn, and a
     // capacity wait the user cancelled must stay failed.
-    // A folder that is gone stays gone until someone puts it back.
+    // A folder that is gone stays gone until someone puts it back, and a
+    // context its own compaction cannot shrink stays full until someone
+    // shrinks what fills it.
     if (result.refusal) return;
-    this.#resumes.offer(turn, { kind: 'interrupted', ...(result.cwdGone ? { detail: 'the working directory is unavailable' } : {}) });
-    if (result.cwdGone) return;
+    if (!result.contextFull) this.#resumes.offer(turn, { kind: 'interrupted', ...(result.cwdGone ? { detail: 'the working directory is unavailable' } : {}) });
+    if (result.cwdGone || result.contextFull) {
+      // Handled: a later start that finds work this thread held (a team, a workflow run) resumes nothing either.
+      const window = this.#resumes.entry(thread.id)?.resumedWindow;
+      this.#resumes.settle(thread.id, { streak: 0, handled: turn.id, ...(window !== undefined ? { resumedWindow: window } : {}) });
+      return;
+    }
     const error = (turn.error ?? result.error ?? 'unknown error').trim();
     const quoted = error.length > ERROR_QUOTE ? `${error.slice(0, ERROR_QUOTE)} [cut]` : error;
     this.#plan(thread.id, turn, 'error', `Your previous turn ended on an error before it finished: ${quoted}\n\nBoite resumed the thread by itself. ${CARRY_ON}`);

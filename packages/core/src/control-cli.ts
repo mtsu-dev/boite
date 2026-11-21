@@ -15,8 +15,8 @@
  * A bot also names a thread of a project another machine of the group
  * entrusted to it as `<machine>/<thread-id>`; that machine checks it again.
  */
-import type { AgentContact, AgentSpawn, AgentWatch, PermissionRequest, Project, ProjectThreadDetail, ProjectThreadRow, QuestionRequest, RpcParams, RpcResult, ThreadSummary, ThreadWake } from '@boite/contracts';
-import { isMethodNotFound, type CoreClient } from './client.ts';
+import type { AgentContact, AgentSpawn, AgentWatch, PermissionRequest, Project, ProjectThreadDetail, ProjectThreadRow, QuestionRequest, RpcParams, ThreadSummary, ThreadWake } from '@boite/contracts';
+import type { CoreClient } from './client.ts';
 import { contactLine, INACTIVE_CONTACT_WARNING, inactiveContact, NO_CONTACT, resolveAgent } from './agents-cli.ts';
 import { requiredText, Usage, type Parsed } from './cli-args.ts';
 import { THREAD_ACTIONS } from './cli-commands.ts';
@@ -371,13 +371,7 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
       if (action === 'send') {
         const text = requiredText(rest, 2, 'thread send needs a text after the thread id');
         if (owner) {
-          const clientRequestId = parsed.requestId ?? crypto.randomUUID();
-          const params = { threadId: target, prompt: text, clientRequestId };
-          const result = await client.call('composer.enqueue', params).catch(async (error: unknown): Promise<RpcResult<'composer.enqueue'>> => {
-            if (!isMethodNotFound(error)) throw error;
-            const turn = await client.call('turns.start', params);
-            return { requestId: clientRequestId, status: 'sent', turnId: turn.id };
-          });
+          const result = await client.call('composer.enqueue', { threadId: target, prompt: text, clientRequestId: parsed.requestId ?? crypto.randomUUID() });
           print([`request: ${result.requestId}`, `status: ${result.status}`, ...(result.turnId ? [`turn: ${result.turnId}`] : []),
             ...(result.reason ? [result.reason] : [])], result);
         } else if (machine !== undefined) {

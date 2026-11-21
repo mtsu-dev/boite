@@ -5,6 +5,7 @@
   import { Bot, Brain, FilePen, FileText, Globe, Hourglass, Layers, MessageCircleQuestionMark, Moon, PenLine, Play, Plus, RotateCw, Search, SquareTerminal, TriangleAlert, Wrench } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, Team, ThreadSummary } from '@boite/contracts';
   import { agentMenuItems, pickAgentAction, saveAgent } from '../../lib/agent-menu';
+  import { hasConversation } from '../../lib/agent-new-session';
   import { botLeaving, leavingLine } from '../../lib/agent-move-flow';
   import { railBotState, type RailBotState } from '../../lib/app-rail';
   import { agentRows, liveActivity, previewOf, waitingOn, type ActivityKind, type AgentMood, type AgentRowData, type AgentsView } from '../../lib/agents.svelte';
@@ -165,7 +166,7 @@
   /** The row's menu, answered through the bot's own machine; the toast it may raise is the page's. */
   function menu(event: MouseEvent, machine: Machine, owner: AgentsView, id: string) {
     const agent = owner.snapshot?.profiles.find(p => p.id === id);
-    const items = agent ? agentMenuItems(owner.store, agent, { open: owner === view && active === id, phone: phone.current, leaving: botLeaving(owner, id) !== null }) : [];
+    const items = agent ? agentMenuItems(owner.store, agent, { open: owner === view && active === id, phone: phone.current, leaving: botLeaving(owner, id) !== null, conversation: hasConversation(owner, id) }) : [];
     if (!agent || !items.length) return;
     contextMenu.open(event, items, action => pickAgentAction(owner, agent, action, {
       open: () => onopen(machine, id),

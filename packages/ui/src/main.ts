@@ -6,7 +6,7 @@ import { startLocale } from './lib/i18n.svelte';
 import { showBootFailure } from './lib/boot-failure';
 import { applyChatWidth, readChatWidth } from './lib/chat-width';
 import { startZoom } from './lib/zoom';
-import { desktopShell } from './lib/shell-platform';
+import { desktopShell, mobileApp } from './lib/shell-platform';
 
 // Every import above parsed and ran: index.html's too-old-browser notice stands down.
 (window as { __boiteBooted?: boolean }).__boiteBooted = true;
@@ -16,6 +16,8 @@ if (!found) throw new Error('index.html is missing the #app element');
 const target: HTMLElement = found;
 
 registerServiceWorker();
+// The Android app hears its Back before the WebView's history does.
+if (mobileApp()) void import('./lib/android-back').then(({ startAndroidBack }) => startAndroidBack());
 // The stored column width, before the first frame lays the chat out.
 applyChatWidth(readChatWidth());
 

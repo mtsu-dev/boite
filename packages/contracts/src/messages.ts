@@ -139,12 +139,19 @@ export type AgentNotice =
   | { kind: 'instructions_large'; chars: number; limit: number; files: number }
   | { kind: 'mirror_failed' };
 
+/**
+ * The marker a mochi's new conversation leaves in its thread
+ * (`agents.session.new`): who asked, and the handoff note its first turn
+ * carries. The messages above it stay visible but no longer reach the agent.
+ */
+export interface NewConversationNotice { by: 'user' | 'mochi'; note?: string }
+
 export type MessagePart =
   /**
    * `omitted`: characters a page left out of the end of `text` because the
    * message was too heavy to send whole (`MESSAGE_SENT_MAX_BYTES`). Never persisted.
    */
-  | { type: 'text'; text: string; complete?: boolean; displayText?: string; previewReferences?: PreviewReference[]; activity?: ActivityTurn; moved?: MoveNotice; startedBy?: ThreadLink; started?: ThreadLink; sentFrom?: SentFrom; byPlugin?: PluginActor; omitted?: number; teamPost?: TeamPostRef; proof?: true }
+  | { type: 'text'; text: string; complete?: boolean; displayText?: string; previewReferences?: PreviewReference[]; activity?: ActivityTurn; moved?: MoveNotice; newConversation?: NewConversationNotice; startedBy?: ThreadLink; started?: ThreadLink; sentFrom?: SentFrom; byPlugin?: PluginActor; omitted?: number; teamPost?: TeamPostRef; proof?: true }
   /**
    * An image the user sent with the prompt, journalled with the message. A page
    * asked with `compactImages` leaves a large one's `data` empty, with

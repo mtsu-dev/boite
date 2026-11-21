@@ -32,7 +32,7 @@ async function resize(metrics: typeof DESKTOP) {
 }
 
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, name));
 }
 
@@ -57,7 +57,7 @@ async function bothWidths(selector: string, name: string) {
 /** The request belongs to the composer, so reading old output cannot move it away. */
 async function staysDocked() {
   // Measured from rest: a width change still sliding the composer or the dock is not the scroll this checks.
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.settleAnimations();
   const before = await page.evaluate<number>(`document.querySelector('${PENDING}').getBoundingClientRect().top`);
   await page.evaluate(`(() => {
     const timeline = document.querySelector('[data-testid="timeline"]');

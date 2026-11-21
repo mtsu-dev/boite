@@ -435,9 +435,6 @@ or `sent` once delivered. Repeat the same `--request-id` to check or retry an
 accepted submission. Incognito prompts wait in the core's memory and survive
 the terminal closing. Retired conversations use direct submission. A prompt
 whose conversation folder cannot be recovered stays held with the reason.
-On an older core that has no outbox method, the CLI submits directly with the
-same request ID. Task edits use the older read and write methods if the core
-has no task-edit method.
 The owner can list and restore recoverable conversations with `thread deleted`
 and `thread restore <id>`.
 
@@ -548,6 +545,7 @@ boite mochi routines
 boite mochi schedule <json>
 boite mochi unschedule <routine-id>
 boite mochi watch|unwatch <thread-id>
+boite mochi new-session [--note <text>]
 boite mochi event <mochi> [--key <key>] <text>
 boite team list|say|dm|read|propose|invite|leave
 boite delegate models [--machine <name>]
@@ -1056,7 +1054,12 @@ with that path. It prints `picture: <name> (<id>) now wears <avatar>`, and any
 open card about that mochi's avatar settles.
 
 Exit codes: 0, 1 on a refusal or a failure (`error: ...` on stderr), 2 on a
-usage error (the usage text on stderr).
+usage error: on stderr the message, then the synopsis of the action asked for
+(`boite delegate result --limit 20000` names `delegate result`), else the
+command's form without an action, and `See boite <command> help.`. A command
+made only of actions, asked with none or an unknown one, points to its help
+without borrowing another action's line. No core is needed when parsing
+refuses the words.
 
 [Agent coordination](coordination.md) is on by default for ordinary
 conversations and mochis, across projects and linked machines. The owner can turn it off
@@ -1074,7 +1077,11 @@ routines` lists its routines, `mochi schedule <json>` saves one (`name`,
 `prompt`, `schedule`, with `id` to edit one, keeping what the edit leaves out, and `enabled`), `mochi unschedule
 <routine-id>` removes one. `mochi watch|unwatch <thread-id>` puts a thread of
 its projects on its desk or takes one off; a watched thread wakes the mochi at
-once, one it only wrote to waits for its routines. Use `--json` to
+once, one it only wrote to waits for its routines. `mochi new-session [--note
+<text>]` starts a new conversation in the same thread, at once when the
+thread is idle, else when the running turn ends; every word after `--note` is
+the handoff note (`AGENT_HANDOFF_MAX`, 4,000 characters) the next turn reads
+once ([A new conversation](mochis.md#a-new-conversation)). Use `--json` to
 preserve the structured result.
 
 `mochi event <mochi> [--key <key>] <text>` is the exception: it is for a service

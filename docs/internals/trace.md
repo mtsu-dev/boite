@@ -513,7 +513,7 @@ core closes.
 
 | OS | Inhibitor | Ends with a dead core because |
 | --- | --- | --- |
-| Linux | `systemd-inhibit --what=sleep:idle --mode=block cat`; `--what=idle` alone when logind refuses to block sleep, as it does for a service with no active session | `cat` reads a pipe the core holds |
+| Linux | `systemd-inhibit --what=sleep --mode=block cat`, which leaves a desktop session free to lock and blank its screen; `--what=idle` only when logind refuses to block sleep, as it does for a service with no active session | `cat` reads a pipe the core holds |
 | macOS | `caffeinate -i cat` | the same pipe |
 | Windows | `SetThreadExecutionState(ES_CONTINUOUS \| ES_SYSTEM_REQUIRED)` | the state belongs to the process |
 

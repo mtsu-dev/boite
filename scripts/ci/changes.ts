@@ -3,25 +3,20 @@ import { appendFileSync } from 'node:fs';
 // Unknown files run the complete suite. Documentation-only PRs still get the
 // required job, so branch protection never waits for a filtered-out workflow.
 export function affectedChecks(files: string[]) {
-  const checks = { core: false, web: false, desktop: false, shellRust: false, server: false, android: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false, browser: false };
+  const checks = { core: false, web: false, desktop: false, shellRust: false, server: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false, browser: false };
   for (const file of files) {
     if (
       /^(docs\/.*\.md|README\.md|AGENTS\.md|CONTRIBUTING\.md|SECURITY\.md|CODE_OF_CONDUCT\.md|LICENSE)$/.test(file) ||
       /^\.github\/(ISSUE_TEMPLATE\/|pull_request_template\.md$|topics\.json$|CODEOWNERS$|labeler\.yml$)/.test(file) ||
       file === '.coderabbit.yaml'
     ) continue;
-    if (file.startsWith('apps/android/') || file === '.github/workflows/android.yml' || file === 'scripts/ci/android-apk.ts') {
-      // The wrapper loads the UI from the core, so nothing else goes into the APK.
-      // Boite Server's pipeline counts its version with the same script.
-      checks.android = true;
-      if (file === 'scripts/ci/android-apk.ts') checks.androidServer = true;
-    } else if (file.startsWith('apps/android-server/termux/')) {
+    if (file.startsWith('apps/android-server/termux/')) {
       // The release bundle: the core suite packs it, the web job type-checks
       // it and the Linux x64 desktop job builds it. The changes job always
       // runs its tests.
       checks.core = checks.web = checks.desktop = true;
       if (file === 'apps/android-server/termux/minisign.ts') checks.server = true;
-    } else if (file.startsWith('apps/android-server/') || file === '.github/workflows/android-server.yml' || file === 'scripts/ci/android-server-apk.ts') {
+    } else if (file.startsWith('apps/android-server/') || file === '.github/workflows/android-server.yml' || file === 'scripts/ci/android-server-apk.ts' || file === 'scripts/ci/android-version.ts') {
       // Boite Server's APK drives the core through Termux and reads nothing from it.
       checks.androidServer = true;
     } else if (file.startsWith('apps/shell/')) {
@@ -29,10 +24,9 @@ export function affectedChecks(files: string[]) {
     } else if (/^packages\/(core|contracts)\//.test(file)) {
       // The shell's Rust tests compile apps/shell/src-tauri and start inline
       // fake cores, never this code; its build.rs reads only SCHEMA_VERSION,
-      // which the desktop builds compile. The APK build reads APP_ORIGIN from the
-      // contracts and nothing from the core.
+      // which the desktop builds compile.
       checks.core = checks.web = checks.desktop = checks.server = checks.telemetry = checks.e2eTypes = checks.stress = true;
-      if (file.startsWith('packages/contracts/')) checks.android = checks.browser = true;
+      if (file.startsWith('packages/contracts/')) checks.browser = true;
     } else if (file.startsWith('tests/e2e/')) {
       checks.desktop = checks.e2eTypes = checks.browser = true;
       // Stress fixtures use the same isolated core and browser harness.
@@ -53,7 +47,7 @@ export function affectedChecks(files: string[]) {
       checks.web = true;
     } else {
       // Dependencies, shared builds and unknown inputs stay safe.
-      checks.core = checks.web = checks.desktop = checks.shellRust = checks.server = checks.android = checks.androidServer = checks.telemetry = checks.e2eTypes = checks.stress = checks.browser = true;
+      checks.core = checks.web = checks.desktop = checks.shellRust = checks.server = checks.androidServer = checks.telemetry = checks.e2eTypes = checks.stress = checks.browser = true;
     }
   }
   return checks;
@@ -129,7 +123,7 @@ const CORE_PR: CoreRunner[] = CORE_QUEUE.slice(0, 1);
 
 export function plan(checks: ReturnType<typeof affectedChecks>, mode: Mode, nativeWindows = false) {
   if (mode === 'pr') {
-    const pr = plan({ ...checks, desktop: false, server: false, android: false, androidServer: false, stress: false }, 'queue', nativeWindows);
+    const pr = plan({ ...checks, desktop: false, server: false, androidServer: false, stress: false }, 'queue', nativeWindows);
     const runners = nativeWindows ? CORE_QUEUE.filter((runner) => runner.os === 'ubuntu-24.04' || runner.os === 'windows-2025') : CORE_PR;
     // The queue skips Bundle size, which compares a pull request with its base.
     return { ...pr, size: checks.desktop, e2ePr: checks.browser, coreRunners: JSON.stringify(runners) };

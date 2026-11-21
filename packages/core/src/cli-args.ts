@@ -2,7 +2,8 @@ import type { Channel } from '@boite/contracts';
 import { isPluginCommandWord } from './cli-commands.ts';
 
 export class Usage extends Error {
-  constructor(message: string, readonly command?: string) { super(message); }
+  /** The command and action it was raised for, when the words around the throw know them better than the dispatcher. */
+  constructor(message: string, readonly command?: string, readonly action?: string) { super(message); }
 }
 /** A usage error whose message is the command's own usage line: the CLI prints it without the whole help. */
 export class ShortUsage extends Usage {}
@@ -114,8 +115,8 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   { owns: ([command]) => command === 'secret', help: true, text: positional => positional.includes('--'), terminator: true },
   // `plugin dev --remove <id>`: its flags are its own.
   { owns: ([command]) => command === 'plugin', help: true },
-  // agents/cli.ts: `mochi remember` reads --replace and --section itself, under any of the mochi's names.
-  { owns: ([command, action]) => command !== undefined && MOCHI_WORDS.has(command) && action === 'remember', help: true },
+  // agents/cli.ts: `mochi remember` reads --replace and --section itself, `mochi new-session` --note, under any of the mochi's names.
+  { owns: ([command, action]) => command !== undefined && MOCHI_WORDS.has(command) && (action === 'remember' || action === 'new-session'), help: true },
   // A plugin's command (plugins.command): every word after its name is the plugin's, --json and --help included.
   { owns: ([command]) => isPluginCommandWord(command), help: false, text: () => true, terminator: true },
 ];
@@ -148,7 +149,10 @@ export function parse(argv: string[]): Parsed {
   const parsed: Parsed = { positional: [], json: false, multiple: false, worktree: false, wait: false, archived: false, skip: false, refresh: false, thread: undefined, dataDir: undefined, channel: 'stable' };
   let helpFlag = false;
   let literalFrom = Infinity;
-  const usage = (message: string) => new Usage(message, canonicalCommand(parsed.positional)[0]);
+  const usage = (message: string) => {
+    const [command, action] = canonicalCommand(parsed.positional);
+    return new Usage(message, command, action);
+  };
   const number = (flag: string, raw: string): number => {
     const value = Number(raw);
     if (!Number.isFinite(value) || value < 0) throw usage(`${flag} needs a number, got ${raw}`);

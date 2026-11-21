@@ -4,7 +4,7 @@ type FailureKind = 'wake' | 'error' | undefined;
 
 export function failureKind(message: Message): FailureKind {
   if (message.state === 'streaming') return;
-  if (message.role === 'system' && message.parts.length > 0 && message.parts.every(part => part.type === 'text' && !part.moved && !part.started)) return 'wake';
+  if (message.role === 'system' && message.parts.length > 0 && message.parts.every(part => part.type === 'text' && !part.moved && !part.newConversation && !part.started)) return 'wake';
   if (message.role === 'assistant' && message.parts.some(part => part.type === 'error') &&
     message.parts.every(part => part.type === 'error' || part.type === 'text' && !part.text.trim())) return 'error';
 }

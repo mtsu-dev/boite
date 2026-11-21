@@ -25,7 +25,7 @@
    * The top of an agent's conversation, in a thread header's pattern: on a
    * desktop its name where a thread's crumb starts, the chevron that opens
    * its view menu (find in the conversation, then its settings, its brain,
-   * pause and archive), and the same "Panels" door (`PanelDoor.svelte`),
+   * a new conversation, pause and archive), and the same "Panels" door (`PanelDoor.svelte`),
    * which opens on the desk. On a phone (`onback`) it is the screen's only
    * head: its
    * robot in its ring (breathing while it works), its name and one live line
@@ -81,7 +81,7 @@
     ...(thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }, separator('sep-find')] : []),
     { id: 'settings', label: labels.settings, glyph: Settings2 },
     { id: 'brain', label: labels.brain, glyph: Brain },
-    ...(store.owner && agent.status !== 'archived' ? agentLifecycleItems(agent) : []),
+    ...(store.owner && agent.status !== 'archived' ? agentLifecycleItems(agent, !!thread) : []),
   ]);
 
   function pick(id: string) {

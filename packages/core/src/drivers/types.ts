@@ -308,7 +308,8 @@ export interface TurnContext {
   /**
    * The context meter: what the agent's last request carried and the model's
    * window when the agent names it. The core writes it on the thread and
-   * tells the clients; a driver calls it once per turn, at the end.
+   * tells the clients; a driver calls it once per turn, at the end, and may
+   * call it mid-turn when the agent empties or compacts its context.
    */
   context(use: Omit<import('@boite/contracts').ContextUse, 'at'>): void;
   /**
@@ -404,6 +405,12 @@ export interface TurnResult {
    * (`threads/retries.ts`); a driver that cannot tell leaves it out.
    */
   refusal?: TurnRefusal;
+  /**
+   * The agent gave up compacting: what every request carries (instruction
+   * files, mostly) refills its compaction limit within a few turns, so a
+   * resume fails the same way. The error names what to shrink.
+   */
+  contextFull?: true;
   /**
    * Set by the core, never a driver: the turn failed and the thread's folder
    * is gone. A resume would fail the same way.

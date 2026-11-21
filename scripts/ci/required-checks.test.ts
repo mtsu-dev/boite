@@ -10,7 +10,6 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
   const names = requiredChecks(files);
   for (const name of names) expect(name).not.toContain('${{');
   expect(names).toEqual([
-    'Android / apk',
     'Android server / apk',
     'Build UI',
     // Bundle size is reported but advisory (ADVISORY in required-checks.ts).
@@ -89,7 +88,7 @@ test('only the plan decides which jobs run, the same way for a pull request and 
     expect(job.if, id).toStartWith('needs.changes.outputs.');
     expect(job.if, id).not.toContain('github.');
   }
-  for (const id of ['desktop', 'server', 'android', 'android-server']) {
+  for (const id of ['desktop', 'server', 'android-server']) {
     const caller = ci.jobs[id] as Job & { with: { enabled: string } };
     expect(caller.with.enabled).toStartWith('${{ needs.changes.outputs.');
     // The called jobs follow their inputs alone.

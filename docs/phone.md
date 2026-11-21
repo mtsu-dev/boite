@@ -10,18 +10,17 @@ once and it reaches every machine of your [group](machines.md).
 | --- | --- |
 | Web app on iPhone | Open a machine's HTTPS address in Safari, then Share, Add to Home Screen. There is no iOS package. |
 | Web app on Android | Install Boite on the phone's Settings, Notifications screen, or the browser's install menu. |
-| Android app | Download `boite-android-<version>.apk` from a nightly release on the phone, allow the browser to install unknown apps, open Boite. |
-| Native Android app, preview | Download `boite-mobile_<version>_android.apk` from a nightly release on the phone, allow the browser to install unknown apps, open Boite. It needs no Chrome. |
+| Android app, preview | Download `boite-mobile_<version>_android.apk` from a nightly release on the phone, allow the browser to install unknown apps, open Boite. It needs no Chrome. |
 
-The Android app opens Boite's own address, `https://boite.mtsu.dev`, in
-Chrome, so app updates need no new APK. That address only serves the app:
-conversations go from the phone to your machines, never to it.
-
-The native app carries its own screens, so each release brings a new APK. It
+The Android app carries its own screens, so each release brings a new APK. It
 looks for one by itself: when Manage machines shows Update available, tap
 Update. The browser downloads the new APK; open it and confirm the install,
 as for the first one. A nightly build carries the night icon, on the home
 screen and in the app.
+
+The older Android app, which opened Boite in Chrome, is no longer built. If
+it is on your phone, install the one above, add the phone again from it, then
+uninstall the old one.
 
 ## Make your computer reachable
 
@@ -145,4 +144,4 @@ computer screen.
 - [Server](server.md): a machine without the desktop app, or on Android.
 - [Mochis](mochis.md): the Mochis tab.
 - [Contacts](contacts.md): other owners' Boites, in the contacts section under the projects.
-- Technical reference: [phone](internals/phone.md), [Android](internals/android.md).
+- Technical reference: [phone](internals/phone.md), [Android app](internals/android-native.md).

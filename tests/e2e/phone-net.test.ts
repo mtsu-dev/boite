@@ -37,7 +37,7 @@ function writeState(serve: Record<string, unknown> = {}): void {
 }
 
 async function capture(page: BrowserPage, name: string): Promise<void> {
-  await page.evaluate(`document.fonts.ready.then(() => true)`);
+  await page.settleAnimations();
   await page.screenshot(join(captures, name));
 }
 

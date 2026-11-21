@@ -243,12 +243,13 @@ export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): P
       return copy(state.records.get(key) ?? { section, id, revision: 0, updatedAt: 0, value: null });
     },
     'composer.enqueue': async params => {
+      // Type-check before testing the request ID's format.
       if (typeof params?.threadId !== 'string' || typeof params.prompt !== 'string' || !params.prompt.trim() || typeof params.clientRequestId !== 'string') {
         throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'composer.enqueue: expected threadId, a non-empty prompt and clientRequestId' });
       }
       const { threadId, prompt, clientRequestId: requestId } = params;
-      const thread = ctx.thread(threadId);
       if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw refusal('clientRequestId must contain 8 to 128 URL-safe characters');
+      const thread = ctx.thread(threadId);
       const id = `cli_${threadId}:${requestId}`;
       const previous = ctx.turnRequests.get(`${threadId}:${requestId}`);
       if (previous) {
@@ -286,7 +287,6 @@ export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): P
       } else {
         const saved = await methods()['composer.put']({ section: 'inputs', id: recordId, expectedRevision: record?.revision ?? 0, value });
         if (!saved.accepted) throw refusal('the composer changed; retry with the same clientRequestId');
-        ctx.emit('composer.updated', copy(saved.record));
       }
       state.cliPrompts.set(id, prompt);
       return { requestId, status: value.input.paused ? 'held' : 'queued' };

@@ -10,9 +10,7 @@ test("settings reveal sections and protection switches persist across navigation
     windowSize: { width: 1440, height: 1000 },
   });
   async function settled() {
-    await page.evaluate(
-      `Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`,
-    );
+    await page.settleAnimations();
     await page.evaluate("document.fonts.ready");
   }
   try {

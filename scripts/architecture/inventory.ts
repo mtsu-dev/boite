@@ -6,7 +6,7 @@ import { lineCount } from './size.ts';
 /** Where production sources live. The packages, then the native and Android code around them. */
 export const ROOTS = [
   'packages/contracts/src', 'packages/core/src', 'packages/ui/src',
-  'apps/android-server/termux', 'apps/android-server/app/src/main', 'apps/android/app/src/main',
+  'apps/android-server/termux', 'apps/android-server/app/src/main',
   'apps/shell/src-tauri/src', 'apps/shell/launcher/src',
 ];
 

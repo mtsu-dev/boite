@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { mkdirSync, readFileSync, rmdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AGENT_ENV, EXPERIMENT_STAGES, privateTerminalComposerId, RpcErrorCode, type ExperimentId, type FeatureStage } from '@boite/contracts';
 import { runCli, splitLine } from '../src/cli.ts';
 import { parse } from '../src/cli-args.ts';
 import { continuationInput } from '../src/continuation.ts';
+import * as cwdCheck from '../src/threads/cwd.ts';
 import type { CliIo } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnResult } from '../src/drivers/index.ts';
@@ -303,7 +304,7 @@ test('a mochi reads its memory, notes facts, keeps its routines and its desk fro
   const elsewhere = await client.call('projects.add', { path: join(harness.dataDir, 'elsewhere'), name: 'Elsewhere' });
   const outside = await client.call('threads.create', { projectId: elsewhere.id, providerId: 'echo', accountId: harness.core.threads.require(worker).accountId, title: 'Outside' });
   expect((await boite(['bot', 'watch', outside.id])).err).toContain('is not in a project entrusted to Ada');
-  expect((await boite(['bot', 'inbox'])).err).toContain('mochi expects memory, remember, routines, schedule, unschedule, watch or unwatch');
+  expect((await boite(['bot', 'inbox'])).err).toContain('mochi expects memory, remember, routines, schedule, unschedule, watch, unwatch or new-session');
   // An ordinary thread is no agent's.
   threadId = worker;
   expect((await boite(['bot', 'routines'])).err).toContain("no mochi's thread");
@@ -401,6 +402,45 @@ describe('usage', () => {
     const literal = await boite(['ask', '--', 'help']);
     expect([literal.code, literal.err]).toEqual([0, '']);
     expect(await client.call('questions.list', { threadId })).toMatchObject([{ text: 'help' }]);
+  });
+
+  test('allow and deny help and flag hints name their own command without a core', async () => {
+    const env = { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' };
+    for (const command of ['allow', 'deny']) {
+      const synopsis = `boite ${command} <id> <request-id>`;
+      for (const form of [[command, '--help'], [command, 'help'], ['help', command]]) {
+        const result = await boite([...form, '--core', 'http://127.0.0.1:1'], env);
+        expect([form.join(' '), result.code, result.err]).toEqual([form.join(' '), 0, '']);
+        expect(result.out.startsWith(synopsis + ' ')).toBe(true);
+        expect(result.out).not.toContain('allow|deny');
+        expect(result.out).not.toContain('need no --thread');
+      }
+      const hint = await boite([command, '--nope', '--core', 'http://127.0.0.1:1'], env);
+      expect(hint.code).toBe(2);
+      expect(hint.err).toBe(`unknown flag --nope\nusage: ${synopsis}\nSee boite ${command} help.\n`);
+    }
+  });
+
+  test('a usage error names the synopsis of its own action, or only the command help', async () => {
+    const offline = { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' };
+    const cases: [string[], Record<string, string>, string, string][] = [
+      // Refused while parsing, so offline.
+      [['delegate', 'result', '--limit', '20000', '--core', 'http://127.0.0.1:1'], offline, '--limit needs an integer from 1 to 16000', 'boite delegate result <child> <turn> [offset] [--limit <characters>]'],
+      [['thread', 'restore', '--bad', '--core', 'http://127.0.0.1:1'], offline, 'unknown flag --bad', 'boite thread restore <id>'],
+      // Refused by the command once connected.
+      [['settings', 'open', 'accounts', 'extra', '--why', 'a login'], {}, 'settings open takes one page, with an optional #card', 'boite settings open <page>[#<card>] --why <text>'],
+    ];
+    for (const [args, env, message, synopsis] of cases) {
+      const result = await boite(args, env);
+      const command = synopsis.split(' ')[1];
+      expect([args.join(' '), result.code, result.err]).toEqual([args.join(' '), 2, `${message}\nusage: ${synopsis}\nSee boite ${command} help.\n`]);
+    }
+    // No action, or one the manual does not know: the command's help, never another action's synopsis.
+    for (const args of [['delegate', '--limit', '20000'], ['thread', 'frob', '--bad']]) {
+      const result = await boite([...args, '--core', 'http://127.0.0.1:1'], offline);
+      expect(result.code).toBe(2);
+      expect(result.err).toEndWith(`\nusage: boite ${args[0]} <action> [args] [--json]\nSee boite ${args[0]} help.\n`);
+    }
   });
 
   test('desktop subcommand help needs no connection and never launches a program', async () => {
@@ -543,20 +583,6 @@ describe('panel', () => {
 });
 
 describe('tasks', () => {
-  test.each([RpcErrorCode.MethodNotFound, RpcErrorCode.Refused])('edits tasks on an older core only for MethodNotFound (%s)', async errorCode => {
-    harness.core.router.register('threads.tasks.change', () => {
-      throw new RpcFailure(errorCode, 'unknown method threads.tasks.change');
-    });
-    const add = await boite(['task', 'add', 'Read the docs']);
-    if (errorCode === RpcErrorCode.Refused) {
-      expect(add).toEqual({ code: 1, out: '', err: 'error: unknown method threads.tasks.change\n' });
-      expect((await boite(['task', 'list'])).out).toBe('tasks: none\n');
-      return;
-    }
-    expect(add).toEqual({ code: 0, out: 't1 [ ] Read the docs\n', err: '' });
-    expect((await boite(['task', 'done', '1'])).out).toBe('t1 [x] Read the docs\n');
-  });
-
   test('concurrent adds keep both tasks with distinct ids', async () => {
     const results = await Promise.all(['left', 'right'].map(text => boite(['task', 'add', text])));
     expect(results.map(result => result.code)).toEqual([0, 0]);
@@ -693,28 +719,6 @@ test('owner CLI sends wait behind an active turn and deduplicate retries', async
   expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user')).toHaveLength(2);
 });
 
-test.each([RpcErrorCode.MethodNotFound, RpcErrorCode.Refused])('owner send falls back only for MethodNotFound and keeps its key (%s)', async errorCode => {
-  const keys: string[] = [];
-  harness.core.router.register('composer.enqueue', ({ clientRequestId }) => {
-    keys.push(clientRequestId);
-    throw new RpcFailure(errorCode, 'unknown method composer.enqueue');
-  });
-  const args = ['thread', 'send', threadId, 'Use the older core', '--request-id', 'legacy-send-key', '--json'];
-  const first = await ownerBoite(args);
-  if (errorCode === RpcErrorCode.Refused) {
-    expect(first).toEqual({ code: 1, out: '', err: 'error: unknown method composer.enqueue\n' });
-    expect(harness.core.journal.lastTurn(threadId)).toBeNull();
-    return;
-  }
-  const retry = await ownerBoite(args);
-  expect([first.code, retry.code]).toEqual([0, 0]);
-  expect(keys).toEqual(['legacy-send-key', 'legacy-send-key']);
-  const saved = harness.core.journal.turnRequest(threadId, 'legacy-send-key');
-  expect(saved?.turn_id).toBe(JSON.parse(first.out).turnId);
-  expect(JSON.parse(retry.out)).toMatchObject({ requestId: keys[0], turnId: saved?.turn_id });
-  expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user')).toHaveLength(1);
-});
-
 test('owner CLI queues incognito sends across a reconnect without publishing the private queue', async () => {
   const client = await harness.connect();
   const project = await client.call('projects.drafts', {});
@@ -762,14 +766,14 @@ test('owner CLI resumes its incognito queue after the account signs back in', as
 
 test('owner CLI follows a selection change during the folder check', async () => {
   const client = await harness.connect();
-  const { projects, journal, composer } = harness.core;
-  const requireFolder = projects.requireFolder.bind(projects);
+  const { journal, composer } = harness.core;
+  const ensure = cwdCheck.ensureThreadCwd;
   const release = Promise.withResolvers<void>();
   let checking = false;
-  const check = spyOn(projects, 'requireFolder').mockImplementation(async projectId => {
+  const check = spyOn(cwdCheck, 'ensureThreadCwd').mockImplementation(async (core, thread) => {
     checking = true;
     await release.promise;
-    return requireFolder(projectId);
+    return ensure(core, thread);
   });
   try {
     const sent = await ownerBoite(['thread', 'send', threadId, 'Use current permission', '--request-id', 'cli-folder-selection', '--json']);
@@ -806,6 +810,32 @@ test('owner CLI holds queued text when the conversation folder is gone', async (
   expect(harness.core.journal.listTurns(moved.id)).toEqual([]);
   const receipt = await ownerBoite(args);
   expect(JSON.parse(receipt.out)).toMatchObject({ status: 'held', reason: expect.stringContaining(folder) });
+});
+
+test('owner CLI delivers to a reachable shared worktree whose project folder is gone', async () => {
+  const client = await harness.connect();
+  const source = join(harness.dataDir, 'shared-source');
+  mkdirSync(source);
+  for (const args of [['init', '-q'], ['commit', '-q', '--allow-empty', '-m', 'init']]) {
+    const run = Bun.spawnSync({ cmd: ['git', ...args], cwd: source, stdout: 'pipe', stderr: 'pipe', windowsHide: true, env: {
+      ...process.env, GIT_AUTHOR_NAME: 'boite test', GIT_AUTHOR_EMAIL: 'test@boite.invalid', GIT_COMMITTER_NAME: 'boite test', GIT_COMMITTER_EMAIL: 'test@boite.invalid',
+    } });
+    if (!run.success) throw new Error(`git ${args.join(' ')} failed: ${run.stderr.toString()}`);
+  }
+  const project = await client.call('projects.add', { path: source, name: 'shared-source' });
+  const shared = join(harness.dataDir, 'shared');
+  await client.call('settings.set', { worktreeStorage: { mode: 'shared', directory: shared } });
+  const { accountId } = harness.core.threads.require(threadId);
+  const thread = await client.call('threads.create', { projectId: project.id, accountId, providerId: 'echo', worktree: {} });
+  expect(thread.cwd.startsWith(shared)).toBe(true);
+  renameSync(source, `${source}-away`);
+  const args = ['thread', 'send', thread.id, 'Work in the shared worktree', '--request-id', 'cli-shared-worktree', '--json'];
+  expect(JSON.parse((await ownerBoite(args)).out).status).toBe('queued');
+  await waitFor(() => harness.core.journal.turnRequest(thread.id, 'cli-shared-worktree') !== null || harness.core.composer.storage.get('inputs', thread.id).value?.input.paused === true);
+  expect([JSON.parse((await ownerBoite(args)).out).reason, harness.core.journal.turnRequest(thread.id, 'cli-shared-worktree') !== null]).toEqual([undefined, true]);
+  await waitFor(() => harness.core.journal.lastTurn(thread.id)?.status !== 'running');
+  expect(JSON.parse((await ownerBoite(args)).out).status).toBe('sent');
+  expect(harness.core.journal.listMessages(thread.id).filter(message => message.role === 'user').map(message => message.parts[0])).toMatchObject([{ text: 'Work in the shared worktree' }]);
 });
 
 test('owner CLI thread new selects an explicit provider and rejects an unknown source', async () => {

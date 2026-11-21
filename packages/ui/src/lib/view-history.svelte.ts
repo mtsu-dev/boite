@@ -119,7 +119,7 @@ async function show(view: View): Promise<void> {
 export const trail = new Trail();
 /** True while a button's own move is being shown: that move is not a new visit. */
 let moving = false;
-let moves: Promise<void> = Promise.resolve();
+let moves: Promise<boolean> = Promise.resolve(false);
 
 function record(): void {
   // Read first, whatever comes of it: an effect that returned before reading
@@ -131,12 +131,12 @@ function record(): void {
   if (view) trail.visit(view);
 }
 
-async function move(direction: -1 | 1): Promise<void> {
+async function move(direction: -1 | 1): Promise<boolean> {
   // What is on screen is where the move starts, even when no effect ran since it changed.
   record();
   const from = trail.current;
   const target = trail.step(direction, exists);
-  if (!target) return;
+  if (!target) return false;
   moving = true;
   try {
     await show(target);
@@ -147,11 +147,15 @@ async function move(direction: -1 | 1): Promise<void> {
   const shown = currentView();
   if (from && shown && sameView(shown, from) && !sameView(shown, target)) trail.step(direction < 0 ? 1 : -1, () => true);
   else record();
+  return true;
 }
 
-/** One step back or forward. Presses made while a thread is still opening run in order. */
-export function go(direction: -1 | 1): Promise<void> {
-  moves = moves.then(() => move(direction)).catch(() => undefined);
+/**
+ * One step back or forward. Presses made while a thread is still opening run in
+ * order. Resolves false when no view still existing lay that way.
+ */
+export function go(direction: -1 | 1): Promise<boolean> {
+  moves = moves.then(() => move(direction)).catch(() => true);
   return moves;
 }
 

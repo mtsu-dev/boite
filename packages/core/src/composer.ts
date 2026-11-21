@@ -299,7 +299,8 @@ export class Composer {
         // A discovery RPC can yield while the user archives the target or stops the core.
         const current = this.#core.journal.getThread(id);
         if (this.#closed || this.#core.stopping || !current || current.archived || (current.projectId && this.#core.projects.require(current.projectId).archived)) return;
-        if (current.projectId) await this.#core.projects.requireFolder(current.projectId);
+        // As `turns.start`: the project's folder is only reported (a shared worktree outlives it); the turn's own cwd decides.
+        if (current.projectId) void this.#core.projects.requireFolder(current.projectId).catch(() => undefined);
         await ensureThreadCwd(this.#core, current);
         const activity = composerActivity(item.text);
         this.#atomic(() => {

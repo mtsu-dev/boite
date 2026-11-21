@@ -14,10 +14,16 @@
  * Safari's swipe from the edge, and Chrome's where it draws one, slide a
  * picture of the screen underneath before the Back lands: what that Back
  * closes leaves without a slide of its own (`browserAnimatedBack`).
+ *
+ * The Android app answers its Back itself (`answerBack`): it closes the top
+ * overlay in the same task, without the WebView's history navigation in
+ * between, and the entry that overlay owned is popped behind it.
  */
 import { secureId } from './secure-id';
 
 const live = new Set<string>();
+/** The overlays open now, the newest last: what `answerBack` closes. */
+const stack: { id: string; close: () => void }[] = [];
 let pops = 0;
 let queued: (() => void)[] = [];
 let listening = false;
@@ -100,13 +106,28 @@ export function mobileOverlay(close: () => void): () => void {
     pushed = true;
     window.addEventListener('popstate', back);
   };
+  // On the stack at once, even while its entry waits for the pops in flight: a Back meanwhile closes it.
+  stack.push({ id, close });
   if (pops > 0) queued.push(push);
   else push();
   return () => {
     cancelled = true;
     live.delete(id);
+    const at = stack.findIndex(entry => entry.id === id);
+    if (at >= 0) stack.splice(at, 1);
     if (!pushed) return;
     window.removeEventListener('popstate', back);
     if ((history.state as { boiteOverlay?: unknown } | null)?.boiteOverlay === id) pop();
   };
+}
+
+/**
+ * A Back the app received itself: closes the newest open overlay at once, and
+ * says whether there was one. False means Back leaves the app.
+ */
+export function answerBack(): boolean {
+  const top = stack.pop();
+  if (!top) return false;
+  top.close();
+  return true;
 }

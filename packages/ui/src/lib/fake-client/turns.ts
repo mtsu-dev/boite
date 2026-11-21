@@ -12,6 +12,7 @@ import { backgroundShell, streamToolInput, runTool, documentTool, spawnProcess, 
 import { delegationConfig, pumpDelegation } from './delegation';
 import { applyWaitingMove } from './thread-move';
 import { applyWaitingDone } from './agent-done';
+import { applyWaitingNewSession } from './new-session';
 import { sweepMergedPrFixtures } from './merged-pr-archive';
 import { autoTitle } from './titles';
 import { resumedAccountSession } from './account-sessions';
@@ -464,6 +465,8 @@ function finishTurn(ctx: FakeContext, thread: Thread, turn: Turn, message: Messa
   // Then the Done its agent asked for, as the core's turn runner calls `agentDone.applyWaiting`.
   applyWaitingDone(ctx, thread.id);
   autoCompact(ctx, thread, turn);
+  // A mochi's new conversation asked during the turn, as the core's turn runner calls `newSessions.applyWaiting`.
+  applyWaitingNewSession(ctx, thread.id);
   finishDelegation(ctx, thread, turn, message, record);
   // A merge seen while the thread worked is asked about once it rests (the core waits `settleMs`; the fake does not).
   if (ctx.mergedPrAfterTurn.delete(thread.id)) queueMicrotask(() => { void sweepMergedPrFixtures(ctx, thread.id); });

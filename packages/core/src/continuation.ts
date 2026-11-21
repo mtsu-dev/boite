@@ -20,6 +20,30 @@ export const TOOL_ENTRY_LIMIT = 3_000;
 const TOOL_MIN_EXCERPT = 200;
 
 /**
+ * The journal setting where a mochi's new conversation starts
+ * (`agents/new-session.ts`): the marker message, the turn it closed and when.
+ * A fresh session carries no message before it, so the conversation the user
+ * ended stays visible in the thread but never reaches the agent again.
+ */
+export const HISTORY_START_PREFIX = 'history-start:';
+export type HistoryStart = { messageId: string; turnId: string; at: number };
+
+/**
+ * The rowid history starts after, and the older messages a late write moved
+ * past it: `putMessage` replaces a row, so an update gives a message a newer
+ * rowid. The turn the marker closed is the one such a write may still reach.
+ * A marker no longer in the journal bounds by time instead.
+ */
+function historyStart(journal: Journal, threadId: string): { after: number; before: (message: Message) => boolean } {
+  const start = journal.getSetting(`${HISTORY_START_PREFIX}${threadId}`) as HistoryStart | undefined;
+  if (start === undefined) return { after: -1, before: () => false };
+  const rowid = journal.messageRowid(threadId, start.messageId);
+  return rowid === null
+    ? { after: -1, before: message => message.createdAt < start.at }
+    : { after: rowid, before: message => message.turnId === start.turnId };
+}
+
+/**
  * A history that leaves whole messages out names the newest of them, at most
  * `OMITTED_IDS` and `OMITTED_NOTE_LIMIT` characters with the command that
  * reads one. That room comes out of `RECENT_LIMIT`, so the prompt keeps its
@@ -197,8 +221,10 @@ export function continuationInput(
   let moved = input.moved === true;
   let entries = 0;
   let end: number | undefined;
-  for (const message of journal.walkMessages(threadId, { blobs: false })) {
+  const start = historyStart(journal, threadId);
+  for (const message of journal.walkMessages(threadId, { after: start.after, blobs: false })) {
     if (upTo !== null && message.turnId === upTo) { end = journal.messageRowid(threadId, message.id)!; break; }
+    if (start.before(message)) continue;
     if (message.parts.some((part) => part.type === 'text' && part.moved !== undefined)) moved = true;
     message.parts.forEach((part, partIndex) => {
       if (part.type !== 'image') return;
@@ -219,7 +245,8 @@ export function continuationInput(
   let firstSize = 0;
   let cut = 0;
   let overflow: { id: string; entry: string; cut: boolean } | undefined;
-  for (const message of journal.walkMessages(threadId, { before: end })) {
+  for (const message of journal.walkMessages(threadId, { after: start.after, before: end })) {
+    if (start.before(message)) continue;
     const next = entry(message);
     if (next === null) continue;
     if (firstSize + next.length > FIRST_LIMIT) { overflow = { id: message.id, entry: next, cut: mark.cut }; break; }
@@ -235,6 +262,7 @@ export function continuationInput(
     const after = journal.messageRowid(threadId, overflow.id)! - 1;
     let oldest = overflow.id;
     for (const message of journal.walkMessages(threadId, { after, before: end, newestFirst: true })) {
+      if (start.before(message)) continue;
       const next = message.id === overflow.id ? overflow.entry : entry(message);
       if (next === null) continue;
       if (recent.length > 0 && recentSize + next.length > RECENT_ROOM) break;
@@ -247,7 +275,7 @@ export function continuationInput(
     // The newest of the messages in between, read without their large values, as the count above read them.
     if (entries > first.length + recent.length) {
       for (const message of journal.walkMessages(threadId, { after, before: journal.messageRowid(threadId, oldest)!, newestFirst: true, blobs: false })) {
-        if (carried(message)) left.push({ id: message.id, role: message.role });
+        if (carried(message) && !start.before(message)) left.push({ id: message.id, role: message.role });
         if (left.length === OMITTED_IDS) break;
       }
     }

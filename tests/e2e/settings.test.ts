@@ -1,7 +1,7 @@
 import { mobileAction, toMobileList } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { BrowserPage, freePort } from './lib/cdp.ts';
+import { BrowserPage, freePort, SETTLE_ANIMATIONS } from './lib/cdp.ts';
 import { startDevUi } from './lib/ui.ts';
 // Vite belongs to the UI workspace, not the repository root.
 let server: { close(): Promise<void> };
@@ -383,7 +383,8 @@ test('composer and buttons keep solid fallback fills without color-mix', async (
       for (const mode of ['dark', 'light', 'grain', 'glass']) {
         root.dataset.theme = mode === 'glass' ? 'dark' : mode;
         if (mode === 'glass') root.dataset.glass = 'acrylic'; else delete root.dataset.glass;
-        await Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
+        const pending = await ${SETTLE_ANIMATIONS};
+        if (pending) throw new Error('Theme animations did not finish: ' + pending.join(', '));
         result.push(['composer', 'fallback-chip'].map(name => {
           context.clearRect(0, 0, 1, 1);
           context.fillStyle = getComputedStyle(document.querySelector('[data-testid="' + name + '"]')).backgroundColor;
