@@ -13,23 +13,6 @@ const lookups = new WeakMap<Client, Lookups>();
 const MAX_LOOKUPS = 4;
 
 /**
- * The last answer for each checkout of each thread, kept for the page's life. A
- * card that mounts again, or whose machine reconnects, draws it at once and
- * asks again behind it, rather than dropping its line until the core answers.
- */
-const known = new Map<string, ThreadSummary['pullRequest']>();
-
-export function knownPullRequest(key: string): ThreadSummary['pullRequest'] {
-  return known.get(key) ?? null;
-}
-
-export function rememberPullRequest(key: string, pullRequest: ThreadSummary['pullRequest']): void {
-  known.delete(key);
-  if (pullRequest) known.set(key, pullRequest);
-  while (known.size > 500) known.delete(known.keys().next().value!);
-}
-
-/**
  * How often the sidebar asks again about a thread at rest. Above the core's 15 s
  * cache of a repository's pull requests, so each round runs `gh` at most once
  * per repository.

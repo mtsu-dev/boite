@@ -3,6 +3,36 @@ import { RpcErrorCode } from '@boite/contracts';
 import { RpcFailure, type Client } from './client';
 import { lookupPullRequest, resetPullRequestSupport } from './pull-request';
 
+test('PR answers from two windows keep their freshness on remount and reload', async () => {
+  const firstWindow = await import('./pull-request-cache');
+  const pr = { number: 42, url: 'https://github.com/example/project/pull/42', state: 'OPEN' as const };
+  const merged = { pullRequest: { ...pr, state: 'MERGED' }, checkedAt: null };
+  const checkedAt = Date.now() - 10;
+  firstWindow.rememberPullRequest('thread-with-pr', pr, checkedAt);
+  window.dispatchEvent(new Event('pagehide'));
+  vi.resetModules();
+  const secondWindow = await import('./pull-request-cache');
+  secondWindow.rememberPullRequest('thread-without-pr', null, checkedAt);
+  const mergedAt = Date.now();
+  const clock = vi.spyOn(Date, 'now').mockReturnValueOnce(mergedAt);
+  secondWindow.rememberPullRequest('thread-with-pr', { ...pr, state: 'MERGED' });
+  clock.mockRestore();
+  window.dispatchEvent(new Event('pagehide'));
+  // Lookups started before and in the same millisecond as the merge both finish after it.
+  firstWindow.rememberPullRequest('thread-with-pr', pr, checkedAt + 1);
+  const remounted = firstWindow.cachedPullRequest('thread-with-pr');
+  window.dispatchEvent(new Event('pagehide'));
+  firstWindow.rememberPullRequest('thread-with-pr', pr, mergedAt);
+  const remountedOnTie = firstWindow.cachedPullRequest('thread-with-pr');
+  window.dispatchEvent(new Event('pagehide'));
+  vi.resetModules();
+  const { cachedPullRequest } = await import('./pull-request-cache');
+  expect(remounted).toMatchObject(merged);
+  expect(remountedOnTie).toMatchObject(merged);
+  expect(cachedPullRequest('thread-with-pr')).toMatchObject(merged);
+  expect(cachedPullRequest('thread-without-pr')).toMatchObject({ pullRequest: null, checkedAt });
+});
+
 test('one unsupported probe covers concurrent threads on the same core', async () => {
   const call = vi.fn().mockRejectedValue(new RpcFailure({code:RpcErrorCode.MethodNotFound,message:'unknown method threads.pullRequest'}));
   const client = {call} as unknown as Client;

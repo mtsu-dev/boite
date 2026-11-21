@@ -1206,8 +1206,8 @@ empties at once: the store stages it until the core's own copy takes its place
 in the same frame. A draft shows it while its thread is still being created. A
 second prompt typed meanwhile waits in the queue and leaves by itself. A
 refused prompt returns to an empty box, or to the head of a held queue when the
-box already holds the next one. A sidebar card keeps the pull request it last
-showed for its checkout across a reconnect and asks again behind it.
+box already holds the next one. A sidebar card restores the last pull request
+for its checkout after a reload or reconnect and rechecks it when due.
 `tests/e2e/chat-delivery.test.ts` holds the core's answer back and captures the
 pending prompt at desktop and phone widths.
 Animations pause when hidden and respect reduced motion.
