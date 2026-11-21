@@ -110,7 +110,8 @@ describe('the environment a thread launches with', () => {
     const cliDir = join('opt', 'boite', 'bin');
     const before = `${join('usr', 'bin')}${delimiter}${join('usr', 'other')}`;
     const fields = { threadId: 'thr_one', coreUrl: 'http://127.0.0.1:7777', token: 'secret', cliDir };
-    const env = agentEnvFor({ Path: before, KEEP: 'kept' }, fields, 'win32');
+    const env = agentEnvFor({ Path: before, KEEP: 'kept', BOITE_DATA_DIR: '/private', Boite_Data_Dir: '/private' }, fields, 'win32');
+    expect(Object.keys(env).some(key => key.toUpperCase() === 'BOITE_DATA_DIR')).toBe(false);
     expect(env[AGENT_ENV.threadId]).toBe('thr_one');
     expect(env[AGENT_ENV.coreUrl]).toBe('http://127.0.0.1:7777');
     expect(env[AGENT_ENV.token]).toBe('secret');

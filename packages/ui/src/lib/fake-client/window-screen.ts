@@ -3,15 +3,15 @@ import { fakeDeviceScreen } from './device-screen';
 let last: { key: string; base64: string } | null = null;
 
 /**
- * A fake desktop window as base64 JPEG: an editor's frame with a scene whose
+ * A fake desktop window as base64: an editor's frame with a scene whose
  * cube turns one step per `tick`, so the Window panel sees the picture change.
  * `hue` tells two apps apart. jsdom has no canvas: it gets the device's still.
  */
-export function fakeWindowPicture(width: number, height: number, tick: number, hue = 210): string {
-  const key = `${width}x${height}:${tick}:${hue}`;
+export function fakeWindowPicture(width: number, height: number, tick: number, hue = 210, mime = 'image/jpeg'): string {
+  const key = `${width}x${height}:${tick}:${hue}:${mime}`;
   if (last?.key === key) return last.base64;
-  if (typeof OffscreenCanvas === 'undefined') return fakeDeviceScreen();
-  let base64 = fakeDeviceScreen();
+  let base64 = mime === 'image/jpeg' ? fakeDeviceScreen() : '';
+  if (typeof OffscreenCanvas === 'undefined') return base64;
   try {
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -61,7 +61,8 @@ export function fakeWindowPicture(width: number, height: number, tick: number, h
       paint.fillRect(18 * u, 75 * v, 62 * u, 25 * v);
       paint.fillStyle = 'hsl(220 8% 48%)';
       for (let row = 0; row < 4; row++) paint.fillRect(20 * u, (79 + row * 5) * v, (30 + ((row * 7 + tick) % 20)) * u, 1.4 * v);
-      base64 = canvas.toDataURL('image/jpeg', 0.72).replace(/^data:image\/jpeg;base64,/, '');
+      const url = canvas.toDataURL(mime, 0.72);
+      if (url.startsWith(`data:${mime};base64,`)) base64 = url.slice(url.indexOf(',') + 1);
     }
   } catch {
     /* the still stays */

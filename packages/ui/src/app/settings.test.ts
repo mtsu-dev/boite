@@ -142,6 +142,12 @@ test('the checklist model sits with how agents answer on General, with no experi
   expect(query('#settings-notifications [data-testid=setting-notifications]')).toBeTruthy();
   expect(document.querySelector('#settings-conversations [data-testid=setting-notifications]')).toBeNull();
   expect(query('[data-testid=goal-tracker-model]').textContent).toContain('Automatic');
+  for (const id of ['setting-group-working-threads', 'setting-async-questions']) {
+    const control = query<HTMLInputElement>(`[data-testid=${id}]`);
+    const checked = control.checked;
+    document.getElementById(control.getAttribute('aria-describedby')!)!.click();
+    expect(control.checked).toBe(!checked);
+  }
   query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });

@@ -383,9 +383,19 @@ export class PullRequestWatches {
     // A merge or a close someone else made wakes the agent anyway: that turn asks about Done, so no second one does.
     const settled = due.some(record => record.pending.some(change => change.kind === 'closed')) ? this.core.mergedPrAsk.watchHint(thread) : null;
     const { text, label } = wakeMessage(due.map(record => ({ number: record.number, url: record.url, changes: record.pending })), this.core.delegation.delegated(threadId), settled ? WATCH_DONE_HINT : null);
+    const ended = due.filter(record => record.ended);
+    const remaining = records.filter(record => !ended.includes(record)).map(record => due.includes(record)
+      ? { ...record, pending: [], pendingSince: null } : record);
     try {
-      this.core.threads.startTurn(threadId, { prompt: text, display: label }, { kind: 'pull-request' });
-      if (settled) this.core.mergedPrAsk.asked(threadId, settled.urls);
+      this.core.threads.startTurn(threadId, { prompt: text, display: label }, { kind: 'pull-request' }, { persistAdmission: () => {
+        this.#save(threadId, remaining);
+        if (settled) this.core.mergedPrAsk.asked(threadId, settled.urls);
+        return () => {
+          for (const record of due) { record.pending = []; record.pendingSince = null; }
+          for (const record of ended) this.#remove(threadId, record.url);
+          if (ended.length) this.#changed(threadId);
+        };
+      } });
     } catch (error) {
       // Tried again after another interval, never in a tight loop.
       for (const record of due) record.pendingSince = now + this.#timing.intervalMs - this.#timing.coalesceMs;
@@ -393,11 +403,6 @@ export class PullRequestWatches {
       this.#save(threadId);
       return;
     }
-    for (const record of due) { record.pending = []; record.pendingSince = null; }
-    const ended = due.filter(record => record.ended);
-    for (const record of ended) this.#remove(threadId, record.url);
-    this.#save(threadId);
-    if (ended.length) this.#changed(threadId);
   }
 
   #summary(threadId: ThreadId, record: WatchRecord): PullRequestWatch {
@@ -417,9 +422,8 @@ export class PullRequestWatches {
     if (left.length) this.#records.set(threadId, left); else this.#records.delete(threadId);
   }
 
-  #save(threadId: ThreadId): void {
+  #save(threadId: ThreadId, records = this.#records.get(threadId)): void {
     if (this.core.journal.isClosed() || !this.core.journal.getThread(threadId)) return;
-    const records = this.#records.get(threadId);
     if (records?.length) this.core.journal.setSetting(PREFIX + threadId, records);
     else this.core.journal.deleteSetting(PREFIX + threadId);
   }
@@ -466,6 +470,7 @@ const rulesKey = (record: WatchRecord, base: string) => `${record.host} ${record
 function seenOf(detail: WatchDetail, memory: WatchMemory, now: number): PullRequestWatchSeen {
   return {
     checkedAt: now, head: detail.head.slice(0, 7), base: detail.base, conflicting: memory.conflicting, behind: memory.behind === true,
+    ...(detail.baseFailure ? { baseFailure: { ...detail.baseFailure } } : {}),
     queue: detail.queue === null ? null : { position: detail.queue },
     checks: { total: detail.checks.length, running: detail.checks.filter(check => check.status === 'pending').length, failed: detail.checks.filter(check => check.status === 'failed').length },
   };

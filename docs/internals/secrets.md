@@ -19,7 +19,7 @@ component `SecretCard.svelte`.
 boite secret ask <NAME> --why <reason> [--placeholder <example>] [--timeout <minutes>]
 boite secret write <ref> --env-file <path> --key <VAR> [--allow-unignored]
 boite secret run <ref> --as <VAR> -- <cmd> [args ...]
-boite secret pipe <ref> -- <cmd> [args ...]
+boite secret pipe <ref> [--check <arg>] -- <cmd> [args ...]
 ```
 
 Names are uppercase letters, digits and `_`, starting with a letter, at most
@@ -52,7 +52,15 @@ metadata never enter that index.
 ## Destinations
 
 - `run` gives the value to one command as the environment variable `VAR`.
-- `pipe` gives it to one command on standard input.
+- `pipe` gives it to one command on standard input. `--check` first runs the
+  same executable with the given argument and empty standard input, in the
+  same directory and environment. A failed check leaves the ref available
+  until its original expiry. On BoiteOS a pipe from a sandboxed thread runs
+  the check and the recipient inside that thread's sandbox. The core selects
+  the execution route from the thread's checkout. BoiteOS refuses an unknown
+  checkout or a recipient directory on a different route. A host route
+  requires an explicitly configured host project. The RPC accepts an array
+  of check arguments.
 - `write` sets `VAR=<value>` in an env file, preserving other lines and line
   endings. Every line that sets `VAR` gets the value, since loaders read the
   last one, each keeping its indent and `export`. The destination must be inside the conversation's folder, untracked
@@ -80,6 +88,12 @@ Agents can ask for and use refs only in their own conversation. Owners and
 paired devices can read pending metadata and answer cards, with the encrypted
 link requirement enforced by the real core.
 
+On a BoiteOS host, a pipe recipient runs through the checkout's registered
+route. If the `os` launcher or `osd` rejects the protocol as too new before
+launch, Boite names the component to update. Until the original expiry, the
+same ref can retry the original action, command, arguments and resolved
+working directory. This also applies to a `--check` refusal.
+
 ## Migration from the project key store
 
 Startup erases all legacy kept keys and transit copies without reading or
@@ -96,8 +110,9 @@ and guides but always report no stored keys and memory-only storage.
 
 ## Masking and limits
 
-The core retains keyed hashes, not values, for masking the conversation's
-text, thinking, tools, terminal, the agent's notices (also one written after
+The core retains keyed hashes, not values, for masking every conversation's
+text, thinking, tools, terminal (not only the one that asked: a subagent, a fork
+or another thread that reads the file a `write` produced is masked the same), the agent's notices (also one written after
 its turn ended), process command lines, logs and diagnostic exports. Hashes remain available after delivery until the core stops, so late
 output is still masked. The exact and URL-encoded forms become `•••• (<NAME>)`.
 Values shorter than eight bytes are not masked. Streamed chunks are masked

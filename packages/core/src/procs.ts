@@ -7,8 +7,7 @@ import { MemoryGuard } from './memory-guard.ts';
 import type { MemoryProcess } from './memory-guard-logic.ts';
 import { registryPlatform } from './platform/index.ts';
 import { type KnownProcess, type ProcessIdentity, unseenIdentity } from './process-identity.ts';
-import { killBunChild, stopGroup } from './platform/posix-kill.ts';
-import type { GuardStatus, NativeProcessExit, NativeProcessInfo, ProcessPlatform } from './platform/types.ts';
+import type { GuardStatus, NativeProcessExit, NativeProcessInfo, ProcessPlatform, SubtreeLineage } from './platform/types.ts';
 import { bunUsage, ResourceCollection } from './resource-usage.ts';
 import { traceWrite } from './trace-writes.ts';
 import { orphansOf, parentAtStart } from './process-orphans.ts';
@@ -19,6 +18,8 @@ import { launchOf } from './git/command.ts';
 import { ExecutionProtections } from './execution-protection.ts';
 import { closeProcessResources, protectionRunner } from './protection-runner.ts';
 import { processEventDiagnostic } from './process-event-diagnostics.ts';
+import { guardEvents, platformNotes } from './process-sinks.ts';
+import { killEntry, lineageOf, running, stopProcess } from './process-entry.ts';
 
 import type { ChildProcess, ManagedStop, ProcessEntry as Entry, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions, ProcRegistryOptions } from './process-spawn-types.ts';
 export type { ProcRegistryOptions, ManagedStop, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
@@ -32,12 +33,6 @@ const FORGET_DELAY_MS = 30_000;
  * child it means to keep does so well inside that.
  */
 const ORPHAN_GRACE_MS = 10_000;
-/**
- * Off Windows each child leads a process group of its own, so its kill reaches
- * what it started (platform/posix-kill.ts). On Windows the thread's job does that.
- */
-const OWN_GROUP = process.platform !== 'win32';
-
 /**
  * The one launcher. Nothing in the core reaches `Bun.spawn` directly: a child
  * that skips this registry is invisible to the trace and survives killTree.
@@ -75,8 +70,7 @@ export class ProcRegistry {
   #knownSweptAt = 0;
   /** A sweep waiting for the thread to stay idle, cancelled by its next turn. */
   readonly #sweepTimers = new Map<ThreadId, ReturnType<typeof setTimeout>>();
-  /** Group stops still inside their grace off Windows, and taskkill fallbacks on it: what `killAll` waits for. */
-  /** Group stops under way, SIGKILL included, by the thread they stop when it is known. */
+  /** Pending group, tree and fallback stops, by the thread they stop when it is known. */
   readonly #stops = new Map<Promise<void>, ThreadId | undefined>();
   readonly #childStops = new WeakMap<SpawnedChild, ManagedStop>();
   #reapOrphans = true;
@@ -90,6 +84,8 @@ export class ProcRegistry {
   /** The options a launch runs with, its folder written as it was checked: `..` read by name, never after a link. */
   #admitted<T extends { cwd?: string }>(opts: T): T {
     if (!this.#accepting || this.#closing !== null) throw new Error('the core is stopping; no new process may start');
+    const untied = this.platform.readyGroups?.() ?? null; // The watcher that ends agent groups with the core starts before them.
+    if (untied !== null) this.#bus.emit('core.log', { level: 'warn', message: `agent process groups will outlive a core that dies: ${untied}`, source: 'process', event: 'groups.untied', at: Date.now() });
     if (opts.cwd === undefined) return opts;
     const cwd = resolve(opts.cwd);
     this.admitCwd(cwd);
@@ -113,7 +109,8 @@ export class ProcRegistry {
     this.#resources = new ResourceCollection(platform);
     this.#orphanGraceMs = options.orphanGraceMs ?? ORPHAN_GRACE_MS;
     this.#forgetDelayMs = options.forgetDelayMs ?? FORGET_DELAY_MS;
-    this.#stopListening = this.#bus.onAny((name, payload) => {
+    const stopTrouble = platform.onLaunchTrouble?.((message) => bus.emit('core.log', { level: 'warn', message, source: 'process', event: 'groups.unguarded', at: Date.now() }));
+    const stopBus = this.#bus.onAny((name, payload) => {
       if (name === 'turn.started') {
         const { threadId } = payload as Turn;
         this.#cancelSweep(threadId);
@@ -127,6 +124,7 @@ export class ProcRegistry {
         this.#scheduleSweep(threadId);
       }
     });
+    this.#stopListening = () => { stopBus(); stopTrouble?.(); };
     this.platform.retain({
       started: (threadId, pid, info) => {
         this.#onJobStarted(threadId, pid, info);
@@ -134,41 +132,8 @@ export class ProcRegistry {
       exited: (threadId, pid, exit) => {
         this.onJobExited(threadId, pid, exit);
       },
-      note: (threadId, message) => {
-        this.#bus.emit('core.log', { level: 'warn', message: 'the process platform reported a warning', source: 'process', event: 'platform.warning', threadId, at: Date.now() });
-        try { options.diagnostic?.(`Process platform: ${message}`, { event: 'platform.warning.detail', threadId }); } catch { /* Observability must not break the platform's callback. */ }
-      },
-      memoryLimit: (threadId, kind) => {
-        this.memory.memoryLimit(threadId, kind);
-        const message = kind === 'thread-cap'
-          ? `thread ${threadId}: the thread reached its memory cap`
-          : 'the agents reached their memory budget';
-        this.#bus.emit('core.log', { level: 'warn', message, source: 'process', event: 'memory.limit', ...(threadId === null ? {} : { threadId }), at: Date.now() });
-      },
-    }, {
-      pushed: (threadId, pid, title, restored) => {
-        this.#bus.emit('process.focusPushed', { threadId, pid, title, restored, at: Date.now() });
-        this.#bus.emit('core.log', {
-          level: 'info',
-          message: `a window of pid ${pid} was pushed back; restored=${restored}`,
-          source: 'process', event: 'process.focus-pushed', threadId,
-          at: Date.now(),
-        });
-      },
-      muted: (threadId, pid) => {
-        this.#bus.emit('process.muted', { threadId, pid, at: Date.now() });
-        this.#bus.emit('core.log', {
-          level: 'info',
-          message: `the audio of pid ${pid} is muted`,
-          source: 'process', event: 'process.muted', threadId,
-          at: Date.now(),
-        });
-      },
-      note: (message) => {
-        this.#bus.emit('core.log', { level: 'warn', message: 'the process guard reported a warning', source: 'process', event: 'guard.warning', at: Date.now() });
-        try { options.diagnostic?.(`Focus and audio guard: ${message}`, { event: 'guard.warning.detail' }); } catch { /* Observability must not break the guard's callback. */ }
-      },
-    });
+      ...platformNotes(this.#bus, this.memory, options.diagnostic),
+    }, guardEvents(this.#bus, options.diagnostic));
     // Fast while a turn runs, a task-manager view leases the numbers, memory is under pressure, a startup is boosted or a process was busy.
     this.#loadPace = new LoadPace(() => this.sampleLoad(), () => this.#running.size > 0 || this.#resources.active
       || this.memory.state !== 'ok' || this.#startups.size > 0 || this.#loadBusy,
@@ -229,25 +194,25 @@ export class ProcRegistry {
   spawn(threadId: ThreadId, cmd: string, args: string[], opts: SpawnOptions = {}): SpawnedProcess {
     opts = this.#admitted(opts);
     const protectedLaunch = this.protection.launch(threadId, cmd, args, opts);
-    const [command, env] = launchOf(protectedLaunch?.command ?? cmd, protectedLaunch?.env ?? { ...process.env, ...opts.env });
+    const [command, env] = launchOf(protectedLaunch?.command ?? cmd,
+      protectedLaunch?.env ?? (opts.envIsComplete ? opts.env ?? {} : { ...process.env, ...opts.env }));
     const extra = Math.max(0, Math.floor(opts.extraPipes ?? 0));
-    const proc = startResolved(command, env, (executable) => Bun.spawn({
+    const proc = startResolved(command, env, (executable) => this.#start({
       cmd: [executable, ...(protectedLaunch?.args ?? args)],
       cwd: protectedLaunch?.cwd ?? opts.cwd,
       env,
-      ...(extra
-        ? { stdio: ['ignore', 'pipe', 'pipe', ...Array.from({ length: extra }, () => 'pipe' as const)] as ['ignore', 'pipe', 'pipe'] }
-        : { stdin: 'ignore' as const, stdout: 'pipe' as const, stderr: 'pipe' as const }),
+      stdio: ['ignore', 'pipe', 'pipe', ...Array.from({ length: extra }, () => 'pipe' as const)],
       windowsHide: opts.showWindow !== true,
-      detached: OWN_GROUP,
     }) as ChildProcess);
-    const fds = extra ? (proc.stdio as unknown[]).slice(3).map(Number) : undefined;
+    // Only the caller's pipes: a launch through the launcher passes it two descriptors of its own after them.
+    const fds = extra ? (proc.stdio as unknown[]).slice(3, 3 + extra).map(Number) : undefined;
     if (opts.showWindow === true) this.#shown.add(threadId);
 
+    const kill = () => this.platform.stopChild(proc.pid, running(proc), () => proc.kill());
     const record = this.#register(threadId, proc.pid, cmd, args, {
       root: opts.agentRoot !== false,
       startup: opts.startup === true,
-      kill: () => killBunChild(proc),
+      kill,
       running: running(proc),
       usage: () => bunUsage(proc),
     });
@@ -257,8 +222,26 @@ export class ProcRegistry {
       return code;
     });
 
-    return { record, proc, exited, stop: this.#managedStop(proc.pid, running(proc), () => killBunChild(proc), exited), ...(fds ? { fds } : {}) };
+    return { record, proc, exited, stop: this.#managedStop(threadId, proc.pid, running(proc), kill, exited), ...(fds ? { fds } : {}) };
   }
+
+  /**
+   * `Bun.spawn` of a registry child. On Linux the platform's launcher ties the
+   * child's group to the core before the child runs (linux-launcher.ts); it
+   * throws what Bun would. Without it, a plain spawn that `#register` ties.
+   */
+  #start(options: { cmd: string[]; cwd?: string; env: Record<string, string | undefined>; stdio: Array<'ignore' | 'pipe'>; windowsHide: boolean }): Bun.Subprocess {
+    const tied = this.platform.spawnTied?.({ cmd: options.cmd, ...(options.cwd !== undefined ? { cwd: options.cwd } : {}), env: options.env, stdio: options.stdio });
+    if (tied !== null && tied !== undefined) return tied;
+    if (!this.#launchWarned && this.platform.readyLaunch !== undefined) {
+      this.#launchWarned = true;
+      const why = this.platform.readyLaunch();
+      if (why !== null) this.#bus.emit('core.log', { level: 'warn', message: `agent process groups are tied only once their spawn returns: ${why}`, source: 'process', event: 'groups.late', at: Date.now() });
+    }
+    return Bun.spawn({ ...options, stdio: options.stdio as never, detached: this.platform.detachedChildren });
+  }
+
+  #launchWarned = false;
 
   /**
    * `spawn` with stdin left open. The account login needs it: a provider CLI
@@ -268,27 +251,26 @@ export class ProcRegistry {
     opts = this.#admitted(opts);
     const protectedLaunch = this.protection.launch(threadId, cmd, args, opts);
     const [command, env] = launchOf(protectedLaunch?.command ?? cmd, protectedLaunch?.env ?? opts.env ?? process.env);
-    const proc = startResolved(command, env, (executable) => Bun.spawn({
+    const extra = Math.max(0, Math.floor(opts.extraPipes ?? 0));
+    const proc = startResolved(command, env, (executable) => this.#start({
       cmd: [executable, ...(protectedLaunch?.args ?? args)],
       cwd: protectedLaunch?.cwd ?? opts.cwd,
       env,
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
+      stdio: ['pipe', 'pipe', 'pipe', ...Array.from({ length: extra }, () => 'pipe' as const)],
       windowsHide: true,
-      detached: OWN_GROUP,
-    }));
+    }) as Bun.Subprocess<'pipe', 'pipe', 'pipe'>);
 
+    const kill = () => this.platform.stopChild(proc.pid, running(proc), () => proc.kill());
     const record = this.#register(threadId, proc.pid, cmd, args, {
       root: opts.agentRoot !== false,
       startup: opts.startup === true,
-      kill: () => killBunChild(proc),
+      kill,
       running: running(proc),
       usage: () => bunUsage(proc),
     });
 
     const exited = proc.exited.then((code) => { this.onExit(threadId, record.pid, code, undefined, record); return code; });
-    return { record, proc, exited, stop: this.#managedStop(proc.pid, running(proc), () => killBunChild(proc), exited) };
+    return { record, proc, exited, stop: this.#managedStop(threadId, proc.pid, running(proc), kill, exited) };
   }
 
   /**
@@ -321,7 +303,7 @@ export class ProcRegistry {
     const record = this.#register(threadId, proc.pid, cmd, args, {
       root: false,
       running: running(proc),
-      kill: () => process.platform === 'win32' ? proc.kill() : hangUpShell(this.platform, threadId, proc.pid, (signal) => proc.kill(signal), proc.exited),
+      kill: () => hangUpShell(this.platform, threadId, proc.pid, signal => proc.kill(signal), proc.exited),
       usage: () => bunUsage(proc),
     });
 
@@ -340,21 +322,38 @@ export class ProcRegistry {
    */
   adopt(threadId: ThreadId, pid: number, cmd: string, args: string[], control: { running: () => boolean; kill: () => Promise<void> | undefined; exited: Promise<number | null>; root?: boolean; startup?: boolean; child?: SpawnedChild }): { record: ProcessRecord; exited: Promise<number | null> } {
     this.#admitted({});
-    const record = this.#register(threadId, pid, cmd, args, { root: control.root === true, startup: control.startup === true, running: control.running, kill: control.kill, usage: () => null });
-    if (control.child !== undefined) this.#childStops.set(control.child, this.#managedStop(record.pid, control.running, control.kill, control.exited));
+    const record = this.#register(threadId, pid, cmd, args, { root: control.root === true, startup: control.startup === true, running: control.running, kill: control.kill, usage: () => null }, false);
+    if (control.child !== undefined) this.#childStops.set(control.child, this.#managedStop(threadId, record.pid, control.running, control.kill, control.exited));
     return { record, exited: control.exited.then((code) => { this.onExit(threadId, record.pid, code, undefined, record); return code; }) };
   }
 
   /** Set while the keeper holds agent sessions (`keeper/kept-agents.ts`): a launch with `keep` goes to it, null leaves it here. */
   keptSpawn: ((threadId: ThreadId, cmd: string, executable: string, args: string[], opts: SpawnOptions) => SpawnedChild | null) | null = null;
 
-  /** Lets go of a thread's processes, unstopped and with no exit recorded: the keeper holds them for the next core. Each pid also leaves `unassigned`, where every POSIX pid sits. */
-  disown(threadId: ThreadId): void {
+  /**
+   * Lets go of a thread's processes, unstopped and with no exit recorded: the keeper holds them for the next core. Each pid also leaves `unassigned`, where every POSIX pid sits.
+   * The pids whose group could not be let go of, which still end with this core.
+   */
+  disown(threadId: ThreadId): number[] {
     const byPid = this.#live.get(threadId);
-    if (byPid === undefined) return;
-    for (const pid of byPid.keys()) { this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId)); this.unassigned.delete(pid); }
-    this.#live.delete(threadId);
-    this.known.delete(threadId);
+    if (byPid === undefined) return [];
+    const tied: number[] = [];
+    const known = this.known.get(threadId);
+    for (const pid of byPid.keys()) {
+      if (this.platform.untieGroup?.(pid, false) === false) {
+        tied.push(pid);
+        continue;
+      }
+      this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId));
+      this.unassigned.delete(pid);
+      byPid.delete(pid);
+      known?.delete(pid);
+    }
+    if (byPid.size === 0) {
+      this.#live.delete(threadId);
+      this.known.delete(threadId);
+    }
+    return tied;
   }
 
   /**
@@ -375,15 +374,14 @@ export class ProcRegistry {
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
-      detached: OWN_GROUP,
+      detached: this.platform.detachedChildren,
     });
+    const pid = child.pid;
+    // It never started (a missing or refused executable): nothing runs to trace or stop, and its 'error' reaches the caller.
+    if (pid === undefined) return child.once('error', (error) => forgetOnMissing(command, executable, error));
 
-    const kill = (): Promise<void> | undefined => {
-      if (OWN_GROUP) return stopGroup(child.pid ?? -1, running(child));
-      child.kill();
-      return undefined;
-    };
-    const record = this.#register(threadId, child.pid ?? -1, cmd, args, {
+    const kill = () => this.platform.stopChild(pid, running(child), () => child.kill());
+    const record = this.#register(threadId, pid, cmd, args, {
       root: opts.agentRoot !== false,
       startup: opts.startup === true,
       kill,
@@ -395,13 +393,10 @@ export class ProcRegistry {
       child.once('exit', () => resolve());
       child.once('error', () => resolve());
     });
-    this.#childStops.set(child, this.#managedStop(record.pid, running(child), kill, exited));
+    this.#childStops.set(child, this.#managedStop(threadId, record.pid, running(child), kill, exited));
 
-    child.once('exit', (code) => {
-      this.onExit(threadId, record.pid, code, undefined, record);
-    });
-    // A child that never starts emits 'error' and no 'exit'; without this it
-    // would stay in the live registry for the rest of the session.
+    child.once('exit', (code) => this.onExit(threadId, record.pid, code, undefined, record));
+    // A started child may emit 'error' and no 'exit'; without this it would stay live all session.
     child.once('error', (error) => {
       forgetOnMissing(command, executable, error);
       this.onExit(threadId, record.pid, null, undefined, record);
@@ -418,14 +413,16 @@ export class ProcRegistry {
    * holds the process's handle, so the pid is still the root's, and the backend
    * takes its own hold in the same tick; after it the pid may be a stranger's.
    */
-  #managedStop(pid: number, running: () => boolean, kill: () => Promise<void> | undefined, exited: Promise<unknown>): ManagedStop {
+  #managedStop(threadId: ThreadId, pid: number, running: () => boolean, kill: () => Promise<void> | undefined, exited: Promise<unknown>): ManagedStop {
     return () => {
-      const tree = pid > 0 && running() ? this.platform.terminateUnassigned(pid) : undefined;
-      const stop = tree instanceof Promise ? tree.then(kill, kill) : kill();
-      this.#trackStop(stop);
+      const stop = stopProcess(this.platform, threadId, pid, !this.unassigned.has(pid), pid > 0 && running(), kill, () => this.#lineage(threadId, pid));
+      this.#trackStop(stop, threadId);
       return Promise.all([stop, exited.catch(() => null)]).then(() => undefined);
     };
   }
+
+  /** The captured parent links under the live root `pid` (`lineageOf`). */
+  #lineage(threadId: ThreadId, pid: number): SubtreeLineage { return lineageOf(this.#live.get(threadId)?.get(pid), this.known.get(threadId)?.values() ?? []); }
 
   /** The `ManagedStop` of a child `spawnChild` returned, whose SDK-shaped type has no field for it. */
   stopChild(child: SpawnedChild): Promise<void> {
@@ -438,7 +435,10 @@ export class ProcRegistry {
     cmd: string,
     args: string[],
     control: Omit<Entry, 'record' | 'identity'>,
+    spawned = true,
   ): ProcessRecord {
+    // First, so the group ends with this core even if it dies here; what the keeper holds outlives it on purpose.
+    if (spawned) this.platform.tieGroup?.(pid);
     const nativeStartedAt = this.platform.startedAt(pid);
     const record: ProcessRecord = {
       pid,
@@ -623,11 +623,10 @@ export class ProcRegistry {
     processEventDiagnostic('registry.stop-requested', {threadId, registered: entries.length});
     const terminated = this.platform.terminate(threadId);
     for (const entry of entries) {
-      if (terminated && !this.unassigned.has(entry.record.pid)) continue;
-      if (entry.record.pid <= 0) continue;
-      // The own kill waits for the tree kill, which /T needs the root alive for; as in `managedStop`, only while held.
-      const fallback = entry.running() ? this.platform.terminateUnassigned(entry.record.pid) : undefined;
-      this.#trackStop(fallback instanceof Promise ? fallback.then(() => killEntry(entry), () => killEntry(entry)) : killEntry(entry), threadId);
+      const { pid } = entry.record;
+      const assigned = !this.unassigned.has(pid);
+      if (pid <= 0 || (terminated && assigned)) continue;
+      this.#trackStop(stopProcess(this.platform, threadId, pid, assigned, entry.running(), () => killEntry(entry), () => this.#lineage(threadId, pid)), threadId);
     }
     return entries.length;
   }
@@ -650,7 +649,7 @@ export class ProcRegistry {
   }
 
   /** Project removal waits for exit records; `native` drains untraced job members, `stops` the thread's group stops up to their SIGKILL. */
-  async stopAndWait(threadId: ThreadId): Promise<void> { this.killTree(threadId); await this.waitForExit(threadId); }
+  async stopAndWait(threadId: ThreadId): Promise<void> { this.killTree(threadId); await this.waitForExit(threadId, undefined, { stops: true }); }
   async waitForExit(threadId: ThreadId, pids?: number[], options: {native?: boolean, stops?: boolean} = {}): Promise<void> {
     const deadline = Date.now() + 5000;
     if (options.stops) await Promise.all([...this.#stops].flatMap(([stop, owner]) => (owner === threadId ? [stop] : [])));
@@ -768,7 +767,7 @@ export class ProcRegistry {
       }
     }
     this.#forgetWhenIdle(threadId);
-    this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId));
+    this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId)); this.platform.untieGroup?.(pid, true);
     if (this.#journal.isClosed()) return;
     const record = entry.record;
     const usage = entry.usage();
@@ -836,7 +835,7 @@ export class ProcRegistry {
     for (const measured of sample.workingSets ?? []) {
       const entry = this.#live.get(threadId)?.get(measured.pid);
       if (entry !== undefined) memory?.push({ threadId, pid: measured.pid, exe: entry.record.exe, bytes: measured.committedBytes ?? measured.bytes, root: entry.root });
-      else if (this.capability().os !== 'windows') memory?.push({ threadId, pid: measured.pid, exe: measured.exe ?? 'process', bytes: measured.bytes, root: false });
+      else if (!this.platform.memoryVictimsMustBeRegistered) memory?.push({ threadId, pid: measured.pid, exe: measured.exe ?? 'process', bytes: measured.bytes, root: false });
     }
     return { processes, cpuPercent: sample.cpuPercent, memoryBytes: sample.memoryBytes };
   }
@@ -879,7 +878,7 @@ export class ProcRegistry {
     this.memory.sample(processes.reduce((sum, process) => sum + process.bytes, 0), processes, (victim) => {
       const entry = this.#live.get(victim.threadId)?.get(victim.pid);
       if (entry?.root) return false;
-      if (this.capability().os === 'windows') return entry !== undefined && this.platform.terminateProcess(victim.threadId, victim.pid);
+      if (this.platform.memoryVictimsMustBeRegistered) return entry !== undefined && this.platform.terminateProcess(victim.threadId, victim.pid);
       try {
         if (entry === undefined) return this.platform.terminateProcess(victim.threadId, victim.pid);
         this.#trackStop(entry.kill() ?? undefined, victim.threadId);
@@ -889,12 +888,4 @@ export class ProcRegistry {
       }
     });
   }
-}
-
-/** Whether `proc` runs as its spawner sees it: until it reports the exit it holds the process's handle. */
-const running = (proc: { exitCode: number | null; signalCode: unknown }) => () => proc.exitCode === null && proc.signalCode === null;
-
-/** An entry's own kill, and the group stop that may follow it. */
-function killEntry(entry: Entry): Promise<void> | undefined {
-  try { return entry.kill() ?? undefined; } catch { return undefined; /* already exited */ }
 }

@@ -130,12 +130,17 @@ export function textSlotEstimate(chars: number): number {
 // one subtraction and the slice one bisection, instead of the walk over every
 // message the window used to do on each recompute, streaming deltas included.
 
+export interface SlotIndex {
+  order: string;
+  sums: readonly number[];
+  positions: ReadonlyMap<string, number>;
+}
+
 export class SlotTotals<S extends Slot = Slot> {
   sums: number[] = [0];
   /** What `sums` was built on: how many messages there were, and the id at the head. */
   sumsCount = 0;
   sumsHead = '';
-  sumsTail = '';
   sumsOrder = '';
   /** The lowest index a measurement invalidated. Repaired from there on the next read. */
   dirty = 0;
@@ -148,6 +153,20 @@ export class SlotTotals<S extends Slot = Slot> {
    * of parts in the timeline.
    */
   constructor(private readonly heights: Map<string, number>, private readonly estimate: (slot: S) => number = () => ESTIMATE) {}
+
+  save(limit: number): SlotIndex | undefined {
+    if (!this.sumsCount || this.sumsCount > limit || this.dirty < this.sumsCount) return;
+    return { order: this.sumsOrder, sums: this.sums.slice(), positions: new Map(this.positions) };
+  }
+
+  restore(index: SlotIndex, list: readonly S[], order: string): void {
+    if (index.order !== order || index.sums.length !== list.length + 1) return;
+    this.sums = index.sums.slice();
+    for (const [id, at] of index.positions) this.positions.set(id, at);
+    this.sumsCount = this.dirty = list.length;
+    this.sumsHead = list[0]?.id ?? '';
+    this.sumsOrder = order;
+  }
 
   /** What a row weighs until it is measured. */
   estimateOf(slot: S | undefined): number {
@@ -172,7 +191,6 @@ export class SlotTotals<S extends Slot = Slot> {
     }
     this.sumsCount = list.length;
     this.sumsHead = list[0]?.id ?? '';
-    this.sumsTail = list.at(-1)?.id ?? '';
     this.sumsOrder = timelineOrder;
     this.dirty = list.length;
   }
@@ -185,7 +203,8 @@ export class SlotTotals<S extends Slot = Slot> {
    */
   totals(list: readonly S[], timelineOrder: string): number[] {
     const head = list[0]?.id ?? '';
-    if (head !== this.sumsHead || list.length < this.sumsCount || (list.length === this.sumsCount && timelineOrder !== this.sumsOrder) || (list.length > this.sumsCount && list[this.sumsCount - 1]?.id !== this.sumsTail)) {
+    const append = list.length > this.sumsCount && timelineOrder.startsWith(this.sumsOrder + '\0');
+    if (head !== this.sumsHead || list.length < this.sumsCount || (!append && timelineOrder !== this.sumsOrder)) {
       this.rebuild(list, timelineOrder);
       return this.sums;
     }
@@ -200,7 +219,6 @@ export class SlotTotals<S extends Slot = Slot> {
     }
     for (let i = this.dirty; i < list.length; i += 1) this.sums[i + 1] = (this.sums[i] ?? 0) + this.slotAt(list, i);
     this.dirty = list.length;
-    this.sumsTail = list.at(-1)?.id ?? '';
     this.sumsOrder = timelineOrder;
     return this.sums;
   }

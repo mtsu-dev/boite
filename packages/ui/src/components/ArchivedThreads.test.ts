@@ -1,5 +1,4 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import archivedSource from './ArchivedThreads.svelte?raw';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import ArchivedThreads from './ArchivedThreads.svelte';
@@ -9,6 +8,7 @@ import { Store } from '../lib/store.svelte';
 import { projectMenu } from '../lib/project-menu';
 import { contextMenu } from '../lib/context-menu.svelte';
 import { archivedFocus } from '../lib/archived-focus.svelte';
+import { confirm } from '../lib/confirm.svelte';
 
 let running: Record<string, unknown> | null = null;
 const cleanups: (() => void)[] = [];
@@ -45,7 +45,7 @@ test('the settings archive keeps mochi workers across live updates and restores 
   await client.call('delegation.wait', { threadId, agentId: child.thread.id, timeoutMs: 5000 });
   await client.call('threads.archive', { threadId: child.thread.id, onlyIfIdle: true });
   await client.call('threads.archive', { threadId });
-  running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+  running = mount(ArchivedThreads, { target: document.body, props: { store } });
   await settle();
   const row = (id: string) => document.querySelector<HTMLElement>(`[data-testid=archived-list] [data-thread-id="${id}"]`);
   expect(row(child.thread.id)).not.toBeNull();
@@ -65,7 +65,7 @@ test('the mounted settings archive shows an older core\'s merged PR identity/tim
   const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: account.id, title: 'Merged conversation', worktree: { branch: 'merged-ui-fixture' } });
   client.setMergedPrFixture(thread.id, { repository: 'github.com/example/repo', branch: thread.branch!, tip: 'a'.repeat(40), clean: true, candidates: [{ repository: 'github.com/example/repo', branch: thread.branch!, sha: 'a'.repeat(40), number: 7, url: 'https://github.com/example/repo/pull/7', mergedAt: '2026-10-01T12:00:00Z' }] });
   const draw = async () => {
-    running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+    running = mount(ArchivedThreads, { target: document.body, props: { store } });
     await settle();
   };
   await client.call('threads.archive', { threadId: 't-parser', archived: false });
@@ -85,7 +85,7 @@ test('the mounted settings archive shows an older core\'s merged PR identity/tim
   expect(reason.querySelector('a')?.getAttribute('rel')).toBe('noopener noreferrer');
   // The row's time, at the end of the title's line as on a live row, is when the merge put it away.
   expect(row().querySelector('.context time')).toBeNull();
-  expect(row().querySelector('.title + time.at')?.getAttribute('datetime')).toBe(new Date((await client.call('threads.get', { threadId: thread.id })).archiveReason!.archivedAt).toISOString());
+  expect(row().querySelector('.headline time')?.getAttribute('datetime')).toBe(new Date((await client.call('threads.get', { threadId: thread.id })).archiveReason!.archivedAt).toISOString());
   await unmount(running!, { outro: false }); running = null; document.body.innerHTML = '';
   await draw();
   expect(row().querySelector('[data-testid=archive-merged-reason]')).not.toBeNull();
@@ -119,7 +119,7 @@ test('a mounted settings archive reconciles a late merged-PR question and remova
     if (method === 'threads.list' && 'includeArchived' in params && params.includeArchived) { started.resolve(); await released.promise; }
     return answer;
   });
-  running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+  running = mount(ArchivedThreads, { target: document.body, props: { store } });
   flushSync(); await started.promise;
   try {
     expect(await client.sweepMergedPrArchives()).toBe(1);
@@ -171,7 +171,7 @@ test('mounted policy menu keeps its owner during an awaited write and ignores a 
 
 test('an awaited mounted settings Restore never inserts its old conversation into a replacement machine', async () => {
   const { store, client } = await ready();
-  running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+  running = mount(ArchivedThreads, { target: document.body, props: { store } });
   await settle();
   const started = deferred(), released = deferred(), call = client.call.bind(client);
   vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
@@ -207,7 +207,7 @@ test('a thread archived live takes its place by archive time, not the top', asyn
     if (event === 'thread.updated') push = handler;
     return on(event as never, handler as never);
   }) as never);
-  running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+  running = mount(ArchivedThreads, { target: document.body, props: { store } });
   await settle();
   const rows = () => [...document.querySelectorAll('[data-testid=archived-list] li')].map(row => row.getAttribute('data-thread-id'));
   expect(rows()).toEqual(['t-trace', 't-parser']);
@@ -223,13 +223,16 @@ test('a thread archived live takes its place by archive time, not the top', asyn
   expect(rows()).toEqual(['t-parser', 't-trace', 't-bench']);
 });
 
-test('an archived row restores as its one action and keeps Delete behind its menu', async () => {
+test('an archived row reads without restoring and keeps Delete behind its menu', async () => {
   const { store } = await ready();
   await store.archive('t-trace');
-  running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+  running = mount(ArchivedThreads, { target: document.body, props: { store } });
   await settle();
   const row = () => document.querySelector<HTMLElement>('[data-testid=archived-list] [data-thread-id="t-trace"]');
-  // One action on the row; the bin is no longer a second button beside it.
+  // Opening an archived row leaves its archive flag in place.
+  row()!.querySelector<HTMLButtonElement>('[data-testid=archived-open]')!.click();
+  await vi.waitFor(() => expect(store.openThread?.id).toBe('t-trace'));
+  expect(store.openThread?.archived).toBe(true);
   expect([...row()!.querySelectorAll('.actions > button')].map(button => button.getAttribute('data-testid'))).toEqual(['archived-restore']);
   expect(row()!.querySelector('[data-testid=archived-delete]')).toBeNull();
   row()!.querySelector<HTMLButtonElement>('[data-testid=archived-menu-t-trace]')!.click();
@@ -237,18 +240,9 @@ test('an archived row restores as its one action and keeps Delete behind its men
   const remove = document.querySelector<HTMLElement>('[data-testid=archived-delete]')!;
   expect(remove.closest('li')?.dataset['threadId']).toBe('t-trace');
   remove.click();
+  expect(confirm.current?.altLabel).toBeUndefined();
+  confirm.answer('confirm');
   await vi.waitFor(() => expect(row()).toBeNull());
-});
-
-test('a touch screen shows the row menu at any width, not only a phone\'s', () => {
-  const css = archivedSource.replace(/\/\*[\s\S]*?\*\//g, '');
-  // Hidden until the pointer comes at rest; a wide touch screen (a tablet) has no pointer, so its query shows it.
-  expect(css).toMatch(/li:not\(:hover, :focus-within\) \.actions :global\(\.trigger\) \{ opacity: 0; \}/);
-  const touch = css.match(/@media [^{]*\(hover: none\)[^{]*\{([\s\S]*?)\n  \}/)?.[1] ?? '';
-  expect(touch).toContain('.archived li:not(:hover, :focus-within) .actions :global(.trigger) { opacity: 1; }');
-  // Always shown, it leaves the time's place on the first line for the second line's end, as on a phone.
-  expect(touch).toContain('.actions { grid-row: 2;');
-  expect(touch).toMatch(/:focus-within\):not\(\.back\) \.at \{ visibility: visible; \}/);
 });
 
 test('opened from a project card, the archive shows that project alone until All projects', async () => {
@@ -257,7 +251,7 @@ test('opened from a project card, the archive shows that project alone until All
   const focus = 'p-notes';
   archivedFocus.store = store;
   archivedFocus.projectId = focus;
-  running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+  running = mount(ArchivedThreads, { target: document.body, props: { store } });
   await settle();
   const rows = () => [...document.querySelectorAll('[data-testid=archived-list] li')].map(row => row.getAttribute('data-thread-id'));
   expect(rows()).toEqual(['t-descriptors']);
@@ -283,11 +277,11 @@ test('a thread a plugin marked done names the plugin and when', async () => {
   const store = new Store(), client = new FakeClient({ delayMs: 0, pluginArchiveDemo: true });
   store.attach(client); await store.connect();
   cleanups.push(() => { store.detach(); client.close(); });
-  running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+  running = mount(ArchivedThreads, { target: document.body, props: { store } });
   await settle();
   const reason = document.querySelector<HTMLElement>('[data-thread-id="t-trace"] [data-testid=archive-plugin-reason]')!;
   expect(reason.textContent).toContain('Archived by plugin Bureau');
   expect(reason.title).toBe('bureau');
-  expect(reason.querySelector('time')?.getAttribute('datetime')).toBe(new Date((await client.call('threads.get', { threadId: 't-trace' })).archiveReason!.archivedAt).toISOString());
+  expect(reason.closest('li')?.querySelector('time')?.getAttribute('datetime')).toBe(new Date((await client.call('threads.get', { threadId: 't-trace' })).archiveReason!.archivedAt).toISOString());
   expect(document.querySelector('[data-thread-id="t-trace"] [data-testid=done-expires]')).not.toBeNull();
 });

@@ -1,5 +1,5 @@
 import { flushSync, mount, unmount } from 'svelte';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import ThreadPreparation from './ThreadPreparation.svelte';
@@ -7,8 +7,14 @@ import { rightPanel } from '../lib/right-panel.svelte';
 import * as journal from '../lib/draft-journal';
 
 const unprotected = { protectedThreadIds: [], protectAllThreads: false };
+const focused = { threadId: 't-trace', ...unprotected, attentive: true };
 
 const cleanups: (() => void | Promise<void>)[] = [];
+beforeEach(() => {
+  const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  cleanups.push(() => { focus.mockRestore(); visibility.mockRestore(); });
+});
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 async function machine() {
@@ -34,11 +40,11 @@ function component(store: Store, visible = true) {
 test('only the visible conversation is focused; settings and destruction release it', async () => {
   const { store, call } = await machine();
   component(store);
-  await vi.waitFor(() => expect(call).toHaveBeenCalledWith('threads.focus', { threadId: 't-trace', ...unprotected }));
+  await vi.waitFor(() => expect(call).toHaveBeenCalledWith('threads.focus', focused));
   flushSync(() => { store.page = 'settings'; });
   await vi.waitFor(() => expect(call).toHaveBeenLastCalledWith('threads.focus', { threadId: null, ...unprotected }));
   flushSync(() => { store.page = 'chat'; });
-  await vi.waitFor(() => expect(call).toHaveBeenLastCalledWith('threads.focus', { threadId: 't-trace', ...unprotected }));
+  await vi.waitFor(() => expect(call).toHaveBeenLastCalledWith('threads.focus', focused));
 });
 
 test('an obscured phone conversation does not prepare an agent', async () => {
@@ -51,13 +57,13 @@ test('an obscured phone conversation does not prepare an agent', async () => {
 test('a reconnect reasserts focus on the owning socket', async () => {
   const { store, client, call } = await machine();
   component(store);
-  await vi.waitFor(() => expect(call).toHaveBeenCalledWith('threads.focus', { threadId: 't-trace', ...unprotected }));
+  await vi.waitFor(() => expect(call).toHaveBeenCalledWith('threads.focus', focused));
   call.mockClear();
   client.drop();
   flushSync();
   await client.restore();
   flushSync();
-  await vi.waitFor(() => expect(call).toHaveBeenCalledWith('threads.focus', { threadId: 't-trace', ...unprotected }));
+  await vi.waitFor(() => expect(call).toHaveBeenCalledWith('threads.focus', focused));
 });
 
 test('a hidden machine protects parked prompts and unsaved files until they are cleared', async () => {

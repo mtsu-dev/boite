@@ -14,7 +14,7 @@ export interface TurnInput {
  * stopped before its answer, a restart continuing a running turn, a restart
  * that cut a subagent, or a wake the agent scheduled (`scheduled-wakes.ts`).
  */
-type ResumeReason = 'limit' | 'carry-on' | 'handoff' | 'delegation-restart' | 'wake';
+type ResumeReason = 'limit' | 'carry-on' | 'handoff' | 'delegation-restart' | 'wake' | 'manual';
 
 /** An idempotency key: a second start with the same one returns the first turn (`threads/inputs.ts`). */
 interface Keyed { requestId?: string }
@@ -31,11 +31,12 @@ export type TurnOrigin =
   | Keyed & { kind: 'spawned'; startedBy: ThreadLink }
   | Keyed & { kind: 'compact'; automatic: boolean }
   | Keyed & { kind: 'keepalive' }
-  | Keyed & { kind: 'resume'; reason: ResumeReason }
+  | Keyed & { kind: 'resume'; reason: 'manual'; plugin?: PluginActor }
+  | Keyed & { kind: 'resume'; reason: Exclude<ResumeReason, 'manual'> }
   /** `owner`: a team letter with the owner's post among its triggers, a wake no bot pause or budget holds (`docs/internals/teams.md`). */
   | Keyed & { kind: 'coordination'; owner?: true }
   /** `followUp`: whoever delegated this thread's work writes to it again, as opposed to its own agents reporting or Boite running a step. */
-  | Keyed & { kind: 'delegation'; followUp?: true }
+  | Keyed & { kind: 'delegation'; followUp?: true; workflowSummary?: true }
   | Keyed & { kind: 'goal-check' | 'background' | 'pull-request' | 'routine' | 'event' };
 
 export interface StartTurnOptions {
@@ -84,7 +85,7 @@ export function autonomousSource(origin: TurnOrigin): AutonomousSource | null {
     case 'coordination': return origin.owner ? null : 'coordination';
     case 'background': case 'delegation': case 'pull-request': return origin.kind;
     case 'goal-check': return 'delegation';
-    case 'resume': return origin.reason === 'handoff' || origin.reason === 'delegation-restart' ? null : 'resume';
+    case 'resume': return origin.reason === 'handoff' || origin.reason === 'delegation-restart' || origin.reason === 'manual' ? null : 'resume';
     default: return null;
   }
 }

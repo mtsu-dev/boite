@@ -195,8 +195,21 @@ for (const phone of [false, true]) {
       expect(readFileSync(reference.path).equals(fileBytes)).toBe(true);
       expect(readFileSync(log, 'utf8').split('\n').filter(line => line.startsWith('turn/start'))).toHaveLength(1);
       expect(readFileSync(log, 'utf8')).toContain(`image data:image/png;base64,${imageBytes.toString('base64')}`);
-      await page.waitFor('document.querySelector("[data-testid=image-part]")?.naturalWidth === 240 && document.querySelector("[data-testid=file-part]")');
+      // At 1x the conversation requests a 192 px copy. The viewer loads the
+      // 240 px original, whose exact bytes were checked on the core above.
+      await page.waitFor(`(() => {
+        const preview = document.querySelector('[data-testid=image-part]');
+        const file = document.querySelector('[data-testid=file-part]');
+        return preview?.naturalWidth === 192 && preview.naturalHeight === 96 && file?.download === 'requirements.bin';
+      })()`);
       await capture(page, `agent-startup-${size}-sent.png`);
+      await page.click('[data-testid=image-open]');
+      await page.waitFor(`(() => {
+        const original = document.querySelector('[data-testid=image-viewer] img');
+        return original?.naturalWidth === 240 && original.naturalHeight === 120;
+      })()`);
+      await page.click('[data-testid=image-viewer-close]');
+      await page.waitFor(`!document.querySelector('[data-testid=image-viewer]')`);
       await poll(() => bodies(dataDir).length === 0, 'claimed upload cleanup');
 
       await newDraft(page, phone);

@@ -247,13 +247,20 @@ test("the rail counts the threads and subagents at work and a mochi's unread rep
   }
 });
 
-test("a right click on a mochi's rail picture opens its menu, not the webview's, and its picks reach the mochi", async () => {
+test("a mochi's rail menu opens by keyboard and pointer, returns focus and acts on that mochi", async () => {
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {
     await waitFor(() => document.querySelector('[data-testid=rail-bot]') !== null);
     const bot = query<HTMLButtonElement>('[data-testid=rail-bot]');
     const id = bot.dataset['agentId']!;
+    bot.focus();
+    const menuKey = new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true });
+    bot.dispatchEvent(menuKey);
+    expect(menuKey.defaultPrevented).toBe(true);
+    await waitFor(() => document.activeElement?.closest('[data-testid=context-menu]') !== null);
+    press(document.activeElement!, 'Escape');
+    await waitFor(() => document.activeElement === bot);
     const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 });
     bot.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
@@ -491,7 +498,7 @@ test('the palette and the project menu reach the archive, its list already read'
   expect(document.querySelector('[data-testid=archived-show]')).toBeNull();
   expect(query('[data-testid=archived-list]').textContent).toContain('Finish the trace tab');
 
-  store.showChat();
+  query<HTMLButtonElement>('[data-testid=sidebar-archived-back]').click();
   await waitFor(() => document.querySelector('[data-testid=project-menu]') !== null);
   query<HTMLButtonElement>('[data-testid=project-menu]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archived]') !== null);

@@ -4,18 +4,23 @@
   // expand and never before: a repository with ten thousand files costs the
   // same as a small one until someone opens a folder.
   import { tick, untrack } from 'svelte';
+  import { SvelteMap } from 'svelte/reactivity';
   import { ChevronRight, File, FileAudio, FileImage, FileText, FileVideo, Folder, FolderOpen, FolderTree, RefreshCw, CircleAlert } from '@lucide/svelte';
   import { FILES_LIST_MAX, type FileEntry } from '@boite/contracts';
   import { bytes } from '../lib/format';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
+  import { atOrUnder, fileListings } from '../lib/file-listings';
+  import { whenIdle } from '../lib/idle';
   import SurfaceHead from './SurfaceHead.svelte';
+  import PanelListRow from './PanelListRow.svelte';
+  import EmptyState from './EmptyState.svelte';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
   /** One entry per directory already read, keyed by its path. The root is the empty key. */
-  let loaded = $state<Record<string, FileEntry[]>>({});
+  const loaded = new SvelteMap<string, FileEntry[]>();
   let expanded = $state<Record<string, boolean>>({});
   let reading = $state(0);
   /** What the last refused directory answered, shown in the surface rather than as a toast. */
@@ -29,8 +34,9 @@
    */
   let placing = $state(0);
   let list = $state<HTMLDivElement | undefined>(undefined);
-  /** The thread whose directories `loaded` holds. */
-  let shownFor: string | null = null;
+  type Visit = { id: string; cwd: string; listings: ReturnType<typeof fileListings> };
+  let visit: Visit | null = null;
+  const refreshing = new Map<string, () => void>();
 
   let threadId = $derived(store.openThread?.id ?? null);
 
@@ -42,7 +48,7 @@
   });
 
   /** A directory the core cut at its own limit: the footer says so once. */
-  let capped = $derived(Object.values(loaded).some((entries) => entries.length >= FILES_LIST_MAX));
+  let capped = $derived([...loaded.values()].some((entries) => entries.length >= FILES_LIST_MAX));
 
   interface Row {
     entry: FileEntry;
@@ -72,7 +78,7 @@
   /** The loaded rows, narrowed by the filter. A directory stays for a match under it. */
   function collect(path: string, depth: number, word: string): Row[] {
     const out: Row[] = [];
-    for (const entry of loaded[path] ?? []) {
+    for (const entry of loaded.get(path) ?? []) {
       const children =
         entry.kind === 'dir' && expanded[entry.path] === true ? collect(entry.path, depth + 1, word) : [];
       const hit = word === '' || entry.name.toLowerCase().includes(word);
@@ -85,51 +91,70 @@
 
   let rows = $derived(collect('', 0, filter.trim().toLowerCase()));
 
+  function refreshAtIdle(path: string): void {
+    if (refreshing.has(path)) return;
+    refreshing.set(path, whenIdle(() => {
+      refreshing.delete(path);
+      void read(path, true);
+    }));
+  }
+
   async function read(path: string, again = false): Promise<void> {
-    const id = threadId;
-    if (id === null) return;
-    if (!again && loaded[path] !== undefined) return;
-    reading += 1;
-    const answer = await store.listFiles(id, path === '' ? undefined : path);
-    reading -= 1;
-    // The thread may have changed while the call was out: another working
-    // directory's answer must not land in this tree.
-    if (threadId !== id) return;
-    if (answer.ok) {
-      loaded = { ...loaded, [path]: answer.value };
-      problem = null;
-    } else {
-      problem = answer.error;
+    const owner = visit;
+    if (!owner || (!again && loaded.has(path))) return;
+    const cached = !again && owner.listings.peek(owner.id, owner.cwd, path);
+    if (cached) {
+      loaded.set(path, cached);
+      refreshAtIdle(path);
+      return;
     }
+    reading += 1;
+    try {
+      const answer = await owner.listings.read(owner.id, owner.cwd, path);
+      if (visit !== owner || threadId !== owner.id || (store.openThread?.cwd ?? '') !== owner.cwd || fileListings(store) !== owner.listings) return;
+      if (answer.ok) { loaded.set(path, answer.value); problem = null; }
+      else {
+        if (answer.inaccessible) for (const directory of loaded.keys()) if (atOrUnder(directory, path)) loaded.delete(directory);
+        problem = answer.error;
+      }
+    } finally { reading -= 1; }
   }
 
-  /** The root, then every ancestor of the directory the tab was opened on. */
-  async function openAt(path: string): Promise<void> {
-    placing += 1;
-    try { await place(path); } finally { placing -= 1; }
-  }
-
-  async function place(path: string): Promise<void> {
-    await read('');
-    if (path === '') return;
+  /** Every ancestor is already known from the path. Ask for missing directories together. */
+  function openAt(path: string): () => void {
+    const owner = visit;
+    const paths = [''];
+    const opened = { ...expanded };
     let at = '';
     for (const part of path.split('/').filter((one) => one !== '')) {
       at = at === '' ? part : `${at}/${part}`;
-      expanded = { ...expanded, [at]: true };
-      await read(at);
+      opened[at] = true;
+      paths.push(at);
     }
-    await tick();
-    const node = list?.querySelector<HTMLElement>(`[data-path="${CSS.escape(path)}"]`);
-    // jsdom lays nothing out, so it scrolls nothing either.
-    node?.scrollIntoView?.({ block: 'nearest' });
-    const index = rows.findIndex((row) => row.entry.path === path);
-    if (index >= 0) cursor = index;
+    expanded = opened;
+    let live = true;
+    for (const dir of paths) if (loaded.has(dir)) refreshAtIdle(dir);
+    placing += 1;
+    void Promise.all(paths.map(dir => read(dir))).then(async () => {
+      if (path === '') return;
+      await tick();
+      if (!live || visit !== owner) return;
+      const node = list?.querySelector<HTMLElement>(`[data-path="${CSS.escape(path)}"]`);
+      node?.scrollIntoView?.({ block: 'nearest' });
+      const index = rows.findIndex((row) => row.entry.path === path);
+      if (index >= 0) cursor = index;
+    }).finally(() => { placing -= 1; });
+    return () => {
+      live = false;
+      for (const cancel of refreshing.values()) cancel();
+      refreshing.clear();
+    };
   }
 
   function toggle(path: string): void {
     const on = expanded[path] === true;
     expanded = { ...expanded, [path]: !on };
-    if (!on) void read(path);
+    if (!on) { problem = null; void read(path); }
   }
 
   function activate(row: Row | undefined): void {
@@ -187,27 +212,32 @@
   }
 
   function refresh(): void {
-    for (const path of Object.keys(loaded)) void read(path, true);
+    problem = null;
+    const directories = new Set(['', ...loaded.keys()]);
+    for (const [path, open] of Object.entries(expanded)) if (open) directories.add(path);
+    for (const path of directories) void read(path, true);
   }
 
   // On mount, and again whenever the tab is asked for another directory: the
   // path it carries is what the tree opens on and scrolls to.
   $effect(() => {
     const id = threadId;
+    const cwd = store.openThread?.cwd ?? '';
+    // A replaced connection can point at a different filesystem even for the same thread id.
+    void store.connection;
+    const listings = fileListings(store);
     const wanted = surface.path ?? '';
     if (id === null) return;
-    untrack(() => {
-      // The panel is not remounted between threads, and the cache is keyed by
-      // path alone: another thread's tree must not answer for this one.
-      if (shownFor !== id) {
-        shownFor = id;
-        loaded = {};
+    return untrack(() => {
+      if (!visit || visit.id !== id || visit.cwd !== cwd || visit.listings !== listings) {
+        visit = { id, cwd, listings };
+        loaded.clear();
         expanded = {};
-        problem = null;
         cursor = 0;
         filter = '';
       }
-      void openAt(wanted);
+      problem = null;
+      return openAt(wanted);
     });
   });
 </script>
@@ -253,10 +283,9 @@
     {onkeydown}
   >
     {#each rows as row, index (row.entry.path)}
-      <button
-        type="button"
-        class="row"
-        class:on={placing === 0 && index === cursor}
+      <PanelListRow
+        kind="file"
+        selected={placing === 0 && index === cursor}
         role="treeitem"
         aria-level={row.depth + 1}
         aria-selected={index === cursor}
@@ -302,13 +331,11 @@
         {#if row.entry.kind === 'file'}
           <span class="size ui-label" data-testid="files-size">{bytes(row.entry.bytes)}</span>
         {/if}
-      </button>
+      </PanelListRow>
     {/each}
 
     {#if rows.length === 0 && problem === null}
-      <p class="empty" data-testid="files-empty">
-        {filter.trim() === '' ? strings.files.empty : strings.files.noMatch}
-      </p>
+      <EmptyState compact testid="files-empty" line={filter.trim() === '' ? strings.files.empty : strings.files.noMatch} />
     {/if}
   </div>
 
@@ -359,43 +386,11 @@
   }
 
   .tree {
+    --empty-inline-padding: 6px;
     flex: 1;
     min-height: 0;
     overflow: auto;
     padding: 6px;
-  }
-
-  .row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    width: 100%;
-    height: var(--row);
-    /* The depth is an indent, not a nested box: every row scrolls as one line. */
-    padding: 0 6px 0 calc(6px + var(--depth) * 12px);
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-    font-weight: 400;
-    text-align: left;
-    /* The mark and the hover land at once: a fading fill read as a second thing moving beside the panel's own fade. */
-    transition: color var(--dur-2) var(--ease-out-quint);
-  }
-
-  .row:hover:not(:disabled),
-  .row:focus-visible {
-    background: var(--color-hover);
-  }
-
-  .row:active:not(:disabled) {
-    transform: none;
-  }
-
-  .row.on {
-    background: var(--color-active);
-    color: var(--color-foreground);
   }
 
   .chev {
@@ -428,25 +423,16 @@
     white-space: nowrap;
   }
 
-  .row.on .name {
-    color: var(--color-foreground);
-  }
-
   .size {
     flex: none;
     color: var(--color-subtle);
     font-variant-numeric: tabular-nums;
   }
 
-  .empty,
   .footer {
     margin: 0;
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
-  }
-
-  .empty {
-    padding: 10px 6px;
   }
 
   .problem {

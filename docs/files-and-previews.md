@@ -21,9 +21,10 @@ appears in its answer with a download button.
 
 - Images, videos and sounds show in the conversation. A video never plays on
   its own and has seek and full screen controls.
-- An image opens in a viewer with zoom, fit and download.
-- An image over 5 MB shows its name and size first. Press Load image to see
-  it.
+- Images, including those over 5 MB, load a small preview as you scroll.
+  Click the preview to load the original in a viewer with zoom, fit and
+  download. Animated images play in the viewer. If a preview is unavailable,
+  open the image from its card.
 - A PDF has an inline preview while Chat files and previews is on (below).
   Other files are a download.
 - The file is a copy taken when the agent sent it. It stays downloadable after
@@ -32,6 +33,10 @@ appears in its answer with a download button.
 
 While a turn runs, each file shows where the agent sent it. Once the turn
 ends, the files move under the last thing the agent wrote.
+
+Ask the agent to show a check it ran. It can publish the recorded command,
+the line that shows its result, what still needs checking and a capture.
+That evidence appears under the answer when the turn ends.
 
 ![An image and a video sent by the agent](images/chat-media-desktop.png)
 
@@ -55,9 +60,10 @@ agent sent stay downloadable.
 ### Open links in their own apps
 
 Settings, General, Open chat links in their apps is off by default and exists
-only in the desktop app. On, a click on a local file or folder opens it in its
-default app, shortcuts and files outside the project included. Only links from
-this computer open this way. On another machine or a phone, links keep the
+only in the desktop app. On, a click on a document or folder inside the
+conversation's folder opens it in its default app. Programs, scripts, shortcuts
+and files outside that folder never open this way: they show in the preview.
+Only links from this computer open this way. On another machine or a phone, links keep the
 preview.
 
 ## Pages drawn in an answer

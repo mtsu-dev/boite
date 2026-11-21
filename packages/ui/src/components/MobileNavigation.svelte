@@ -41,6 +41,7 @@
   import ProjectTile from './ProjectTile.svelte';
   import MachinePlace from './MachinePlace.svelte';
   import MachineOffline from './MachineOffline.svelte';
+  import ThreadListNotice from './ThreadListNotice.svelte';
   import ProjectRollup from './ProjectRollup.svelte';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
@@ -65,7 +66,13 @@
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
 
-  let { store, recover = false, screen = $bindable('chat'), tabbed = $bindable(false) }: { store: Store; recover?: boolean; screen: 'chat' | 'threads' | 'activity'; tabbed?: boolean } = $props();
+  let { store, recover = false, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
+    store: Store;
+    recover?: boolean;
+    onleavesettings?: () => void;
+    screen: 'chat' | 'threads' | 'activity';
+    tabbed?: boolean;
+  } = $props();
   const narrow = new MediaQuery('(max-width: 720px)');
   /**
    * A conversation slides in over the list it opens from, and back off it to
@@ -198,7 +205,7 @@
   /** The list a conversation was opened from: Back returns to it. The landing conversation has none, so Back leaves. */
   let from = $state<'threads' | 'activity' | null>(null);
   $effect(() => {
-    if (store.page !== 'chat' || screen !== 'chat' || !from) return;
+    if (!narrow.current || store.page !== 'chat' || screen !== 'chat' || !from) return;
     const list = from;
     return mobileOverlay(() => { from = null; screen = list; });
   });
@@ -209,19 +216,6 @@
     screen = 'chat';
   });
 
-  /*
-   * Settings is a page over the place it was opened from, not a place of its
-   * own: the header's arrow, and the phone's Back, return there.
-   */
-  let before: 'chat' | 'agents' | 'home' = 'chat';
-  $effect(() => { const page = store.page; if (page !== 'settings') before = page; });
-  function leaveSettings() {
-    if (before === 'agents') store.showAgents();
-    else if (before === 'home') store.showHome();
-    else store.showChat();
-  }
-  $effect(() => { if (narrow.current && store.page === 'settings' && !recover) return mobileOverlay(leaveSettings); });
-
   function show(next: typeof screen) {
     store.showChat();
     store.sidebarOpen = false;
@@ -229,10 +223,13 @@
     screen = next;
   }
   // Allow, Answer or Review pressed in Activity: once the thread no longer needs the user, Activity comes back where it stood.
-  followActivityReturn({
-    activity: () => screen === 'activity',
-    chat: () => screen === 'chat',
-    reopen: () => { show('activity'); void tick().then(() => { if (scrollRoot) void restoreActivity(scrollRoot); }); }
+  $effect(() => {
+    if (!narrow.current) return;
+    followActivityReturn({
+      activity: () => screen === 'activity',
+      chat: () => screen === 'chat',
+      reopen: () => { show('activity'); void tick().then(() => { if (scrollRoot) void restoreActivity(scrollRoot); }); }
+    });
   });
   /** The threads of a project that need the user, its heading's count, and how many of them failed, as on the desktop card. */
   function needsCount(entry: ProjectEntry): { count: number; failed: number } {
@@ -304,6 +301,8 @@
   </button>
 {/snippet}
 
+<!-- Resizing releases the phone's controls, but keeps this navigation's filters and list state. -->
+{#if narrow.current}
 <header class="mobile-header" class:chatting={chatting && !firstRun} class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
   {#if chatting && !firstRun}
     <!-- The only way out of a conversation on a phone. A thread that waits elsewhere is in its name and the tab bar's count, not a dot on the arrow. -->
@@ -315,7 +314,7 @@
       <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.sidebar.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.sidebar.threads} onclick={() => show('threads')}><ArrowLeft size={20} /></button>
     {/if}
   {:else if store.page === 'settings' && !recover}
-    <button class="ghost icon back" data-testid="mobile-settings-leave" aria-label={strings.mobile.settingsLeave} title={strings.mobile.settingsLeave} onclick={leaveSettings}><ArrowLeft size={20} /></button>
+    <button class="ghost icon back" data-testid="mobile-settings-leave" aria-label={strings.mobile.settingsLeave} title={strings.mobile.settingsLeave} onclick={onleavesettings}><ArrowLeft size={20} /></button>
   {:else if recover}
     <img class="brand-icon" src={appMark()} alt="" width="30" height="30" />
   {/if}
@@ -363,6 +362,7 @@
   {/if}
   <!-- The filters on, in words on a line of their own: the row above keeps the views, the machine and three squares. -->
   {#if threadViews && !chatting}<FilterChips entries={groups} owner={store} prefix="mobile-" compact {atWork} />{/if}
+  {#if tabbed && !recover && listScreen === 'threads'}<ThreadListNotice {machines} />{/if}
 </header>
 
 {#if tabbed || leaving}
@@ -525,6 +525,7 @@
     {/if}
   </section>
 {/if}
+{/if}
 
 <style>
   /* Typed, so the foot's fade eases to a row's top when the list settles instead of jumping. */
@@ -556,6 +557,7 @@
     @media (min-width: 480px) { .new .long { display: block; } .new .short { display: none; } }
     /* The filters' line under the row, the whole width. */
     .mobile-header > :global(.filter-chips) { flex-basis: 100%; padding-bottom: 4px; }
+    .mobile-header > :global(.thread-list-notice) { flex-basis: 100%; }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
     /* The display options close the field's row, after a hairline. */

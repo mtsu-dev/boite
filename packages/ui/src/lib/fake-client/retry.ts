@@ -23,6 +23,13 @@ export function seedRetry(ctx: FakeContext): void {
       ? { kind, turnId: turn.id, at: now + MINUTE, attempt: 1, attempts: 2, resetsAt: null }
       : { kind, turnId: turn.id, at: now + 95 * MINUTE, attempt: 1, attempts: 1, resetsAt: now + 94 * MINUTE };
   thread.retry = retry;
+  if (retry.kind === 'usage-limit') {
+    thread.status = 'error';
+    thread.providerId = 'claude';
+    thread.accountId = 'a-claude-main';
+    thread.model = 'claude-sonnet-5-5';
+    thread.recovery = { kind: retry.kind, turnId: retry.turnId, resetsAt: retry.resetsAt };
+  }
 }
 
 export function planRetry(ctx: FakeContext, threadId: string, retry: ThreadRetry): void {

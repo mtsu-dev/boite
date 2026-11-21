@@ -204,6 +204,48 @@ test('fake history refuses an oversized next message before the page byte bounda
     .resolves.toMatchObject({ code: RpcErrorCode.Refused, data: { field: 'messages', messageId: oversized.id } });
 });
 
+test('fake chat preview reads reuse the copy without allocating object URLs', async () => {
+  const ctx = new FakeContext({ delayMs: 0 });
+  seed(ctx);
+  const thread = ctx.thread('t-parser');
+  const data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+rKPkAAAAASUVORK5CYII=';
+  thread.messages.push({ ...thread.messages[0]!, id: 'preview-image', parts: [{ type: 'image', mimeType: 'image/png', data, alt: null }] });
+  const methods = threadMethods(ctx);
+  const request = { threadId: thread.id, messageId: 'preview-image', partIndex: 0, previewMax: 192 as const, ticket: true as const };
+  const first = await methods['messages.attachment'](request);
+  expect(first.data).not.toBe('');
+  expect(await methods['messages.attachment'](request)).toEqual(first);
+  expect(ctx.artifactUrls.size).toBe(0);
+});
+
+test('fake attachment tickets reuse a Blob and revoke it when evicted', async () => {
+  const ctx = new FakeContext({ delayMs: 0 });
+  seed(ctx);
+  const thread = ctx.thread('t-parser');
+  const original = thread.messages[0]!;
+  const method = threadMethods(ctx)['messages.attachment'];
+  let nextUrl = 0;
+  const revoked = vi.fn();
+  vi.stubGlobal('URL', class extends URL {
+    static createObjectURL = () => `blob:attachment-${++nextUrl}`;
+    static revokeObjectURL = revoked;
+  });
+  try {
+    const ids = Array.from({ length: 33 }, (_, index) => `attachment-${index}`);
+    thread.messages = ids.map(id => ({ ...original, id, parts: [{ type: 'image', mimeType: 'image/png', data: 'YQ==', alt: null }] }));
+    const read = (messageId: string) => method({ threadId: thread.id, messageId, partIndex: 0, ticket: true });
+    const first = await read(ids[0]!);
+    expect(first).toEqual({ url: 'blob:attachment-1', data: '', mimeType: 'image/png', bytes: 1 });
+    expect(await read(ids[0]!)).toEqual(first);
+    for (const id of ids.slice(1)) await read(id);
+    expect(revoked).toHaveBeenCalledExactlyOnceWith(first.url);
+    expect((await read(ids[0]!)).url).not.toBe(first.url);
+  } finally {
+    ctx.attachmentUrls.clear();
+    vi.unstubAllGlobals();
+  }
+});
+
 test('fake pages keep a complete legal attachment bundle above the byte budget and refuse an oversized message', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo', title: 'Single message' });

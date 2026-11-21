@@ -21,7 +21,7 @@ import { agentGuide, SHORT_ANSWERS } from '../agent-guide.ts';
 import { nativeSkillFiles } from '../brain.ts';
 import { takesSystemGuide } from '../drivers/index.ts';
 import { effectiveCompaction, contextRulesBlock, type CompactionPolicy } from '@boite/contracts';
-import { prepareAttachments, FileReferences } from '../attachments.ts';
+import { prepareAttachments, prepareHistoryImages, FileReferences } from '../attachments.ts';
 import { continuationInput, switchBackInput, tailInput, type HistoryInput, type PartPlace } from '../continuation.ts';
 import { recordHandover } from './switch-notice.ts';
 import type { Core } from '../core.ts';
@@ -37,7 +37,9 @@ import { nativeCommandPrompt, systemOperation } from './operations.ts';
 import { stoppedInput } from './stopped-input.ts';
 import { brainContextFor, forgetBrainContext } from './brain-context.ts';
 import { coordinationGuideFor, forgetCoordinationGuide } from './coordination-context.ts';
+import { delegationReminder } from '../delegation/guide.ts';
 import { sessionUsage } from '../usage.ts';
+import { clearStaleLateUsage, openLateUsage, reviseTurnUsage } from './late-usage.ts';
 import { pluginGuideLines } from '../plugins/extensions.ts';
 
 /**
@@ -65,6 +67,7 @@ export class TurnContexts {
 
   constructor(core: Core, threads: ThreadStore) { this.#core = core;  this.#threads = threads;
     this.#files = new FileReferences(core.dataDir);
+    clearStaleLateUsage(core.journal);
     core.bus.onCommitted((name, payload) => {
       if (name === 'thread.removed') this.#files.forget((payload as { threadId: ThreadId }).threadId);
     });
@@ -144,7 +147,7 @@ export class TurnContexts {
       modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(threadId) === true,
       sessionId: thread.sessionId,
       resumeAt: thread.sessionResumeAt ?? null,
-      sessionBefore: this.#sessionBefore(thread, ''),
+      sessionBefore: provider.protocol === 'claude-sdk' ? this.#sessionBefore(thread, '') : undefined,
       accountEnv: this.#core.accounts.accountEnv(account, provider, thread),
       systemGuide: this.#systemGuide(thread, provider),
       warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
@@ -184,7 +187,8 @@ export class TurnContexts {
     turn: Turn,
     carried: CarriedInput = {},
     resumePrompt?: string,
-  ): TurnContext {
+    signal?: AbortSignal,
+  ): TurnContext | Promise<TurnContext> {
     const hostContextMode = thread.contextMode;
     thread = this.#core.sharedAccess.contextThread(thread);
     const threadId = thread.id;
@@ -322,13 +326,14 @@ export class TurnContexts {
           && (answerAfter.has(turn.id) || slot.segment !== answer.segments.at(-1))) {
           slot = continueText(driverId, driverIndex, slot);
         }
+        const firstText = text.length > 0 && slot?.type === 'text' && slot.length === 0 && answer?.role === 'assistant';
         if (slot) slot.length += raw.length;
         const { messageId, partIndex } = route(driverId, driverIndex);
         finishThinking(messageId, partIndex);
         const last = partProgress.get(`${messageId}:${partIndex}`);
         if (text.length) progress(last?.phase ?? 'working', last?.detail ?? null);
         this.#core.journal.appendDelta(threadId, messageId, partIndex, text);
-        this.#core.bus.emit('message.delta', { threadId, messageId, partIndex, text });
+        this.#core.bus.emit('message.delta', { threadId, messageId, partIndex, text }, firstText ? { firstText: true } : undefined);
       },
       part: (driverId: MessageId, driverIndex: number, raw: MessagePart): void => {
         const answer = answers.get(driverId);
@@ -386,15 +391,20 @@ export class TurnContexts {
     // No closure of this context may reach `input` or `prepared`: they share one
     // scope, and a driver keeps the callbacks of its session between turns.
     const input = resumePrompt !== undefined ? { prompt: resumePrompt, attachments: [] } : this.#lastUserInput(threadId, turn.id);
-    const carry = carrier(this.#core, this.#files, threadId, resumePrompt !== undefined ? null : turn.id, input, provider, turn);
-    const fresh = thread.sessionId === null && ((thread.sessionGeneration ?? 0) > 0 || resumePrompt !== undefined);
-    // A session resumed by a switch back to its account: what it missed goes with its first prompt (`threads/account-sessions.ts`).
     const kind = turn.execution?.operation;
+    // A resume's attachments were copied from the interrupted turn. A fresh
+    // session gets them from that history, including after a failed native load.
+    const carryInput = kind === 'resume' ? { ...input, attachments: [] } : input;
+    const carry = carrier(this.#core, this.#files, threadId, resumePrompt !== undefined ? null : turn.id, carryInput, provider, turn);
+    const fresh = thread.sessionId === null && ((thread.sessionGeneration ?? 0) > 0 || kind === 'resume' || resumePrompt !== undefined);
+    // A session resumed by a switch back to its account: what it missed goes with its first prompt (`threads/account-sessions.ts`).
     // A resume carries it too, since the cut turn may have stopped before the session saved its prompt, but not a restart inside the turn that carried it.
     const missed = fresh || kind === 'compact' || kind === 'keepalive' || kind === 'background' || nativeCommandPrompt(input.prompt)
       || (resumePrompt !== undefined && this.#threads.accountSessions.carrying(threadId) === turn.id)
       ? null : this.#threads.accountSessions.gap(thread);
-    let continued: HistoryInput = input;
+    let continued: HistoryInput = kind === 'resume' ? {
+      ...input, historicalImages: input.attachments.filter(file => file.kind === 'image'),
+    } : input;
     if (fresh) continued = carry();
     // After a switch back, the prompts a stop cut before the resumed session's last turn: the missed exchanges hold the later ones.
     else if (resumePrompt === undefined && !turn.execution?.operation && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt)) {
@@ -416,7 +426,7 @@ export class TurnContexts {
       && !nativeCommandPrompt(input.prompt)) {
       const tail = compactionTail(this.#core, thread);
       if (tail !== null) {
-        continued = tailInput(this.#core.journal, threadId, { turnId: tail.after, afterPart: tail.afterPart ?? null }, turn.id, continued, fileReference);
+        continued = tailInput(this.#core.journal, threadId, { turnId: tail.after, afterPart: tail.afterPart ?? null }, turn.id, continued, provider, fileReference);
         this.#threads.backgroundCompact.carried(threadId, turn.id);
       }
     }
@@ -426,161 +436,180 @@ export class TurnContexts {
       recordHandover(this.#core, turn, 'resumed', continued.carried ?? { full: 0, cut: 0, omitted: 0, chars: 0 });
     }
     this.#core.sharedAccess.uploads(threadId, continued.attachments);
-    const prepared = prepareAttachments(this.#core.dataDir, continued, provider);
-    const operation = turn.execution?.operation;
-    // A compaction or a cache keepalive goes to the agent as its command alone: nothing taken rides on it.
-    const bare = operation === 'compact' || operation === 'keepalive';
-    // Both are taken once per turn: a second context for the same turn (the
-    // core's retry on a fresh session) and a driver's `continuation` get what
-    // the first one took.
-    const preparedPrompt = prepared.prompt;
-    carried.deferred ??= operation || nativeCommandPrompt(preparedPrompt) ? '' : this.#threads.deferred.takeDeferred(threadId);
-    carried.memory ??= operation === 'keepalive' ? '' : this.#threads.deferred.memory.take(threadId);
-    carried.letters ??= bare ? '' : this.#core.delegation.initialInput(threadId, turn.id);
-    const deferred = carried.deferred;
-    // The subagent guide comes with the Boite guide on a fresh session, and on any turn about delegation.
-    // Core-woken turns (results, workflow summaries) bring no request of their own.
-    // A context mode without guides gets its brief and the letters meant for it, nothing from the brain, Boite or the team.
-    const mode = thread.contextMode ?? null;
-    const noGuides = mode !== null && !mode.guides;
-    const tail = (fresh: boolean): string => bare ? '' : (noGuides ? '' : this.#core.delegation.instructions(threadId, operation ? '' : preparedPrompt, fresh)) + carried.letters;
-    const origin = input.sentFrom;
-    const systemGuide = this.#systemGuide(thread, provider);
-    // Skills the harness already names to its model stay out of the brain's catalog.
-    const listedSkills = nativeSkillFiles(provider.protocol, env, { cwd: thread.cwd, skillTool: !mode?.tools || mode.tools.includes('Skill') });
-    const compose = (body: string, sessionId: string | null): string => {
-      const inject = !((operation && sessionId !== null) || nativeCommandPrompt(body));
-      // Echo treats "question" as a test directive, including in injected help.
-      const guideEnabled = !noGuides && this.#core.brain.config().boiteGuide !== false;
-      // Said when a session starts and when the user changes app or computer, not on every turn.
-      // Boite's own text, so the guide switch turns it off with the rest.
-      const said = origin && inject && guideEnabled && (sessionId === null || !sameOrigin(origin, this.#sentFromBefore(threadId, origin.messageId)))
-        ? sentFromNote(origin.from) : '';
-      // The coordination guide and an entrusted thread's instructions: whole on a fresh session or once they changed, else nothing (`coordination-context.ts`).
-      const coordinationGuide = inject && !bare && guideEnabled ? coordinationGuideFor(this.#core, thread, sessionId, turn.id, this.#core.coordination.instructions(threadId) + this.#core.workforce.entrusted.instructions(threadId)) : '';
-      // A driver that takes the guide in its system prompt keeps it there, compaction included.
-      const guide = inject && sessionId === null && guideEnabled && systemGuide === undefined ? this.#boiteGuide(thread, provider) : '';
-      // Custom rules lead every fresh session, whatever the guides, on every provider.
-      const rules = inject && sessionId === null && mode?.rules ? `${contextRulesBlock(mode.rules)}\n\n` : '';
-      // Every turn, not once a session: a style said once fades after a few answers.
-      // Boite's own text, so the guide switch turns it off with the rest.
-      const style = inject && guideEnabled && !bare && this.#core.settings.get().shortAnswers !== false ? `${SHORT_ANSWERS}\n\n` : '';
-      // A persistent agent's identity: whole on a fresh session or once it changed, else nothing (`agents/context.ts`).
-      const agent = bare || nativeCommandPrompt(body) ? '' : this.#core.workforce.contextFor(thread, sessionId, turn.id);
-      // The brain's instructions: whole on a fresh session or once they changed, else nothing (`brain-context.ts`).
-      const brain = inject && !noGuides ? brainContextFor(this.#core, thread, sessionId, turn.id, this.#core.brain.instructions(provider.id, listedSkills)) : '';
-      const prefix = rules + brain + guide + agent + style;
-      return carried.memory + prefix + (prefix ? 'User request:\n' : '') + said + deferred + body + coordinationGuide + tail(inject && sessionId === null && guideEnabled) + this.#threads.cards.askInstructions({ ...thread, sessionId }, provider, turn, body);
-    };
-    return {
-      thread,
-      protectedExecution,
-      modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(thread.id) === true,
-      account,
-      provider,
-      turn,
-      prompt: compose(preparedPrompt, thread.sessionId),
-      systemGuide,
-      continuation: freshStart(this.#core.dataDir, carry, compose, provider),
-      // At each step boundary, the core may move the thread to a session compacted in the background.
-      ...(bare || operation === 'background' ? {} : {
-        step: async (boundary: StepBoundary): Promise<StepDecision | null> => {
-          const decision = await this.#threads.backgroundCompact.step(threadId, turn, boundary, fileReference);
-          const current = this.#core.journal.getThread(threadId);
-          // What the thread runs on now: a later check of this context compares with the compacted session.
-          if (decision !== null && current !== null) {
-            thread = { ...thread, sessionId: current.sessionId, sessionResumeAt: null, sessionGeneration: current.sessionGeneration ?? 0 };
-            backgroundOwner.sessionGeneration = current.sessionGeneration ?? 0;
-          }
-          return decision;
+    const build = (history: HistoryInput): TurnContext => {
+      signal?.throwIfAborted();
+      const prepared = prepareAttachments(this.#core.dataDir, history, provider);
+      const operation = turn.execution?.operation;
+      // A compaction or a cache keepalive goes to the agent as its command alone: nothing taken rides on it.
+      const bare = operation === 'compact' || operation === 'keepalive';
+      // Both are taken once per turn: a second context for the same turn (the
+      // core's retry on a fresh session) and a driver's `continuation` get what
+      // the first one took.
+      const preparedPrompt = prepared.prompt;
+      carried.deferred ??= operation || nativeCommandPrompt(preparedPrompt) ? '' : this.#threads.deferred.takeDeferred(threadId);
+      carried.memory ??= operation === 'keepalive' ? '' : this.#threads.deferred.memory.take(threadId);
+      carried.letters ??= bare ? '' : this.#core.delegation.initialInput(threadId, turn.id);
+      const deferred = carried.deferred;
+      // A context mode without guides gets its brief and the letters meant for it, nothing from the brain, Boite or the team.
+      const mode = thread.contextMode ?? null;
+      const noGuides = mode !== null && !mode.guides;
+      const origin = input.sentFrom;
+      const systemGuide = this.#systemGuide(thread, provider);
+      // Skills the harness already names to its model stay out of the brain's catalog.
+      const listedSkills = nativeSkillFiles(provider.protocol, env, { cwd: thread.cwd, skillTool: !mode?.tools || mode.tools.includes('Skill') });
+      const compose = (body: string, sessionId: string | null): string => {
+        const inject = !((operation && sessionId !== null) || nativeCommandPrompt(body));
+        // Echo treats "question" as a test directive, including in injected help.
+        const guideEnabled = !noGuides && this.#core.brain.config().boiteGuide !== false;
+        // Said when a session starts and when the user changes app or computer, not on every turn.
+        // Boite's own text, so the guide switch turns it off with the rest.
+        const said = origin && inject && guideEnabled && (sessionId === null || !sameOrigin(origin, this.#sentFromBefore(threadId, origin.messageId)))
+          ? sentFromNote(origin.from) : '';
+        // The coordination guide and an entrusted thread's instructions: whole on a fresh session or once they changed, else nothing (`coordination-context.ts`).
+        const coordinationGuide = inject && !bare && guideEnabled ? coordinationGuideFor(this.#core, thread, sessionId, turn.id, this.#core.coordination.instructions(threadId) + this.#core.workforce.entrusted.instructions(threadId)) : '';
+        const request = operation ? '' : preparedPrompt;
+        const delegationText = inject && !bare && !noGuides ? this.#core.delegation.instructions(threadId, request, guideEnabled, sessionId) : '';
+        const delegationGuide = coordinationGuideFor(this.#core, thread, sessionId, turn.id, delegationText, 'delegation');
+        const reminder = delegationText && !delegationGuide && !thread.parentThreadId && !this.#core.delegation.remote.parentOf(threadId) ? delegationReminder(request) : '';
+        // A driver that takes the guide in its system prompt keeps it there, compaction included.
+        const guide = inject && sessionId === null && guideEnabled && systemGuide === undefined ? this.#boiteGuide(thread, provider) : '';
+        // Custom rules still apply when the guide is off.
+        const rules = inject && sessionId === null && mode?.rules ? `${contextRulesBlock(mode.rules)}\n\n` : '';
+        // Every turn, not once a session: a style said once fades after a few answers.
+        // Boite's own text, so the guide switch turns it off with the rest.
+        const style = inject && guideEnabled && !bare && this.#core.settings.get().shortAnswers !== false ? `${SHORT_ANSWERS}\n\n` : '';
+        // A persistent agent's identity: whole on a fresh session or once it changed, else nothing (`agents/context.ts`).
+        const agent = bare || nativeCommandPrompt(body) ? '' : this.#core.workforce.contextFor(thread, sessionId, turn.id);
+        // The brain's instructions: whole on a fresh session or once they changed, else nothing (`brain-context.ts`).
+        const brain = inject && !noGuides ? brainContextFor(this.#core, thread, sessionId, turn.id, this.#core.brain.instructions(provider.id, listedSkills)) : '';
+        // The shared guide is the reusable prefix. The following rules name the
+        // user's instructions, independently of their position in the prompt.
+        const prefix = guide + carried.memory + rules + brain + agent + style;
+        // A generated child brief starts with the same role. Resume history can
+        // include old briefs, so only skip the role when the current input has it.
+        const role = delegationGuide.trim();
+        const roleInBody = role && input.prompt.startsWith(role) && body.includes(role);
+        return prefix + (prefix ? 'User request:\n' : '') + said + deferred + body + coordinationGuide + (roleInBody ? '' : delegationGuide) + reminder + carried.letters + this.#threads.cards.askInstructions({ ...thread, sessionId }, provider, turn, body);
+      };
+      let sessionBefore: AgentTotals | undefined;
+      const readSessionBefore = () => this.#sessionBefore(thread, turn.id);
+      return {
+        thread,
+        protectedExecution,
+        modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(thread.id) === true,
+        account,
+        provider,
+        turn,
+        prompt: compose(preparedPrompt, thread.sessionId),
+        systemGuide,
+        continuation: freshStart(this.#core.dataDir, carry, compose, provider),
+        // At each step boundary, the core may move the thread to a session compacted in the background.
+        ...(bare || operation === 'background' ? {} : {
+          step: async (boundary: StepBoundary): Promise<StepDecision | null> => {
+            const decision = await this.#threads.backgroundCompact.step(threadId, turn, boundary, fileReference);
+            const current = this.#core.journal.getThread(threadId);
+            // What the thread runs on now: a later check of this context compares with the compacted session.
+            if (decision !== null && current !== null) {
+              thread = { ...thread, sessionId: current.sessionId, sessionResumeAt: null, sessionGeneration: current.sessionGeneration ?? 0 };
+              backgroundOwner.sessionGeneration = current.sessionGeneration ?? 0;
+            }
+            return decision;
+          },
+        }),
+        // A keepalive takes nothing while it runs: a result or a note waits for the turn after it.
+        coordination: () => bare ? null : this.#core.delegation.take(threadId, turn.id) ?? this.#core.coordination.take(threadId, turn.id)
+          ?? this.#threads.deferred.takeForRunningTurn(threadId),
+        attachments: prepared.attachments,
+        sessionId: thread.sessionId,
+        resumeAt: thread.sessionId === null ? null : thread.sessionResumeAt ?? null,
+        get sessionBefore() { return sessionBefore ??= readSessionBefore(); },
+        set sessionBefore(totals) { sessionBefore = totals; },
+        accountEnv: env,
+        warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
+        toolSummaries: this.#core.settings.get().toolSummaries === true,
+        shortAnswers: this.#core.settings.get().shortAnswers !== false,
+        ...(bare || operation === 'background' ? { promptSuggestions: false, suggestion: undefined } : this.#suggestions(thread)),
+        autoCompactTokens: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).autoCompact?.tokens ?? null,
+        backgroundCompaction: () => backgroundSetting(effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread)),
+        compactionSummary: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).compactionSummary ?? null,
+        emit,
+        reportProgress: progress,
+        inputReady: () => {
+          this.#core.composer.inputReady(threadId);
+          if (!bare) void this.#threads.deferred.flushRunning(threadId);
         },
-      }),
-      // A keepalive takes nothing while it runs: a result or a note waits for the turn after it.
-      coordination: () => bare ? null : this.#core.delegation.take(threadId, turn.id) ?? this.#core.coordination.take(threadId, turn.id)
-        ?? this.#threads.deferred.takeForRunningTurn(threadId),
-      attachments: prepared.attachments,
-      sessionId: thread.sessionId,
-      resumeAt: thread.sessionId === null ? null : thread.sessionResumeAt ?? null,
-      sessionBefore: this.#sessionBefore(thread, turn.id),
-      accountEnv: env,
-      warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
-      toolSummaries: this.#core.settings.get().toolSummaries === true,
-      shortAnswers: this.#core.settings.get().shortAnswers !== false,
-      ...(bare || operation === 'background' ? { promptSuggestions: false, suggestion: undefined } : this.#suggestions(thread)),
-      autoCompactTokens: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).autoCompact?.tokens ?? null,
-      backgroundCompaction: () => backgroundSetting(effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread)),
-      compactionSummary: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).compactionSummary ?? null,
-      emit,
-      reportProgress: progress,
-      inputReady: () => {
-        this.#core.composer.inputReady(threadId);
-        if (!bare) void this.#threads.deferred.flushRunning(threadId);
-      },
-      reportProviderEvent: () => this.#threads.progress.contact(threadId, turn.id),
-      authenticationFailed: () => this.#core.accounts.authenticationFailed(account.id),
-      log: (level, message, context) => {
-        if (context?.kind === 'provider-output') noteStderr(threadId, message);
-        this.#core.log(level, message, { ...context, source: provider.id, threadId, turnId: turn.id });
-      },
-      diagnostic: (level, message, context) => { try { this.#core.logs.record(level, message, { ...context, source: provider.id, threadId, turnId: turn.id }); } catch { /* A diagnostic storage failure must not break a turn. */ } },
-      commands: (list: AgentCommand[]) => {
-        if ((this.#threads.require(threadId).sessionGeneration ?? 0) === (thread.sessionGeneration ?? 0)) this.#threads.agentState.noteCommands(threadId, list);
-      },
-      context: (use) => {
-        if ((this.#threads.require(threadId).selectionVersion ?? 0) === (thread.selectionVersion ?? 0)) this.#threads.agentState.noteContext(threadId, use);
-      },
-      quota: (reading, observedAt) => this.#core.quotas.observe(account.id, reading, observedAt),
-      tasks: (list) => this.#core.activity.tasks(threadId, list),
-      hook: (report) => {
-        this.#core.hooks.record({ providerId: provider.id, accountId: account.id, threadId }, report);
-      },
-      background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
-      backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
-      wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
-      notice: part => this.#notice(threadId, part),
-      loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
-      requestPermission: (toolName: string, input: unknown, description: string | null): PermissionTicket => {
-        // Shared contexts hide native tools. Approval of the attested protected
-        // facade still follows the host's original context and permission mode.
-        let permissionThread = thread;
-        if (protectedExecution?.toolsAllowed && (toolName === 'boite_exec' || toolName === 'boite_commit')) {
-          protectedExecution.check();
-          permissionThread = {...thread, contextMode: hostContextMode};
-        }
-        return this.#threads.cards.requestPermission(permissionThread, turn, toolName, input, description);
-      },
-      askQuestion: (ask: QuestionAsk): QuestionTicket => this.#threads.cards.askQuestion(thread, turn, ask),
-      withdrawQuestion: (questionId) => {
-        this.#threads.cards.withdrawQuestion(threadId, questionId);
-      },
-      // Every driver reaches the launcher through these two, so this is the one
-      // place a lease on the provider's managed files can be held for the life
-      // of an agent process, warm sessions included. `providers.uninstall`
-      // refuses while the count is above zero. It is also where the thread's
-      // own door goes into the environment: everything a thread launches finds
-      // the core, its token and the `boite` CLI, grandchildren included.
-      spawn: (cmd: string, args: string[], opts?: SpawnOptions) => {
-        this.#core.sharedAccess.denyTool(threadId);
-        this.#core.sharedCompute?.assertSpawn(threadId);
-        const spawned = this.#core.procs.spawn(threadId, cmd, args, {
-          ...opts,
-          env: agentEnvOf(this.#core, threadId, { ...(opts?.env ?? process.env), ...env }),
-        });
-        const installs = this.#core.providers.installs;
-        installs.acquire(provider.id);
-        void spawned.exited.finally(() => {
-          installs.release(provider.id);
-        });
-        return spawned;
-      },
-      spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null, turnId: turn.id }),
-      stopChild: child => this.#core.procs.stopChild(child),
-      finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
-      lazyMcp: this.#lazyMcpFor(thread),
-      killTree: () => {
-        this.#core.procs.killTree(threadId);
-      },
+        reportProviderEvent: () => this.#threads.progress.contact(threadId, turn.id),
+        reportLateUsage: usage => reviseTurnUsage(this.#core, threadId, turn, usage),
+        openLateUsage: <T>() => openLateUsage<T>(this.#core, threadId),
+        authenticationFailed: () => this.#core.accounts.authenticationFailed(account.id),
+        log: (level, message, context) => {
+          if (context?.kind === 'provider-output') noteStderr(threadId, message);
+          this.#core.log(level, message, { ...context, source: provider.id, threadId, turnId: turn.id });
+        },
+        diagnostic: (level, message, context) => { try { this.#core.logs.record(level, message, { ...context, source: provider.id, threadId, turnId: turn.id }); } catch { /* A diagnostic storage failure must not break a turn. */ } },
+        commands: (list: AgentCommand[]) => {
+          if ((this.#threads.require(threadId).sessionGeneration ?? 0) === (thread.sessionGeneration ?? 0)) this.#threads.agentState.noteCommands(threadId, list);
+        },
+        context: (use) => {
+          if ((this.#threads.require(threadId).selectionVersion ?? 0) === (thread.selectionVersion ?? 0)) this.#threads.agentState.noteContext(threadId, use);
+        },
+        quota: (reading, observedAt) => this.#core.quotas.observe(account.id, reading, observedAt),
+        tasks: (list) => this.#core.activity.tasks(threadId, list),
+        hook: (report) => {
+          this.#core.hooks.record({ providerId: provider.id, accountId: account.id, threadId }, report);
+        },
+        background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
+        backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
+        wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
+        notice: part => this.#notice(threadId, part),
+        loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
+        requestPermission: (toolName: string, input: unknown, description: string | null): PermissionTicket => {
+          // Shared contexts hide native tools. Approval of the attested protected
+          // facade still follows the host's original context and permission mode.
+          let permissionThread = thread;
+          if (protectedExecution?.toolsAllowed && (toolName === 'boite_exec' || toolName === 'boite_commit')) {
+            protectedExecution.check();
+            permissionThread = {...thread, contextMode: hostContextMode};
+          }
+          return this.#threads.cards.requestPermission(permissionThread, turn, toolName, input, description);
+        },
+        askQuestion: (ask: QuestionAsk): QuestionTicket => this.#threads.cards.askQuestion(thread, turn, ask),
+        withdrawQuestion: (questionId) => {
+          this.#threads.cards.withdrawQuestion(threadId, questionId);
+        },
+        // Every driver reaches the launcher through these two, so this is the one
+        // place a lease on the provider's managed files can be held for the life
+        // of an agent process, warm sessions included. `providers.uninstall`
+        // refuses while the count is above zero. It is also where the thread's
+        // own door goes into the environment: everything a thread launches finds
+        // the core, its token and the `boite` CLI, grandchildren included.
+        spawn: (cmd: string, args: string[], opts?: SpawnOptions) => {
+          this.#core.sharedAccess.denyTool(threadId);
+          this.#core.sharedCompute?.assertSpawn(threadId);
+          const spawned = this.#core.procs.spawn(threadId, cmd, args, {
+            ...opts,
+            env: agentEnvOf(this.#core, threadId, { ...process.env, ...opts?.env, ...env }),
+            envIsComplete: true,
+          });
+          const installs = this.#core.providers.installs;
+          installs.acquire(provider.id);
+          void spawned.exited.finally(() => {
+            installs.release(provider.id);
+          });
+          return spawned;
+        },
+        spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null, turnId: turn.id }),
+        stopChild: child => this.#core.procs.stopChild(child),
+        finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
+        lazyMcp: this.#lazyMcpFor(thread),
+        killTree: () => {
+          this.#core.procs.killTree(threadId);
+        },
+      };
     };
+    return continued.historicalImages?.length
+      ? prepareHistoryImages(this.#core.dataDir, continued).then(build)
+      : build(continued);
   }
 
   /** The thread's MCP servers through the core, unless `BOITE_LAZY_MCP=0` turned that off. */
@@ -690,12 +719,12 @@ type TurnInput = Parameters<typeof continuationInput>[3];
  * `makeContext`, so that only the context's `continuation` holds the input,
  * not every callback of the context.
  */
-function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: TurnId | null, input: TurnInput, provider: ProviderDescriptor, turn: Turn): () => { prompt: string; attachments: Attachment[] } {
+function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: TurnId | null, input: TurnInput, provider: ProviderDescriptor, turn: Turn): () => HistoryInput {
   const history = (): HistoryInput => {
     const result = continuationInput(core.journal, threadId, turnId, input, provider, (part, place) => {
       core.sharedAccess.uploads(threadId, [part]);
       return files.of(threadId, part, place);
-    });
+    }, turn.id);
     core.sharedAccess.uploads(threadId, result.attachments);
     return result;
   };
@@ -710,9 +739,11 @@ function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: 
 }
 
 /** `TurnContext.continuation`, built here for the same reason as `carrier`. */
-function freshStart(dataDir: string, carry: () => { prompt: string; attachments: Attachment[] }, compose: (body: string, sessionId: string | null) => string, provider: ProviderDescriptor): NonNullable<TurnContext['continuation']> {
-  return () => {
-    const fresh = prepareAttachments(dataDir, carry(), provider);
+function freshStart(dataDir: string, carry: () => HistoryInput, compose: (body: string, sessionId: string | null) => string, provider: ProviderDescriptor): NonNullable<TurnContext['continuation']> {
+  return async () => {
+    let history = carry();
+    if (history.historicalImages?.length) history = await prepareHistoryImages(dataDir, history);
+    const fresh = prepareAttachments(dataDir, history, provider);
     return { prompt: compose(fresh.prompt, null), attachments: fresh.attachments };
   };
 }

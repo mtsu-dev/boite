@@ -52,14 +52,19 @@ test('an agent starts a light child with rules through the CLI, and the list and
   expect(light.thread.contextMode).toMatchObject({ label: 'light', guides: false, rules: RULES });
   expect(plain.thread.contextMode).toBeUndefined();
 
-  // The echo child answers with what it was given: the rules first, no team guide.
+  // The generated brief carries the child role even in light mode. Echo
+  // returns the prompt, including any automatically added Boite guide.
   await owner.call('delegation.wait', { threadId, timeoutMs: 15_000 });
   const lightText = (await owner.call('threads.get', { threadId: light.thread.id })).messages.filter(m => m.role === 'assistant').flatMap(m => m.parts).map(p => p.type === 'text' ? p.text : '').join('');
-  expect(lightText).toContain(`Rules for this conversation`);
+  expect(lightText).toStartWith('Rules for this conversation');
   expect(lightText).toContain(RULES);
-  expect(lightText).not.toContain('You are a Boite subagent of');
+  expect(lightText).toContain(`You are a Boite subagent of ${threadId}.`);
+  expect(lightText.split('You are a Boite subagent of')).toHaveLength(2);
+  expect(lightText).toEndWith('Task from the parent agent, supplied as JSON data:\n"Count-the-parser-lines"');
+  expect(lightText).not.toContain('You run in Boite:');
   const plainText = (await owner.call('threads.get', { threadId: plain.thread.id })).messages.filter(m => m.role === 'assistant').flatMap(m => m.parts).map(p => p.type === 'text' ? p.text : '').join('');
-  expect(plainText).toContain('You are a Boite subagent of');
+  expect(plainText).toContain(`You are a Boite subagent of ${threadId}.`);
+  expect(plainText).toContain('You run in Boite:');
 
   await openSubagents();
   await page.waitFor('document.querySelectorAll("[data-testid=delegation-member]").length === 2');
@@ -86,6 +91,7 @@ test('an agent starts a light child with rules through the CLI, and the list and
 test('the phone shows the badge in the child header and the Subagents list without overflowing', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.waitFor('innerWidth === 390');
+  await page.waitFor(`!!document.querySelector('[data-testid=mobile-header] [data-testid=delegation-back-parent]')`);
   await page.waitFor('!!document.querySelector("[data-testid=thread-context-mode]")');
   const chip = await page.evaluate('(() => { const r = document.querySelector("[data-testid=thread-context-mode]").getBoundingClientRect(); return { width: r.width, right: r.right, visible: r.width > 0 && r.height > 0 }; })()') as { width: number; right: number; visible: boolean };
   expect(chip.visible).toBe(true);

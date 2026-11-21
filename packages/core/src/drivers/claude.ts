@@ -9,6 +9,7 @@ import { sideQuestion } from './claude/side-question.ts';
 import { ClaudeTurn } from './claude/turn.ts';
 import type { Driver, DriverCapabilities, ProbeContext, ProbeResult, TitleContext, SessionContext, TurnContext, TurnHandle } from './types.ts';
 import { noteWarmSession } from './driver-log.ts';
+import { ThreadSessions } from './thread-sessions.ts';
 
 const MINUTE_MS = 60_000;
 
@@ -21,8 +22,7 @@ const CLAUDE_CAPABILITIES: DriverCapabilities = { stepSwap: true };
  * thread reuses the CLI that is already up, as long as nothing of its setup moved.
  */
 export function createClaudeDriver(deps: ClaudeDeps): Driver {
-  const sessions = new Map<ThreadId, ClaudeSession>();
-  const viewed = new Set<ThreadId>();
+  const sessions = new ThreadSessions<ClaudeSession>();
   const probes = new Map<string, { providerId: string; accountId: string; result?: ProbeResult; pending: Promise<ProbeResult> }>();
 
   /** The thread's session, started if it has none and replaced if it cannot serve this turn. */
@@ -31,13 +31,13 @@ export function createClaudeDriver(deps: ClaudeDeps): Driver {
     const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
     const key = sessionKey(ctx);
 
-    let session = sessions.get(threadId) ?? null;
+    let session = sessions.current.get(threadId) ?? null;
     // A turn that resumes at an entry needs a CLI of its own: the running one
     // holds the whole session, the part a rewind removed included.
     const usable = session?.usable(key, warmMs) === true;
     noteWarmSession(ctx, 'Claude CLI', { kept: session !== null, usable, sameSetup: session?.key === key, setupChange: 'the thread changed account, folder or bypass mode' });
     if (session !== null && !usable) {
-      sessions.delete(threadId);
+      sessions.current.delete(threadId);
       session.close(session.key === key ? null : 'the thread changed account, folder or bypass mode');
       session = null;
     }
@@ -47,17 +47,15 @@ export function createClaudeDriver(deps: ClaudeDeps): Driver {
         warmMs,
         deps,
         {
-          ended: (dead): void => {
-            if (sessions.get(threadId) === dead) sessions.delete(threadId);
-          },
+          ended: dead => sessions.ended(threadId, dead),
           stranded: (turns): void => {
             for (const moved of turns) attach(moved);
           },
         },
         ctx,
       );
-      if (viewed.has(threadId)) session.setViewed(true);
-      sessions.set(threadId, session);
+      if (sessions.viewed.has(threadId)) session.setViewed(true);
+      sessions.current.set(threadId, session);
     }
     return session;
   }
@@ -73,11 +71,7 @@ export function createClaudeDriver(deps: ClaudeDeps): Driver {
     capabilities: CLAUDE_CAPABILITIES,
     sideQuestion: ctx => sideQuestion(deps, ctx),
     prepare: (ctx, options) => acquire(ctx).prepare(options?.forTurn),
-    setViewed(threadId, active) {
-      if (active) viewed.add(threadId);
-      else viewed.delete(threadId);
-      sessions.get(threadId)?.setViewed(active);
-    },
+    setViewed: sessions.setViewed,
     probe(ctx: ProbeContext): Promise<ProbeResult> {
       const key = ctx.provider.id + '::' + ctx.accountId;
       const previous = probes.get(key);
@@ -96,7 +90,7 @@ export function createClaudeDriver(deps: ClaudeDeps): Driver {
       const turn = new ClaudeTurn(ctx);
       // A turn opened for output the CLI wrote on its own belongs to that CLI.
       // With the CLI gone there is nothing to adopt and no prompt to send.
-      if (ctx.turn.execution?.operation === 'background' && sessions.get(ctx.thread.id)?.adoptable() !== true) {
+      if (ctx.turn.execution?.operation === 'background' && sessions.current.get(ctx.thread.id)?.adoptable() !== true) {
         turn.settle();
         return { done: turn.done, stop: (): void => undefined };
       }
@@ -105,7 +99,7 @@ export function createClaudeDriver(deps: ClaudeDeps): Driver {
         done: turn.done,
         setPermissionMode: mode => turn.session?.setPermissionMode(turn, mode) ?? Promise.resolve(false),
         applySettings: change => turn.session?.applySettings(turn, change) ?? Promise.resolve({}),
-        steerUser: (message, attachments) => turn.session?.steer(turn, message, attachments) ?? Promise.resolve(false),
+        steerUser: (message, attachments, onAccepted) => turn.session?.steer(turn, message, attachments, onAccepted) ?? Promise.resolve(false),
         stop: (): void => {
           // The session that holds it, which is not always the one it started on.
           turn.session?.stopTurn(turn);
@@ -114,11 +108,8 @@ export function createClaudeDriver(deps: ClaudeDeps): Driver {
     },
 
     releaseThread(threadId: ThreadId): void {
-      const session = sessions.get(threadId);
       // A turn still running on it keeps it: the idle window ends it soon enough.
-      if (session === undefined || session.busy()) return;
-      sessions.delete(threadId);
-      session.close(null);
+      sessions.takeIdle(threadId)?.close(null);
     },
 
     title(ctx: TitleContext): Promise<string | null> {
@@ -126,9 +117,7 @@ export function createClaudeDriver(deps: ClaudeDeps): Driver {
     },
 
     shutdown(): void {
-      const open = [...sessions.values()];
-      sessions.clear();
-      viewed.clear();
+      const open = sessions.takeAll();
       for (const session of open) session.close(null, 0);
     },
   };

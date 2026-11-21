@@ -270,9 +270,11 @@ history-transfer warning above instead.
 Historical images use what the current prompt's attachments leave of one
 turn's limits: 50 images and 10 MB together (`ATTACHMENTS_PER_TURN`,
 `ATTACHMENTS_TOTAL_MAX_BYTES`). The current prompt's attachments take
-priority, then the most recent historical images, newest first until either
-limit is reached, so a request never carries more image bytes than one turn. Delivery is chronological. The receiving agent is told which older
-image references lack an attachment. An image-incapable destination refuses
+priority at their normal resolution. Boite selects the most recent historical
+images within the space left, then sends them in chronological order at up to
+1,280 by 720 pixels. The agent receives the full-resolution file paths and
+can read those originals when it needs more detail. An image that cannot be
+previewed goes as a file reference. An image-incapable destination refuses
 continuation of an image-bearing history explicitly.
 
 ## Switching back
@@ -290,6 +292,11 @@ first turn back carries them again. Images among them go as attachments within
 one turn's limits; an agent that cannot read images refuses them, as a fresh
 start does. Otherwise the thread starts fresh with the whole transfer, and
 the log says why (`thread.session-not-resumed`).
+
+Before warning about a fresh session on a long thread, the composer asks its
+core for `threads.previewAccountSwitch`. The preview reads the same saved-session
+and history checks as the switch. If the session stops being resumable before
+the switch commits, `threads.update` refuses the switch that relied on it.
 
 The saved sessions live in one journal setting per thread
 (`account-sessions:<thread>`, `packages/core/src/threads/account-sessions.ts`),

@@ -3,8 +3,8 @@
  * worktree goes when every thread standing in it has been archived (or done,
  * or deleted) for an hour, nothing in it is uncommitted, and either its head is
  * on another branch or a merged pull request names that exact head. The
- * removal itself is `WorktreeSweep.removeSettled`: the refusals of a manual
- * removal without force, read again at that moment.
+ * removal itself is `WorktreeSweep.removeSettled`: a final check of the
+ * checkout, ignored files included, and a branch deletion at the verified SHA.
  *
  * Only worktrees under a folder the core places them in are considered: the
  * project's `.boite/worktrees`, or the shared storage folder of that project.
@@ -20,6 +20,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Project, ThreadId, ThreadSummary, ThreadWorktreeRemoval } from '@boite/contracts';
 import type { Core } from './core.ts';
+import { stagedForRemoval } from './checkout-removal.ts';
 import { messageOf } from './errors.ts';
 import { claimsBranch, openLinkedHeads, type LinkedHead } from './linked-pull-requests.ts';
 import { occupiesCheckout } from './threads/occupancy.ts';
@@ -199,7 +200,7 @@ export class WorktreeCleanup {
     const done: WorktreeCleanupResult[] = [];
     for (const worktree of listed) {
       if (this.#stopped(deadline) || budget.removals === 0) break;
-      if (worktree.main) continue;
+      if (worktree.main || stagedForRemoval(worktree.path)) continue;
       const key = await realKey(worktree.path);
       if (key === own || !roots.some((root) => key !== root && inside(root, key))) continue;
       const memo = `${key}\0${worktree.head ?? ''}`;
@@ -235,7 +236,7 @@ export class WorktreeCleanup {
   /** The removal when its work is proved safe, else null. */
   private async settle(project: Project, worktree: Listed, standing: Holder[], claimed: Claims, budget: { proofs: number }): Promise<WorktreeCleanupResult | null> {
     // The cheap reads first; `removeSettled` reads everything again before it removes.
-    if (await this.sweep.dirty(project, worktree.path)) return null;
+    if (await this.sweep.dirty(project, worktree.path, true)) return null;
     let reason: ThreadWorktreeRemoval['reason'] = 'clean';
     let merged: { sha: string; branch: string | null; number: number; url: string } | null = null;
     if (await this.sweep.unmerged(project, worktree)) {

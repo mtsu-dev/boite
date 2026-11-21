@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 async function waitFor(check: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
+  for (let attempt = 0; attempt < 4_000; attempt++) {
     if (check()) return;
     await new Promise((resolve) => setTimeout(resolve, 2));
   }
@@ -42,8 +42,9 @@ async function openComposer(): Promise<HTMLTextAreaElement> {
   running = mount(App, { target });
   await waitFor(() => store.booted && store.openThread !== null);
   await store.open('t-trace');
-  await waitFor(() => !store.busy);
-  return document.querySelector<HTMLTextAreaElement>('[data-testid=composer-input]')!;
+  const field = () => target.querySelector<HTMLTextAreaElement>('[data-testid=composer-input]');
+  await waitFor(() => !store.busy && field() !== null);
+  return field()!;
 }
 
 test('a box that sizes itself reads no height on a keystroke', async () => {

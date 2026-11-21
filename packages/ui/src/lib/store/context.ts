@@ -22,7 +22,7 @@ import { MessagePositions } from './message-positions.svelte';
 import { Workbench } from './workbench.svelte';
 import { Workflows } from './workflows.svelte';
 import { ServerUpdater } from './server-update.svelte';
-import type { Account, Project, ThreadSummary } from '@boite/contracts';
+import type { Account, Project, RpcMethodName, RpcParams, RpcResult, ThreadSummary } from '@boite/contracts';
 import { DraftStartup } from './draft-startup.svelte';
 import { SnapshotReads } from './snapshot-reads';
 import { StreamChannels } from './stream-channels';
@@ -120,5 +120,21 @@ export class StoreContext {
 
   currentClient(client: Client, generation: number): boolean {
     return this.client === client && this.clientGeneration === generation;
+  }
+
+  /** Apply an RPC answer or report its failure only while this client still owns the Store. */
+  async command<M extends RpcMethodName>(method: M, params: RpcParams<M>, apply?: (value: RpcResult<M>) => void | Promise<void>): Promise<void> {
+    const client = this.client;
+    const generation = this.clientGeneration;
+    if (!client) return;
+    try {
+      const value = await client.call(method, params);
+      if (apply && this.currentClient(client, generation)) {
+        const update = apply(value);
+        if (update) await update;
+      }
+    } catch (error) {
+      if (this.currentClient(client, generation)) this.fail(error);
+    }
   }
 }

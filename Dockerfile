@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS build
+FROM oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages/contracts/package.json packages/contracts/package.json
@@ -12,12 +12,20 @@ COPY packages/contracts packages/contracts
 COPY packages/core packages/core
 COPY packages/ui packages/ui
 COPY apps/shell/src-tauri/tauri.conf.json apps/shell/src-tauri/tauri.conf.json
+COPY apps/android-server/termux/minisign.ts apps/android-server/termux/minisign.ts
 ARG BOITE_VERSION
 RUN if [ -n "$BOITE_VERSION" ]; then bun -e 'const v=process.env.BOITE_VERSION; if (!/^\d+\.\d+\.\d+-nightly\.\d{8}\.[1-9]\d*$/.test(v)) throw Error("invalid nightly version"); const p="packages/core/package.json"; const j=await Bun.file(p).json(); j.version=v; await Bun.write(p,JSON.stringify(j));'; fi
 # Set by server.yml for a published image only; empty leaves the core without
 # an analytics relay (docs/internals/analytics.md).
 ARG BOITE_RELEASE_TELEMETRY=
 RUN bun run build:ui && bun run build:core
+# The Linux group launcher (packages/core/native/launch.c), static, for the
+# image's own architecture. The core looks for it beside the executable that
+# runs it first (src/platform/linux-launcher.ts), so the runtime stage puts it
+# beside bun. Only this stage gets a C compiler.
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && bun packages/core/bin/build-launcher.ts --outfile=/app/boite-launch
 
 FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS agents
 COPY docker/agents/package.json docker/agents/package-lock.json /opt/agents/
@@ -39,6 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && mkdir -p /data /workspace /home/node/.local/bin \
     && chown -R node:node /data /workspace /home/node
 COPY --from=build /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=build --chmod=755 /app/boite-launch /usr/local/bin/boite-launch
 COPY --from=agents /opt/agents /opt/agents
 COPY --from=build /app/packages/core/dist /app/packages/core/dist
 COPY --from=build /app/packages/ui/dist /app/packages/ui/dist

@@ -65,7 +65,9 @@
     <p class="text">{request.text}</p>
     <p class="from">{sender}</p>
     {#if request.stage && !(mine && request.stage === 'owner')}<p class="stage" data-stage={request.stage} data-testid="contact-request-stage">{labels.stage[request.stage]}</p>{/if}
-    {#if plan && mine}<p class="plan" data-testid="contact-request-plan" title={request.plan?.kind === 'start' ? request.plan.brief : undefined}><Waypoints size={14} strokeWidth={2} aria-hidden="true" /><span>{plan}</span></p>{/if}
+    {#if plan && mine}<p class="plan" data-testid="contact-request-plan"><Waypoints size={14} strokeWidth={2} aria-hidden="true" /><span>{plan}</span></p>{/if}
+    <!-- Accept runs the whole brief: it is read whole here, scrolled when long, never cut to a first line or a tooltip. -->
+    {#if plan && mine && request.plan?.kind === 'start'}<p class="brief" data-testid="contact-request-brief">{request.plan.brief}</p>{/if}
     {#if request.gitRemote}<p class="remote" title={labels.remote}><GitBranch size={13} strokeWidth={2} aria-hidden="true" /><span>{request.gitRemote}</span></p>{/if}
     {#if mine}
       {#if refusing}
@@ -133,6 +135,7 @@
   .remote :global(svg) { flex: none; }
   .plan { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--color-accent); font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
   .plan :global(svg) { flex: none; margin-top: 3px; }
+  .brief { margin: 0; max-height: 12lh; overflow-y: auto; overscroll-behavior: contain; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-surface-2); font-size: var(--text-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   /* Accept and its arrow read as one control: the arrow keeps the fill behind a hairline. */
   .split { display: inline-flex; flex: none; }
   .split .approve { border-top-right-radius: 0; border-bottom-right-radius: 0; }

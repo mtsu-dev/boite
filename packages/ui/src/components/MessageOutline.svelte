@@ -7,13 +7,16 @@
   import { outlineEntries, outlineUnfold, outlineWave, type OutlineEntry } from '../lib/message-outline';
   import { tick } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
+  import { OutlinePrompts } from '../lib/outline-prompts.svelte';
 
   let { messages, active, jump, hasOlder, loading, loadOlder }: {
     messages: Message[]; active: string | null; jump: (id: string) => void;
     hasOlder: boolean; loading: boolean; loadOlder: () => void;
   } = $props();
-  const prompts = $derived(messages.filter(message => message.role === 'user'));
-  const activeIndex = $derived(prompts.findIndex(message => message.id === active));
+  const promptHistory = new OutlinePrompts(() => messages);
+  const prompts = $derived(promptHistory.current);
+  const promptIndexes = $derived(new Map(prompts.map((message, index) => [message.id, index])));
+  const activeIndex = $derived(active === null ? -1 : promptIndexes.get(active) ?? -1);
   /** How many entries a chevron moves the rail's window by, and how often it repeats under the pointer. */
   const PAGE = 7;
   const REPEAT = 420;

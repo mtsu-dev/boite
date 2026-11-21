@@ -1,4 +1,4 @@
-import { threadActive } from '@boite/contracts';
+import { ACTIVE_THREAD_STATUSES } from '@boite/contracts';
 import { realpathSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { resolve, sep } from 'node:path';
@@ -472,6 +472,7 @@ export class HarnessUpdates {
             current: previous?.current ?? null,
             latest: previous?.latest ?? null,
             state: 'failed',
+            failedPhase: 'check',
             message: error instanceof Error ? error.message : String(error),
             checkedAt: Date.now(),
             program: target.program,
@@ -614,6 +615,7 @@ export class HarnessUpdates {
         route: target.route,
         ...confirmed,
         state: stuck ? 'failed' : 'idle',
+        ...(stuck ? { failedPhase: 'install' as const } : {}),
         message: stuck ? `${target.descriptor.name} ran its updater and still reports ${read.current}${reason === undefined ? '' : `: ${reason}`}` : null,
         checkedAt: Date.now(),
         program: this.#targetOf(id)?.program ?? target.program,
@@ -628,7 +630,7 @@ export class HarnessUpdates {
       this.#core.bus.emit('providers.updated', this.#core.providers.list());
     } catch (error) {
       const undone = error instanceof UpdateUndone ? { current: error.current } : {};
-      this.#entries.set(id, { ...before, ...undone, state: 'failed', message: error instanceof Error ? error.message : String(error), checkedAt: Date.now(), program: target.program });
+      this.#entries.set(id, { ...before, ...undone, state: 'failed', failedPhase: 'install', message: error instanceof Error ? error.message : String(error), checkedAt: Date.now(), program: target.program });
     }
     this.#writeReadings();
     this.#emit();
@@ -836,7 +838,7 @@ export class HarnessUpdates {
   /** True while any turn of any agent is queued, running or waiting. */
   #anyBusy(): boolean {
     return this.#core.journal.unfinishedTurns().length > 0 ||
-      this.#core.journal.listThreads().some((thread) => threadActive(thread.status));
+      this.#core.journal.hasThreadsWithStatus(ACTIVE_THREAD_STATUSES);
   }
 
   #newer(entry: Pick<Entry, 'route' | 'current' | 'latest'>): boolean {
@@ -865,6 +867,7 @@ export class HarnessUpdates {
       skipped,
       state: entry.state,
       message: entry.message,
+      ...(entry.state === 'failed' && entry.failedPhase ? { failedPhase: entry.failedPhase } : {}),
       checkedAt: entry.checkedAt,
       ...(entry.state === 'updating' ? { waitingFor: this.#drains.get(providerId)?.waitingFor ?? 0 } : {}),
     };
@@ -890,10 +893,4 @@ export class HarnessUpdates {
     if (this.#closed || this.#core.stopping) return;
     writeReadings(this.#core.dataDir, this.#entries, this.#lastCheckAt, (level, message) => this.#core.log(level, message));
   }
-}
-
-export function registerUpdateMethods(core: Core): void {
-  core.router.register('providers.updates', (params) => core.updates.list(params.refresh === true));
-  core.router.register('providers.update', (params) => core.updates.update(core.providers.require(params.providerId).id));
-  core.router.register('providers.updateSkip', (params) => core.updates.skip(core.providers.require(params.providerId).id, params.version));
 }

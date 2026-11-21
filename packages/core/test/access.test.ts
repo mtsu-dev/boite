@@ -6,15 +6,17 @@
  * method added after this test was written.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { RpcMethodName } from '@boite/contracts';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join, parse } from 'node:path';
+import { DEVICE_HOME_CREDENTIAL_STORES, type RpcMethodName } from '@boite/contracts';
 import { connect } from '../src/client.ts';
+import * as paths from '../src/paths.ts';
 import { AGENT_METHODS, DEVICE_METHODS } from '@boite/contracts';
 import { assertAllowed } from '../src/access.ts';
 import type { Connection } from '../src/router.ts';
+import { assertDeviceFile, assertDeviceProjectFolder } from '../src/workdir.ts';
 import { echoThread, startTestCore, testProject } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
@@ -291,6 +293,10 @@ describe('the access gate', () => {
       expect(await thrown(phone.call('projects.add', { path: join(home, '.SSH', 'keys') }))).toThrow('a paired device does not add a folder that holds keys or tokens');
       // The owner's own app is not held to the device's rules.
       expect((await owner.call('projects.add', { path: join(home, '.ssh', 'keys') })).path).toBe(join(home, '.ssh', 'keys'));
+      // This machine's home folder, a parent of it and a disk root hold every login.
+      for (const path of [homedir(), dirname(homedir()), parse(homedir()).root]) {
+        expect(await thrown(phone.call('projects.add', { path }))).toThrow('a paired device does not add the home folder');
+      }
 
       const failures: string[] = [];
       const attempts: (() => Promise<unknown>)[] = [
@@ -425,6 +431,132 @@ describe('a paired device reads a thread\'s changes and files', () => {
       expect(await owner.call('files.read', { threadId, path: '.env' })).toMatchObject({ kind: 'text', text: 'token\n' });
     } finally {
       phone.close();
+    }
+  });
+
+  test('a project the owner made at the home folder keeps every hidden entry of it from the device', () => {
+    // The check resolves paths and reads nothing, so the real home folder is safe to name here.
+    const home = homedir();
+    const core = { dataDir: harness.dataDir, providers: harness.core.providers, accounts: harness.core.accounts, threads: { require: () => ({ cwd: home, projectId: 'p' }) }, projects: { require: () => ({ id: 'p', path: home }) }, settings: { get: () => ({}) } } as unknown as Parameters<typeof assertDeviceFile>[0];
+    for (const path of ['.codex/auth.json', '.config/gh/hosts.yml', '.gemini/oauth_creds.json', '.local/share/opencode/auth.json', '.pi/agent/auth.json', '.bash_history', 'AppData/Roaming/rclone/rclone.conf']) {
+      expect(() => assertDeviceFile(core, 't', home, path)).toThrow('credential files');
+    }
+    expect(() => assertDeviceFile(core, 't', home, 'notes/todo.md')).not.toThrow();
+  });
+
+  test('a project or worktree folder the owner keeps in cloud storage or a hidden folder stays readable and addable', () => {
+    // Real home paths, outside the temporary folder; nothing is read from disk.
+    const home = homedir();
+    const shared = join(home, '.worktrees');
+    for (const project of [join(home, 'Library', 'CloudStorage', 'Dropbox', 'site'), join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs', 'site'), join(home, '.dotfiles')]) {
+      const worktree = join(shared, 'site-p');
+      const core = {
+        dataDir: harness.dataDir,
+        providers: harness.core.providers,
+        accounts: harness.core.accounts,
+        threads: { require: (id: string) => ({ cwd: id === 'wt' ? worktree : project, projectId: 'p' }) },
+        projects: { require: () => ({ id: 'p', path: project }) },
+        settings: { get: () => ({ worktreeStorage: { mode: 'shared', directory: shared } }) },
+      } as unknown as Parameters<typeof assertDeviceFile>[0];
+      expect(() => assertDeviceFile(core, 't', project, 'README.md')).not.toThrow();
+      expect(() => assertDeviceFile(core, 'wt', worktree, 'src/app.ts')).not.toThrow();
+      expect(() => assertDeviceProjectFolder(core, project)).not.toThrow();
+      // Credential files stay out inside them.
+      expect(() => assertDeviceFile(core, 't', project, '.env')).toThrow('credential files');
+    }
+  });
+
+  test('dedicated credential stores cannot become device project roots or expose files in owner-added projects', () => {
+    const home = homedir();
+    const shipped = join(import.meta.dir, '../src/providers/shipped');
+    const declaredRoots = readdirSync(shipped).filter(file => file.endsWith('.json')).flatMap(file =>
+      JSON.parse(readFileSync(join(shipped, file), 'utf8')).roots as string[]);
+    const protectedRoots = new Set(['{agentsDir}', '{isolationDir}', ...DEVICE_HOME_CREDENTIAL_STORES.map(root => `{home}/${root}`)]);
+    expect([...new Set(declaredRoots)].filter(root => !protectedRoots.has(root))).toEqual([]);
+    const providerRoots = declaredRoots.filter(root => root.startsWith('{home}/')).map(root => root.slice('{home}/'.length));
+    for (const path of ['.config/muse', '.gemini', '.config/gh', '.local/share/keyrings', '.config/rclone', '.password-store', '.mozilla', '.config/chromium', ...new Set(providerRoots)]) {
+      const root = join(home, path, 'nested');
+      const core = {
+        dataDir: harness.dataDir,
+        providers: harness.core.providers,
+        accounts: harness.core.accounts,
+        threads: { require: () => ({ cwd: root, projectId: 'p' }) },
+        projects: { require: () => ({ id: 'p', path: root }) },
+        settings: { get: () => ({}) },
+      } as unknown as Parameters<typeof assertDeviceFile>[0];
+      expect(() => assertDeviceProjectFolder(core, root)).toThrow('folder that holds keys or tokens');
+      expect(() => assertDeviceFile(core, 't', root, 'auth.json')).toThrow('credential files');
+    }
+  });
+
+  test('a relocated native login stays protected without blocking other projects in the same configuration folder', () => {
+    const before = process.env.XDG_CONFIG_HOME;
+    const config = mkdtempSync(join(tmpdir(), 'boite-provider-config-'));
+    try {
+      process.env.XDG_CONFIG_HOME = config;
+      const root = join(config, 'muse');
+      mkdirSync(root);
+      writeFileSync(join(root, 'auth.json'), '{"test":true}');
+      expect(() => assertDeviceProjectFolder(harness.core, root)).toThrow('folder that holds keys or tokens');
+      expect(() => assertDeviceProjectFolder(harness.core, join(config, 'unrelated-project'))).not.toThrow();
+    } finally {
+      if (before === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = before;
+      rmSync(config, { force: true, recursive: true });
+    }
+  });
+
+  test.each(['fallback', 'shared XDG'] as const)('protects the custom account resolver’s %s directory', async location => {
+    const home = mkdtempSync(join(tmpdir(), 'boite-login-home-'));
+    const id = 'synthetic-login';
+    const config = join(home, 'shared');
+    const root = location === 'fallback' ? join(home, `.${id}`) : join(config, 'vendor', id);
+    const folder = join(harness.dataDir, 'providers');
+    const profile = location === 'fallback'
+      ? { isolation: {} }
+      : { isolation: { XDG_CONFIG_HOME: '{isolationDir}' }, env: { XDG_CONFIG_HOME: config }, session: [`vendor/${id}/token.txt`] };
+    const homePath = spyOn(paths, 'homePath').mockReturnValue(home);
+    try {
+      mkdirSync(root, { recursive: true });
+      writeFileSync(join(root, 'token.txt'), 'synthetic login only');
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, `${id}.json`), JSON.stringify({
+        id, schemaVersion: 1, name: id, shortName: id, protocol: 'acp', roots: ['{isolationDir}'],
+        profiles: { [paths.currentOs()]: { detect: {}, executable: [{ kind: 'path', value: 'synthetic-cli' }], ...profile } },
+        auth: { kind: 'oauth-cli', session: ['token.txt'] }, models: [],
+        capabilities: { approvals: true, hooks: false, checkpoint: false, images: false, planMode: false, resume: true },
+      }));
+      expect(harness.core.providers.load().rejected).toEqual([]);
+      const provider = harness.core.providers.require(id);
+      expect(harness.core.accounts.defaultLocation(provider)).toBe(location === 'fallback' ? root : config);
+
+      const owner = await harness.connect();
+      const account = (await owner.call('accounts.list', {})).find(account => account.providerId === 'echo')!;
+      const project = await owner.call('projects.add', { path: root });
+      const { id: threadId } = await owner.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id });
+      const phone = await pairedDevice();
+      try {
+        const attempts = [
+          await thrown(phone.call('projects.add', { path: root })),
+          await thrown(phone.call('files.read', { threadId, path: 'token.txt' })),
+        ];
+        expect(attempts[0]).toThrow('folder that holds keys or tokens');
+        expect(attempts[1]).toThrow('credential files');
+        if (location === 'shared XDG') {
+          const alias = join(config, 'login-alias');
+          symlinkSync(root, alias, 'junction');
+          expect(await thrown(phone.call('projects.add', { path: alias }))).toThrow('folder that holds keys or tokens');
+          const other = join(config, 'vendor', 'unrelated-project');
+          mkdirSync(other, { recursive: true });
+          expect((await phone.call('projects.add', { path: other })).path).toBe(other);
+          const nested = join(root, 'ordinary-project');
+          mkdirSync(nested);
+          expect((await phone.call('projects.add', { path: nested })).path).toBe(nested);
+        }
+      } finally { phone.close(); }
+    } finally {
+      homePath.mockRestore();
+      rmSync(home, { force: true, recursive: true });
     }
   });
 

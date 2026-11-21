@@ -75,8 +75,9 @@
     const onkey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.stopPropagation();
-      close();
+      // Restoring keyboard focus can open the tip again from its focus handler.
       trigger?.focus();
+      close();
     };
     const onpress = (event: PointerEvent) => {
       const target = event.target as Node | null;
@@ -115,7 +116,7 @@
 {#if tip.shown}
   <span
     {id}
-    class="info-bubble"
+    class="info-bubble tooltip-surface"
     class:closing={tip.closing}
     role="tooltip"
     data-testid="{testid ?? 'info-tip'}-text"
@@ -151,13 +152,6 @@
     display: block;
     max-width: min(340px, calc(100vw - 24px));
     padding: 8px 10px;
-    /* The overlay card every menu and popover wears (app.css). */
-    border: 1px solid var(--overlay-edge);
-    border-radius: var(--radius-overlay);
-    background: var(--overlay-surface);
-    box-shadow: var(--shadow-overlay);
-    color: var(--color-foreground);
-    font-size: var(--text-sm);
     font-weight: 400;
     line-height: 1.5;
     letter-spacing: normal;

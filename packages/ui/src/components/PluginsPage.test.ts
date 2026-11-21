@@ -46,6 +46,16 @@ async function gear(id: string): Promise<HTMLElement> {
   return dialog(id)!;
 }
 
+test('closing plugin details returns keyboard focus to the card that opened them', async () => {
+  await open();
+  const trigger = row('bots')!.querySelector<HTMLElement>('[data-testid="plugin-open"]')!;
+  trigger.focus();
+  const details = await gear('bots');
+  await vi.waitFor(() => expect(document.activeElement).toBe(details));
+  details.querySelector<HTMLElement>('[data-testid="plugin-dialog-close"]')!.click();
+  await vi.waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
 /** The URL form sits behind its button. */
 function openAdd(): void {
   q('[data-testid="plugins-from-url"]')!.click();

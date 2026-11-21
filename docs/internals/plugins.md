@@ -197,7 +197,7 @@ plugins granted that domain reach it with no change of their own.
 | Permission | What it opens |
 | --- | --- |
 | `threads.read` | Every conversation of every project, read only: rows, transcripts, pull request links, cards waiting on the owner, the composer's drafts, the project list, and their events. |
-| `threads.write` | Creates, starts, steers, stops, renames, moves, forks, archives and deletes conversations: it spends the owner's agent quota. Archiving keeps its guards ([Archiving](#archiving-threads)). |
+| `threads.write` | Creates, starts, steers, stops, renames, moves, forks, archives and deletes conversations: it spends the owner's agent quota, and writes the prompt an agent then runs under the owner's permission mode, so it is shown in red at install. Archiving keeps its guards ([Archiving](#archiving-threads)). |
 | `projects.read` | The projects' icons, file lists and changes, and the composer's skill menu. |
 | `projects.write` | Adds a folder as a project, renames or archives one. |
 | `todos.read` | The project boards, read only. |
@@ -241,7 +241,7 @@ before.
 The owner unticks what the plugin should not get; `plugins.add` and
 `plugins.install` carry the ticked list as `grants`, which must be among the
 permissions the manifest asks for (else refused naming `grants[<index>]`).
-The line for `questions.write` is red. A plugin with an executable adds a line
+The lines for `questions.write` and `threads.write` are red. A plugin with an executable adds a line
 with no box: it runs a program on this machine with Boite's rights.
 
 The grant is stored per installed plugin, apart from the manifest. An install

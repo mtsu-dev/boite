@@ -1,7 +1,7 @@
 import {
-  createLogAnonymizer, formatLogLine, formatLogTime, ISSUE_REPOSITORY, logLevelAtLeast, logMatches, normalizeCoreLogText, normalizeLogData, validateCoreLogsQuery, validateDiagnosticReport,
+  createLogAnonymizer, formatLogLine, formatLogTime, ISSUE_REPOSITORY, logMatches, summarizeDiagnosticRecords, normalizeCoreLogText, normalizeLogData, validateCoreLogsQuery, validateDiagnosticReport,
   validateDiagnosticsLogsQuery, validateDiagnosticsParams, RpcErrorCode,
-  type CoreLogLevel, type CoreLogRecord, type DiagnosticProblem, type DiagnosticsExport, type DiagnosticSummary, type DiagnosticThread, type LogAnonymizer, type RpcEventName, type RpcEvents,
+  type CoreLogRecord, type DiagnosticsExport, type DiagnosticSummary, type DiagnosticThread, type LogAnonymizer, type RpcEventName, type RpcEvents,
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import type { FakeContext, FakeMethods } from './context';
@@ -70,34 +70,7 @@ export function logMethods(ctx: FakeContext): Pick<FakeMethods, DiagnosticMethod
   };
 
   const summarize = (records: readonly CoreLogRecord[], since: number, names: LogAnonymizer, family: Set<string> | null): DiagnosticSummary => {
-    const counts: Record<CoreLogLevel, number> = { debug: 0, info: 0, warn: 0, error: 0 };
-    const problems = new Map<string, DiagnosticProblem>();
-    const perThread = new Map<string, { warnings: number; errors: number; lastError: { at: number; message: string } | null }>();
-    for (const record of records) {
-      counts[record.level] += 1;
-      if (record.threadId !== undefined) {
-        const entry = perThread.get(record.threadId) ?? { warnings: 0, errors: 0, lastError: null };
-        if (record.level === 'warn') entry.warnings += 1;
-        if (record.level === 'error') {
-          entry.errors += 1;
-          if (entry.lastError === null || entry.lastError.at < record.at) entry.lastError = { at: record.at, message: record.message.slice(0, 300) };
-        }
-        perThread.set(record.threadId, entry);
-      }
-      if (!logLevelAtLeast(record.level, 'warn')) continue;
-      const key = `${record.origin ?? 'core'}|${record.source}|${record.event}|${record.level}`;
-      const problem = problems.get(key);
-      if (problem === undefined) {
-        problems.set(key, { origin: record.origin ?? 'core', source: record.source, event: record.event, level: record.level as 'warn' | 'error', count: 1, firstAt: record.at, lastAt: record.at, message: record.message.slice(0, 500), threadIds: record.threadId ? [record.threadId] : [] });
-      } else {
-        problem.count += 1;
-        if (record.at < problem.firstAt) problem.firstAt = record.at;
-        // Read newest first: a record of the same instant is older, so the newest message stays.
-        if (record.at > problem.lastAt) { problem.lastAt = record.at; problem.message = record.message.slice(0, 500); }
-        if (record.threadId && !problem.threadIds.includes(record.threadId) && problem.threadIds.length < 5) problem.threadIds.push(record.threadId);
-      }
-    }
-    const mentioned = new Set(records.flatMap(record => [record.threadId, record.parentThreadId].filter((id): id is string => id !== undefined)));
+    const { counts, problems, perThread, mentioned } = summarizeDiagnosticRecords(records);
     const threads: DiagnosticThread[] = [...ctx.threads.values()].map(toSummary).filter(thread => (family === null || family.has(thread.id)) && (mentioned.has(thread.id) || (!thread.archived && thread.updatedAt >= since))).map(thread => {
       const seen = perThread.get(thread.id);
       return {
@@ -117,7 +90,7 @@ export function logMethods(ctx: FakeContext): Pick<FakeMethods, DiagnosticMethod
         providers: ctx.providers.map(provider => ({ id: provider.id, version: null, state: provider.enabled === false ? 'off' : provider.available ? 'available' : 'not installed' })),
         settings: { agentLogAccess: ctx.settings.agentLogAccess !== false, listenOnLan: ctx.settings.listenOnLan === true },
       },
-      problems: [...problems.values()].sort((a, b) => (b.level === 'error' ? 1 : 0) - (a.level === 'error' ? 1 : 0) || b.lastAt - a.lastAt),
+      problems,
       threads,
       logFiles: [{ name: 'core.0.ndjson', bytes }, { name: 'shell.0.ndjson', bytes: 18_432 }],
       counts, since,

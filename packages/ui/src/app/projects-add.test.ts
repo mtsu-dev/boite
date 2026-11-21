@@ -70,6 +70,11 @@ test('a paired device adds a project through the same form, and its core checks 
   await waitFor(() => store.error?.includes('a paired device does not add boite\'s data folder') === true);
   expect(field.value).toBe('C:\\Users\\you\\AppData\\Local\\boite2\\logs');
   expect(store.projects).toHaveLength(before);
+  // Nor the home folder, which holds every login of the machine.
+  await type(field, 'C:\\Users\\you');
+  query<HTMLButtonElement>('[data-testid=project-add]').click();
+  await waitFor(() => store.error?.includes('a paired device does not add the home folder') === true);
+  expect(store.projects).toHaveLength(before);
 
   await type(field, 'D:\\work\\from-the-phone');
   query<HTMLButtonElement>('[data-testid=project-add]').click();
@@ -79,7 +84,9 @@ test('a paired device adds a project through the same form, and its core checks 
   await waitFor(() => document.querySelector('[data-testid=add-project-form]') === null);
 });
 
-test('the phone list header holds the search and the new thread, its display options add a project, and nothing there manages one', async ({ app: _app }) => {
+test('the phone list header holds the search and the new thread, its display options add a project, and nothing there manages one', async ({ viewport }) => {
+  viewport.resize(true);
+  await mountOnFake();
   store.startDraft('p-boite');
   await showMobileThreads();
   expect(document.querySelector('[data-testid=mobile-header] [data-testid=mobile-new]')).not.toBeNull();

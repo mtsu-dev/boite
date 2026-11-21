@@ -26,8 +26,10 @@ export interface SpawnOptions {
   agentRoot?: boolean;
   cwd?: string | undefined;
   env?: Record<string, string | undefined> | undefined;
+  /** In `spawn`, use the supplied environment as-is, including deliberate omissions. */
+  envIsComplete?: true;
   /**
-   * `spawn` only: this many more pipes, the child's descriptors 3, 4 and on,
+   * `spawn` or `spawnPiped`: this many more pipes, the child's descriptors 3, 4 and on,
    * whose ends this process holds in `fds`. The agent browser speaks the
    * DevTools protocol over two of them instead of a port anyone could reach.
    */

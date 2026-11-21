@@ -2,14 +2,32 @@ import { open, mkdir, rename, unlink, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, FILE_ROUTE, VIEW_ROUTE, type ArtifactContent, type Message, type MessagePart, type RpcParams } from '@boite/contracts';
+import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, CHAT_PREVIEW_IMAGES, FILE_ROUTE, VIEW_ROUTE, ProofInputError, chatPreviewSizeProblem, proofPart, type ArtifactContent, type Message, type MessagePart, type RpcParams } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { existingInside, mediaOf } from './workdir.ts';
-import { refused } from './errors.ts';
+import { invalidParams, notFound, refused } from './errors.ts';
 import { newId } from './ids.ts';
 import type { SharedFilePermit } from './contacts/access-policy.ts';
 
 const tooLarge = (path: string) => refused('artifacts.publish file must be at most 512 MB', { path });
+
+/** A capture already encoded by the core, stored with the same lifecycle as a published file. */
+export async function snapshotWindowCapture(core: Core, name: string, bytes: Uint8Array): Promise<{ part: Extract<MessagePart, { type: 'artifact' }>; discard(): Promise<void> }> {
+  if (bytes.length > ARTIFACT_MAX_BYTES) throw tooLarge(name);
+  const id = randomUUID();
+  const directory = join(core.dataDir, 'artifacts');
+  await mkdir(directory, { recursive: true });
+  const path = join(directory, id);
+  const descriptor = await open(path, 'wx');
+  const discard = () => unlink(path).catch(() => {});
+  try {
+    try { await descriptor.writeFile(bytes); } finally { await descriptor.close(); }
+  } catch (error) {
+    await discard();
+    throw error;
+  }
+  return { part: { type: 'artifact', id, mimeType: 'image/png', name, bytes: bytes.length, windowCapture: true }, discard };
+}
 
 /** Copy in bounded chunks; even a source that grows during the copy cannot exceed the cap. */
 async function snapshot(core: Core, cwd: string, path: string, permit?: SharedFilePermit): Promise<{ part: MessagePart; stored: string | null }> {
@@ -73,19 +91,43 @@ async function snapshot(core: Core, cwd: string, path: string, permit?: SharedFi
 
 /** Snapshots survive edits, removal of the source, and core restarts. */
 export async function publishArtifact(core: Core, params: RpcParams<'artifacts.publish'>): Promise<Message> {
-  const thread = core.threads.require(params.threadId);
-  const permit = core.sharedAccess.file(thread.id, params.path, 'publish');
-  if (thread.archived) throw refused('artifacts.publish needs an active thread', { threadId: thread.id });
+  return publish(core, params.threadId, params.path, []);
+}
+
+export async function publishProof(core: Core, params: RpcParams<'artifacts.prove'>): Promise<Message> {
+  core.sharedAccess.denyTool(params.threadId);
+  const { threadId, messageId } = params;
+  core.threads.require(threadId);
+  const source = core.journal.getMessage(messageId, threadId);
+  if (!source) {
+    throw notFound(`message ${messageId} is not a message of thread ${threadId}`, { messageId });
+  }
+  let proof: MessagePart;
+  try {
+    proof = proofPart(params, source.parts);
+  } catch (error) {
+    if (error instanceof ProofInputError) throw invalidParams(error.message, { field: error.field });
+    throw error;
+  }
+  return publish(core, threadId, params.path, [core.secrets.maskPart(threadId, proof)]);
+}
+
+async function publish(core: Core, threadId: string, path: string | undefined, parts: MessagePart[]): Promise<Message> {
+  const method = parts.length ? 'artifacts.prove' : 'artifacts.publish';
+  const thread = core.threads.require(threadId);
+  const permit = path === undefined ? undefined : core.sharedAccess.file(thread.id, path, 'publish');
+  if (thread.archived) throw refused(`${method} needs an active thread`, { threadId });
   const turn = core.journal.lastTurn(thread.id);
-  if (!turn) throw refused('artifacts.publish needs a thread with a turn', { threadId: thread.id });
-  const { part, stored } = await snapshot(core, thread.cwd, params.path, permit);
+  if (!turn) throw refused(`${method} needs a thread with a turn`, { threadId });
+  if (path === undefined && !parts.length) throw invalidParams('artifacts.publish.path: expected a file path', { field: 'path' });
+  const file = path === undefined ? undefined : await snapshot(core, thread.cwd, path, permit);
   let committed = false;
   try {
-    if (core.threads.require(thread.id).archived) throw refused('artifacts.publish needs an active thread', { threadId: thread.id });
+    if (core.threads.require(thread.id).archived) throw refused(`${method} needs an active thread`, { threadId });
     permit?.check();
     const message: Message = {
       id: newId('msg_'), threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: Date.now(),
-      parts: [part],
+      parts: file ? [...parts, file.part] : parts,
     };
     core.sharedAccess.published(thread.id, message.id, [permit]);
     core.journal.append({ type: 'artifact.published', threadId: thread.id, version: 1, payload: message }, () => core.journal.putMessage(message));
@@ -97,19 +139,28 @@ export async function publishArtifact(core: Core, params: RpcParams<'artifacts.p
     core.bus.emit('message.completed', { threadId: thread.id, messageId: message.id, state: 'complete' });
     return message;
   } finally {
-    if (!committed && stored) await unlink(stored).catch(() => {});
+    if (!committed && file?.stored) await unlink(file.stored).catch(() => {});
   }
 }
 
 /** Authorization names the message as well as the thread; an id alone is never a file capability. */
-export function readArtifact(core: Core, params: RpcParams<'artifacts.read'>): ArtifactContent {
-  core.threads.require(params.threadId);
+export async function readArtifact(core: Core, params: RpcParams<'artifacts.read'>): Promise<ArtifactContent> {
+  const problem = chatPreviewSizeProblem(params.previewMax);
+  if (problem) throw invalidParams(`artifacts.read.previewMax: expected one of ${problem.expected}`, problem);
+  const thread = core.threads.require(params.threadId);
   const message = core.journal.getMessage(params.messageId);
   const part = message?.threadId === params.threadId
     ? message.parts.find((p) => p.type === 'artifact' && p.id === params.artifactId) : null;
   if (part?.type !== 'artifact' || !/^[a-f0-9-]{36}$/.test(part.id)) throw refused('artifacts.read needs an artifact from this message and thread');
   const permit = core.sharedAccess.publication(params.threadId, params.messageId);
   const found = existingInside(join(core.dataDir, 'artifacts'), part.id, 'file', 'artifacts.read snapshot');
+  if (params.previewMax !== undefined) {
+    const parent = thread.parentThreadId ? core.journal.getThread(thread.parentThreadId) : null;
+    const copy = await core.media.chatPreview(thread.id, message!.id, message!.parts.indexOf(part), params.previewMax,
+      () => CHAT_PREVIEW_IMAGES.test(part.mimeType) ? { data: Bun.file(found.absolute), mimeType: part.mimeType } : null,
+      { ticket: true, permit, noStore: thread.incognito || parent?.incognito });
+    return { name: part.name, mimeType: copy.mimeType, bytes: part.bytes, url: copy.url ?? (copy.data ? `data:${copy.mimeType};base64,${copy.data}` : '') };
+  }
   if (params.view) {
     if (!part.view) throw refused('artifacts.read view needs an artifact published with boite view');
     // A page keeps the address it was loaded from: each frame takes a ticket of its own.

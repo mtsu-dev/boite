@@ -1,4 +1,4 @@
-import { deviceAdmitInput, deviceHelloInput, ungroupedInput, type DeviceHello, type UngroupedData } from '@boite/contracts';
+import { deviceAdmitInput, deviceHelloInput, deviceRevokedInput, ungroupedInput, type DeviceHello, type DeviceRevokedData, type UngroupedData } from '@boite/contracts';
 
 /**
  * This device's one key: what lets it into every machine of its group.
@@ -147,15 +147,23 @@ const ED25519_SPKI_PREFIX = '302a300506032b6570032100';
  * `nonce`, that it is in no group: its key, whose SHA-256 is that id, signed
  * that nonce. Another machine at the same address, or an older answer, cannot say it.
  */
-export async function signedUngrouped(coreId: string, nonce: string, data: unknown): Promise<boolean> {
+export function signedUngrouped(coreId: string, nonce: string, data: unknown): Promise<boolean> {
+  return signedByCore(coreId, ungroupedInput(coreId, nonce), data);
+}
+
+export function signedDeviceRevocation(coreId: string, nonce: string, deviceId: string, data: unknown): Promise<boolean> {
+  return signedByCore(coreId, deviceRevokedInput(coreId, nonce, deviceId), data);
+}
+
+async function signedByCore(coreId: string, input: string, data: unknown): Promise<boolean> {
   const ed = await loadSigner();
-  const { publicKey, sig } = (typeof data === 'object' && data !== null ? data : {}) as Partial<UngroupedData>;
+  const { publicKey, sig } = (typeof data === 'object' && data !== null ? data : {}) as Partial<UngroupedData | DeviceRevokedData>;
   if (typeof publicKey !== 'string' || typeof sig !== 'string') return false;
   if (hex(sha256!(new TextEncoder().encode(publicKey))) !== coreId) return false;
   try {
     const spki = fromB64url(publicKey.replace(/-----(BEGIN|END) PUBLIC KEY-----|\s/g, ''));
     if (spki.length !== 44 || hex(spki.subarray(0, 12)) !== ED25519_SPKI_PREFIX) return false;
-    return ed.verify(fromB64url(sig), new TextEncoder().encode(ungroupedInput(coreId, nonce)), spki.subarray(12));
+    return ed.verify(fromB64url(sig), new TextEncoder().encode(input), spki.subarray(12));
   } catch {
     return false;
   }

@@ -9,6 +9,7 @@
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/nested-parts';
   import type ModelPickerMenu from './ModelPickerMenu.svelte';
+  import { AnchoredPopover } from '../lib/anchored-popover.svelte';
   import { Closing } from '../lib/closing.svelte';
   import { strings } from '../lib/strings';
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
@@ -28,6 +29,7 @@
     disabled = false,
     readonly = false,
     hint = '',
+    actionLabel,
     onpick
   }: {
     store: Store;
@@ -41,12 +43,15 @@
     readonly?: boolean;
     /** The chip's title in place of its own: whose setting it shows, or why it cannot change here. */
     hint?: string;
+    /** Wording for callers that use a pick to perform an action. */
+    actionLabel?: string;
     onpick: (patch: PickPatch) => void;
   } = $props();
 
-  const popover = new Closing();
+  const popover = new AnchoredPopover(() => root, () => trigger);
   /** A read-only chip's reason, shown on its click. */
   const note = new Closing();
+  let trigger = $state<HTMLButtonElement>();
   let readonlyTrigger = $state<HTMLButtonElement | undefined>(undefined);
   let root = $state<HTMLDivElement | undefined>(undefined);
   let body = $state<ModelPickerMenu | undefined>(undefined);
@@ -74,6 +79,8 @@
     await tick();
   }
 
+  export function close() { popover.hide(); }
+
   function toggle(event?: MouseEvent) {
     event?.stopPropagation();
     popover.toggle();
@@ -84,17 +91,12 @@
   /** The keys belong to the body; before its chunk lands, Escape still closes. */
   function onkeydown(event: KeyboardEvent) {
     if (body) body.keydown(event);
-    else if (event.key === 'Escape' && popover.open) { event.stopPropagation(); popover.hide(); }
+    else if (event.key === 'Escape' && popover.open) { event.stopPropagation(); popover.close(); }
   }
 
-  function onWindowPointerdown(event: PointerEvent) {
-    if (!popover.open) return;
-    if (root && event.target instanceof Node && root.contains(event.target)) return;
-    popover.hide();
-  }
 </script>
 
-<svelte:window onpointerdown={onWindowPointerdown} />
+<svelte:window onpointerdown={popover.outside} />
 
 <div class="picker" bind:this={root}>
   {#if !choice && store.owner}
@@ -115,10 +117,11 @@
     class="ui-chip trigger"
     aria-haspopup="menu"
     aria-expanded={popover.open}
-    aria-label={[label, accountLabel].filter(Boolean).join(', ')}
-    title={hint || (locked ? strings.composer.lockedHint : strings.composer.picker)}
-    data-testid="composer-picker"
+    aria-label={actionLabel ?? [label, accountLabel].filter(Boolean).join(', ')}
+    title={actionLabel ?? (hint || (locked ? strings.composer.lockedHint : strings.composer.picker))}
+    data-testid={actionLabel ? 'recovery-model-picker' : 'composer-picker'}
     {disabled}
+    bind:this={trigger}
     onclick={toggle}
     {onkeydown}
   >
@@ -127,8 +130,8 @@
     {:else}
       <Sparkles size={14} strokeWidth={1.75} />
     {/if}
-    <span class="label ui-label">{label}</span>
-    {#if accountLabel}<span class="account ui-label" data-testid="composer-picker-account"><PrivateText text={accountLabel} /></span>{/if}
+    <span class="label ui-label">{actionLabel ?? label}</span>
+    {#if accountLabel && !actionLabel}<span class="account ui-label" data-testid="composer-picker-account"><PrivateText text={accountLabel} /></span>{/if}
     <ChevronDown size={12} strokeWidth={2} />
   </button>
   {/if}

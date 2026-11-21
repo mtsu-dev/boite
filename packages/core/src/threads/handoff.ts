@@ -1,8 +1,11 @@
-import type { RpcEventName, RpcEvents, ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type RpcEventName, type RpcEvents, type ThreadId, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
+import { messageExcerpt } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
+import { waitForVersion } from '../providers/versions.ts';
 import type { ThreadStore } from '../threads.ts';
 import { RESUME_TEXT } from './resume-text.ts';
+import type { TurnInput } from './turn-origin.ts';
 import { STOP_DEADLINE } from './turn-runner.ts';
 
 /**
@@ -18,8 +21,8 @@ export const HANDOFF = { graceMs: 30_000, longToolMs: 30_000, maxAgeMs: 3_600_00
 
 /** The journal setting the stopping core leaves for the next one. */
 const KEY = 'restart-handoff';
-/** The request of the interrupted turn is quoted up to this many characters. */
-const QUOTE_LIMIT = 8_000;
+const REQUEST_START = '\n\nThe request that turn was answering, as conversation history:\n\n<interrupted-user-messages>\n';
+const REQUEST_END = '\n</interrupted-user-messages>';
 
 interface Entry { turnId: TurnId; threadId: ThreadId; was: 'running' | 'queued'; admittedTurnId?: TurnId }
 interface HandoffRecord { at: number; turns: Entry[] }
@@ -54,6 +57,7 @@ export class RestartHandoff {
   #settle: (() => void) | null = null;
   /** Each inherited entry stays durable until its continuation starts or is explicitly excluded. */
   #inherited: HandoffRecord | null = null;
+  readonly #versionReads = new Set<Promise<void>>();
   /**
    * The previous core stopped through a handoff this core carries on, rather
    * than dying: what delegation and workflows cut then resumes too.
@@ -75,6 +79,9 @@ export class RestartHandoff {
     }
     this.handedOver = this.#inherited !== null;
     core.bus.onAny((name, payload) => this.#observe(name, payload));
+    if (this.handedOver) core.bus.onCommitted((name, payload) => {
+      if (name === 'turn.started') this.#turnStarted(payload as RpcEvents['turn.started']);
+    });
   }
 
   get active(): boolean { return this.#entries !== null; }
@@ -100,7 +107,7 @@ export class RestartHandoff {
   }
 
   /** The user stopped the thread himself: that turn is his to send again. */
-  forget(threadId: ThreadId): void {
+  forget(threadId: ThreadId): boolean {
     let changed = false;
     for (const entry of this.#entries?.values() ?? []) {
       if (entry.threadId === threadId) changed = this.#entries!.delete(entry.turnId) || changed;
@@ -114,6 +121,7 @@ export class RestartHandoff {
       if (this.#entries !== null) this.#save();
       else this.#saveInherited();
     }
+    return changed;
   }
 
   /**
@@ -183,7 +191,7 @@ export class RestartHandoff {
    */
   resume(): number {
     const record = this.#inherited;
-    if (record === null || this.#core.stopping) return 0;
+    if (record === null || this.#core.stopping || this.#core.journal.isClosed()) return 0;
     if (record.turns.length === 0) { this.#saveInherited(); return 0; }
     let resumed = 0;
     for (const entry of [...record.turns]) {
@@ -200,9 +208,16 @@ export class RestartHandoff {
         if (turn.status === 'queued') {
           const state = this.#core.scheduler.state();
           if ([...state.queued, ...state.running].some(item => item.turnId === turn.id)) continue;
-          this.#core.scheduler.enqueue(turn, turn.execution?.accountId ?? thread.accountId);
+          this.#core.scheduler.enqueue(turn, turn.execution?.accountId ?? thread.accountId, { recovering: true });
           resumed += 1;
         } else if (admitted === null && entry.was === 'running' && turn.status === 'stopped') {
+          // The core may have stopped after committing a new turn, before observing its start.
+          if (this.#core.journal.lastTurn(thread.id, true)?.id !== turn.id) {
+            this.#consume(entry);
+            continue;
+          }
+          const read = this.#core.providers.pendingVersion(thread.providerId);
+          if (waitForVersion(read, this.#versionReads, () => this.resume())) continue;
           const continuation = this.#threads.startTurn(thread.id, this.continuation(turn), { kind: 'resume', reason: 'handoff', requestId: this.#requestId(entry) });
           this.#remember(entry, continuation.id);
           resumed += 1;
@@ -212,6 +227,7 @@ export class RestartHandoff {
         // that dispatch still has one durable request-to-turn identity.
         const accepted = this.#admitted(entry);
         if (accepted !== null) this.#remember(entry, accepted);
+        else if (entry.was === 'running') this.#threads.resumes.offer(turn, { kind: 'interrupted', detail: messageOf(error) });
         this.#core.log('warn', `thread ${thread.id} was not resumed after the restart: ${messageOf(error)}`);
       }
     }
@@ -253,16 +269,47 @@ export class RestartHandoff {
    * continue the children a handoff cut with it too, and a crash resume
    * (`threads/auto-continue.ts`) leads with its own reason.
    */
-  continuation(turn: Turn, lead: string = RESUME_TEXT.handoff.prompt): string {
-    const opening = turn.execution?.operation === 'resume'
-      ? Array.from(this.#core.journal.walkTurnMessages(turn.threadId, turn.id, { blobs: false })).find(message => message.role === 'system') ?? null
-      : this.#core.journal.lastUserMessage(turn.threadId, turn.id);
-    const text = (opening?.parts ?? []).map(part => part.type === 'text' ? part.text : '').join('').trim();
-    // A second restart over a resumed turn sends the same note, not a note about a note.
-    if (turn.execution?.operation === 'resume' && text.length > 0) return text;
-    if (text.length === 0) return lead;
-    const quoted = text.length > QUOTE_LIMIT ? `${text.slice(0, QUOTE_LIMIT)}\n[cut by Boite at ${QUOTE_LIMIT} characters]` : text;
-    return `${lead}\n\nThe request that turn was answering:\n\n${quoted}`;
+  continuation(turn: Turn, lead: string = RESUME_TEXT.handoff.prompt): TurnInput {
+    const journal = this.#core.journal;
+    const messages = [...journal.walkTurnMessages(turn.threadId, turn.id, { blobs: false })];
+    const opening = turn.execution?.operation === 'resume' ? messages.find(message => message.role === 'system') : undefined;
+    const requests = messages.filter(message => message.role === 'user');
+    const previous = opening?.parts.find(part => part.type === 'text')?.text;
+    const kept = previous?.includes(REQUEST_START) && previous.endsWith(REQUEST_END)
+      ? previous.slice(previous.indexOf(REQUEST_START) + REQUEST_START.length, -REQUEST_END.length)
+      : previous;
+    // Unlike old history, the active request must keep every requirement and
+    // in-turn correction. The source is already stored without attachment blobs.
+    const text = [kept, ...requests.map(message => message.parts.map(part =>
+      part.type === 'text' ? part.text : messageExcerpt({ ...message, parts: [part] }),
+    ).filter(Boolean).join('\n'))].filter(Boolean).join('\n\n');
+    const activity = this.#core.activity.get(turn.threadId);
+    const tasks = activity.tasksDismissed ? [] : activity.tasks;
+    const checklist = tasks.length
+      ? `\n\nThe thread's task list at resume:\n${tasks.map(task => `- [${task.status}] ${task.text}`).join('\n')}`
+      : '';
+    const prompt = `${lead}${checklist}${text ? `${REQUEST_START}${text}${REQUEST_END}` : ''}`;
+    const thread = journal.getThread(turn.threadId);
+    const attachments: Attachment[] = [];
+    // A fresh session reads these messages through conversation history.
+    if (!thread?.sessionId) return { prompt };
+    const images = this.#core.providers.require(thread.providerId).capabilities.images;
+    let room = ATTACHMENTS_TOTAL_MAX_BYTES;
+    for (const message of (opening ? [opening, ...requests] : requests).toReversed()) {
+      for (let index = message.parts.length - 1; index >= 0 && attachments.length < ATTACHMENTS_PER_TURN; index--) {
+        const stored = message.parts[index]!;
+        if (stored.type !== 'file' && !(stored.type === 'image' && images)) continue;
+        const part = journal.messagePart(message.id, index)?.part;
+        if (part?.type !== 'file' && part?.type !== 'image') continue;
+        const bytes = decodedBytes(part.data);
+        if (bytes > room) continue;
+        room -= bytes;
+        attachments.unshift(part.type === 'image'
+          ? { kind: 'image', mimeType: part.mimeType, data: part.data, name: part.alt }
+          : { kind: 'file', mimeType: part.mimeType, data: part.data, name: part.name });
+      }
+    }
+    return { prompt, attachments };
   }
 
   /**
@@ -291,14 +338,16 @@ export class RestartHandoff {
     this.#threads.stopRunning(threadId);
   }
 
-  #observe(name: RpcEventName, payload: unknown): void {
-    if (name === 'turn.started' && this.#entries === null) {
-      const turn = payload as Turn;
-      for (const entry of [...this.#inherited?.turns ?? []]) {
-        if ((this.#admitted(entry) ?? entry.turnId) === turn.id) this.#consume(entry);
-      }
-      return;
+  #turnStarted(turn: Turn): void {
+    if (this.#inherited === null || this.#entries !== null || turn.execution?.operation === 'keepalive') return;
+    for (const entry of this.#inherited.turns) {
+      if (entry.threadId !== turn.threadId) continue;
+      const admitted = this.#admitted(entry);
+      if ((admitted ?? entry.turnId) === turn.id || (admitted === null && entry.was === 'running')) this.#consume(entry);
     }
+  }
+
+  #observe(name: RpcEventName, payload: unknown): void {
     if (name === 'message.part') {
       const { threadId, messageId, partIndex, part } = payload as RpcEvents['message.part'];
       if (part.type !== 'tool') return;

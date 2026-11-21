@@ -71,6 +71,8 @@ export interface PullRequestWatchSeen {
   head: string;
   base: string;
   checks: { total: number; running: number; failed: number };
+  /** First failing check on the current base tip, when GitHub reports one. */
+  baseFailure?: PullRequestBaseFailure;
   conflicting: boolean;
   /** Behind a base that requires branches up to date; absent from what a core older than it saw. */
   behind?: boolean;
@@ -80,6 +82,7 @@ export interface PullRequestWatchSeen {
    */
   queue?: { position: number } | null;
 }
+export interface PullRequestBaseFailure { sha: string; name: string; conclusion: string; url: string }
 export interface PullRequestComment { author: string; body: string; url: string; at: string; path?: string; line?: number; state?: string }
 export interface PullRequestCheck { name: string; state: string; url: string }
 export interface PullRequestReview {

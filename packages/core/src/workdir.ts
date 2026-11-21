@@ -13,15 +13,16 @@ import { constants, existsSync, lstatSync, realpathSync, statSync } from 'node:f
 import type { BigIntStats, Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { open, readdir, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
+import { DEVICE_HOME_CREDENTIAL_STORES, FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
 import type { FileContent, FileEntry, ThreadId, Timestamp } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { locateFile } from './files.ts';
 import { refused, RpcFailure } from './errors.ts';
 import type { RpcContext } from './router.ts';
 import { newToken } from './ids.ts';
-import { currentOs } from './paths.ts';
+import { currentOs, homePath } from './paths.ts';
 import { worktreeRoot } from './worktree.ts';
 import type { SharedFilePermit } from './contacts/access-policy.ts';
 
@@ -69,10 +70,41 @@ const DEVICE_SECRET_FILE =
   /^(\.env(\.(?!example$|sample$|template$)[^.]+)*|\.envrc|\.dev\.vars|\.netrc|_netrc|\.npmrc|\.pypirc|\.pgpass|\.htpasswd|\.git-credentials|\.credentials\.json|credentials(\.json)?|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.+\.(tfvars|tfstate|tfstate\.backup)|.+\.(pem|key|p12|pfx|jks|keystore|kdbx))$/i;
 
 /**
- * Inside a readable tree, a paired device still leaves two things to the owner.
+ * Where the owner's logins live: the home folder's hidden entries (every agent
+ * CLI, gh, rclone, keyrings, shell history) and the per-user stores of Windows
+ * and macOS. Denied as a whole rather than by a list of known names, since a
+ * new CLI brings a new folder. The temporary folder, which Windows keeps
+ * under AppData, holds no login, nor do the cloud drives macOS keeps under
+ * Library. The answer names the entry, for the refusal.
+ */
+function homeCredentialEntry(home: string, real: string): string | null {
+  if (!contains(home, real) || contains(realOf(tmpdir()), real)) return null;
+  const [first = '', second = ''] = relative(home, real).split(sep);
+  if (/^library$/i.test(first) && /^(cloudstorage|mobile documents)$/i.test(second)) return null;
+  return first.startsWith('.') || /^(appdata|library)$/i.test(first) ? first : null;
+}
+
+function isCredentialPath(core: Core, home: string, path: string, real: string, forProjectRoot = false): boolean {
+  const { roots, exact } = core.providers.credentialPaths(core.accounts.list(), forProjectRoot);
+  for (const name of DEVICE_HOME_CREDENTIAL_STORES) roots.add(join(home, name));
+  for (const root of roots) {
+    if (contains(root, path) || contains(realOf(root), real)) return true;
+  }
+  for (const entry of exact) {
+    if (relative(entry, path) === '' || relative(realOf(entry), real) === '') return true;
+  }
+  return false;
+}
+
+/**
+ * Inside a readable tree, a paired device still leaves three things to the owner.
  * The core's own data (journal, accounts, tokens) when a project contains it,
  * which happens when a project is a home or desktop folder; a project or
- * worktree folder kept under the data folder stays readable. And files that
+ * worktree folder kept under the data folder stays readable. The home folder's
+ * hidden entries, where every CLI keeps its login, when the thread's folder or
+ * project is the home folder or holds it; a folder the owner chose inside one
+ * (a shared worktree folder in `~/.worktrees`, a drive in `~/Library`) keeps
+ * its reads. And files that
  * hold credentials, since a phone that is lost or borrowed should not carry a
  * key away. A path outside the tree is left to the read itself to refuse.
  */
@@ -85,24 +117,34 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
     throw refused(`a paired device does not read boite's data folder: ${path ?? ''}`, { threadId });
   }
   const parts = relative(base, target).split(sep).filter(Boolean);
-  if (parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
-    throw refused(`a paired device does not read credential files; open ${path ?? ''} on the owner's machine`, { threadId });
+  const home = realOf(homePath());
+  const entry = [base, ...deviceRoots(core, threadId)].some((root) => contains(root, home)) ? homeCredentialEntry(home, target) : null;
+  if (entry !== null || isCredentialPath(core, home, resolve(cwd, path ?? ''), target)
+    || parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
+    throw refused(`a paired device does not read credential files${entry === null ? '' : ` (the home folder's ${entry} holds logins)`}; open ${path ?? ''} on the owner's machine`, { threadId });
   }
 }
 
 /**
  * A folder a paired device adds as a project becomes a root the checks above
- * read from, so it is held to the same two rules first: not boite's data
- * folder or inside it, and not a folder that holds keys or tokens or one inside it.
- * Its links are followed, as a read follows them.
+ * read from, so it is held to the same rules first: not boite's data folder or
+ * inside it, not the home folder, one of its parents or a disk root (they hold
+ * every login), and not a dedicated credential store or one inside it. A
+ * nested folder holding a declared XDG login file is also refused as a root.
+ * A hidden project and a cloud drive can still be added. Links are followed,
+ * as they are for a read, including links to a dedicated credential store.
  */
 export function assertDeviceProjectFolder(core: Core, folder: string): void {
   const real = realOf(folder);
   if (contains(realOf(core.dataDir), real)) {
     throw refused(`a paired device does not add boite's data folder, or a folder inside it, as a project: ${folder}`, { field: 'path', path: folder, expected: 'a folder outside boite\'s data folder' });
   }
-  if (real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
-    throw refused(`a paired device does not add a folder that holds keys or tokens as a project; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` });
+  const home = realOf(homePath());
+  if (contains(real, home) || dirname(real) === real) {
+    throw refused(`a paired device does not add the home folder, a folder that contains it or a disk root as a project, since it holds every login on this machine; add a folder inside it, or add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder inside ${home}, not ${home} itself or a parent of it` });
+  }
+  if (isCredentialPath(core, home, resolve(folder), real, true) || real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
+    throw refused(`a paired device does not add a folder that holds keys or tokens as a project: ${folder}`, { field: 'path', path: folder, expected: 'a project folder outside credential stores' });
   }
 }
 
@@ -179,23 +221,8 @@ async function writeAll(handle: FileHandle, data: Uint8Array): Promise<void> {
 }
 
 /** Open the real directory checked a moment ago. The handle stays on that inode if its path is renamed. */
-export async function openHeldDirectory(real: string, dev: bigint, ino: bigint, what: string, path: string): Promise<FileHandle> {
-  let handle: FileHandle;
-  try {
-    handle = await open(real, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | NOFOLLOW);
-  } catch {
-    throw refused(`${what} changed while it was opened: ${path}`, { what, path });
-  }
-  try {
-    const stats = await handle.stat({ bigint: true });
-    if (!stats.isDirectory() || stats.dev !== dev || stats.ino !== ino) {
-      throw refused(`${what} changed while it was opened: ${path}`, { what, path });
-    }
-    return handle;
-  } catch (error) {
-    await handle.close();
-    throw error;
-  }
+export function openHeldDirectory(real: string, dev: bigint, ino: bigint, what: string, path: string): Promise<FileHandle> {
+  return openChecked(real, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0), dev, ino, what, path, 'dir');
 }
 
 /**
@@ -214,7 +241,9 @@ export async function createExclusiveFile(dir: FileHandle, name: string, fallbac
 }
 
 /** Open the real file checked a moment ago, and refuse a symlink swapped in since. */
-export async function openChecked(real: string, flags: number, dev: bigint, ino: bigint, what: string, path: string): Promise<FileHandle> {
+export async function openChecked(
+  real: string, flags: number, dev: bigint, ino: bigint, what: string, path: string, expect: 'file' | 'dir' = 'file',
+): Promise<FileHandle> {
   let handle: FileHandle;
   try {
     handle = await open(real, flags | NOFOLLOW);
@@ -223,7 +252,8 @@ export async function openChecked(real: string, flags: number, dev: bigint, ino:
   }
   try {
     const stats = await handle.stat({ bigint: true });
-    if (!stats.isFile() || stats.dev !== dev || stats.ino !== ino) {
+    const matches = expect === 'dir' ? stats.isDirectory() : stats.isFile();
+    if (!matches || stats.dev !== dev || stats.ino !== ino) {
       throw refused(`${what} changed while it was opened: ${path}`, { what, path });
     }
     return handle;
@@ -293,8 +323,14 @@ function byName(a: { name: string }, b: { name: string }): number {
  * nobody asked to walk, and the link is followed when a client opens it.
  */
 async function listDirectory(cwd: string, path: string | undefined): Promise<FileEntry[]> {
-  const target = existingInside(cwd, path === undefined || path.length === 0 ? '.' : path, 'dir', 'files.list path');
-  const dirents = await readdir(target.absolute, { withFileTypes: true });
+  const directory = path === undefined || path === '' ? '.' : path;
+  const what = 'files.list path';
+  const target = existingInside(cwd, directory, 'dir', what);
+  const dirents = await readdir(target.absolute, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'EACCES' || error.code === 'EPERM') throw refused(`${what} cannot be read: ${directory}`, { what, path: directory });
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') throw refused(`${what} is no longer a directory: ${directory}`, { what, path: directory });
+    throw error;
+  });
   const ordered = dirents
     .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || byName(a, b))
     .slice(0, FILES_LIST_MAX);

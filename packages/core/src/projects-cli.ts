@@ -14,6 +14,14 @@ export async function projectsCommand(client: CoreClient, caller: Caller, thread
   const rest = parsed.positional.slice(1);
   const named = parsed.name === undefined ? {} : { name: parsed.name };
   const here = (folder: string) => isAbsolute(folder) ? folder : resolve(cwd, folder);
+  if (rest[0] === 'recoveries') {
+    if (caller !== 'owner') throw new Usage('projects recoveries is owner only');
+    if (rest.length !== 1) throw new Usage('projects recoveries takes no arguments');
+    const entries = await client.call('worktrees.recoveries', {});
+    print(entries.length === 0 ? ['No worktree recoveries.'] : entries.map(entry =>
+      `${entry.recoveryPath} (from ${entry.path}, ${entry.commit ?? 'commit unknown'})`), entries);
+    return;
+  }
   if (caller === 'owner' && threadId === '') {
     if (rest.length > 0 && rest[0] !== 'add') throw new Usage(`projects: unknown action ${rest[0]}`);
     if (rest[0] === 'add') {

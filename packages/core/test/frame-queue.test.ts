@@ -1,6 +1,39 @@
 import { expect, test } from 'bun:test';
+import type { Core } from '../src/core.ts';
+import { Router } from '../src/router.ts';
+import { handleFrame } from '../src/server/frame.ts';
 import { FrameQueue } from '../src/server/frame-queue.ts';
 import type { ServerConnection } from '../src/server/connection.ts';
+
+test('a synchronous snapshot is sent before a later mutation from another connection', async () => {
+  const router = new Router();
+  const core = { router, logs: { record() {} } } as unknown as Core;
+  const frames: unknown[] = [];
+  const connection = (sendResponse: (frame: unknown) => void) => ({
+    authenticated: true, identity: { principal: 'owner', threadId: null }, sendResponse,
+  }) as unknown as ServerConnection;
+  const reader = connection(frame => frames.push(frame));
+  const writer = connection(() => {});
+  const project = { id: 'prj_new', name: 'New', path: '/new', createdAt: 1 };
+  const projects: (typeof project)[] = [];
+  router.register('projects.list', () => [...projects]);
+  router.register('projects.add', () => {
+    projects.push(project);
+    frames.push({ method: 'project.added', params: project });
+    return project;
+  });
+  const queue = new FrameQueue((socket, raw, signal) => handleFrame(core, socket, raw, signal));
+  try {
+    await Promise.all([
+      queue.enqueue(reader, JSON.stringify({ id: 1, method: 'projects.list', params: {} })),
+      queue.enqueue(writer, JSON.stringify({ id: 2, method: 'projects.add', params: { path: project.path } })),
+    ]);
+    expect(frames).toEqual([
+      { jsonrpc: '2.0', id: 1, result: [] },
+      { method: 'project.added', params: project },
+    ]);
+  } finally { queue.close(); }
+});
 
 test('pending asynchronous requests leave room for a second connection', async () => {
   const sender = { close: () => undefined } as unknown as ServerConnection;

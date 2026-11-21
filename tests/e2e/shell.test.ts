@@ -7,6 +7,8 @@ import { BrowserPage, freePort } from './lib/cdp.ts';
 import { clickAddProject } from './lib/views.ts';
 import { describeShell, TAURI_READY, waitForShellPage, type ShellUnderTest } from './lib/shell-diagnosis.ts';
 import { freshDataDir, killProcessTree, removeDirectory, startCore } from './lib/core.ts';
+import { shellProvenanceProblem } from '../../apps/shell/scripts/shell-artifact.ts';
+import { shellTarget } from '../../apps/shell/scripts/targets.ts';
 
 const TIMEOUT = 120_000;
 const READY_TIMEOUT_MS = 30_000;
@@ -26,9 +28,6 @@ const SOURCE_ROOTS = [
   join(ROOT, 'packages', 'contracts', 'src'),
 ];
 const SOURCE_EXTENSIONS = ['.ts', '.json'];
-/** What the shell exe carries: `frontendDist` is compiled into the binary. */
-const UI_ROOTS = [join(ROOT, 'packages', 'ui', 'src'), join(ROOT, 'packages', 'ui', 'public'), join(ROOT, 'apps', 'shell', 'src-tauri', 'src')];
-const UI_EXTENSIONS = ['.ts', '.svelte', '.css', '.html', '.json', '.js', '.rs', '.svg', '.png', '.webmanifest'];
 
 const exeMissing = !existsSync(EXE);
 const skipShell = process.env.BOITE_E2E_SKIP_SHELL === '1';
@@ -103,30 +102,9 @@ function staleCoreReason(): string | null {
   return null;
 }
 
-/**
- * The other half of the same trap. The shell window opens on
- * `WebviewUrl::default()`, so the UI it shows is the `frontendDist` compiled
- * into the exe, not the one the core serves: a `bun run build:ui` after the
- * last `tauri build` changes nothing on this window. A shell carrying yesterday's
- * UI against today's core fails exactly like a stale core did, on the picker,
- * with nothing saying why (2026-09-09).
- */
-function staleUiReason(): string | null {
-  const builtAtMs = statSync(EXE).mtimeMs;
-  const newest = newestSource(UI_ROOTS, UI_EXTENSIONS);
-  if (newest === null || builtAtMs >= newest.mtimeMs) return null;
-  return staleReport(
-    'UI',
-    EXE,
-    builtAtMs,
-    newest,
-    'bun run --cwd apps/shell tauri build --no-bundle',
-  );
-}
-
 const staleReason = skipShell ? null : exeMissing
   ? `missing shell: ${EXE}. Run bun run --cwd apps/shell tauri build --no-bundle, or explicitly set BOITE_E2E_SKIP_SHELL=1 for a partial run`
-  : (staleCoreReason() ?? staleUiReason());
+  : (shellProvenanceProblem(EXE, ROOT, shellTarget().triple, process.env.BOITE_E2E_SHELL_EXE ? ['stable', 'nightly', 'dev'] : ['stable', 'nightly']) ?? staleCoreReason());
 const shellTest = skipShell || staleReason !== null ? test.skip : test;
 
 // The desktop CI entry point also exercises browser features in isolated test

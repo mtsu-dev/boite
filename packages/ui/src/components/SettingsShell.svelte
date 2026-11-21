@@ -1,11 +1,15 @@
 <script lang="ts">
+  import EmptyState from './EmptyState.svelte';
+  import SearchField from './SearchField.svelte';
   import { desktopShell } from '../lib/shell-platform';
+  import { openArchived } from '../lib/archived-view.svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { tick } from 'svelte';
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
-  import InfoTip from './InfoTip.svelte';
-  import { ChevronDown, ChevronLeft, ChevronRight, Search, Monitor, MonitorSmartphone } from '@lucide/svelte';
+  import SettingsPageHeader from './SettingsPageHeader.svelte';
+  import PolicyLock from './PolicyLock.svelte';
+  import { ChevronDown, ChevronLeft, ChevronRight } from '@lucide/svelte';
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
@@ -198,28 +202,8 @@
   /** The pages merged into the shown one as its last sections (`lib/settings-tabs.ts`). */
   let merged = $derived(sectionsOf(tab, store.owner));
 
-  /**
-   * What each page is for, said once behind the "i" beside the screen's title
-   * at the top of its card: the page's own title steps aside, so its card
-   * starts with its settings (app.css's `.page > header`).
-   */
-  function infoOf(page: SettingsTab): string {
-    switch (page) {
-      case 'keyboard': return strings.keyboard.intro;
-      case 'voice': return strings.speech.description;
-      case 'accounts': return strings.providerSettings.intro;
-      case 'plugins': return strings.plugins.intro;
-      case 'usage': return `${strings.usage.intro} ${strings.usage.note}`;
-      case 'machines': return strings.machines.intro;
-      case 'experiments': return strings.settings.experiments.intro;
-      case 'diagnostics': return strings.diagnostics.intro;
-      case 'task-manager': return strings.taskManager.scope;
-      default: return '';
-    }
-  }
   /** One title per screen, at the top of its card: the page's own name, as the nav lists it. */
   let title = $derived(tab === 'home' ? strings.settings.tabs.home : tabs.find((entry) => entry.id === tab)?.label ?? '');
-  let info = $derived(infoOf(tab));
   let scopePicks = $derived(bar && choices.length > 1 && chosen !== undefined);
   /**
    * Where the page's settings apply, said once under the title, for most of
@@ -269,7 +253,7 @@
     ['general', 'conversations', strings.features.previewComments.title],
     ['browser', 'browser-profiles', strings.browserProfiles.heading],
     ...(store.owner ? [['machines', 'window-exclusions', strings.windows.settings.addLabel]] as [SettingsTab, string, string][] : []),
-    ['general', 'archived', strings.settings.archived.doneRetentionLabel],
+    ['general', 'thread-retention', strings.settings.archived.doneRetentionLabel],
     // The switch lives in the shell's own card: a browser has no tray.
     ...(inShell ? [['general', 'app', strings.settings.closeToTray] as [SettingsTab, string, string]] : []),
     ...(inShell ? [['general', 'app', strings.settings.launchAtLogin] as [SettingsTab, string, string]] : []),
@@ -365,7 +349,8 @@
 
   function open(entry: SettingsEntry) {
     query = '';
-    store.showSettings(entry.tab, entry.section);
+    if (entry.tab === 'general' && entry.section === 'archived') openArchived(store);
+    else store.showSettings(entry.tab, entry.section);
   }
 
   function go(page: SettingsTab) {
@@ -436,14 +421,14 @@
 {/snippet}
 <!-- The search of Settings' home: it finds every page, card and single setting. The phone's home opens on the same field. -->
 {#snippet searchField(phone: boolean)}
-  <label class="search" class:phone data-testid="settings-home">
-    <Search size={14} strokeWidth={1.75} aria-hidden="true" />
-    <input type="search" bind:this={field} bind:value={query} oninput={() => (active = 0)} placeholder={strings.settings.search} aria-label={strings.settings.search} data-testid="settings-search" onkeydown={onkey} spellcheck="false" autocomplete="off" />
-  </label>
+  <div class="search" class:phone data-testid="settings-home">
+    <SearchField bind:input={field} bind:value={query} oninput={() => (active = 0)}
+      placeholder={strings.settings.search} data-testid="settings-search" onkeydown={onkey} />
+  </div>
 {/snippet}
 {#snippet searchResults()}
   {#if results.length === 0}
-    <p class="hint" data-testid="settings-search-empty">{strings.settings.searchEmpty}</p>
+    <EmptyState compact line={strings.settings.searchEmpty} testid="settings-search-empty" />
   {:else}
     <div class="card flush results" data-testid="settings-search-results">
       {#each results as entry, index (`${entry.tab}:${entry.section}:${entry.label}`)}
@@ -507,13 +492,9 @@
         <div class="found">{@render searchResults()}</div>
       {:else}
         <header class="screen" data-testid="settings-crumb">
-          <h1 class="ui-label-box"><span class="ui-label">{title}</span>{#if info}<InfoTip topic={title} text={info} testid="settings-info" />{/if}</h1>
-          {#if scope}
-            <p class="scope" data-testid="settings-scope" data-scope={scopeKind}>
-              {#if scopeKind === 'device'}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !scopePicks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}
-              {#if scopeKind === 'machine' && scopePicks}{@render scopePicker(strings.settings.scopeMachine)}{:else}<span class="ui-label">{scope}</span>{/if}
-            </p>
-          {/if}
+          <SettingsPageHeader {title} page={tab} {scope} kind={scopeKind} picker={scopePicks ? scopePicker : undefined}
+            actions={tab === 'voice' ? voicePolicy : undefined} />
+          {#snippet voicePolicy()}<PolicyLock store={target} keys={['dictation']} />{/snippet}
         </header>
         {#if bar}{@render machineNotes()}{/if}
         {#key target}
@@ -539,7 +520,7 @@
       {:else if page === 'general'}
         <GeneralSettings store={target} here={store} />
       {:else if page === 'machines'}
-        <MachinesPage {onopenthread} {store} />
+        <MachinesPage {onopenthread} {store} showTitle={false} />
       {:else if page === 'advanced'}
         <AdvancedSettings store={target} />
       {:else if page === 'appearance'}
@@ -551,11 +532,11 @@
       {:else if page === 'browser'}
         <BrowserPage />
       {:else if page === 'usage'}
-        <UsagePage {store} />
+        <UsagePage {store} showTitle={false} />
       {:else if page === 'limits'}
-        <LimitsPage store={target} />
+        <LimitsPage store={target} showTitle={false} />
       {:else if page === 'task-manager'}
-        <TaskManagerLoader store={page === tab ? store : target} {onopenthread} />
+        <TaskManagerLoader store={page === tab ? store : target} {onopenthread} section={page !== tab} />
       {:else if page === 'plugins'}
         <PluginsPage store={target} />
       {:else if page === 'experiments'}
@@ -592,33 +573,10 @@
   .tab.home + .family { margin-top: var(--space-4); }
   .family-head { margin: 0; padding: 0 12px var(--space-2); color: var(--color-subtle); font-size: var(--text-meta); font-weight: 500; }
 
-  /* The search heads the nav, on the chrome like the rows under it. */
-  .search {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    height: 38px;
-    margin: 0 0 var(--space-2);
-    padding: 0 12px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-hover);
-    color: var(--color-subtle);
-    transition: border-color var(--dur-2);
-  }
-  /* A field brightens its edge on focus, as every field does (app.css): an autofocused search wore an accent frame. */
-  .search:focus-within { border-color: var(--color-composer-focus); }
-  .search :global(svg) { flex: none; }
-  .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; outline: none; font-size: var(--text-base); color: var(--color-foreground); }
-  .search input::-webkit-search-cancel-button { display: none; }
-  /* The phone's home: the field spans its column, first under the header, a finger tall. */
-  .search.phone { width: auto; height: var(--touch-target); margin: 0 0 var(--space-5); background: var(--color-surface); }
-  .search.phone input { font-size: var(--text-md); }
-
+  .search { flex: none; margin-bottom: var(--space-2); }
+  .search.phone { width: auto; margin-bottom: var(--space-5); }
   /* What the search finds, in the page's column. */
   .found { padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
-  .hint { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-base); }
   .results { display: grid; }
   .result {
     display: flex;
@@ -645,16 +603,8 @@
   .merged > :global(.page) { height: auto; overflow: visible; padding-top: 0; padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
   .merged > :global(.page > header h1) { font-size: var(--text-md); }
 
-  /* The bar carries the page's title and its "i": the page's own heading steps aside, and
-     its header with it unless it holds an action. A lock or another mark in the title stays. */
-  .framed > :global(.page > header h1 > .ui-label),
-  .framed > :global(.page > header h1 > .ui-label + .info-tip),
-  .framed > :global(.page > header h1:not(:has(> :not(.ui-label, .ui-label + .info-tip)))),
-  .framed > :global(.limits-page > header h1),
-  .framed > :global(.machines-page .head h1) { display: none; }
-  .framed > :global(.page > header:not(:has(button:not(.ui-label + .info-tip), [role='status'], .policy-lock))),
-  .framed > :global(.machines-page .head:not(:has(button:not(.ui-label + .info-tip)))) { display: none; }
-  .framed > :global(.page > header) { justify-content: flex-end; }
+  .framed > :global([data-testid='experiments-page'] > header) { display: none; }
+  .framed > :global(.page > .quota-actions) { justify-content: flex-end; }
 
   /* The pages' list is a column of its own width, on the chrome: every page's name fits it,
      so it does not follow the thread list's, which a long title can pull to a third of the
@@ -686,14 +636,10 @@
   .crumb { flex: 1; min-width: 0; }
   /* The screen's one title, at the top of its card in the settings column, one step over a card's. */
   .screen { display: flex; flex-direction: column; align-items: flex-start; padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
-  .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--settings-title); font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; }
   /* The first card's title follows the screen's title at the normal step, with no empty band between. */
   .screen ~ :global(.page) { padding-top: var(--space-4); }
   .screen ~ :global(.page > .card:first-child:has(> h2:first-child)),
   .screen ~ :global(.page > header:first-child + .card:has(> h2:first-child)) { margin-top: var(--card-head); }
-  /* The machine's name in the scope line is the picker: a word with an edge and a chevron, so it reads as one at rest. */
-  :global(.settings .scope .trigger.text) { margin: -2px 0; color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
-  :global(.settings .scope .pick-name) { overflow: hidden; max-width: 28ch; text-overflow: ellipsis; white-space: nowrap; }
 
   .tab {
     justify-content: flex-start;
@@ -754,7 +700,7 @@
     .settings { gap: 0; }
     /* In a row, the head is the first chip, then the search, then each page a chip. */
     .title { height: var(--control); margin: 0; font-size: var(--text-sm); white-space: nowrap; }
-    .search { width: 180px; height: var(--control); margin: 0; }
+    .search { width: 180px; margin: 0; }
     .tab { width: auto; min-height: var(--row); white-space: nowrap; padding: 6px 10px; font-size: var(--text-sm); }
     .family { flex-direction: row; }
     .family + .family, .tab.home + .family { margin-top: 0; }

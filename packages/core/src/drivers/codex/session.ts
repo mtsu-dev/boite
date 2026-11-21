@@ -11,11 +11,8 @@ import type { LiveTurnSettings, ProbeContext, QuestionAsk, SessionContext, TurnC
 import { preparedModels } from './models.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import {
-  addCounts,
   answerTextOf,
-  countsOf,
   imageInputsOf,
-  mapUsage,
   modelOf,
   optionsOf,
   planTasksOf,
@@ -23,9 +20,8 @@ import {
   servedOf,
   textOf,
   toolViewOf,
-  usageDelta,
 } from './mapping.ts';
-import type { CodexHookRun, CodexHooksListed, CodexItem, CodexQuestion, CodexThreadOpened, CodexTokenUsage, CodexTurnRecord, Timer } from './protocol.ts';
+import type { CodexHookRun, CodexHooksListed, CodexItem, CodexQuestion, CodexThreadOpened, CodexTurnRecord, Timer } from './protocol.ts';
 import {
   CLIENT_NAME,
   COMMAND_TOOL_NAME,
@@ -45,6 +41,9 @@ import { resumeThread, ThreadLostError } from './resume.ts';
 import { threadConfig } from './config.ts';
 import { updateTurnSettings } from './live-settings.ts';
 import { CodexTurn } from './turn.ts';
+import { CodexUsageReports } from './usage-report.ts';
+import { IdleTimer } from '../idle-timer.ts';
+import { SessionTurns } from '../session-turns.ts';
 import { CodexPrediction } from './prediction.ts';
 import { CodexRateLimits } from './rate-limits.ts';
 import { SpentWindows, turnError } from './availability.ts';
@@ -60,10 +59,6 @@ const STOP_GRACE_MS = 3_000;
 const SQLITE_INIT_ATTEMPTS = 3;
 const SQLITE_INIT_BACKOFF_MS = 500;
 const SQLITE_INIT_CLOSE_MS = 2_000;
-
-// ---------------------------------------------------------------------------
-// The session: one agent process per thread
-// ---------------------------------------------------------------------------
 
 /**
  * One app-server per thread, initialized and opened once. Warm retention reuses
@@ -84,9 +79,11 @@ export class CodexSession {
   #exited: Promise<number | null> | null = null;
   #processClosed: Promise<void> = Promise.resolve();
   readonly #writer: CodexWriter;
-  #idle: Timer | null = null;
+  readonly #idle = new IdleTimer(() => this.#drop());
   /** The turn whose `turn/start` is in flight. Context updates also arrive while idle. */
   #current: CodexTurn | null = null;
+  readonly #usage = new CodexUsageReports();
+  #drainingUsage = false;
   /** The account's spent windows, from `account/rateLimits/updated`. */
   readonly #spentWindows = new SpentWindows();
   /** The turn this session is running, from its process start to its settle. */
@@ -96,10 +93,12 @@ export class CodexSession {
   #contextSink: CodexTurn['ctx']['context'] | null = null;
   /** The context the process was opened with, for a hook that runs while no turn is. */
   #opener: SessionContext | null = null;
-  #queue: Promise<void> = Promise.resolve();
+  readonly #turns = new SessionTurns<CodexTurn>(turn => this.#runTurn(turn), (turn, error) => {
+    turn.fail(messageOf(error));
+    this.#endTurn(turn, true);
+  });
   /** The composer prediction asked after each completed turn (`prediction.ts`). */
   readonly #prediction = new CodexPrediction();
-  #running = 0;
   /** `agentMessage` items that are asynchronous questions: drawn as cards, their text deltas dropped. */
   readonly #asyncItems = new Set<string>();
   /** Codex's skills as the thread's commands: a leading `/name` sends one as a skill item. */
@@ -123,12 +122,13 @@ export class CodexSession {
 
   /** Reusable only while the process is up and the turn asks for the very same setup. */
   usable(key: string, warmMs: number): boolean {
-    return !this.#ended && !this.#closing && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
+    return !this.#ended && !this.#closing && !this.#drainingUsage && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
   }
 
   setViewed(viewed: boolean): void {
     this.#retention.setViewed(viewed);
-    this.#clearIdle();
+    if (this.#drainingUsage) return;
+    this.#idle.clear();
     if (!viewed && !this.busy() && !this.#ended) this.#armIdle();
   }
 
@@ -146,22 +146,14 @@ export class CodexSession {
   }
 
   busy(): boolean {
-    return this.#running > 0;
+    return this.#turns.busy;
   }
 
   attach(turn: CodexTurn, warmMs: number): void {
     this.#retention.beginTurn();
     this.warmMs = warmMs;
-    this.#running += 1;
-    this.#clearIdle();
-    this.#queue = this.#queue.then(async () => {
-      try {
-        await this.#runTurn(turn);
-      } catch (error) {
-        turn.fail(messageOf(error));
-        this.#endTurn(turn, true);
-      }
-    });
+    this.#idle.clear();
+    this.#turns.enqueue(turn);
   }
 
   /** `turn/interrupt` is the only stop Codex has; `turn/completed` ends the turn. */
@@ -205,12 +197,12 @@ export class CodexSession {
     const rpc = this.#rpc;
     const threadId = this.#threadId;
     if (rpc === null || threadId === null || turn.turnId === null) return;
-    void rpc.request('turn/interrupt', { threadId, turnId: turn.turnId }).catch(() => undefined);
+    void rpc.request('turn/interrupt', { threadId, turnId: turn.turnId }, { writeKind: 'stop' }).catch(() => undefined);
   }
 
-  async steer(turn: CodexTurn, text: string, attachments: TurnContext['attachments'] = []): Promise<boolean> {
+  async steer(turn: CodexTurn, text: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.settled || turn.isStopped || !this.#rpc || !this.#threadId || !turn.turnId) return false;
-    await this.#rpc.request('turn/steer', { threadId: this.#threadId, expectedTurnId: turn.turnId, input: [...this.skills.steer(text), ...imageInputsOf(attachments)] });
+    await this.#rpc.request('turn/steer', { threadId: this.#threadId, expectedTurnId: turn.turnId, input: [...this.skills.steer(text), ...imageInputsOf(attachments)] }, { onAccepted, signal, writeKind: 'steer' });
     return true;
   }
 
@@ -231,13 +223,20 @@ export class CodexSession {
   /** Archive, shutdown, an idle window, a changed setup: the process goes. */
   close(reason: string | null, ctx?: SessionContext): Promise<void> {
     if (this.#ended) return this.#writer.closed;
-    this.#closing = true;
     if (reason !== null && ctx !== undefined) ctx.log('warn', `codex session: ${reason}`);
-    this.#drop();
+    if (ctx && !this.busy()) this.release();
+    else this.#drop();
     return this.#writer.closed;
   }
 
-  // -- the turn -------------------------------------------------------------
+  /** A cold turn or retired step can still be receiving its final usage report. */
+  release(): void {
+    if (this.#ended || this.#drainingUsage) return;
+    const remaining = this.#usage.drainMs;
+    if (remaining === 0 || this.#closing) return this.#drop();
+    this.#drainingUsage = true;
+    this.#idle.arm(remaining);
+  }
 
   async #runTurn(turn: CodexTurn): Promise<void> {
     this.#active = turn;
@@ -288,7 +287,9 @@ export class CodexSession {
           ...(ctx.thread.effort === null ? {} : { effort: ctx.thread.effort }),
           serviceTier: ctx.thread.speed ?? "default",
         });
-        turn.turnId = started.turn.id; ctx.inputReady?.();
+        turn.turnId = started.turn.id;
+        ctx.sessionAccepted?.(threadId);
+        ctx.inputReady?.();
         if (turn.isStopped) this.#interrupt(turn);
         // A server that answers with a turn already finished settles it here;
         // the one that answers `inProgress` settles on `turn/completed`.
@@ -306,21 +307,24 @@ export class CodexSession {
     }
 
     await turn.finished;
+    if (!this.#ended) this.#usage.finish(turn);
     this.#current = null;
     this.#prediction.ask(this.#rpc, this.#threadId, turn);
     // Only OpenAI's own endpoint has a published lifetime; Codex never sends a
     // retention option, so the default for the model applies.
     if (this.#served.provider === 'openai') turn.cacheLife = openAiCacheLife(modelOf(ctx) ?? this.#served.model);
-    this.#endTurn(turn, turn.isStopped);
+    this.#endTurn(turn, false);
   }
 
   #endTurn(turn: CodexTurn, drop: boolean): void {
     if (this.#active === turn) this.#active = null;
     this.#clearStopGrace();
-    this.#running = Math.max(0, this.#running - 1);
-    if (drop || this.#closing || this.#retention.idleMs(this.warmMs) <= 0) {
+    this.#turns.end();
+    if (drop || this.#closing) {
       this.#drop();
-    } else if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
+    } else if (turn.isStopped || this.#retention.idleMs(this.warmMs) <= 0) {
+      this.release();
+    } else if (!this.busy() && !this.#retention.viewed) this.#armIdle();
     turn.settle();
   }
 
@@ -542,7 +546,8 @@ export class CodexSession {
     if (this.#ended) return;
     this.#ended = true;
     this.#closing = true;
-    this.#clearIdle();
+    this.#idle.clear();
+    this.#usage.clear();
     endOnClose(this.#current, 'the codex session was closed');
     this.#rpc?.fail('the codex session was closed');
     this.#rpc = null;
@@ -553,20 +558,8 @@ export class CodexSession {
   }
 
   #armIdle(): void {
-    this.#idle = setTimeout(() => {
-      this.#idle = null;
-      this.#drop();
-    }, this.#retention.idleMs(this.warmMs));
-    this.#idle?.unref?.();
+    this.#idle.arm(this.#retention.idleMs(this.warmMs));
   }
-
-  #clearIdle(): void {
-    if (this.#idle === null) return;
-    clearTimeout(this.#idle);
-    this.#idle = null;
-  }
-
-  // -- what the agent sends -------------------------------------------------
 
   #onNotification(method: string, raw: unknown): void {
     const params = (raw ?? {}) as Record<string, unknown>;
@@ -588,7 +581,11 @@ export class CodexSession {
     switch (method) {
       case 'turn/started': {
         const record = params['turn'] as CodexTurnRecord | undefined;
-        if (record) { turn.turnId = record.id; if (turn.isStopped) this.#interrupt(turn); }
+        if (record) {
+          turn.turnId = record.id;
+          if (typeof record.id === 'string' && this.#threadId !== null) turn.ctx.sessionAccepted?.(this.#threadId);
+          if (turn.isStopped) this.#interrupt(turn);
+        }
         break;
       }
       case 'turn/completed': {
@@ -722,23 +719,8 @@ export class CodexSession {
   /** Usage also arrives while the session has no active turn. */
   #reportUsage(params: Record<string, unknown>): void {
     if (params['threadId'] !== this.#threadId) return;
-    const usage = params['tokenUsage'] as { total?: CodexTokenUsage; last?: CodexTokenUsage; modelContextWindow?: number } | undefined;
-    const last = usage?.last;
-    if (!last) return;
-    const turn = this.#current;
-    if (turn && params['turnId'] === turn.turnId) {
-      const delta = usageDelta(turn.usageTotal, usage.total, last);
-      turn.usageCounts = turn.usageCounts ? addCounts(turn.usageCounts, delta) : delta;
-      turn.usageTotal = usage.total ? countsOf(usage.total) : null;
-      turn.usage = mapUsage(turn.usageCounts);
-    }
-    const tokens = last.totalTokens ?? (typeof last.inputTokens === 'number' && typeof last.outputTokens === 'number' ? last.inputTokens + last.outputTokens : null);
-    if (tokens !== null) {
-      const cache = last.cachedInputTokens ?? 0;
-      const breakdown = typeof last.inputTokens === 'number' && typeof last.outputTokens === 'number'
-        ? { input: last.inputTokens - cache, cache, output: last.outputTokens } : undefined;
-      this.#contextSink?.({ tokens, window: usage?.modelContextWindow ?? null, ...(breakdown ? { breakdown } : {}) });
-    }
+    const use = this.#usage.update(params, this.#current);
+    if (use) this.#contextSink?.(use);
   }
 
   async #onRequest(ctx: SessionContext, method: string, raw: unknown): Promise<unknown> {

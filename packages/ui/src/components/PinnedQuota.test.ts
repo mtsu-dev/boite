@@ -61,7 +61,7 @@ test('failed refresh keeps the previous bars and a later read clears the failure
   expect(document.querySelector('[role=meter]')?.getAttribute('aria-valuenow')).toBe('65');
   await vi.advanceTimersByTimeAsync(1000);
   await settle();
-  document.querySelector<HTMLButtonElement>('[data-testid=pinned-quota-refresh]')!.click();
+  document.querySelector<HTMLButtonElement>('[role=alert] [data-testid=pinned-quota-retry]')!.click();
   await settle();
   expect(document.querySelector('[role=alert]')).toBeNull();
   await unmount(mounted);

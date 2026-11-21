@@ -5,9 +5,7 @@
   import { confirm } from '../lib/confirm.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { formatTokens } from '../lib/format';
-  import { totalTokens } from '../lib/usage';
-  import { isLive, retryable, runProgress } from '../lib/workflow-view';
+  import { isLive, retryable, runProgress, workflowTokenLabel } from '../lib/workflow-view';
   import Elapsed from './Elapsed.svelte';
   import WorkflowDetail from './WorkflowDetail.svelte';
   import WorkflowGraph from './WorkflowGraph.svelte';
@@ -21,7 +19,10 @@
   let node = $derived(run.nodes.find(entry => entry.id === selectedId) ?? null);
   let profiles = $derived(store.delegation?.config.profiles ?? []);
   let progress = $derived(runProgress(run));
-  let tokens = $derived(totalTokens(run.usage));
+  let tokens = $derived(workflowTokenLabel(run.nodes.flatMap(entry => entry.instances), run.usage, {
+    measured: run.nodes.some(node => node.usage !== undefined),
+    partial: run.nodes.some(node => node.usagePartial === true),
+  }));
 
   // A reload hands a new object per run; only the id says it is another run.
   let runId = $derived(run.id);
@@ -58,7 +59,7 @@
         <span class="ui-label">{strings.workflow.status[run.status]}</span>
         <span class="ui-label">·</span><span class="ui-label">{fill(strings.workflow.steps, { done: String(progress.done), total: String(progress.total) })}</span>
         <span class="ui-label">·</span><Elapsed startedAt={run.createdAt} finishedAt={run.finishedAt} active={run.status === 'running'} />
-        <span class="ui-label">·</span><span class="ui-label" title={strings.workflow.tokensHelp}>{fill(strings.workflow.tokens, { tokens: formatTokens(tokens) })}</span>
+        <span class="ui-label">·</span><span class="ui-label" title={strings.workflow.tokensHelp}>{tokens}</span>
       </p>
     </div>
     <div class="actions">
@@ -84,7 +85,7 @@
     {#if node}
       <WorkflowDetail {store} {run} {node} {profiles} onback={() => (selectedId = null)} />
     {:else}
-      <WorkflowGraph {run} {profiles} {selectedId} onselect={pick} />
+      <WorkflowGraph {store} {run} {profiles} {selectedId} onselect={pick} />
     {/if}
   </div>
 </section>

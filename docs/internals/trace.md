@@ -69,8 +69,8 @@ immediately after spawn and use `windowsHide: true`. Closing the core's jobs
 ends their member processes. An empty thread job is forgotten after 30 seconds;
 a job that still reports members remains held. A pid that could not join its
 job, or any pid of a thread with no job, is stopped by `taskkill /T /F` started
-asynchronously, so the core keeps serving while it starts. The child's own kill
-runs once taskkill ends, since `/T` needs the root alive to find the tree, and
+asynchronously with a five-second deadline. The child's own kill runs once
+taskkill ends, since `/T` needs the root alive to find the tree, and
 `killAll` at shutdown waits for both. Taskkill gets only a pid the core
 spawned and has not seen exit, held as described under managed stops below; a
 process the core did not spawn or saw exit gets only its own kill.
@@ -555,6 +555,14 @@ Node path supplies no POSIX exit usage. `TraceCapability.mode: 'poll'` names
 this fallback, not complete process-tree event tracking.
 
 Linux samples procfs on each load tick for registered processes and their descendants.
+Descendants come from each task's `/proc/<pid>/task/<tid>/children`, read on
+every tick. Those files can leave a live child out, so `/proc` is still listed
+at the old 500 ms pace, but only a pid new to the listing has its stat line
+read; every stat line is read again each 5 s. A descendant only the listing
+names counts only while its own stat line names a process already counted.
+Without those files, a scan of every stat line answers alone, reused for 500 ms.
+A stop by pid still scans the whole machine beside the children files before
+it signals anything.
 CPU uses `/proc/<pid>/stat`; memory uses `RssAnon + RssShmem`, falling back to
 `VmRSS` on older kernels. The latter includes shared library mappings and can
 overcount a parallel workload. A process name is read from `/proc/<pid>/comm`
@@ -616,24 +624,111 @@ the core's cgroup namespace. `memory.max` is read when present and never
 required. The notice follows `memoryProtection` and stops nothing.
 
 Registered POSIX children start detached in their own process group.
-`resources.killTree` sends group SIGTERM, probes every 100 ms and sends SIGKILL
-two seconds later only if the group remains. It can reach members after the
-leader exits. A child that starts its own session escapes that group.
-Each spawn also returns its own `stop`, bound to that process: it stops the
-process and, on Linux and macOS, its group, even after the process exited and
-left the registry, and resolves once the stop ended and the process exited.
-It never reaches the scope's other processes. A short system command
+`resources.killTree` captures each live root's current descendants, including
+processes in separate sessions. It sends SIGTERM to the group and captured
+processes, probes every 100 ms, and sends SIGKILL to survivors after two seconds.
+The group and the captured births remain usable after the leader exits. A
+descendant that reparented before the capture is reachable only through the
+group or another registered root. Each spawn also returns a `stop` bound to
+that spawn. It resolves once its subtree stop and the process exit finish.
+A short system command
 (`tailscale`, the firewall, device SDK tools) runs through `runCommand`
 (`packages/core/src/run-command.ts`): at its deadline it is stopped that way
 and its pipes are given half a second to close, so a helper holding them
-cannot hold the caller. On Windows the stop goes through `taskkill /T` only
-while the root has not exited: until Bun reports the exit it holds the
-process's handle, so the pid is still the root's. In that same tick the
-backend opens a handle of its own on the root and keeps it until taskkill
-ended (`platform/windows/tree-kill.ts`), so a root that exits meanwhile keeps
-its pid. After the exit, the pid may be another process's, and only the
-root's own kill runs. A helper of a root that
-already exited is not reached there. Normal
-shutdown waits for escalation; a hard shell kill does not guarantee core exit
-on Linux/macOS. `TraceCapability` exposes OS, mode (`events`, `poll`, `none`) and
+cannot hold the caller. On Windows a managed stop on a live, assigned root
+reads the job's current membership and opens handles for the root and its
+descendants. It verifies their membership and births, then stops children
+before parents. Other members of the same job keep running. For an unassigned
+root the backend opens its own handle in the tick the spawner saw it live and
+holds it until `taskkill /T` ends, retaining the PID while taskkill runs.
+Normal shutdown waits for escalation. A hard shell kill can cut it short on
+Linux and macOS.
+
+A core that dies without stopping its agents takes their groups with it on
+Linux and macOS too (`platform/posix-group-watch.ts`). One `sh` per core
+process, started before the first spawn, reads the groups on a pipe from the
+core. A group is added right after its spawn, before anything else is read
+about it. Its leader's exit marks it, and it is removed once a probe every
+second finds it empty, or at once when the keeper takes it over: tools a
+leader left behind stay held. A group id is its leader's pid, which the
+kernel does not reuse while the group has a member, so a live process with
+that pid means the group emptied: it is dropped and never signalled. After the
+core, the watcher signals such a group only when the probe of that pid says
+"No such process"; a refused probe counts as a live stranger. A new spawn that
+gets the pid back is watched again as a running group. When the
+pipe closes, after a crash, SIGKILL, the OOM killer or any exit, the watcher
+sends each group it still holds SIGTERM, probes them every 100 ms and sends
+SIGKILL to what remains after two seconds. A shutdown past its deadline sends
+SIGKILL to those groups itself before it exits. Processes the keeper adopted
+are never added. If the watcher cannot start, the core logs
+`groups.untied` once and agents run as they did before it. At startup the core
+closes every trace row a previous core left open (`exited_at` set, no exit
+code), through the partial index `processes_live`, before anything spawns; a
+process the keeper still holds is written live again when it is adopted.
+
+On Linux 6.9 and later, `spawn` and `spawnPiped` tie the group before the
+agent runs instead (`platform/linux-launcher.ts`, `native/launch.c`). Bun
+starts the launcher in the agent's place as a session leader. It opens a
+pidfd on itself, hands it to the core's one guard over a socket (SCM_RIGHTS),
+waits for the guard to answer that it holds it, hands the same pidfd to the
+core over a close-on-exec status socket, and waits again, for the core's
+word that it holds that pidfd under the launch's tag; only then does it exec
+the agent. A core that could not read the pidfd (a read error, a truncated
+descriptor) never gives that word, so the launcher exits 127 and nothing
+untied ever ran. The spawn reads the status socket until the exec closes it;
+it throws a failed launch's errno in Bun's own shape, and any other outcome
+(no pidfd, a short or broken read, a launcher that ended without a word, a
+launcher stopped before its exec) stops the launch and throws `ELAUNCH`,
+ending the group through its pidfd when the core has one. A guard with no
+descriptor left refuses the group and the launch fails with `EMFILE` before
+the agent runs. So a core that dies right after `Bun.spawn` returns, before
+the registry has the pid, still takes the group.
+
+The guard and the core signal it only through the pidfd, with
+`PIDFD_SIGNAL_PROCESS_GROUP`, the same grace as above: never through a
+number the kernel may have handed out again. The empty probe after a
+leader's exit and a shutdown's SIGKILL go through the core's pidfd too. At
+the core's exit the guard counts a group as gone only on `ESRCH`; any other
+error keeps it to the SIGKILL.
+
+Because the core keeps its own pidfd of every group, a guard never costs a
+group its identity. A guard found gone (the next launch fails with EPIPE
+before the agent runs, or its exit is seen) or stopped while a launch waits
+on it is replaced by a new one that receives every group still held, the new
+guard first, then SIGKILL to the old one. While waiting for a socket to
+accept a request or produce a reply, the core looks every 50 ms whether the
+guard or launcher is stopped (`T` or `t` in
+`/proc/<pid>/stat`); a running one is waited for, so a slow guard is never a
+failure. A group the new guard refuses stays held by the core's pidfd: the
+core logs `groups.unguarded` and offers it again every second, without
+waiting for a spawn, until a guard takes it. When no new guard starts at
+all, every group is held that way. A drop the guard does not take at once (a
+full or broken socket) replaces it with a guard that never holds the group;
+when that replacement cannot start either, the old guard and the group stay
+as they were, the release returns false to its caller (`untieGroup`,
+`disown` for the keeper) with `groups.unguarded`. The registry keeps the
+failed entries so shutdown can stop them. A group launched under a number an earlier group still held
+is held under its own tag before that stale group is dropped, so a guard the
+drop replaces takes the new group along. What is left untied: groups that no
+guard holds at the moment the core dies, which is every group of a core
+that dies after its guard died and before a new guard took them back, or
+while a new guard refuses them.
+
+At its first launch the core checks the whole path on the launcher itself:
+pidfd_open, the guard's admission, signal 0 through the pidfd from the core,
+then SIGTERM and SIGKILL from the guard to that probe group, which confirms
+it ignores SIGTERM before the check. Closing the private probe socket also
+ends the probe if the signals are refused. A syscall filter that refuses any of them, signal 0 alone allowed
+included, sends groups to the watcher with `groups.late`. The core looks for
+the launcher next to the executable that runs it, then in `native/build` from
+source (`bin/build-launcher.ts`, run by the test runner). `bin/compile.ts`
+builds it, static, beside the compiled core and fails without it; the Linux
+desktop packages install it beside `boite-core` as a second sidecar, and the
+server image builds it beside `bun`. The standalone server archive does not
+carry it yet, so those servers use the watcher. Without it, on an older kernel
+or without glibc, the core logs `groups.late` once and the watcher ties those
+groups as described above. Terminals, `spawnChild` (node) and processes the keeper adopts still
+go through the watcher only.
+
+`TraceCapability` exposes OS, mode (`events`, `poll`, `none`) and
 failure notes; clients must read it before promising native capabilities.

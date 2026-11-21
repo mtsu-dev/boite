@@ -16,7 +16,7 @@ const QUOTA_TIMEOUT_MS = 20_000;
  * request without sending anything to the model.
  */
 export async function readClaudeQuota(ctx: ProbeContext, deps: ClaudeDeps = {
-  loadQuery: () => import('@anthropic-ai/claude-agent-sdk').then((module) => module.query),
+  loadQuery: () => import('@anthropic-ai/claude-agent-sdk/core').then((module) => module.query),
 }): Promise<unknown> {
   const profile = profileFor(ctx.provider);
   const executable = profile ? resolveExecutable(profile) : null;

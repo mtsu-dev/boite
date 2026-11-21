@@ -407,8 +407,18 @@ for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerI
 test('Grok runs through Douane by its environment alone, and keeps its own sign-in behind CLIProxyAPI', async () => {
   let listed = 0;
   gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
-    if (new URL(request.url).pathname.endsWith('/models')) listed += 1;
-    return Response.json({ data: [{ id: 'xai/grok-5' }] });
+    const path = new URL(request.url).pathname;
+    if (request.method === 'GET' && path === '/v1/quotas') {
+      expect(request.headers.get('Authorization')).toBe('Bearer gateway-key');
+      return Response.json({ providers: [{ provider: 'xai', name: 'Grok', entries: [
+        { id: 'grok-seat', label: 'Gateway Grok', status: 'ready', accounts: 1, windows: [{ id: 'weekly', used_percent: 25 }] },
+      ] }] });
+    }
+    if (request.method === 'GET' && path.endsWith('/models')) {
+      listed += 1;
+      return Response.json({ data: [{ id: 'xai/grok-5' }] });
+    }
+    throw new Error(`Unexpected provider request: ${request.method} ${path}`);
   } });
   const url = `http://127.0.0.1:${gateway.port}/v1`;
   harness = await startTestCore({ settings: { subscriptionProxy: config(url) } });
@@ -438,6 +448,12 @@ test('Grok runs through Douane by its environment alone, and keeps its own sign-
     { XAI_API_KEY: 'inherited-key', GROK_MODELS_BASE_URL: 'https://inherited.test/v1' });
   expect(spawned['XAI_API_KEY']).toBe('gateway-key');
   expect(spawned['GROK_MODELS_BASE_URL']).toBe(url);
+  const route = JSON.parse(spawned['GROK_CONFIG']!).models.extra_headers['x-douane-provider'];
+  const quotas = await owner.call('quotas.list', {});
+  expect(quotas.find(row => row.providerId === route && row.gateway)).toMatchObject({
+    accountId: 'proxy:xai:grok-seat', windows: [{ id: 'weekly', usedPercent: 25 }], gateway: { kind: 'douane', entryId: 'grok-seat' },
+  });
+  expect(quotas.some(row => row.accountId === account.id)).toBe(false);
   // The CLI lists the gateway's models itself: the core reads no catalog to merge into its answer.
   expect(await readSubscriptionProxyModels(harness.core, provider)).toBeNull();
   expect(listed).toBe(0);

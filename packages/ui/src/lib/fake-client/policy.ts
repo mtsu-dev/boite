@@ -1,4 +1,4 @@
-import { RpcErrorCode, type RpcMethodName, type AccountQuota, type AdminPolicy, type PolicyKey, type PolicyProblem, type PolicyState, type ProviderSummary, type Settings } from '@boite/contracts';
+import { lockedKeys, RpcErrorCode, STRICTEST_POLICY, type RpcMethodName, type AccountQuota, type AdminPolicy, type PolicyKey, type PolicyProblem, type PolicyState, type ProviderSummary, type Settings } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { gatewayBlockOf, providerBlocked } from '../policy';
 import type { FakeContext } from './context';
@@ -29,52 +29,10 @@ const MANAGED_POLICY: AdminPolicy = {
   modelPrices: false
 };
 
-/** The core's strictest value of every key, what a file that does not parse gets. */
-const STRICTEST: AdminPolicy = {
-  analytics: 'off',
-  updates: { app: 'off', server: 'off', agents: 'off' },
-  providers: { allow: [] },
-  gateway: false,
-  quotaReads: false,
-  plugins: { install: false, recommended: false },
-  issueReports: false,
-  dictation: 'off',
-  previews: { remoteResources: false },
-  agentBrowser: false,
-  agentDesktop: false,
-  network: { lan: false, tailscaleServe: false, groups: false, contacts: false, push: false },
-  pullRequests: false,
-  modelPrices: false
-};
-
-/** The keys `values` locks, in the contract's order, as the core's `lockedKeys`. */
-function lockedKeysOf(values: AdminPolicy): PolicyKey[] {
-  const on: PolicyKey[] = [];
-  if (values.analytics !== undefined) on.push('analytics');
-  for (const kind of ['app', 'server', 'agents'] as const) if (values.updates?.[kind] !== undefined) on.push(`updates.${kind}`);
-  if (values.providers?.allow !== undefined) on.push('providers.allow');
-  if (values.providers?.deny !== undefined) on.push('providers.deny');
-  if (values.gateway === false) on.push('gateway');
-  if (typeof values.gateway === 'object') on.push('gateway.allowedBaseUrls');
-  if (values.quotaReads === false) on.push('quotaReads');
-  if (values.plugins?.install === false) on.push('plugins.install');
-  if (values.plugins?.recommended === false) on.push('plugins.recommended');
-  if (values.issueReports === false) on.push('issueReports');
-  if (values.dictation !== undefined) on.push('dictation');
-  if (values.previews?.remoteResources === false) on.push('previews.remoteResources');
-  if (values.agentBrowser === false) on.push('agentBrowser');
-  if (typeof values.agentBrowser === 'object') on.push('agentBrowser.searchUrl');
-  if (values.agentDesktop === false) on.push('agentDesktop');
-  for (const item of ['lan', 'tailscaleServe', 'groups', 'contacts', 'push'] as const) if (values.network?.[item] === false) on.push(`network.${item}`);
-  if (values.pullRequests === false) on.push('pullRequests');
-  if (values.modelPrices === false) on.push('modelPrices');
-  return on;
-}
-
 /** A policy state for `values`, as `policy.get` answers it. */
 export function fakePolicy(values: AdminPolicy | null, problems: PolicyProblem[] = [], failedClosed = false): PolicyState {
   if (values === null) return { file: FILE, present: false, values: {}, locked: [], problems: [], failedClosed: false, readAt: 0 };
-  return { file: FILE, present: true, values: structuredClone(values), locked: lockedKeysOf(values), problems, failedClosed, readAt: 0 };
+  return { file: FILE, present: true, values: structuredClone(values), locked: lockedKeys(values), problems, failedClosed, readAt: 0 };
 }
 
 /** The fixture `?policy=` names; none without it, as on most machines. */
@@ -87,7 +45,7 @@ export function policyFixture(kind: string | null): PolicyState {
       { file: FILE, field: 'updates.app', expected: '"off" or "check" or "auto"', message: `${FILE}: updates.app is "weekly"; expected "off" or "check" or "auto"` },
       { file: FILE, field: 'telemetry', expected: 'one of analytics, updates, providers, gateway, quotaReads, plugins, issueReports, dictation, previews, agentBrowser, agentDesktop, network, pullRequests, modelPrices', message: `${FILE}: telemetry is an unknown key` }
     ]);
-    case 'closed': return fakePolicy(STRICTEST, [
+    case 'closed': return fakePolicy(STRICTEST_POLICY, [
       { file: FILE, field: '(file)', expected: 'a JSON object', message: `${FILE}: not valid JSON (Unexpected token } in JSON at position 212); every policy key takes its strictest value until it is fixed` }
     ], true);
     default: return fakePolicy(null);

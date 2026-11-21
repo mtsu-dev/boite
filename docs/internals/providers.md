@@ -730,6 +730,10 @@ shims require a vendored binary or supported `npm` candidate. Managed desktop
 versions are pinned in `packages/core/src/providers/shipped/*.json`; server image
 CLI versions are separate pins in `docker/agents/package.json`.
 
+The Claude driver loads the SDK's `/core` entry on demand for queries, quota
+reads and protected tools. This entry shares installed dependencies and leaves
+the SDK's unused session helpers out of the core bundle.
+
 Antigravity requires a managed install and always-isolated accounts. Its
 descriptor uses additional fields available to other providers:
 
@@ -1712,6 +1716,9 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
 - A warm process follows a change of model or level with `set_model` and
   `set_thinking_level`. There is no call that goes back to pi's own model or to
   no level, so either change starts a new process.
+- Pi can refresh prompt caches during a turn. Refreshes between turns require
+  an explicit `"cacheWarming": "idle"` in the selected Pi profile's
+  `settings.json`.
 - After each turn `get_session_stats` feeds the context meter with a five-second
   control-read expiry. A timed-out response is removed and cannot update a later
   turn's context.

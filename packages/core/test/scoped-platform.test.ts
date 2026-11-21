@@ -7,6 +7,7 @@ import {Journal} from '../src/journal.ts';
 import {ProcRegistry} from '../src/procs.ts';
 import {createPosixPlatform} from '../src/platform/posix.ts';
 import {scopedPlatforms} from '../src/platform/scoped.ts';
+import {registryPlatform} from '../src/platform/index.ts';
 import type {GuardEventSink, ProcessEventSink, ProcessPlatform} from '../src/platform/types.ts';
 
 test('equal public thread IDs keep their native trace, descendants and termination through another registry restart', async () => {
@@ -79,4 +80,63 @@ test('equal public thread IDs keep their native trace, descendants and terminati
     for (const journal of journals) journal.close();
     rmSync(directory, {recursive: true, force: true});
   }
+});
+
+test.skipIf(process.platform !== 'linux')('two registries on one Linux backend sample only their own processes, and closing one leaves the other measured', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'boite-posix-scopes-'));
+  const journals = [new Journal(join(directory, 'a.db')), new Journal(join(directory, 'b.db'))];
+  const [first, second] = journals.map(journal => new ProcRegistry(journal, new Bus(), registryPlatform())) as [ProcRegistry, ProcRegistry];
+  try {
+    const a = first.spawn('same-thread', 'sleep', ['30']);
+    const b = second.spawn('same-thread', 'sleep', ['30']);
+    expect(first.platform.sample('same-thread')?.processes).toBe(1);
+    expect(second.platform.sample('same-thread')?.processes).toBe(1);
+    await first.killAll();
+    await a.exited;
+    await first.close();
+    expect(second.platform.sample('same-thread')?.processes).toBe(1);
+    await second.killAll();
+    await b.exited;
+  } finally {
+    await Promise.all([first.close(), second.close()]);
+    for (const journal of journals) journal.close();
+    rmSync(directory, {recursive: true, force: true});
+  }
+});
+
+test('stopping or sampling a thread that never ran a process names no native scope', async () => {
+  const named: string[] = [];
+  const backend: ProcessPlatform = {
+    ...createPosixPlatform('linux', null),
+    terminate(scope) {named.push(`terminate ${scope}`); return false;},
+    terminateProcess(scope) {named.push(`terminateProcess ${scope}`); return false;},
+    sample(scope) {named.push(`sample ${scope}`); return null;},
+    hasProcesses(scope) {named.push(`hasProcesses ${scope}`); return false;},
+  };
+  const platform = scopedPlatforms(backend)();
+  for (const id of ['never-a', 'never-b', 'never-c']) {
+    expect(platform.terminate(id)).toBe(false);
+    expect(platform.terminateProcess(id, 4242)).toBe(false);
+    expect(platform.sample(id)).toBeNull();
+    expect(platform.hasProcesses?.(id)).toBe(false);
+  }
+  expect(named).toEqual([]);
+  platform.pidAdded('ran', 4242, true);
+  platform.sample('ran');
+  expect(named).toHaveLength(1);
+  await platform.release();
+});
+
+test('resource detail stays on for one registry while another stops watching or closes', async () => {
+  const watched: boolean[] = [];
+  const hub = scopedPlatforms({...createPosixPlatform('linux', null), watchResources: active => {watched.push(active);}, async release() {}});
+  const first = hub(), second = hub();
+  first.watchResources?.(true);
+  second.watchResources?.(true);
+  first.watchResources?.(false);
+  await first.release();
+  expect(watched).toEqual([true]);
+  second.watchResources?.(false);
+  expect(watched).toEqual([true, false]);
+  await second.release();
 });

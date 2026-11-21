@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DISPLAY_THUMB_MAX, imageSize, type Message } from '@boite/contracts';
+  import { chatPreviewSize, imageSize, type ChatPreviewSize, type Message } from '@boite/contracts';
   import { onView } from '../lib/on-view';
   import { fill, strings } from '../lib/strings';
   import { transferBytes } from '../lib/format';
@@ -38,8 +38,8 @@
   /** The light copy the core made for the timeline (`loadDisplayImage`). */
   let copy = $state<string | null>(null);
 
-  /** The original, once the part holds it: sent inline, or fetched for the viewer or an edit. */
-  const original = $derived(image.dataDeferred || image.data.length === 0 ? null : `data:${image.mimeType};base64,${image.data}`);
+  /** Parts hydrated for editing still carry the projection's byte count. */
+  const original = $derived(image.dataDeferred || image.bytes !== undefined || image.data.length === 0 ? null : `data:${image.mimeType};base64,${image.data}`);
   const src = $derived(original ?? copy);
   const size = $derived(image.width && image.height ? { width: image.width, height: image.height } : image.data.length > 0 ? imageSize(image.data) : null);
   /** The box's width from the first frame: square until the picture's size is known. */
@@ -51,12 +51,13 @@
   let asked = false;
   let retried = false;
   /** The size the copy was asked at, the one to forget if its address breaks. */
-  let small = false;
+  let requested: ChatPreviewSize = 320;
   function load(): void {
     if (asked || original !== null) return;
     asked = true;
-    small = thumbFits();
-    store.loadDisplayImage(threadId, messageId, partIndex, image.mimeType, small).then((url) => {
+    const drawn = size === null ? width : Math.max(width / size.width, tile / size.height) * Math.max(size.width, size.height);
+    requested = chatPreviewSize(drawn * (window.devicePixelRatio || 1));
+    store.loadDisplayImage(threadId, messageId, partIndex, image.mimeType, requested).then((url) => {
       copy = url;
       failed = false;
     }, (error: unknown) => {
@@ -66,24 +67,11 @@
     });
   }
 
-  /**
-   * Whether the thumbnail's copy (`DISPLAY_THUMB_MAX` on its longer side) is
-   * sharp in this box on this screen. The picture covers the box, so its
-   * longer side is drawn at the larger of the two scales, in device pixels.
-   * 16:9 at 88 px needs 313 on a 2x screen, so the small copy; 469 on a 3x
-   * phone, so the large one. A picture of unknown size takes the large one.
-   */
-  function thumbFits(): boolean {
-    if (size === null) return false;
-    const drawn = Math.max(width / size.width, tile / size.height) * Math.max(size.width, size.height);
-    return drawn * (window.devicePixelRatio || 1) <= DISPLAY_THUMB_MAX;
-  }
-
   /** A copy's address that stopped loading (a ticket the core forgot) is asked for again, once. */
   function broke(): void {
     if (original === null && copy !== null && !copy.startsWith('data:') && !retried) {
       retried = true;
-      store.forgetDisplayImage(threadId, messageId, partIndex, small);
+      store.forgetDisplayImage(threadId, messageId, partIndex, requested);
       copy = null;
       asked = false;
       load();

@@ -7,7 +7,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { stampWorkerCache } from './src/lib/worker-stamp.ts';
 import { tooNewForFloor } from './src/lib/browser-floor.ts';
 import { localePreloadScript } from './src/lib/locale-preload.ts';
-import { colorsBootScript } from './src/lib/theme-colors.ts';
+import { themePrepaint } from './theme-prepaint.ts';
 import { lucideGlyph } from './icon-plugin.ts';
 import { completeCatalogues } from './catalogue-plugin.ts';
 import { prepaintMinify } from './prepaint.ts';
@@ -15,6 +15,11 @@ import { releaseVersion } from './release-version.ts';
 import { featureDefines } from '../contracts/src/experiments.ts';
 
 const COMPRESSIBLE = /\.(?:html|js|css|svg|json|webmanifest)$/;
+const CONVERSATION_VIEWS = ['Sidebar', 'ChatView', 'AgentsLayout'];
+
+function isView(id: string, view: string): boolean {
+  return id.replaceAll('\\', '/').endsWith(`/${view}.svelte`);
+}
 
 /**
  * Names the service worker's cache after the hashed files this build emitted
@@ -172,41 +177,55 @@ function localePreload(): Plugin {
 }
 
 /**
- * The phone's navigation is a chunk the page imports outside the shell
- * (`src/lib/mobile-navigation.ts`), not a file index.html names, so the service
- * worker would not store it at install and an offline phone would open with
- * no header. index.html gets its static graph, JavaScript and styles, in a
- * meta tag the browser fetches nothing for and `public/sw.js` precaches.
+ * Keep the conversation views available offline and fetch the desktop views
+ * beside the entry. A phone on its way to pairing skips their downloads.
  */
-function offlineParts(): Plugin {
+function conversationAssets(mobile: boolean): Plugin {
   return {
-    name: 'boite-offline-parts',
+    name: 'boite-conversation-assets',
     apply: 'build',
     transformIndexHtml: {
       order: 'post',
       handler(_html, context) {
         const bundle = context.bundle ?? {};
-        const navigation = Object.values(bundle).find(
-          (file) => file.type === 'chunk' && /[\\/]src[\\/]components[\\/]MobileNavigation\.svelte$/.test(file.facadeModuleId ?? '')
-        );
-        if (!navigation) throw new Error('src/components/MobileNavigation.svelte is not a chunk of its own: lib/mobile-navigation.ts must import it dynamically');
-        const files = new Set<string>();
-        const visit = (name: string) => {
+        const visit = (files: Set<string>, name: string) => {
           const file = bundle[name];
           if (file?.type !== 'chunk' || files.has(name)) return;
           files.add(name);
           for (const css of file.viteMetadata?.importedCss ?? []) files.add(css);
-          for (const imported of file.imports) visit(imported);
+          for (const imported of file.imports) visit(files, imported);
         };
-        visit(navigation.fileName);
-        return [{ tag: 'meta', attrs: { name: 'boite-offline', content: [...files].map((name) => `./${name}`).join(' ') }, injectTo: 'head' }];
+        const pathsFor = (views: readonly string[]) => {
+          const files = new Set<string>();
+          for (const view of views) {
+            const chunks = Object.values(bundle).filter(file => file.type === 'chunk' && Object.keys(file.modules).some(id => isView(id, view)));
+            if (chunks.length === 0) throw new Error(`${view}.svelte is missing its offline entry`);
+            for (const chunk of chunks) visit(files, chunk.fileName);
+          }
+          return [...files].map(name => `./${name}`);
+        };
+        if (mobile) return [];
+        const navigation = pathsFor(['MobileNavigation']);
+        const conversations = pathsFor(CONVERSATION_VIEWS);
+        const desktop = [...new Set([...conversations, ...pathsFor(['ActivityList'])])];
+        const offline = { tag: 'meta', attrs: { name: 'boite-offline-conversations', content: [...new Set([...navigation, ...conversations])].join(' ') }, injectTo: 'head' as const };
+        // The app awaits these chunks on desktop. Start the graph before the
+        // entry runs so its imports do not cost another trip for each layer.
+        const preload = `(function(){if(new URLSearchParams(location.search).get('view')==='quotas'||` +
+          `(window.__TAURI_INTERNALS__===undefined&&matchMedia('(max-width: 720px)').matches))return;` +
+          `var linked=new Set(Array.from(document.querySelectorAll('link[rel="modulepreload"],link[rel="preload"],link[rel="stylesheet"]'),function(link){return link.href}));` +
+          `${JSON.stringify(desktop)}.forEach(function(path){` +
+          `if(linked.has(new URL(path,document.baseURI).href))return;var link=document.createElement('link');` +
+          `link.href=path;link.crossOrigin='anonymous';if(/\\.css$/.test(path)){link.rel='preload';link.as='style'}` +
+          `else{link.rel='modulepreload'}document.head.appendChild(link)})})()`;
+        return [offline, { tag: 'script', children: preload, injectTo: 'head' }];
       },
     },
   };
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [lucideGlyph(), completeCatalogues(), svelte(), { name: 'boite-colors-prepaint', transformIndexHtml: () => [{ tag: 'script', children: colorsBootScript(), injectTo: 'head' }] }, browserFloor(), dropFakeClient(), localePreload(), offlineParts(), prepaintMinify(), ...(mode === 'mobile' ? [dropWorker()] : [precompress()])],
+  plugins: [lucideGlyph(), completeCatalogues(), svelte(), themePrepaint(), browserFloor(), dropFakeClient(), localePreload(), conversationAssets(mode === 'mobile'), prepaintMinify(), ...(mode === 'mobile' ? [dropWorker()] : [precompress()])],
   base: './',
   // The build's kind and one flag per tagged feature, from the stamped version: a
   // Release bundle holds no nightly or dev feature (docs/internals/experiments.md#out-of-the-build).
@@ -219,7 +238,17 @@ export default defineConfig(({ mode }) => ({
     // modules the boot shares with a lazy chunk (Svelte, the store, Lucide
     // icons) are one chunk rather than dozens of small ones. A module only the
     // boot uses stays in the entry, and one no boot module imports stays lazy.
-    rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'boot', tags: ['$initial'], minShareCount: 2 }] } } }
+    rolldownOptions: {
+      // Keep lazy references visible to the boot group. The redundant-load
+      // pass removes those references and puts shared modules in the entry.
+      experimental: { chunkOptimization: { avoidRedundantChunkLoads: false } },
+      output: { codeSplitting: { groups: [
+        { name: 'boot', tags: ['$initial'], minShareCount: 2 },
+        // Fetch the connected views and their shared modules without dozens of
+        // round trips on the core's HTTP/1.1 connection.
+        { name: 'conversations', test: id => CONVERSATION_VIEWS.some(view => isView(id, view)) },
+      ] } }
+    }
   },
   server: { port: 5173, strictPort: true }
 }));

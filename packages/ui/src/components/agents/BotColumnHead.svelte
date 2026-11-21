@@ -18,6 +18,8 @@
   import { listNames } from '../../lib/teams.svelte';
   import Menu from '../Menu.svelte';
   import Elapsed from '../Elapsed.svelte';
+  import WaitLine from '../WaitLine.svelte';
+  import { threadWait } from '../../lib/background';
   import Spinner from '../Spinner.svelte';
   import StatusMark from '../StatusMark.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
@@ -51,6 +53,7 @@
   const store = $derived(view.store);
   const pending = $derived(waitingOn(store, thread?.id));
   const standing = $derived(agent ? liveState(agent, status, thread, !!pending) : 'idle');
+  const wait = $derived(store.connection === 'ready' && agent?.status === 'active' ? threadWait(thread, store) : null);
   const step = $derived(liveStep(status, thread));
   const since = $derived(thread?.status === 'running' ? thread.runningSince ?? thread.progress?.since ?? null : null);
   /** A removed account is a need, not a failed turn: the banner over the chat says how to meet it. */
@@ -128,7 +131,7 @@
         <!-- One signal per state: the spinner or the mark carries the hue, the words stay neutral. -->
         {#if standing === 'working'}<span class="bot-spin"><Spinner size={11} /></span>
         {:else if standing === 'waiting' || standing === 'error'}<span class="bot-spin"><StatusMark tone={standing} label={standing === 'error' ? failure : labels.state[standing]} /></span>{/if}
-        <span class="bot-head-line">{line}</span>
+        {#if wait}<WaitLine {wait} />{:else}<span class="bot-head-line">{line}</span>{/if}
       </span>
     </div>
     {#if items.length}

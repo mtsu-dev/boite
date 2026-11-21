@@ -82,7 +82,7 @@ test('a thread archived on the phone comes back from its own settings list', asy
   const mergedReason = query(`[data-thread-id="${merged.id}"] [data-testid=archive-merged-reason]`);
   expect(mergedReason.textContent).toContain('Archived after PR #7 merged');
   expect(mergedReason.querySelector('a')?.getAttribute('href')).toBe('https://github.com/example/repo/pull/7');
-  expect(mergedReason.querySelector('time')?.getAttribute('datetime')).not.toBeNull();
+  expect(mergedReason.closest('li')?.querySelector('time')?.getAttribute('datetime')).not.toBeNull();
   query<HTMLButtonElement>('[data-thread-id=t-trace] [data-testid=archived-restore]').click();
   await waitFor(() => store.threads.find((t) => t.id === 't-trace')?.archived === false);
 
@@ -273,4 +273,20 @@ test('on a phone too, a page of one machine is picked above it without moving th
   store.showSettings('voice');
   await waitFor(() => document.querySelector('[data-testid=mobile-settings-page-scope] [data-testid=settings-machine]') !== null);
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
+
+  store.showSettings('general', 'archived');
+  await waitFor(() => document.querySelector('[data-testid=archived-list]') !== null);
+  expect(query('[data-testid=mobile-settings-page-scope] [data-testid=settings-machine]').textContent).toContain(remote.label);
+  const retention = query<HTMLInputElement>('[data-testid=done-retention-days]');
+  retention.value = '5';
+  retention.dispatchEvent(new Event('input', { bubbles: true }));
+  retention.dispatchEvent(new Event('change', { bubbles: true }));
+  await waitFor(() => remote.store.settings?.threadDoneRetentionDays === 5);
+  expect(store.settings?.threadDoneRetentionDays).not.toBe(5);
+  store.showSettings('general');
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-general]') !== null);
+  expect(document.querySelector('[data-testid=done-retention-days]')).toBeNull();
+  store.showSettings('general', 'thread-retention');
+  await waitFor(() => document.querySelector('[data-testid=done-retention-days]') !== null);
+  expect(query('[data-testid=mobile-settings-page-scope] [data-testid=settings-machine]').textContent).toContain(remote.label);
 });

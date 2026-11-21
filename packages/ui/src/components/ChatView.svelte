@@ -197,6 +197,9 @@
     {#if pinnedHere && pinnedQuotas.crowded.get(store) && (thread || sending)}<Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} inline area={discussion} />{/snippet}</Deferred>{/if}
 
     {#if thread}<ThreadRecovery {store} /><ThreadRetry {store} />{/if}
+    {#if thread?.contactToolsHeld && !thread.contactHold && !thread.archived && !locked}
+      <ContactHoldNotice {store} threadId={thread.id} contacts={null} />
+    {/if}
     <!-- What stops the core here stands in the box's own slot, under its strip; a done thread says it all in one notice. -->
     {#snippet stopNotice()}
       {#if store.openProject?.missing === true && !thread?.agentSessionId}<FolderGoneNotice {store} project={store.openProject} />{/if}

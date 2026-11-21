@@ -23,7 +23,7 @@ pull request's CI after each merge.
 `ci` and `PR title` also run on `merge_group`. A group runs `ci` in `queue`
 mode against its `main` base: the same path rules as a pull request, with the
 diff covering every pull request ahead of it, and the Windows, macOS, desktop,
-E2E, stress, Docker and APK jobs a pull request run leaves out
+full E2E, stress, Docker and APK jobs
 ([pull request runs](#pull-request-runs)). `Bundle size` skips there, since it
 compares a pull request with its base. A group's `PR
 title` checks the squash title of its last commit, the one `main` receives.
@@ -305,13 +305,17 @@ Protection code, protected fixtures and shared toolchain inputs also select
 the two Windows core shards, `Native Windows protection` and `Native Windows
 protection (MinGW)`. Each Windows core shard builds the userspace sandbox
 helper and runs its half of the ordinary suite with it. The two native jobs
-build both helpers again and run the opt-in native protection fixtures beside
-them instead of before the suite, one job per helper (`NATIVE_HELPER`): the
-SDK build, with the diagnostics below, and the MinGW build. Each takes about
-7.5 minutes where one job ran both helpers in 12.7 (median of 23 pull
-requests, 2026-11-21), so the Windows core shards end such a run again. Other pull requests leave Windows out. macOS, desktop packages, E2E, stress,
-Docker and the APKs skip: the [merge queue](#merge-queue) runs them on top of
-`main`.
+build both helpers and run the opt-in native protection fixtures alongside
+the core shards, one job per helper (`NATIVE_HELPER`). The SDK job also runs
+the diagnostics below. Each native job takes about 7.5 minutes. The previous
+job ran both helpers in 12.7 minutes (median of 23 pull requests, 2026-11-21).
+
+Changes to the UI, contracts, E2E fixtures or unknown inputs also run
+`E2E 1/5` on Windows. It covers Changes and keyboard focus at desktop and
+phone widths, and stopping a running Mochi on a phone. The job uploads its
+test log and available captures even if another job fails. The
+[merge queue](#merge-queue) runs all five shards, macOS, desktop packages,
+stress, Docker and APKs on top of `main`.
 
 The SDK job also archives `windows-null-access-matrix`: a standalone,
 opt-in comparison of host and LPAC NUL opens with four requested access masks.

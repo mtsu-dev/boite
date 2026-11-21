@@ -22,6 +22,12 @@ export class Requests {
   pendingQuestions = $state<QuestionRequest[]>([]);
   /** Kept after the answer so a folded card still shows what was asked. Same bound. */
   questionRequests = $state<Record<RequestId, QuestionRequest>>({});
+  #permissionThreads = $derived(new Set(this.pendingPermissions.map(request => request.threadId)));
+  #questionThreads = $derived(new Set(this.pendingQuestions.map(request => request.threadId)));
+
+  hasRequest(kind: 'question' | 'permission', threadId: ThreadId): boolean {
+    return (kind === 'question' ? this.#questionThreads : this.#permissionThreads).has(threadId);
+  }
 
   constructor(private readonly ctx: StoreContext) {}
 

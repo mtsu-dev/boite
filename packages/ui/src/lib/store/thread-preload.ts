@@ -14,14 +14,16 @@
  * cache, so a click on one paints it at once, like a thread visited before.
  */
 
-import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, MESSAGE_PAGE_MAX, type MessageId, type ProjectId, type RpcParams, type Thread, type ThreadId, type ThreadSnapshot, type ThreadSummary } from '@boite/contracts';
-import type { Client } from '../client';
+import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, MESSAGE_PAGE_MAX, READING_PAGE_BYTES, type MessageId, type ProjectId, type RpcParams, type Thread, type ThreadId, type ThreadSnapshot, type ThreadSummary } from '@boite/contracts';
+import { wasDropped, type Client } from '../client';
+import { wasClosed } from '../rpc-error';
 import { whenIdle } from '../idle';
+import { sameValue } from '../plain-data';
 import { readingCacheBytes } from '../reading-cache';
 import { compareRecent } from '../thread-order';
-import { resumeRequest } from '../thread-rows';
+import { lastIndexById, mergeResumed, snapshotResume } from '../thread-rows';
 import type { StoreContext } from './context';
-import { lightPage, type ReadingPosition } from './reading-pages.svelte';
+import { lightPage, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
 
 /** What `open()` sends for a thread: the page and, before bundled snapshots, the subscription. */
 export interface PageAsk {
@@ -29,6 +31,8 @@ export interface PageAsk {
   fetched: Promise<ThreadSnapshot>;
   /** The reader's message the page is centred on, when it is. */
   around: MessageId | undefined;
+  /** The first message the requested proof can certify. */
+  proofFirst: MessageId | undefined;
 }
 
 /** A press waiting for its click, or claimed by the open it became. */
@@ -68,14 +72,17 @@ export function readingAround(ctx: StoreContext, opener: Pick<Opener, 'readingPo
  * vouch for, a long thread left away from its end opens around the reader's
  * message, any other reads its last screen.
  */
-function pageRequest(ctx: StoreContext, opener: Opener, threadId: ThreadId, held: Thread | undefined): { params: RpcParams<'threads.get'>; after: MessageId | undefined; around: MessageId | undefined } {
+function pageRequest(ctx: StoreContext, opener: Opener, threadId: ThreadId, held: Thread | undefined): { params: RpcParams<'threads.get'>; around: MessageId | undefined } {
   // A thread already in hand, open or among the recent ones, asks only for
   // what it cannot vouch for: a reconnect on a long conversation used to
   // download its last 120 messages again for the two that were new.
-  const resume = resumeRequest(threadId, held);
-  const around = held ? undefined : readingAround(ctx, opener, threadId);
+  const features = ctx.store.core?.features;
+  const resume = snapshotResume(threadId, held, features?.threadPrefixProofs === true, true);
+  const around = !held || features?.threadPrefixProofs ? readingAround(ctx, opener, threadId) : undefined;
   // A page holds about one screen; the rest comes as the reader scrolls. A resume tail is never cut.
-  return { params: { ...resume, limit: held ? MESSAGE_PAGE_MAX : INITIAL_MESSAGE_PAGE, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(ctx), ...(around ? { around } : {}) }, after: resume.after, around };
+  const { sync, ...target } = resume;
+  const limit = target.after ? MESSAGE_PAGE_MAX : Math.min(MESSAGE_PAGE_MAX, Math.max(INITIAL_MESSAGE_PAGE, held?.messages.length ?? 0));
+  return { params: { ...target, ...(features?.threadSnapshots ? { sync } : {}), limit, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(ctx), ...(around ? { around } : {}) }, around };
 }
 
 /**
@@ -88,16 +95,83 @@ export function askPage(ctx: StoreContext, opener: Opener, client: Client, threa
   const bundled = features?.threadSnapshots === true;
   const channels = ctx.streams.params(threadId);
   const subscribed = bundled ? null : client.call('threads.subscribe', { threadId, ...channels });
-  const { params, after, around } = pageRequest(ctx, opener, threadId, held);
+  const { params, around } = pageRequest(ctx, opener, threadId, held);
   const fetched = client.call('threads.get', { ...params,
-    ...(bundled ? { sync: held?.messagesSync && held.messagesSync.from === after ? held.messagesSync : true, open, ...channels } : {})
+    ...(bundled ? { open, ...channels } : {})
   }, held || !features?.chunkedAnswers ? {} : {
     // The loading view counts the page in as the core slices it.
     onProgress: (received, total) => { if (current() && opener.loadingThreadId === threadId) opener.loadingBytes = { threadId, received, total }; }
   });
   // Where the page sits, noted as it lands, whichever open or press ends up using it.
   void fetched.then((thread) => ctx.positions.note(threadId, thread.messages, thread.messageOffset), () => undefined);
-  return { subscribed, fetched, around };
+  const proofFirst = features?.threadPrefixProofs && params.sync !== true ? params.sync?.prefix?.first : undefined;
+  return { subscribed, fetched, around, proofFirst };
+}
+
+/** Publish what the snapshot already replaced without losing the reader's surrounding window. */
+function showCheckedWindow(held: Thread, fresh: Thread, older: number, newer: number): void {
+  delete held.messagesSync;
+  const end = held.messages.length - newer;
+  if (end - older !== fresh.messages.length) held.messages.splice(older, end - older, ...fresh.messages);
+  for (const [index, message] of fresh.messages.entries()) {
+    const at = older + index;
+    if (!sameValue(held.messages[at], message)) held.messages[at] = message;
+    // Live events see one copy of the row shared by the displayed and repairing windows.
+    fresh.messages[index] = held.messages[at]!;
+  }
+  const turns = new Map(fresh.turns.map(turn => [turn.id, turn]));
+  for (let index = held.turns.length - 1; index >= 0 && turns.size; index--) {
+    const previous = held.turns[index]!;
+    const turn = turns.get(previous.id);
+    if (!turn) continue;
+    turns.delete(turn.id);
+    if (!sameValue(previous, turn)) held.turns[index] = turn;
+  }
+  if (turns.size) held.turns.push(...turns.values());
+  if (!older) held.messagesBefore = fresh.messagesBefore;
+  if (!newer) setMessagesAfter(held, fresh.messagesAfter);
+}
+
+/** Re-read the held window beyond the snapshot, within the normal count and byte bounds of each page. */
+function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fresh: Thread, current: () => boolean, changed: boolean): Promise<void> | undefined {
+  const first = fresh.messages[0]?.id;
+  const last = fresh.messages.at(-1)?.id;
+  const older = first === undefined || fresh.messagesBefore === null ? 0 : Math.max(0, lastIndexById(held.messages, first));
+  const lastIndex = last === undefined || !fresh.messagesAfter ? -1 : lastIndexById(held.messages, last);
+  const newer = lastIndex < 0 ? 0 : held.messages.length - lastIndex - 1;
+  if (older <= 0 && newer <= 0) return;
+
+  const repair = (async () => {
+    const turns = new Map<string, Thread['turns'][number]>();
+    for (const direction of ['before', 'after'] as const) {
+      const before = direction === 'before';
+      let remaining = before ? older : newer;
+      while (current() && remaining > 0) {
+        const cursor = before ? fresh.messagesBefore : fresh.messagesAfter || null;
+        if (cursor === null) break;
+        const page = await client.call('messages.list', {
+          threadId: fresh.id, [direction]: cursor, limit: Math.min(remaining, MESSAGE_PAGE_MAX),
+          maxBytes: READING_PAGE_BYTES, ...lightPage(ctx),
+        });
+        if (!current() || page.messages.length === 0) break;
+        ctx.positions.note(fresh.id, page.messages, page.offset);
+        if (before) {
+          fresh.messageOffset = page.offset ?? fresh.messageOffset;
+          fresh.messages = [...page.messages, ...fresh.messages];
+          fresh.messagesBefore = page.before;
+        } else {
+          fresh.messages.push(...page.messages);
+          setMessagesAfter(fresh, page.after);
+        }
+        remaining -= page.messages.length;
+        for (const turn of page.turns ?? []) if (!turns.has(turn.id)) turns.set(turn.id, turn);
+      }
+    }
+    for (const turn of fresh.turns) turns.set(turn.id, turn);
+    fresh.turns = [...turns.values()].sort((a, b) => a.queuedAt - b.queuedAt);
+  })();
+  if (changed) showCheckedWindow(held, fresh, older, newer);
+  return repair;
 }
 
 export class ThreadPreloads {
@@ -105,6 +179,10 @@ export class ThreadPreloads {
   #waiting: Preload | null = null;
   /** The press an `open()` took over, patched by events until its page is on screen. */
   #claimed: Preload | null = null;
+  /** The fresh portion of a window whose remaining pages are being checked. */
+  #repairing: Thread | null = null;
+  /** Releases a projection waiting for the cached view to paint. */
+  #finishProjection: (() => void) | undefined;
   /** The first sidebar threads, read ahead once the machine is ready and the page idle. */
   readonly idle: IdlePreloads;
 
@@ -178,9 +256,86 @@ export class ThreadPreloads {
     return this.#waiting?.threadId;
   }
 
+  cancelRepair(): void {
+    this.#repairing = null;
+    this.#finishProjection?.();
+  }
+
+  /** The RPCs have finished. Only reconciling the repaired window waits for a paint. */
+  #waitToProject(): Promise<void> | undefined {
+    const doc = globalThis.document;
+    if (typeof requestIdleCallback !== 'function' || doc?.visibilityState !== 'visible') return;
+    return new Promise(resolve => {
+      const finish = () => {
+        if (this.#finishProjection !== finish) return;
+        this.#finishProjection = undefined;
+        clearTimeout(deadline);
+        cancelIdle();
+        doc.removeEventListener('visibilitychange', finish);
+        resolve();
+      };
+      this.#finishProjection = finish;
+      const deadline = setTimeout(finish, 100);
+      const cancelIdle = whenIdle(finish, { timeout: 100 });
+      doc.addEventListener('visibilitychange', finish);
+    });
+  }
+
+  /** Reuse the certified part of a held window and read any remaining pages before displaying the answer. */
+  revalidate(client: Client, fresh: Thread, held: Thread | undefined, deviceSnapshot: boolean, around: MessageId | undefined, proofFirst: MessageId | undefined, newest: () => boolean, paintHeld: boolean): Promise<boolean> | undefined {
+    const { readingThreads, readingPositions } = this.opener;
+    const prefixProofs = this.ctx.store.core?.features?.threadPrefixProofs === true;
+    const changed = fresh.messagesUnchanged !== true;
+    let replaced = false;
+    if (fresh.messagesFrom !== undefined && held) {
+      const confirmedAt = proofFirst === undefined || proofFirst === held.messages[0]?.id ? 0 : lastIndexById(held.messages, proofFirst);
+      if (confirmedAt > 0) {
+        const messages = held.messages.slice(confirmedAt);
+        const turns = new Set(messages.map(message => message.turnId));
+        mergeResumed({ ...held, messages, turns: held.turns.filter(turn => turns.has(turn.id)), messagesBefore: proofFirst! }, fresh);
+      } else mergeResumed(held, fresh);
+    } else {
+      const cached = deviceSnapshot || prefixProofs ? undefined : held ?? readingThreads.get(fresh.id);
+      const ids = cached ? new Set(fresh.messages.map(message => message.id)) : undefined;
+      const overlap = ids ? cached!.messages.findIndex(message => ids.has(message.id)) : -1;
+      if (cached && overlap >= 0) {
+        // Keep the loaded prefix before a legacy core's fresh, overlapping tail.
+        fresh.messages = [...cached.messages.slice(0, overlap), ...fresh.messages];
+        const turnIds = new Set(fresh.turns.map(turn => turn.id));
+        fresh.turns = [...cached.turns.filter(turn => !turnIds.has(turn.id)), ...fresh.turns];
+        fresh.messagesBefore = cached.messagesBefore;
+      } else {
+        readingThreads.forget(fresh.id);
+        replaced = true;
+      }
+    }
+    const place = () => {
+      if (replaced && (!around || !fresh.messages.some(message => message.id === around))) readingPositions.delete(fresh.id);
+    };
+    if (held && prefixProofs) {
+      const mark = readingThreads.mark();
+      const current = () => newest() && !readingThreads.droppedSince(fresh.id, mark);
+      const repair = refreshHeldWindow(this.ctx, client, held, fresh, current, changed);
+      if (repair) {
+        this.#repairing = fresh;
+        return repair.catch(error => {
+          if (current() && !((wasDropped(error) || wasClosed(error)) && this.ctx.store.connection !== 'ready')) this.ctx.fail(error);
+        }).then(async () => {
+          if (current() && paintHeld) await this.#waitToProject();
+          if (!current()) return false;
+          place();
+          return true;
+        }).finally(() => { if (this.#repairing === fresh) this.#repairing = null; });
+      }
+    }
+    place();
+  }
+
   /** The pages presses loaded, which events patch beside the open thread. */
   pages(): (Thread | null | undefined)[] {
-    return [this.#waiting?.thread, this.#claimed?.thread];
+    const pages = [this.#waiting?.thread, this.#claimed?.thread];
+    if (this.#repairing) pages.push(this.#repairing);
+    return pages;
   }
 
   /** The page a press loaded for `threadId`, for the events that patch only the open thread. */
@@ -216,7 +371,7 @@ export function idlePreloadAllowed(): boolean {
 
 /** What the read-ahead reads of the thread store, beside what a press reads. */
 export interface ReadAheadSource extends Opener {
-  readonly readingThreads: { get(threadId: string): Thread | undefined; prefill(threadId: string, thread: Thread, bytes: number): boolean; mark(): number; droppedSince(threadId: string, mark: number): boolean };
+  readonly readingThreads: Opener['readingThreads'] & { has(threadId: string): boolean; prefill(threadId: string, thread: Thread, bytes: number): boolean; forget(threadId: string): boolean; mark(): number; droppedSince(threadId: string, mark: number): boolean };
   /** A project's rows as its card lists them: no archived, incognito or helper thread. */
   threadsOf(projectId: ProjectId): readonly ThreadSummary[];
 }
@@ -305,7 +460,7 @@ export class IdlePreloads {
   #wanted(row: ThreadSummary): boolean {
     const id = row.id;
     const { source } = this;
-    return !row.archived && !row.incognito && !this.#asked.has(id) && source.readingThreads.get(id) === undefined
+    return !row.archived && !row.incognito && !this.#asked.has(id) && !source.readingThreads.has(id)
       && source.openThread?.id !== id && source.subscribedThreadId !== id && source.openTarget !== id && !this.pressed(id);
   }
 
@@ -364,7 +519,7 @@ export class IdlePreloads {
   /** Into the reading cache, unless the thread came in meanwhile another way. */
   #keep(threadId: ThreadId, thread: Thread): void {
     const { source } = this;
-    if (source.readingThreads.get(threadId) || source.openThread?.id === threadId || source.openTarget === threadId || this.pressed(threadId)) return;
+    if (source.readingThreads.has(threadId) || source.openThread?.id === threadId || source.openTarget === threadId || this.pressed(threadId)) return;
     source.readingThreads.prefill(threadId, thread, readingCacheBytes(thread.messages));
   }
 }

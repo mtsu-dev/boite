@@ -8,14 +8,23 @@ export interface StdioRequestOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
   onAccepted?(): void;
+  writeKind?: 'steer' | 'stop';
 }
+
+type WriteKind = StdioRequestOptions['writeKind'];
+interface Outbound<Id> { id?: Id; line: string; kind: WriteKind }
 
 interface Pending {
   method: string;
-  onAccepted?(): void;
   resolve(value: unknown): void;
   reject(error: Error): void;
   cleanup(): void;
+}
+
+interface StdioHandlers {
+  message(message: Record<string, unknown>): void;
+  log(level: 'info' | 'warn' | 'error', message: string, context?: CoreLogContext): void;
+  fault?(reason: string): void;
 }
 
 /** Framing and request lifetime only: the adapter owns its protocol envelopes. */
@@ -24,23 +33,17 @@ export class StdioTransport<Id extends string | number> {
   #closed = false;
   #drainingStdout = false;
   #drainTimer: ReturnType<typeof setTimeout> | undefined;
+  #writeBlocked = false;
+  readonly #outbox: Outbound<Id>[] = [];
 
   private readonly child: SpawnedChild;
   readonly #label: string;
-  readonly #handlers: {
-      message(message: Record<string, unknown>): void;
-      log(level: 'info' | 'warn' | 'error', message: string, context?: CoreLogContext): void;
-      fault?(reason: string): void;
-    };
+  readonly #handlers: StdioHandlers;
 
   constructor(
     child: SpawnedChild,
     label: string,
-    handlers: {
-      message(message: Record<string, unknown>): void;
-      log(level: 'info' | 'warn' | 'error', message: string, context?: CoreLogContext): void;
-      fault?(reason: string): void;
-    },
+    handlers: StdioHandlers,
   ) {
     this.child = child;
     this.#label = label;
@@ -55,6 +58,7 @@ export class StdioTransport<Id extends string | number> {
     child.stdout.on('error', () => this.#break('stdout read failed'));
     child.stdout.on('close', () => this.#break('stdout closed'));
     child.stdin.on('error', () => this.#break('stdin write failed'));
+    child.stdin.on('drain', () => this.#flushWrites());
     // Input can close before the accepted turn's last stdout records drain.
     child.stdin.on('close', () => this.#drain());
   }
@@ -68,7 +72,12 @@ export class StdioTransport<Id extends string | number> {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const cancel = () => this.take(id)?.reject(new Error(`${this.#label}: request cancelled`));
       this.pending.set(id, {
-        method, onAccepted: options.onAccepted, resolve: resolve as (value: unknown) => void, reject,
+        method, reject,
+        resolve: value => {
+          // One read can carry both the acknowledgement and ensuing output.
+          try { options.onAccepted?.(); resolve(value as T); }
+          catch (error) { reject(error); }
+        },
         cleanup: () => { clearTimeout(timer); options.signal?.removeEventListener('abort', cancel); },
       });
       options.signal?.addEventListener('abort', cancel, { once: true });
@@ -76,22 +85,50 @@ export class StdioTransport<Id extends string | number> {
         timer = setTimeout(() => this.take(id)?.reject(new Error(`${this.#label}: request timed out`)), options.timeoutMs);
         timer.unref?.();
       }
-      this.write(payload);
+      this.write(payload, options.writeKind, id);
     });
   }
 
   take(id: Id): Pending | undefined {
     const entry = this.pending.get(id);
-    if (entry !== undefined) { this.pending.delete(id); entry.cleanup(); }
+    if (entry !== undefined) {
+      this.pending.delete(id);
+      entry.cleanup();
+      const queued = this.#outbox.findIndex(write => write.id === id);
+      if (queued >= 0) this.#outbox.splice(queued, 1);
+    }
     return entry;
   }
 
-  write(payload: unknown): void {
+  write(payload: unknown, kind?: WriteKind, id?: Id): void {
     if (this.#closed || this.#drainingStdout) return;
     try {
-      this.child.stdin.write(`${JSON.stringify(payload)}\n`, error => {
-        if (error) this.#break('stdin write failed');
-      });
+      const line = `${JSON.stringify(payload)}\n`;
+      if (!this.#writeBlocked) {
+        this.#writeLine(line);
+        return;
+      }
+      // Stop can pass unsent steering. An initial prompt, a reply or another
+      // control still keeps its place, and a line in the pipe always finishes.
+      let at = this.#outbox.length;
+      if (kind === 'stop') while (this.#outbox[at - 1]?.kind === 'steer') at -= 1;
+      this.#outbox.splice(at, 0, { line, kind, id });
+    } catch {
+      this.#break('stdin write failed');
+    }
+  }
+
+  #writeLine(line: string): void {
+    this.#writeBlocked = !this.child.stdin.write(line, error => {
+      if (error) this.#break('stdin write failed');
+    });
+  }
+
+  #flushWrites(): void {
+    if (this.#closed || this.#drainingStdout) return;
+    this.#writeBlocked = false;
+    try {
+      while (!this.#writeBlocked && this.#outbox.length > 0) this.#writeLine(this.#outbox.shift()!.line);
     } catch {
       this.#break('stdin write failed');
     }
@@ -103,6 +140,7 @@ export class StdioTransport<Id extends string | number> {
     clearTimeout(this.#drainTimer);
     this.#drainTimer = undefined;
     this.#drainingStdout = false;
+    this.#outbox.length = 0;
     for (const id of this.pending.keys()) {
       const error = new Error(reason);
       this.take(id)?.reject(diagnostic === undefined ? error : withLogDiagnostic(error, diagnostic));
@@ -116,6 +154,7 @@ export class StdioTransport<Id extends string | number> {
   #drain(): void {
     if (this.#closed || this.#drainingStdout) return;
     this.#drainingStdout = true;
+    this.#outbox.length = 0;
     // Prompt requests have no default deadline. A live child that keeps stdout
     // open must still reach the session's fault/exit handling within a bound.
     this.#drainTimer = setTimeout(() => this.#break('stdout drain timed out after stdin closed'), EXIT_GRACE_MS);
@@ -145,8 +184,30 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function isRpcEnvelope(message: Record<string, unknown>): boolean {
+function isRpcEnvelope(message: Record<string, unknown>): boolean {
   const method = message['method'], id = message['id'];
   return (method === undefined || typeof method === 'string') &&
     (id === undefined || id === null || typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id)));
+}
+
+export interface JsonRpcHandlers {
+  request(id: number | string, method: string, params: unknown): void;
+  notification(method: string, params: unknown): void;
+  error(method: string, raw: unknown): Error;
+}
+
+/** Muse and Codex use numeric request IDs and may receive server requests with string IDs. */
+export function dispatchJsonRpc(transport: StdioTransport<number>, message: Record<string, unknown>, handlers: JsonRpcHandlers): void {
+  if (!isRpcEnvelope(message)) return transport.invalid();
+  const { method, id, params, error, result } = message;
+  if (typeof method === 'string') {
+    if (typeof id === 'number' || typeof id === 'string') handlers.request(id, method, params);
+    else handlers.notification(method, params);
+    return;
+  }
+  if (typeof id !== 'number') return;
+  const entry = transport.take(id);
+  if (entry === undefined) return;
+  if (error === undefined || error === null) entry.resolve(result);
+  else entry.reject(handlers.error(entry.method, error));
 }

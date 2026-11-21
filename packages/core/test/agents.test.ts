@@ -19,6 +19,32 @@ afterEach(async () => { await h.stop(); });
 const opening = (threadId: string, turnId: string) => h.core.journal.listMessages(threadId).find(m => m.turnId === turnId && m.role !== 'assistant');
 const text = (part: MessagePart | undefined) => part?.type === 'text' ? part : null;
 
+test('an agent phase change invalidates its activity without invalidating provider heartbeats', async () => {
+  const { threadId } = await makeAgent(h, client);
+  const { journal, threads, bus } = h.core;
+  const turnId = 'agent-progress';
+  journal.putThread({ ...threads.require(threadId), status: 'running' });
+  journal.putTurn({ id: turnId, threadId, status: 'running', queuedAt: 1, startedAt: 2, finishedAt: null, usage: null, error: null });
+  threads.progress.begin(threadId, turnId);
+  await Bun.sleep(1100); // Let the introduction's throttled invalidation go out first.
+
+  const changed = client.next('agents.changed', () => true, 1400);
+  threads.progress.report(threadId, turnId, 'thinking');
+  await changed;
+  expect((await client.call('agents.snapshot', {})).status.find(row => row.threadId === threadId)?.activity).toBe('Thinking');
+
+  let repeated = 0;
+  const off = bus.onAny(name => { if (name === 'agents.changed') repeated++; });
+  try {
+    await Bun.sleep(1100);
+    threads.progress.contact(threadId, turnId);
+    threads.progress.report(threadId, turnId, 'thinking');
+    expect(repeated).toBe(0);
+  } finally {
+    off();
+  }
+}, 15_000);
+
 test('creating an agent creates its thread and starts its introduction there', async () => {
   const agent = await client.call('agents.profile.save', { value: agentValue(echoAccount(h)) });
   const { threadId } = await client.call('agents.open', { agentId: agent.id });
