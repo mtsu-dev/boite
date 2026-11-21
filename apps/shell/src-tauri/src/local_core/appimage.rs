@@ -42,6 +42,7 @@ fn deploy(root: &Path, key: &str, program: &Path, resources: &Path) -> io::Resul
     fs::DirBuilder::new().mode(0o700).create(&staging)?;
     let result = (|| {
         fs::copy(program, staging.join("boite-core"))?;
+        fs::copy(program.with_file_name("boite-launch"), staging.join("boite-launch"))?;
         fs::copy(resources.join("boite"), staging.join("boite"))?;
         for name in WORKERS { fs::copy(resources.join(name), staging.join(name))?; }
         fs::metadata(resources.join("ui/index.html"))?;
@@ -70,6 +71,7 @@ fn copy_tree(source: &Path, destination: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn a_failed_copy_publishes_nothing_and_a_completed_core_survives_loss_of_the_mount() {
@@ -82,12 +84,23 @@ mod tests {
         fs::write(mount.join("boite"), b"CLI").unwrap();
         fs::write(mount.join("ui/index.html"), b"index").unwrap();
         fs::write(mount.join("ui/assets/front.js"), b"UI").unwrap();
+        let launcher = mount.join("boite-launch");
+        fs::write(&launcher, b"launcher").unwrap();
+        fs::set_permissions(&launcher, fs::Permissions::from_mode(0o755)).unwrap();
         assert!(deploy(&data, "package", &program, &mount).is_err());
         assert!(fs::read_dir(&data).unwrap().next().is_none());
         for name in WORKERS { fs::write(mount.join(name), b"worker").unwrap(); }
+        let pending_launcher = mount.join("launcher-pending");
+        fs::rename(&launcher, &pending_launcher).unwrap();
+        assert!(deploy(&data, "package", &program, &mount).is_err());
+        assert!(fs::read_dir(&data).unwrap().next().is_none());
+        fs::rename(pending_launcher, launcher).unwrap();
         let deployed = deploy(&data, "package", &program, &mount).unwrap();
         fs::remove_dir_all(&mount).unwrap();
         assert_eq!(fs::read(deployed.join("boite-core")).unwrap(), b"core");
+        let deployed_launcher = deployed.join("boite-launch");
+        assert_eq!(fs::read(&deployed_launcher).unwrap(), b"launcher");
+        assert_eq!(fs::metadata(deployed_launcher).unwrap().mode() & 0o777, 0o755);
         assert_eq!(fs::read(deployed.join("boite")).unwrap(), b"CLI");
         assert_eq!(fs::read(deployed.join(WORKERS[0])).unwrap(), b"worker");
         assert_eq!(fs::read(deployed.join("ui/assets/front.js")).unwrap(), b"UI");

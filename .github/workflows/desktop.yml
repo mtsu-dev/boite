@@ -227,7 +227,7 @@ jobs:
         run: |
           fuse=libfuse2
           if apt-cache show libfuse2t64 >/dev/null 2>&1; then fuse=libfuse2t64; fi
-          bash scripts/ci/ubuntu-apt.sh libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb dbus-x11 xdg-utils "$fuse"
+          bash scripts/ci/ubuntu-apt.sh libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb dbus-x11 xdg-utils binutils squashfs-tools "$fuse"
       - name: Run Intel binaries under Rosetta
         if: runner.os == 'macOS' && env.BOITE_TARGET == 'x86_64-apple-darwin'
         run: arch -x86_64 /usr/bin/true 2>/dev/null || sudo softwareupdate --install-rosetta --agree-to-license
@@ -293,6 +293,9 @@ jobs:
           # shellcheck disable=SC2086 # BUNDLE_CONFIGS holds several arguments.
           bun apps/shell/scripts/tauri.ts build $BUNDLE_CONFIGS --bundles deb
           sudo dpkg -i "$BUNDLE_DIR"/deb/*.deb
+          # The group launcher as the package and its installation hold it: the one built here, a static executable, 0755.
+          bun scripts/ci/linux-package-launcher.ts deb "$BUNDLE_DIR"/deb/*.deb packages/core/dist/boite-launch
+          bun scripts/ci/linux-package-launcher.ts root / packages/core/dist/boite-launch
           dbus-run-session -- xvfb-run -a bun scripts/ci/desktop-smoke.ts /usr/bin/boite-shell
       - name: Bundle and test Linux AppImage
         if: runner.os == 'Linux'
@@ -311,10 +314,11 @@ jobs:
             echo "::warning::AppImage tool download failed with a server error (attempt $attempt of 3); retrying in $((attempt * 30)) s"
             sleep $((attempt * 30))
           done
+          mkdir "$RUNNER_TEMP/appimage"
           appimage=$(realpath "$BUNDLE_DIR"/appimage/*.AppImage)
+          (cd "$RUNNER_TEMP/appimage" && "$appimage" --appimage-extract > /dev/null)
+          bun scripts/ci/linux-package-launcher.ts appimage "$appimage" "$RUNNER_TEMP/appimage/squashfs-root" packages/core/dist/boite-launch
           if [ "$(uname -m)" = aarch64 ]; then
-            mkdir "$RUNNER_TEMP/appimage"
-            (cd "$RUNNER_TEMP/appimage" && "$appimage" --appimage-extract > /dev/null)
             cmp packages/core/dist/boite-core "$RUNNER_TEMP/appimage/squashfs-root/usr/bin/boite-core"
           fi
           dbus-run-session -- xvfb-run -a bun scripts/ci/desktop-smoke.ts "$appimage" --resident

@@ -141,7 +141,17 @@ bash docker/smoke.sh boite-server:test
 The test creates its own container and data volume. It verifies the built UI,
 authentication, installed provider executables, an echo turn, graceful shutdown
 and persistence after restart, then removes its container and volume. It makes
-no real provider call and uses no existing login directory.
+no real provider call and uses no existing login directory. It also runs
+`docker/launcher-smoke.ts` under Docker's default seccomp filter. The group
+launcher beside bun must be mode 755 and run. An agent spawned the way the core
+spawns one must end with that core once it is killed, and the probe's own answer
+says how: ready, the agent must be admitted natively in its own group; refused
+for a kernel before 6.9, or a pidfd syscall the filter denies that the smoke's
+own call to it fails with the same errno, it must fall back to the sh watcher,
+and the smoke claims no native admission. Any other refusal, such as a launcher
+that does not speak the core's protocol or whose setup or exec fails while
+pidfds work, fails the smoke. A second agent goes through the watcher on every
+kernel.
 
 ## Updating from the app
 
