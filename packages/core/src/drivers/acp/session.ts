@@ -9,7 +9,7 @@ import type {
   SessionConfigOption,
   SessionNotification,
 } from '@agentclientprotocol/sdk/unstable';
-import type { OsProfile, PermissionMode, ProviderDescriptor, ProviderId, ModelInfo } from '@boite/contracts';
+import type { PermissionMode, ProviderId, ModelInfo } from '@boite/contracts';
 import { messageOf, unavailable } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { agentEnv, profileFor, resolveLaunch } from '../../providers/resolve.ts';
@@ -40,17 +40,6 @@ import {protectedAcp} from './protected.ts';
 const GLOG_INFO = /^I\d{4} \d{2}:\d{2}:\d{2}\.\d+\s/;
 /** How long an agent gets to answer `session/cancel` before its process is closed. */
 const STOP_GRACE_MS = 3_000;
-
-/**
- * The argv a turn spawns with: the descriptor's `launch.args` as they are, plus
- * the thread's permission mode spliced in for an agent whose mode is a command
- * line option rather than a `session/set_mode`. A probe has no thread and no
- * mode, so it launches the declared line untouched.
- */
-function launchArgs(profile: OsProfile | undefined, prefix: string[], provider: ProviderDescriptor, mode: PermissionMode): string[] {
-  const declared = profile?.launch?.args ?? [];
-  return [...prefix, ...(isGrok(provider) ? grokLaunchArgs(declared, mode) : declared)];
-}
 
 /**
  * What the driver learns about agents across their processes, for the life of
@@ -592,10 +581,11 @@ export class AcpSession {
     const native = ctx.provider.id === OPENCODE_V2 && openCodeServerReachable(launch.executable, this.#deps.agentShim);
     if (ctx.provider.id === OPENCODE_V2 && !native) ctx.log('info', `acp: ${launch.executable} runs OpenCode 2 in a sandbox the core cannot connect to; it speaks ACP on its stdio`);
     const password = native ? randomBytes(32).toString('base64url') : null;
-    const args = launchArgs(profile, launch.prefix, ctx.provider, ctx.thread.permissionMode);
+    const declared = profile?.launch?.args ?? [];
+    const args = [...launch.prefix, ...(isGrok(ctx.provider) ? grokLaunchArgs(declared, ctx.thread.permissionMode) : declared)];
     // Preserve executable wrappers and fixture prefixes, replace only the ACP
     // subcommand. The native server's stdin is its ownership lease.
-    const nativeArgs = [...launch.prefix, ...(profile?.launch?.args ?? ['acp']).filter(arg => arg !== 'acp'), 'serve', '--stdio', '--port', '0'];
+    const nativeArgs = [...launch.prefix, ...declared.filter(arg => arg !== 'acp'), 'serve', '--stdio', '--port', '0'];
     // OpenCode 2 compacts at the thread's limit once a process has read the
     // model's window; until then it keeps its own ceiling.
     const buffer = native ? wantedCompactionBuffer(this.#memory, ctx) : null;
