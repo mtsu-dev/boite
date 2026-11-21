@@ -526,16 +526,18 @@ close of the last open PR carries the same question (`WATCH_DONE_HINT`) in that
 wake and marks those PRs asked, so the conversation gets one turn, not two:
 while a watch holds a close it has not told, the sweep and detections wait for
 that wake. The hint follows the same ask-once and restore rules. A
-merge made by the agent's own account during one of its turns, give or take
-30 seconds of GitHub's clock (`closedAt`), wakes no watch: the agent did it,
+merge made by the agent's own account during one of its turns, to GitHub's
+second (`closedAt`), wakes no watch: the agent did it,
 and the sweep asks after that turn if it did not put itself in Done. The same
 account while the agent rests is the user merging by hand with the login the
 agent's `gh` shares, or an auto-merge the agent armed: that wake tells it like
-anyone else's, whatever the cache, so the thread does not stay open unasked.
+anyone else's, whatever the cache, so the thread does not stay open unasked;
+read while a later turn runs, that wake waits for the turn to end.
 The question and the hint make Done the default (`DONE_RULE`): only something
 new for the user or a part of the task beyond these PRs keeps a thread open.
-The agent guide also tells an agent that merges its last PR to run
-`boite thread done` in that turn, which saves the question's turn.
+The guide of a top-level conversation (not a subagent's or a mochi's, which
+`agent.done` refuses) also tells its agent to run `boite thread done` in the
+turn its last PR merged, which saves the question's turn.
 
 `agent.done` (`threads/agent-done.ts`) puts only the caller's own top-level
 conversation in Done; mochis' threads and sub-threads are refused. While a turn

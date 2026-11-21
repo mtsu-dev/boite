@@ -664,8 +664,13 @@ for (const others of Object.keys(hintCases) as (keyof typeof hintCases)[]) {
   });
 }
 
-for (const when of ['at rest', 'in a turn'] as const) {
-  test(`a merge by the agent's own account ${when === 'at rest' ? 'while its agent rests wakes it with the Done hint' : 'during its agent\'s turn ends the watch without a wake'}`, async () => {
+const ownMergeCases = {
+  'in a turn': 'during its agent\'s turn ends the watch without a wake',
+  'after the turn': 'ten seconds after its agent\'s turn wakes it with the Done hint',
+  'read in the next turn': 'between two turns, read while the next one runs, wakes it once that turn ends',
+} as const;
+for (const when of Object.keys(ownMergeCases) as (keyof typeof ownMergeCases)[]) {
+  test(`a merge by the agent's own account ${ownMergeCases[when]}`, async () => {
     const { owner, threadId, github, drive } = await watchedThread();
     const core = harness!.core;
     const cwd = join(harness!.dataDir, 'worktree');
@@ -675,12 +680,21 @@ for (const when of ['at rest', 'in a turn'] as const) {
     await settled(threadId);
     await owner.call('threads.watchPullRequest', { threadId, url: URL });
     await drive();
-    // The user merges by hand with the account the agent's gh uses, long after the agent's last turn; or the agent merges within it.
+    // The agent merges within its turn; or the user merges by hand, with the account the agent's gh uses, once it ended.
     const last = core.journal.lastTurn(threadId)!;
-    github.closedAt = new Date(when === 'at rest' ? Date.now() + 10 * 60_000 : last.startedAt! + 1_000).toISOString();
+    github.closedAt = new Date(when === 'in a turn' ? last.startedAt! : last.finishedAt! + 10_000).toISOString();
     github.state = 'MERGED';
     github.closedBy = 'meetsu';
+    // The watch reads the merge while another turn of the agent runs.
+    const busy = when === 'read in the next turn' ? spyOn(core.threads, 'isBusy').mockReturnValue(true) : null;
     await drive();
+    if (busy) {
+      // Told, not dropped: the wake waits for that turn to end.
+      expect(core.pullRequestWatches.of(threadId)).toEqual([expect.objectContaining({ url: URL })]);
+      expect(wakes(threadId)).toHaveLength(0);
+      busy.mockRestore();
+      await drive();
+    }
     await settled(threadId);
     expect(core.pullRequestWatches.of(threadId)).toEqual([]);
     if (when === 'in a turn') { expect(wakes(threadId)).toHaveLength(0); return; }

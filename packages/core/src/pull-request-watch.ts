@@ -14,8 +14,8 @@ const PREFIX = 'pr-watches:';
 const MIN_PASS_GAP_MS = 1_000;
 /** Watches one conversation may hold. */
 const WATCH_LIMIT = 10;
-/** How far GitHub's merge time may sit outside the agent's turn and still be the agent's. */
-const CLOCK_SLACK_MS = 30_000;
+/** GitHub's `closedAt` counts whole seconds: a merge that close to a turn's edge is the agent's. */
+const CLOCK_SLACK_MS = 1_000;
 
 export interface WatchTiming {
   /** Between two fingerprint reads of one pull request. */
@@ -331,12 +331,14 @@ export class PullRequestWatches {
   }
 
   /**
-   * Whether the agent was at work when the pull request ended at `at`: busy
-   * now, or within one of its turns, give or take GitHub's clock. No time from
-   * GitHub keeps the safe reading that the agent did it.
+   * Whether the agent was at work when the pull request ended at `at`: within
+   * one of its turns, the running one included, to GitHub's second. Being busy
+   * when the watch reads says nothing: a merge between two turns, read during
+   * the next, is still the user's, and `#deliver` waits for that turn to end.
+   * No time from GitHub keeps the safe reading that the agent did it.
    */
   #atWork(threadId: ThreadId, at: number | null): boolean {
-    if (at === null || this.core.threads.isBusy(threadId)) return true;
+    if (at === null) return true;
     const turns = this.core.journal.listTurns(threadId);
     for (let index = turns.length - 1; index >= 0; index--) {
       const { startedAt, finishedAt } = turns[index]!;
