@@ -27,7 +27,7 @@ test('local launch links and file actions use the owning desktop, with browser a
     await page.waitFor('window.__fileOpens.length === 1');
     expect(await page.evaluate('document.querySelector("[data-testid=chat-file]")')).toBeNull();
     expect(await page.evaluate('window.__fileOpens[0].path')).toBe('game.exe');
-    await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+    await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'local-file-launch-desktop.png'));
 
     await page.click('a[data-file-path="README.md"]');

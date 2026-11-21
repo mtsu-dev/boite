@@ -28,7 +28,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
     const HISTORY_FULL = 640;
     for (const width of [1300, 390]) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: HISTORY_FULL, deviceScaleFactor: 1, mobile: width === 390 });
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.settleAnimations();
       await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
       const gap = await page.evaluate<number>(`(() => {
         const last = [...document.querySelectorAll(${LAST})].at(-1);

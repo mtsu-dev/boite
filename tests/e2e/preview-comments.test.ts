@@ -19,7 +19,7 @@ beforeAll(async () => {
 afterAll(async () => { await page?.close(); await ui?.close(); }, 30_000);
 
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.settleAnimations();
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }
 

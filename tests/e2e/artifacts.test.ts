@@ -116,7 +116,7 @@ test('live output after published files stays at the bottom on desktop and paire
         await page!.screenshot(join(import.meta.dir, '.artifacts', `artifacts-continued-failure-${mobile ? 'phone' : 'desktop'}.png`));
         throw error;
       });
-      await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+      await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `artifacts-continued-${mobile ? 'phone' : 'desktop'}.png`));
       await page.send('Page.reload', {});
       await page.waitFor('document.querySelector("[data-testid=status-connection]")?.dataset.state === "ready"');
@@ -184,7 +184,7 @@ test('remote file previews load under the shell content security policy', async 
     for (const phone of [false, true]) {
       if (phone) await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
       await page.evaluate(`document.querySelector('${preview}').scrollIntoView({ block: 'center' })`);
-      await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+      await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `remote-preview-${phone ? 'phone' : 'desktop'}.png`));
       expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     }

@@ -14,7 +14,6 @@ const READY = 'document.querySelector("[data-testid=inline-view]")?.dataset.read
 // A headless browser reports the pointer of the machine it runs on, a mouse on one runner and none on another: each run is told which it has.
 const DESKTOP_POINTER = '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4';
 const PHONE_POINTER = '--blink-settings=primaryHoverType=1,availableHoverTypes=1,primaryPointerType=2,availablePointerTypes=2';
-const SETTLED = 'Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])';
 
 test('a view published during a turn is drawn at the end of the finished answer, on desktop and paired phone', async () => {
   ensureProductionUi();
@@ -86,7 +85,7 @@ test('a view published during a turn is drawn at the end of the finished answer,
       expect(await page.evaluate('document.querySelector("[data-testid=inline-view] iframe").getAttribute("sandbox")')).toBe('allow-scripts');
       expect(await page.evaluate('document.querySelector("[data-testid=timeline]").textContent.includes("pendulum.html")')).toBe(false);
       await page.evaluate('document.querySelector("[data-testid=inline-view]").scrollIntoView({ block: "center" })');
-      await page.evaluate(SETTLED);
+      await page.settleAnimations();
       await Bun.sleep(400);
       await page.screenshot(join(SHOTS, `inline-view-${mobile ? 'phone' : 'desktop'}.png`));
 
@@ -182,7 +181,7 @@ test('a view the answer places is drawn between the paragraphs around it, on des
       expect(layout.text).toBeLessThanOrEqual(layout.view);
       expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
       await page.evaluate('document.querySelector("[data-testid=inline-view]").scrollIntoView({ block: "center" })');
-      await page.evaluate(SETTLED);
+      await page.settleAnimations();
       await Bun.sleep(400);
       await page.screenshot(join(SHOTS, `inline-view-placed-${mobile ? 'phone' : 'desktop'}.png`));
       expect(page.errors()).toEqual([]);
