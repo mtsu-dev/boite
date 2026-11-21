@@ -15,7 +15,7 @@
  */
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import type { MessagePart, ProviderId } from '../packages/contracts/src/index.ts';
 import { connect } from '../packages/core/src/client.ts';
 import { removeDirectory, startCore } from '../tests/e2e/lib/core.ts';
@@ -33,6 +33,17 @@ const VERBOSE = process.argv.includes('--verbose');
 const CORE_MAIN = flag('core', '');
 const PROMPT = 'Reply with exactly the word: ok';
 const TURN_TIMEOUT_MS = 180_000;
+const EXIT_TIMEOUT_MS = 60_000;
+
+/** Whether `promise` settled within `ms`; the timer goes either way, so nothing holds the bench open. */
+async function settled(promise: Promise<void>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([promise.then(() => true), new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), ms); })]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 if (process.env.BOITE_BENCH_HARNESS !== '1') throw new Error('set BOITE_BENCH_HARNESS=1: every run spends a turn on the real agents');
 
@@ -56,7 +67,6 @@ const results = new Map<string, Run[]>();
 try {
   const project = await client.call('projects.add', { path: directory, name: 'bench' });
   const accounts = await client.call('accounts.list', {});
-  const executables = new Map((await client.call('providers.list', {})).loaded.map((provider) => [provider.id, provider.executable]));
   const providers = [...new Set(accounts.filter((account) => account.status === 'ok' && account.providerId !== 'echo').map((account) => account.providerId))]
     .filter((id) => WANTED.length === 0 || WANTED.includes(id));
   if (providers.length === 0) throw new Error('no logged-in agent on this machine');
@@ -77,11 +87,11 @@ try {
           permissionMode: 'bypassPermissions',
         });
         await client.call('threads.subscribe', { threadId: thread.id });
-        const executable = executables.get(providerId as ProviderId) ?? null;
         // The type of each part of the thread's messages, to tell answer text from reasoning.
         const parts = new Map<string, string>();
         let processes = 0;
-        let firstSpawn = 0;
+        /** When each of the thread's processes was announced, by pid: the session's is picked from the core's log after the turn. */
+        const startedAt = new Map<number, number>();
         let firstWord = 0;
         let sentAt = 0;
         // A text part may come whole, with no delta after it.
@@ -97,7 +107,7 @@ try {
           parts.set(`${event.messageId}:${event.partIndex}`, event.part.type);
           written(event.part);
         });
-        // The turn's other processes still running, the title call's included: the next row waits for none.
+        // The thread's processes still running, the session's and the title call's included: the next row waits for none.
         const live = new Set<number>();
         let gone = (): void => undefined;
         const offExited = client.on('process.exited', (record) => {
@@ -108,11 +118,8 @@ try {
         const offProcess = client.on('process.started', (record) => {
           if (record.threadId !== thread.id) return;
           processes += 1;
-          // By name: the core may run the program an npm launcher on PATH stands for, not the launcher itself.
-          const own = executable !== null && basename(record.exe) === basename(executable);
-          // The first is the session, which stays warm until the archive; the title's and the helpers' end alone.
-          if (firstSpawn === 0 && own) firstSpawn = performance.now();
-          else live.add(record.pid);
+          startedAt.set(record.pid, performance.now());
+          live.add(record.pid);
           if (VERBOSE) console.log(`  +${Math.round(performance.now() - sentAt)} ms ${(record.commandLine ?? record.exe).slice(0, 110)}`);
         });
         const offDelta = client.on('message.delta', (event) => {
@@ -136,9 +143,12 @@ try {
         const totalMs = performance.now() - sentAt;
         offDelta();
         offAny();
-        offProcess();
         offStarted();
         offPart();
+        // The core logs the session's own process, never a title call's or a helper's.
+        const logged = await client.call('core.logs', { threadId: thread.id, search: 'driver.process.started', limit: 20 });
+        const sessionPid = logged.filter((record) => record.event === 'driver.process.started').map((record) => record.data?.pid).findLast((pid) => typeof pid === 'number');
+        const firstSpawn = typeof sessionPid === 'number' ? (startedAt.get(sessionPid) ?? 0) : 0;
         if (turn.error !== null) console.log(`[bench] ${providerId} run ${index + 1} failed: ${turn.error}`);
         const run: Run = {
           spawnMs: firstSpawn === 0 ? Number.NaN : firstSpawn - sentAt,
@@ -149,10 +159,13 @@ try {
         const row = `${providerId}, ${variant.name}`;
         results.set(row, [...(results.get(row) ?? []), run]);
         console.log(`${row} run ${index + 1}: spawn ${Math.round(run.spawnMs)} ms, first word ${Math.round(run.firstWordMs)} ms, done ${Math.round(run.totalMs)} ms, ${run.processes} processes`);
-        // The title call may still run: let it end before the next row starts.
-        await Promise.race([new Promise<void>((resolve) => { gone = resolve; if (live.size === 0) resolve(); }), Bun.sleep(TURN_TIMEOUT_MS)]);
-        offExited();
+        // The archive ends the warm session; the title call may still run. Nothing of this row runs into the next.
         await client.call('threads.archive', { threadId: thread.id }).catch(() => undefined);
+        if (!(await settled(new Promise<void>((resolve) => { gone = resolve; if (live.size === 0) resolve(); }), EXIT_TIMEOUT_MS))) {
+          console.log(`[bench] ${row} run ${index + 1}: ${live.size} processes still running after ${EXIT_TIMEOUT_MS / 1000} s, pids ${[...live].join(', ')}`);
+        }
+        offProcess();
+        offExited();
       }
     }
   }

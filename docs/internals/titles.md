@@ -9,9 +9,9 @@ can replace the prompt title during the first turn. It preserves manual names.
 - A thread is created with the first line of its prompt, cut at sixty
   characters on a word, and `titleSource: 'prompt'`. A thread with no prompt
   yet keeps the title the client sent.
-- When the first user turn's agent starts its first assistant message, or the
-  turn ends without one, the core asks a driver with a `title` hook for a
-  title (see [which model writes it](#which-model-writes-it)). Waiting keeps
+- When the first user turn's agent writes text, reasoning or a tool call, or
+  the turn ends without any (a notice, an error or a card does not count), the
+  core asks a driver with a `title` hook for a title (see [which model writes it](#which-model-writes-it)). Waiting keeps
   the title call's process off the agent's own startup
   ([performance](performance.md#first-word-of-a-new-thread)); a regeneration
   asked meanwhile replaces that first title. The prompt asks for 2 to
