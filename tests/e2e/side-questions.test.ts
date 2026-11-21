@@ -51,6 +51,8 @@ test('desktop and paired phone side answers stay temporary until explicitly fork
   await page.click('[data-testid=thread-row]');
   await page.waitFor("document.querySelector('[data-testid=thread-title]')?.textContent.includes('Inspect the configuration')");
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  // The title comes from the thread list before the paired device has loaded the turn.
+  await page.waitFor("document.querySelector('[data-testid=permission-card][data-decision=pending]')");
   await page.type('[data-testid=composer-input]', '/btw A short side answer on the phone');
   await page.click('[data-testid=composer-send]');
   await page.waitFor("document.querySelector('[data-testid=btw-answer]')?.textContent.includes('Side answer: A short side answer on the phone')");

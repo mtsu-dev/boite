@@ -20,6 +20,10 @@ reviewed goals.
 When the agent stops on a blocker, the bar reads Waiting for your answer, and
 your next message resumes the goal. Goals work with every agent.
 
+When the agent ends a turn while subagents or a workflow it started still run,
+the goal waits for them: the next turn comes after their results, not one
+turn after another that only says they still run.
+
 ## How a reviewed goal is checked
 
 1. When the agent claims it is done, Boite starts a reviewer in a new
@@ -65,8 +69,8 @@ A long prompt starts a reviewed goal on itself, with its checklist and a card
 on the project board. The agent may also start one when your prompt lists
 several requests. Remove the goal from the bar to drop it.
 
-Settings, General, Agent replies, Automatic goals turns them off on that
-machine, for every device connected to it; they are on by default. Prompt
+Settings, General, Agent replies, Automatic goals turns them on on that
+machine, for every device connected to it; they are off by default. Prompt
 length, under the switch, sets the threshold: 1500 characters by default.
 Only the owner sees these settings.
 

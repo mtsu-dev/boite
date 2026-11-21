@@ -1,6 +1,7 @@
-import { Archive, ArrowRightLeft, Copy, MessageSquare, Pause, PencilLine, Pin, PinOff, Play, RotateCcw, Settings2, X } from '@lucide/svelte';
+import { Archive, ArrowRightLeft, Copy, MessageSquare, MessageSquarePlus, Pause, PencilLine, Pin, PinOff, Play, RotateCcw, Settings2, X } from '@lucide/svelte';
 import type { AgentProfile } from '@boite/contracts';
 import { cancelMove, moveBot, moveItems, moveMachines } from './agent-move-flow';
+import { startNewConversation } from './agent-new-session';
 import { resetBuiltin, type AgentsView } from './agents.svelte';
 import { confirm } from './confirm.svelte';
 import { contextMenu } from './context-menu.svelte';
@@ -15,12 +16,14 @@ interface AgentMenuOptions {
   phone?: boolean;
   /** It waits to move to another machine once its turn ends: the move can be cancelled. */
   leaving?: boolean;
+  /** It has a conversation: a new one can follow it (`agent-new-session.ts`). */
+  conversation?: boolean;
 }
 
 /**
  * A bot's row menu, cut from the thread menu (`threadMenuItems`): the same
  * groups in the same order (Open; what it is called and who has it: Rename,
- * Pin, Edit, Move; where it stands: Pause, Archive; then its tools), with the
+ * Pin, Edit, New conversation, Move; where it stands: Pause, Archive; then its tools), with the
  * same words and glyphs where a thread has the action, and only what a bot has. `store` is the bot's machine. Every
  * action but Open and Copy the path is its owner's, as in the bot's own menu
  * (`AgentHeader`): a paired device keeps those two on a desktop and has no
@@ -34,13 +37,14 @@ export function agentMenuItems(store: Store, agent: AgentProfile, options: Agent
   const archive: MenuItem = agent.builtin ? { id: 'reset', label: labels.builtin.reset, glyph: RotateCcw, danger: true } : { id: 'archive', label: labels.archive, glyph: Archive, danger: true };
   const rename: MenuItem = { id: 'rename', label: strings.common.rename, glyph: PencilLine };
   const edit: MenuItem = { id: 'edit', label: labels.edit, glyph: Settings2 };
-  if (options.phone) return owner ? [rename, pin, edit, separator('sep-archive'), status, archive] : [];
+  const fresh: MenuItem[] = options.conversation ? [{ id: 'new-session', label: labels.newConversation.menu, glyph: MessageSquarePlus }] : [];
+  if (options.phone) return owner ? [rename, pin, edit, ...fresh, separator('sep-archive'), status, archive] : [];
   // Like "Move to project": a picker opens where the menu stood. A move that waits for the turn's end is cancelled instead.
   const move: MenuItem[] = options.leaving ? [{ id: 'move-cancel', label: strings.threadMove.cancelMove, glyph: X }]
     : moveMachines(store).others.length > 0 ? [{ id: 'move', label: labels.move.menu, glyph: ArrowRightLeft }] : [];
   return [
     { id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open },
-    ...(owner ? [separator('sep-open'), rename, pin, edit, ...move, separator('sep-archive'), status, archive] : []),
+    ...(owner ? [separator('sep-open'), rename, pin, edit, ...fresh, ...move, separator('sep-archive'), status, archive] : []),
     separator('sep-tools'),
     { id: 'copy', label: strings.sidebar.copyPath, glyph: Copy }
   ];
@@ -66,6 +70,7 @@ export function pickAgentAction(owner: AgentsView, agent: AgentProfile, action: 
     case 'resume': void saveAgent(owner, agent.id, { status: 'active' }, view.report); return;
     case 'archive': void confirmArchive(agent.name).then(sure => sure && saveAgent(owner, agent.id, { status: 'archived' }, view.report)); return;
     case 'reset': void resetBuiltin(owner, agent); return;
+    case 'new-session': void startNewConversation(owner, agent, view.report); return;
     case 'move': contextMenu.follow(moveItems(owner.store, agent.id), id => void moveBot(owner, agent, id, view.report)); return;
     case 'move-cancel': void cancelMove(owner, agent, view.report); return;
     case 'copy': void copyBrainPath(owner, agent.id, view.report); return;

@@ -19,7 +19,6 @@ afterAll(async () => {
 }, 30_000);
 
 const STORE = `globalThis.__boiteTest.workspace.active`;
-const settle = `Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`;
 const shot = (page: BrowserPage, name: string) => page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
 
 /** A spare account with one idle conversation on it, the seeded ones being busy. */
@@ -47,7 +46,7 @@ async function openOrphan(page: BrowserPage, name: string): Promise<void> {
   expect(await page.evaluate(`document.querySelector('[data-testid="composer-account-removed"]') === null`)).toBe(true);
   await page.evaluate(`${STORE}.accounts.filter(account => account.providerId === 'echo').forEach(account => { account.status = 'unauthenticated'; })`);
   await page.waitFor(`document.querySelector('[data-testid="composer-account-removed"]')`);
-  await page.evaluate(settle);
+  await page.settleAnimations();
   await shot(page, name);
   await page.click('[data-testid="account-gone-pick"]');
   await page.waitFor(`document.querySelector('[data-testid="composer-picker-menu"]')`);
@@ -63,7 +62,7 @@ test('removing an account warns about its conversations, which move to another a
   await page.evaluate(`${remove}.click()`);
   await page.waitFor(`document.querySelector('[data-testid="confirm-dialog"]')`);
   expect(await page.text('[data-testid="confirm-dialog"]')).toContain('1 conversation still uses this account. Its next message moves it');
-  await page.evaluate(settle);
+  await page.settleAnimations();
   await shot(page, 'account-removal-warning-desktop');
   await page.click('[data-testid="confirm-ok"]');
   await page.waitFor(`${STORE}.accounts.every(account => account.id !== window.__account)`);

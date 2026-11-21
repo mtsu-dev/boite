@@ -14,7 +14,7 @@ import { Usage } from './cli-args.ts';
 export const STREAM_REQUEST = 'boite settings request deviceStream true --why "<what the live stream is for>"';
 const STREAM_HINT = `The live stream is off by default; to ask the owner for it: ${STREAM_REQUEST}`;
 
-const DEVICE_HELP = `boite device <command> [args] [--json]
+export const DEVICE_HELP = `boite device <command> [args] [--json]
   list                           iOS Simulators and Android emulators or phones on
                                  this machine, which platforms it runs, and what
                                  this conversation's Device panel has open

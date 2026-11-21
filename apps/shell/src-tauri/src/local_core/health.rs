@@ -4,7 +4,7 @@
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
@@ -40,7 +40,7 @@ impl CoreFile {
         (self.pid, self.port)
     }
 
-    pub(super) fn start(&self) -> CoreStart {
+    pub(crate) fn start(&self) -> CoreStart {
         CoreStart { at: self.started_at, key: self.start_key.clone() }
     }
 }
@@ -79,6 +79,7 @@ pub(super) fn endpoint_of(file: &CoreFile) -> CoreEndpoint {
     CoreEndpoint {
         url: format!("http://{host}:{}", file.port),
         token: file.token.clone(),
+        port: file.port,
     }
 }
 
@@ -144,7 +145,7 @@ const START_MARGIN_MS: u64 = 2000;
 /// with every step of the wall clock, so it cannot be compared with the
 /// core's clock. An unknown start on either side keeps the answer of
 /// `alive`, the rule before starts were compared.
-pub(super) fn same_core(pid: u32, start: &CoreStart) -> bool {
+pub(crate) fn same_core(pid: u32, start: &CoreStart) -> bool {
     if !platform::process::alive(pid) {
         return false;
     }
@@ -180,22 +181,27 @@ const HEALTH_RESPONSE_LIMIT: usize = 8 * 1024;
 /// `HEALTH_TIMEOUT` elapses) and handed to `health_response`, which is what
 /// actually decides whether this is the core `core.json` described.
 pub(crate) fn health(port: u16, expected_pid: u32) -> Option<HealthBody> {
+    let deadline = Instant::now() + HEALTH_TIMEOUT;
     let address = SocketAddr::from(([127, 0, 0, 1], port));
     let mut stream = TcpStream::connect_timeout(&address, HEALTH_TIMEOUT).ok()?;
-    let _ = stream.set_read_timeout(Some(HEALTH_TIMEOUT));
-    let _ = stream.set_write_timeout(Some(HEALTH_TIMEOUT));
 
     let request =
         format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
-    stream.write_all(request.as_bytes()).ok()?;
+    let mut remaining = request.as_bytes();
+    while !remaining.is_empty() {
+        let wait = deadline.checked_duration_since(Instant::now()).filter(|wait| !wait.is_zero())?;
+        stream.set_write_timeout(Some(wait)).ok()?;
+        let written = stream.write(remaining).ok().filter(|written| *written != 0)?;
+        remaining = &remaining[written..];
+    }
 
     let mut response = Vec::new();
     let mut chunk = [0u8; 1024];
-    loop {
-        if response.len() >= HEALTH_RESPONSE_LIMIT {
-            break;
-        }
-        match stream.read(&mut chunk) {
+    while response.len() < HEALTH_RESPONSE_LIMIT {
+        let Some(wait) = deadline.checked_duration_since(Instant::now()).filter(|wait| !wait.is_zero()) else { break };
+        stream.set_read_timeout(Some(wait)).ok()?;
+        let limit = chunk.len().min(HEALTH_RESPONSE_LIMIT - response.len());
+        match stream.read(&mut chunk[..limit]) {
             Ok(0) => break,
             Ok(read) => response.extend_from_slice(&chunk[..read]),
             Err(_) => break,
@@ -227,7 +233,6 @@ fn health_response(response: &[u8], expected_pid: u32) -> Option<HealthBody> {
 mod tests {
     use super::*;
     use std::process::{Command, Stdio};
-    use std::time::Instant;
 
     // -----------------------------------------------------------------------
     // Finding 4 (security audit, 2026-09-12): `health` used to accept any

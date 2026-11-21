@@ -40,7 +40,7 @@ Windows registry policies are not read yet; the file is the only source.
 | Key | Values | Effect |
 |---|---|---|
 | `analytics` | `"off"`, `"basic"` | `off` sends nothing to the analytics relay, consent receipts, deletions and exports included. `basic` allows Off or Basic and refuses Enhanced. |
-| `updates.app` | `"off"`, `"check"`, `"auto"` | Desktop app updates. `off` stops the check and the download. `check` lets the user see and install an update but turns off automatic installs. `auto` turns automatic installs on. |
+| `updates.app` | `"off"`, `"check"`, `"auto"` | Desktop app updates. `off` stops checks, downloads and installs, including installs of payloads already downloaded. `check` lets the user see and install an update but turns off automatic installs. `auto` turns automatic installs on. |
 | `updates.server` | `"off"`, `"check"`, `"auto"` | Updates of a standalone server core. `off` stops the release check and the install. `check` and `auto` both allow the check and a manual install; the server never installs by itself. |
 | `updates.agents` | `"off"`, `"check"`, `"auto"` | Agent CLI updates. `off` stops version checks and updates. `check` turns automatic updates off; `auto` turns them on. |
 | `providers.allow` | array of provider ids | Only these providers may run. Every other one is off and cannot be turned on, installed, probed or signed in. |

@@ -86,9 +86,9 @@ run": the version in the hello (`info.version`) is enough.
   (`experimentRefusal`). Teams, the Council and automatic goals are finished:
   the core runs them in every build, whatever an app reports, so no list held
   in memory can turn them off after a restart. Automatic goals have their own
-  switch, the owner setting `autoGoals` (on unless `false`), which belongs to
+  switch, the owner setting `autoGoals` (off unless `true`), which belongs to
   the machine: `startsAutoGoal` and `boite goal track` read it with the
-  threshold `autoGoalMinChars`, and a track the owner turned off is refused
+  threshold `autoGoalMinChars`, and a track while they are off is refused
   with the reason `auto-goals-off`. `settings.get` returns the settings as
   stored, with the policy overlay; `{ stored: true }` is still accepted, and
   `settings-sync.ts` still asks for it, for a core from before this change.
@@ -304,7 +304,7 @@ reads `resident-agents`, the one id left in the list. Finished, with a switch
 of their own elsewhere: the [Whip](#whip)
 (Settings > Appearance, on by default, `whip` in `lib/features.ts`) and
 [automatic goals](goals.md#automatic-goals) (the owner setting `autoGoals` in
-Settings > General > Agent replies, on by default, with its threshold
+Settings > General > Agent replies, off by default, with its threshold
 `autoGoalMinChars` under it while on).
 
 The three owner settings that were experiments, the cache keepalive,

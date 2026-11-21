@@ -167,6 +167,7 @@ test.each([false, true])('macOS governor includes build memory, protects the roo
     expect(root.proc.exitCode).toBeNull();
   } finally {
     await registry.killAll();
+    await registry.waitForExit('agent');
     await registry.close();
     bus.dispose();
     journal.close();

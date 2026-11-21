@@ -23,7 +23,7 @@ const WORKER_METHODS = new Set<string>([
   'artifacts.viewCheck',
   'sharedProjects.list', 'sharedProjects.get', 'sharedProjects.threads', 'sharedProjects.search', 'sharedProjects.read', 'sharedProjects.subscribe',
   'sharedBoard.get', 'sharedBoard.apply', 'sharedBoard.start', 'sharedCompute.models', 'sharedCompute.start', 'sharedCompute.list', 'sharedCompute.get', 'sharedCompute.send', 'sharedCompute.cancel',
-  'sharedAccess.get', 'workflows.output', 'threads.tasks.get', 'threads.tasks.set', 'threads.capabilities',
+  'sharedAccess.get', 'workflows.output', 'threads.tasks.get', 'threads.tasks.set', 'threads.tasks.change', 'threads.capabilities',
   'collaboration.get', 'collaboration.wait',
 ]);
 export type AccessReason = 'normal-file' | 'host-override' | 'secret-file' | 'path-boundary' | 'secret-content' | 'unsupported-tool' | 'scoped-request' | 'request-denied' | 'override-created' | 'override-revoked' | 'publication';
@@ -139,7 +139,7 @@ export class SharedAccess {
       // The normal sender path still checks the exact destination grant/association.
       return;
     }
-    if (id && letters?.legacy && !['collaboration.get', 'collaboration.wait', 'threads.capabilities', 'threads.tasks.get', 'threads.tasks.set'].includes(method)) this.denyTool(id);
+    if (id && letters?.legacy && !['collaboration.get', 'collaboration.wait', 'threads.capabilities', 'threads.tasks.get', 'threads.tasks.set', 'threads.tasks.change'].includes(method)) this.denyTool(id);
     if (!record) return;
     if (!WORKER_METHODS.has(method)) this.denyTool(record.threadId);
   }

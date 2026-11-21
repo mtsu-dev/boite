@@ -421,17 +421,17 @@ export class MobileDevices {
     const tools = this.#adb();
     const deadline = Date.now() + this.#bootTimeoutMs;
     let serial = device.serial;
-    let exited: string | undefined;
+    let exitCode: number | undefined;
+    let stderrTail: string | undefined;
     if (!serial) {
       if (!tools.emulator) throw refused(findAndroidSdk(this.#sdk()).status.reason ?? 'Android Emulator is missing from the SDK.');
       const child = this.#core.procs.spawn(SCOPE, tools.emulator, ['-avd', device.id, '-no-boot-anim'], { agentRoot: false });
       // The emulator logs for as long as it runs; reading keeps its pipes from filling.
-      let tail = '';
       void new Response(child.proc.stdout).text().catch(() => '');
-      void new Response(child.proc.stderr).text().then((err) => { tail = err.trim().slice(-400); }, () => undefined);
+      void new Response(child.proc.stderr).text().catch(() => '').then((err) => { stderrTail = err.trim().slice(-400); });
       const handle = { kill: () => child.proc.kill() };
       void child.exited.then((code) => {
-        exited = `the emulator exited with code ${code}${tail ? `: ${tail}` : ''}`;
+        exitCode = code;
         if (this.#emulators.get(device.id) === handle) this.#emulators.delete(device.id);
       });
       this.#emulators.set(device.id, handle);
@@ -439,13 +439,19 @@ export class MobileDevices {
     while (Date.now() < deadline) {
       if (this.#closed) throw refused('the core is shutting down');
       if (!this.#alive(boot)) throw refused(`${device.name} was powered off while starting`, { deviceId: device.id });
-      if (exited && !serial) throw refused(exited);
-      if (!serial) boot.serial = serial = await this.#emulatorSerial(tools.adb, device.id);
+      if (!serial) {
+        // Exit can arrive before stderr finishes. Keep the original boot deadline as the bound.
+        if (exitCode === undefined) boot.serial = serial = await this.#emulatorSerial(tools.adb, device.id);
+        else if (stderrTail !== undefined) break;
+      }
       if (serial) {
         const prop = await this.#run(tools.adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], COMMAND_TIMEOUT_MS);
         if (text(prop.stdout).trim() === '1') return { ...device, serial, state: 'running' };
       }
       await Bun.sleep(this.#pollMs);
+    }
+    if (!serial && exitCode !== undefined) {
+      throw refused(`the emulator exited with code ${exitCode}${stderrTail ? `: ${stderrTail}` : ''}`);
     }
     if (this.#alive(boot)) this.#emulators.get(device.id)?.kill();
     throw refused(`${device.name} did not finish booting within ${Math.round(this.#bootTimeoutMs / 1000)} seconds`, { deviceId: device.id });

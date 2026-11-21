@@ -14,7 +14,7 @@ import { readSync } from 'node:fs';
 import type { CoreClient } from './client.ts';
 import { Usage } from './cli-args.ts';
 
-const LOGS_HELP = `boite logs: Boite's own diagnostics (the app, its shell and its clients)
+export const LOGS_HELP = `boite logs: Boite's own diagnostics (the app, its shell and its clients)
 
   logs [filters]                 recent records, oldest first, one per line
     --limit <n>                  how many (default 100; owner up to 1000, agent 500)

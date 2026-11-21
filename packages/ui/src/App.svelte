@@ -10,6 +10,9 @@
   import { browserProfiles } from './lib/browser-profiles.svelte';
   import UndoToast from './components/UndoToast.svelte';
   import ErrorToast from './components/ErrorToast.svelte';
+  import Notice from './components/Notice.svelte';
+  import { CircleAlert } from '@lucide/svelte';
+  import { toastSlot } from './lib/notify-corner';
   import ChatView from './components/ChatView.svelte';
   import Deferred from './components/Deferred.svelte';
   import { inbox } from './lib/inbox.svelte';
@@ -41,6 +44,7 @@
   import { contactsShown, contactsViews } from './lib/contacts-views.svelte';
   import { whipEntry } from './lib/whip-entry.svelte';
   import { rightPanel } from './lib/right-panel.svelte';
+  import type { Page } from './lib/store.svelte';
   import { workspace } from './lib/workspace.svelte';
   import { listAbsent } from './lib/list-absent';
   import { hostLocalAgentBrowser } from './lib/agent-browser-host.svelte';
@@ -121,6 +125,15 @@
   // Wider than a phone (an iPhone on its side, a tablet, a desktop browser)
   // a lost or revoked pairing gets the same screen rather than a stale page.
   const wideRecovery = $derived(!narrow.current && mobileRecovery && store.pairingRequired && store.page !== 'settings');
+  /** The page Settings was opened from, or the one on screen. */
+  let settingsFrom = $state<Page>('chat');
+  $effect.pre(() => { if (store.page !== 'settings') settingsFrom = store.page; });
+  /**
+   * A phone's Settings opened from the chat is a layer over it, which stays built under it, hidden: leaving Settings
+   * shows the list and the conversation as they were instead of building them again. From another page, Settings
+   * replaces it as on a desktop, so no chat is built for nothing.
+   */
+  const phoneSettings = $derived(!inShell && narrow.current && store.page === 'settings' && settingsFrom === 'chat');
   let documentVisible = $state(!document.hidden);
   // What the first screen does not draw stays out of the first chunk: the right
   // panel and its six surfaces, the palette and the two dialogs were a third of
@@ -528,14 +541,13 @@
   {/if}
   <TitleBar {store} edge={!railShown} listless={listGone} />
 
-  <div class="body" class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
+  <div class="body" class:under-settings={phoneSettings} class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
     {#if !booted}
       <p class="empty boot" class:long={compacting}>{compacting ? strings.app.compacting : strings.app.loading}</p>
     {:else if wideRecovery}
       <div class="wide-recovery" data-testid="wide-recovery"><MobileConnect {store} onpaired={() => {}} /></div>
-    {:else if store.page === 'settings'}
-      <!-- Its pages' list takes the thread list's column, connected or not. -->
-      {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
+    {:else if store.page === 'settings' && !phoneSettings}
+      <!-- Settings alone: its layer below takes the page. -->
     {:else if store.connection === 'closed' && !store.core}
       <Sidebar {store} />
       <div class="notice framed">
@@ -613,6 +625,14 @@
            Not on the Contacts page: the list column's Contacts side holds the same rows there. -->
       {#if contacts.ContactsRail && contactsShown(store) && !narrow.current && store.page !== 'home'}<contacts.ContactsRail {store} />{/if}
     {/if}
+    <!-- One place for Settings at every width: a resize that turns it into a layer over the chat, or back, keeps it
+         built, so its screens keep their history entries in the order they were opened. Its pages' list takes the
+         thread list's column, connected or not. -->
+    {#if booted && store.page === 'settings'}
+      <div class="settings-layer" class:over={phoneSettings}>
+        {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
+      </div>
+    {/if}
   </div>
 
   {#if store.dropping}
@@ -638,6 +658,15 @@
   <!-- A missing or revoked phone pairing has its own recovery screen; Chrome refuses every socket until "Local network" is allowed, which that screen says too. -->
   <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired}
     blocked={mobileRecovery && localNetwork.state === 'denied'} onopen={() => { mobileScreen = 'chat'; }} />
+  {#if inShell && store.canForceCoreRestart}
+    <div class="toast-slot" use:toastSlot>
+      <Notice icon={CircleAlert} tone="danger" floating role="alert" detail={strings.errors.coreUnresponsive} testid="core-recovery">
+        {#snippet actions()}
+          <button type="button" class="small" onclick={() => void store.forceCoreRestart()}>{strings.errors.forceCoreRestart}</button>
+        {/snippet}
+      </Notice>
+    </div>
+  {/if}
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
   {#if (store.page === 'chat' || store.memoryStop) && deferred.MemoryCorner}{@const MemoryCorner = deferred.MemoryCorner}<MemoryCorner {store} chat={store.page === 'chat'} />{/if}
   {#if store.booted && featureOn('whip') && whipEntry.overlay}{@const WhipOverlay = whipEntry.overlay}
@@ -668,6 +697,9 @@
   .app.ready {
     animation: fade var(--dur-3) var(--ease-out-quint);
   }
+
+  /* Settings lays out as the body's own child, unless it is the phone's layer over the chat. */
+  .settings-layer { display: contents; }
 
   .body {
     display: flex;
@@ -825,6 +857,9 @@
        Skipped content does not advance its animations, so the switch waits for the exits the cover started
        (a menu closing) to end, and lifts at once on return. */
     .body.mobile-covered { visibility: hidden; pointer-events: none; content-visibility: hidden; transition: content-visibility 0s var(--dur-whip) allow-discrete; }
+    /* Settings over the chat it keeps: the chat is skipped like under the list, the layer takes the body's box. */
+    .body.under-settings > :global(:not(.settings-layer)) { visibility: hidden; pointer-events: none; content-visibility: hidden; }
+    .settings-layer.over { position: absolute; inset: 0; display: flex; min-height: 0; padding: inherit; box-sizing: border-box; }
     .scrim {
       display: block;
       position: fixed;
