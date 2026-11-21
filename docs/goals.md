@@ -20,6 +20,10 @@ reviewed goals.
 When the agent stops on a blocker, the bar reads Waiting for your answer, and
 your next message resumes the goal. Goals work with every agent.
 
+When the agent ends a turn while subagents or a workflow it started still run,
+the goal waits for them: the next turn comes after their results, not one
+turn after another that only says they still run.
+
 ## How a reviewed goal is checked
 
 1. When the agent claims it is done, Boite starts a reviewer in a new

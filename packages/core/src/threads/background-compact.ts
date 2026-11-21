@@ -7,7 +7,8 @@ import type { EmitSink, PermissionTicket, QuestionTicket, SessionContext, StepBo
 import { messageOf } from '../errors.ts';
 import { newId } from '../ids.ts';
 import type { ThreadStore } from '../threads.ts';
-import { backgroundWaitOf, saveThread, withLoad } from './records.ts';
+import { backgroundWork } from './background-work.ts';
+import { saveThread, withLoad } from './records.ts';
 import { SWAPPED_TOTALS_PREFIX, type SwappedTotals } from '../usage.ts';
 import { removeTranscripts } from './transcript-purge.ts';
 
@@ -312,26 +313,8 @@ export class BackgroundCompaction {
     for (const threadId of [...this.#copies.keys()]) this.#drop(threadId);
   }
 
-  /**
-   * Whether work the thread started still runs outside its turn, which a new
-   * session would lose or report to a context that no longer holds it: the
-   * agent's own background tasks, a Boite child here or on another machine
-   * still at work, or a workflow run of the conversation at work.
-   */
-  #backgroundWork(threadId: ThreadId): boolean {
-    if ((this.threads.agentState.background.get(threadId)?.length ?? 0) > 0) return true;
-    if (this.#core.workflows.atWork(threadId) || this.#core.delegation.remote.busy(threadId)) return true;
-    const rows = this.#core.journal.db.query('SELECT id, status FROM threads WHERE parent_thread_id = ?').all(threadId) as { id: ThreadId; status: string }[];
-    return rows.some(row => {
-      // A persistent agent's memory pass is Boite's own housekeeping, outside the conversation.
-      if (this.#core.workforce?.memory.owns(row.id)) return false;
-      if (row.status === 'queued' || row.status === 'running' || row.status === 'waiting') return true;
-      const tasks = this.threads.agentState.background.get(row.id) ?? [];
-      if (tasks.length > 0) return true;
-      const child = this.#core.journal.getThread(row.id);
-      return child !== null && backgroundWaitOf(this.#core, child, tasks)?.state === 'waiting';
-    });
-  }
+  /** Work the thread started that still runs outside its turn, which a new session would lose or report to a context that no longer holds it. */
+  #backgroundWork(threadId: ThreadId): boolean { return backgroundWork(this.#core, threadId); }
 
   /**
    * The thread's context now: what the last step boundary of its running turn

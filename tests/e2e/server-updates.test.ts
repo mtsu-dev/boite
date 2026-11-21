@@ -28,8 +28,7 @@ async function machines() {
   await page.waitFor(`document.querySelector('${id('app-updates-card')}') && document.querySelector('${row} ${id('machine-updates-state')}')`);
 }
 async function capture(name: string) {
-  await page.evaluate('document.fonts.ready');
-  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+  await page.settleAnimations();
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(captureDir, `server-update-${name}.png`));
 }

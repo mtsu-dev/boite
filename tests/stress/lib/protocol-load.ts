@@ -12,15 +12,15 @@ const providers = [
   { protocol: 'pi', fixture: 'pi-agent.ts' },
 ] as const;
 
-async function until(predicate: () => boolean, timeout = 30_000): Promise<void> {
-  const end = Date.now() + timeout;
+async function until(stage: string, predicate: () => boolean): Promise<void> {
+  const end = Date.now() + 30_000;
   while (!predicate()) {
-    assert(Date.now() < end, 'driver load did not settle');
+    assert(Date.now() < end, `driver load timed out waiting for ${stage}`);
     await Bun.sleep(20);
   }
 }
 
-export async function protocolLoad(perProvider: number): Promise<void> {
+export async function protocolLoad(perProvider: number, { measureMemory = false } = {}): Promise<void> {
   const total = perProvider * providers.length;
   const dataDir = freshDataDir();
   mkdirSync(join(dataDir, 'providers'));
@@ -65,7 +65,7 @@ export async function protocolLoad(perProvider: number): Promise<void> {
       const turns = await Promise.all(selected.map(thread => client.call('turns.start', {
         threadId: thread.id, prompt: `${prefix}-${thread.id}${directive}`,
       })));
-      await until(() => turns.every(turn => finished.has(turn.id)));
+      await until(`${prefix} turns to finish`, () => turns.every(turn => finished.has(turn.id)));
       for (const turn of turns) {
         assert.equal(finished.get(turn.id)?.status, status, `${turn.threadId}: ${finished.get(turn.id)?.error}`);
         if (status === 'done') {
@@ -82,9 +82,11 @@ export async function protocolLoad(perProvider: number): Promise<void> {
       }
     };
     await run(threads, 'cold');
-    await until(() => pids.size === total);
+    await until(`${total} cold process starts`, () => pids.size === total);
     const warmPids = [...pids];
-    const memory = process.platform === 'win32'
+    // The stress run measures RSS. The concurrency test needs no system-wide
+    // WMI scan while the warm agents' idle timers are running.
+    const memory = measureMemory && process.platform === 'win32'
       ? tree(core.pid, snapshot()).reduce((bytes, process) => bytes + process.workingSetBytes, 0) : null;
     assert(warmPids.every(pidAlive), 'warm process ended early');
     await run(threads, 'warm');
@@ -92,14 +94,21 @@ export async function protocolLoad(perProvider: number): Promise<void> {
     assert(warmPids.every(pidAlive), 'warm session replaced its agent');
 
     peakRunning = 0;
+    const responding = new Set<string>();
+    const watchResponses = client.on('message.started', message => {
+      if (message.role === 'assistant' && message.turnId !== null) responding.add(message.turnId);
+    });
     const blocked = await Promise.all(threads.map(thread => client.call('turns.start', {
       threadId: thread.id, prompt: `blocked-${thread.id}[slow]`,
     })));
-    await until(() => peakRunning === total);
+    // The scheduler marks a turn running before its driver sends the prompt.
+    // Stopping then can leave the previous warm process idle and still alive.
+    await until('all slow turns to reach their drivers', () => peakRunning === total && blocked.every(turn => responding.has(turn.id)));
+    watchResponses();
     const stopped = await Promise.all(threads.map(thread => client.call('turns.stop', { threadId: thread.id })));
     assert(stopped.every(result => result.stopped));
-    await until(() => blocked.every(turn => finished.get(turn.id)?.status === 'stopped'));
-    await until(() => warmPids.every(pid => !pidAlive(pid)));
+    await until('slow turns to finish as stopped', () => blocked.every(turn => finished.get(turn.id)?.status === 'stopped'));
+    await until('the stopped agents to exit', () => warmPids.every(pid => !pidAlive(pid)));
     const crash = [threads[0]!, threads[perProvider]!, threads[perProvider * 2]!];
     await run(crash, 'crash', '[crash]', 'error');
     await run(crash, 'recovered');
@@ -110,6 +119,6 @@ export async function protocolLoad(perProvider: number): Promise<void> {
   } finally {
     client.close();
     await core.stop();
-    await until(() => [...pids].every(pid => !pidAlive(pid)));
+    await until('all test agents to exit after shutdown', () => [...pids].every(pid => !pidAlive(pid)));
   }
 }
