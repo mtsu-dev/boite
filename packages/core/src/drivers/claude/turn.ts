@@ -23,6 +23,7 @@ import {
   toolResultOf,
 } from './mapping.ts';
 import type { HeldUsage, StreamEvent } from './mapping.ts';
+import { CONTEXT_FULL, contextFullReason } from './context-full.ts';
 import { hookEndPart } from './hooks.ts';
 import { noticePart } from './notices.ts';
 import { PROMPT_EFFORT } from './query.ts';
@@ -165,6 +166,8 @@ export class ClaudeTurn {
   #error: string | null = null;
   /** Availability refusal the API error named: `overloaded` or a spent subscription window. */
   #refusal: TurnRefusal | undefined;
+  /** The CLI gave up compacting: what every request carries fills the limit (`TurnResult.contextFull`). */
+  #contextFull = false;
   /** When the window the CLI reported rejected resets (`rate_limit_event`), in milliseconds. */
   #rejectedUntil: number | null = null;
   #resolve: (result: TurnResult) => void = () => undefined;
@@ -292,6 +295,7 @@ export class ClaudeTurn {
       ...(this.#requestAt !== null ? { cacheAt: this.#requestAt } : {}),
       ...(this.sessionLost ? { sessionLost: true } : {}),
       ...(this.#status === 'error' && this.#refusal ? { refusal: this.#refusal } : {}),
+      ...(this.#status === 'error' && this.#contextFull ? { contextFull: true as const } : {}),
       ...(this.#sessionId !== null && this.#lastEntry !== null ? { checkpoint: { sessionId: this.#sessionId, entry: this.#lastEntry } } : {}),
       ...(this.#agentTotals !== null ? { agentTotals: this.#agentTotals } : {}),
     });
@@ -854,6 +858,11 @@ export class ClaudeTurn {
     const auth = this.#authFrame;
     this.#authFrame = null;
     if (auth !== null) reason = apiErrorReason('authentication_failed', auth.content);
+    // The CLI's advice for it names neither the cause nor the file to shrink.
+    else if (CONTEXT_FULL.test(reason)) {
+      this.#contextFull = true;
+      reason = contextFullReason(this.ctx.thread.cwd);
+    }
     this.#status = 'error';
     this.#error = reason;
     this.part(this.takeIndex(), { type: 'error', message: reason });
