@@ -9,7 +9,6 @@ import * as cwdCheck from '../src/threads/cwd.ts';
 import type { CliIo } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnResult } from '../src/drivers/index.ts';
-import { RpcFailure } from '../src/errors.ts';
 import { echoThread, startTestCore, waitFor } from './harness.ts';
 import { makeAgent } from './agent-fixture.ts';
 import type { TestCore } from './harness.ts';

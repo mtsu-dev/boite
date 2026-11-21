@@ -170,16 +170,14 @@ fn an_update_can_repair_a_failed_start_only_when_it_owns_the_idle_core_lock() {
     #[cfg(unix)]
     assert_eq!(crate::update_stop::legacy_core::start(&directory), format!("busy {}", std::process::id()));
     state.release_hold();
-    drop(retry);
-    let retry = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path).unwrap();
+    #[cfg(windows)]
     retry.try_lock().unwrap();
     drop(retry);
     #[cfg(unix)]
-    std::fs::remove_file(&path).unwrap();
-    #[cfg(unix)]
-    assert!(!path.exists(), "a failed install left its record");
-    #[cfg(unix)]
-    assert_eq!(crate::update_stop::legacy_core::start(&directory), "started");
+    {
+        assert!(!path.exists(), "a failed install left its record");
+        assert_eq!(crate::update_stop::legacy_core::start(&directory), "started");
+    }
     std::fs::remove_dir_all(directory).unwrap();
 }
 
