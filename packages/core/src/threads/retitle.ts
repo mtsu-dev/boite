@@ -1,6 +1,6 @@
 import { defaultTitleModel } from '@boite/contracts';
 import { usableAccount } from './account-fallback.ts';
-import type { Account, ImageAttachment, Message, ProviderDescriptor, ProviderId, ThreadId, ThreadSummary, TurnId } from '@boite/contracts';
+import type { Account, ImageAttachment, Message, ProviderDescriptor, ProviderId, ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
 import { setTimeout as pause } from 'node:timers/promises';
 import type { Core } from '../core.ts';
 import { getDriver, probedModelsOf, writesTitles } from '../drivers/index.ts';
@@ -23,6 +23,8 @@ export const TITLE_RETRY = { delayMs: 2_000 };
 /** Initial naming, conditional refinement and explicit regeneration share one writer. */
 export class ThreadTitles {
   readonly #retitling = new Map<ThreadId, Promise<ThreadSummary>>();
+  /** First titles waiting for their turn's agent to answer, by the listener that waits. */
+  readonly #waiting = new Map<ThreadId, () => void>();
   readonly #abort = new AbortController();
 
   readonly #core: Core;
@@ -39,23 +41,46 @@ export class ThreadTitles {
     if (this.#retitling.has(threadId)) {
       throw refused('a title is already being written for this thread', { threadId });
     }
+    // The user's regeneration replaces a first title still waiting for its turn.
+    this.#waiting.get(threadId)?.();
+    this.#waiting.delete(threadId);
     return this.#start(thread, false, false);
   }
 
-  /** Name the first user turn without waiting for its agent's response. */
+  /**
+   * Name the first user turn from its prompt, once its agent has started
+   * answering. A title call is an agent process of its own: started with the
+   * turn, it competes with the agent's startup on the same machine, and for
+   * Codex on the same home, and the first word comes seconds later. It waits
+   * for the turn's first assistant message, or for the turn's end when none
+   * comes, and still runs while most turns are being written.
+   */
   autoTitle(threadId: ThreadId, turnId: TurnId): void {
     const thread = this.#core.journal.getThread(threadId);
     if (thread === null || thread.archived || thread.titleSource !== 'prompt' || thread.titleState !== undefined) return;
     const first = this.#core.journal.listTurns(threadId).find((turn) => !turn.execution?.operation);
-    if (first?.id !== turnId || this.#writer(thread) === null || this.#retitling.has(threadId)) return;
+    if (first?.id !== turnId || this.#writer(thread) === null || this.#retitling.has(threadId) || this.#waiting.has(threadId)) return;
     // The pending decision survives a restart or a title call that finishes after the user turn.
     const pending = saveThread(this.#core, { ...thread, titleState: { version: 1, needsRefinement: true } }, 'thread.updated');
-    this.#background(pending, true);
+    const off = this.#core.bus.onAny((name, payload) => {
+      const answering = name === 'message.started' && (payload as Message).threadId === threadId && (payload as Message).role === 'assistant';
+      const ended = name === 'turn.finished' && (payload as Turn).id === turnId;
+      if (!answering && !ended) return;
+      off();
+      // Out of the emit: the listener may run inside the journal write that announced it.
+      queueMicrotask(() => {
+        if (this.#waiting.get(threadId) !== off) return;
+        this.#waiting.delete(threadId);
+        if (!this.#abort.signal.aborted && !this.#core.journal.isClosed()) this.#background(pending, true);
+      });
+    });
+    this.#waiting.set(threadId, off);
   }
 
   /** Only a vague first subject needs another call once that first turn completed. */
   autoRefine(threadId: ThreadId): void {
-    if (this.#abort.signal.aborted || this.#core.journal.isClosed() || this.#retitling.has(threadId)) return;
+    // A first title still waiting for its turn refines once it lands, as one that is running does.
+    if (this.#abort.signal.aborted || this.#core.journal.isClosed() || this.#retitling.has(threadId) || this.#waiting.has(threadId)) return;
     const thread = this.#core.journal.getThread(threadId);
     if (thread === null || thread.archived || thread.titleSource === 'user' || !thread.titleState?.needsRefinement || thread.status !== 'idle') return;
     const turns = this.#core.journal.listTurns(threadId).filter((turn) => !turn.execution?.operation);
@@ -73,6 +98,8 @@ export class ThreadTitles {
 
   close(): void {
     this.#abort.abort();
+    for (const off of this.#waiting.values()) off();
+    this.#waiting.clear();
   }
 
   #background(thread: ThreadSummary, initial: boolean): void {

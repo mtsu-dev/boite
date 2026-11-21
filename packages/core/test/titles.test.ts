@@ -203,6 +203,95 @@ describe('thread titles', () => {
     }
   });
 
+  test('the first title waits for the agent to start answering, so its call does not slow that start', async () => {
+    const answering = Promise.withResolvers<void>();
+    let asked = 0;
+    const restore = setDriver('echo', {
+      ...echoDriver,
+      // An agent still starting: nothing written for this turn yet.
+      startTurn: (ctx) => {
+        const started = answering.promise.then(() => echoDriver.startTurn(ctx));
+        return { done: started.then((handle) => handle.done), stop: () => void started.then((handle) => handle.stop()) };
+      },
+      title: async (ctx) => {
+        asked += 1;
+        return echoTitle(ctx.prompt);
+      },
+    });
+    try {
+      const client = await harness.connect();
+      const { threadId } = await echoThread(harness, client);
+      await client.call('threads.subscribe', { threadId });
+      const retitled = client.next('thread.updated', thread => thread.id === threadId && thread.titleSource === 'agent', EVENT_TIMEOUT_MS);
+      const finished = client.next('turn.finished', turn => turn.threadId === threadId, EVENT_TIMEOUT_MS);
+      await client.call('turns.start', { threadId, prompt: 'a clear request [sleep:300]' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 150));
+      expect(asked).toBe(0);
+      answering.resolve();
+      // Named while the answer is still being written.
+      expect((await retitled).status).toBe('running');
+      expect(asked).toBe(1);
+      await finished;
+    } finally {
+      answering.resolve();
+      restore();
+    }
+  });
+
+  test('a regeneration asked while the first title waits for the agent replaces that first title', async () => {
+    const answering = Promise.withResolvers<void>();
+    const asked = Promise.withResolvers<void>();
+    const written = Promise.withResolvers<void>();
+    const initial: boolean[] = [];
+    const restore = setDriver('echo', {
+      ...echoDriver,
+      startTurn: (ctx) => {
+        const started = answering.promise.then(() => echoDriver.startTurn(ctx));
+        return { done: started.then((handle) => handle.done), stop: () => void started.then((handle) => handle.stop()) };
+      },
+      title: async (ctx) => {
+        initial.push(ctx.initial === true);
+        if (ctx.initial === true) return 'Automatic title';
+        asked.resolve();
+        await written.promise;
+        return 'Asked title';
+      },
+    });
+    try {
+      const client = await harness.connect();
+      const { threadId } = await echoThread(harness, client);
+      const finished = client.next('turn.finished', turn => turn.threadId === threadId, EVENT_TIMEOUT_MS);
+      await client.call('turns.start', { threadId, prompt: 'a clear request' });
+      const regenerated = client.call('threads.retitle', { threadId });
+      await asked.promise;
+      // The agent answers while the asked title is still being written.
+      answering.resolve();
+      await finished;
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      written.resolve();
+      expect((await regenerated).title).toBe('Asked title');
+      expect(initial).toEqual([false]);
+    } finally {
+      answering.resolve();
+      written.resolve();
+      restore();
+    }
+  });
+
+  test('a first turn that ends before writing anything is still named', async () => {
+    const restore = setDriver('echo', {
+      ...echoDriver,
+      startTurn: (ctx) => ({ done: Promise.resolve({ status: 'error', sessionId: ctx.sessionId, usage: null, error: 'the agent did not start' }), stop: () => undefined }),
+    });
+    try {
+      const client = await harness.connect();
+      const { threadId } = await echoThread(harness, client);
+      const retitled = client.next('thread.updated', thread => thread.id === threadId && thread.titleSource === 'agent', EVENT_TIMEOUT_MS);
+      await client.call('turns.start', { threadId, prompt: 'a clear request' });
+      expect((await retitled).title).toBe('Echo: a clear request');
+    } finally { restore(); }
+  });
+
   test('a transient initial failure retries twice while the main turn keeps running', async () => {
     let calls = 0;
     const restore = setDriver('echo', { ...echoDriver, title: async () => {
