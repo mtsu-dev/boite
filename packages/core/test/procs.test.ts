@@ -6,7 +6,7 @@ import { Bus } from '../src/bus.ts';
 import { ProcRegistry } from '../src/procs.ts';
 import { createPosixPlatform } from '../src/platform/posix.ts';
 import type { ProcessPlatform } from '../src/platform/types.ts';
-import { kernelSignalsGroups } from '../src/platform/linux-launcher.ts';
+import { NativeTie } from '../src/platform/linux-launcher.ts';
 import { Journal } from '../src/journal.ts';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { release, tmpdir } from 'node:os';
@@ -321,7 +321,7 @@ describe('procs', () => {
     }
   }, 20000);
 
-  test.skipIf(process.platform !== 'linux' || !kernelSignalsGroups(release()))('on Linux a core that dies before it ties a new spawn\'s group still takes that group with it', async () => {
+  test.skipIf(process.platform !== 'linux' || new NativeTie().ready() !== null)('on Linux a core that dies before it ties a new spawn\'s group still takes that group with it', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'boite-crash-'));
     const src = join(import.meta.dir, '..', 'src');
     const pidFile = join(dataDir, 'pid');

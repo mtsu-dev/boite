@@ -16,8 +16,6 @@ import { stopCapturedTree, stopGroup } from './posix-kill.ts';
 const groups = new GroupWatch();
 /** On Linux, the launcher's guard ties `spawn` and `spawnPiped` groups before the agent runs; the watcher keeps the rest. */
 const native = new NativeTie();
-// A guard found gone hands its groups to the watcher, as untied as the watcher's own window.
-native.onLost = (lost) => { for (const [pid, leading] of lost) { groups.add(pid); if (!leading) groups.leaderExited(pid); } };
 
 /**
  * Why this machine cannot capture windows, or null on an X11 session. Pure,
@@ -92,9 +90,11 @@ export function createPosixPlatform(
     ...(os === 'linux' ? { readyLaunch: () => native.ready(), spawnTied: (options: Parameters<NativeTie['spawn']>[0]) => native.spawn(options) } : {}),
     tieGroup: (pid) => { if (!native.claim(pid)) groups.add(pid); },
     untieGroup: (pid, leaderExited) => {
-      if (native.holds(pid)) { if (leaderExited) native.leaderExited(pid); else native.release(pid); return; }
+      if (native.holds(pid)) { if (leaderExited) { native.leaderExited(pid); return true; } return native.release(pid); }
       if (leaderExited) groups.leaderExited(pid); else groups.remove(pid);
+      return true;
     },
+    ...(os === 'linux' ? { onLaunchTrouble: (listener: (message: string) => void) => native.onTrouble(listener) } : {}),
     killTiedGroups: () => { groups.killAll(); native.killAll(); },
     warm() {},
     forget(threadId) { load?.forget?.(threadId); },

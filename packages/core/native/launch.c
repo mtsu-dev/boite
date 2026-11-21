@@ -7,19 +7,26 @@
  * It opens a pidfd on itself and hands it with the tag to the guard over the
  * guard's socket (SCM_RIGHTS), then waits for the guard's answer for that tag:
  * only a group the guard admitted goes on. It hands the same pidfd to the core
- * over statusFd, a close-on-exec socket, closes its descriptors and execs the
- * agent. Any failure sends the step that failed and its errno on statusFd and
- * exits 127 before the agent runs; a successful exec closes statusFd, which the core reads as
- * the end of the launch, after the pidfd.
+ * over statusFd, a close-on-exec socket, and waits for the core to say it has
+ * it: a core that could not read it never sees an agent it cannot end. Then
+ * it closes its descriptors and execs the agent. Any failure sends the step
+ * that failed and its errno on statusFd and exits 127 before the agent runs;
+ * a successful exec closes statusFd, which the core reads as the end of the
+ * launch.
  *
- * `guard`: one per core, its socket on stdin. A message with a pidfd holds
- * that group under its tag and is answered with the tag and 0, or an errno
- * when the group could not be held (no descriptor left: the kernel dropped
- * it). A message with only a tag drops the group, unanswered. End of input
- * means the core is gone: SIGTERM to each group held, probes every tenth of a
- * second for two seconds as posix-kill.ts does, then SIGKILL. The pidfd names
- * the group, through PIDFD_SIGNAL_PROCESS_GROUP, whatever pid numbers the
- * kernel hands out later.
+ * `guard`: one per core, its socket on stdin. A message of a tag with a pidfd
+ * holds that group under the tag and is answered with the tag and 0, or an
+ * errno when the group could not be held (no descriptor left: the kernel
+ * dropped it). A tag alone drops the group, unanswered. A tag and a signal
+ * sends that signal to the group and answers with the result, for the core
+ * to check at its start that the signals it relies on go through. End of
+ * input means the core is gone: SIGTERM to each group held, probes every
+ * tenth of a second for two seconds as posix-kill.ts does, then SIGKILL; a
+ * probe that fails for any reason but ESRCH counts the group as still there.
+ * The pidfd names the group, through PIDFD_SIGNAL_PROCESS_GROUP, whatever pid
+ * numbers the kernel hands out later.
+ *
+ * `probe`: ignores SIGTERM and waits to be killed, the group of that check.
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -45,7 +52,8 @@
 
 extern char **environ;
 
-static int group_signal(int fd, int sig) { return syscall(SYS_pidfd_send_signal, fd, sig, NULL, PIDFD_SIGNAL_PROCESS_GROUP) == 0; }
+/* 0 when delivered, else the errno. */
+static int group_signal(int fd, int sig) { return syscall(SYS_pidfd_send_signal, fd, sig, NULL, PIDFD_SIGNAL_PROCESS_GROUP) == 0 ? 0 : errno; }
 
 /* What a launch reports on statusFd: the step that failed and its errno, or {ADMITTED, 0} with the pidfd. */
 enum step { ADMITTED = 0, SETUP = 1, GUARD = 2, EXEC = 3 };
@@ -88,15 +96,16 @@ static int guard(void) {
   if (getrlimit(RLIMIT_NOFILE, &limit) == 0 && limit.rlim_cur < limit.rlim_max) { limit.rlim_cur = limit.rlim_max; setrlimit(RLIMIT_NOFILE, &limit); }
   signal(SIGINT, SIG_IGN); signal(SIGTERM, SIG_IGN); signal(SIGHUP, SIG_IGN); signal(SIGQUIT, SIG_IGN);
   for (;;) {
-    unsigned tag;
-    struct iovec iov = { &tag, sizeof tag };
+    unsigned request[2];
+    struct iovec iov = { request, sizeof request };
     char control[CMSG_SPACE(sizeof(int))];
     struct msghdr message = { 0 };
     message.msg_iov = &iov; message.msg_iovlen = 1; message.msg_control = control; message.msg_controllen = sizeof control;
     ssize_t r = recvmsg(0, &message, MSG_CMSG_CLOEXEC);
     if (r < 0 && errno == EINTR) continue;
     if (r <= 0) break;
-    if (r != sizeof tag) continue;
+    if (r != sizeof request[0] && r != sizeof request) continue;
+    unsigned tag = request[0];
     struct cmsghdr *c = CMSG_FIRSTHDR(&message);
     int fd = -1;
     if (c && c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_RIGHTS && c->cmsg_len == CMSG_LEN(sizeof(int))) memcpy(&fd, CMSG_DATA(c), sizeof fd);
@@ -116,12 +125,18 @@ static int guard(void) {
       answer(tag, 0);
       continue;
     }
+    if (r == sizeof request) {
+      int error = ESRCH;
+      for (size_t i = 0; i < n; i++) if (tags[i] == tag) { error = group_signal(fds[i], (int)request[1]); break; }
+      answer(tag, error);
+      continue;
+    }
     for (size_t i = 0; i < n; i++) if (tags[i] == tag) { close(fds[i]); n--; fds[i] = fds[n]; tags[i] = tags[n]; break; }
   }
   for (size_t i = 0; i < n; i++) group_signal(fds[i], SIGTERM);
   for (int t = 0; t < 20; t++) {
     int any = 0;
-    for (size_t i = 0; i < n; i++) any |= group_signal(fds[i], 0);
+    for (size_t i = 0; i < n; i++) any |= group_signal(fds[i], 0) != ESRCH;
     if (!any) return 0;
     struct timespec tenth = { 0, 100000000 };
     nanosleep(&tenth, NULL);
@@ -132,8 +147,8 @@ static int guard(void) {
 
 int main(int argc, char **argv) {
   if (argc == 2 && strcmp(argv[1], "guard") == 0) return guard();
-  /* `probe`: exits at once, the target of the capability check at the core's start. */
-  if (argc == 2 && strcmp(argv[1], "probe") == 0) return 0;
+  /* `probe`: the target of the capability check at the core's start. */
+  if (argc == 2 && strcmp(argv[1], "probe") == 0) { signal(SIGTERM, SIG_IGN); for (;;) pause(); }
   if (argc < 7 || strcmp(argv[1], "launch") != 0) return 2;
   int status = atoi(argv[2]), sock = atoi(argv[3]);
   unsigned tag = (unsigned)strtoul(argv[4], NULL, 10);
@@ -154,6 +169,14 @@ int main(int argc, char **argv) {
   }
   struct report admitted = { ADMITTED, 0 };
   if (send_fd(status, &admitted, sizeof admitted, self) < 0) fail(status, SETUP, errno);
+  /* The core's word that it holds the pidfd; anything else, its end closed included, and the agent never runs. */
+  for (;;) {
+    int held = 0;
+    ssize_t r = recv(status, &held, sizeof held, 0);
+    if (r < 0 && errno == EINTR) continue;
+    if (r != sizeof held || held != 1) _exit(127);
+    break;
+  }
   close(self); close(sock);
   execve(argv[5], argv + 6, environ);
   fail(status, EXEC, errno);

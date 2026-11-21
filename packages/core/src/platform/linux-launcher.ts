@@ -16,16 +16,21 @@
  * errno in Bun's own shape; anything else stops the launch and throws.
  *
  * The core keeps its own pidfd of every group it holds, so a guard that is
- * gone, or a drop the guard could not take, never costs a group its identity:
+ * gone, stopped, or that cannot take a drop never costs a group its identity:
  * the core starts another guard, hands it every group still held, and only
- * then stops the old one.
+ * then stops the old one. A group no guard takes back stays held here by its
+ * pidfd, said through `onTrouble`, and is offered again until one does; it
+ * ends with a stop, never with a core that dies meanwhile. A drop that no
+ * guard can take keeps the group held and says so to its caller. The one
+ * window left: a core that dies after its guard died and before it started
+ * the next leaves those groups untied.
  *
  * Needs Linux 6.9 (PIDFD_SIGNAL_PROCESS_GROUP), glibc's libc.so.6 for the few
  * socket calls Bun has no API for, and the launcher next to the compiled core
  * or built into native/build. Without one of these, `ready` says why and the
  * sh watcher ties groups as before, with its window.
  */
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, readFileSync } from 'node:fs';
 import { release } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -50,6 +55,7 @@ export function kernelSignalsGroups(release: string): boolean {
 }
 
 interface Libc {
+  poll(fds: unknown, count: number, timeout: number): number;
   socketpair(domain: number, type: number, protocol: number, fds: unknown): number;
   recvmsg(fd: number, message: unknown, flags: number): number | bigint;
   sendmsg(fd: number, message: unknown, flags: number): number | bigint;
@@ -70,6 +76,10 @@ const EINTR = 4;
 const ESRCH = 3;
 const EPIPE = 32;
 const ECONNRESET = 104;
+const SIGTERM = 15;
+const POLLIN = 1;
+/** How often a wait on the guard or the launcher looks whether that process was stopped: not a deadline, a running one is waited for. */
+const STOP_CHECK_MS = 50;
 /** What Bun searches for a bare name when the child's PATH is unset or empty. */
 const BUN_DEFAULT_PATH = '/usr/bin:/bin';
 const PIDFD_SIGNAL_PROCESS_GROUP = 4;
@@ -117,6 +127,21 @@ interface Status { fd: number | null; failed: { step: number; errno: number } | 
 
 interface Guard { proc: Bun.Subprocess; sock: number }
 
+/** A group held: its leader's pid, the core's own pidfd of it, whether its leader still runs, whether the registry took it, and the guard that holds it too, if any. */
+interface Held { pid: number; fd: number; leading: boolean; claimed: boolean; guard: Guard | null }
+
+/** The errno-like value of a wait given up because the process it waits on is stopped. */
+const STOPPED = -1;
+
+/** Whether `pid` is stopped by a signal or a tracer: what it was asked may never be answered. */
+function stopped(pid: number): boolean {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const state = stat.slice(stat.lastIndexOf(')') + 2, stat.lastIndexOf(')') + 3);
+    return state === 'T' || state === 't';
+  } catch { return false; }
+}
+
 /** The guard's end, and the launcher; one per core process. */
 export class NativeTie {
   #libc: Libc | null = null;
@@ -125,17 +150,27 @@ export class NativeTie {
   #guard: Guard | null = null;
   #refusal: string | null | undefined;
   #seq = 0;
-  /** Each group held, by its leader's pid: its tag, the core's own pidfd of it, and whether its leader still runs. */
-  readonly #held = new Map<number, { tag: number; fd: number; leading: boolean; claimed: boolean }>();
+  /** Each group held, by the tag of its admission. */
+  readonly #held = new Map<number, Held>();
+  /** The tag of the latest group launched under each pid. */
+  readonly #byPid = new Map<number, number>();
   #poll: ReturnType<typeof setInterval> | null = null;
-  /** Called with the groups no guard could take back (pid, leader still running), for the sh watcher to take. */
-  onLost: (groups: Array<[number, boolean]>) => void = () => {};
+  #recovery: ReturnType<typeof setInterval> | null = null;
+  readonly #troubles = new Set<(message: string) => void>();
 
   constructor(
     private readonly candidates = launcherCandidates(),
     private readonly kernel = process.platform === 'linux' ? release() : '',
     private readonly pollMs = 1000,
   ) {}
+
+  /** Each time groups stay held by the core alone, or a group cannot be let go of, why. */
+  onTrouble(listener: (message: string) => void): () => void {
+    this.#troubles.add(listener);
+    return () => { this.#troubles.delete(listener); };
+  }
+
+  #trouble(message: string): void { for (const listener of this.#troubles) listener(message); }
 
   /** Starts the guard once; why groups cannot be tied this way, or null. */
   ready(): string | null {
@@ -153,6 +188,7 @@ export class NativeTie {
       this.#ffi = require('bun:ffi') as typeof import('bun:ffi');
       const T = this.#ffi.FFIType;
       this.#libc = this.#ffi.dlopen('libc.so.6', {
+        poll: { args: [T.ptr, T.u64, T.i32], returns: T.i32 },
         socketpair: { args: [T.i32, T.i32, T.i32, T.ptr], returns: T.i32 },
         recvmsg: { args: [T.i32, T.ptr, T.i32], returns: T.i64 },
         sendmsg: { args: [T.i32, T.ptr, T.i32], returns: T.i64 },
@@ -170,22 +206,34 @@ export class NativeTie {
   }
 
   /**
-   * One launch of the launcher itself, which exits at once: pidfd_open, the
-   * guard's admission and a group signal through the pidfd must all work, or
-   * a syscall filter would leave every group untied without a word.
+   * One launch of the launcher itself, which waits to be killed: pidfd_open
+   * and the guard's admission, then signal 0 from the core, SIGTERM and
+   * SIGKILL from the guard, through the pidfd, must all work, or a syscall
+   * filter would leave every group untied without a word.
    */
   #probe(): string | null {
     let proc: Bun.Subprocess;
-    try { proc = this.#launch({ cmd: [this.#launcher!, 'probe'], env: {}, stdio: ['ignore', 'ignore', 'ignore'] }); } catch (error) {
+    try { proc = this.#launch({ cmd: [this.#launcher!, 'probe'], env: {}, stdio: ['ignore', 'ignore', 'ignore'] }, this.#guard!); } catch (error) {
       this.#stopGuard();
       return `the launcher could not tie a group: ${error instanceof Error ? error.message : String(error)}`;
     }
-    const held = this.#held.get(proc.pid)!;
-    const signalled = this.#signal(held.fd, 0);
-    this.release(proc.pid);
-    // Bun has not reaped it in this turn, so its group still has it: anything but success is a refusal.
-    if (signalled !== true) { this.#stopGuard(); return `a group signal through a pidfd fails: errno ${signalled}`; }
-    return null;
+    const tag = this.#byPid.get(proc.pid)!;
+    const held = this.#held.get(tag)!;
+    const refused = (() => {
+      const own = this.#signal(held.fd, 0);
+      if (own !== true) return `a group signal through a pidfd fails: errno ${own}`;
+      for (const signal of [SIGTERM, SIGKILL]) {
+        const answer = this.#request(this.#guard!, new Uint32Array([tag, signal]), null, tag);
+        if (answer !== 0) return `the guard cannot send signal ${signal} to a group: errno ${answer}`;
+      }
+      return null;
+    })();
+    this.#signal(held.fd, SIGKILL);
+    // By number too, through kill(2): a filter that refused the pidfd's signals must not leave the probe waiting.
+    try { process.kill(proc.pid, 'SIGKILL'); } catch { /* gone */ }
+    this.#drop(tag);
+    if (refused !== null) this.#stopGuard();
+    return refused;
   }
 
   #stopGuard(): void {
@@ -216,7 +264,7 @@ export class NativeTie {
       // The guard holds nothing back: the core's exit is what it waits for.
       proc.unref();
       const guard = { proc, sock: pair[0] };
-      void proc.exited.then(() => { if (this.#guard === guard) this.#replace(); });
+      void proc.exited.then(() => { if (this.#guard === guard) this.#replace(null, true); });
       return guard;
     } catch (error) {
       libc.close(pair[0]);
@@ -247,8 +295,24 @@ export class NativeTie {
     }
   }
 
-  /** One message into `data`, blocking: its length (0 at end of input), the fd it carried, or the errno. */
-  #receive(sock: number, data: Int32Array): { length: number; fd: number | null; truncated: boolean } | { errno: number } {
+  /**
+   * Waits until `sock` has something to read, its end or an error included;
+   * false once one of `watched` is stopped first, as a SIGSTOP or a tracer
+   * leaves it, so a stopped guard or launcher never holds the core's loop.
+   */
+  #readable(sock: number, watched: number[]): boolean {
+    const fds = new Int32Array([sock, POLLIN]); // struct pollfd: fd, then events and revents as two shorts
+    for (;;) {
+      fds[1] = POLLIN;
+      const ready = this.#libc!.poll(fds, 1, STOP_CHECK_MS);
+      if (ready > 0) return true;
+      if (ready < 0 && this.#errno() !== EINTR) return true; // recvmsg says what is wrong
+      if (watched.some(stopped)) return false;
+    }
+  }
+
+  /** One message into `data`: its length (0 at end of input), the fd it carried, or the errno; STOPPED when one of `watched` stopped first. */
+  #receive(sock: number, data: Int32Array, watched: number[] = []): { length: number; fd: number | null; truncated: boolean } | { errno: number } {
     const { ptr } = this.#ffi!;
     const iov = new BigUint64Array([BigInt(ptr(data)), BigInt(data.byteLength)]);
     const control = new BigUint64Array(3);
@@ -258,10 +322,11 @@ export class NativeTie {
     message[4] = BigInt(ptr(control));
     message[5] = 24n;
     for (;;) {
-      const length = Number(this.#libc!.recvmsg(sock, message, MSG_CMSG_CLOEXEC));
+      if (!this.#readable(sock, watched)) return { errno: STOPPED };
+      const length = Number(this.#libc!.recvmsg(sock, message, MSG_CMSG_CLOEXEC | MSG_DONTWAIT));
       if (length < 0) {
         const errno = this.#errno();
-        if (errno === EINTR) continue;
+        if (errno === EINTR || errno === 11) continue; // EAGAIN: another reader took it
         return { errno };
       }
       const [level, type, fd] = new Int32Array(control.buffer, 8, 3);
@@ -270,13 +335,13 @@ export class NativeTie {
     }
   }
 
-  /** Hands the guard the group `fd` names under `tag`, and reads its answer: 0 when it holds it, or the errno. */
-  #admit(guard: Guard, tag: number, fd: number): number {
-    const sent = this.#send(guard.sock, new Uint32Array([tag]), fd, 0);
+  /** Sends `data` (and `fd`) to the guard and reads its answer for `tag`: 0, an errno, or STOPPED when the guard stopped before it answered. */
+  #request(guard: Guard, data: Uint32Array, fd: number | null, tag: number): number {
+    const sent = this.#send(guard.sock, data, fd, 0);
     if (sent !== 0) return sent;
     const answer = new Int32Array(2);
     for (;;) {
-      const got = this.#receive(guard.sock, answer);
+      const got = this.#receive(guard.sock, answer, [guard.proc.pid]);
       if ('errno' in got) return got.errno;
       if (got.fd !== null) this.#libc!.close(got.fd);
       if (got.length === 0) return EPIPE;
@@ -286,25 +351,42 @@ export class NativeTie {
   }
 
   /**
-   * A new guard that holds every group still held, then the old one stopped:
-   * no group is ever without a guard while the core lives. A group the new
-   * guard refuses goes to the sh watcher, as untied as the watcher's window.
-   * False when no guard could start.
+   * A new guard that holds every group still held but `drop`, then the old
+   * one stopped: no group is ever without a guard while the core lives. A
+   * group the new guard refuses stays held here, by its pidfd, offered again
+   * later. When no new guard starts, a guard still alive (`oldGone` false)
+   * keeps all it holds; false then, and nothing changed.
    */
-  #replace(): boolean {
+  #replace(drop: number | null, oldGone: boolean): boolean {
     const old = this.#guard;
-    const next = this.#startGuard();
-    if (typeof next === 'string') {
-      this.#guard = null;
-      if (old !== null) { this.#libc!.close(old.sock); }
-      return false;
+    let next: Guard | string = this.#startGuard();
+    const refused: number[] = [];
+    if (typeof next !== 'string') {
+      for (const [tag, held] of this.#held) {
+        if (tag === drop) continue;
+        const answer = this.#request(next, new Uint32Array([tag]), held.fd, tag);
+        if (answer === STOPPED || answer === EPIPE || answer === ECONNRESET) {
+          // Stopped or gone while it took them back: this guard is no better than none.
+          next.proc.kill('SIGKILL');
+          this.#libc!.close(next.sock);
+          next = `the new guard ${answer === STOPPED ? 'was stopped' : 'ended'} as it took the groups back`;
+          break;
+        }
+        if (answer !== 0) refused.push(answer);
+        else held.guard = next;
+      }
     }
-    const refused: Array<[number, boolean]> = [];
-    for (const [pid, held] of this.#held) {
-      if (this.#admit(next, held.tag, held.fd) === 0) continue;
-      refused.push([pid, held.leading]);
-      this.#libc!.close(held.fd);
-      this.#held.delete(pid);
+    if (typeof next === 'string') {
+      if (!oldGone && old !== null) {
+        this.#trouble(`agent groups stay with the guard that could not take a drop: ${next}`);
+        return false;
+      }
+      this.#guard = null;
+      if (old !== null) { old.proc.kill('SIGKILL'); this.#libc!.close(old.sock); }
+      for (const held of this.#held.values()) held.guard = null;
+      if (this.#held.size > 0) this.#trouble(`${this.#held.size} agent group(s) are held by the core alone, no guard started: ${next}`);
+      this.#recover();
+      return false;
     }
     this.#guard = next;
     if (old !== null) {
@@ -312,12 +394,40 @@ export class NativeTie {
       old.proc.kill('SIGKILL');
       this.#libc!.close(old.sock);
     }
-    if (refused.length > 0) this.onLost(refused);
+    if (refused.length > 0) {
+      this.#trouble(`${refused.length} agent group(s) are held by the core alone, the new guard refused them (errno ${refused[0]})`);
+      this.#recover();
+    }
     return true;
   }
 
+  /** Offers the groups no guard holds again, every `pollMs`, until one does: without waiting for a spawn. */
+  #recover(): void {
+    if (this.#recovery !== null) return;
+    this.#recovery = setInterval(() => {
+      if (this.#guard === null) this.#replace(null, true);
+      const guard = this.#guard;
+      if (guard !== null) {
+        for (const [tag, held] of this.#held) {
+          if (held.guard === guard) continue;
+          const answer = this.#request(guard, new Uint32Array([tag]), held.fd, tag);
+          if (answer === 0) held.guard = guard;
+          else if (answer === STOPPED || answer === EPIPE || answer === ECONNRESET) { this.#replace(null, true); break; }
+        }
+      }
+      if (this.#guard !== null && [...this.#held.values()].every(held => held.guard === this.#guard)) { clearInterval(this.#recovery!); this.#recovery = null; }
+    }, this.pollMs);
+    this.#recovery.unref();
+  }
+
   /** Whether `pid`'s group is held here. */
-  holds(pid: number): boolean { return this.#held.has(pid); }
+  holds(pid: number): boolean { return this.#byPid.has(pid); }
+
+  /** Whether the guard holds `pid`'s group too, so that it ends with a core that dies. */
+  guarded(pid: number): boolean {
+    const tag = this.#byPid.get(pid);
+    return tag !== undefined && this.#guard !== null && this.#held.get(tag)!.guard === this.#guard;
+  }
 
   /**
    * The registry takes the group `spawn` just launched as `pid`: true. Any
@@ -326,10 +436,13 @@ export class NativeTie {
    * goes.
    */
   claim(pid: number): boolean {
-    const held = this.#held.get(pid);
-    if (held === undefined) return false;
+    const tag = this.#byPid.get(pid);
+    if (tag === undefined) return false;
+    const held = this.#held.get(tag)!;
     if (!held.claimed) { held.claimed = true; return true; }
-    this.release(pid);
+    this.#byPid.delete(pid);
+    held.leading = false;
+    this.#drop(tag);
     return false;
   }
 
@@ -343,9 +456,10 @@ export class NativeTie {
    */
   spawn(options: LaunchOptions): Bun.Subprocess | null {
     if (this.ready() !== null) return null;
-    if (this.#guard === null && !this.#replace()) return null;
+    if (this.#guard === null && !this.#replace(null, true)) return null;
+    const used = this.#guard!;
     try {
-      return this.#launch(options);
+      return this.#launch(options, used);
     } catch (error) {
       if ((error as { launcherMissing?: unknown }).launcherMissing === true) {
         // Gone since it was found: groups are tied after their spawn from now on, as without it.
@@ -353,15 +467,16 @@ export class NativeTie {
         return null;
       }
       if ((error as { launcherGuardLost?: unknown }).launcherGuardLost !== true) throw error;
-      // The guard died since the last spawn: the launch failed before the agent ran. Once more with a new guard.
-      if (!this.#replace()) return null;
-      return this.#launch(options);
+      // The guard died or was stopped since the last spawn: the launch failed before the agent ran. Once more with a new guard.
+      if (this.#guard === null || this.#guard === used) {
+        if (!this.#replace(null, true)) return null;
+      }
+      return this.#launch(options, this.#guard!);
     }
   }
 
-  #launch(options: LaunchOptions): Bun.Subprocess {
+  #launch(options: LaunchOptions, guard: Guard): Bun.Subprocess {
     const libc = this.#libc!;
-    const guard = this.#guard!;
     const [cmd0, ...rest] = options.cmd;
     if (cmd0 === undefined) throw new TypeError('cmd must not be empty');
     // Bun's own lookup: the child's PATH, relative entries from its cwd, and Bun's default when PATH is unset or empty.
@@ -388,47 +503,74 @@ export class NativeTie {
     } finally {
       libc.close(pair[1]);
     }
-    const status = this.#status(pair[0]);
+    // The kernel gives a number back only once its group is empty: a group still listed under it is over, dropped once
+    // the new one is held under its own tag, so that a guard replaced by that drop takes the new one along.
+    const stale = this.#byPid.get(proc.pid);
+    const status = this.#status(pair[0], proc, guard, tag);
     libc.close(pair[0]);
-    if (status.closed && status.fd !== null && status.failed === null) {
-      // The kernel gives a number back only once its group is empty: a group still listed under it is over.
-      if (this.#held.has(proc.pid)) this.release(proc.pid);
-      this.#held.set(proc.pid, { tag, fd: status.fd, leading: true, claimed: false });
-      return proc;
+    if (stale !== undefined && stale !== tag && this.#held.has(stale)) {
+      if (this.#byPid.get(proc.pid) === stale) this.#byPid.delete(proc.pid);
+      this.#held.get(stale)!.leading = false;
+      this.#drop(stale);
     }
+    if (status.closed && status.fd !== null && status.failed === null) return proc;
     // The agent never runs untied: a failure stops before its exec; an unreadable outcome ends the group now.
     if (status.fd !== null) {
       if (status.failed === null) this.#signal(status.fd, SIGKILL);
-      libc.close(status.fd);
+      // Held from its admission on, by its tag: it goes the way any group goes.
+      const held = this.#byPid.get(proc.pid) === tag;
+      if (held) { this.#byPid.delete(proc.pid); this.#held.get(tag)!.leading = false; this.#drop(tag); } else libc.close(status.fd);
     }
     const guardLost = status.failed !== null && status.failed.step === Step.Guard && (status.failed.errno === EPIPE || status.failed.errno === ECONNRESET);
     // A guard that is gone holds nothing; any other may hold the tag already (a failure after admission).
-    if (!guardLost) this.#forget(tag);
+    if (!guardLost && status.fd === null) this.#forget(tag);
     if (status.failed !== null) {
       const error = spawnError(status.failed.errno, cmd0);
       if (guardLost) Object.assign(error, { launcherGuardLost: true });
       throw error;
     }
+    // No pidfd: the launcher never had the core's word, so it never ran the agent, and it is alone in its group.
     if (status.fd === null) proc.kill('SIGKILL');
     throw Object.assign(new Error(status.broken === null
       ? `${LAUNCHER_NAME} ended before it reported the launch of '${cmd0}'`
-      : `the launch of '${cmd0}' could not be read: errno ${status.broken}`), { code: 'ELAUNCH', path: cmd0 });
+      : `the launch of '${cmd0}' could not be read: ${status.broken === STOPPED ? 'the launcher was stopped' : `errno ${status.broken}`}`), { code: 'ELAUNCH', path: cmd0 });
   }
 
   /**
-   * The launch's status socket until it closes: the pidfd first, then the
-   * exec's close; or an errno. Any other message, a short one or a read error
-   * is `broken` or not `closed`, never a success.
+   * The launch's status socket until it closes: the pidfd first, which the
+   * core holds under the launch's tag before it tells the launcher to go on,
+   * then the exec's close; or an errno. Any other message, a short one or a
+   * read error is `broken` or not `closed`, never a success. A guard stopped
+   * while the launcher may wait on it is replaced, which fails that wait.
    */
-  #status(sock: number): Status {
+  #status(sock: number, proc: Bun.Subprocess, guard: Guard, tag: number): Status {
     const status: Status = { fd: null, failed: null, closed: false, broken: null };
     const data = new Int32Array(2);
     for (;;) {
-      const got = this.#receive(sock, data);
-      if ('errno' in got) { status.broken = got.errno; return status; }
+      const watched = status.fd === null && this.#guard === guard ? [proc.pid, guard.proc.pid] : [proc.pid];
+      const got = this.#receive(sock, data, watched);
+      if ('errno' in got) {
+        if (got.errno === STOPPED && !stopped(proc.pid)) { this.#replace(null, true); continue; }
+        status.broken = got.errno;
+        return status;
+      }
       if (got.length === 0) { status.closed = true; return status; }
       const admitted = got.length === 8 && !got.truncated && data[0] === Step.Admitted && data[1] === 0 && got.fd !== null && status.fd === null;
-      if (admitted) { status.fd = got.fd; continue; }
+      if (admitted) {
+        status.fd = got.fd;
+        const held: Held = { pid: proc.pid, fd: got.fd!, leading: true, claimed: false, guard: this.#guard === guard ? guard : null };
+        this.#held.set(tag, held);
+        this.#byPid.set(proc.pid, tag);
+        // The guard it was admitted to was replaced meanwhile: the new one takes it before the agent runs.
+        if (this.#guard === null) { status.broken = EPIPE; return status; }
+        if (held.guard !== this.#guard) {
+          const answer = this.#request(this.#guard, new Uint32Array([tag]), held.fd, tag);
+          if (answer !== 0) { status.broken = answer; return status; }
+          held.guard = this.#guard;
+        }
+        if (this.#send(sock, new Int32Array([1]), null, 0) !== 0) { status.broken = this.#errno(); return status; }
+        continue;
+      }
       if (got.fd !== null) this.#libc!.close(got.fd);
       if (got.length === 8 && !got.truncated && data[0]! > Step.Admitted && data[0]! <= Step.Exec && data[1]! > 0) status.failed = { step: data[0]!, errno: data[1]! };
       else status.broken = 0;
@@ -442,37 +584,61 @@ export class NativeTie {
     return this.#errno();
   }
 
-  /** Drops `tag` from the guard. A guard that does not take it now is replaced by one that never held it. */
+  /** Drops a tag the core holds no pidfd for (a launch that failed after its admission). */
   #forget(tag: number): void {
     const guard = this.#guard;
     if (guard === null) return;
-    if (this.#send(guard.sock, new Uint32Array([tag]), null, MSG_DONTWAIT) !== 0) this.#replace();
+    if (this.#send(guard.sock, new Uint32Array([tag]), null, MSG_DONTWAIT) !== 0) this.#replace(tag, false);
   }
 
-  /** The group is empty, or the keeper holds it for the next core: no guard holds it any more. */
-  release(pid: number): void {
-    const held = this.#held.get(pid);
-    if (held === undefined) return;
-    this.#held.delete(pid);
+  /**
+   * Lets go of the group held under `tag`: the guard drops it, or, when it
+   * does not take the drop at once, a new guard that never holds it replaces
+   * it. False when neither could be done: the group stays held, by the old
+   * guard too, and ends with the core.
+   */
+  #drop(tag: number): boolean {
+    const held = this.#held.get(tag);
+    if (held === undefined) return true;
+    const guard = this.#guard;
+    if (guard !== null && held.guard === guard && this.#send(guard.sock, new Uint32Array([tag]), null, MSG_DONTWAIT) !== 0 && !this.#replace(tag, false)) {
+      if (!held.leading) this.#sweepSoon();
+      return false;
+    }
+    this.#held.delete(tag);
+    if (this.#byPid.get(held.pid) === tag) this.#byPid.delete(held.pid);
     this.#libc!.close(held.fd);
-    this.#forget(held.tag);
+    return true;
+  }
+
+  /** The group is empty, or the keeper holds it for the next core: no guard holds it any more. False when it stays held (`#drop`). */
+  release(pid: number): boolean {
+    const tag = this.#byPid.get(pid);
+    if (tag === undefined) return true;
+    const dropped = this.#drop(tag);
+    if (!dropped) this.#trouble(`the group of ${pid} could not be let go of: it ends with this core`);
+    return dropped;
   }
 
   /** The leader exited: its group stays held until it is empty, as the sh watcher does (posix-group-watch.ts). */
   leaderExited(pid: number): void {
-    const held = this.#held.get(pid);
+    const tag = this.#byPid.get(pid);
+    const held = tag === undefined ? undefined : this.#held.get(tag);
     if (held === undefined || !held.leading) return;
     held.leading = false;
-    if (this.#poll === null) {
-      this.#poll = setInterval(() => this.sweep(), this.pollMs);
-      this.#poll.unref();
-    }
+    this.#sweepSoon();
+  }
+
+  #sweepSoon(): void {
+    if (this.#poll !== null) return;
+    this.#poll = setInterval(() => this.sweep(), this.pollMs);
+    this.#poll.unref();
   }
 
   /** Drops each group whose leader exited and that has no member left, probed through its pidfd. */
   sweep(): void {
-    for (const [pid, held] of this.#held) {
-      if (!held.leading && this.#signal(held.fd, 0) === ESRCH) this.release(pid);
+    for (const [tag, held] of this.#held) {
+      if (!held.leading && this.#signal(held.fd, 0) === ESRCH) this.#drop(tag);
     }
     if (this.#poll !== null && ![...this.#held.values()].some(held => !held.leading)) { clearInterval(this.#poll); this.#poll = null; }
   }

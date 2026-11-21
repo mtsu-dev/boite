@@ -1,36 +1,115 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { release, tmpdir } from 'node:os';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEV_LAUNCHER, buildLauncher } from '../bin/build-launcher.ts';
 import { NativeTie, kernelSignalsGroups, launcherCandidates } from '../src/platform/linux-launcher.ts';
 
 const linux = process.platform === 'linux';
-// The native tie needs Linux 6.9; an older kernel is the watcher's case, refused in the first test's gate.
-const native = linux && kernelSignalsGroups(release());
+if (linux) buildLauncher();
+/** Why this machine cannot tie groups natively (an old kernel, a syscall filter, no launcher), or null: the native scenarios need null. */
+const capability = linux ? new NativeTie().ready() : 'not Linux';
 const shape = (error: unknown) => {
   const e = error as { constructor: { name: string }; message: string; code?: unknown; errno?: unknown; syscall?: unknown; path?: unknown };
   return { cls: e.constructor.name, message: e.message, code: e.code, errno: e.errno, syscall: e.syscall, path: e.path };
 };
 const isAlive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const thrown = (run: () => unknown): unknown => { try { run(); } catch (error) { return error; } throw new Error('no throw'); };
+const settle = async (check: () => boolean) => { for (let i = 0; i < 100 && !check(); i++) await Bun.sleep(50); };
+const quietKill = (pid: unknown) => { if (typeof pid === 'number' && pid > 1) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } } };
 
-describe.skipIf(!native)('the Linux launcher', () => {
-  let dir = '';
-  beforeAll(() => { buildLauncher(); dir = mkdtempSync(join(tmpdir(), 'boite-launch-')); });
-  afterAll(() => { rmSync(dir, { recursive: true, force: true }); });
+let dir = '';
+beforeAll(() => { dir = mkdtempSync(join(tmpdir(), 'boite-launch-')); });
+afterAll(() => { rmSync(dir, { recursive: true, force: true }); });
 
-  test('the source tree build is where the core looks, and the kernel gate reads releases', () => {
+/** A launcher at `name` that runs the real one after `prelude`, so a test can change how it runs without a hook in the code. */
+const wrapped = (name: string, prelude: string) => {
+  const path = join(dir, name, 'boite-launch');
+  mkdirSync(join(dir, name), { recursive: true });
+  writeFileSync(path, `#!/bin/sh\n${prelude}\nexec ${JSON.stringify(DEV_LAUNCHER)} "$@"\n`);
+  chmodSync(path, 0o755);
+  return path;
+};
+
+/**
+ * Runs `body` in a core of its own that then dies by SIGKILL; what it printed, as JSON. With `bound`, a core
+ * that has not printed by then is killed and `hung` set: the case where a wait never ends.
+ */
+const crash = async (body: string, prefix: string[] = [], bound = 0): Promise<Record<string, number | string | boolean | null>> => {
+  const core = Bun.spawn({
+    cmd: [...prefix, process.execPath, '-e', `
+      const src = ${JSON.stringify(join(import.meta.dir, '..', 'src'))};
+      const { NativeTie } = await import(${JSON.stringify(join(import.meta.dir, '..', 'src', 'platform', 'linux-launcher.ts'))});
+      const out = {};
+      const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+      const gone = async (pid) => { while (alive(pid)) await Bun.sleep(20); };
+      ${body}
+      console.log(JSON.stringify(out));
+      process.kill(process.pid, 'SIGKILL');`],
+    stdout: 'pipe', stderr: 'inherit',
+  });
+  const text = new Response(core.stdout).text();
+  const hung = bound > 0 && await Promise.race([text.then(() => false), Bun.sleep(bound).then(() => true)]);
+  if (hung) core.kill('SIGKILL');
+  await core.exited;
+  expect(core.signalCode).toBe('SIGKILL');
+  return hung ? { hung: true } : JSON.parse((await text).trim()) as Record<string, number | string | boolean | null>;
+};
+
+/** A seccomp filter that fails one syscall with EPERM (`424:nonzero`: only for a real signal), as a container's can. */
+const deny = (rule: string) => {
+  const path = join(dir, 'deny-syscall');
+  if (!existsSync(path)) {
+    const built = Bun.spawnSync(['cc', '-O2', '-o', path, join(import.meta.dir, 'fixtures', 'deny-syscall.c')], { stderr: 'pipe' });
+    if (built.exitCode !== 0) throw new Error(built.stderr.toString());
+  }
+  return [path, rule];
+};
+
+describe('the launcher gates', () => {
+  test('the core looks next to itself, then in the source tree build, and the kernel gate reads releases', () => {
     expect(launcherCandidates('/opt/boite/boite-core')[0]).toBe('/opt/boite/boite-launch');
     expect(launcherCandidates()).toContain(DEV_LAUNCHER);
-    expect(new NativeTie().ready()).toBeNull();
     expect(kernelSignalsGroups('6.9.0-1-amd64')).toBe(true);
     expect(kernelSignalsGroups('7.3.1-x')).toBe(true);
     expect(kernelSignalsGroups('6.8.12')).toBe(false);
+    expect(kernelSignalsGroups('5.15.0-91-generic')).toBe(false);
+  });
+
+  test.skipIf(!linux)('a missing launcher or an old kernel is refused with its reason', () => {
     expect(new NativeTie([join(dir, 'none')]).ready()).toContain('no boite-launch');
     expect(new NativeTie(launcherCandidates(), '6.1.0').ready()).toContain('6.9 or later');
   });
 
+  // Whatever this kernel allows: a refusal anywhere on the path leaves groups to the watcher, said once, still ended with the core.
+  for (const [rule, name, reason] of [['434', 'pidfd_open', 'EPERM'], ['424', 'pidfd_send_signal', 'errno 1'], ['424:nonzero', 'pidfd_send_signal for any real signal (signal 0 passes)', 'signal 15']] as const) {
+    test.skipIf(!linux)(`a kernel or filter that refuses ${name} leaves groups to the watcher, said once, still tied`, async () => {
+      const out = await crash(`
+        const { Journal } = await import(src + '/journal.ts');
+        const { Bus } = await import(src + '/bus.ts');
+        const { ProcRegistry } = await import(src + '/procs.ts');
+        const { mkdtempSync } = await import('node:fs');
+        const { tmpdir } = await import('node:os');
+        const bus = new Bus();
+        const late = [];
+        bus.onAny((name, event) => { if (name === 'core.log' && event.event === 'groups.late') late.push(event.message); });
+        const procs = new ProcRegistry(new Journal(mkdtempSync(tmpdir() + '/boite-deny-') + '/journal.db'), bus);
+        const agent = procs.spawn('denied', 'sleep', ['69']);
+        procs.spawn('denied', 'true', []);
+        out.agent = agent.record.pid; out.reason = procs.platform.readyLaunch(); out.late = late.length;`, deny(rule));
+      try {
+        expect(out.reason).not.toBeNull();
+        // On a machine that ties natively, the refusal is this filter's; elsewhere the machine's own.
+        if (capability === null) expect(String(out.reason)).toContain(reason);
+        expect(out.late).toBe(1);
+        await settle(() => !isAlive(out.agent as number));
+        expect(isAlive(out.agent as number)).toBe(false);
+      } finally { quietKill(out.agent); }
+    }, 20000);
+  }
+});
+
+describe.skipIf(capability !== null)('the Linux launcher', () => {
   test('a failed launch throws what Bun.spawn throws', () => {
     const tie = new NativeTie();
     writeFileSync(join(dir, 'noexec'), 'garbage\x00\x01binary'); chmodSync(join(dir, 'noexec'), 0o755);
@@ -84,8 +163,8 @@ describe.skipIf(!native)('the Linux launcher', () => {
   test('a guard that died fails the launch closed, and a new guard takes it and every group held', async () => {
     const tie = new NativeTie();
     expect(tie.ready()).toBeNull();
-    const lost: Array<[number, boolean]> = [];
-    tie.onLost = (groups) => lost.push(...groups);
+    const troubles: string[] = [];
+    tie.onTrouble((message) => troubles.push(message));
     const started: Bun.Subprocess[] = [];
     try {
       started.push(tie.spawn({ cmd: ['sleep', '30'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] })!);
@@ -100,21 +179,14 @@ describe.skipIf(!native)('the Linux launcher', () => {
       expect(tie.guardPid).toBe(next);
       expect(isAlive(next)).toBe(true);
       expect(started.map(proc => tie.holds(proc.pid))).toEqual([true, true]);
-      expect(lost).toEqual([]);
+      expect(started.map(proc => tie.guarded(proc.pid))).toEqual([true, true]);
+      expect(troubles).toEqual([]);
     } finally {
       for (const proc of started) proc.kill('SIGKILL');
       await Promise.all(started.map(proc => proc.exited));
     }
   });
 
-  /** A launcher at `name` that runs the real one after `prelude`, so a test can change how it runs without a hook in the code. */
-  const wrapped = (name: string, prelude: string) => {
-    const path = join(dir, name, 'boite-launch');
-    mkdirSync(join(dir, name), { recursive: true });
-    writeFileSync(path, `#!/bin/sh\n${prelude}\nexec ${JSON.stringify(DEV_LAUNCHER)} "$@"\n`);
-    chmodSync(path, 0o755);
-    return path;
-  };
 
   test('a group the guard has no room for is refused before the agent runs', () => {
     // The guard keeps stdin, stdout and stderr: six descriptors leave room for three groups.
@@ -140,27 +212,6 @@ describe.skipIf(!native)('the Linux launcher', () => {
     expect((error as { code?: unknown }).code).toBe('ELAUNCH');
   });
 
-  /** Runs `body` in a core of its own that then dies by SIGKILL; what it printed, as JSON. */
-  const crash = async (body: string, prefix: string[] = []): Promise<Record<string, number | string | boolean | null>> => {
-    const core = Bun.spawn({
-      cmd: [...prefix, process.execPath, '-e', `
-        const src = ${JSON.stringify(join(import.meta.dir, '..', 'src'))};
-        const { NativeTie } = await import(${JSON.stringify(join(import.meta.dir, '..', 'src', 'platform', 'linux-launcher.ts'))});
-        const out = {};
-        const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-        const gone = async (pid) => { while (alive(pid)) await Bun.sleep(20); };
-        ${body}
-        console.log(JSON.stringify(out));
-        process.kill(process.pid, 'SIGKILL');`],
-      stdout: 'pipe', stderr: 'inherit',
-    });
-    const text = await new Response(core.stdout).text();
-    await core.exited;
-    expect(core.signalCode).toBe('SIGKILL');
-    return JSON.parse(text.trim()) as Record<string, number | string | boolean | null>;
-  };
-  const settle = async (check: () => boolean) => { for (let i = 0; i < 100 && !check(); i++) await Bun.sleep(50); };
-
   test('groups held when a guard died end with the core, a leader that exited included', async () => {
     const out = await crash(`
       const tie = new NativeTie();
@@ -169,7 +220,7 @@ describe.skipIf(!native)('the Linux launcher', () => {
       await lead.exited;
       tie.leaderExited(lead.pid);
       out.agent = tie.spawn({ cmd: ['sleep', '62'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] }).pid;
-      const guard = Number(Bun.spawnSync(['pgrep', '-P', String(process.pid), '-f', 'boite-launch guard']).stdout.toString().trim().split('\\n')[0]);
+      const guard = tie.guardPid;
       process.kill(guard, 'SIGKILL');
       out.after = tie.spawn({ cmd: ['sleep', '63'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] }).pid;
       // The old guard's exit is seen before the core dies.
@@ -194,7 +245,7 @@ describe.skipIf(!native)('the Linux launcher', () => {
       const kept = tie.spawn({ cmd: ['sleep', '64'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
       const released = tie.spawn({ cmd: ['sleep', '65'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
       out.kept = kept.pid; out.released = released.pid;
-      out.guard = Number(Bun.spawnSync(['pgrep', '-P', String(process.pid), '-f', 'boite-launch guard']).stdout.toString().trim().split('\\n')[0]);
+      out.guard = tie.guardPid;
       // A guard that reads nothing: its queue fills with drops of a tag no group has.
       process.kill(out.guard, 'SIGSTOP');
       const libc = dlopen('libc.so.6', { send: { args: [T.i32, T.ptr, T.u64, T.i32], returns: T.i64 } }).symbols;
@@ -217,7 +268,7 @@ describe.skipIf(!native)('the Linux launcher', () => {
       const { readFileSync } = await import('node:fs');
       const tie = new NativeTie();
       const first = tie.spawn({ cmd: ['sleep', '66'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
-      const guard = Number(Bun.spawnSync(['pgrep', '-P', String(process.pid), '-f', 'boite-launch guard']).stdout.toString().trim().split('\\n')[0]);
+      const guard = tie.guardPid;
       process.kill(guard, 'SIGKILL');
       // Dead without a turn of the loop: Bun has not reaped it, so its exit has not been seen.
       while (!/\\) Z /.test(readFileSync('/proc/' + guard + '/stat', 'utf8'))) {}
@@ -232,9 +283,11 @@ describe.skipIf(!native)('the Linux launcher', () => {
     } finally { for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } } }
   }, 20000);
 
-  // A pid namespace of its own, where writing ns_last_pid hands a chosen number to the next process.
-  const pidNamespace = Bun.spawnSync(['unshare', '-Urpf', 'true'], { stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
-  test.skipIf(!pidNamespace)('a number another route gets back from an earlier launched group is tied by the watcher', async () => {
+  // A pid namespace of its own, where writing ns_last_pid hands a chosen number to the next process. Where one is
+  // refused, the reason is in the skipped test's name.
+  const unshared = Bun.spawnSync(['unshare', '-Urpf', 'true'], { stdout: 'ignore', stderr: 'pipe' });
+  const noNamespace = unshared.exitCode === 0 ? '' : ` (skipped: unshare -Urpf refused: ${unshared.stderr.toString().trim() || `exit ${unshared.exitCode}`})`;
+  test.skipIf(noNamespace !== '')(`a number another route gets back from an earlier launched group is tied by the watcher${noNamespace}`, async () => {
     const dirIn = mkdtempSync(join(tmpdir(), 'boite-reuse-'));
     const pidFile = join(dirIn, 'pid');
     const core = `
@@ -264,37 +317,159 @@ describe.skipIf(!native)('the Linux launcher', () => {
     } finally { rmSync(dirIn, { recursive: true, force: true }); }
   }, 20000);
 
-  /** A seccomp filter that fails one syscall with EPERM, as a container's can on a kernel that has it. */
-  const deny = (syscall: number) => {
-    const path = join(dir, 'deny-syscall');
-    if (!existsSync(path)) {
-      const built = Bun.spawnSync(['cc', '-O2', '-o', path, join(import.meta.dir, 'fixtures', 'deny-syscall.c')], { stderr: 'pipe' });
-      if (built.exitCode !== 0) throw new Error(built.stderr.toString());
-    }
-    return [path, String(syscall)];
-  };
+  test.skipIf(noNamespace !== '')(`a number given back while its stale drop replaces the guard stays tied by the new guard${noNamespace}`, async () => {
+    // The launch of the reused number ends with its stale group's drop. That drop finds the guard unable to take it
+    // (stopped, its queue full of junk from a helper the wrapper leaves in the group), so a new guard replaces it:
+    // the new group must be among those it takes.
+    const wrapper = wrapped('stall', `case $1 in launch) if [ -n "$BOITE_TEST_STALL" ]; then g=$3; ( while [ ! -e "$BOITE_TEST_STALL" ]; do sleep 0.02; done; kill -STOP "$BOITE_TEST_GUARD"; timeout 0.3 sh -c 'while :; do printf x; done' >&"$g" ) & fi ;; esac`);
+    const dirIn = mkdtempSync(join(tmpdir(), 'boite-reuse-'));
+    const pidFile = join(dirIn, 'pid');
+    const stall = join(dirIn, 'ran');
+    const core = `
+      const { writeFileSync } = await import('node:fs');
+      const { NativeTie } = await import(${JSON.stringify(join(import.meta.dir, '..', 'src', 'platform', 'linux-launcher.ts'))});
+      const tie = new NativeTie([${JSON.stringify(wrapper)}]);
+      if (tie.ready() !== null) throw new Error('no tie: ' + tie.ready());
+      const gone = tie.spawn({ cmd: ['/bin/sh', '-c', 'exit 0'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
+      await gone.exited;
+      writeFileSync('/proc/sys/kernel/ns_last_pid', String(gone.pid - 1));
+      const next = tie.spawn({ cmd: ['/bin/sh', '-c', ': > ${stall}; exec sleep 85'], env: { ...process.env, BOITE_TEST_STALL: ${JSON.stringify(stall)}, BOITE_TEST_GUARD: String(tie.guardPid) }, stdio: ['ignore', 'ignore', 'ignore'] });
+      if (next.pid !== gone.pid) throw new Error('the number did not come back: ' + gone.pid + ' then ' + next.pid);
+      writeFileSync(${JSON.stringify(pidFile)}, String(next.pid));
+      process.kill(process.pid, 'SIGKILL');`;
+    const shell = `"$0" -e "$1"; sleep 3; read pid < "$2"; if kill -0 "$pid" 2>/dev/null; then echo alive; else echo ended; fi`;
+    try {
+      const run = Bun.spawn({ cmd: ['unshare', '-Urpf', 'sh', '-c', shell, process.execPath, core, pidFile], stdout: 'pipe', stderr: 'inherit' });
+      const text = (await new Response(run.stdout).text()).trim();
+      await run.exited;
+      expect(text).toBe('ended');
+    } finally { rmSync(dirIn, { recursive: true, force: true }); }
+  }, 20000);
 
-  for (const [syscall, name] of [[434, 'pidfd_open'], [424, 'pidfd_send_signal']] as const) {
-    test(`a recent kernel that refuses ${name} leaves groups to the watcher, said once, still tied`, async () => {
-      const out = await crash(`
-        const { Journal } = await import(src + '/journal.ts');
-        const { Bus } = await import(src + '/bus.ts');
-        const { ProcRegistry } = await import(src + '/procs.ts');
-        const { mkdtempSync } = await import('node:fs');
-        const { tmpdir } = await import('node:os');
-        const bus = new Bus();
-        const late = [];
-        bus.onAny((name, event) => { if (name === 'core.log' && event.event === 'groups.late') late.push(event.message); });
-        const procs = new ProcRegistry(new Journal(mkdtempSync(tmpdir() + '/boite-deny-') + '/journal.db'), bus);
-        const agent = procs.spawn('denied', 'sleep', ['69']);
-        procs.spawn('denied', 'true', []);
-        out.agent = agent.record.pid; out.reason = procs.platform.readyLaunch(); out.late = late.length;`, deny(syscall));
-      try {
-        expect(String(out.reason)).toContain(syscall === 434 ? 'EPERM' : 'errno 1');
-        expect(out.late).toBe(1);
-        await settle(() => !isAlive(out.agent as number));
-        expect(isAlive(out.agent as number)).toBe(false);
-      } finally { try { process.kill(out.agent as number, 'SIGKILL'); } catch { /* gone */ } }
-    }, 20000);
-  }
+  test('a group the new guard refuses stays held by its pidfd, is said, and is taken back without a spawn', async () => {
+    // The first guard has room for three groups, its successor for two (stdin, stdout, stderr and the groups).
+    const shrink = join(dir, 'shrink-now');
+    const wrapper = wrapped('shrink', `case $1 in guard) if [ -e ${JSON.stringify(shrink)} ]; then ulimit -n 5; else ulimit -n 6; fi ;; esac`);
+    const out = await crash(`
+      const { writeFileSync } = await import('node:fs');
+      const tie = new NativeTie([${JSON.stringify(wrapper)}], undefined, 100);
+      const troubles = [];
+      tie.onTrouble?.((message) => troubles.push(message));
+      if (tie.ready() !== null) throw new Error('no tie: ' + tie.ready());
+      const agents = [0, 1, 2].map((i) => tie.spawn({ cmd: ['sleep', String(90 + i)], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] }));
+      writeFileSync(${JSON.stringify(shrink)}, '');
+      const guard = tie.guardPid;
+      process.kill(guard, 'SIGKILL');
+      await gone(guard);
+      await Bun.sleep(50);
+      out.held = agents.filter((proc) => tie.holds(proc.pid)).length;
+      out.troubles = troubles.length;
+      // One group ends and is let go of: room for the refused one, offered again with no spawn.
+      const [ended, ...rest] = agents;
+      ended.kill('SIGKILL');
+      await ended.exited;
+      tie.release(ended.pid);
+      await Bun.sleep(400);
+      out.a = rest[0].pid; out.b = rest[1].pid;`);
+    try {
+      // Both remaining groups end with the core: the refused one was taken back by the new guard.
+      await settle(() => !isAlive(out.a as number) && !isAlive(out.b as number));
+      expect([isAlive(out.a as number), isAlive(out.b as number)]).toEqual([false, false]);
+      expect(out.held).toBe(3);
+      expect(out.troubles).toBe(1);
+    } finally { quietKill(out.a); quietKill(out.b); rmSync(shrink, { force: true }); }
+  }, 20000);
+
+  test('a drop no guard can take keeps the group held by the old guard and says so to the caller', async () => {
+    // The guard is stopped with a full queue, and the core has no descriptor left for a new guard's socket.
+    const out = await crash(`
+      const { dlopen, FFIType: T, ptr } = await import('bun:ffi');
+      const { closeSync, openSync, readdirSync, readlinkSync } = await import('node:fs');
+      const sockets = () => new Set(readdirSync('/proc/self/fd').filter(fd => { try { return readlinkSync('/proc/self/fd/' + fd).startsWith('socket:'); } catch { return false; } }));
+      const before = sockets();
+      const tie = new NativeTie();
+      tie.ready();
+      const [sock] = [...sockets()].filter(fd => !before.has(fd)).map(Number);
+      const kept = tie.spawn({ cmd: ['sleep', '82'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
+      const released = tie.spawn({ cmd: ['sleep', '83'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
+      out.kept = kept.pid; out.released = released.pid; out.guard = tie.guardPid;
+      process.kill(out.guard, 'SIGSTOP');
+      const libc = dlopen('libc.so.6', { send: { args: [T.i32, T.ptr, T.u64, T.i32], returns: T.i64 } }).symbols;
+      const junk = new Uint32Array([0xffffffff]);
+      while (Number(libc.send(sock, ptr(junk), 4, 0x40 | 0x4000)) >= 0) {}
+      const fill = [];
+      try { for (;;) fill.push(openSync('/dev/null', 'r')); } catch { /* the limit */ }
+      out.result = tie.release(released.pid) ?? null;
+      for (const fd of fill) closeSync(fd);
+      out.held = tie.holds(released.pid);
+      process.kill(out.guard, 'SIGCONT');
+      await Bun.sleep(2600); // past the grace of a guard whose input closed
+      out.releasedAlive = alive(released.pid); out.keptAlive = alive(kept.pid);`, ['sh', '-c', 'ulimit -n 256; exec "$@"', 'sh']);
+    try {
+      expect({ released: out.releasedAlive, kept: out.keptAlive }).toEqual({ released: true, kept: true });
+      expect(out.result).toBe(false);
+      expect(out.held).toBe(true);
+      // Still held, by the old guard too: both end with the core.
+      await settle(() => !isAlive(out.kept as number) && !isAlive(out.released as number));
+      expect([isAlive(out.kept as number), isAlive(out.released as number)]).toEqual([false, false]);
+    } finally { quietKill(out.kept); quietKill(out.released); quietKill(out.guard); }
+  }, 20000);
+
+  test('the launcher runs nothing before the core says it holds the pidfd', async () => {
+    // The launcher's own sockets, read by no core: it has the guard's answer and sent its pidfd, and must wait.
+    const { dlopen, FFIType: T } = await import('bun:ffi');
+    const libc = dlopen('libc.so.6', { socketpair: { args: [T.i32, T.i32, T.i32, T.ptr], returns: T.i32 }, close: { args: [T.i32], returns: T.i32 } }).symbols;
+    const pair = () => { const fds = new Int32Array(2); if (libc.socketpair(1, 5 | 0o2000000, 0, fds) !== 0) throw new Error('socketpair'); return [fds[0]!, fds[1]!] as const; };
+    const [statusCore, statusLaunch] = pair();
+    const [guardCore, guardEnd] = pair();
+    const guard = Bun.spawn({ cmd: [DEV_LAUNCHER, 'guard'], stdio: [guardEnd, 'ignore', 'ignore'], detached: true });
+    const marker = join(dir, 'ran-unconfirmed');
+    const launch = Bun.spawn({ cmd: [DEV_LAUNCHER, 'launch', '3', '4', '7', '/bin/sh', 'sh', '-c', `: > ${marker}; exec sleep 84`], stdio: ['ignore', 'ignore', 'ignore', statusLaunch, guardCore], detached: true });
+    libc.close(statusLaunch); libc.close(guardEnd);
+    try {
+      await Bun.sleep(500);
+      expect(existsSync(marker)).toBe(false);
+      libc.close(statusCore); // the core's end gone without its word
+      expect(await launch.exited).toBe(127);
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      launch.kill('SIGKILL');
+      guard.kill('SIGKILL');
+      libc.close(guardCore);
+    }
+  });
+
+  test('a guard that only signal 0 fails for still ends a group that ignores SIGTERM', async () => {
+    const [denyPath] = deny('424:zero');
+    const wrapper = wrapped('blind', `case $1 in guard) exec ${JSON.stringify(denyPath)} 424:zero ${JSON.stringify(DEV_LAUNCHER)} guard ;; esac`);
+    const out = await crash(`
+      const tie = new NativeTie([${JSON.stringify(wrapper)}]);
+      if (tie.ready() !== null) throw new Error('no tie: ' + tie.ready());
+      out.agent = tie.spawn({ cmd: ['/bin/sh', '-c', 'trap "" TERM; exec sleep 86'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] }).pid;`);
+    try {
+      await settle(() => !isAlive(out.agent as number));
+      expect(isAlive(out.agent as number)).toBe(false);
+    } finally { quietKill(out.agent); }
+  }, 20000);
+
+  test('a stopped guard holds neither a launch nor the loop: a new guard takes over and both groups stay tied', async () => {
+    const pids = join(dir, 'stopped-pids');
+    const out = await crash(`
+      const { writeFileSync } = await import('node:fs');
+      const tie = new NativeTie();
+      if (tie.ready() !== null) throw new Error('no tie');
+      const first = tie.spawn({ cmd: ['sleep', '87'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
+      const guard = tie.guardPid;
+      writeFileSync(${JSON.stringify(pids)}, JSON.stringify([first.pid, guard]));
+      process.kill(guard, 'SIGSTOP');
+      const second = tie.spawn({ cmd: ['sleep', '88'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
+      out.first = first.pid; out.second = second.pid; out.replaced = tie.guardPid !== guard;`, [], 8000);
+    const [first, guard] = JSON.parse(readFileSync(pids, 'utf8')) as number[];
+    try {
+      expect(out.hung).toBeUndefined();
+      expect(out.replaced).toBe(true);
+      await settle(() => !isAlive(first!) && !isAlive(out.second as number));
+      expect([isAlive(first!), isAlive(out.second as number)]).toEqual([false, false]);
+    } finally { quietKill(first); quietKill(out.second); quietKill(guard); }
+  }, 20000);
 });

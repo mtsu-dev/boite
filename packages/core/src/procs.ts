@@ -108,7 +108,8 @@ export class ProcRegistry {
     this.#resources = new ResourceCollection(platform);
     this.#orphanGraceMs = options.orphanGraceMs ?? ORPHAN_GRACE_MS;
     this.#forgetDelayMs = options.forgetDelayMs ?? FORGET_DELAY_MS;
-    this.#stopListening = this.#bus.onAny((name, payload) => {
+    const stopTrouble = platform.onLaunchTrouble?.((message) => bus.emit('core.log', { level: 'warn', message, source: 'process', event: 'groups.unguarded', at: Date.now() }));
+    const stopBus = this.#bus.onAny((name, payload) => {
       if (name === 'turn.started') {
         const { threadId } = payload as Turn;
         this.#cancelSweep(threadId);
@@ -122,6 +123,7 @@ export class ProcRegistry {
         this.#scheduleSweep(threadId);
       }
     });
+    this.#stopListening = () => { stopBus(); stopTrouble?.(); };
     this.platform.retain({
       started: (threadId, pid, info) => {
         this.#onJobStarted(threadId, pid, info);
@@ -358,13 +360,18 @@ export class ProcRegistry {
   /** Set while the keeper holds agent sessions (`keeper/kept-agents.ts`): a launch with `keep` goes to it, null leaves it here. */
   keptSpawn: ((threadId: ThreadId, cmd: string, executable: string, args: string[], opts: SpawnOptions) => SpawnedChild | null) | null = null;
 
-  /** Lets go of a thread's processes, unstopped and with no exit recorded: the keeper holds them for the next core. Each pid also leaves `unassigned`, where every POSIX pid sits. */
-  disown(threadId: ThreadId): void {
+  /**
+   * Lets go of a thread's processes, unstopped and with no exit recorded: the keeper holds them for the next core. Each pid also leaves `unassigned`, where every POSIX pid sits.
+   * The pids whose group could not be let go of, which still end with this core.
+   */
+  disown(threadId: ThreadId): number[] {
     const byPid = this.#live.get(threadId);
-    if (byPid === undefined) return;
-    for (const pid of byPid.keys()) { this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId)); this.unassigned.delete(pid); this.platform.untieGroup?.(pid, false); }
+    if (byPid === undefined) return [];
+    const tied: number[] = [];
+    for (const pid of byPid.keys()) { this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId)); this.unassigned.delete(pid); if (this.platform.untieGroup?.(pid, false) === false) tied.push(pid); }
     this.#live.delete(threadId);
     this.known.delete(threadId);
+    return tied;
   }
 
   /**
