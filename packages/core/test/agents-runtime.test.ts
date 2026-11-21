@@ -57,7 +57,7 @@ test('a mochi\'s Boite guide is the thread guide less the project-bound commands
     expect(thread).toContain(projectBound);
     expect(bot).not.toContain(projectBound);
   }
-  for (const own of ['[quiet]', 'boite mochi remember', 'boite mochi schedule', 'boite mochi watch|unwatch', 'boite settings mochi request', '--open <url>', 'boite thread send <id> <text>', 'boite answer <id> <ask-id> <option-or-text>']) expect(BOT_GUIDE).toContain(own);
+  for (const own of ['[quiet]', 'boite mochi remember', 'boite mochi schedule', 'boite mochi watch|unwatch', 'boite mochi new-session','boite settings mochi request', '--open <url>', 'boite thread send <id> <text>', 'boite answer <id> <ask-id> <option-or-text>']) expect(BOT_GUIDE).toContain(own);
   // A bot proposes a setting that stopped fitting on its own, not only when asked: none of five real bots drew a card in about 970 turns.
   for (const when of ['When one no longer fits, propose the change yourself', 'eventWakes false', 'Never work around a setting']) expect(OWN_SETTINGS).toContain(when);
   expect(DELEGATION_WORDS.test(OWN_SETTINGS)).toBe(false);

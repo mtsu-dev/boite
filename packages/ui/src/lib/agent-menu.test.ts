@@ -198,3 +198,35 @@ test('Cancel move drops the move the mochi waits to make, and says so when it is
   expect(call).toHaveBeenCalledWith('agents.move.cancel', { agentId: 'mira' });
   expect(page.error).toBe(fill(strings.agents.move.cancelLate, { name: 'Mira' }));
 });
+test('New conversation follows Edit once the mochi has a conversation, on a phone too, and its button waits for a turn at work', async () => {
+  const at = (options: Parameters<typeof agentMenuItems>[2]) => agentMenuItems(alone(), agent(), options).map(item => item.id);
+  expect(at({ open: false })).not.toContain('new-session');
+  expect(at({ open: false, conversation: true }).slice(2, 6)).toEqual(['rename', 'pin', 'edit', 'new-session']);
+  expect(at({ open: false, phone: true, conversation: true })).toEqual(['rename', 'pin', 'edit', 'new-session', 'sep-archive', 'pause', 'archive']);
+
+  const profile = agent();
+  const { view, page, call, actions } = machine(profile);
+  const thread = { id: 't-mira', status: 'running' };
+  Object.assign(view.snapshot!, { sessions: [{ agentId: 'mira', threadId: 't-mira' }] });
+  Object.assign(view.store, { threads: [thread] });
+  const labels = strings.agents.newConversation;
+  const note = vi.spyOn(confirm, 'note').mockResolvedValueOnce(null);
+  pickAgentAction(view, profile, 'new-session', actions);
+  await flush();
+  expect(note).toHaveBeenLastCalledWith(expect.objectContaining({ title: fill(labels.title, { name: 'Mira' }), confirmLabel: labels.afterTurn, note: expect.objectContaining({ max: 4000 }) }));
+  expect(call).not.toHaveBeenCalled();
+  // At rest it starts now; a note goes only when one was written, through the mochi's own machine.
+  thread.status = 'idle';
+  note.mockResolvedValueOnce('Next: the changelog.').mockResolvedValueOnce('');
+  pickAgentAction(view, profile, 'new-session', actions);
+  await flush();
+  expect(note).toHaveBeenLastCalledWith(expect.objectContaining({ confirmLabel: labels.confirm }));
+  pickAgentAction(view, profile, 'new-session', actions);
+  await flush();
+  expect(call.mock.calls).toEqual([['agents.session.new', { agentId: 'mira', note: 'Next: the changelog.' }], ['agents.session.new', { agentId: 'mira' }]]);
+  call.mockRejectedValueOnce(new Error('this mochi has no conversation yet'));
+  note.mockResolvedValueOnce('');
+  pickAgentAction(view, profile, 'new-session', actions);
+  await flush();
+  expect(page.reportError).toHaveBeenCalledWith(expect.objectContaining({ message: 'this mochi has no conversation yet' }), 'minor');
+});

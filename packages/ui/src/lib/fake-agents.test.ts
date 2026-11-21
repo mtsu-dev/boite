@@ -251,3 +251,28 @@ test('the fake preserves a quiet streak on edits, ignores a supplied count and r
   const checked = agents.call('agents.routine.save', { id: edited.id, expectedRevision: edited.revision, value: { ...edited, check: 'echo news' } }) as AgentRoutine;
   expect(checked.quietRun).toBe(0);
 });
+
+test('a new conversation drops the mochi\'s session once its turn ends, marks the thread and keeps its routines', async ({ ready }) => {
+  const { client } = await ready({ delayMs: 5 });
+  const agent = await client.call('agents.profile.save', { value: { name: 'Scout', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
+  const { threadId } = await client.call('agents.open', { agentId: agent.id });
+  const routine = await client.call('agents.routine.save', { value: { agentId: agent.id, name: 'Daily', prompt: 'Review the notes', schedule: { kind: 'interval', everyMinutes: 60 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
+  await vi.waitFor(async () => expect((await client.call('threads.get', { threadId })).status).toBe('idle'));
+  const generation = (await client.call('threads.get', { threadId })).sessionGeneration ?? 0;
+  const markers = (messages: Message[]) => messages.flatMap(m => m.parts.flatMap(p => p.type === 'text' && p.newConversation ? [p.newConversation] : []));
+  await expect(client.call('agents.session.new', { agentId: agent.id, note: 'x'.repeat(4001) })).rejects.toMatchObject({ message: 'note: expected 0 to 4000 characters' });
+
+  // Asked during a turn, by the mochi from its thread: nothing moves until the turn ends.
+  await client.call('turns.start', { threadId, prompt: 'Wrap up.' });
+  expect(await client.call('agents.session.new', { threadId, note: 'Next: the changelog.' })).toEqual({ agentId: agent.id, threadId, when: 'turn-end' });
+  expect((await client.call('threads.get', { threadId })).sessionGeneration ?? 0).toBe(generation);
+  await vi.waitFor(async () => expect(markers((await client.call('threads.get', { threadId })).messages)).toEqual([{ by: 'mochi', note: 'Next: the changelog.' }]));
+  const after = await client.call('threads.get', { threadId });
+  expect(after).toMatchObject({ sessionId: null, sessionGeneration: generation + 1 });
+  expect((await client.call('agents.snapshot', {})).routines).toEqual([routine]);
+
+  // The mochi may not ask again so soon; the user may, and an idle thread goes at once.
+  await expect(client.call('agents.session.new', { threadId })).rejects.toMatchObject({ data: { reason: 'too-soon' } });
+  expect(await client.call('agents.session.new', { agentId: agent.id })).toEqual({ agentId: agent.id, threadId, when: 'done' });
+  expect(markers((await client.call('threads.get', { threadId })).messages)).toEqual([{ by: 'mochi', note: 'Next: the changelog.' }, { by: 'user' }]);
+});

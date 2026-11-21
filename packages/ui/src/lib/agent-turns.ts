@@ -53,7 +53,7 @@ const QUIET = /^\[quiet\]\s*(.*)$/i;
 const settled = (turn: Pick<Turn, 'status'>) => turn.status === 'done' || turn.status === 'stopped' || turn.status === 'error';
 const isStep = (part: MessagePart) => part.type === 'tool' || part.type === 'thinking';
 /** Narration is a plain text part; one that carries a notice (a move, a thread started) is not. */
-const narration = (part: MessagePart) => part.type === 'text' && !part.moved && !part.started && !part.startedBy && !part.activity;
+const narration = (part: MessagePart) => part.type === 'text' && !part.moved && !part.newConversation && !part.started && !part.startedBy && !part.activity;
 
 /** The final text block of a turn's final assistant message, as the core reads it for `[quiet]`. */
 export function finalText(messages: readonly Message[]): string | null {
