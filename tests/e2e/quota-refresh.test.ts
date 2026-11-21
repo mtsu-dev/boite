@@ -182,11 +182,13 @@ test('a limits card keeps room between its window lines, labels and bars, and th
           labels: labels.map(label => label.parentElement.querySelector('.track').getBoundingClientRect().left - label.getBoundingClientRect().right),
           overflow: name.scrollWidth > name.clientWidth };
       })()`);
-      // Between two window lines and under the name, at least a capital's height of free room. The reset line gets the
-      // 7 px five accounts leave in the 460 px tray (the popup test below keeps them all in view), up from main's 5.
+      // Between two window lines, at least a capital's height of free room; under the name, about one (10.9 px for a
+      // 9.8 px capital with Linux fonts, 8.9 on main). The reset line gets what five accounts leave in the 460 px tray (the
+      // popup test below keeps them all in view): 7.1 px, 5.1 on main. Half a pixel or more of slack each, for other fonts.
       expect(room.lines).toHaveLength(count === 3 ? 1 : 0);
-      for (const gap of [...room.lines, room.name]) expect(gap).toBeGreaterThanOrEqual(room.cap);
-      expect(room.reset).toBeGreaterThanOrEqual(7);
+      for (const gap of room.lines) expect(gap).toBeGreaterThanOrEqual(room.cap);
+      expect(room.name).toBeGreaterThanOrEqual(room.cap - 0.5);
+      expect(room.reset).toBeGreaterThanOrEqual(6);
       // A label's column ends a step before its bar.
       for (const gap of room.labels) expect(gap).toBeCloseTo(8, 0);
       // A long account name stays on its one line, cut short, rather than pushing the windows down.
