@@ -353,15 +353,16 @@ test('a list row ends its title line with its mark, then its one time, the way a
 
 test('a thread a mochi started keeps its provider before the title and names the mochi below it', async () => {
   await connect();
-  const [started, followed] = store.threads.filter(row => !row.parentThreadId && row.projectId);
-  const project = store.projects.find(row => row.id === started!.projectId)!;
+  const started = store.threads.find(row => row.id === 't-trace')!;
+  const followed = store.threads.find(row => row.id === 't-descriptors')!;
+  const project = store.projects.find(row => row.id === started.projectId)!;
   const { agentDirectory } = await import('../lib/agent-directory.svelte');
   const watch = (thread: ThreadSummary, origin: 'started' | 'followed') => ({ agentId: 'a-nova', threadId: thread.id, title: thread.title, projectId: thread.projectId, origin, since: 0, state: 'idle' as const, stalledSince: null, pullRequest: null });
   agentDirectory(store).snapshot = {
-    profiles: [{ id: 'a-nova', name: 'Nova', avatar: '', status: 'active' }], sessions: [], watches: [watch(started!, 'started'), watch(followed!, 'followed')]
+    profiles: [{ id: 'a-nova', name: 'Nova', avatar: '', status: 'active' }], sessions: [], watches: [watch(started, 'started'), watch(followed, 'followed')]
   } as never;
   const props = { machine: { id: 'local', label: 'Local', store }, project, now: Date.now(), classic: true };
-  mounted = mount(ThreadCard, { target: document.body, props: { ...props, thread: started! } });
+  mounted = mount(ThreadCard, { target: document.body, props: { ...props, thread: started } });
   await settle();
   expect(document.querySelector('.headline [data-testid=thread-provider] + .title')).not.toBeNull();
   expect(document.querySelector('.headline [data-testid=thread-bot]')).toBeNull();
@@ -369,13 +370,14 @@ test('a thread a mochi started keeps its provider before the title and names the
   expect(bot?.getAttribute('title')).toBe('Nova');
   expect(bot?.textContent).toContain('Nova');
   await unmount(mounted);
+  await client.call('threads.subscribe', { threadId: started.id });
   const detail = createRawSnippet(() => ({ render: () => '<span>Activity detail</span>' }));
-  mounted = mount(ThreadCard, { target: document.body, props: { ...props, classic: false, detail, thread: started! } });
+  mounted = mount(ThreadCard, { target: document.body, props: { ...props, classic: false, detail, thread: started } });
   await settle();
   const row = document.querySelector<HTMLButtonElement>('[data-testid=thread-row]')!;
   row.focus();
   const url = 'https://github.com/example/boite/pull/482';
-  await client.call('threads.linkPullRequest', { threadId: started!.id, url });
+  await client.call('threads.linkPullRequest', { threadId: started.id, url });
   await settle();
   expect(document.activeElement).toBe(row);
   const activityMeta = document.querySelector('[data-testid=thread-where]');
@@ -384,7 +386,7 @@ test('a thread a mochi started keeps its provider before the title and names the
   expect(pr?.getAttribute('href')).toBe(url);
   expect(pr?.closest('button')).toBeNull();
   await unmount(mounted);
-  mounted = mount(ThreadCard, { target: document.body, props: { ...props, thread: followed! } });
+  mounted = mount(ThreadCard, { target: document.body, props: { ...props, thread: followed } });
   await settle();
   expect(document.querySelector('[data-testid=thread-bot]')).toBeNull();
   agentDirectory(store).snapshot = null;
