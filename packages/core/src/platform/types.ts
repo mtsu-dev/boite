@@ -256,6 +256,13 @@ export interface ProcessPlatform {
   readyGroups?(): string | null;
   tieGroup?(pid: number): void;
   untieGroup?(pid: number, leaderExited: boolean): void;
+  /**
+   * Linux: why `spawnTied` cannot tie groups before the agent runs, or null
+   * (linux-launcher.ts). `spawnTied` is then `Bun.spawn` through the launcher,
+   * and null when it cannot, for a plain `Bun.spawn` that `tieGroup` ties after.
+   */
+  readyLaunch?(): string | null;
+  spawnTied?(options: { cmd: string[]; cwd?: string; env: Record<string, string | undefined>; stdio: Array<'ignore' | 'pipe' | 'inherit' | number> }): import('bun').Subprocess | null;
   /** SIGKILL to every tied group at once, for a shutdown out of time. */
   killTiedGroups?(): void;
   /** A turn is starting: have the process drain and the protections ready before its first process. */

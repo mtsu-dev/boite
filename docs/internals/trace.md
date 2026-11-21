@@ -666,5 +666,26 @@ closes every trace row a previous core left open (`exited_at` set, no exit
 code), through the partial index `processes_live`, before anything spawns; a
 process the keeper still holds is written live again when it is adopted.
 
+On Linux 6.9 and later, `spawn` and `spawnPiped` tie the group before the
+agent runs instead (`platform/linux-launcher.ts`, `native/launch.c`). Bun
+starts the launcher in the agent's place as a session leader; it opens a pidfd
+on itself, hands it to the core's one guard over a socket (SCM_RIGHTS) and
+only then execs the agent. The spawn reads a close-on-exec pipe until the
+exec closes it, and throws a failed launch's errno in Bun's own shape. So a
+core that dies right after `Bun.spawn` returns, before the registry has the
+pid, still takes the group, and the guard signals it through the pidfd with
+`PIDFD_SIGNAL_PROCESS_GROUP`, the same grace as above, never through a
+number the kernel may have handed out again. Leader exits, empty probes and
+the keeper's takeover drop a group from the guard as from the watcher. A
+guard found gone fails the next launch with EPIPE before the agent runs: the
+core starts another guard and launches again, and hands the groups the old
+one held to the watcher. The launcher sits next to the compiled core
+(`bin/compile.ts` builds it, static, and fails without it) or in
+`native/build` from source (`bin/build-launcher.ts`, run by the test runner).
+Without it, on an older kernel or without glibc, the core logs `groups.late`
+once and the watcher ties those groups as described above. Terminals,
+`spawnChild` (node) and processes the keeper adopts still go through the
+watcher only.
+
 `TraceCapability` exposes OS, mode (`events`, `poll`, `none`) and
 failure notes; clients must read it before promising native capabilities.

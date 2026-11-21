@@ -226,17 +226,15 @@ export class ProcRegistry {
     const protectedLaunch = this.protection.launch(threadId, cmd, args, opts);
     const [command, env] = launchOf(protectedLaunch?.command ?? cmd, protectedLaunch?.env ?? { ...process.env, ...opts.env });
     const extra = Math.max(0, Math.floor(opts.extraPipes ?? 0));
-    const proc = startResolved(command, env, (executable) => Bun.spawn({
+    const proc = startResolved(command, env, (executable) => this.#start({
       cmd: [executable, ...(protectedLaunch?.args ?? args)],
       cwd: protectedLaunch?.cwd ?? opts.cwd,
       env,
-      ...(extra
-        ? { stdio: ['ignore', 'pipe', 'pipe', ...Array.from({ length: extra }, () => 'pipe' as const)] as ['ignore', 'pipe', 'pipe'] }
-        : { stdin: 'ignore' as const, stdout: 'pipe' as const, stderr: 'pipe' as const }),
+      stdio: ['ignore', 'pipe', 'pipe', ...Array.from({ length: extra }, () => 'pipe' as const)],
       windowsHide: opts.showWindow !== true,
-      detached: this.platform.detachedChildren,
     }) as ChildProcess);
-    const fds = extra ? (proc.stdio as unknown[]).slice(3).map(Number) : undefined;
+    // Only the caller's pipes: a launch through the launcher passes it two descriptors of its own after them.
+    const fds = extra ? (proc.stdio as unknown[]).slice(3, 3 + extra).map(Number) : undefined;
     if (opts.showWindow === true) this.#shown.add(threadId);
 
     const kill = () => this.platform.stopChild(proc.pid, running(proc), () => proc.kill());
@@ -257,6 +255,24 @@ export class ProcRegistry {
   }
 
   /**
+   * `Bun.spawn` of a registry child. On Linux the platform's launcher ties the
+   * child's group to the core before the child runs (linux-launcher.ts); it
+   * throws what Bun would. Without it, a plain spawn that `#register` ties.
+   */
+  #start(options: { cmd: string[]; cwd?: string; env: Record<string, string | undefined>; stdio: Array<'ignore' | 'pipe'>; windowsHide: boolean }): Bun.Subprocess {
+    const tied = this.platform.spawnTied?.({ cmd: options.cmd, ...(options.cwd !== undefined ? { cwd: options.cwd } : {}), env: options.env, stdio: options.stdio });
+    if (tied !== null && tied !== undefined) return tied;
+    if (!this.#launchWarned && this.platform.readyLaunch !== undefined) {
+      this.#launchWarned = true;
+      const why = this.platform.readyLaunch();
+      if (why !== null) this.#bus.emit('core.log', { level: 'warn', message: `agent process groups are tied only once their spawn returns: ${why}`, source: 'process', event: 'groups.late', at: Date.now() });
+    }
+    return Bun.spawn({ ...options, stdio: options.stdio as never, detached: this.platform.detachedChildren });
+  }
+
+  #launchWarned = false;
+
+  /**
    * `spawn` with stdin left open. The account login needs it: a provider CLI
    * that cannot reach a browser asks for a code to be pasted back.
    */
@@ -264,16 +280,13 @@ export class ProcRegistry {
     opts = this.#admitted(opts);
     const protectedLaunch = this.protection.launch(threadId, cmd, args, opts);
     const [command, env] = launchOf(protectedLaunch?.command ?? cmd, protectedLaunch?.env ?? opts.env ?? process.env);
-    const proc = startResolved(command, env, (executable) => Bun.spawn({
+    const proc = startResolved(command, env, (executable) => this.#start({
       cmd: [executable, ...(protectedLaunch?.args ?? args)],
       cwd: protectedLaunch?.cwd ?? opts.cwd,
       env,
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
+      stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
-      detached: this.platform.detachedChildren,
-    }));
+    }) as Bun.Subprocess<'pipe', 'pipe', 'pipe'>);
 
     const kill = () => this.platform.stopChild(proc.pid, running(proc), () => proc.kill());
     const record = this.#register(threadId, proc.pid, cmd, args, {
@@ -431,7 +444,7 @@ export class ProcRegistry {
     for (const { entry } of this.known.get(threadId)?.values() ?? []) {
       if (entry === root || entry.identity.incarnation === null) continue;
       const passed = new Set<Entry>();
-      for (let above = entry.parent ?? null; above !== null && !passed.has(above); above = above.parent ?? null) {
+      for (let above: Entry | null = entry.parent ?? null; above !== null && !passed.has(above); above = above.parent ?? null) {
         if (above === root) { descendants.add(`${entry.record.pid}:${entry.identity.incarnation}`); break; }
         passed.add(above);
       }

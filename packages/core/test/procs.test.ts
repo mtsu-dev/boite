@@ -320,6 +320,35 @@ describe('procs', () => {
     }
   }, 20000);
 
+  test.skipIf(process.platform !== 'linux')('on Linux a core that dies before it ties a new spawn\'s group still takes that group with it', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'boite-crash-'));
+    const src = join(import.meta.dir, '..', 'src');
+    const pidFile = join(dataDir, 'pid');
+    const crashed = Bun.spawn({
+      cmd: [process.execPath, '-e', `
+        const { writeFileSync } = await import('node:fs');
+        const { Journal } = await import(${JSON.stringify(join(src, 'journal.ts'))});
+        const { Bus } = await import(${JSON.stringify(join(src, 'bus.ts'))});
+        const { ProcRegistry } = await import(${JSON.stringify(join(src, 'procs.ts'))});
+        const { registryPlatform } = await import(${JSON.stringify(join(src, 'platform', 'index.ts'))});
+        // Bun.spawn returned and the registry has the pid, but the core dies before it ties the group.
+        const platform = { ...registryPlatform(), tieGroup: (pid) => { writeFileSync(${JSON.stringify(pidFile)}, String(pid)); process.kill(process.pid, 'SIGKILL'); } };
+        const procs = new ProcRegistry(new Journal(${JSON.stringify(join(dataDir, 'journal.db'))}), new Bus(), platform);
+        procs.spawn('crashed', 'sleep', ['60']);`],
+      stdout: 'ignore', stderr: 'inherit',
+    });
+    await crashed.exited;
+    expect(crashed.signalCode).toBe('SIGKILL');
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    try {
+      expect(pid).toBeGreaterThan(0);
+      await waitFor(() => !isAlive(pid), 5000);
+    } finally {
+      try { process.kill(pid, 'SIGKILL'); } catch { /* gone, as it should be */ }
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 20000);
+
   test.skipIf(process.platform === 'win32')('off Windows a core that dies while it registers a spawn still takes that group with it', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'boite-crash-'));
     const src = join(import.meta.dir, '..', 'src');

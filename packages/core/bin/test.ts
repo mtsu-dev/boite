@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { coreFiles, coreShards, parseShard, runnerKey } from '../../../scripts/ci/core-shards.ts';
 import { announce, failedTests, namePattern, quarantined } from '../../../scripts/ci/flaky.ts';
+import { buildLauncher } from './build-launcher.ts';
 
 // Fresh processes avoid reusing native runtime state between test files.
 const core = resolve(import.meta.dir, '..');
@@ -27,6 +28,9 @@ const fileDeadlineMs = Number(process.env.BOITE_TEST_FILE_DEADLINE_MS ?? 300_000
 if (!Number.isInteger(fileDeadlineMs) || fileDeadlineMs < 1000) {
   throw new Error(`BOITE_TEST_FILE_DEADLINE_MS: expected at least 1000, received ${process.env.BOITE_TEST_FILE_DEADLINE_MS}`);
 }
+
+// The Linux launcher the registry spawns agents through (src/platform/linux-launcher.ts), built from source first.
+if (process.platform === 'linux') buildLauncher();
 
 const all = coreFiles(resolve(core, 'test'));
 if (!all.length) throw new Error(`${resolve(core, 'test')}: expected at least one .test.ts file`);
