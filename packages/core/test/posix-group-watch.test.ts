@@ -49,12 +49,13 @@ describe('the group watcher', () => {
   });
 
   test('a group the keeper takes over is untied at once, leader running or not', () => {
-    const { pids, groups, lines, watch } = fake();
+    const { pids, groups, sent, lines, watch } = fake();
     pids.add(700); groups.add(700);
     watch.add(700);
     watch.remove(700);
     watch.killAll();
     expect(lines).toEqual(['+ 700', '- 700']);
+    expect(sent).toEqual([]);
   });
 
   test('a pid a new spawn takes before the sweep is watched again as a running group', () => {
