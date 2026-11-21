@@ -35,6 +35,7 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
     'E2E 5/5',
     'E2E type check',
     'Native Windows protection',
+    'Native Windows protection (MinGW)',
     'PR title',
     'Plan',
     'Repository checks',
@@ -180,31 +181,53 @@ test('each core job runs one shard of its CORE_ALL runner when coreRunners lists
   expect(pr.includes('"os":"ubuntu-24.04-arm"')).toBe(true);
 });
 
-test('protection changes run the native fixtures in their own job beside the Windows core shards', () => {
+test('protection changes run the native fixtures in two jobs, one per helper, beside the Windows core shards', () => {
   const ci = loadWorkflow('ci.yml');
   const changes = ci.jobs.changes as Job & { outputs: Record<string, string> };
   expect(changes.outputs.nativeWindows).toBe('${{ steps.filter.outputs.nativeWindows }}');
   type Step = { id?: string; name?: string; if?: string; run?: string; env?: Record<string, string> };
-  const job = ci.jobs['native-windows'] as Job & { 'timeout-minutes': number; steps: Step[] };
-  expect(job['runs-on']).toBe('windows-2025');
-  expect(job.if).toBe(`needs.changes.outputs.core == 'true' && needs.changes.outputs.nativeWindows == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"windows-2025"')`);
-  expect(job['timeout-minutes']).toBe(25);
-  const helper = job.steps.find(step => step.name === 'Build userspace native helper')!;
-  const native = job.steps.find(step => step.name === 'Native Windows protected tools')!;
-  const prepare = job.steps.find(step => step.name === 'Prepare synthetic native providers')!;
-  const providers = job.steps.find(step => step.name === 'Native Windows provider and shared scopes')!;
+  type NativeJob = Job & { 'timeout-minutes': number; env: Record<string, string>; steps: Step[] };
+  const sdk = ci.jobs['native-windows'] as NativeJob;
+  const mingw = ci.jobs['native-windows-mingw'] as NativeJob;
+  // Each helper the shards build runs every matrix once, in its own job.
+  expect([sdk.env.NATIVE_HELPER, mingw.env.NATIVE_HELPER]).toEqual(['protected-tool.exe', 'protected-tool-mingw.exe']);
+  const matrices = ['Build userspace native helper', 'Native Windows protected tools', 'Prepare synthetic native providers', 'Native Windows provider and shared scopes'];
+  for (const job of [sdk, mingw]) {
+    expect(job['runs-on']).toBe('windows-2025');
+    expect(job.if).toBe(`needs.changes.outputs.core == 'true' && needs.changes.outputs.nativeWindows == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"windows-2025"')`);
+    expect(job['timeout-minutes']).toBe(25);
+    expect(matrices.map((name) => job.steps.find((step) => step.name === name))).toEqual(matrices.map((name) => sdk.steps.find((step) => step.name === name)));
+    const names = job.steps.map((step) => step.name);
+    expect(matrices.map((name) => names.indexOf(name))).toEqual(matrices.map((name) => names.indexOf(name)).sort((a, b) => a - b));
+  }
+  // The diagnostics and the helper comparison need one run, with the SDK build.
+  expect(mingw.steps.filter((step) => step.name).map((step) => step.name)).toEqual(matrices);
+  expect(sdk.steps.some((step) => step.name?.endsWith('(non-acceptance)'))).toBe(true);
+  const helper = sdk.steps.find(step => step.name === 'Build userspace native helper')!;
+  const native = sdk.steps.find(step => step.name === 'Native Windows protected tools')!;
+  const prepare = sdk.steps.find(step => step.name === 'Prepare synthetic native providers')!;
+  const providers = sdk.steps.find(step => step.name === 'Native Windows provider and shared scopes')!;
   expect(helper.id).toBe('native_helper');
   expect(prepare).toMatchObject({id: 'native_providers', if: "${{ !cancelled() && steps.native_helper.outcome == 'success' }}"});
   expect(providers.if).toBe("${{ !cancelled() && steps.native_providers.outcome == 'success' }}");
   expect(providers.env).toMatchObject({BOITE_TEST_NATIVE_EXECUTION: '1', BOITE_DIAGNOSE_JOB_EVENTS: '1'});
-  expect(providers.run).toContain("@('protected-tool.exe', 'protected-tool-mingw.exe')");
-  expect(providers.run).toContain('bun test packages/core/test/protected-muse.test.ts --timeout 120000');
+  expect(providers.run).toBe(`Write-Host "Native provider/shared fixture helper: $env:NATIVE_HELPER"
+$env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\\$env:NATIVE_HELPER"
+$failed = $false
+bun test packages/core/test/protected-drivers.test.ts packages/core/test/protected-adapters.test.ts packages/core/test/shared-access.test.ts -t 'native control|useful edits and child|protected .*(remote jobs|scopes retire)' --timeout 120000
+if ($LASTEXITCODE -ne 0) { $failed = $true }
+bun test packages/core/test/protected-muse.test.ts --timeout 120000
+if ($LASTEXITCODE -ne 0) { $failed = $true }
+if ($failed) { exit 1 }
+`);
   expect(helper.if).toBe("runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'");
   // A failed helper build stops the matrices that need it.
   expect(native.if).toBeUndefined();
   expect(helper.run).toContain('bun packages/core/bin/install-windows-sandbox.ts');
   expect(helper.run).toContain('BOITE_WINDOWS_SANDBOX_PATH=');
   expect(helper.run).toContain('$env:GITHUB_ENV');
+  // Both helpers are built in every job, so NATIVE_HELPER always names a built file.
+  for (const name of ['protected-tool.exe', 'protected-tool-mingw.exe']) expect(helper.run).toContain(`$env:RUNNER_TEMP\\${name}`);
   // Preparation is a prerequisite for later matrices: every native command
   // must stop before a later success can overwrite its exit status.
   const helperLines = helper.run!.trim().split('\n');
@@ -213,22 +236,17 @@ test('protection changes run the native fixtures in their own job beside the Win
   for (const index of nativeCommands) {
     expect(helperLines[index + 1]).toBe('if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }');
   }
-  expect(job.steps.indexOf(helper)).toBeLessThan(job.steps.indexOf(native));
   expect(native.env).toMatchObject({ BOITE_TEST_NATIVE_EXECUTION: '1', TEMP: '${{ runner.temp }}', TMP: '${{ runner.temp }}' });
-  expect(native.run).toBe(`$failed = $false
-foreach ($helper in @('protected-tool.exe', 'protected-tool-mingw.exe')) {
-  Write-Host "Native fixture helper: $helper"
-  $env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\\$helper"
-  bun test packages/core/test/protected-windows.test.ts --timeout 120000
-  if ($LASTEXITCODE -ne 0) { $failed = $true }
-}
-if ($failed) { exit 1 }
+  expect(native.run).toBe(`Write-Host "Native fixture helper: $env:NATIVE_HELPER"
+$env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\\$env:NATIVE_HELPER"
+bun test packages/core/test/protected-windows.test.ts --timeout 120000
+if ($LASTEXITCODE -ne 0) { exit 1 }
 `);
   // The Windows core shards run the suite with the same helper, and none of the matrices.
   for (const id of ['core-windows-x64-1', 'core-windows-x64-2']) {
     const steps = (ci.jobs[id] as Job & { steps: Step[] }).steps;
     expect(steps.find(step => step.name === 'Build userspace native helper')).toEqual(helper);
-    for (const name of ['Native Windows protected tools', 'Prepare synthetic native providers', 'Native Windows provider and shared scopes']) {
+    for (const name of matrices.slice(1)) {
       expect(steps.some(step => step.name === name)).toBe(false);
     }
     expect(steps.find(step => step.run === 'bun run --cwd packages/core test')?.if).toBeUndefined();

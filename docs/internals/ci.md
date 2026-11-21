@@ -298,15 +298,18 @@ A pull request, draft or ready, runs `pr` mode: the plan, the repository
 checks, the two Linux x64 core shards, the two UI shards, `Bundle size`, and
 the focused telemetry and E2E type checks, each only when its paths changed.
 Protection code, protected fixtures and shared toolchain inputs also select
-the two Windows core shards and `Native Windows protection`. Each Windows core
-shard builds the userspace sandbox helper and runs its half of the ordinary
-suite with it; the native job builds the helper again and runs the opt-in
-native protection fixtures, about 11 minutes, beside them instead of before
-the suite. Other pull requests leave Windows out. macOS, desktop packages, E2E, stress,
+the two Windows core shards, `Native Windows protection` and `Native Windows
+protection (MinGW)`. Each Windows core shard builds the userspace sandbox
+helper and runs its half of the ordinary suite with it. The two native jobs
+build both helpers again and run the opt-in native protection fixtures beside
+them instead of before the suite, one job per helper (`NATIVE_HELPER`): the
+SDK build, with the diagnostics below, and the MinGW build. Each takes about
+7.5 minutes where one job ran both helpers in 12.7 (median of 23 pull
+requests, 2026-11-21), so the Windows core shards end such a run again. Other pull requests leave Windows out. macOS, desktop packages, E2E, stress,
 Docker and the APKs skip: the [merge queue](#merge-queue) runs them on top of
 `main`.
 
-The native job also archives `windows-null-access-matrix`: a standalone,
+The SDK job also archives `windows-null-access-matrix`: a standalone,
 opt-in comparison of host and LPAC NUL opens with four requested access masks.
 It derives the frozen historical v1 helper in
 `tests/diagnostics/windows-protected-reference.c` and preserves that reference's
