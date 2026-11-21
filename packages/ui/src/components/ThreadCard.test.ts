@@ -1,6 +1,6 @@
 import type { ThreadSummary } from '@boite/contracts';
 import { afterEach, expect, test, vi } from 'vitest';
-import { flushSync, mount, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { hostMark } from '../lib/machine-host';
@@ -351,7 +351,7 @@ test('a list row ends its title line with its mark, then its one time, the way a
   expect(headline().querySelectorAll('time')).toHaveLength(1);
 });
 
-test('a thread a mochi started shows that mochi\'s face before its title, grey at rest; one it only follows shows none', async () => {
+test('a thread a mochi started keeps its provider before the title and names the mochi below it', async () => {
   await connect();
   const [started, followed] = store.threads.filter(row => !row.parentThreadId && row.projectId);
   const project = store.projects.find(row => row.id === started!.projectId)!;
@@ -360,13 +360,31 @@ test('a thread a mochi started shows that mochi\'s face before its title, grey a
   agentDirectory(store).snapshot = {
     profiles: [{ id: 'a-nova', name: 'Nova', avatar: '', status: 'active' }], sessions: [], watches: [watch(started!, 'started'), watch(followed!, 'followed')]
   } as never;
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread: started!, now: Date.now() } });
+  const props = { machine: { id: 'local', label: 'Local', store }, project, now: Date.now(), classic: true };
+  mounted = mount(ThreadCard, { target: document.body, props: { ...props, thread: started! } });
   await settle();
-  const face = document.querySelector('[data-testid=thread-bot]');
-  expect(face?.getAttribute('title')).toBe('Nova');
-  expect(face?.nextElementSibling?.classList.contains('title')).toBe(true);
+  expect(document.querySelector('.headline [data-testid=thread-provider] + .title')).not.toBeNull();
+  expect(document.querySelector('.headline [data-testid=thread-bot]')).toBeNull();
+  const bot = document.querySelector('[data-testid=thread-where] [data-testid=thread-bot]');
+  expect(bot?.getAttribute('title')).toBe('Nova');
+  expect(bot?.textContent).toContain('Nova');
   await unmount(mounted);
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread: followed!, now: Date.now() } });
+  const detail = createRawSnippet(() => ({ render: () => '<span>Activity detail</span>' }));
+  mounted = mount(ThreadCard, { target: document.body, props: { ...props, classic: false, detail, thread: started! } });
+  await settle();
+  const row = document.querySelector<HTMLButtonElement>('[data-testid=thread-row]')!;
+  row.focus();
+  const url = 'https://github.com/example/boite/pull/482';
+  await client.call('threads.linkPullRequest', { threadId: started!.id, url });
+  await settle();
+  expect(document.activeElement).toBe(row);
+  const activityMeta = document.querySelector('[data-testid=thread-where]');
+  expect(activityMeta?.querySelector('[data-testid=thread-bot]')?.textContent).toContain('Nova');
+  const pr = activityMeta?.querySelector('a[data-testid=thread-pr]');
+  expect(pr?.getAttribute('href')).toBe(url);
+  expect(pr?.closest('button')).toBeNull();
+  await unmount(mounted);
+  mounted = mount(ThreadCard, { target: document.body, props: { ...props, thread: followed! } });
   await settle();
   expect(document.querySelector('[data-testid=thread-bot]')).toBeNull();
   agentDirectory(store).snapshot = null;
