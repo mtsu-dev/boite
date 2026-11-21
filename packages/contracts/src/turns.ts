@@ -35,6 +35,8 @@ export type TurnExecution = Pick<ThreadSummary,
    * or in its projects, it was just created, or its instructions changed.
    */
   operation?: 'compact' | 'coordination' | 'delegation' | 'background' | 'resume' | 'pull-request' | 'keepalive' | 'routine' | 'event';
+  /** A workflow summary committed with its delivery record. Its unsent turn survives a restart. */
+  workflowSummary?: true;
   /** A `compact` the core opened by the `autoCompact` setting, or a `keepalive`: not one the user asked for. */
   automatic?: true;
   /**

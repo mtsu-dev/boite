@@ -75,8 +75,9 @@ pauses the team and the runs instead, marked as held by a restart: the parent
 agent resumes them with `boite delegate resume`
 ([delegation](delegation.md#stop-pause-and-resume),
 [workflows](workflows.md#failure-stop-and-restart)).
-The next core also retries delivery of completed workflow summaries that
-remain pending.
+The next core also attempts delivery of pending summaries for successful and
+failed workflows. If it finds an already admitted summary turn that never
+started, it queues that same turn with its stored ID and prompt.
 
 Compactions and coordination wakes are excluded. A mochi's thread
 resumes like any conversation; a wake that was waiting for its thread to be

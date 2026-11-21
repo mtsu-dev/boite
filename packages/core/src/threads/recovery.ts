@@ -63,6 +63,15 @@ export class ThreadRecovery {
       }
       const thread = this.#core.journal.getThread(turn.threadId);
       const target = turn.execution;
+      // The workflow already recorded this summary as delivered. Its queued
+      // turn is the only copy that can reach the driver after a restart.
+      if (previous === 'queued' && turn.startedAt === null && !turn.queueHold && target?.workflowSummary
+        && thread && !thread.archived && !thread.parentThreadId) {
+        this.#core.scheduler.enqueue(turn, target.accountId, { recovering: true });
+        counts.requeued += 1;
+        waiting.add(turn.threadId);
+        continue;
+      }
       const manual = this.#core.threads.resumes.manuallyAdmitted(turn);
       if (previous === 'queued' && turn.startedAt === null && target && thread && !thread.archived && !thread.parentThreadId
         && (!target.operation || manual || this.#core.threads.resumes.admitted(turn))) {

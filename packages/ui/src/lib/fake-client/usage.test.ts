@@ -50,3 +50,30 @@ test('usage.thread gives a thread\'s turns oldest first, capped to the newest, a
   await expect(client.call('usage.thread', { threadId: 'thr_missing', edges })).rejects.toMatchObject({ code: RpcErrorCode.NotFound });
   await expect(client.call('usage.thread', { threadId: 't-trace', edges: [1] })).rejects.toMatchObject({ code: RpcErrorCode.InvalidParams });
 });
+
+test('paired usage keeps totals and hides conversations and projects no longer visible', async ({ ready }) => {
+  const { client } = await ready({ delayMs: 0 });
+  const edges = dayEdges(90);
+  const project = (await client.call('projects.list', {})).find(project => project.id === 'p-boite')!;
+  const threadId = 't-trace';
+  const query = { edges, threadId };
+  client.becomes('session');
+  expect((await client.call('usage.thread', query)).thread.threadId).toBe(threadId);
+  const before = await client.call('usage.history', { edges });
+  expect(before.threads.map(thread => thread.threadId)).toContain(threadId);
+  client.becomes('owner');
+  await client.call('projects.remove', { projectId: project.id });
+  client.becomes('session');
+  await expect(client.call('threads.get', { threadId })).rejects.toMatchObject({ code: RpcErrorCode.NotFound });
+  const history = await client.call('usage.history', { edges });
+  expect(history.rows).toEqual(before.rows);
+  expect(history.threads.some(thread => thread.projectId === project.id)).toBe(false);
+  expect(history.projects?.some(entry => entry.projectId === project.id)).toBe(false);
+  expect((await client.call('usage.history', { edges, projectId: project.id })).rows).toEqual([]);
+  await expect(client.call('usage.thread', query)).rejects.toMatchObject({ code: RpcErrorCode.NotFound });
+  await expect(client.call('usage.get', { threadId })).rejects.toMatchObject({ code: RpcErrorCode.NotFound });
+  client.becomes('owner');
+  await client.call('projects.add', { path: project.path });
+  client.becomes('session');
+  expect(await client.call('usage.history', { edges })).toEqual(before);
+});

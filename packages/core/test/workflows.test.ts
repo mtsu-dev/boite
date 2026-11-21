@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_DELEGATION_CONFIG, extractJson, RpcErrorCode } from '@boite/contracts';
@@ -427,7 +427,7 @@ test.each(['result', 'failure notice'] as const)('a queued workflow %s starts no
   expect(pending.failuresNoticed ?? []).toEqual([]);
 });
 
-test('delivers a finished workflow after restart handoff without another user turn', async () => {
+test.each(['done', 'failed'] as const)('delivers a %s workflow after restart handoff without another user turn', async status => {
   let first = true;
   let stopping = false;
   const { held, prompts } = scripted(ctx => {
@@ -447,8 +447,8 @@ test('delivers a finished workflow after restart handoff without another user tu
   const run = h.core.workflows.start({ threadId, plan: { name: 'Pending summary', steps: [{ id: 'first', task: 'Finish' }] }, requestId: 'pending' }, 'user');
   const instance = () => h.core.workflows.get(threadId, run.id).nodes[0]!.instances[0]!;
   await waitFor(() => instance().threadId !== null && held.has(instance().threadId!));
-  held.get(instance().threadId!)!('Completed.');
-  await waitFor(() => h.core.workflows.get(threadId, run.id).status === 'done');
+  held.get(instance().threadId!)!('Completed.', status === 'failed' ? 'error' : 'done');
+  await waitFor(() => h.core.workflows.get(threadId, run.id).status === status);
   expect(h.core.workflows.get(threadId, run.id).delivered).toBe(false);
   expect(h.core.threads.handoff.toolsRunning(threadId)).toBe(1);
   expect(h.core.requestHandoffShutdown(1000)).toBe('accepted');
@@ -466,12 +466,12 @@ test('delivers a finished workflow after restart handoff without another user tu
   cores.unshift(next);
   expect(next.core.threads.handoff.handedOver).toBe(true);
   const result = () => next.core.workflows.get(threadId, run.id);
-  await waitFor(() => result().delivered);
-  expect(result()).toMatchObject({ status: 'done', delivered: true, deliveryError: null });
+  await waitFor(() => next.core.journal.listTurns(threadId).length === 2);
+  expect(result()).toMatchObject({ status, delivered: true, deliveryError: null });
   await waitFor(() => next.core.threads.require(threadId).status === 'idle');
   expect(next.core.journal.listTurns(threadId)).toHaveLength(2);
-  const summaries = () => prompts.filter(p => p.threadId === threadId && p.prompt.includes('Boite workflow done'));
-  expect(summaries().map(p => p.prompt)).toEqual([expect.stringContaining('Completed.')]);
+  const summaries = () => prompts.filter(p => p.threadId === threadId && p.prompt.includes(`Boite workflow ${status}`));
+  expect(summaries().map(p => p.prompt)).toEqual([expect.stringContaining(status === 'done' ? 'Completed.' : 'Pending summary')]);
   await next.stop();
   const again = await startTestCore({ dataDir: h.dataDir });
   cores.unshift(again);
@@ -480,6 +480,40 @@ test('delivers a finished workflow after restart handoff without another user tu
   await waitFor(() => again.core.threads.require(threadId).status === 'idle');
   expect(again.core.journal.listTurns(threadId)).toHaveLength(3);
   expect(summaries()).toHaveLength(1);
+});
+
+test('restarts the same workflow summary admitted before scheduler enqueue', async () => {
+  const { prompts } = scripted(ctx => ctx.thread.parentThreadId ? 'Step result.' : 'Summary received.');
+  const { h, owner, threadId } = await setup();
+  const enqueue = h.core.scheduler.enqueue.bind(h.core.scheduler);
+  const cut = spyOn(h.core.scheduler, 'enqueue').mockImplementation((turn, accountId, options) => {
+    if (turn.threadId !== threadId) enqueue(turn, accountId, options);
+  });
+  restores.push(() => cut.mockRestore());
+  const run = await owner.call('workflows.start', {
+    threadId, plan: { name: 'Committed summary', steps: [{ id: 'first', task: 'Finish' }] }, requestId: 'committed',
+  });
+  await waitFor(() => h.core.workflows.get(threadId, run.id).delivered);
+  const [admitted] = h.core.journal.listTurns(threadId);
+  expect(admitted).toMatchObject({ status: 'queued', startedAt: null });
+  expect(h.core.scheduler.state().queued).toEqual([]);
+  expect(prompts.filter(prompt => prompt.threadId === threadId)).toEqual([]);
+  owner.close();
+  await h.core.drain();
+  await h.server.stop();
+  await h.core.close();
+
+  const next = await startTestCore({ dataDir: h.dataDir });
+  cores.unshift(next);
+  await waitFor(() => next.core.journal.getTurn(admitted!.id)?.finishedAt != null);
+  expect(next.core.journal.getTurn(admitted!.id)?.status).toBe('done');
+  await next.stop();
+  const again = await startTestCore({ dataDir: h.dataDir });
+  cores.unshift(again);
+  expect(await again.core.workflows.resumeAfterRestart()).toBe(0);
+  expect(again.core.journal.listTurns(threadId).map(turn => turn.id)).toEqual([admitted!.id]);
+  expect(prompts.filter(prompt => prompt.threadId === threadId).map(prompt => prompt.prompt))
+    .toEqual([expect.stringContaining('Step result.')]);
 });
 
 test('a paused team pauses the run until an owner resumes it', async () => {

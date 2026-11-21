@@ -243,11 +243,18 @@ interface LedgerOptions {
   finished: FakeFinishedTurn[];
   projects?: ReadonlyMap<ProjectId, ProjectName>;
   threads?: ReadonlyMap<ThreadId, ThreadName>;
+  visibleOnly?: boolean;
   now?: number;
 }
 
 function projectName(options: LedgerOptions, projectId: ProjectId): ProjectName | undefined {
   return options.projects?.get(projectId) ?? LEDGER_PROJECTS[projectId];
+}
+
+function visibleGroup(group: Group, options: LedgerOptions): boolean {
+  // Seeded turns can name a project different from the current thread's.
+  return !options.visibleOnly || options.threads?.has(group.threadId) === true
+    && (group.projectId === null || options.projects?.get(group.projectId)?.removed === false);
 }
 
 /** The ledger's groups over `[edges[0], edges[last])`. */
@@ -308,8 +315,10 @@ export function fakeUsageHistory(edges: number[], options: LedgerOptions & { pro
     addUsage(project.usage, group.usage);
     projects.set(group.projectId, project);
   }
-  const kept = groups.filter((group) => (options.providerId === undefined || group.providerId === options.providerId)
-    && (options.projectId === undefined || group.projectId === options.projectId));
+  const { projectId } = options;
+  const hiddenProject = options.visibleOnly && typeof projectId === 'string' && options.projects?.get(projectId)?.removed !== false;
+  const kept = hiddenProject ? [] : groups.filter(group => (options.providerId === undefined || group.providerId === options.providerId)
+    && (projectId === undefined || group.projectId === projectId));
   const rows = new Map<string, UsageHistoryRow>();
   for (const group of kept) {
     let bucket = 0;
@@ -323,7 +332,12 @@ export function fakeUsageHistory(edges: number[], options: LedgerOptions & { pro
     rows.set(key, row);
   }
   const ordered = [...rows.values()].sort((a, b) => a.bucket - b.bucket || a.providerId.localeCompare(b.providerId) || (a.model ?? '').localeCompare(b.model ?? ''));
-  return { edges: [...edges], rows: ordered, threads: [...threadTotals(kept, options, options.providerId).values()], projects: [...projects.values()], pricing: { ...LEDGER_PRICING } };
+  const eligible = options.visibleOnly ? kept.filter(group => visibleGroup(group, options)) : kept;
+  return {
+    edges: [...edges], rows: ordered, threads: [...threadTotals(eligible, options, options.providerId).values()],
+    projects: [...projects.values()].filter(project => !options.visibleOnly || !project.removed),
+    pricing: { ...LEDGER_PRICING },
+  };
 }
 
 /**
@@ -332,7 +346,8 @@ export function fakeUsageHistory(edges: number[], options: LedgerOptions & { pro
  */
 export function fakeUsageThread(threadId: ThreadId, edges: number[], options: LedgerOptions & { providerId?: string }): UsageThreadDetail {
   const { providerId } = options;
-  const groups = ledger(edges, options).filter((group) => providerId === undefined || group.providerId === providerId);
+  const groups = ledger(edges, options).filter(group => (providerId === undefined || group.providerId === providerId)
+    && visibleGroup(group, options));
   const own = groups.filter((group) => group.threadId === threadId);
   const turns: UsageThreadTurn[] = [];
   let reported = 0;
@@ -369,7 +384,7 @@ export function fakeUsageThread(threadId: ThreadId, edges: number[], options: Le
   };
   const cost = (entry: UsageHistoryThread) => entry.usage.costUsdEquivalent ?? 0;
   const tokens = (entry: UsageHistoryThread) => entry.usage.inputTokens + entry.usage.outputTokens + entry.usage.cacheReadTokens + entry.usage.cacheWriteTokens;
-  const children = [...threadTotals(groups.filter((group) => group.parentId === threadId), options, providerId).values()]
+  const children = [...threadTotals(groups.filter(group => group.parentId === threadId), options, providerId).values()]
     .sort((a, b) => cost(b) - cost(a) || tokens(b) - tokens(a) || b.turns - a.turns);
   return { thread, reported, priced, turns: truncated ? turns.slice(-USAGE_THREAD_TURNS_MAX) : turns, truncated, children };
 }

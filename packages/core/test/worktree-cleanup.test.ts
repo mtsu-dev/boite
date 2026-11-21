@@ -318,7 +318,7 @@ describe('settled worktree cleanup', () => {
     } finally { intercept.mockRestore(); }
   });
 
-  test.skipIf(process.platform !== 'linux')('compacts clean CRLF and filtered files using their Git attributes', async () => {
+  test.skipIf(process.platform !== 'linux')('compacts clean CRLF and keeps files requiring external Git filters', async () => {
     const project = await repoProject();
     writeFileSync(join(project.path, '.gitattributes'), '*.txt text eol=crlf\n*.fixture filter=recovery\n');
     git(project.path, 'config', 'filter.recovery.clean', 'tr a-z A-Z');
@@ -328,6 +328,7 @@ describe('settled worktree cleanup', () => {
     git(project.path, 'add', '.');
     git(project.path, 'commit', '-qm', 'attributes');
     const thread = await worktreeThread(project, 'Clean conversions');
+    const commit = git(thread.cwd, 'rev-parse', 'HEAD');
     expect(readFileSync(join(thread.cwd, 'doc.txt'), 'utf8')).toBe('one\r\ntwo\r\n');
     expect(readFileSync(join(thread.cwd, 'doc.fixture'), 'utf8')).toBe('text\n');
     expect(git(thread.cwd, 'status', '--porcelain')).toBe('');
@@ -335,15 +336,19 @@ describe('settled worktree cleanup', () => {
     writeFileSync(join(project.path, '.gitattributes'), '*.txt -text\n*.fixture -filter\n');
     await client.call('threads.archive', { threadId: thread.id });
     expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch })]);
-    expect(await client.call('worktrees.recoveries', {})).toEqual([]);
-    expect(readdirSync(dirname(thread.cwd)).filter(name => name.startsWith('.boite-removing-'))).toEqual([]);
+    const [recovery] = await client.call('worktrees.recoveries', {});
+    expect(recovery).toEqual({ path: thread.cwd, commit, recoveryPath: expect.any(String) });
+    expect(readdirSync(recovery!.recoveryPath)).toEqual(['doc.fixture']);
+    expect(readFileSync(join(recovery!.recoveryPath, 'doc.fixture'), 'utf8')).toBe('text\n');
+    expect(readdirSync(dirname(thread.cwd)).filter(name => name.startsWith('.boite-removing-'))).toEqual([basename(dirname(recovery!.recoveryPath))]);
   });
 
-  test.skipIf(process.platform !== 'linux')('keeps a late save that the Git clean filter maps to the original blob', async () => {
+  test.skipIf(process.platform !== 'linux').each(['fixed', 'directory-dependent'])('keeps a late save that the %s Git filter maps to the original blob', async filter => {
     const project = await repoProject();
     writeFileSync(join(project.path, '.gitattributes'), '*.fixture filter=recovery\n');
     git(project.path, 'config', 'filter.recovery.clean', 'tr a-z A-Z');
-    git(project.path, 'config', 'filter.recovery.smudge', 'tr A-Z a-z');
+    git(project.path, 'config', 'filter.recovery.smudge', filter === 'fixed' ? 'tr A-Z a-z'
+      : 'case "$PWD" in */boite-recovery-git-*/checkout) cat >/dev/null; printf "TeXt\\n";; *) tr A-Z a-z;; esac');
     writeFileSync(join(project.path, 'doc.fixture'), 'TEXT\n');
     git(project.path, 'add', '.');
     git(project.path, 'commit', '-qm', 'attributes');
@@ -371,6 +376,8 @@ describe('settled worktree cleanup', () => {
     expect(await client.call('worktrees.recoveries', {})).toEqual([{ path: thread.cwd, commit, recoveryPath: saved! }]);
     expect(readFileSync(join(saved!, 'doc.fixture'), 'utf8')).toBe('TeXt\n');
     expect(readdirSync(saved!)).toEqual(['doc.fixture']);
+    git(project.path, 'worktree', 'add', '--detach', thread.cwd, commit);
+    expect(readFileSync(join(thread.cwd, 'doc.fixture'), 'utf8')).toBe('text\n');
   });
 
   test('keeps the captured edit when its public name is published again', async () => {

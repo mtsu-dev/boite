@@ -160,11 +160,15 @@ async function sameFileBytes(file: FileHandle, restored: string): Promise<boolea
   } finally { await expected.close(); }
 }
 
-/** Materialize Git's checkout bytes with the retired commit's attributes in an empty worktree. */
+/** Materialize Git's built-in checkout conversions using the retired commit's attributes. */
 async function gitComparison(git: CheckoutGit, commit: string, temporary: string): Promise<GitComparison | null> {
   // The removed worktree's private configuration is no longer available.
   const worktreeConfig = await git(['config', '--type=bool', '--get', 'extensions.worktreeConfig']);
   if (worktreeConfig.stderr || !(worktreeConfig.code === 1 || worktreeConfig.code === 0 && worktreeConfig.stdout.trim() === 'false')) return null;
+  // Includes may select different config by Git directory or branch. A custom
+  // attributes file can also resolve differently in a synthetic checkout.
+  const contextualConfig = await git(['config', '--name-only', '--get-regexp', '^(includeif\\.|core\\.attributesfile$)']);
+  if (contextualConfig.code !== 1 || contextualConfig.stdout || contextualConfig.stderr) return null;
   const admin = await git(['rev-parse', '--absolute-git-dir']);
   const dir = admin.stdout.trim();
   if (admin.code !== 0 || admin.stderr || !isAbsolute(dir)) return null;
@@ -177,6 +181,16 @@ async function gitComparison(git: CheckoutGit, commit: string, temporary: string
   const loaded = await git([...options, 'read-tree', commit], index);
   if (loaded.code !== 0 || loaded.stderr) return null;
   return async (file, name) => {
+    // An external smudge or process filter may produce different bytes at the
+    // original worktree path. Even equality here gives no proof for that path.
+    // List set attributes so a driver literally named "unspecified" also counts.
+    const attributes = await git([...options, 'check-attr', '--cached', '-z', '--all', '--', name], index);
+    if (attributes.code !== 0 || attributes.stderr) return false;
+    const fields = attributes.stdout ? attributes.stdout.split('\0') : [''];
+    if (fields.length % 3 !== 1 || fields.at(-1) !== '') return false;
+    for (let i = 0; i < fields.length - 1; i += 3) {
+      if (fields[i] !== name || fields[i + 1] === 'filter') return false;
+    }
     const result = await git([...options, 'checkout-index', '--temp', '-z', '--', name], index);
     if (result.code !== 0 || result.stderr) return false;
     const tab = result.stdout.indexOf('\t');

@@ -1,5 +1,5 @@
 /** Process trace, live resources and token usage. */
-import { RpcErrorCode, type AgentResourceSnapshot, type MachineResourceSnapshot, type ResourceByteUsage, type ThreadId, type ThreadResources, type Usage } from '@boite/contracts';
+import { deviceBound, RpcErrorCode, type AgentResourceSnapshot, type MachineResourceSnapshot, type ResourceByteUsage, type ThreadId, type ThreadResources, type Usage } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { addUsage, emptyUsage } from './shared';
 import { fakeUsageHistory, fakeUsageKnows, fakeUsageThread } from '../fake-usage';
@@ -22,13 +22,18 @@ function usageProvider(providerId: unknown): string | undefined {
 }
 
 function usageLedger(ctx: FakeContext) {
+  const visibleOnly = deviceBound(ctx.bus.principal);
   const projects = new Map(ctx.projects.map(project => [project.id, { name: project.name, removed: false }]));
   const threads = new Map(ctx.threads);
   for (const { project, threads: archived } of ctx.removedProjects.values()) {
     projects.set(project.id, { name: project.name, removed: true });
-    for (const thread of archived) threads.set(thread.id, thread);
+    if (!visibleOnly) for (const thread of archived) threads.set(thread.id, thread);
   }
-  return { seeded: ctx.usageSeeded, finished: ctx.finished, projects, threads };
+  return { seeded: ctx.usageSeeded, finished: ctx.finished, projects, threads, visibleOnly };
+}
+
+function missingUsageThread(threadId: ThreadId): RpcFailure {
+  return new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no thread ${threadId}`, data: { field: 'threadId' } });
 }
 
 export function resources(ctx: FakeContext): ThreadResources[] {
@@ -125,11 +130,13 @@ export function resourceMethods(ctx: FakeContext) {
       return { killed };
     },
     'usage.get': async (params) => {
+      const visibleOnly = deviceBound(ctx.bus.principal);
+      if (visibleOnly && params.threadId !== undefined && !ctx.threads.has(params.threadId)) throw missingUsageThread(params.threadId);
       const byThread: Record<ThreadId, Usage> = {};
       let total = emptyUsage();
       for (const [threadId, usage] of ctx.usage) {
         if (params.threadId && params.threadId !== threadId) continue;
-        byThread[threadId] = { ...usage };
+        if (!visibleOnly || ctx.threads.has(threadId)) byThread[threadId] = { ...usage };
         total = addUsage(total, usage);
       }
       return { byThread, total };
@@ -147,8 +154,8 @@ export function resourceMethods(ctx: FakeContext) {
       if (typeof params.threadId !== 'string' || !params.threadId.trim()) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'threadId: expected a thread id' });
       const providerId = usageProvider(params.providerId);
       const ledger = usageLedger(ctx);
-      if (!ledger.threads.has(params.threadId) && !fakeUsageKnows(params.threadId, ledger.finished)) {
-        throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no thread ${params.threadId}` });
+      if (!ledger.threads.has(params.threadId) && (ledger.visibleOnly || !fakeUsageKnows(params.threadId, ledger.finished))) {
+        throw missingUsageThread(params.threadId);
       }
       return fakeUsageThread(params.threadId, edges, { ...ledger, providerId });
     },
