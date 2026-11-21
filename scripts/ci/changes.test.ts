@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { affectedChecks, ciMode, lastGreen, needsCodeChecks, needsNativeWindows, needsWorkflowLint, plan } from './changes.ts';
+import { CI_WORKFLOWS, REPOSITORY_SCRIPTS, affectedChecks, ciMode, lastGreen, needsCodeChecks, needsNativeWindows, needsWorkflowLint, plan } from './changes.ts';
 
 const none = { core: false, web: false, desktop: false, shellRust: false, server: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false };
 const allChecks = { core: true, web: true, desktop: true, shellRust: true, server: true, androidServer: true, telemetry: true, e2eTypes: true, stress: true };
@@ -81,6 +81,43 @@ test('shared inputs and unknown files fail open to every check', () => {
 test('docs-only changes keep the cheap check path', () => {
   expect(needsCodeChecks(['README.md', 'docs/internals/server.md', 'LICENSE'])).toBe(false);
   expect(needsCodeChecks(['SECURITY.md', 'CODE_OF_CONDUCT.md', '.github/CODEOWNERS', '.github/labeler.yml'])).toBe(false);
+  expect(needsCodeChecks(['docs/media/boite-dark.gif', 'docs/images/panel.png', 'docs/media/tour.webm'])).toBe(false);
+});
+
+test('what only the repository checks run selects no other job', () => {
+  for (const file of ['.oxlintrc.json', '.github/workflows/nightly.yml', '.github/workflows/mobile.yml', '.github/workflows/release.yml', 'scripts/ci/required-checks.test.ts', 'scripts/ci/nightly-retry.ts', 'scripts/ci/changelog.ts', 'apps/mobile/src-tauri/gen/android/app/build.gradle.kts']) {
+    expect(needsCodeChecks([file]), file).toBe(false);
+    expect(needsNativeWindows([file]), file).toBe(false);
+  }
+  // They still get actionlint.
+  expect(needsWorkflowLint(['.github/workflows/nightly.yml', 'scripts/ci/nightly.ts'])).toBe(true);
+  // What a ci run executes, the selection itself and a shared manifest keep every check.
+  for (const file of [...CI_WORKFLOWS.filter((path) => !path.endsWith('android-server.yml')), 'scripts/ci/changes.test.ts', 'apps/mobile/package.json']) {
+    expect(Object.values(affectedChecks([file])).every(Boolean), file).toBe(true);
+  }
+});
+
+test('no job a ci run executes and no package uses a repository-only script', () => {
+  const root = new URL('../../', import.meta.url).pathname;
+  // ci.yml's repository checks run every script's tests, which name the scripts they test.
+  const reads = (file: string) => CI_WORKFLOWS.includes(file) || file.startsWith('.github/actions/') ||
+    (file.startsWith('scripts/ci/') ? !file.endsWith('.test.ts') && !REPOSITORY_SCRIPTS.includes(file) && file !== 'scripts/ci/changes.ts' : !file.startsWith('.github/'));
+  const names = REPOSITORY_SCRIPTS.map((script) => script.slice('scripts/ci/'.length).replace(/\.ts$/, ''));
+  // A path to one: `scripts/ci/nightly.ts`, `../ci/nightly`, or `./nightly` beside it.
+  const grep = Bun.spawnSync(['git', 'grep', '-ozE', `(ci/|['"]\\./)(${names.join('|')})(\\.ts)?['"[:space:])]`], { cwd: root, stdout: 'pipe' });
+  const users = grep.stdout.toString().split('\n').filter(Boolean).map((line) => line.split('\0')).filter(([file]) => reads(file));
+  expect(users).toEqual([]);
+});
+
+test('contract scenarios and recorded seconds select the suites that read them', () => {
+  for (const file of ['tests/contract/scenarios.ts', 'tests/contract/state.ts']) {
+    expect(affectedChecks([file])).toEqual({ ...none, core: true, web: true });
+    expect(needsNativeWindows([file])).toBe(false);
+  }
+  expect(affectedChecks(['scripts/ci/core-durations.json'])).toEqual({ ...none, core: true });
+  expect(affectedChecks(['scripts/ci/ui-durations.json'])).toEqual({ ...none, web: true });
+  expect(affectedChecks(['scripts/ci/e2e-durations.json'])).toEqual({ ...none, desktop: true });
+  expect(plan(affectedChecks(['scripts/ci/e2e-durations.json']), 'queue')).toMatchObject({ e2e: true });
 });
 
 test('workflow lint follows workflows, local actions and their decision scripts', () => {
@@ -91,14 +128,15 @@ test('workflow lint follows workflows, local actions and their decision scripts'
 });
 
 test('native Windows proof follows protection code and shared toolchain inputs', () => {
-  for (const file of ['packages/core/src/platform/windows/protected-tool.c', 'packages/core/src/platform/protected-checkout.ts', 'packages/core/src/execution-policy.ts', 'packages/core/src/drivers/muse/protected.ts', 'packages/core/src/drivers/protected-bridge.ts', 'packages/core/src/contacts/native-execution.ts', 'packages/core/bin/install-windows-sandbox.ts', 'packages/core/test/protected-windows.test.ts', 'bun.lock', 'package.json', '.github/workflows/ci.yml', 'scripts/ci/changes.ts', 'new-config.json']) {
+  for (const file of ['packages/core/src/platform/windows/protected-tool.c', 'packages/core/src/platform/index.ts', 'packages/core/src/platform/protected-checkout.ts', 'packages/core/src/execution-policy.ts', 'packages/core/src/drivers/muse/protected.ts', 'packages/core/src/drivers/protected-bridge.ts', 'packages/core/src/contacts/native-execution.ts', 'packages/core/bin/install-windows-sandbox.ts', 'packages/core/test/protected-windows.test.ts', 'bun.lock', 'package.json', '.github/workflows/ci.yml', 'scripts/ci/changes.ts', 'new-config.json']) {
     expect(needsNativeWindows([file]), file).toBe(true);
     const pr = plan(affectedChecks([file]), 'pr', needsNativeWindows([file]));
     expect(pr.nativeWindows).toBe(true);
     expect(JSON.parse(pr.coreRunners).map((runner: { os: string }) => runner.os)).toEqual(['ubuntu-24.04', 'windows-2025']);
     expect(pr.desktop).toBe(false);
   }
-  for (const file of ['docs/internals/ci.md', 'packages/ui/src/App.svelte', 'packages/core/src/cli.ts', 'Dockerfile']) {
+  // The Linux, POSIX and macOS backends never load on Windows: the queue still runs the Windows suite.
+  for (const file of ['docs/internals/ci.md', 'packages/ui/src/App.svelte', 'packages/core/src/cli.ts', 'Dockerfile', 'packages/core/src/platform/posix-keep-awake.ts', 'packages/core/src/platform/linux-protected.ts', 'packages/core/src/platform/macos-memory.ts', 'packages/core/src/platform/x11-window-capture.ts']) {
     expect(needsNativeWindows([file]), file).toBe(false);
     expect(plan(affectedChecks([file]), 'pr', needsNativeWindows([file])).coreRunners).toBe(plan(affectedChecks([file]), 'pr').coreRunners);
   }
