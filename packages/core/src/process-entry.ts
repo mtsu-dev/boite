@@ -21,3 +21,22 @@ export function stopProcess(platform: ProcessPlatform, threadId: string, pid: nu
   const stop = fallback instanceof Promise ? fallback.then(kill, kill) : kill() ?? undefined;
   return descendants === undefined ? stop : Promise.all([descendants, stop]).then(() => undefined);
 }
+
+/**
+ * The captured parent links under the live `root`: each traced process,
+ * running or exited, whose chain of recorded parents reaches that root's entry.
+ * Exited intermediates stay linked through `parent`; a pid alone links nothing.
+ */
+export function lineageOf(root: Entry | undefined, known: Iterable<{ entry: Entry }>): SubtreeLineage {
+  const descendants = new Set<string>();
+  if (root === undefined) return { root: null, descendants };
+  for (const { entry } of known) {
+    if (entry === root || entry.identity.incarnation === null) continue;
+    const passed = new Set<Entry>();
+    for (let above: Entry | null = entry.parent ?? null; above !== null && !passed.has(above); above = above.parent ?? null) {
+      if (above === root) { descendants.add(`${entry.record.pid}:${entry.identity.incarnation}`); break; }
+      passed.add(above);
+    }
+  }
+  return { root: root.identity.incarnation, descendants };
+}

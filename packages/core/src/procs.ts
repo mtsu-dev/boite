@@ -18,7 +18,8 @@ import { launchOf } from './git/command.ts';
 import { ExecutionProtections } from './execution-protection.ts';
 import { closeProcessResources, protectionRunner } from './protection-runner.ts';
 import { processEventDiagnostic } from './process-event-diagnostics.ts';
-import { killEntry, running, stopProcess } from './process-entry.ts';
+import { guardEvents, platformNotes } from './process-sinks.ts';
+import { killEntry, lineageOf, running, stopProcess } from './process-entry.ts';
 
 import type { ChildProcess, ManagedStop, ProcessEntry as Entry, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions, ProcRegistryOptions } from './process-spawn-types.ts';
 export type { ProcRegistryOptions, ManagedStop, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
@@ -131,41 +132,8 @@ export class ProcRegistry {
       exited: (threadId, pid, exit) => {
         this.onJobExited(threadId, pid, exit);
       },
-      note: (threadId, message) => {
-        this.#bus.emit('core.log', { level: 'warn', message: 'the process platform reported a warning', source: 'process', event: 'platform.warning', threadId, at: Date.now() });
-        try { options.diagnostic?.(`Process platform: ${message}`, { event: 'platform.warning.detail', threadId }); } catch { /* Observability must not break the platform's callback. */ }
-      },
-      memoryLimit: (threadId, kind) => {
-        this.memory.memoryLimit(threadId, kind);
-        const message = kind === 'thread-cap'
-          ? `thread ${threadId}: the thread reached its memory cap`
-          : 'the agents reached their memory budget';
-        this.#bus.emit('core.log', { level: 'warn', message, source: 'process', event: 'memory.limit', ...(threadId === null ? {} : { threadId }), at: Date.now() });
-      },
-    }, {
-      pushed: (threadId, pid, title, restored) => {
-        this.#bus.emit('process.focusPushed', { threadId, pid, title, restored, at: Date.now() });
-        this.#bus.emit('core.log', {
-          level: 'info',
-          message: `a window of pid ${pid} was pushed back; restored=${restored}`,
-          source: 'process', event: 'process.focus-pushed', threadId,
-          at: Date.now(),
-        });
-      },
-      muted: (threadId, pid) => {
-        this.#bus.emit('process.muted', { threadId, pid, at: Date.now() });
-        this.#bus.emit('core.log', {
-          level: 'info',
-          message: `the audio of pid ${pid} is muted`,
-          source: 'process', event: 'process.muted', threadId,
-          at: Date.now(),
-        });
-      },
-      note: (message) => {
-        this.#bus.emit('core.log', { level: 'warn', message: 'the process guard reported a warning', source: 'process', event: 'guard.warning', at: Date.now() });
-        try { options.diagnostic?.(`Focus and audio guard: ${message}`, { event: 'guard.warning.detail' }); } catch { /* Observability must not break the guard's callback. */ }
-      },
-    });
+      ...platformNotes(this.#bus, this.memory, options.diagnostic),
+    }, guardEvents(this.#bus, options.diagnostic));
     // Fast while a turn runs, a task-manager view leases the numbers, memory is under pressure, a startup is boosted or a process was busy.
     this.#loadPace = new LoadPace(() => this.sampleLoad(), () => this.#running.size > 0 || this.#resources.active
       || this.memory.state !== 'ok' || this.#startups.size > 0 || this.#loadBusy,
@@ -451,25 +419,8 @@ export class ProcRegistry {
     };
   }
 
-  /**
-   * The captured parent links under the live root `pid`: each traced process,
-   * running or exited, whose chain of recorded parents reaches that root's entry.
-   * Exited intermediates stay linked through `parent`; a pid alone links nothing.
-   */
-  #lineage(threadId: ThreadId, pid: number): SubtreeLineage {
-    const root = this.#live.get(threadId)?.get(pid);
-    const descendants = new Set<string>();
-    if (root === undefined) return { root: null, descendants };
-    for (const { entry } of this.known.get(threadId)?.values() ?? []) {
-      if (entry === root || entry.identity.incarnation === null) continue;
-      const passed = new Set<Entry>();
-      for (let above: Entry | null = entry.parent ?? null; above !== null && !passed.has(above); above = above.parent ?? null) {
-        if (above === root) { descendants.add(`${entry.record.pid}:${entry.identity.incarnation}`); break; }
-        passed.add(above);
-      }
-    }
-    return { root: root.identity.incarnation, descendants };
-  }
+  /** The captured parent links under the live root `pid` (`lineageOf`). */
+  #lineage(threadId: ThreadId, pid: number): SubtreeLineage { return lineageOf(this.#live.get(threadId)?.get(pid), this.known.get(threadId)?.values() ?? []); }
 
   /** The `ManagedStop` of a child `spawnChild` returned, whose SDK-shaped type has no field for it. */
   stopChild(child: SpawnedChild): Promise<void> {

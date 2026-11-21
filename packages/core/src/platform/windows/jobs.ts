@@ -8,7 +8,7 @@
  * normal priority, with normal priority during bounded agent initialization.
  */
 import { cpus, totalmem } from 'node:os';
-import { dlopen, FFIType, ptr } from 'bun:ffi';
+import { ptr } from 'bun:ffi';
 import type { Pointer } from 'bun:ffi';
 import { KILL_EXIT_CODE, type TraceCapability } from '@boite/contracts';
 import type { JobsWorkerMessage, JobsWorkerStart } from './jobs-worker.ts';
@@ -18,6 +18,7 @@ import { StartupPriority } from './startup-priority.ts';
 import { processEventDiagnostic } from '../../process-event-diagnostics.ts';
 import { UNNAMED_PROCESS } from '../../process-identity.ts';
 import { listJobPids } from './jobs-packets.ts';
+import { type Kernel32, loadKernel32, loadNtdll, type Ntdll } from './jobs-ffi.ts';
 import { killJobSubtree } from './tree-kill.ts';
 import { applyCpuCap, applyMemoryLimit, cpuRateOfJob, memoryLimitOfJob as readMemoryLimit,
   OFF_TOTAL_USER_TIME, OFF_TOTAL_KERNEL_TIME, OFF_ACTIVE_PROCESSES, ACCOUNTING_SIZE } from './job-limits.ts';
@@ -59,53 +60,6 @@ const INSPECT_ACCESS = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_TER
 const EVENTS_NOTE =
   'every process a thread launches, direct or not, is in its Job Object; exact start and exit events';
 
-function loadKernel32() {
-  return dlopen('kernel32.dll', {
-    CreateJobObjectW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
-    SetInformationJobObject: { args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
-    QueryInformationJobObject: {
-      args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32, FFIType.ptr],
-      returns: FFIType.i32,
-    },
-    AssignProcessToJobObject: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    IsProcessInJob: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    TerminateJobObject: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
-    TerminateProcess: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
-    CreateIoCompletionPort: { args: [FFIType.u64, FFIType.ptr, FFIType.u64, FFIType.u32], returns: FFIType.ptr },
-    PostQueuedCompletionStatus: { args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
-    OpenProcess: { args: [FFIType.u32, FFIType.i32, FFIType.u32], returns: FFIType.ptr },
-    CloseHandle: { args: [FFIType.ptr], returns: FFIType.i32 },
-    GetLastError: { args: [], returns: FFIType.u32 },
-    QueryFullProcessImageNameW: { args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    GetExitCodeProcess: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    GetProcessTimes: {
-      args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
-      returns: FFIType.i32,
-    },
-    K32GetProcessMemoryInfo: { args: [FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
-    GetProcessIoCounters: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    ReadProcessMemory: {
-      args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.u64, FFIType.ptr],
-      returns: FFIType.i32,
-    },
-    // u64, not ptr: INVALID_HANDLE_VALUE must compare exactly.
-    CreateToolhelp32Snapshot: { args: [FFIType.u32, FFIType.u32], returns: FFIType.u64 },
-    Process32FirstW: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
-    Process32NextW: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
-  });
-}
-
-function loadNtdll() {
-  return dlopen('ntdll.dll', {
-    NtQueryInformationProcess: {
-      args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32, FFIType.ptr],
-      returns: FFIType.i32,
-    },
-  });
-}
-
-type Kernel32 = ReturnType<typeof loadKernel32>['symbols'];
-type Ntdll = ReturnType<typeof loadNtdll>['symbols'];
 
 /** `bun:ffi` brands a pointer; handles travel as plain numbers everywhere else here. */
 function asPointer(handle: number): Pointer {
