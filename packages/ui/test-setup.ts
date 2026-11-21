@@ -1,3 +1,5 @@
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeAll, beforeEach, vi } from 'vitest';
 import { releaseVersion } from './release-version';
 import { loadLocale } from './src/lib/i18n.svelte';
@@ -58,23 +60,24 @@ vi.stubGlobal('matchMedia', (media: string) => ({
 // test renders after it landed, as the app does.
 await loadLocale('en');
 
-// Every part, deferred or idle, is a LazyComponent built when its registry
-// module runs. Counting them tells whether a test file's imports reach one:
-// most files (lib, store and plain component tests) reach none and skip the
-// preload below, which was about half the CPU time of such a file.
-const lazy = vi.hoisted(() => ({ built: 0 }));
-vi.mock('./src/lib/lazy-component.svelte', async (importOriginal) => {
-  const real = await importOriginal<typeof import('./src/lib/lazy-component.svelte')>();
-  class LazyComponent<T> extends real.LazyComponent<T> {
-    constructor(loader: () => Promise<{ default: T }>) {
-      super(loader);
-      // One a test file builds for itself (Deferred.test.ts) is no part of the app.
-      const caller = new Error().stack?.split('\n').slice(1).find((frame) => !frame.includes('test-setup.ts')) ?? '';
-      if (!/\.test\.ts\b/.test(caller)) lazy.built++;
-    }
-  }
-  return { ...real, LazyComponent };
-});
+// The registries the preload below loads. A test file whose imports ran none
+// of them can draw none of their parts: most files (lib, store and plain
+// component tests) skip the preload, which was about half the CPU time of such
+// a file. Vitest's module map tells which ran, a file's `vi.mock` of one with
+// its original included.
+// (Joined by hand: Vite turns `new URL(path, import.meta.url)` into an asset import.
+// Vite keys the map with `/` on every OS, so Windows separators are swapped.)
+const lib = join(dirname(fileURLToPath(import.meta.url)), 'src', 'lib');
+const registries = ['deferred-parts', 'nested-parts', 'idle-parts', 'mobile-navigation'].map((name) => join(lib, `${name}.ts`).replaceAll('\\', '/'));
+type ModuleNode = { id?: string; evaluated?: boolean; promise?: unknown };
+function reachedRegistry(): boolean {
+  const modules = (globalThis as { __vitest_worker__?: { evaluatedModules?: { fileToModulesMap?: Map<string, Set<ModuleNode>> } } })
+    .__vitest_worker__?.evaluatedModules?.fileToModulesMap;
+  // A Vitest that no longer exposes the map preloads for every file, as before.
+  if (!modules) return true;
+  // The module itself, not a `?url` or `?raw` import of its file.
+  return registries.some((file) => [...(modules.get(file) ?? [])].some((node) => node.id === file && (node.evaluated || node.promise)));
+}
 
 // The parts the app fetches once it is idle (`lib/deferred-parts.ts`) are here
 // before a test draws, as they are for a user's first open; a test of the
@@ -97,13 +100,13 @@ async function preloadParts(): Promise<void> {
   // A cold worker transforms these modules first: several seconds on a busy machine.
 }
 beforeAll(async () => {
-  if (lazy.built) await preloadParts();
+  if (reachedRegistry()) await preloadParts();
 }, 120_000);
-// A file that imports a part's module inside a test: the tests after it get the parts.
+// A file that imports a registry inside a test: the tests after it get the parts.
 beforeEach(async () => {
-  if (lazy.built && !preloaded) await preloadParts();
+  if (!preloaded && reachedRegistry()) await preloadParts();
 }, 120_000);
-// The test that imported it ran without them, which no test expects: say so.
+// The test that imported it may have drawn without them, which no test expects: say so.
 afterEach(() => {
-  if (lazy.built && !preloaded) throw new Error('this test imported a lazy part\'s module (lib/deferred-parts.ts and its kin) inside the test: import it at the top of the file, so the parts are preloaded before the test draws');
+  if (!preloaded && reachedRegistry()) throw new Error('this test imported a part registry (lib/deferred-parts.ts, nested-parts.ts, idle-parts.ts or mobile-navigation.ts) inside the test: import it at the top of the file, so its parts load before the test draws');
 });
