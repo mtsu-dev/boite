@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createBrowserFixture } from './browser/fixture.ts';
 import { traceBrowserCommands } from './browser/dialog-trace.ts';
 import { rejection, thrown } from './settle.ts';
+import { waitFor } from './harness.ts';
 import { browserCommand } from '../src/browser-cli.ts';
 import type { CliIo } from '../src/cli.ts';
 
@@ -155,6 +156,8 @@ real('a command that names no tab waits for every window still joining, and a wi
   expect((await run({ kind: 'evaluate', expression: 'location.search' })).value).toBe('?two');
   // Archived while a window joins: the waiting command is refused and the window closes with the rest.
   await evaluate(`window.open('/popup?late', 'late'); true`);
+  // The opener can return before Chromium announces the new window.
+  await waitFor(() => browser.joining.count(threadId) === 1);
   const waiting = run({ kind: 'evaluate', expression: 'location.search' });
   await Bun.sleep(100);
   harness.core.journal.putThread({ ...harness.core.threads.require(threadId), archived: true });
