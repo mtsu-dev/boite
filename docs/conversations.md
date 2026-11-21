@@ -55,7 +55,8 @@ a second, lighter number beside it counts them.
 A middle click on the Activity button in the app rail takes the finished
 threads off Activity on every machine, without opening it. Failures, stops,
 questions and permissions stay, and so does the button's number. On a phone,
-or without a middle button, use Mark all as read at the top of Activity.
+or without a middle button, Mark all as read at the top of Activity clears the
+finished threads along with failures and stops.
 
 ## Drafts without a project
 

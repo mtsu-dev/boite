@@ -142,10 +142,10 @@ export function activityFeed<M extends { id: string; store: Owner }>(all: readon
  * answer settles; a sub-agent's row counts as its own. Each machine's threads apart, since ids collide between them.
  * `kinds` narrows it: the rail's middle click on Activity clears the finished rows alone (AppRail.svelte).
  */
-export function readableThreads<M>(rows: readonly Pick<FeedRow<M>, 'machine' | 'thread' | 'kind'>[], kinds: readonly FeedKind[] = ['failed', 'stopped', 'done']): Map<M, ThreadSummary['id'][]> {
+export function readableThreads<M>(rows: readonly Pick<FeedRow<M>, 'machine' | 'thread' | 'kind'>[], kinds: readonly ('failed' | 'stopped' | 'done')[] = ['failed', 'stopped', 'done']): Map<M, ThreadSummary['id'][]> {
   const byMachine = new Map<M, ThreadSummary['id'][]>();
   for (const row of rows) {
-    if (!row.kind || !kinds.includes(row.kind)) continue;
+    if (!kinds.some(kind => kind === row.kind)) continue;
     byMachine.set(row.machine, [...byMachine.get(row.machine) ?? [], row.thread.id]);
   }
   return byMachine;

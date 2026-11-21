@@ -57,8 +57,12 @@ test("a middle click on the rail's Activity clears the finished rows on every ma
   const press = new MouseEvent('mousedown', { button: 1, bubbles: true, cancelable: true });
   button.dispatchEvent(press);
   await settle();
-  // The browser's scrolling does not start and Activity does not open.
+  // The press alone stops the browser's scrolling and clears nothing: the release on the button does.
   expect(press.defaultPrevented).toBe(true);
+  for (const call of calls) expect(marked(call)).toEqual([]);
+  button.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }));
+  await settle();
+  // Activity does not open.
   expect(inbox.open).toBe(false);
   // Each machine's own core is told about its finish alone, the same id on both since ids collide between machines.
   for (const call of calls) expect(marked(call)).toEqual(['t-descriptors']);

@@ -176,10 +176,12 @@
    * A middle click on Activity takes its finished rows off on every machine without opening it, each machine's on its
    * own core; failures, stops, questions and permissions stay. The feed is read at the click, not kept by the rail.
    */
+  function holdMiddle(event: MouseEvent) {
+    // The middle button scrolls by default; here it clears instead, once released on the button.
+    if (event.button === 1) event.preventDefault();
+  }
   function clearFinished(event: MouseEvent) {
     if (event.button !== 1) return;
-    // The middle button scrolls by default; here it clears instead.
-    event.preventDefault();
     const rows = activityFeed(machines.flatMap(machine => machine.store.threads.filter(feedThread).map(thread => ({ machine, thread, project: undefined }))));
     for (const [machine, ids] of readableThreads(rows, ['done'])) void machine.store.markRead(ids);
   }
@@ -362,7 +364,7 @@
   <div class="slot" class:selected={onActivity}>
     <button type="button" class="rail-button" class:on={onActivity} aria-current={onActivity ? 'page' : undefined}
       aria-label={waiting ? `${strings.mobile.activity}, ${waitingLabel}` : strings.mobile.activity}
-      data-testid="nav-activity" onclick={showActivity} onmousedown={clearFinished}>
+      data-testid="nav-activity" onclick={showActivity} onmousedown={holdMiddle} onauxclick={clearFinished}>
       <Inbox size={19} strokeWidth={1.75} />
       {#if waiting}<span class="count" data-testid="rail-activity-waiting">{tally(waiting)}</span>{/if}
     </button>
