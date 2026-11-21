@@ -1134,8 +1134,8 @@ run. Every run spends one turn per row on the agent's account.
 
 The first title used to start with the turn, so its own `codex app-server` or
 `claude` process started beside the agent's. It now starts once the agent
-opens its first assistant message ([titles](titles.md)): in every `--verbose`
-run on 2026-11-21 the title process started within 20 ms of that message,
+writes text, reasoning or a tool call ([titles](titles.md)): in every `--verbose`
+run on 2026-11-21 the title process started within 20 ms of its first message,
 after the first word or with it.
 
 On 2026-11-21, Linux, load average 23 to 36, Codex 0.171.0 on its default

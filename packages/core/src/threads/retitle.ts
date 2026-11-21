@@ -1,6 +1,6 @@
 import { defaultTitleModel } from '@boite/contracts';
 import { usableAccount } from './account-fallback.ts';
-import type { Account, ImageAttachment, Message, ProviderDescriptor, ProviderId, ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import type { Account, ImageAttachment, Message, MessageId, MessagePart, ProviderDescriptor, ProviderId, RpcEvents, ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
 import { setTimeout as pause } from 'node:timers/promises';
 import type { Core } from '../core.ts';
 import { getDriver, probedModelsOf, writesTitles } from '../drivers/index.ts';
@@ -9,6 +9,11 @@ import { requireAgent } from './agentless.ts';
 import type { ThreadStore } from '../threads.ts';
 import { cleanAgentBranch, parseAgentTitle, textOf, titleFromPrompt } from '../titles.ts';
 import { saveThread, withLoad } from './records.ts';
+
+/** What only the turn's agent writes: its text, its reasoning, its tool calls. */
+function isAgentWriting(part: MessagePart): boolean {
+  return part.type === 'text' || part.type === 'thinking' || part.type === 'tool';
+}
 
 /** Who writes a title: a provider, the account it runs under, and the model. */
 interface TitleWriter {
@@ -52,8 +57,9 @@ export class ThreadTitles {
    * answering. A title call is an agent process of its own: started with the
    * turn, it competes with the agent's startup on the same machine, and for
    * Codex on the same home, and the first word comes seconds later. It waits
-   * for the turn's first assistant message, or for the turn's end when none
-   * comes, and still runs while most turns are being written.
+   * for the turn's agent to write (text, reasoning or a tool call), or for the
+   * turn's end when it writes nothing, and still runs while most turns are
+   * being written.
    */
   autoTitle(threadId: ThreadId, turnId: TurnId): void {
     const thread = this.#core.journal.getThread(threadId);
@@ -62,10 +68,23 @@ export class ThreadTitles {
     if (first?.id !== turnId || this.#writer(thread) === null || this.#retitling.has(threadId) || this.#waiting.has(threadId)) return;
     // The pending decision survives a restart or a title call that finishes after the user turn.
     const pending = saveThread(this.#core, { ...thread, titleState: { version: 1, needsRefinement: true } }, 'thread.updated');
+    // The turn's assistant messages, and whether the agent wrote in one: a
+    // notice, an error or a card the core or the CLI adds is not the agent answering.
+    const messages = new Set<MessageId>();
     const off = this.#core.bus.onAny((name, payload) => {
-      const answering = name === 'message.started' && (payload as Message).threadId === threadId && (payload as Message).role === 'assistant';
-      const ended = name === 'turn.finished' && (payload as Turn).id === turnId;
-      if (!answering && !ended) return;
+      let go = name === 'turn.finished' && (payload as Turn).id === turnId;
+      if (name === 'message.started') {
+        const message = payload as Message;
+        if (message.threadId !== threadId || message.turnId !== turnId || message.role !== 'assistant') return;
+        messages.add(message.id);
+        go = message.parts.some(isAgentWriting);
+      } else if (name === 'message.part') {
+        const event = payload as RpcEvents['message.part'];
+        go = messages.has(event.messageId) && isAgentWriting(event.part);
+      } else if (name === 'message.delta') {
+        go = messages.has((payload as RpcEvents['message.delta']).messageId);
+      }
+      if (!go) return;
       off();
       // Out of the emit: the listener may run inside the journal write that announced it.
       queueMicrotask(() => {

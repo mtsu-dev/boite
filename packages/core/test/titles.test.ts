@@ -208,8 +208,10 @@ describe('thread titles', () => {
     let asked = 0;
     const restore = setDriver('echo', {
       ...echoDriver,
-      // An agent still starting: nothing written for this turn yet.
+      // An agent still starting: this turn holds only a message with an error, as a refused try writes.
       startTurn: (ctx) => {
+        const refusal = ctx.emit.startMessage('assistant');
+        ctx.emit.part(refusal, 0, { type: 'error', message: 'at capacity' });
         const started = answering.promise.then(() => echoDriver.startTurn(ctx));
         return { done: started.then((handle) => handle.done), stop: () => void started.then((handle) => handle.stop()) };
       },

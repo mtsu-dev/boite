@@ -16,7 +16,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import type { ProviderId } from '../packages/contracts/src/index.ts';
+import type { MessagePart, ProviderId } from '../packages/contracts/src/index.ts';
 import { connect } from '../packages/core/src/client.ts';
 import { removeDirectory, startCore } from '../tests/e2e/lib/core.ts';
 import { CORE_COMMAND } from './boite2.ts';
@@ -80,22 +80,39 @@ try {
         const executable = executables.get(providerId as ProviderId) ?? null;
         // The type of each part of the thread's messages, to tell answer text from reasoning.
         const parts = new Map<string, string>();
-        const offStarted = client.on('message.started', (message) => {
-          if (message.threadId === thread.id) message.parts.forEach((part, at) => parts.set(`${message.id}:${at}`, part.type));
-        });
-        const offPart = client.on('message.part', (event) => {
-          if (event.threadId === thread.id) parts.set(`${event.messageId}:${event.partIndex}`, event.part.type);
-        });
         let processes = 0;
         let firstSpawn = 0;
         let firstWord = 0;
         let sentAt = 0;
+        // A text part may come whole, with no delta after it.
+        const written = (part: MessagePart): void => {
+          if (firstWord === 0 && part.type === 'text' && part.text.trim().length > 0) firstWord = performance.now();
+        };
+        const offStarted = client.on('message.started', (message) => {
+          if (message.threadId !== thread.id || message.role !== 'assistant') return;
+          message.parts.forEach((part, at) => { parts.set(`${message.id}:${at}`, part.type); written(part); });
+        });
+        const offPart = client.on('message.part', (event) => {
+          if (event.threadId !== thread.id) return;
+          parts.set(`${event.messageId}:${event.partIndex}`, event.part.type);
+          written(event.part);
+        });
+        // The turn's other processes still running, the title call's included: the next row waits for none.
+        const live = new Set<number>();
+        let gone = (): void => undefined;
+        const offExited = client.on('process.exited', (record) => {
+          if (record.threadId !== thread.id) return;
+          live.delete(record.pid);
+          if (live.size === 0) gone();
+        });
         const offProcess = client.on('process.started', (record) => {
           if (record.threadId !== thread.id) return;
           processes += 1;
           // By name: the core may run the program an npm launcher on PATH stands for, not the launcher itself.
           const own = executable !== null && basename(record.exe) === basename(executable);
+          // The first is the session, which stays warm until the archive; the title's and the helpers' end alone.
           if (firstSpawn === 0 && own) firstSpawn = performance.now();
+          else live.add(record.pid);
           if (VERBOSE) console.log(`  +${Math.round(performance.now() - sentAt)} ms ${(record.commandLine ?? record.exe).slice(0, 110)}`);
         });
         const offDelta = client.on('message.delta', (event) => {
@@ -133,7 +150,8 @@ try {
         results.set(row, [...(results.get(row) ?? []), run]);
         console.log(`${row} run ${index + 1}: spawn ${Math.round(run.spawnMs)} ms, first word ${Math.round(run.firstWordMs)} ms, done ${Math.round(run.totalMs)} ms, ${run.processes} processes`);
         // The title call may still run: let it end before the next row starts.
-        await Bun.sleep(3_000);
+        await Promise.race([new Promise<void>((resolve) => { gone = resolve; if (live.size === 0) resolve(); }), Bun.sleep(TURN_TIMEOUT_MS)]);
+        offExited();
         await client.call('threads.archive', { threadId: thread.id }).catch(() => undefined);
       }
     }
