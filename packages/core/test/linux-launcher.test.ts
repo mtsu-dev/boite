@@ -141,9 +141,10 @@ describe.skipIf(!native)('the Linux launcher', () => {
   });
 
   /** Runs `body` in a core of its own that then dies by SIGKILL; what it printed, as JSON. */
-  const crash = async (body: string): Promise<Record<string, number>> => {
+  const crash = async (body: string, prefix: string[] = []): Promise<Record<string, number | string | boolean | null>> => {
     const core = Bun.spawn({
-      cmd: [process.execPath, '-e', `
+      cmd: [...prefix, process.execPath, '-e', `
+        const src = ${JSON.stringify(join(import.meta.dir, '..', 'src'))};
         const { NativeTie } = await import(${JSON.stringify(join(import.meta.dir, '..', 'src', 'platform', 'linux-launcher.ts'))});
         const out = {};
         const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -156,7 +157,7 @@ describe.skipIf(!native)('the Linux launcher', () => {
     const text = await new Response(core.stdout).text();
     await core.exited;
     expect(core.signalCode).toBe('SIGKILL');
-    return JSON.parse(text.trim()) as Record<string, number>;
+    return JSON.parse(text.trim()) as Record<string, number | string | boolean | null>;
   };
   const settle = async (check: () => boolean) => { for (let i = 0; i < 100 && !check(); i++) await Bun.sleep(50); };
 
@@ -174,7 +175,7 @@ describe.skipIf(!native)('the Linux launcher', () => {
       // The old guard's exit is seen before the core dies.
       await gone(guard);
       await Bun.sleep(100);`);
-    const pids = [out.tool!, out.agent!, out.after!];
+    const pids = [out.tool, out.agent, out.after] as number[];
     try {
       await settle(() => pids.every(pid => !isAlive(pid)));
       expect(pids.filter(isAlive)).toEqual([]);
@@ -202,11 +203,98 @@ describe.skipIf(!native)('the Linux launcher', () => {
       tie.release(released.pid);`);
     try {
       // A guard left stopped would act once it runs again.
-      try { process.kill(out.guard!, 'SIGCONT'); } catch { /* replaced and gone */ }
-      await settle(() => !isAlive(out.kept!));
-      expect(isAlive(out.kept!)).toBe(false);
+      try { process.kill(out.guard as number, 'SIGCONT'); } catch { /* replaced and gone */ }
+      await settle(() => !isAlive(out.kept as number));
+      expect(isAlive(out.kept as number)).toBe(false);
       await Bun.sleep(2500); // past the guard's grace
-      expect(isAlive(out.released!)).toBe(true);
-    } finally { for (const pid of [out.kept!, out.released!]) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } } }
+      expect(isAlive(out.released as number)).toBe(true);
+    } finally { for (const pid of [out.kept, out.released] as number[]) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } } }
   }, 20000);
+  test('the exit of a guard already replaced never closes its successor', async () => {
+    // The old guard dies and the next launch replaces it in the same turn, before its exit is seen; the socket of
+    // the new guard may get the old one's descriptor number. Only then does the loop run that exit.
+    const out = await crash(`
+      const { readFileSync } = await import('node:fs');
+      const tie = new NativeTie();
+      const first = tie.spawn({ cmd: ['sleep', '66'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
+      const guard = Number(Bun.spawnSync(['pgrep', '-P', String(process.pid), '-f', 'boite-launch guard']).stdout.toString().trim().split('\\n')[0]);
+      process.kill(guard, 'SIGKILL');
+      // Dead without a turn of the loop: Bun has not reaped it, so its exit has not been seen.
+      while (!/\\) Z /.test(readFileSync('/proc/' + guard + '/stat', 'utf8'))) {}
+      const second = tie.spawn({ cmd: ['sleep', '67'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
+      await Bun.sleep(500);
+      out.first = first.pid; out.second = second.pid; out.secondAlive = alive(second.pid);`);
+    const pids = [out.first, out.second] as number[];
+    try {
+      expect(out.secondAlive).toBe(true);
+      await settle(() => pids.every(pid => !isAlive(pid)));
+      expect(pids.filter(isAlive)).toEqual([]);
+    } finally { for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } } }
+  }, 20000);
+
+  // A pid namespace of its own, where writing ns_last_pid hands a chosen number to the next process.
+  const pidNamespace = Bun.spawnSync(['unshare', '-Urpf', 'true'], { stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
+  test.skipIf(!pidNamespace)('a number another route gets back from an earlier launched group is tied by the watcher', async () => {
+    const dirIn = mkdtempSync(join(tmpdir(), 'boite-reuse-'));
+    const pidFile = join(dirIn, 'pid');
+    const core = `
+      const { writeFileSync } = await import('node:fs');
+      const { createPosixPlatform } = await import(${JSON.stringify(join(import.meta.dir, '..', 'src', 'platform', 'posix.ts'))});
+      const platform = createPosixPlatform('linux', null);
+      if (platform.readyGroups() !== null || platform.readyLaunch() !== null) throw new Error('no tie');
+      // A launched group, registered, whose leader exited and whose group emptied: the sweep has not run yet.
+      const gone = platform.spawnTied({ cmd: ['/bin/sh', '-c', 'exit 0'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] });
+      platform.tieGroup(gone.pid);
+      await gone.exited;
+      platform.untieGroup(gone.pid, true);
+      // The same number, now for a process another route starts (a terminal, spawnChild): the registry ties it.
+      writeFileSync('/proc/sys/kernel/ns_last_pid', String(gone.pid - 1));
+      const next = Bun.spawn({ cmd: ['sleep', '68'], stdio: ['ignore', 'ignore', 'ignore'], detached: true });
+      if (next.pid !== gone.pid) throw new Error('the number did not come back: ' + gone.pid + ' then ' + next.pid);
+      platform.tieGroup(next.pid);
+      writeFileSync(${JSON.stringify(pidFile)}, String(next.pid));
+      process.kill(process.pid, 'SIGKILL');`;
+    // The namespace's first process outlives the core long enough to look, past the watcher's grace, then ends it all.
+    const shell = `"$0" -e "$1"; sleep 3; read pid < "$2"; if kill -0 "$pid" 2>/dev/null; then echo alive; else echo ended; fi`;
+    try {
+      const run = Bun.spawn({ cmd: ['unshare', '-Urpf', 'sh', '-c', shell, process.execPath, core, pidFile], stdout: 'pipe', stderr: 'inherit' });
+      const text = (await new Response(run.stdout).text()).trim();
+      await run.exited;
+      expect(text).toBe('ended');
+    } finally { rmSync(dirIn, { recursive: true, force: true }); }
+  }, 20000);
+
+  /** A seccomp filter that fails one syscall with EPERM, as a container's can on a kernel that has it. */
+  const deny = (syscall: number) => {
+    const path = join(dir, 'deny-syscall');
+    if (!existsSync(path)) {
+      const built = Bun.spawnSync(['cc', '-O2', '-o', path, join(import.meta.dir, 'fixtures', 'deny-syscall.c')], { stderr: 'pipe' });
+      if (built.exitCode !== 0) throw new Error(built.stderr.toString());
+    }
+    return [path, String(syscall)];
+  };
+
+  for (const [syscall, name] of [[434, 'pidfd_open'], [424, 'pidfd_send_signal']] as const) {
+    test(`a recent kernel that refuses ${name} leaves groups to the watcher, said once, still tied`, async () => {
+      const out = await crash(`
+        const { Journal } = await import(src + '/journal.ts');
+        const { Bus } = await import(src + '/bus.ts');
+        const { ProcRegistry } = await import(src + '/procs.ts');
+        const { mkdtempSync } = await import('node:fs');
+        const { tmpdir } = await import('node:os');
+        const bus = new Bus();
+        const late = [];
+        bus.onAny((name, event) => { if (name === 'core.log' && event.event === 'groups.late') late.push(event.message); });
+        const procs = new ProcRegistry(new Journal(mkdtempSync(tmpdir() + '/boite-deny-') + '/journal.db'), bus);
+        const agent = procs.spawn('denied', 'sleep', ['69']);
+        procs.spawn('denied', 'true', []);
+        out.agent = agent.record.pid; out.reason = procs.platform.readyLaunch(); out.late = late.length;`, deny(syscall));
+      try {
+        expect(String(out.reason)).toContain(syscall === 434 ? 'EPERM' : 'errno 1');
+        expect(out.late).toBe(1);
+        await settle(() => !isAlive(out.agent as number));
+        expect(isAlive(out.agent as number)).toBe(false);
+      } finally { try { process.kill(out.agent as number, 'SIGKILL'); } catch { /* gone */ } }
+    }, 20000);
+  }
 });
