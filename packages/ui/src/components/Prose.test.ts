@@ -122,9 +122,9 @@ test.each([false, true])('selecting external link text skips navigation, then a 
 
 test('the open-chat-links switch asks the shell on a click, and previews what the shell refuses to open', async () => {
   setFeature('chat-artifacts', false);
-  // As the shell: a shortcut or a path outside the thread's folder is not opened.
-  const invoke = vi.fn(async (command: string, args?: { path?: string }) => {
-    if (command === 'open_chat_file' && args?.path?.endsWith('.lnk')) throw new Error('path: expected a document that is not executable');
+  // Both links point outside the thread's folder, so the shell refuses them.
+  const invoke = vi.fn(async (command: string) => {
+    if (command === 'open_chat_file') throw new Error('path: expected a file or folder inside E:/project');
   });
   window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
   const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'local', cwd: 'E:/project' }], readFile: vi.fn() } as unknown as Store;
@@ -141,7 +141,7 @@ test('the open-chat-links switch asks the shell on a click, and previews what th
   await vi.waitFor(() => expect(store.readFile).toHaveBeenCalledTimes(1));
   await tick(); links[1]!.click();
   await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_chat_file', { directory: 'E:/project', path: 'E:/reports/test result.txt' }, undefined));
-  expect(store.readFile).toHaveBeenCalledTimes(1);
+  await vi.waitFor(() => expect(store.readFile).toHaveBeenNthCalledWith(2, 'local', 'E:/reports/test result.txt'));
   setFeature('open-chat-links', false); flushSync();
   expect(document.querySelector('a[data-file-path]')).toBeNull();
 });
