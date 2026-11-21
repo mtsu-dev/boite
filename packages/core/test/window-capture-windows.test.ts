@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import type { Subprocess } from 'bun';
 import type { NativeWindow, WindowCapture, WindowPixels } from '../src/platform/types.ts';
 import { WindowCaptureError } from '../src/platform/window-pixels.ts';
 
@@ -16,6 +15,8 @@ using System.Runtime.InteropServices;
 using System.Windows.Forms;
 public class BoiteTestWindow : Form {
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr window, int command);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
+  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr window);
   bool topMost;
   public BoiteTestWindow(string title, int color, int x, int y, bool topMost, bool minimized) {
     this.topMost = topMost;
@@ -24,7 +25,10 @@ public class BoiteTestWindow : Form {
     StartPosition = FormStartPosition.Manual;
     Location = new Point(x, y);
     Size = new Size(360, 260);
-    if (minimized) Shown += delegate { ShowWindow(Handle, 7); };
+    Shown += delegate {
+      if (minimized) ShowWindow(Handle, 7);
+      Console.WriteLine("Shown: hwnd=" + Handle + ", visible=" + IsWindowVisible(Handle) + ", minimized=" + IsIconic(Handle));
+    };
   }
   protected override bool ShowWithoutActivation { get { return true; } }
   protected override CreateParams CreateParams {
@@ -41,19 +45,26 @@ public class BoiteTestWindow : Form {
 const RED = 0xff0000;
 const BLUE = 0x0000ff;
 
-function openWindow(title: string, color: number, x: number, y: number, topMost: boolean, minimized: boolean): Subprocess {
+function openWindow(title: string, color: number, x: number, y: number, topMost: boolean, minimized: boolean) {
   const script = [
     "$ErrorActionPreference = 'Stop'",
+    '[Console]::WriteLine("Compiling the WinForms fixture (session " + [Diagnostics.Process]::GetCurrentProcess().SessionId + ")")',
     `Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing -TypeDefinition @'\n${FORM}\n'@`,
+    '[Console]::WriteLine("Starting the WinForms message loop")',
     `[System.Windows.Forms.Application]::Run((New-Object BoiteTestWindow -ArgumentList '${title}', ${color | 0xff000000 | 0}, ${x}, ${y}, $${topMost}, $${minimized}))`,
   ].join('\n');
   const encoded = Buffer.from(script, 'utf16le').toString('base64');
-  return Bun.spawn(['powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
-    stdout: 'ignore',
+  const proc = Bun.spawn(['powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
+    stdout: 'pipe',
     stderr: 'pipe',
     windowsHide: true,
   });
+  const read = (stream: ReadableStream) => new Response(stream).text().catch(error => String(error));
+  const output = Promise.all([read(proc.stdout), read(proc.stderr)]);
+  return { proc, title, minimized, output };
 }
+
+type TestWindow = ReturnType<typeof openWindow>;
 
 /** Share of the sampled pixels close to the colour `[r, g, b]`. */
 function share(pixels: WindowPixels, [r, g, b]: [number, number, number]): number {
@@ -81,21 +92,41 @@ async function failure(run: () => Promise<unknown>): Promise<WindowCaptureError>
 
 describe.skipIf(process.platform !== 'win32')('window capture on Windows', () => {
   const tag = `boite-capture-${process.pid}-${Date.now()}`;
-  const processes: Subprocess[] = [];
+  const windows: TestWindow[] = [];
   let capture: WindowCapture;
   let red: NativeWindow;
   let minimized: NativeWindow;
 
-  async function find(proc: Subprocess, wanted: (window: NativeWindow) => boolean): Promise<NativeWindow> {
-    // PowerShell loading WinForms takes seconds on a busy machine or CI runner.
+  async function closeWindows() {
+    for (const { proc } of windows) if (proc.exitCode === null) proc.kill();
+    await Promise.all(windows.map(({ proc }) => proc.exited));
+  }
+
+  async function findWindows() {
     const deadline = Date.now() + 30_000;
+    let missing = windows;
     while (Date.now() < deadline) {
-      const found = (await capture.list()).find((window) => window.pid === proc.pid && wanted(window));
-      if (found !== undefined) return found;
-      if (proc.exitCode !== null) throw new Error(`test window exited ${proc.exitCode}: ${await new Response(proc.stderr as ReadableStream).text()}`);
+      const listed = await capture.list();
+      const matches = windows.map(({ proc, title, minimized }) => listed.find(
+        window => window.pid === proc.pid && window.title === title && window.minimized === minimized,
+      ));
+      const [redWindow, blueWindow, minimizedWindow] = matches;
+      if (redWindow && blueWindow && minimizedWindow) {
+        red = redWindow;
+        minimized = minimizedWindow;
+        return;
+      }
+      missing = windows.filter((_, index) => matches[index] === undefined);
+      if (missing.some(({ proc }) => proc.exitCode !== null)) break;
       await Bun.sleep(100);
     }
-    throw new Error(`test window of pid ${proc.pid} never showed`);
+    const reasons = missing.map(({ proc }) => proc.exitCode === null ? 'never showed' : `exited with code ${proc.exitCode}`);
+    await closeWindows();
+    const diagnostics = await Promise.all(missing.map(async ({ proc, title, output }, index) => {
+      const [stdout, stderr] = await output;
+      return `test window "${title}" (pid ${proc.pid}) ${reasons[index]}; stdout: ${stdout.trim() || '(empty)'}; stderr: ${stderr.trim() || '(empty)'}`;
+    }));
+    throw new Error(diagnostics.join('\n'));
   }
 
   beforeAll(async () => {
@@ -103,20 +134,13 @@ describe.skipIf(process.platform !== 'win32')('window capture on Windows', () =>
     const loaded = await loadWindowCapture();
     if ('unavailable' in loaded) throw new Error(loaded.unavailable);
     capture = loaded;
-    const redProcess = openWindow(`${tag}-red`, RED, 40, 40, false, false);
-    const blueProcess = openWindow(`${tag}-blue`, BLUE, 60, 60, true, false);
-    const minimizedProcess = openWindow(`${tag}-minimized`, RED, 80, 80, false, true);
-    processes.push(redProcess, blueProcess, minimizedProcess);
-    [red, minimized] = await Promise.all([
-      find(redProcess, (window) => window.title === `${tag}-red`),
-      find(minimizedProcess, (window) => window.title === `${tag}-minimized` && window.minimized),
-      find(blueProcess, (window) => window.title === `${tag}-blue`),
-    ]);
+    windows.push(openWindow(`${tag}-red`, RED, 40, 40, false, false));
+    windows.push(openWindow(`${tag}-blue`, BLUE, 60, 60, true, false));
+    windows.push(openWindow(`${tag}-minimized`, RED, 80, 80, false, true));
+    await findWindows();
   }, 45_000);
 
-  afterAll(() => {
-    for (const proc of processes) proc.kill();
-  });
+  afterAll(closeWindows);
 
   test('lists the window with its process and physical size', () => {
     expect(red.process.toLowerCase()).toBe('powershell.exe');
