@@ -14,6 +14,8 @@ const PREFIX = 'pr-watches:';
 const MIN_PASS_GAP_MS = 1_000;
 /** Watches one conversation may hold. */
 const WATCH_LIMIT = 10;
+/** How far GitHub's merge time may sit outside the agent's turn and still be the agent's. */
+const CLOCK_SLACK_MS = 30_000;
 
 export interface WatchTiming {
   /** Between two fingerprint reads of one pull request. */
@@ -299,8 +301,11 @@ export class PullRequestWatches {
 
   /**
    * A merge or a close ends the watch. Someone else's is told first, with what
-   * was still waiting; the agent's own account's, or one GitHub cannot name,
-   * ends it at once, since the agent did it or cannot be told who did. A
+   * was still waiting; one GitHub cannot name ends it at once. So does one by
+   * the agent's own account made while the agent was at work, since the agent
+   * did it. The same account at rest is the user merging by hand, or an
+   * auto-merge the agent armed earlier: its wake tells the agent, whose cache
+   * may have lapsed since, so the thread does not wait open for nobody. A
    * failed closer read throws to `#read`, which backs off as for any read; the
    * next read finds the same state and asks again.
    */
@@ -311,7 +316,7 @@ export class PullRequestWatches {
     if (this.#find(threadId, record.url) !== record) return;
     this.#answered(runtime, record);
     this.core.log('info', `pull request #${record.number} is ${state.toLowerCase()}${closer.by ? ` by ${closer.by}` : ''}: its watch ended`, { source: 'pull-request-watch', threadId });
-    if (!closer.by || closer.own) {
+    if (!closer.by || (closer.own && this.#atWork(threadId, closer.at))) {
       this.#remove(threadId, record.url);
       // No wake follows: a delegated agent that merged its own pull request reports to its parent now.
       if (!this.#records.has(threadId)) resendQuietResult(this.core, threadId);
@@ -323,6 +328,23 @@ export class PullRequestWatches {
     }
     this.#save(threadId);
     this.#changed(threadId);
+  }
+
+  /**
+   * Whether the agent was at work when the pull request ended at `at`: busy
+   * now, or within one of its turns, give or take GitHub's clock. No time from
+   * GitHub keeps the safe reading that the agent did it.
+   */
+  #atWork(threadId: ThreadId, at: number | null): boolean {
+    if (at === null || this.core.threads.isBusy(threadId)) return true;
+    const turns = this.core.journal.listTurns(threadId);
+    for (let index = turns.length - 1; index >= 0; index--) {
+      const { startedAt, finishedAt } = turns[index]!;
+      if (startedAt === null) continue;
+      if (finishedAt !== null && finishedAt + CLOCK_SLACK_MS < at) return false;
+      if (startedAt - CLOCK_SLACK_MS <= at) return true;
+    }
+    return false;
   }
 
   #answered(runtime: Runtime, record: WatchRecord): void {

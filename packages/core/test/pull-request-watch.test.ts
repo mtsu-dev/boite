@@ -297,6 +297,8 @@ interface FakeGitHub {
   updatedAt: string;
   /** Who merged or closed it. */
   closedBy: string;
+  /** When, as GitHub's ISO time; null where the test does not need it. */
+  closedAt: string | null;
   /** Thrown instead of answering, once per call while set. */
   failure: string | null;
   /** Thrown by the next closer query only, then cleared. */
@@ -310,7 +312,7 @@ interface FakeGitHub {
 }
 
 function fakeGitHub(): FakeGitHub {
-  return { state: 'OPEN', mergeable: 'MERGEABLE', head: 'a'.repeat(40), queue: null, runs: [{ name: 'test', status: 'IN_PROGRESS', conclusion: '' }], comments: [], reviews: [], inline: [], updatedAt: '2026-10-15T09:00:00Z', closedBy: 'meetsu', failure: null, closerFailure: null, rules: [], protection: [], rulesFailure: null, calls: [] };
+  return { state: 'OPEN', mergeable: 'MERGEABLE', head: 'a'.repeat(40), queue: null, runs: [{ name: 'test', status: 'IN_PROGRESS', conclusion: '' }], comments: [], reviews: [], inline: [], updatedAt: '2026-10-15T09:00:00Z', closedBy: 'meetsu', closedAt: null, failure: null, closerFailure: null, rules: [], protection: [], rulesFailure: null, calls: [] };
 }
 
 /** What `gh` prints for each call a watch makes. */
@@ -325,7 +327,7 @@ async function answer(github: FakeGitHub, args: string[]): Promise<string> {
     if (failure) throw new Error(failure);
     const by = { login: github.closedBy };
     const state = github.detailState ?? github.state;
-    return JSON.stringify({ data: { viewer: { login: 'meetsu' }, repository: { pullRequest: { state, mergedBy: state === 'MERGED' ? by : null,
+    return JSON.stringify({ data: { viewer: { login: 'meetsu' }, repository: { pullRequest: { state, closedAt: github.closedAt, mergedBy: state === 'MERGED' ? by : null,
       timelineItems: { nodes: state === 'CLOSED' ? [{ actor: by }] : [] } } } } });
   }
   const mergeQueueEntry = github.queue === null ? null : { position: github.queue };
@@ -659,6 +661,34 @@ for (const others of Object.keys(hintCases) as (keyof typeof hintCases)[]) {
       expect(archiveState(core.journal, threadId).asked ?? []).toEqual(others === 'asked' ? [URL] : []);
     }
     expect(core.threads.require(threadId).archived).toBe(false);
+  });
+}
+
+for (const when of ['at rest', 'in a turn'] as const) {
+  test(`a merge by the agent's own account ${when === 'at rest' ? 'while its agent rests wakes it with the Done hint' : 'during its agent\'s turn ends the watch without a wake'}`, async () => {
+    const { owner, threadId, github, drive } = await watchedThread();
+    const core = harness!.core;
+    const cwd = join(harness!.dataDir, 'worktree');
+    mkdirSync(cwd);
+    core.journal.putThread({ ...core.threads.require(threadId), cwd, branch: 'feature' });
+    await owner.call('turns.start', { threadId, prompt: 'open the pull request' });
+    await settled(threadId);
+    await owner.call('threads.watchPullRequest', { threadId, url: URL });
+    await drive();
+    // The user merges by hand with the account the agent's gh uses, long after the agent's last turn; or the agent merges within it.
+    const last = core.journal.lastTurn(threadId)!;
+    github.closedAt = new Date(when === 'at rest' ? Date.now() + 10 * 60_000 : last.startedAt! + 1_000).toISOString();
+    github.state = 'MERGED';
+    github.closedBy = 'meetsu';
+    await drive();
+    await settled(threadId);
+    expect(core.pullRequestWatches.of(threadId)).toEqual([]);
+    if (when === 'in a turn') { expect(wakes(threadId)).toHaveLength(0); return; }
+    expect(wakes(threadId)).toHaveLength(1);
+    const text = wakeText(threadId, wakes(threadId)[0]!.id);
+    expect(text).toContain('meetsu merged the pull request; its watch ended.');
+    expect(text).toContain(WATCH_DONE_HINT);
+    expect(archiveState(core.journal, threadId).asked).toEqual([URL]);
   });
 }
 
