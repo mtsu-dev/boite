@@ -442,6 +442,29 @@ and are kept per thread until a turn or row of that thread changes.
 parts a second). The 500 ms agents tick costs 5 µs and no statement when
 nothing is due.
 
+## Usage page
+
+`bun bench/usage-history.ts [--root <checkout>] [--dir <dir>]` writes a
+synthetic journal (1,800 threads in 40 projects, 110,000 turns over 100 days,
+ten messages each, 1.2 GB) into a journal the measured core creates, then reads
+`usage.history` over 7, 30 and 90 days: once after dropping the file's pages
+from the OS cache (cold, Linux), then the median of 5 (warm). `--root` measures
+another checkout on the same rows. On 2026-11-19, on boite-m1 (Linux, Bun
+1.4.4) under a load average of 27 to 36 on 16 threads, two alternating runs
+each, `29a4c974b` before `usage_slots` and this branch after:
+
+| Range | Before, cold | Before, warm | After, cold | After, warm |
+| --- | --- | --- | --- | --- |
+| 7 days | 557 to 624 ms | 84 to 103 ms | 81 to 364 ms | 19 to 34 ms |
+| 30 days | 1,724 to 1,813 ms | 462 to 507 ms | 294 to 968 ms | 131 to 156 ms |
+| 90 days | 5,437 to 6,499 ms | 2,060 to 2,898 ms | 1,935 to 4,348 ms | 408 to 445 ms |
+
+Building the slots for these 110,000 turns took 9.9 s, once, in migration 53.
+The synthetic turns are spread over many threads at once, so the slots hold
+105,359 rows for 110,000 turns: a journal where a few threads run at a time
+folds more turns into each row. What is left is about half the slots read and
+half the thread ranking, which still sums the turns themselves.
+
 ## Local and remote connections
 
 The core decides per connection. A WebSocket whose `Host` header is
@@ -1524,6 +1547,50 @@ load.
 Cutting answers trades the open for the scroll: one answer drawn whole is
 2,681 nodes the open lays out at once and a wheel only composites, where cut
 rows mount and style as they come. The load of the machine was not controlled.
+
+## What a tap costs
+
+`bench/ui-latency.ts` times a phone's navigation in headless Chrome at
+390 x 844, on the in-memory fake client: from the finger coming down (held
+40 ms, then lifted) or the Back, to the first DOM change, to the first frame
+after it, and to the end of the move it starts. `--cpu 4` slows the page four
+times, about a mid-range phone's WebView; `--cpu 1` is this machine's speed,
+about a desktop's. "System Back" is `history.back()`, a browser's Back and the
+Android app's before it answered Back itself; "app Back" is
+`answerAndroidBack()` ([Back](android-native.md#back)).
+
+What makes a Back quick:
+
+- The thread or activity list stays built under a conversation and under
+  Settings (`.mobile-list.covered`: hidden, inert, `content-visibility:
+  hidden`). Back shows it instead of building every row again. A phone that
+  lands in a conversation builds it once the page is idle. Kept, it answers
+  to `mobile-list-kept`, so what looks for the list on screen (toasts, the
+  return from Activity) never finds the hidden one.
+- On a phone, Settings opened from the chat is a layer over it
+  (`.settings-layer`), which stays built under it. Leaving Settings used to
+  build the whole chat again. Opened from Mochis or Contacts, Settings still
+  replaces the page, so no chat is built for nothing.
+- The Android app answers Back in the page, without a round trip through the
+  WebView's history.
+
+First frame, median of 5 runs in ms, two interleaved rounds of the build before
+(`24f44f9fd`) and after, `bun bench/ui-latency.ts --bundle <dir> --cpu <n>
+--runs 5`, 2026-11-19, on a shared 16-thread Ryzen under load from other jobs:
+
+| Step | CPU 4x before | CPU 4x after | CPU 1x before | CPU 1x after |
+| --- | --- | --- | --- | --- |
+| Open a conversation (tap) | 195, 177 | 173, 184 | 87, 72 | 77, 73 |
+| Back to the list (arrow tap) | 406, 410 | 170, 161 | 94, 103 | 71, 63 |
+| Back to the list (system Back) | 355, 249 | 136, 83 | 76, 51 | 16, 16 |
+| Back to the list (app Back) | | 82, 96 | | 17, 14 |
+| Open Settings (tap) | 161, 142 | 139, 179 | 60, 70 | 76, 54 |
+| Leave Settings (system Back) | 445, 407 | 89, 84 | 65, 71 | 15, 19 |
+
+A tap's numbers include the 40 ms the finger is down: the action runs on
+release. The move after the first frame is the slide, `--dur-3` (220 ms).
+At 4x, what is left of a Back is mostly the style of the revealed list, worked
+out for its first frame; `--profile <dir>` writes a CPU profile of each step.
 
 ## What the UI costs at rest
 

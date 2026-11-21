@@ -4,6 +4,7 @@ import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { MessagePart } from '@boite/contracts';
 import { startTurn, waitFor } from './harness.ts';
 import {
+  type FakeQuery,
   answerEach,
   assistant,
   calls,
@@ -853,5 +854,45 @@ describe('claude driver', () => {
     // The window stays: only what fills it is gone.
     expect(thread.context).toMatchObject({ tokens: 0, window: 200_000 });
     expect(readings).toContain(0);
+  });
+
+  test('a compaction moves the context meter to what is left at once, and the result keeps it', async () => {
+    const { client, threadId } = await openClaudeThread();
+    const reading = (sessionId: string, tokens: number): SDKMessage => sdk({
+      type: 'assistant', session_id: sessionId, parent_tool_use_id: null,
+      message: { id: `msg_${tokens}`, role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: tokens } },
+    });
+    let compacting: FakeQuery | null = null;
+    scripted(() => undefined, (fake, prompt) => {
+      fake.emit(init('sess-compact'));
+      if (!prompt.includes('/compact')) {
+        fake.emit(reading('sess-compact', 95_000));
+        const result = success('sess-compact') as SDKMessage & { modelUsage: Record<string, unknown> };
+        result.modelUsage = { 'claude-opus-5-20260401': { contextWindow: 200_000 } };
+        fake.emit(result);
+        return;
+      }
+      // A request measured before the cut is the old conversation, not what is left.
+      fake.emit(reading('sess-compact', 95_000));
+      fake.emit(sdk({
+        type: 'system', subtype: 'compact_boundary', session_id: 'sess-compact', uuid: 'uuid-compact-meter',
+        compact_metadata: { trigger: 'manual', pre_tokens: 95_000, post_tokens: 20_000 },
+      }));
+      compacting = fake;
+    });
+
+    expect(await runTurn(client, threadId, 'fill it')).toBe('done');
+    expect((await client.call('threads.get', { threadId })).context).toMatchObject({ tokens: 95_000, window: 200_000 });
+
+    // The result is held back: the gauge must drop before the turn ends.
+    const emptied = client.next('thread.updated', (thread) => thread.id === threadId && thread.context?.tokens === 20_000, 2000);
+    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
+    await client.call('turns.start', { threadId, prompt: '/compact' });
+    expect((await emptied).context).toMatchObject({ tokens: 20_000, window: 200_000 });
+    await waitFor(() => compacting !== null);
+    // A result that names no window keeps the one the ring had.
+    (compacting as FakeQuery | null)?.emit(success('sess-compact'));
+    expect((await finished).status).toBe('done');
+    expect((await client.call('threads.get', { threadId })).context).toMatchObject({ tokens: 20_000, window: 200_000 });
   });
 });

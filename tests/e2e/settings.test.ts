@@ -1,7 +1,7 @@
 import { mobileAction, toMobileList } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { BrowserPage, freePort } from './lib/cdp.ts';
+import { BrowserPage, freePort, SETTLE_ANIMATIONS } from './lib/cdp.ts';
 import { startDevUi } from './lib/ui.ts';
 // Vite belongs to the UI workspace, not the repository root.
 let server: { close(): Promise<void> };
@@ -182,10 +182,10 @@ test('the mochis are in the app rail on the desktop and in the phone bar, with n
   // The agents fixture, so the rail has bots to draw.
   await page.navigate(`${uiUrl}/?fake=1&open=recent&agents=1`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
-  // Bots are on in every build: the Experiments page has no switch for them.
-  await page.click(id('nav-settings')); await page.click(id('settings-tab-experiments'));
-  await page.waitFor(`document.querySelector('${id('experiment-whip')}')`);
-  expect(await page.evaluate(`document.querySelector('${id('experiment-resident-agents')}')`)).toBeNull();
+  // Bots are on in every build, with no switch: Settings has no Experiments page at all.
+  await page.click(id('nav-settings'));
+  await page.waitFor(`document.querySelector('${id('settings-tab-general')}')`);
+  expect(await page.evaluate(`document.querySelector('${id('settings-tab-experiments')}')`)).toBeNull();
   await page.click(id('settings-back'));
   await page.waitFor(`document.querySelector('${id('app-rail')} ${id('rail-bot')}') && document.querySelector('${id('app-rail')} ${id('rail-add')}')`);
   expect(await page.evaluate(`document.querySelector('${id('app-rail')} ${id('view-threads')}').getAttribute('aria-current')`)).toBe('page');
@@ -349,7 +349,8 @@ test('composer and buttons keep solid fallback fills without color-mix', async (
       for (const mode of ['dark', 'light', 'grain', 'glass']) {
         root.dataset.theme = mode === 'glass' ? 'dark' : mode;
         if (mode === 'glass') root.dataset.glass = 'acrylic'; else delete root.dataset.glass;
-        await Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
+        const pending = await ${SETTLE_ANIMATIONS};
+        if (pending) throw new Error('Theme animations did not finish: ' + pending.join(', '));
         result.push(['composer', 'fallback-chip'].map(name => {
           context.clearRect(0, 0, 1, 1);
           context.fillStyle = getComputedStyle(document.querySelector('[data-testid="' + name + '"]')).backgroundColor;

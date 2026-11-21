@@ -25,7 +25,7 @@ const inflate = (stored: Buffer, maxOutputLength: number) => new Promise<Buffer>
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const framed = (bytes: Uint8Array) => bytes.length >= 4 && MAGIC.equals(bytes.subarray(0, 4));
-export const isBlobName = (name: string) => /^[0-9a-f]{64}$/.test(name);
+const isBlobName = (name: string) => /^[0-9a-f]{64}$/.test(name);
 
 /** The stored form of `bytes`: a zstd frame when that saves at least a tenth, the bytes otherwise. */
 export async function encodeBlob(bytes: Buffer): Promise<Buffer> {
@@ -111,7 +111,7 @@ export interface StoreCounts {
   bytesRead: number;
 }
 
-export const emptyCounts = (): StoreCounts => ({ linked: 0, adopted: 0, compressed: 0, manifests: 0, mismatched: 0, unlinked: 0, bytesRead: 0 });
+const emptyCounts = (): StoreCounts => ({ linked: 0, adopted: 0, compressed: 0, manifests: 0, mismatched: 0, unlinked: 0, bytesRead: 0 });
 
 /**
  * Walks blobs written before the shared store, or before compression, into
@@ -223,7 +223,7 @@ export class StoreMigration {
 }
 
 /** The blob hashes a manifest needs to rewind. */
-export function neededBlobs(checkpoint: { before?: Record<string, { hash: string; link?: string; unbacked?: true }>; after?: Record<string, { hash: string; link?: string; unbacked?: true }> }): string[] {
+function neededBlobs(checkpoint: { before?: Record<string, { hash: string; link?: string; unbacked?: true }>; after?: Record<string, { hash: string; link?: string; unbacked?: true }> }): string[] {
   const hashes: string[] = [];
   for (const side of [checkpoint.before, checkpoint.after]) {
     for (const entry of Object.values(side ?? {})) if (entry.link === undefined && !entry.unbacked) hashes.push(entry.hash);

@@ -581,13 +581,6 @@ export interface ProvidersRpcMethods {
     params: { providerId: ProviderId };
     result: { loaded: ProviderSummary[]; rejected: ProviderRejected[] };
   };
-  /** Validate a user descriptor and show what it would do. Writes nothing. */
-  'providers.dryRun': {
-    params: { file: string };
-    result:
-      | { ok: true; summary: ProviderSummary; plan: { roots: string[]; env: string[]; closes: string[] } }
-      | { ok: false; rejected: ProviderRejected };
-  };
 }
 
 export interface ProvidersRpcEvents {

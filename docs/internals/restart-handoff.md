@@ -98,8 +98,12 @@ no turn running gets a resume for that alone.
 
 Nothing resumes for a turn that answered, a turn the user stopped, a refusal
 at capacity or at a usage limit, which retries on its own
-([usage](usage.md#when-a-provider-refuses-a-turn)), a compaction or coordination turn, a
-sub-thread, or background work a Stop or an archive ended.
+([usage](usage.md#when-a-provider-refuses-a-turn)), a turn whose folder is gone
+(`cwdGone`), a Claude turn the CLI ended on "Autocompact is thrashing"
+(`contextFull`, `drivers/claude/context-full.ts`: its error names the
+instruction files over 40,000 bytes from the thread's folder up), a compaction
+or coordination turn, a sub-thread, or background work a Stop or an archive
+ended.
 A handoff ends the agent processes without ending their background work in the
 journal: it stays running until the next core marks it cut by a restart
 (`core-restarted`), so a thread at rest that waited on it resumes. A core

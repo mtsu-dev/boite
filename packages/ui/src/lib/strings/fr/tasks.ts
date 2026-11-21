@@ -24,7 +24,6 @@ export const fr: Translation = {
     collapse: 'Replier cette section',
     expand: 'Déplier cette section',
     watchSection: 'PR surveillées',
-    noWatches: 'Aucune PR surveillée',
     watchHint: 'Boite lit la PR sur GitHub environ une fois par minute et réveille l’agent quand un check échoue, que les checks passent, qu’une review ou un commentaire arrive, que la branche entre en conflit ou qu’elle sort de la file de merge sans être mergée',
     watchNotRead: 'Pas encore lue',
     watchNoChecks: 'Aucun check',

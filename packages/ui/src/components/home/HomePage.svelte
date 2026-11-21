@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { CircleAlert, WifiOff } from '@lucide/svelte';
   import Notice from '../Notice.svelte';
   import { onMount } from 'svelte';
@@ -34,8 +33,6 @@
   onMount(() => view.watch());
   // A reconnection is a new client: follow it and read again.
   $effect(() => { void store.client; void store.connection; view.follow(); });
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:contacts');
 </script>
 
 <div class="settings contacts" data-testid="home-page">

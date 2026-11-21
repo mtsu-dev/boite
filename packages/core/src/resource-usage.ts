@@ -38,7 +38,7 @@ export function unavailableResourceBytes(note = 'No supported per-agent counter'
 }
 
 /** A safe projection of thread identity and current measurements for phones. */
-export function resourceSnapshot(
+function resourceSnapshot(
   sampledAt: number,
   live: ThreadId[],
   threadOf: (threadId: ThreadId) => ThreadSummary | null,
@@ -94,6 +94,10 @@ export class ResourceCollection {
 
   snapshot(live: ThreadId[], threadOf: (threadId: ThreadId) => ThreadSummary | null, loadOf: (threadId: ThreadId) => ThreadLoad | null): AgentResourceSnapshot {
     return resourceSnapshot(this.sampledAt, live, threadOf, loadOf, this.#details, this.#availability);
+  }
+
+  availability(threadId: ThreadId): { cpu: boolean; memory: boolean } {
+    return this.#availability.get(threadId) ?? { cpu: false, memory: false };
   }
 
   forget(threadId: ThreadId): void { this.#details.delete(threadId); this.#availability.delete(threadId); }

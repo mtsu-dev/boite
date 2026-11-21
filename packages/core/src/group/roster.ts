@@ -150,7 +150,7 @@ export function checkCard(value: unknown, field = 'core'): CoreCard {
   };
 }
 
-export function checkCore(value: unknown, field = 'core'): CoreEntry {
+function checkCore(value: unknown, field = 'core'): CoreEntry {
   const card = checkCard(value, field);
   const raw = value as Record<string, unknown>;
   const admit = raw['admit'] as { by?: unknown; sig?: unknown } | null | undefined;
@@ -166,7 +166,7 @@ export function checkCore(value: unknown, field = 'core'): CoreEntry {
   };
 }
 
-export function checkDevice(value: unknown, field = 'device'): DeviceEntry {
+function checkDevice(value: unknown, field = 'device'): DeviceEntry {
   if (typeof value !== 'object' || value === null) throw invalidParams(`${field}: expected a device`, { field });
   const raw = value as Record<string, unknown>;
   const id = text(raw['id'], `${field}.id`, 200);

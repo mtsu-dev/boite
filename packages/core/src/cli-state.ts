@@ -39,7 +39,7 @@ const when = (at: number | null): string => (at === null ? 'never' : new Date(at
 const memory = (bytes: number): string => `${Math.round(bytes / MB)} MB`;
 
 /** The lines of one `agent.state` reading. */
-export function stateLines(reading: StateReading): string[] {
+function stateLines(reading: StateReading): string[] {
   switch (reading.domain) {
     case 'version': {
       const v = reading.version;
@@ -53,7 +53,7 @@ export function stateLines(reading: StateReading): string[] {
       });
     case 'machines':
       return reading.machines.map(machine => machine.kind === 'machine'
-        ? `machine ${JSON.stringify(machine.name)}: ${machine.self ? 'this machine, online' : machine.reached ? 'online (answered since start)' : 'not reached since start'}${machine.os ? `, ${machine.os}` : ''}${machine.version ? `, ${machine.version}` : ''}`
+        ? `machine ${JSON.stringify(machine.name)}: ${machine.self ? 'this machine, online' : machine.reached ? 'answered since this core started' : 'has not answered since this core started'}${machine.os ? `, ${machine.os}` : ''}${machine.version ? `, ${machine.version}` : ''}`
         : `device ${JSON.stringify(machine.name)}: ${machine.current ? 'connected now' : `last seen ${when(machine.lastSeenAt)}`}${machine.version ? `, ${machine.version}` : ''}`);
     case 'updates': {
       const u = reading.updates;
@@ -62,8 +62,8 @@ export function stateLines(reading: StateReading): string[] {
         ...(u.agents.length === 0 ? ['agents: none installed'] : u.agents.map(agent => `${agent.provider}: ${agent.installed ?? 'unknown'}${agent.offered ? ` -> ${agent.available} available` : ''}, ${agent.state} (${agent.route})${agent.error ? ` [${agent.error}]` : ''}`))];
     }
     case 'inbox':
-      if (reading.inbox.length === 0) return ['inbox: nothing needs the user'];
-      return reading.inbox.map(row => `${row.nested ? '  under the row above: ' : ''}${row.threadId} ${row.section === 'needs' ? 'needs you' : 'update'}: ${row.kind}, ${JSON.stringify(row.title)}${row.project ? ` in ${row.project}` : ''} (${when(row.at)})`);
+      if (reading.inbox.length === 0) return ['inbox on this machine: nothing needs the user'];
+      return ['inbox on this machine:', ...reading.inbox.map(row => `${row.nested ? '  under the row above: ' : ''}${row.threadId} ${row.section === 'needs' ? 'needs you' : 'update'}: ${row.kind}, ${JSON.stringify(row.title)}${row.project ? ` in ${row.project}` : ''} (${when(row.at)})`)];
     case 'tasks':
       if (reading.tasks.length === 0) return ['tasks: no agent process runs'];
       return reading.tasks.map(task => `${task.threadId} ${JSON.stringify(task.title)}: ${task.processes} processes, ${memory(task.memoryBytes)}, ${Math.round(task.cpuPercent)}% CPU (${task.status})`);
@@ -80,9 +80,9 @@ export function stateLines(reading: StateReading): string[] {
       return [
         `version: ${s.version.version} (${s.version.channel}, ${s.version.platform})`,
         `route: ${s.route.gateway === null ? 'direct, no gateway' : `${s.route.gateway} for ${s.route.providers} providers`}`,
-        `machines: ${s.machines.online}/${s.machines.total} online, ${s.machines.devices} paired devices`,
+        `machines: this machine online, ${s.machines.online - 1}/${s.machines.total - 1} other machines answered since this core started, ${s.machines.devices} paired devices`,
         `updates: ${s.updates.failing} failing, ${s.updates.available} available`,
-        `inbox: ${s.inbox.needs} need the user, ${s.inbox.updates} updates`,
+        `inbox on this machine: ${s.inbox.needs} need the user, ${s.inbox.updates} updates`,
         `limits: ${s.limits.accounts} accounts${top === null ? '' : `, highest ${top.provider} ${JSON.stringify(top.account)} ${top.label} ${Math.round(top.usedPercent)}%`}`,
         `tasks: ${s.tasks.processes} processes, ${memory(s.tasks.memoryBytes)}`,
       ];
@@ -105,5 +105,10 @@ export async function stateCommand(client: CoreClient, threadId: string, rest: s
   const wanted = domain ?? 'summary';
   if (!isStateDomain(wanted) || rest.length > 1) throw new ShortUsage(STATE_USAGE);
   const reading = await client.call('agent.state', { threadId, domain: wanted });
-  print(stateLines(reading), reading);
+  const json = reading.domain === 'inbox' ? { ...reading, scope: 'local' }
+    : reading.domain === 'summary' ? { ...reading, summary: { ...reading.summary,
+      machines: { answeredSinceStart: reading.summary.machines.online - 1, totalPeers: reading.summary.machines.total - 1, devices: reading.summary.machines.devices },
+      inbox: { ...reading.summary.inbox, scope: 'local' },
+    } } : reading;
+  print(stateLines(reading), json);
 }

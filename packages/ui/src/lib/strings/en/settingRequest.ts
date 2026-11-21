@@ -99,6 +99,8 @@ export const strings = {
       compactionByType: 'Compaction by agent type',
       autoResumeLimitedThreads: 'Resume threads after a usage limit',
       deviceStream: 'Live device stream',
+      cacheKeepalive: 'Keep the prompt cache warm',
+      autoGoals: 'Automatic goals',
       backgroundCompaction: 'Background compaction',
       groupThreads: 'Let the other machines start threads and add projects here',
       groupBots: 'Let the mochis of the other machines look after projects here',

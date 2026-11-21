@@ -11,7 +11,7 @@ import { refused } from '../errors.ts';
 import { git } from '../git/read.ts';
 import type { Connection } from '../router.ts';
 
-export const SECRET_OUTPUT_BYTES = 1024 * 1024;
+const SECRET_OUTPUT_BYTES = 1024 * 1024;
 const RUN_TIMEOUT_MS = 10 * 60_000;
 const RUN_MAX_TIMEOUT_MS = 60 * 60_000;
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;

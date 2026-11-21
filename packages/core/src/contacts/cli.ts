@@ -59,7 +59,7 @@ function flagLine(flag: ContactFlag): string {
   return `${flag.id} ${flag.kind} from ${flag.contact}${flag.letterId ? `, letter ${flag.letterId} held` : ''}${flag.threadId ? ` to ${flag.threadId}` : ''}: ${flag.reason}`;
 }
 
-export function viewLines(view: ContactsBotView): string[] {
+function viewLines(view: ContactsBotView): string[] {
   const pending = view.requests.filter(request => request.status === 'pending');
   const flags = view.flags.filter(flag => flag.status === 'open');
   return [

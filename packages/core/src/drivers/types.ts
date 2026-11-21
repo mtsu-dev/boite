@@ -289,7 +289,8 @@ export interface TurnContext {
   /**
    * The context meter: what the agent's last request carried and the model's
    * window when the agent names it. The core writes it on the thread and
-   * tells the clients; a driver calls it once per turn, at the end.
+   * tells the clients; a driver calls it once per turn, at the end, and may
+   * call it mid-turn when the agent empties or compacts its context.
    */
   context(use: Omit<import('@boite/contracts').ContextUse, 'at'>): void;
   /**
@@ -335,9 +336,9 @@ export type SessionContext = Pick<TurnContext,
   'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'promptSuggestions' | 'suggestion' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
   'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'stopChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
 
-export type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
+type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
 /** Scalars only: never a prompt, a tool input or output, a command line or a token. */
-export interface DiagnosticContext { event: string; durationMs?: number; data?: Record<string, string | number | boolean | null> }
+interface DiagnosticContext { event: string; durationMs?: number; data?: Record<string, string | number | boolean | null> }
 
 export interface TurnResult {
   status: 'done' | 'stopped' | 'error';
@@ -385,6 +386,12 @@ export interface TurnResult {
    * (`threads/retries.ts`); a driver that cannot tell leaves it out.
    */
   refusal?: TurnRefusal;
+  /**
+   * The agent gave up compacting: what every request carries (instruction
+   * files, mostly) refills its compaction limit within a few turns, so a
+   * resume fails the same way. The error names what to shrink.
+   */
+  contextFull?: true;
   /**
    * Set by the core, never a driver: the turn failed and the thread's folder
    * is gone. A resume would fail the same way.

@@ -3,7 +3,7 @@ import { composerPlaceholder, declineHint } from './composer-placeholder';
 import { cutAtWord } from './decision-subject.svelte';
 import { fill, strings } from './strings';
 
-const base = { target: null, replying: false, bot: null, offline: false, onThread: true, machine: 'This PC', provider: 'Claude' };
+const base = { replying: false, bot: null, offline: false, onThread: true, machine: 'This PC', provider: 'Claude' };
 
 test('the box says two things at most: who reads it at rest, and reply while the agent works or asks', () => {
   const t = strings.composer;
@@ -14,7 +14,6 @@ test('the box says two things at most: who reads it at rest, and reply while the
   expect(composerPlaceholder({ ...base, provider: null })).toBe(fill(t.placeholder, { name: t.placeholderAgent }));
   // A state that changes what Send does says why instead.
   expect(composerPlaceholder({ ...base, offline: true })).toBe(fill(t.placeholderOffline, { machine: 'This PC' }));
-  expect(composerPlaceholder({ ...base, offline: true, target: { placeholder: 'Side box' } })).toBe('Side box');
   // Under the notice that names the machine offline, the field does not say it again.
   expect(composerPlaceholder({ ...base, offline: true, away: true })).toBe('Sends when This PC is back');
   // A removed account locks the box: the field says what unlocks it, whatever else is going on.

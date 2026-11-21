@@ -10,16 +10,23 @@ Open Settings, Usage.
 
 1. Pick the range, 7, 30 or 90 days, and the measure: Tokens, API estimate or
    Turns. Every card follows them.
-2. Filter by provider, and with several machines connected, pick one machine
-   or All machines.
-3. Read Overview for the totals per provider, Per day for a chart by day,
-   Breakdown for each model, and Top threads for the ten threads that spent
-   the most.
+2. The page opens on All machines. Pick one machine, one project or one
+   provider from the menus to narrow it.
+3. Read the overview for the total, each provider's share and the chart by
+   day, Biggest threads for the ten threads that spent the most, Projects for
+   what each project spent, and Breakdown for each model or each day.
+4. Press a thread to open its own page. Its totals and subagents follow the
+   provider and date filters. The chart and turn list show up to the latest
+   2,000 turns in that selection. Open the conversation takes you to it.
+   Press a project to narrow the page to it.
 
 - Tokens include cache reads and writes. A turn that reported no usage counts
   as a turn only.
-- The page counts only what Boite ran. Removing a project or purging deleted
-  conversations keeps their totals. An incognito conversation keeps nothing.
+- The page counts only what Boite ran. Removing a project keeps its
+  conversations and their totals, tagged Removed in the project menu; adding
+  the folder again brings them back. Purging deleted conversations keeps their
+  totals. An incognito conversation keeps nothing.
+- Each provider keeps its own colour on every chart.
 - A machine that is not connected is named above the page and left out of
   the totals.
 - On a phone, Usage and Limits sit under Settings, Machines.
@@ -29,6 +36,11 @@ Open Settings, Usage.
 The cost is the tokens at each model's public API rates, from models.dev. On a
 subscription it is what the same tokens would cost on the API, not an
 invoice.
+
+Boite reads the current rates from models.dev about once a day, so a new
+model gets its price without an update. Offline, it uses the last table it
+fetched, with the shipped table filling in models missing from it. The line
+under Breakdown says whether Boite has fetched rates.
 
 - The "i" beside a model gives the rates it was priced at.
 - A model with no listed rate uses the cost its agent reported. A model with
@@ -49,9 +61,10 @@ signed-in accounts, such as 5 hours and Weekly, with their reset times.
 - With a banked Claude or Codex reset, Use reset consumes the one closest to
   expiring, after a confirmation. It cannot be undone.
 - The tray icon and the gauge above Settings in the app rail open the same
-  limits in a small popup. Drag a row's handle to reorder accounts. The
-  account the open thread runs on is highlighted and tagged This thread; behind
-  Douane, only when one Douane account serves that provider.
+  limits in a small popup. Look for the blue Meta logo to find a Muse Code
+  subscription connected through Douane. Drag a row's handle to reorder
+  accounts. The account the open thread runs on is highlighted and tagged
+  This thread; behind Douane, only when one Douane account serves that provider.
 - The gauge stays grey while every account has room. When the best account
   runs low, it becomes a ring of what is left. When every account is out, the
   ring turns red, fills as the first reset comes near and shows the time left
@@ -103,8 +116,8 @@ The timer is an estimate from what the agent reports or the provider
 documents. It does not check the cache, and changing the model or account
 resets it.
 
-Keep the prompt cache warm is an experiment: it exists in Nightly builds
-only, in Settings, Experiments, and is off by default.
+Keep the prompt cache warm is in Settings, System, and is off by default.
+Only the owner sees it.
 While a conversation waits on its agents or workflows, Boite sends a one-word
 turn shortly before the cache lapses, for at most 12 hours by default (1 to
 24). Each ping counts as usage, and a ping that misses the cache ends the

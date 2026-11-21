@@ -9,7 +9,7 @@
 import { KEYBINDING_COMMANDS, parseChord, type Chord, type KeybindingCommand, type Keybindings } from '@boite/contracts';
 
 /** What each command answers to until the file says otherwise. Null is a command with no key. */
-export const DEFAULT_BINDINGS: Record<KeybindingCommand, string | null> = {
+const DEFAULT_BINDINGS: Record<KeybindingCommand, string | null> = {
   'new-thread': 'mod+n',
   palette: 'mod+k',
   sidebar: 'mod+s',

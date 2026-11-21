@@ -27,7 +27,7 @@ export interface ConfirmNote {
 }
 
 /** What `choose` answers: the confirm button, the second one, or Cancel, Escape and the scrim. */
-export type ConfirmChoice = 'confirm' | 'alt' | 'cancel';
+type ConfirmChoice = 'confirm' | 'alt' | 'cancel';
 
 class ConfirmStore {
   current = $state<ConfirmRequest | null>(null);

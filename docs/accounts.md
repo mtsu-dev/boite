@@ -93,7 +93,9 @@ Settings, Brain, Hooks; the agent starts without it.
 ## The subscription proxy
 
 As an option, Claude Code, Codex and both OpenCode versions can go through a
-gateway you run, and Grok too when the gateway is Douane. Boite supports
+gateway you run, and Grok and Antigravity too when the gateway is Douane.
+Antigravity then uses the Google accounts Douane pools, with no Google sign-in
+in Boite. Boite supports
 Douane and CLIProxyAPI.
 
 1. Open Settings, Providers, Subscription proxy.

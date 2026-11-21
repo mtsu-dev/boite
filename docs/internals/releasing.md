@@ -35,15 +35,13 @@ core's scripts, the UI and the Termux controller, which run on Bun's Android
 build. It is signed and listed the same way, under the `android-aarch64-server`
 target ([Android server](android-server.md#releases-and-updates)).
 
-The nightly also attaches the signed Android app as
-`boite-android-<MAJOR.MINOR.PATCH>.apk`. That version belongs to the app, not
-to the release: `apps/android/VERSION` holds `MAJOR.MINOR`, raised by hand, and
-the patch grows by one only when the APK is rebuilt. A release with no change
-to the app attaches the previous APK under its original name.
-[Android](android.md#the-app-version) has the full rule. Boite Server, the app
-that runs a core on a phone, comes beside it as
-`boite-server-android-<MAJOR.MINOR.PATCH>.apk` under the same rule, counted from
-`apps/android-server/VERSION` ([Android server](android-server.md#publishing-the-app)).
+The nightly also attaches the signed native Android app
+([Android app](android-native.md)) and Boite Server, the app that runs a core
+on a phone, as `boite-server-android-<MAJOR.MINOR.PATCH>.apk`. That version
+belongs to Boite Server, not to the release: `apps/android-server/VERSION`
+holds `MAJOR.MINOR`, raised by hand, and the patch grows by one only when the
+APK is rebuilt. A release with no change to it attaches the previous APK under
+its original name ([Android server](android-server.md#publishing-the-app)).
 
 - `build:ui` writes `packages/ui/dist`. That directory is what the core serves at
   `/`, with a `.br` and a `.gz` copy beside each text asset. The Tauri config
@@ -334,7 +332,8 @@ name is `Boite`. The install is per user and asks for no elevation.
 - `jobs-worker.js`, beside the core because that is where the core looks for it.
   Without it the trace reports `poll` instead of `events`.
 - `guard-worker.js`, the focus guard and the audio mute.
-- `artifact-retention-worker.js`, the background scan for unused deliverables.
+- `artifact-retention-worker.js`, the journal's reader: the background scan for unused
+  deliverables and the chat scan of `boite threads find`.
 - `boite` and `boite.cmd`, the CLI shims the core puts on an agent's PATH; each
   invokes the adjacent core's CLI entry ([cli.md](cli.md)).
 - `boite.exe`, the same CLI without cmd.exe, which Windows finds first; built

@@ -13,6 +13,7 @@ import { sweepMergedPrFixtures, type MergedPrFixture } from './fake-client/merge
 import { describedProject } from './fake-client/project-archive';
 import {
   effectiveExperiments,
+  withFinished,
   RPC_CHUNK_BYTES,
   RpcErrorCode,
   StreamGate,
@@ -413,7 +414,8 @@ export class FakeClient implements ObservableClient {
     if (generation !== this.#transportGeneration || (bus.state !== 'ready' && method !== 'hello')) {
       throw new RpcFailure({ code: RpcErrorCode.Internal, message: 'connection changed before RPC dispatch' });
     }
-    if (this.#missing.has(method)) throw new RpcFailure({ code: RpcErrorCode.MethodNotFound, message: `unknown method ${method}` });
+    // As the router: a method this core lacks is unknown before anyone is asked whether they may call it.
+    if (this.#missing.has(method) || !this.#handles(method)) throw new RpcFailure({ code: RpcErrorCode.MethodNotFound, message: `unknown method ${method}` });
     // The router's gate, word for word: `hello` before it, then who may call what, then the method's params rule.
     if (method !== 'hello') {
       const refusal = accessRefusal(method, { principal: bus.principal, threadId: this.#ctx.agentThreadId }, params);
@@ -486,7 +488,7 @@ export class FakeClient implements ObservableClient {
   /** The desktop app on the fake machine reporting its experiments, as the core's book announces a change: in force in this build, and as chosen. */
   reportDesktopExperiments(experiments: ExperimentId[]): void {
     this.#ctx.desktopExperiments = [...experiments];
-    this.#ctx.emit('client.desktopExperiments', { experiments: effectiveExperiments(experiments, this.#ctx.core.version), chosen: [...experiments] });
+    this.#ctx.emit('client.desktopExperiments', { experiments: withFinished(effectiveExperiments(experiments, this.#ctx.core.version)), chosen: withFinished(experiments) });
   }
 
   /** The fake machine's addresses changing, as the core's network watch announces it to owner windows. */
@@ -546,6 +548,23 @@ export class FakeClient implements ObservableClient {
     return { messageId: message.id, partIndex };
   }
 
+  /**
+   * `unseen` text parts written to `threadId`'s streaming answer that never
+   * reach this client, as deltas a congested socket dropped, then one more
+   * part that does: it lands past the end of the client's copy.
+   */
+  streamPastClient(threadId: ThreadId, unseen: number): { messageId: MessageId; partIndex: number } {
+    const ctx = this.#ctx;
+    const message = ctx.thread(threadId).messages.at(-1);
+    if (message?.state !== 'streaming') throw new Error(`${threadId} has no streaming answer: redrawCommand opens one`);
+    for (let left = unseen; left > 0; left--) message.parts.push({ type: 'text', text: 'Lost on the way. ' });
+    const partIndex = message.parts.length;
+    const part = { type: 'text' as const, text: 'Arrived.' };
+    message.parts.push(part);
+    ctx.emitToThread(threadId, 'message.part', { threadId, messageId: message.id, partIndex, part: structuredClone(part) });
+    return { messageId: message.id, partIndex };
+  }
+
   emitMemory(event: MemoryEvent): void {
     const ctx = this.#ctx;
     ctx.memoryState = event.state;
@@ -593,6 +612,11 @@ export class FakeClient implements ObservableClient {
   // -------------------------------------------------------------------------
   // Dispatch
   // -------------------------------------------------------------------------
+
+  /** Whether `#dispatch` has a handler for `method`. */
+  #handles(method: RpcMethodName): boolean {
+    return Object.hasOwn(this.#agentSettings, method) || method.startsWith('agents.') || this.#ctx.plugins.handles(method) || this.#ctx.workflows.handles(method) || Object.hasOwn(this.#methods, method);
+  }
 
   #dispatch(method: RpcMethodName, rawParams: unknown): Promise<unknown> {
     const ctx = this.#ctx;

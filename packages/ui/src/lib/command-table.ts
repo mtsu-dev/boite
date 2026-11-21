@@ -18,7 +18,7 @@ type CommandDefinition = {
 };
 
 // Labels are read when requested so a language change reaches keyboard settings.
-export const commandTable: readonly CommandDefinition[] = [
+const commandTable: readonly CommandDefinition[] = [
   { id: 'new-thread', label: () => strings.palette.newThread, run: (store) => {
     const selected = workspace.view === 'recent' ? projectView.selected(workspace.machines.flatMap(machine => machine.store.projects.filter(project => !project.archived).map(project => ({ machine, project })))) : undefined;
     // Always a new, empty draft: the project's other drafts stay where they are.

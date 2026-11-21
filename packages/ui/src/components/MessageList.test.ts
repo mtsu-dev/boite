@@ -8,6 +8,7 @@ import JumpLatest from './JumpLatest.svelte';
 import { OVERSCAN, slotClasses, windowStats } from '../lib/message-window';
 import { TurnFileCache } from '../lib/turn-files';
 import { turnProgressStats } from '../lib/turn-progress.svelte';
+import { viewStats } from '../lib/inline-view';
 import { findHits } from '../lib/find';
 import type { Store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
@@ -1270,7 +1271,7 @@ test.for([false, true])('four hundred messages, two hundred deltas: the window a
   last.state = 'streaming';
   await settle();
 
-  const beforeDeltas = { ...windowStats, ...layout, ...turnProgressStats };
+  const beforeDeltas = { ...windowStats, ...layout, ...turnProgressStats, ...viewStats };
   expect(turnProgressStats.finishedScans).toBeGreaterThan(0);
   const streamedAt = performance.now();
   for (let delta = 0; delta < 200; delta += 1) {
@@ -1284,7 +1285,8 @@ test.for([false, true])('four hundred messages, two hundred deltas: the window a
     slots: windowStats.slots - beforeDeltas.slots,
     reads: layout.reads - beforeDeltas.reads,
     writes: layout.writes - beforeDeltas.writes,
-    finishedScans: turnProgressStats.finishedScans - beforeDeltas.finishedScans
+    finishedScans: turnProgressStats.finishedScans - beforeDeltas.finishedScans,
+    placements: viewStats.placements - beforeDeltas.placements
   };
 
   expect(articles().length).toBeLessThan(40);
@@ -1295,6 +1297,19 @@ test.for([false, true])('four hundred messages, two hundred deltas: the window a
   expect(deltas.writes).toBeLessThan(40);
   // The receipts and reasoning of the other 399 messages are not rebuilt per token.
   expect(deltas.finishedScans).toBe(0);
+  // A token that writes no line placing a page leaves the four hundred messages unwalked:
+  // the walk ran on every token of a turn that published a view (15.7 s on a CI runner).
+  expect(deltas.placements).toBe(0);
+  if (withView) {
+    // The token that writes the line placing the page is still read: the view leaves its row for the answer.
+    const placedBefore = viewStats.placements;
+    part.text += '\n\n![Chart](chart.html)';
+    flushSync();
+    await settle();
+    expect(viewStats.placements - placedBefore).toBe(1);
+    expect(shownIds()).not.toContain('m-long-397');
+    expect(shownIds().at(-1)).toBe('m-long-399');
+  }
 
   const timeline = document.querySelector<HTMLElement>('[data-testid=timeline]');
   const beforeScroll = { ...windowStats };

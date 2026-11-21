@@ -336,9 +336,11 @@ real('each action prints the page it leaves: div buttons get refs, a click waits
   // The same for a page reached by a reload or by a link.
   expect(await cli('reload')).toContain('button "Loaded"');
   expect(await cli('click', '#again')).toContain('button "Loaded"');
-  // A click that opens a window: the page printed is that window's, and it stays the current tab.
+  // A click that opens a window: the page printed is that window's, and it stays the current tab,
+  // even when the window is still joining the conversation as the click returns.
   await cli('open', url());
-  const popped = await cli('click', '#pop');
+  harness.core.browser.joining.delayMs = 1500;
+  const popped = await cli('click', '#pop').finally(() => { harness.core.browser.joining.delayMs = 0; });
   expect(popped).toMatch(/a new window is the current tab: browser:/);
   const tabs = ((await agent.call('browser.command', { threadId, action: { kind: 'status' } })).value as { tabs: Array<{ url: string; active: boolean }> }).tabs;
   expect(tabs.find(tab => tab.active)?.url).toBe(url('/popup'));
@@ -371,6 +373,57 @@ real('a window a page opens joins the conversation as a tab of its own', () => t
   for (let i = 0; i < 50 && (tabs = await status()).length < 2; i++) await Bun.sleep(100);
   expect(tabs.map(tab => tab.url)).toEqual([url(), url('/popup?script')]);
 }), 150_000);
+
+real('a command that names no tab waits for every window still joining, and a window of an archived conversation is closed', async () => {
+  const { agent, threadId, harness } = browserFixture;
+  const browser = harness.core.browser;
+  const run = (action: BrowserAction) => agent.call('browser.command', { threadId, action });
+  const tabs = () => browser.status({ threadId }).tabs.map(tab => [tab.url, tab.active]);
+  await run({ kind: 'open', url: url() });
+  browser.joining.delayMs = 700;
+  // `open` drives the window a click just opened, not the page behind it.
+  await run({ kind: 'click', selector: '#pop' });
+  await run({ kind: 'open', url: url('/popup?next'), reuse: true });
+  expect(tabs()).toEqual([[url(), false], [url('/popup?next'), true]]);
+  // A window opened while a command waits is waited for too.
+  await evaluate(`window.open('/popup?one', 'one'); setTimeout(() => window.open('/popup?two', 'two'), 300); true`);
+  expect((await run({ kind: 'evaluate', expression: 'location.search' })).value).toBe('?two');
+  // Archived while a window joins: the waiting command is refused and the window closes with the rest.
+  await evaluate(`window.open('/popup?late', 'late'); true`);
+  const waiting = run({ kind: 'evaluate', expression: 'location.search' });
+  await Bun.sleep(100);
+  harness.core.journal.putThread({ ...harness.core.threads.require(threadId), archived: true });
+  browser.release(threadId);
+  expect(await thrown(waiting)).toThrow('the agent browser needs an active conversation');
+  for (let i = 0; i < 50 && tabs().length > 0; i++) await Bun.sleep(100);
+  expect(tabs()).toEqual([]);
+}, 60_000);
+
+real('a window a frame of another site opens is the current tab, and one its sandbox refuses holds no command', async () => {
+  const { agent, threadId, harness } = browserFixture;
+  const io: CliIo = { cwd: harness.dataDir, env: {}, out: () => {}, err: () => {} };
+  const cli = async (...args: string[]) => (await browserCommand(args, io, agent, threadId)).lines.join('\n');
+  const tabs = () => harness.core.browser.status({ threadId }).tabs;
+  await cli('open', url());
+  // A sandbox without allow-popups refuses the window: there is nothing to wait for.
+  await evaluate(`new Promise(done => { const frame = document.createElement('iframe'); frame.id = 'boxed'; frame.sandbox = 'allow-scripts allow-same-origin'; frame.src = '/shop'; frame.onload = () => done(true); document.body.append(frame); })`);
+  expect(await evaluate(`boxed.contentWindow.eval("window.open('/popup?boxed', '_blank') !== null")`)).toBe(false);
+  const asked = performance.now();
+  expect(await evaluate('location.pathname')).toBe('/');
+  expect(performance.now() - asked).toBeLessThan(2_000);
+  expect(tabs()).toHaveLength(1);
+  const framed = url('/frame-popup').replace('127.0.0.1', 'localhost');
+  await evaluate(`new Promise(done => { const frame = document.createElement('iframe'); frame.src = ${JSON.stringify(framed)}; frame.onload = () => done(true); document.body.append(frame); })`);
+  const ref = /button "Open popup" \[ref=(e\d+)\]/.exec(await cli('snapshot', '-i'))?.[1];
+  expect(ref).toBeDefined();
+  // The click returns before Chrome may have told the core of the window: the page printed is still that window's.
+  expect(await cli('click', `@${ref}`)).toMatch(/a new window is the current tab: browser:/);
+  expect(tabs().find(tab => tab.active)?.url).toBe(`${framed.replace('/frame-popup', '/popup')}?frame`);
+  await cli('click', '-q', '#shut');
+  for (let i = 0; i < 50 && tabs().length > 1; i++) await Bun.sleep(100);
+  expect(tabs()).toHaveLength(1);
+
+}, 60_000);
 
 real('a target that moves away from the native pointer is not clicked, and the next command can reach it', async () => {
   const { agent, threadId } = browserFixture;

@@ -6,7 +6,7 @@
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { followAgentDirectories } from '../lib/agent-directory.svelte';
-  import { agentsAtWork, threadsAtWork } from '../lib/work-counts';
+  import { agentsAtWork, subagentsAtWork, threadsAtWork } from '../lib/work-counts';
 
   /**
    * The phone's places, along the bottom edge where a thumb rests, the
@@ -37,11 +37,20 @@
   /** The conversations at work, as the desktop rail's Threads button counts them. */
   const working = $derived(threadsAtWork(stores));
   const workingLabel = $derived(working === 1 ? strings.app.rail.workingOne : fill(strings.app.rail.workingMany, { count: String(working) }));
+  /** Their subagents at work, the lighter number beside it, as on the rail. */
+  const helpers = $derived(subagentsAtWork(stores));
+  const busyLabel = $derived([
+    working ? workingLabel : null,
+    helpers ? helpers === 1 ? strings.app.rail.subagentsOne : fill(strings.app.rail.subagentsMany, { count: String(helpers) }) : null
+  ].filter(Boolean).join(', ') || null);
+  const tally = (value: number) => value > 99 ? '99+' : value;
 </script>
 
 <nav class="mobile-tabs" data-testid="mobile-tabs" aria-label={strings.mobile.navigation} {inert}>
-  <button type="button" class="tab" data-testid="mobile-conversations" aria-current={page('threads')} aria-label={working ? `${strings.sidebar.threads}, ${workingLabel}` : undefined} onclick={() => navigate('threads')}>
-    <span class="glyph"><MessageSquare size={20} />{#if working}<span class="badge work" data-testid="mobile-threads-working">{working > 99 ? '99+' : working}</span>{/if}</span><span class="name ui-label">{strings.sidebar.threads}</span>
+  <button type="button" class="tab" data-testid="mobile-conversations" aria-current={page('threads')} aria-label={busyLabel ? `${strings.sidebar.threads}, ${busyLabel}` : undefined} onclick={() => navigate('threads')}>
+    <span class="glyph"><MessageSquare size={20} />{#if working || helpers}<span class="badge work" class:pair={working && helpers}
+      >{#if working}<span data-testid="mobile-threads-working">{tally(working)}</span>{/if}{#if helpers}<span class="helpers" data-testid="mobile-threads-subagents">{tally(helpers)}</span>{/if}</span
+    >{/if}</span><span class="name ui-label">{strings.sidebar.threads}</span>
   </button>
   <button type="button" class="tab" data-testid="mobile-activity" aria-current={page('activity')} aria-label={waiting ? `${strings.mobile.activity}, ${fill(strings.mobile.waitingElsewhere, { count: String(waiting) })}` : undefined} onclick={() => navigate('activity')}>
     <span class="glyph"><Inbox size={20} />{#if waiting}<span class="badge" data-testid="mobile-activity-waiting">{waiting > 99 ? '99+' : waiting}</span>{/if}</span><span class="name ui-label">{strings.mobile.activity}</span>
@@ -93,6 +102,9 @@
     }
     /* The threads at work: the same count in the accent the working rows' arc wears. */
     .badge.work { color: var(--color-accent); }
+    /* Their subagents at work: a second number in the same count, the accent lightened, as on the rail. */
+    .badge .helpers { color: color-mix(in oklch, var(--color-accent) 60%, var(--color-foreground)); }
+    .badge.pair { display: flex; gap: 4px; }
     /* Bots: a dot, the count is Activity's alone (the number stays in the tab's name). Amber once one asks, grey while they work. */
     .dot {
       position: absolute; top: 1px; left: calc(50% + 8px); width: 8px; height: 8px; border-radius: var(--radius-full);

@@ -140,6 +140,8 @@ describe('a plugin interface from a git URL', () => {
     const [updated] = await client.call('plugins.ui', {});
     expect(updated).toMatchObject({ version: '1.1.0', script: 'export default () => {};\n', style: null, error: null });
     expect(updated!.digest).not.toBe(bundle!.digest);
+    // The new version shows as the record commits; the old files go right after.
+    await waitFor(() => readdirSync(join(dir, 'ui')).length === 1);
     expect(readdirSync(join(dir, 'ui'))).toEqual([`${sha256(updated!.script!)}.js`]);
     await waitFor(() => announced.length > before);
 

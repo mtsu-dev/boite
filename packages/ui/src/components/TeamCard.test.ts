@@ -36,7 +36,7 @@ async function proposed() {
   store.attach(client);
   closers.push(() => { store.detach(); client.close(); });
   await store.connect();
-  client.reportDesktopExperiments(['teams']);
+  client.reportDesktopExperiments([]);
   const bot = (name: string) => client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
     selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } });
   const huginn = await bot('Huginn (Réseaux)');

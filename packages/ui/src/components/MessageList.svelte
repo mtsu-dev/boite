@@ -51,8 +51,9 @@
   import { ReadingAnchor, type RowAnchor } from '../lib/reading-anchor';
   import { MediaQuery } from 'svelte/reactivity';
   import { MessageReveal } from '../lib/message-reveal.svelte';
-  import { ViewPlacement, turnViews, viewPart } from '../lib/inline-view';
-  import { filesLast, firstAssistantByTurn, firstByTurn, publishedFile, quietKeepalives } from '../lib/message-order';
+  import { viewPart } from '../lib/inline-view';
+  import { inlineTimeline } from '../lib/inline-timeline.svelte';
+  import { firstAssistantByTurn, firstByTurn, publishedFile, quietKeepalives } from '../lib/message-order';
 
   /** A phone has no room left of the bubbles for the outline rail: it is not drawn there. */
   const narrow = new MediaQuery('(max-width: 720px)');
@@ -88,13 +89,10 @@
   /** The turns of the thread this list shows, open or delegated. */
   const shownTurns = $derived(store.openThread?.id === threadId ? store.openThread.turns : store.delegationThread?.id === threadId ? store.delegationThread.turns : []);
   const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards));
-  /** The pages each turn published: its answer places them, or they go after it once the turn ends (`placeViews`). */
-  let shownViews: ReadonlyMap<string, Message[]> | undefined;
-  const views = $derived.by(() => (shownViews = turnViews(grouped.timeline, shownViews)));
-  /** A finished turn's published files go after its answer, its pages after them; Boite's cache pings are one line; an agent's own thread folds its finished turns (`lib/agent-turns.ts`). */
-  const agentTimeline = new AgentTimeline(), viewPlacement = new ViewPlacement();
-  const placed = $derived(viewPlacement.build(filesLast(grouped.timeline, shownTurns), shownTurns, views));
-  const shaped = $derived(agentTimeline.build(quietKeepalives(placed, shownTurns), shownTurns, memoryPassOf(store, threadId)));
+  const inline = inlineTimeline(() => grouped.timeline, () => shownTurns);
+  /** Boite's cache pings are one line; an agent's own thread folds its finished turns (`lib/agent-turns.ts`). */
+  const agentTimeline = new AgentTimeline();
+  const shaped = $derived(agentTimeline.build(quietKeepalives(inline.placed, shownTurns), shownTurns, memoryPassOf(store, threadId)));
   const timeline = $derived(shaped.timeline);
   const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
   /** What the window lists and measures: a row per message, several for the message of a long turn (lib/timeline-rows.ts). */
@@ -649,7 +647,7 @@
       // Held by the reader or on its way down, the list is still at the bottom: it takes the new height once free.
       if (opened || untrack(following)) {
         // Followed, the live end lets go of the messages far above it, and the heights measured for them; never those within reach of the view.
-        if (untrack(following) && untrack(() => store.releaseOlder(threadId, () => heldNear(totals(rows), rows, messages, viewHeight * (READ_AHEAD + 1), views))) > 0) void tick().then(() => keepOnly([heights, risen], rows, messages));
+        if (untrack(following) && untrack(() => store.releaseOlder(threadId, () => heldNear(totals(rows), rows, messages, viewHeight * (READ_AHEAD + 1), inline.views))) > 0) void tick().then(() => keepOnly([heights, risen], rows, messages));
         scrolledHeight = box.scrollHeight; edge.follow(box); scrollTop = box.scrollTop;
       }
       pinned = true; behind = false;
@@ -766,7 +764,7 @@
             <UserMessage {store} {message} {turn} accepted={!!turn} responded={progress.responded(message.turnId)} edit={atRest && !isSending(message) ? () => void editMessage(message) : undefined} />
           {:else}
             <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} slice={row.text} reveal={(part, offset, anchor) => jumpToMessage(message.id, part, offset, anchor)} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
-              latestInTurn={lastInTurn.get(message.turnId) === message.id} views={views.get(message.turnId)}
+              latestInTurn={lastInTurn.get(message.turnId) === message.id} views={inline.views.get(message.turnId)}
               changes={host?.messageId === message.id ? { at: host.index, line: changes } : undefined} />
           {/if}
           {#if turn && closes}

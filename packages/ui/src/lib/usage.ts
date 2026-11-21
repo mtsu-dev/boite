@@ -1,4 +1,4 @@
-import type { Usage, UsageHistory, UsageHistoryThread, UsagePrice } from '@boite/contracts';
+import type { Usage, UsageHistory, UsageHistoryProject, UsageHistoryThread, UsagePrice, UsageThreadTurn } from '@boite/contracts';
 import { fill, strings } from './strings';
 import { count, formatTokens } from './format';
 import { formatLocale } from './i18n.svelte';
@@ -9,12 +9,35 @@ export const USAGE_RANGES = [7, 30, 90] as const;
 export type UsageRange = (typeof USAGE_RANGES)[number];
 
 /**
- * The provider stack, bottom first. Fixed, so a provider keeps its colour and
- * its place whatever the range shows. Additional providers keep their own
- * series, reusing palette colours when necessary.
+ * The provider stack, bottom first. Fixed, so a provider keeps its place
+ * whatever the range shows; one missing here stacks after them, by name.
  */
-export const PROVIDER_ORDER = ['claude', 'codex', 'opencode', 'grok', 'antigravity', 'pi', 'muse'] as const;
-const SPARE_SLOTS = ['var(--series-7)', 'var(--series-8)'];
+const PROVIDER_ORDER = ['claude', 'codex', 'opencode', 'opencode-v2', 'grok', 'antigravity', 'pi', 'muse', 'vibe', 'hermes', 'echo'] as const;
+const KNOWN = new Set<string>(PROVIDER_ORDER);
+
+/**
+ * A provider's colour: its own token (`--provider-<id>` in tokens.css) near its
+ * maker's colour, or a hue drawn from its id at the same lightness and chroma,
+ * so a provider Boite does not know yet never borrows another's colour.
+ */
+export function providerColor(providerId: string): string {
+  if (KNOWN.has(providerId)) return `var(--provider-${providerId})`;
+  if (!providerId.trim()) return 'var(--series-other)';
+  return `oklch(var(--series-l) var(--series-c) ${hueOf(providerId)})`;
+}
+
+/** A stable hue for a name: the same id always lands on the same colour. */
+function hueOf(name: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < name.length; index++) hash = Math.imul(hash ^ name.charCodeAt(index), 16777619);
+  return (hash >>> 0) % 360;
+}
+
+/** The colour of the `index`th series of a breakdown that has no fixed palette, models of one thread: golden-angle hues. */
+export function rankColor(index: number): string {
+  return `oklch(var(--series-l) var(--series-c) ${Math.round((42 + index * 137.508) % 360)})`;
+}
+
 export const OTHER = 'other';
 
 /** Local midnights from `days - 1` days before `now` to the coming one: `days + 1` edges. */
@@ -166,7 +189,7 @@ export interface UsageBucket {
   coverage: Record<string, { turns: number; reported: number; priced: number }>;
 }
 
-export interface ModelRow extends UsageTotals {
+interface ModelRow extends UsageTotals {
   providerId: string;
   model: string | null;
   value: number;
@@ -176,7 +199,7 @@ export interface ModelRow extends UsageTotals {
   olderCore?: boolean;
 }
 
-export interface DayRow extends UsageTotals {
+interface DayRow extends UsageTotals {
   start: number;
   value: number;
 }
@@ -211,15 +234,13 @@ function addTotals(into: UsageTotals, turns: number, reported: number, priced: n
 /** Which series each provider draws in, known providers first in their fixed order. */
 export function seriesFor(providerIds: Iterable<string>): { series: UsageSeries[]; keyOf: (providerId: string) => string } {
   const present = new Set(providerIds);
-  const series: UsageSeries[] = [];
-  PROVIDER_ORDER.forEach((providerId, index) => {
-    if (present.has(providerId)) series.push({ key: providerId, color: `var(--series-${index + 1})`, providerIds: [providerId] });
-  });
-  const known = new Set<string>(PROVIDER_ORDER);
-  const others = [...present].filter((providerId) => !known.has(providerId)).sort();
-  others.forEach((providerId, index) => series.push({ key: providerId, color: SPARE_SLOTS[index % SPARE_SLOTS.length]!, providerIds: [providerId] }));
-  const keys = new Map(series.flatMap((entry) => entry.providerIds.map((providerId) => [providerId, entry.key] as const)));
-  return { series, keyOf: (providerId) => keys.get(providerId) ?? OTHER };
+  const known: string[] = PROVIDER_ORDER.filter((providerId) => present.has(providerId));
+  const others = [...present].filter((providerId) => !KNOWN.has(providerId)).sort();
+  // Echo is Boite's test provider: it stays after every real one.
+  const last = known.at(-1) === 'echo' ? known.splice(-1) : [];
+  const series = [...known, ...others, ...last].map((providerId) => ({ key: providerId, color: providerColor(providerId), providerIds: [providerId] }));
+  const keys = new Set(series.map((entry) => entry.key));
+  return { series, keyOf: (providerId) => keys.has(providerId) ? providerId : OTHER };
 }
 
 /**
@@ -299,9 +320,76 @@ export function summarize(history: UsageHistory, metric: UsageMetric, providerId
 /**
  * Several machines' histories read over the same edges, as one. `summarize`
  * adds rows that share a bucket, provider and model, so they are only joined.
+ * A project lives on one machine, so its line is never added to another's.
  */
-export function mergeHistories<T extends UsageHistoryThread>(edges: number[], parts: { rows: UsageHistory['rows']; threads: T[] }[]): Omit<UsageHistory, 'threads'> & { threads: T[] } {
-  return { edges, rows: parts.flatMap((part) => part.rows), threads: parts.flatMap((part) => part.threads) };
+export function mergeHistories<T extends UsageHistoryThread, P extends UsageHistoryProject = UsageHistoryProject>(
+  edges: number[],
+  parts: { rows: UsageHistory['rows']; threads: T[]; projects?: P[]; pricing?: UsageHistory['pricing'] }[]
+): Omit<UsageHistory, 'threads' | 'projects'> & { threads: T[]; projects: P[] } {
+  const pricing = parts.find((part) => part.pricing?.origin === 'live')?.pricing ?? parts.find((part) => part.pricing)?.pricing;
+  return {
+    edges,
+    rows: parts.flatMap((part) => part.rows),
+    threads: parts.flatMap((part) => part.threads),
+    projects: parts.flatMap((part) => part.projects ?? []),
+    ...(pricing === undefined ? {} : { pricing })
+  };
+}
+
+/** Projects ordered by the selected measure, with unmeasured projects still available to the picker. */
+export function rankProjects<P extends UsageHistoryProject>(projects: P[], metric: UsageMetric): (P & { value: number })[] {
+  return projects
+    .map((project) => ({ ...project, value: measure(metric, project.turns, project.usage) }))
+    .sort((a, b) => b.value - a.value || b.turns - a.turns);
+}
+
+/**
+ * One thread's turns as day columns stacked by model, for the thread's page.
+ * Series are its models, biggest first, each on its own hue.
+ */
+export function threadView(edges: number[], turns: UsageThreadTurn[], metric: UsageMetric, providerId: string): { series: UsageSeries[]; buckets: UsageBucket[]; models: ModelRow[] } {
+  const models = new Map<string, ModelRow>();
+  const perTurn = turns.map((turn) => {
+    const model = ownModel(providerId, turn.model);
+    const key = model ?? '';
+    const usage = turn.usage ?? emptyTotals().usage;
+    const reported = turn.usage === null ? 0 : 1;
+    const priced = turn.usage?.costUsdEquivalent == null ? 0 : 1;
+    const value = measure(metric, 1, usage);
+    const row = models.get(key) ?? { ...emptyTotals(), providerId, model, value: 0, price: null };
+    addTotals(row, 1, reported, priced, usage);
+    row.value += value;
+    row.price ??= turn.price;
+    models.set(key, row);
+    return { turn, key, value, reported, priced };
+  });
+  const ranked = [...models.entries()].sort(([, a], [, b]) => b.value - a.value || b.turns - a.turns);
+  const series = ranked.map(([key], index) => ({ key, color: rankColor(index), providerIds: [providerId] }));
+  const buckets: UsageBucket[] = edges.slice(0, -1).map((start, index) => ({
+    start,
+    end: edges[index + 1]!,
+    values: Object.fromEntries(series.map((entry) => [entry.key, 0])),
+    total: 0,
+    turns: 0,
+    reported: 0,
+    priced: 0,
+    coverage: Object.fromEntries(series.map((entry) => [entry.key, { turns: 0, reported: 0, priced: 0 }]))
+  }));
+  for (const { turn, key, value, reported, priced } of perTurn) {
+    const index = edges.findLastIndex((edge) => edge <= turn.finishedAt);
+    const bucket = buckets[index];
+    if (bucket === undefined) continue;
+    bucket.values[key] = (bucket.values[key] ?? 0) + value;
+    bucket.total += value;
+    bucket.turns += 1;
+    bucket.reported += reported;
+    bucket.priced += priced;
+    const coverage = bucket.coverage[key]!;
+    coverage.turns += 1;
+    coverage.reported += reported;
+    coverage.priced += priced;
+  }
+  return { series, buckets, models: ranked.map(([, row]) => row) };
 }
 
 /** The threads that spent the most by this metric, largest first. */

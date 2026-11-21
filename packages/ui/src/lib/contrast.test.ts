@@ -242,6 +242,40 @@ describe('an off switch reads on every card', () => {
   });
 });
 
+/**
+ * The suggested next message is an offer the owner may take, not words they
+ * wrote: it sits a clear step under the subtle tier, so it never passes for a
+ * typed draft. It clears 4.5:1 on the composer's fill in both default themes,
+ * and 3:1 in every curated palette, whose softer inks and fills leave less room
+ * under their subtle tier: still far over a placeholder, which may be faint.
+ */
+describe('the suggested next message reads under typed text', () => {
+  const mix = /--color-suggestion:\s*color-mix\(in oklab, var\(--color-foreground\) (\d+)%, var\(--color-surface-2\)\);/.exec(block(':root'));
+  const share = Number(mix?.[1]) / 100;
+  const themes: [string, string, string, string, number][] = [
+    ...([['dark', ':root'], ['light', "[data-theme='light']"]] as const).map(([name, selector]): [string, string, string, string, number] => {
+      const scope = block(selector);
+      return [name, token(scope, '--color-foreground'), token(scope, '--color-subtle'), token(scope, '--color-surface-2'), 4.5];
+    }),
+    ...[...css.matchAll(/--palette-((?:dark|light)-[\w-]+?)-surface-low:/g)].map((match): [string, string, string, string, number] => {
+      const role = (name: string) => token(css, `--palette-${match[1]}-${name}`);
+      return [match[1]!, role('foreground'), role('subtle'), role('surface'), 3];
+    })
+  ];
+
+  test('it is a mix of the ink into the composer fill', () => {
+    expect(share).toBeGreaterThan(0);
+    expect(share).toBeLessThan(1);
+    expect(themes.length).toBeGreaterThanOrEqual(8);
+  });
+
+  test.each(themes)('%s: readable on the composer, at least 15 L* under the subtle tier', (_name, ink, subtle, ground, floor) => {
+    const color = mixOklab(ink, ground, share);
+    expect(ratio(color, ground), `${color} on ${ground}`).toBeGreaterThanOrEqual(floor);
+    expect(Math.abs(lightness(subtle) - lightness(color)), `${color} against ${subtle}`).toBeGreaterThanOrEqual(15);
+  });
+});
+
 test('a menu or popover edge sits one step over the edge, toward the text, in every theme and palette', () => {
   expect(block(':root')).toMatch(/--overlay-edge:\s*color-mix\(in srgb, var\(--color-edge\), var\(--color-foreground\) \d+%\);/);
 });
@@ -328,7 +362,9 @@ describe('text in the components stays at or above the subtle tier', () => {
     // Set by a component to one of the above.
     '--tone', '--verdict', '--mark', '--tint',
     // A palette tile's sample: that palette's own foreground on its own ground (ThemeColors.svelte).
-    '--tile-ink'
+    '--tile-ink',
+    // The agent's suggested next message: under the tiers on purpose, held at 4.5:1 below.
+    '--color-suggestion'
   ]);
   const KEYWORDS = new Set(['inherit', 'currentColor', 'transparent']);
   /** Where a fade is no text: an idle overlay kept above the floor (0.9 of foreground), icons and bars drawn in a colour. */

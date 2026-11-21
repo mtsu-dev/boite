@@ -1,4 +1,4 @@
-import { partChannel, permissionAutoDecision, type StreamChannel, type ThreadId } from '@boite/contracts';
+import { ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread } from './create-thread';
@@ -25,13 +25,18 @@ import { fakeCore } from './coordination';
 import type { FakeContext, FakeMethods } from './context';
 import { registerFakeWorktree, requireFakeCwd } from './worktrees';
 import { boundedMessageWindow, listCursorProblem, pageBytes, pageBytesProblem, projectMessage, resumeAnchor, snapshotOptionsProblem, type TransportOptions } from '@boite/contracts';
-import { dropWaitingMove, fakeMoveNote } from './thread-move';
+import { dropWaitingMove, fakeMoveNote, resolveProject } from './thread-move';
 import { cancelFamilySideQuestions, cancelSide, sideQuestionMethods } from './side-questions';
 
 /**
  * `ServerConnection.setStreamChannels`: the thread's channels on this socket,
  * and what its streaming messages hold on each channel turned back on.
  */
+/** A project `projects.remove` took out of the lists, its rows kept for when its folder comes back. */
+function removedProject(ctx: FakeContext, projectId: string | null): boolean {
+  return projectId !== null && [...ctx.removedProjects.values()].some(entry => entry.project.id === projectId);
+}
+
 function setStreamChannels(ctx: FakeContext, threadId: ThreadId, channels: StreamChannel[] | undefined): void {
   const enabled = ctx.bus.streams.set(threadId, channels);
   if (enabled.length === 0) return;
@@ -319,6 +324,7 @@ export async function deleteExpiredDoneThreads(ctx: FakeContext, remove: (id: st
 
 export function threadMethods(ctx: FakeContext) {
   const creations = new Map<string, { key: string; created: Promise<string> }>();
+  const promptCreations = new Map<string, { key: string; created: Promise<string> }>();
   const removing = new Set<string>();
   const methods = {
     ...sideQuestionMethods(ctx, (source, messages) => writeFakeFork(ctx, source, messages)),
@@ -366,6 +372,34 @@ export function threadMethods(ctx: FakeContext) {
         receipt.created.catch(() => { if (creations.get(id) === receipt) creations.delete(id); });
       }
       return creating;
+    },
+    'threads.createFromPrompt': async (params: RpcParams<'threads.createFromPrompt'>): Promise<RpcResult<'threads.createFromPrompt'>> => {
+      const { clientRequestId, prompt } = params;
+      if (typeof clientRequestId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(clientRequestId)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'clientRequestId must contain 8 to 128 URL-safe characters' });
+      if (typeof prompt !== 'string' || !prompt.trim()) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'threads.createFromPrompt.prompt: expected non-empty text' });
+      const key = ownerThreadRequestKey(params);
+      const previous = promptCreations.get(clientRequestId);
+      if (previous && previous.key !== key) throw refusal('clientRequestId was already used for different content');
+      const create = async () => {
+        const project = resolveProject(ctx, params.sourceThreadId, params.project, 'threads.createFromPrompt');
+        let selection;
+        try { selection = ownerThreadSelection(params, project.id, [...ctx.threads.values()], ctx.providers, ctx.accounts); }
+        catch (error) { throw refusal(error instanceof Error ? error.message : String(error)); }
+        return publishFakeThread(ctx, await createFakeThread(ctx, selection), false).id;
+      };
+      const receipt = previous ?? { key, created: create() };
+      if (!previous) {
+        promptCreations.set(clientRequestId, receipt);
+        while (promptCreations.size > 512) promptCreations.delete(promptCreations.keys().next().value!);
+        receipt.created.catch(() => { if (promptCreations.get(clientRequestId) === receipt) promptCreations.delete(clientRequestId); });
+      }
+      const threadId = await receipt.created;
+      const made = ctx.threads.get(threadId);
+      if (!made) throw refusal('the conversation this request started was deleted since', { threadId });
+      const thread = structuredClone(toSummary(made));
+      const turn = ctx.turnRequests.get(`${threadId}:${clientRequestId}`)?.turn
+        ?? await methods['turns.start']({ threadId, prompt, clientRequestId });
+      return { thread, turn, project: ctx.projects.find(project => project.id === thread.projectId)!.name };
     },
     'threads.get': async (params) => {
       const thread = ctx.thread(params.threadId);
@@ -606,12 +640,14 @@ export function threadMethods(ctx: FakeContext) {
     },
     'threads.deleted': async () => {
       purgeDeletedThreads(ctx);
-      return [...ctx.deletedThreads.values()].reverse().map(family => ({ ...structuredClone(toSummary(family.threads[0]!)), deletedAt: family.deletedAt }));
+      // As the core: a removed project's deletions wait, hidden, for its folder to come back.
+      return [...ctx.deletedThreads.values()].reverse().filter(family => !removedProject(ctx, family.threads[0]!.projectId))
+        .map(family => ({ ...structuredClone(toSummary(family.threads[0]!)), deletedAt: family.deletedAt }));
     },
     'threads.restore': async ({ threadId }) => {
       purgeDeletedThreads(ctx);
       const family = ctx.deletedThreads.get(threadId);
-      if (!family) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no recoverable deletion for ${threadId}`, data: { threadId } });
+      if (!family || removedProject(ctx, family.threads[0]!.projectId)) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no recoverable deletion for ${threadId}`, data: { threadId } });
       const root = family.threads.find(t => t.id === threadId)!;
       if (root.projectId !== null && !ctx.projects.some(p => p.id === root.projectId)) throw ctx.notFound('project', root.projectId);
       for (const [index, thread] of family.threads.entries()) {
@@ -730,8 +766,8 @@ export function threadMethods(ctx: FakeContext) {
       const turn = ctx.startTurn(params.threadId, params.prompt, params.attachments ?? [], rootId ? 'delegation' : undefined, undefined, undefined, params.previewReferences ?? []);
       if (rootId) ctx.delegationTurns.set(rootId, (ctx.delegationTurns.get(rootId) ?? 0) + 1);
       if (key) ctx.turnRequests.set(key, { content, turn, messageId: thread.messages[messageIndex]!.id });
-      // A long prompt may start an automatic goal, decided from the experiments it was sent or queued with; otherwise a `/goal2`'s checklist reads what the user adds.
-      const automatic = !rootId && startsAutoGoal(ctx, params.prompt, ctx.queuedExperiments ?? ctx.clientPreferences?.experiments) && startAutoGoal(ctx, thread, turn.id, thread.messages[messageIndex]!.id, params.prompt);
+      // A long prompt may start an automatic goal; otherwise a `/goal2`'s checklist reads what the user adds.
+      const automatic = !rootId && startsAutoGoal(ctx, params.prompt) && startAutoGoal(ctx, thread, turn.id, thread.messages[messageIndex]!.id, params.prompt);
       if (!rootId && !automatic) noteUserMessage(ctx, thread, params.prompt);
       return turn;
     },

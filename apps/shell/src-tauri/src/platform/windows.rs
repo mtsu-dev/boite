@@ -52,6 +52,9 @@ pub(crate) fn notify(app: AppHandle, title: String, body: String, thread_id: Str
         .map_err(|error| format!("the toast {title:?} was refused: {error}"))
 }
 
+/// Every Windows desktop shows a toast; its own settings decide whether it does.
+pub(crate) fn notify_supported() -> bool { true }
+
 /// How long the interactive session has gone without a key or a mouse move.
 /// The lock screen gives no input to this session, so a locked PC counts up.
 pub(crate) fn idle_ms() -> Option<u64> {

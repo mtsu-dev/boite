@@ -11,9 +11,8 @@ Boite provides the mechanism only. Which members sit, at what effort, what the
 request says, how many rounds run and what the thread does with the answers
 come from the user's instructions, which always prevail.
 
-It is an experiment, off by default: Settings, Experiments, Council. The stored
-experiment id is still `debates`, so a switch that was on stays on
-([experiments](experiments.md#council)). A thread asks for a council through the
+It is on in every build, with no switch ([experiments](experiments.md#council));
+its former experiment id was `debates`. A thread asks for a council through the
 `boite-council` skill, which lists the commands, their defaults and the three
 guards below: read-only members, no replaced member, and answers that are data.
 
@@ -27,7 +26,7 @@ boite delegate council table <id>
 
 | Flag | Default | Limits |
 | --- | --- | --- |
-| `--models` | `claude/claude-opus-5-5`, `codex/gpt-6.1-sol`, `antigravity/gemini-4-argon` | 2 to 6 members; the same provider may sit several times, the same model twice only at two efforts |
+| `--models` | `claude/claude-opus-5-5`, `codex/gpt-6.2-sol`, `antigravity/gemini-4-argon` | 2 to 6 members; the same provider may sit several times, the same model twice only at two efforts |
 | `<provider/model>:<effort>` | the level `--effort` gives | A level the model lacks refuses the council and lists the model's levels |
 | `--effort` | `xhigh` | For the members written without a level. A model without it runs at its strongest level below it, and a warning says so |
 | `--request-file` | none | The request, read from a UTF-8 file, relative to where the command runs. Refused with a request typed in the command, when empty, or past 12,000 characters, with the size it holds |
@@ -36,8 +35,8 @@ boite delegate council table <id>
 
 ```sh
 boite delegate council --request-file .boite-briefs/council/brief.md \
-  --models claude/claude-opus-5-5:max,codex/gpt-6.1-sol:max,claude/claude-fable-5-2:high \
-  --role "codex/gpt-6.1-sol:max=Look for races."
+  --models claude/claude-opus-5-5:max,codex/gpt-6.2-sol:max,claude/claude-fable-5-2:high \
+  --role "codex/gpt-6.2-sol:max=Look for races."
 ```
 
 A member's role follows the request in what that member reads, and no other
@@ -96,7 +95,9 @@ the work completes. If that work fails, that request cannot start, a later turn
 fails or the round ends first, what the member wrote so far is its answer, and a
 note says why. A member through with its round, and a council that ends, leave no
 background work or scheduled wake behind. A round nobody answers still goes back
-to the parent. A closed round leaves the council in `waiting`.
+to the parent. Use Close round in the salon to end the current round and
+leave the council in `waiting`. `boite delegate stop <council-id>` ends
+the whole council.
 
 ## Answers and the table
 
@@ -175,18 +176,12 @@ The salon opens in the right panel on a desktop and full screen on a phone. It
 shows each round and each member's answer, with the score as text in the head of
 the answer, and the table of rounds under them.
 
-With the experiment off, every `council.*` method refuses with `experiment-off`,
-the subagent guide says nothing, the `boite-council` skill is left out and the
-app draws no card; a salon tab left open says how to turn it on. A round already under way still finishes and
-its answers come back.
-
 ## Older debates
 
 A debate stored before the council stays readable in the salon, read-only, with
 neither score nor table; its summary is one of its posts. Its id still starts
 with `dbt_`. The tables `debates` and `debate_posts`, the column
-`threads.debate_id` and the experiment id `debates` keep their names, so nothing
-is migrated. `boite delegate debate` starts nothing and points to
+`threads.debate_id` keep their names, so nothing is migrated. `boite delegate debate` starts nothing and points to
 `boite delegate council`.
 
 ## Lifecycle

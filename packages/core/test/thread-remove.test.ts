@@ -41,6 +41,8 @@ test('removal stops the family and hides it until undo, preserving history and p
   const childProcess = startProcess(childId);
   const terminalId = threadTerminalId(threadId);
   const terminalProcess = startProcess(terminalId);
+  // A prompt this long would start an automatic goal, on by default, whose helper is one more child: the family here is the parent and its worker.
+  await client.call('settings.set', { autoGoals: false });
   const turns = [await client.call('turns.start', { threadId, prompt: 'long running '.repeat(500) })];
   const { questionId } = await client.call('questions.ask', { threadId, text: 'Pending question', options: ['Yes', 'No'] });
   for (const id of [threadId, childId]) {

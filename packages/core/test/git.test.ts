@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { DIFF_MAX_BYTES, RpcErrorCode } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
-import { parseNumstat, parseStatus } from '../src/git.ts';
+import { parseNumstat, parseStatus } from '../src/git/porcelain.ts';
 import { GIT_READ_SLOTS, git as readGit, SIDE_CEILING_BYTES } from '../src/git/read.ts';
 import { startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';

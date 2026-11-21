@@ -164,7 +164,7 @@ function maskQuery(query: string): string {
 }
 
 /** The address without its user info, a credential in its query left readable as hidden: the agent sees what to replace. */
-export function maskUrl(raw: string): string {
+function maskUrl(raw: string): string {
   try {
     const url = new URL(raw);
     const query = maskQuery(url.search.slice(1));

@@ -291,7 +291,10 @@ desktop app's webviews block popups, so the tab limit is the bound. The tab
 shares the opener's profile and cookies and keeps `window.opener`, so the
 sign-in can answer the page with `postMessage`; its page calling
 `window.close()` closes the tab. A tab still attaching counts toward both
-limits, so a burst of windows opened at once stops at the limit too. Nobody can answer a dialog in a headless page.
+limits, so a burst of windows opened at once stops at the limit too. A command
+that names no tab waits, up to 5 s, for the windows still attaching
+(`browser/joining.ts`): the page printed after the click that opened a window is
+that window's. Nobody can answer a dialog in a headless page.
 One raised while an agent command runs follows `dialog accept|dismiss`
 (accept until told otherwise) and is listed in that command's output; any
 other alert is accepted and a confirm or prompt declined, so a person acting in

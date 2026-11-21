@@ -18,7 +18,7 @@ see the exact counts:
 
 The numbers come from the agent itself: Boite never estimates them. The ring
 stays empty until the agent sends a first measurement. On a Claude thread,
-`/clear` empties it at once, and What the agent sees opens the system prompt
+`/clear` empties it at once, a compaction lowers it at once to what Claude reports is left, and What the agent sees opens the system prompt
 and tool definitions of the last request, with an estimated size.
 
 ## Compact the conversation
@@ -59,12 +59,23 @@ left it.
 - On a phone connected as the owner, Automatic compaction is a row in the
   machine's settings.
 
-Experimental, in Nightly builds only: Background compaction, in Settings,
-Experiments. Every automatic compaction then runs on a copy of the session:
+Background compaction is off by default. Turn it on in Settings, System,
+under Automatic compaction, for each type or for all. Every automatic
+compaction then runs on a copy of the session:
 no compaction shows in the conversation, which stays free and takes the
 summary once it is ready, behind a small divider. With a token limit, the copy
 also starts once the conversation reaches 85% of it, while you keep working. It works with Claude and Codex; OpenCode 2 uses its
 own. Copies spend the same account and are not counted in usage.
+
+### When compaction cannot help
+
+Claude Code stops a turn when three compactions in a row refilled the context
+to its limit within three turns ("Autocompact is thrashing"). What every
+request carries is then too big for a summary to shrink, most often an
+instruction file such as `AGENTS.md` or `CLAUDE.md`. The error names each one
+over 40,000 bytes in the thread's folder and its parents. Boite does not
+resume such a turn by itself, since a resume fails the same way. Shrink the
+named files, or raise the token limit, then write to the thread.
 
 ## Queue a message while the agent works
 
@@ -122,6 +133,5 @@ newest 50 turns of a conversation.
 - [Models](models.md): what carries over when you change model.
 - [Usage](usage.md): tokens, cost and the prompt cache timer.
 - [Goals](goals.md): reviewed goals and the project board.
-- [Experiments](experiments.md): unfinished features, in Nightly builds.
 - Technical reference: [context](internals/context.md),
   [prompt cache](internals/prompt-cache.md).

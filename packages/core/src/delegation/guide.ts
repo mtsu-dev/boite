@@ -29,22 +29,22 @@ export function delegationPrompt(letters: AgentLetter[], relation: (letter: Agen
 export const DELEGATION_WORDS = /delegat|d[ée]l[èée]gu|sub-?agent|sous-agent|parall|team of agents|[ée]quipe d'agents/i;
 
 const WORKFLOW_LINE = 'Workflow (steps with dependencies): boite workflow help, then boite workflow check plan.json and boite workflow run plan.json. "forEach" runs a step per item, "when" skips one, "repeat" reruns steps until a condition holds, boite workflow extend <run-id> <steps> adds steps. Steps run on this conversation\'s model unless they set "model"/"effort". Report the run ID; results return in one message.';
-/** Only while the Council experiment is on (`docs/internals/council.md`). */
+/** The council (`docs/internals/council.md`). */
 const COUNCIL_LINE = 'Council (several models answer one request alone and read-only, each with a score; code or anything else, with or without git): when the user says council, read the boite-council skill, then boite delegate council "<request>". The answers return in one message.';
-export const COUNCIL_WORDS = /council|conseil d|d[ée]bat/i;
+const COUNCIL_WORDS = /council|conseil d|d[ée]bat/i;
 
-/** The whole manual a parent needs, short enough for every fresh session. `machines`: this machine has others in its group; `council`: the experiment is on. */
-export function subagentGuide(config: DelegationConfig, machines = false, council = false): string {
+/** The whole manual a parent needs, short enough for every fresh session. `machines`: this machine has others in its group. */
+export function subagentGuide(config: DelegationConfig, machines = false): string {
   const profiles = config.profiles.map(p => `${p.id}=${p.providerId}/${p.model}${p.effort ? `:${p.effort}` : ''}`).join(', ');
   const head = 'Boite subagents (native Agent/Task/spawn_agent tools do not exist here):';
-  if (!config.enabled) return `${head} the owner turned them off for this conversation; work alone and point the user to Subagents > Settings if they asked for some.\n${WORKFLOW_LINE}${council ? `\n${COUNCIL_LINE}` : ''}`;
+  if (!config.enabled) return `${head} the owner turned them off for this conversation; work alone and point the user to Subagents > Settings if they asked for some.\n${WORKFLOW_LINE}\n${COUNCIL_LINE}`;
   return [
     head,
     `- boite delegate spawn "<brief>" [--model <provider/model>] [--effort <level>] [--speed <tier>] [--context light|neutral] [--worktree]${machines ? ' [--machine <name> [--project <name>]]' : ''}: one bounded job each, on this conversation's model by default, standard speed without --speed (tiers: boite delegate models). ${anyModel(config) ? 'Any model of boite delegate models works, any harness (Claude can run codex/<model>).' : `The owner allows only this model${profiles ? ' and the profiles' : ''}.`}${profiles ? ` --profile: ${profiles}.` : ''}${machines ? ' --machine runs it on another machine of your group (boite delegate models --machine <name> lists its models), in its project named like this one unless --project names another.' : ''}`,
     '- The brief is all a child sees: goal, files it owns, limits, how to verify. Shared checkout: give parallel children distinct files, or --worktree (a branch from your last commit; its result names it).',
     '- Results return as messages: keep working or end your turn, never poll. Follow: boite delegate list; steer with boite delegate send <id> <text>; boite delegate stop|resume [id].',
     `- ${WORKFLOW_LINE}`,
-    ...(council ? [`- ${COUNCIL_LINE}`] : []),
+    `- ${COUNCIL_LINE}`,
     ...(config.paused ? [pauseLine({ by: config.pausedBy, at: config.pausedAt })] : []),
   ].join('\n');
 }
@@ -71,9 +71,8 @@ export function teamInstructions(core: Core, threadId: string, request: string |
     return `\nYou are a Boite subagent of ${parentId}${link ? ` on ${link.machine}` : ''}. Blocked: boite delegate send ${parentId} "<what blocks you>". Your final answer returns automatically. You cannot start subagents${link ? ', workflows or threads' : ' or workflows'}. Waiting on your PR: boite pr watch, never a polling loop; each wake opens your next turn and its answer goes to the parent. ${checkout}\n`;
   }
   // With delegation off, only a workflow or council request is worth the words; spawn would be refused anyway.
-  const council = core.council.enabled();
-  const asked = request === undefined || /workflow/i.test(request) || (council && COUNCIL_WORDS.test(request)) || (config.enabled && DELEGATION_WORDS.test(request));
+  const asked = request === undefined || /workflow/i.test(request) || COUNCIL_WORDS.test(request) || (config.enabled && DELEGATION_WORDS.test(request));
   // A persistent agent splits its work like a thread: the guide joins a fresh session while its subagents are on.
   if ((!fresh || (thread.agentSessionId && !config.enabled)) && !asked && !config.paused) return '';
-  return `\n${subagentGuide(config, core.group.peers().length > 0, council)}\n`;
+  return `\n${subagentGuide(config, core.group.peers().length > 0)}\n`;
 }

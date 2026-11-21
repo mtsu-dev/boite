@@ -18,7 +18,7 @@ const RECIPE_SITES_MAX = 20;
 const NOT_A_COMMAND = 'use list, run, save, show or delete; boite browser help describes them';
 
 /** What `recipe list` shows of one recipe: what it does, how to run it and whether it still works. */
-export function recipeLines(recipe: BrowserRecipe, now = Date.now()): string[] {
+function recipeLines(recipe: BrowserRecipe, now = Date.now()): string[] {
   const last = recipe.lastRun;
   const state = !last ? 'never run'
     : last.ok ? `${recipe.runs} ${recipe.runs === 1 ? 'run' : 'runs'}, last passed ${ago(last.at, now)}`

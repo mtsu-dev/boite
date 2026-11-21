@@ -50,10 +50,9 @@ test('the owner finds a team on the Mochis page on a desktop and a phone, reads 
     const huginnThread = await conversation(huginn.id);
     const jeuxThread = await conversation(jeux.id);
 
-    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['teams'], locale: 'fr', windowSize: { width: 1440, height: 900 } });
+    // Teams are finished: the core takes them whatever the app reports.
+    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: [], locale: 'fr', windowSize: { width: 1440, height: 900 } });
     await page.waitFor(`document.documentElement.lang === 'fr'`);
-    // The core takes teams once the app has told it the experiment is on.
-    await waitFor(() => (harness.core.clients.desktopExperiments() ?? harness.core.clients.current()?.experiments ?? []).includes('teams'), 10_000);
 
     const team = await owner.call('teams.create', { name: 'Skollheim', brief: 'Les réseaux et les jeux ensemble.', members: [huginn.id, jeux.id] });
     const keyOf = (botId: string) => team.members.find(member => member.botId === botId)!.key;

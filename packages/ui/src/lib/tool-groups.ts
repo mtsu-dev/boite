@@ -252,12 +252,6 @@ function programSegment(command: string): string {
   return segment.replace(/^&\s+/, '').replace(LEADING_ASSIGNMENTS, '');
 }
 
-/** The program a command runs, `git` for `cd src && git status`, empty when there is none to name. */
-export function programOf(command: string): string {
-  const { first } = splitFirst(programSegment(command));
-  return first ? baseName(first) : '';
-}
-
 /** A word naming what a program does (`agents`, `run`, `status`), not a flag, a path or a value. */
 const SUBCOMMAND = /^[a-z][a-z0-9-]*$/;
 

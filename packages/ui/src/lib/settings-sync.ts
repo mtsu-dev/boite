@@ -128,7 +128,7 @@ async function copyKeybindings(source: Client, target: Client, kept: ReadonlySet
 export async function syncSettings(source: SyncEnd, target: SyncEnd, signal?: AbortSignal): Promise<SyncReport> {
   let kept: ReadonlySet<string> = new Set();
   const { settings, changed } = await stage('settings', async () => {
-    // Both ends as stored: a Release reads its experiments as off, and that reading is no choice to copy or to compare with.
+    // Both ends as stored: a core from before the three machine settings graduated reads them as off on a Release, and that reading is no choice to copy or to compare with.
     const [fromSettings, toSettings, inForce] = await Promise.all([
       source.client.call('settings.get', { stored: true }),
       target.client.call('settings.get', { stored: true }),

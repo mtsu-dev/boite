@@ -1,6 +1,6 @@
 export const strings = {
 
-  /** Effort and speed levels by the id the providers share, in plain words (the id goes in the tooltip, `levelTitle`); another id keeps the provider's own word. */
+  /** Effort and speed levels by the id the providers share, in plain words; another id keeps the provider's own word. */
   effortLevels: {
     none: 'None',
     off: 'Off',

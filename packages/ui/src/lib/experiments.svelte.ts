@@ -16,7 +16,7 @@ subscribeExperiments((enabled) => {
   mirror.available = experimentsAvailable();
 });
 
-/** Whether Settings has an Experiments page: false where the primary machine runs a Release. */
+/** Whether Settings has an Experiments page: false where the primary machine runs a Release, or lists no switch. */
 export function experimentsShown(): boolean {
   return mirror.available;
 }
@@ -33,8 +33,8 @@ export function experimentOn(id: ExperimentId): boolean {
 
 /**
  * Whether a thread opens on the Bots page: a bot's own thread, and a team's
- * chat while Teams is on. With Bots off, every thread opens in the chat.
+ * chat. With Bots off, every thread opens in the chat.
  */
 export function onBotsPage(thread: { agentSessionId?: string; teamId?: string } | null | undefined): boolean {
-  return !!thread && experimentOn('resident-agents') && (!!thread.agentSessionId || (!!thread.teamId && experimentOn('teams')));
+  return !!thread && experimentOn('resident-agents') && (!!thread.agentSessionId || !!thread.teamId);
 }

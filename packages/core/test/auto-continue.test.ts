@@ -7,7 +7,8 @@ import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { startServer } from '../src/server.ts';
-import { AUTO_CONTINUE, AUTO_CONTINUE_LABEL } from '../src/threads/auto-continue.ts';
+import { AUTO_CONTINUE } from '../src/threads/auto-continue.ts';
+import { RESUME_TEXT } from '../src/threads/resume-text.ts';
 import { CRASH_RESUMING, CRASH_WHILE_RUNNING } from '../src/threads/recovery.ts';
 import { echoThread, removeDir, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
 
@@ -73,7 +74,7 @@ test('a turn that ends on an API error resumes by itself with the error and a ca
     expect(asked).toHaveLength(2);
     expect(asked[1]!.prompt).toContain('ECONNREFUSED');
     expect(asked[1]!.prompt).toContain('Continue the current task from where it stopped');
-    expect(openingOf(h, threadId, resume.id).label).toBe(AUTO_CONTINUE_LABEL.error);
+    expect(openingOf(h, threadId, resume.id).label).toBe(RESUME_TEXT.error.label);
     expect(h.core.journal.getTurn(first.id)?.status).toBe('error');
     expect(retries).toContain('auto-continue 1/2');
     expect(h.core.threads.require(threadId)).toMatchObject({ status: 'idle' });
@@ -241,7 +242,7 @@ test('a turn that ends right after a compaction, with no answer after it, resume
     await client.call('turns.start', { threadId, prompt: 'port the renderer' });
     await waitFor(() => turns(h, threadId).length === 2 && turns(h, threadId)[1]!.status === 'done');
     expect(asked[1]!.prompt).toContain('compacted');
-    expect(openingOf(h, threadId, turns(h, threadId)[1]!.id).label).toBe(AUTO_CONTINUE_LABEL.compaction);
+    expect(openingOf(h, threadId, turns(h, threadId)[1]!.id).label).toBe(RESUME_TEXT.compaction.label);
     // The resume answered after its own compaction: nothing more.
     await Bun.sleep(150);
     expect(turns(h, threadId)).toHaveLength(2);
@@ -272,7 +273,7 @@ test('background work that ends without waking its agent resumes the thread; a S
     await waitFor(() => turns(h, threadId).length === 2 && turns(h, threadId)[1]!.status === 'done');
     expect(asked[1]!.prompt).toContain('cargo build --release');
     expect(asked[1]!.prompt).toContain('the task failed');
-    expect(openingOf(h, threadId, turns(h, threadId)[1]!.id).label).toBe(AUTO_CONTINUE_LABEL.background);
+    expect(openingOf(h, threadId, turns(h, threadId)[1]!.id).label).toBe(RESUME_TEXT.background.label);
     setSystemTime();
   } finally { await h.stop(); }
 
@@ -337,7 +338,7 @@ test('a core that dies mid-turn resumes that turn once the next core starts, quo
     expect(asked[0]!.prompt).toContain('Boite stopped unexpectedly');
     expect(asked[0]!.prompt).toContain('migrate the journal to schema 38');
     const opening = next.core.threads.get(threadId).messages.find(message => message.turnId === resume.id && message.role === 'system')!.parts[0]!;
-    expect(opening.type === 'text' && opening.displayText).toBe(AUTO_CONTINUE_LABEL.crash);
+    expect(opening.type === 'text' && opening.displayText).toBe(RESUME_TEXT.crash.label);
   } finally { await next.stop(); }
 });
 
@@ -473,6 +474,25 @@ test('a crash that paused the subagent team of an answered thread wakes its agen
     expect(asked[1]!.prompt).toContain('bun run e2e');
     expect(asked[1]!.prompt).not.toContain('paused your subagent team');
   } finally { setSystemTime(); await next.stop(); }
+});
+
+test('a crash after a turn that failed on a full context resumes nothing, though it paused the team', async () => {
+  const h = await startTestCore();
+  scripted({ ...failed('Claude could not compact this conversation'), contextFull: true });
+  const client = await h.connect();
+  const { threadId } = await echoThread(h, client);
+  await client.call('turns.start', { threadId, prompt: 'go on' });
+  await waitFor(() => turns(h, threadId)[0]?.status === 'error' && h.core.threads.require(threadId).status !== 'running');
+  h.core.journal.setSetting(`delegation:${threadId}`, { ...h.core.delegation.config(threadId), enabled: true, paused: true, pausedBy: 'restart', pausedAt: Date.now() + 60_000 });
+  client.close();
+  await crash(h);
+  const asked = scripted(done);
+  const next = await restart(h);
+  try {
+    await Bun.sleep(150);
+    expect(asked).toHaveLength(0);
+    expect(next.core.threads.get(threadId).turns).toHaveLength(1);
+  } finally { await next.stop(); }
 });
 
 test('a resume planned before a crash survives it and goes out from the next core', async () => {

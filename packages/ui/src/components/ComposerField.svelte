@@ -143,13 +143,13 @@
     transition-property: none;
   }
 
-  /* The suggestion sits where the placeholder would, in its color, one line cut short; a phone shows its chip instead (ComposerSuggestion). */
+  /* The suggestion sits where the placeholder would, dimmer than typed text, one line cut short; a phone shows its chip instead (ComposerSuggestion). */
   .input-ghost {
     position: absolute;
     inset: 0;
     padding: var(--composer-input-padding, 12px 14px 0);
     pointer-events: none;
-    color: var(--color-subtle);
+    color: var(--color-suggestion);
     font-size: var(--text-reading);
     line-height: var(--leading-reading);
     white-space: nowrap;
@@ -163,7 +163,7 @@
     border-radius: var(--radius-sm);
     font-family: inherit;
     font-size: var(--text-xs);
-    color: var(--color-muted-foreground);
+    color: inherit;
     vertical-align: middle;
   }
   @media (max-width: 720px), (pointer: coarse) { .input-ghost { display: none; } }

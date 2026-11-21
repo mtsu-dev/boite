@@ -100,7 +100,7 @@ const optionIdsOf = (value: unknown): string[] => {
   return value.map((id, index) => textOf(id, `bot.answer.optionIds[${index}]`, 128));
 };
 /** A lease as the bot's core sent it, checked field by field. */
-export function checkLease(value: unknown, field = 'lease'): BotLease {
+function checkLease(value: unknown, field = 'lease'): BotLease {
   const raw = (value ?? {}) as Record<string, unknown>;
   const list = (entry: unknown, name: string, max: number): string[] => {
     if (!Array.isArray(entry) || entry.length > max) throw invalidParams(`${field}.${name}: expected at most ${max} ids`);

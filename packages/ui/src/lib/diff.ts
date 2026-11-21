@@ -5,7 +5,7 @@
  */
 
 /** How many unchanged lines stay on each side of a change. */
-export const CONTEXT_LINES = 3;
+const CONTEXT_LINES = 3;
 /**
  * The most lines the two middles may differ by and still be aligned. The
  * search takes about D^2/2 steps and keeps as many integers for the walk back,
@@ -27,7 +27,7 @@ export type DiffRow =
 type Op = { kind: 'same' | 'add' | 'remove'; text: string };
 
 /** A trailing newline ends the last line; it is not an empty line of its own. */
-export function splitLines(text: string): string[] {
+function splitLines(text: string): string[] {
   if (text.length === 0) return [];
   const lines = text.split('\n');
   if (lines[lines.length - 1] === '') lines.pop();

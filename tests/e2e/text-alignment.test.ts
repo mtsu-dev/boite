@@ -108,10 +108,9 @@ test('text and icons share a vertical centre across reading fonts, menus and pho
       ['[data-testid="voice-models"] [data-testid^="voice-model-download-"]', '[data-testid="voice-models"] [data-testid^="voice-model-download-"] .ui-label'],
     ])) expect(Math.abs(result.offset), `${font}: voice model choices`).toBeLessThanOrEqual(0.8);
     await page.evaluate(`__boiteTest.workspace.active.showSettings('usage')`);
-    await page.waitFor(`document.querySelector('[data-testid="usage-page"] .legend .ui-label')`);
+    await page.waitFor(`document.querySelector('[data-testid="usage-providers"] li')`);
     for (const result of await labelOffsets(page, [
       ['[data-testid="usage-provider-filter"] svg', '[data-testid="usage-provider-filter"] .ui-label'],
-      ['[data-testid="usage-page"] .legend .swatch', '[data-testid="usage-page"] .legend .ui-label'],
     ])) {
       expect(Math.abs(result.offset), `${font}: usage provider labels`).toBeLessThanOrEqual(0.8);
       expect(result.inkFits, `${font}: usage provider ink`).toBe(true);

@@ -47,7 +47,7 @@ interface LogFlags {
 }
 
 /** `30m`, `2h`, `1d`, `90s` back from now, or any date `Date.parse` reads. */
-export function parseSince(raw: string, now = Date.now()): number {
+function parseSince(raw: string, now = Date.now()): number {
   const relative = /^(\d+(?:\.\d+)?)\s*(s|m|min|h|d)$/i.exec(raw.trim());
   if (relative) {
     const unit = { s: 1000, m: 60_000, min: 60_000, h: 3_600_000, d: 86_400_000 }[relative[2]!.toLowerCase() as 's' | 'm' | 'min' | 'h' | 'd'];

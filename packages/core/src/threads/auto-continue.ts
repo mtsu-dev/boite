@@ -14,14 +14,6 @@ export const AUTO_CONTINUE = RESUME_TIMING.carryOn;
 /** Why a turn stopped before its answer, and so what its resume tells the agent. */
 export type StopReason = Exclude<PlannedReason, 'limit'>;
 
-/** How the resumed turn's opening reads in the conversation. */
-export const AUTO_CONTINUE_LABEL: Record<StopReason, string> = {
-  error: RESUME_TEXT.error.label,
-  crash: RESUME_TEXT.crash.label,
-  compaction: RESUME_TEXT.compaction.label,
-  background: RESUME_TEXT.background.label,
-};
-
 /** Left by a core the owner stopped on purpose: the next one resumes nothing it cut. */
 const STOPPED_KEY = 'auto-continue-stopped';
 /** An error is quoted to the agent up to this many characters. */
@@ -161,8 +153,16 @@ export class AutoContinues {
     // A refusal has its own retry: a spent usage window resumes at its reset or
     // not at all (`limit-resume.ts`), capacity got its tries in the turn, and a
     // capacity wait the user cancelled must stay failed.
-    // A folder that is gone stays gone until someone puts it back.
-    if (result.refusal || result.cwdGone) return;
+    // A folder that is gone stays gone until someone puts it back, and a
+    // context its own compaction cannot shrink stays full until someone
+    // shrinks what fills it.
+    if (result.refusal) return;
+    if (result.cwdGone || result.contextFull) {
+      // Handled: a later start that finds work this thread held (a team, a workflow run) resumes nothing either.
+      const window = this.#resumes.entry(thread.id)?.resumedWindow;
+      this.#resumes.settle(thread.id, { streak: 0, handled: turn.id, ...(window !== undefined ? { resumedWindow: window } : {}) });
+      return;
+    }
     const error = (turn.error ?? result.error ?? 'unknown error').trim();
     const quoted = error.length > ERROR_QUOTE ? `${error.slice(0, ERROR_QUOTE)} [cut]` : error;
     this.#plan(thread.id, turn, 'error', `Your previous turn ended on an error before it finished: ${quoted}\n\nBoite resumed the thread by itself. ${CARRY_ON}`);

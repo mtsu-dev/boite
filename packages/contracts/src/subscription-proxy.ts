@@ -34,9 +34,11 @@ export const SUBSCRIPTION_PROXY_PROVIDERS: readonly ProviderId[] = ['opencode', 
  * The providers only one kind of gateway serves. Grok's CLI takes its models
  * from the gateway's own list, and Douane writes that list the way the CLI
  * reads it: xAI's ids in xAI's order, each with its window and efforts.
+ * Antigravity's gateway mode speaks the Gemini API (`/v1beta/models`), which
+ * Douane serves from its pooled Google accounts and CLIProxyAPI does not.
  */
 export const SUBSCRIPTION_PROXY_KIND_PROVIDERS: Readonly<Record<SubscriptionProxy['kind'], readonly ProviderId[]>> = {
-  douane: ['grok'],
+  douane: ['grok', 'antigravity'],
   cliproxyapi: [],
 };
 
@@ -148,7 +150,6 @@ export interface GatewayMoveOutcome {
 }
 
 export interface SubscriptionProxyRpcMethods {
-  'subscriptionProxy.key': { params: { key: string | null }; result: { configured: boolean } };
   /** Owner-only, atomic configuration and optional private-key update; an omitted key keeps it. */
   'subscriptionProxy.configure': { params: { subscriptionProxy: SubscriptionProxy; key?: string | null }; result: Settings };
   /**

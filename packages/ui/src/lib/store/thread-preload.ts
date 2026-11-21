@@ -197,13 +197,13 @@ export class ThreadPreloads {
 }
 
 /** How many threads a ready machine reads ahead, and on a connection that asks to save data. */
-export const IDLE_PRELOADS = 4;
-export const IDLE_PRELOADS_SAVING_DATA = 1;
+const IDLE_PRELOADS = 4;
+const IDLE_PRELOADS_SAVING_DATA = 1;
 /** Without requestIdleCallback, the wait before reading ahead; with it, the longest wait for an idle moment. */
 export const IDLE_PRELOAD_WAIT_MS = 1000;
 
 /** The threads to read ahead on this connection: one when it asks to save data (`navigator.connection.saveData`). */
-export function idlePreloadCount(nav: { connection?: { saveData?: boolean } } | undefined = globalThis.navigator as { connection?: { saveData?: boolean } } | undefined): number {
+function idlePreloadCount(nav: { connection?: { saveData?: boolean } } | undefined = globalThis.navigator as { connection?: { saveData?: boolean } } | undefined): number {
   return nav?.connection?.saveData === true ? IDLE_PRELOADS_SAVING_DATA : IDLE_PRELOADS;
 }
 

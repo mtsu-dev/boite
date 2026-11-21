@@ -11,7 +11,7 @@ const HEADING = /^#{1,6}\s/;
  * rather than position, blank lines aside: a line that only moved is neither.
  * Each new line names the heading it sits under, or null above the first.
  */
-export function memoryChange(before: string, after: string): { removed: string[]; added: { line: string; heading: string | null }[] } {
+function memoryChange(before: string, after: string): { removed: string[]; added: { line: string; heading: string | null }[] } {
   const left = new Map<string, number>();
   for (const line of before.split('\n')) if (line.trim()) left.set(line, (left.get(line) ?? 0) + 1);
   const added: { line: string; heading: string | null }[] = [];

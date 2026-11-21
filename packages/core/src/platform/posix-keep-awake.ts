@@ -4,16 +4,18 @@
  * ends, and the machine may sleep again, when the hold is given back and also
  * when the core dies without saying so.
  *
- * Linux asks logind through `systemd-inhibit`. Blocking sleep is allowed to a
- * user at the machine; a core running as a service with no active session is
- * refused it, and falls back to the idle inhibitor alone, which any user may
- * hold and which stops logind's idle suspend. macOS holds an idle-sleep
+ * Linux asks logind through `systemd-inhibit` to block sleep only: an idle
+ * inhibitor would also keep a desktop session from locking and blanking its
+ * screen while agents work. Blocking sleep is allowed to a user at the
+ * machine; a core running as a service with no active session is refused it,
+ * and falls back to the idle inhibitor alone, which any user may hold and
+ * which stops logind's idle suspend. macOS holds an idle-sleep
  * assertion through `caffeinate -i`. Neither stops a sleep the user orders
  * with the power button, or a laptop closing its lid.
  */
 type Find = (name: string) => string | null;
 
-/** The commands to try in order, the widest inhibitor first; empty when the OS has no helper. */
+/** The commands to try in order, sleep alone first and idle when that is refused; empty when the OS has no helper. */
 export function keepAwakeCommands(os: 'linux' | 'macos', find: Find = name => Bun.which(name)): string[][] {
   const cat = find('cat');
   if (cat === null) return [];
@@ -23,7 +25,12 @@ export function keepAwakeCommands(os: 'linux' | 'macos', find: Find = name => Bu
   }
   const inhibit = find('systemd-inhibit');
   if (inhibit === null) return [];
-  return ['sleep:idle', 'idle'].map(what => [inhibit, `--what=${what}`, '--who=Boite', '--why=Agents are working', '--mode=block', cat]);
+  return ['sleep', 'idle'].map(what => [inhibit, `--what=${what}`, '--who=Boite', '--why=Agents are working', '--mode=block', cat]);
+}
+
+/** Whether this machine has a helper to hold, so the Keep awake switch can say when it has none. */
+export function keepAwakeAvailable(os: 'linux' | 'macos', find: Find = name => Bun.which(name)): boolean {
+  return keepAwakeCommands(os, find).length > 0;
 }
 
 /**

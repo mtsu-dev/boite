@@ -476,7 +476,7 @@ export function switchBackInput(
 }
 
 /** OpenCode's `TOOL_OUTPUT_MAX_CHARS` (`session/recent-text.ts`): a tool result in a step tail is cut there. */
-export const TAIL_TOOL_OUTPUT_MAX_CHARS = 1_250;
+const TAIL_TOOL_OUTPUT_MAX_CHARS = 1_250;
 
 /** `value` cut to `TAIL_TOOL_OUTPUT_MAX_CHARS` code points, so a surrogate pair is never split. */
 function truncateToolOutput(value: string): string {

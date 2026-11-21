@@ -54,6 +54,8 @@ import { screenTurns, takeTurn } from './browser/frames.ts';
 import { automate, awaitDocument, documentToken, PAGE_ACTIONS, settleLoaded } from './browser/automation.ts';
 import { pageFrames } from './browser/page-frames.ts';
 import { sleepState, TabSleep } from './browser/sleep.ts';
+import { TabsJoining } from './browser/joining.ts';
+import { BrowserPopups, type PopupTarget } from './browser/popups.ts';
 import { BrowserDownloads } from './browser/downloads.ts';
 import { BrowserRecipes } from './browser/recipes.ts';
 import { historyChallenge, settleChallenge } from './browser/challenge.ts';
@@ -85,7 +87,7 @@ const TAB_ID = /^browser:[a-zA-Z0-9:-]{1,100}$/;
  * `act`: twice a DevTools call's 30 s, which covers a navigation (30 s, then 10 s
  * for the DOM), an evaluate (30 s and 5 s) and the longest wait an agent asks (15 s).
  */
-export const BROWSER_STEP_MS: Readonly<Record<BrowserCommandStep, number>> = { start: 90_000, attach: 60_000, wake: 30_000, act: 60_000 };
+const BROWSER_STEP_MS: Readonly<Record<BrowserCommandStep, number>> = { start: 90_000, attach: 60_000, wake: 30_000, act: 60_000 };
 /**
  * A recording runs between its commands, under no bound; its own commands
  * evaluate in the recorder's page with 60 s each (`browser/recorder.ts`), and a
@@ -95,7 +97,7 @@ export const BROWSER_STEP_MS: Readonly<Record<BrowserCommandStep, number>> = { s
 const RECORDING_ACT_MS = 110_000;
 /** Commands that only report state: they answer at once, never behind the conversation's queue. */
 const READS: ReadonlySet<BrowserAction['kind']> = new Set(['status', 'profiles', 'downloads', 'recipes', 'recipe-get']);
-export const DISCARDED_RECORDING_ERROR = "the recording was discarded because the agent's turn ended while it was running: stop it with recording-stop in the turn that started it";
+const DISCARDED_RECORDING_ERROR = "the recording was discarded because the agent's turn ended while it was running: stop it with recording-stop in the turn that started it";
 
 /** The late work of a command given up past a bound stops at its next step. */
 function abandoned(running: Running): Error {
@@ -136,9 +138,13 @@ export class AgentBrowser {
   #running = new Map<ThreadId, Running>();
   /** Each step's bound (`BROWSER_STEP_MS`); tests shorten them. */
   stepMs: Record<BrowserCommandStep, number> = { ...BROWSER_STEP_MS };
-  /** Tabs being attached, by conversation and in all: attaching takes several round trips, and the limits count them. */
-  #attaching = new Map<ThreadId, number>();
-  #attachingAll = 0;
+  /** Tabs being attached: the limits count them, and a command that names no tab waits for a window a page opened. */
+  readonly joining = new TabsJoining();
+  readonly #popups = new BrowserPopups(this.joining, {
+    tabAt: (engine, targetId) => this.#tabAt(engine, targetId),
+    full: threadId => this.#full(threadId) !== null,
+    attach: (engine, threadId, targetId, url) => this.#attach(engine, threadId, targetId, url),
+  });
   #announce = new Map<ThreadId, ReturnType<typeof setTimeout>>();
   #closed = false;
   /** Browsers started to check a page (`probe`): no conversation lists them, so they are closed by name. */
@@ -265,7 +271,7 @@ export class AgentBrowser {
 
   /** Pages that open a window (a sign-in popup) are adopted as tabs of the same conversation. */
   #targets(engine: Engine): void {
-    engine.cdp.on('Target.targetCreated', params => void this.#adopt(engine, params.targetInfo as { targetId: string; type: string; openerId?: string; url: string }));
+    engine.cdp.on('Target.targetCreated', params => void this.#popups.adopt(engine, params.targetInfo as PopupTarget));
     engine.cdp.on('Target.targetDestroyed', params => this.#gone(engine, String(params.targetId)));
     engine.cdp.on('Target.targetInfoChanged', params => this.#info(engine, params.targetInfo as { targetId: string; url: string; title: string }));
     engine.cdp.on('Target.targetCrashed', params => this.#crashed(this.#tabAt(engine, String(params.targetId)), String(params.status ?? 'unknown').slice(0, 40)));
@@ -312,9 +318,12 @@ export class AgentBrowser {
     // Every tab counts as focused, so a page waiting for focus or visibility runs.
     await engine.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId).catch(() => {});
     // Given up while it attached: the tab is never the conversation's, and the caller closes its target.
-    if (running?.abandoned) {
+    // Archived while it attached: the same, since the archive closed only the tabs it found.
+    let gone: unknown = null;
+    try { this.#require(threadId); } catch (error) { gone = error; }
+    if (running?.abandoned || gone) {
       for (const off of tab.off) off();
-      throw abandoned(running);
+      throw running?.abandoned ? abandoned(running) : gone;
     }
     this.#tabs.set(tab.id, tab);
     engine.tabs.add(tab.id); clearTimeout(engine.idle);
@@ -327,35 +336,9 @@ export class AgentBrowser {
 
   /** Which limit a new tab of `threadId` would cross, counting the tabs still attaching. */
   #full(threadId: ThreadId): 'thread' | 'machine' | null {
-    if ((this.#threads.get(threadId)?.order.length ?? 0) + (this.#attaching.get(threadId) ?? 0) >= TABS_PER_THREAD) return 'thread';
-    if (this.#tabs.size + this.#attachingAll >= TABS_MAX) return 'machine';
+    if ((this.#threads.get(threadId)?.order.length ?? 0) + this.joining.count(threadId) >= TABS_PER_THREAD) return 'thread';
+    if (this.#tabs.size + this.joining.count() >= TABS_MAX) return 'machine';
     return null;
-  }
-
-  /** Holds a tab's place from the limit check until it is attached or failed: a burst of windows sees each other. */
-  #reserve(threadId: ThreadId): () => void {
-    this.#attaching.set(threadId, (this.#attaching.get(threadId) ?? 0) + 1); this.#attachingAll++;
-    let held = true;
-    return () => {
-      if (!held) return;
-      held = false; this.#attachingAll--;
-      const left = (this.#attaching.get(threadId) ?? 1) - 1;
-      if (left > 0) this.#attaching.set(threadId, left); else this.#attaching.delete(threadId);
-    };
-  }
-
-  /** A window a tab opened joins its conversation as a new tab, or is closed when it has no room. */
-  async #adopt(engine: Engine, info: { targetId: string; type: string; openerId?: string; url: string }): Promise<void> {
-    if (info.type !== 'page' || !info.openerId) return;
-    const opener = [...engine.tabs].map(id => this.#tabs.get(id)).find(tab => tab?.targetId === info.openerId);
-    if (!opener) return;
-    if (this.#full(opener.threadId)) {
-      await engine.cdp.send('Target.closeTarget', { targetId: info.targetId }).catch(() => {});
-      return;
-    }
-    const release = this.#reserve(opener.threadId);
-    try { await this.#attach(engine, opener.threadId, info.targetId, info.url).catch(() => {}); }
-    finally { release(); }
   }
 
   #info(engine: Engine, info: { targetId: string; url: string; title: string }): void {
@@ -371,6 +354,7 @@ export class AgentBrowser {
   }
 
   #gone(engine: Engine, targetId: string): void {
+    this.#popups.destroyed(engine, targetId);
     const tab = this.#tabAt(engine, targetId);
     if (tab) this.#drop(tab.id);
   }
@@ -524,6 +508,18 @@ export class AgentBrowser {
     return begun.length ? { ...reply, downloads: begun } : reply;
   }
 
+  /** The current tab is the last window a page opened: a command that names no tab waits for those still joining. */
+  async #joined(threadId: ThreadId): Promise<void> {
+    const engines = new Set<Engine>();
+    for (const id of this.#threads.get(threadId)?.order ?? []) {
+      const engine = this.#tabs.get(id)?.engine;
+      if (engine && !engine.hosted) engines.add(engine);
+    }
+    await this.#popups.adoptListed(threadId, engines);
+    await this.joining.windows(threadId);
+    this.#require(threadId);
+  }
+
   async #run(threadId: ThreadId, tabId: string | undefined, action: BrowserAction, running: Running | null): Promise<BrowserReply> {
     this.#require(threadId);
     switch (action.kind) {
@@ -553,6 +549,7 @@ export class AgentBrowser {
       case 'recipe-result': return { value: this.#recipes.result(action.name, action.ok, action.error) };
       case 'open': {
         // agent-browser's `open` drives the current tab; a named profile opens a tab of its own.
+        if (action.reuse && action.profile === undefined) await this.#joined(threadId);
         const current = action.reuse && action.profile === undefined ? this.#threads.get(threadId)?.active : null;
         const tab = current ? this.#tabs.get(current) : undefined;
         if (!tab) return this.#open(threadId, action, running);
@@ -560,6 +557,7 @@ export class AgentBrowser {
       }
       default: break;
     }
+    if (tabId === undefined) await this.#joined(threadId);
     const tab = this.#tabOf(threadId, tabId);
     const state = this.#thread(threadId);
     if (state.active !== tab.id) { state.active = tab.id; this.#changed(threadId); }
@@ -624,7 +622,7 @@ export class AgentBrowser {
     const full = this.#full(threadId);
     if (full === 'thread') throw refused(`a conversation has at most ${TABS_PER_THREAD} browser tabs; close one first`);
     if (full === 'machine') throw refused(`this machine's agent browser has ${TABS_MAX} tabs open; close one first`);
-    const release = this.#reserve(threadId);
+    const release = this.joining.reserve(threadId);
     let tab: Tab;
     try {
       running?.enter('start');

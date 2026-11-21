@@ -15,12 +15,12 @@ interface JobReader {
   queryJobInfo(job: number, klass: number, buffer: Uint8Array): boolean;
 }
 
-export const CLASS_EXTENDED_LIMIT = 9;
-export const CLASS_CPU_RATE_CONTROL = 15;
-export const EXTENDED_LIMIT_SIZE = 144;
-export const OFF_LIMIT_FLAGS = 16;
-export const OFF_PRIORITY_CLASS = 56;
-export const OFF_JOB_MEMORY_LIMIT = 120;
+const CLASS_EXTENDED_LIMIT = 9;
+const CLASS_CPU_RATE_CONTROL = 15;
+const EXTENDED_LIMIT_SIZE = 144;
+const OFF_LIMIT_FLAGS = 16;
+const OFF_PRIORITY_CLASS = 56;
+const OFF_JOB_MEMORY_LIMIT = 120;
 const JOB_OBJECT_LIMIT_JOB_MEMORY = 0x200;
 const JOB_OBJECT_LIMIT_PRIORITY_CLASS = 0x20;
 const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;

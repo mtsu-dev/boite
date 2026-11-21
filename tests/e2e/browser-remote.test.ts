@@ -20,7 +20,7 @@ async function openPhoneBrowser(page: BrowserPage) {
 }
 
 async function capture(name: string) {
-  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+  await page.settleAnimations();
   await page.screenshot(join(artifacts, name));
 }
 /** What the agent's page says it received, through the agent's own snapshot. */
@@ -142,9 +142,9 @@ test('a device the agent opens shows the same cover naming the machine, and Show
   await size(1280, 900);
 }, 60_000);
 
-test('with the live stream on in Experiments, Show plays the device as video on a canvas', async () => {
+test('with the live stream on in Settings > System, Show plays the device as video on a canvas', async () => {
   await page.click('[data-testid=nav-settings]');
-  await page.click('[data-testid=settings-tab-experiments]');
+  await page.click('[data-testid=settings-tab-advanced]');
   await page.waitFor(`document.querySelector('${id('device-stream-on')}')`);
   expect(await page.evaluate<boolean>(`document.querySelector('${id('device-stream-on')}').checked`)).toBe(false);
   await page.click(id('device-stream-on'));
