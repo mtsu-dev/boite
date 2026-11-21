@@ -97,7 +97,11 @@ test('older cores do not flood sidebar errors and manual lookup explains the mis
       return call(method, params);
     };
     resetPullRequestSupport(client);
-    store.connection = 'connecting'; await new Promise(requestAnimationFrame); store.connection = 'ready';
+    store.connection = 'connecting';
+    await new Promise(requestAnimationFrame);
+    // Give the older core a separate identity so its initial PR cache is empty.
+    store.core = { ...store.core, coreId: 'fake-legacy-pr-core' };
+    store.connection = 'ready';
   })()`);
   await page.waitFor(`window.__prCalls === 1`);
   expect(await page.evaluate(`document.querySelector('[data-testid="error-toast"]') === null`)).toBe(true);
