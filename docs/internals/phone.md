@@ -341,8 +341,14 @@ names with `projects.browse` and registers one with `projects.add`; nothing in
 a folder is read before then. That core checks the path, absolute and an
 existing directory there, and refuses Boite's data folder, a folder inside it,
 the home folder, a folder that contains it, a disk root, and a folder that is or is inside `.git`, `.ssh`, `.gnupg`, `.aws`, `.azure`,
-`.kube` or `.docker`, so a device's reads, which start from its projects, never begin in
-one of them. The refusal names the path and the reason. A paired device can
+`.kube` or `.docker`, and a folder that is, holds or is inside one of the home
+folder's known login folders (each agent CLI's, `.config/gh`, `.config/gcloud`,
+`.local/share/opencode`, the key stores, `AppData`, `Library` apart from its cloud
+drives; `workdir.ts` has the list), so a device's reads, which start from its
+projects, never begin in one of them. Other folders of `.config` and boite's
+own data folder stay usable. A project the owner already registered inside one
+of those login folders gives a device no read either: Files and Changes refuse
+it by the folder's name. The refusal names the path and the reason. A paired device can
 already start agents that run commands in those projects. `settings.set` and
 `accounts.add` stay the owner's.
 

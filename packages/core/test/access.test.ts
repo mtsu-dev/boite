@@ -15,7 +15,7 @@ import { connect } from '../src/client.ts';
 import { AGENT_METHODS, DEVICE_METHODS } from '@boite/contracts';
 import { assertAllowed } from '../src/access.ts';
 import type { Connection } from '../src/router.ts';
-import { assertDeviceFile, assertDeviceProjectFolder } from '../src/workdir.ts';
+import { assertDeviceFile, assertDeviceProjectFolder, assertDeviceReadable } from '../src/workdir.ts';
 import { echoThread, startTestCore, testProject } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
@@ -461,6 +461,42 @@ describe('a paired device reads a thread\'s changes and files', () => {
       // Credential files stay out inside them.
       expect(() => assertDeviceFile(core, 't', project, '.env')).toThrow('credential files');
     }
+  });
+
+  test('a login folder of the home folder stays out of a device, added by it or already registered by the owner', () => {
+    // Real home paths, outside the temporary folder; only names are resolved, no file is opened.
+    const home = homedir();
+    for (const project of [join(home, '.codex'), join(home, '.config', 'gh'), join(home, '.local', 'share', 'opencode'), join(home, '.pi', 'agent'), join(home, 'AppData', 'Roaming', 'rclone'), join(home, 'Library', 'Keychains')]) {
+      const core = {
+        dataDir: harness.dataDir,
+        threads: { require: () => ({ cwd: project, projectId: 'p' }) },
+        projects: { require: () => ({ id: 'p', path: project }) },
+        settings: { get: () => ({}) },
+      } as unknown as Parameters<typeof assertDeviceFile>[0];
+      expect(() => assertDeviceProjectFolder(core, project), project).toThrow('holds logins');
+      expect(() => assertDeviceReadable(core, 't'), project).toThrow('holds logins');
+      for (const path of ['auth.json', 'hosts.yml', '.']) expect(() => assertDeviceFile(core, 't', project, path), `${project} ${path}`).toThrow('holds logins');
+    }
+    const at = (project: string, dataDir = harness.dataDir) => ({
+      dataDir,
+      threads: { require: () => ({ cwd: project, projectId: 'p' }) },
+      projects: { require: () => ({ id: 'p', path: project }) },
+      settings: { get: () => ({}) },
+    }) as unknown as Parameters<typeof assertDeviceFile>[0];
+    // A device does not add a folder that holds one; one the owner added keeps its other folders.
+    const config = join(home, '.config');
+    expect(() => assertDeviceProjectFolder(at(config), config)).toThrow('.config/gh');
+    expect(() => assertDeviceProjectFolder(at(config), join(home, '.local'))).toThrow('holds logins');
+    expect(() => assertDeviceFile(at(config), 't', config, 'gh/hosts.yml')).toThrow('holds logins');
+    expect(() => assertDeviceFile(at(config), 't', config, 'nvim/init.lua')).not.toThrow();
+    // A work folder in another folder of `.config`, and boite's data folder in `.local/share`, keep their reads.
+    const nvim = join(home, '.config', 'nvim');
+    expect(() => assertDeviceProjectFolder(at(nvim), nvim)).not.toThrow();
+    expect(() => assertDeviceReadable(at(nvim), 't')).not.toThrow();
+    const data = join(home, '.local', 'share', 'boite2');
+    const worktree = join(data, 'worktrees', 'app-p');
+    expect(() => assertDeviceReadable(at(worktree, data), 't')).not.toThrow();
+    expect(() => assertDeviceFile(at(worktree, data), 't', worktree, 'src/main.ts')).not.toThrow();
   });
 
   test('a project that holds boite\'s data folder does not open it to the device', async () => {
