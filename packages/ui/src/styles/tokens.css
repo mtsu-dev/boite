@@ -160,6 +160,25 @@
   --series-7: #008300;
   --series-8: #e66767;
   --series-other: var(--color-subtle);
+  /*
+   * Usage colours: one hue per provider, near its maker's own colour, all at
+   * one lightness and chroma so no provider shouts over another. A provider
+   * missing here takes a hue from `providerColor` (lib/usage.ts) at the same
+   * weight. Light themes lower the lightness for contrast on white cards.
+   */
+  --series-l: 74%;
+  --series-c: 0.13;
+  --provider-claude: oklch(var(--series-l) var(--series-c) 42);
+  --provider-vibe: oklch(var(--series-l) var(--series-c) 72);
+  --provider-antigravity: oklch(calc(var(--series-l) + 6%) var(--series-c) 100);
+  --provider-muse: oklch(var(--series-l) var(--series-c) 140);
+  --provider-opencode: oklch(var(--series-l) var(--series-c) 168);
+  --provider-opencode-v2: oklch(var(--series-l) var(--series-c) 196);
+  --provider-hermes: oklch(var(--series-l) var(--series-c) 222);
+  --provider-codex: oklch(var(--series-l) var(--series-c) 252);
+  --provider-grok: oklch(var(--series-l) var(--series-c) 288);
+  --provider-pi: oklch(var(--series-l) var(--series-c) 325);
+  --provider-echo: oklch(var(--series-l) 0.02 260);
 
   --radius-sm: 6px;
   --radius-md: 8px;

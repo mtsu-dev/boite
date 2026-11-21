@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { Usage, UsageHistory, UsageHistoryRow } from '@boite/contracts';
 import { fakeUsageHistory } from './fake-usage';
 import { setLocaleSetting } from './i18n.svelte';
-import { dayEdges, formatMetric, formatRate, formatTick, modelName, niceScale, ownModel, priceNote, reportedValue, seriesFor, summarize, topThreads } from './usage';
+import { dayEdges, formatMetric, formatRate, formatTick, modelName, niceScale, ownModel, priceNote, providerColor, reportedValue, seriesFor, summarize, topThreads } from './usage';
 import { strings } from './strings';
 
 function usage(inputTokens: number, outputTokens: number, cost: number | null = null): Usage {
@@ -42,12 +42,15 @@ describe('seriesFor', () => {
   test('keeps every provider separate, including more than two additional providers', () => {
     const { series, keyOf } = seriesFor(['zeta', 'codex', 'alpha', 'claude', 'beta']);
     expect(series.map((serie) => [serie.key, serie.color])).toEqual([
-      ['claude', 'var(--series-1)'],
-      ['codex', 'var(--series-2)'],
-      ['alpha', 'var(--series-7)'],
-      ['beta', 'var(--series-8)'],
-      ['zeta', 'var(--series-7)']
+      ['claude', 'var(--provider-claude)'],
+      ['codex', 'var(--provider-codex)'],
+      ['alpha', providerColor('alpha')],
+      ['beta', providerColor('beta')],
+      ['zeta', providerColor('zeta')]
     ]);
+    // A provider Boite does not know gets its own hue, drawn from its id, never another's colour.
+    expect(new Set(series.map((serie) => serie.color)).size).toBe(5);
+    expect(providerColor('zeta')).toBe(seriesFor(['zeta']).series[0]!.color);
     expect(keyOf('zeta')).toBe('zeta');
   });
 

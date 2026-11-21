@@ -387,6 +387,12 @@ export interface TurnResult {
    */
   refusal?: TurnRefusal;
   /**
+   * The agent gave up compacting: what every request carries (instruction
+   * files, mostly) refills its compaction limit within a few turns, so a
+   * resume fails the same way. The error names what to shrink.
+   */
+  contextFull?: true;
+  /**
    * Set by the core, never a driver: the turn failed and the thread's folder
    * is gone. A resume would fail the same way.
    */
