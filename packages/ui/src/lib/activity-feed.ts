@@ -112,29 +112,16 @@ function reasonOf<M>(owner: Owner, entry: FeedSource<M>, kind: ThreadState | nul
 /** Activity's events: the shared derivation (contracts/src/activity.ts). */
 const feedEvents = <M extends { id: string; store: RowSource<Delegated> }>(all: readonly FeedSource<M>[]) => activityEvents(all);
 
+/** One machine's Needs you count over some of its threads (a project's, say): the same rows, the same number. */
+export function storeNeedsYou(store: RowSource<Delegated>, threads: readonly ThreadSummary[]): number {
+  return storeNeeds(store, threads).count;
+}
+
 /** The same count with how many of its rows are failures, so a project's head wears the mark of what it counts. */
 export function storeNeeds(store: RowSource<Delegated>, threads: readonly ThreadSummary[]): { count: number; failed: number } {
   const machine = { id: '', store };
   const ranks = feedEvents(threads.filter(feedThread).map(thread => ({ machine, thread, project: undefined }))).map(({ rank }) => rank).filter(rank => rank <= NEEDS_RANK);
   return { count: ranks.length, failed: ranks.filter(rank => rank === statusRank('error')).length };
-}
-
-/** A machine's rows with the ids of the requests it holds, which a summary alone does not carry. */
-export type HeldAsks = RowSource<Delegated> & { pendingQuestions?: readonly Pick<QuestionRequest, 'id' | 'threadId'>[]; pendingPermissions?: readonly Pick<PermissionRequest, 'id' | 'threadId'>[] };
-
-/**
- * What each row of one machine's Needs you asks, as a key that changes when the thread asks again: the ids of the
- * questions and permissions held for its threads, its sub-agents' with it; else (a failure, an ask this client does
- * not hold) the lead thread, its state and its last update. The rail's middle click keeps them as seen.
- */
-export function storeNeedsKeys(store: HeldAsks, threads: readonly ThreadSummary[]): string[] {
-  const machine = { id: '', store };
-  const held = (id: ThreadSummary['id']) => [...store.pendingQuestions ?? [], ...store.pendingPermissions ?? []].filter(ask => ask.threadId === id).map(ask => ask.id);
-  return feedEvents(threads.filter(feedThread).map(thread => ({ machine, thread, project: undefined }))).filter(({ rank }) => rank <= NEEDS_RANK)
-    .map(({ lead, helpers }) => {
-      const asks = [lead, ...helpers].flatMap(entry => held(entry.thread.id)).sort();
-      return asks.length ? `asks:${asks.join(',')}` : `thread:${lead.thread.id}:${lead.thread.status}:${lead.thread.updatedAt}`;
-    });
 }
 
 export function activityFeed<M extends { id: string; store: Owner }>(all: readonly FeedSource<M>[], place?: FeedPlace<M>): FeedRow<M>[] {
@@ -153,11 +140,12 @@ export function activityFeed<M extends { id: string; store: Owner }>(all: readon
 /**
  * The threads "Mark all as read" clears: every row but a decision (a permission, a question), which only the user's
  * answer settles; a sub-agent's row counts as its own. Each machine's threads apart, since ids collide between them.
+ * `kinds` narrows it: the rail's middle click on Activity clears the finished rows alone (AppRail.svelte).
  */
-export function readableThreads<M>(rows: readonly Pick<FeedRow<M>, 'machine' | 'thread' | 'kind'>[]): Map<M, ThreadSummary['id'][]> {
+export function readableThreads<M>(rows: readonly Pick<FeedRow<M>, 'machine' | 'thread' | 'kind'>[], kinds: readonly FeedKind[] = ['failed', 'stopped', 'done']): Map<M, ThreadSummary['id'][]> {
   const byMachine = new Map<M, ThreadSummary['id'][]>();
   for (const row of rows) {
-    if (row.kind !== 'failed' && row.kind !== 'stopped' && row.kind !== 'done') continue;
+    if (!row.kind || !kinds.includes(row.kind)) continue;
     byMachine.set(row.machine, [...byMachine.get(row.machine) ?? [], row.thread.id]);
   }
   return byMachine;

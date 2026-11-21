@@ -26,8 +26,7 @@
   import { contextMenu } from '../lib/context-menu.svelte';
   import { dragWindow } from '../lib/window-drag';
   import { isMac } from '../lib/keybindings';
-  import { railBotState, type RailBotState } from '../lib/app-rail';
-  import { activitySeen } from '../lib/activity-seen.svelte';
+  import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
   import { feedThread, inbox } from '../lib/inbox.svelte';
   import { activityFeed, readableThreads } from '../lib/activity-feed';
   import { followActivityReturn } from '../lib/activity-return.svelte';
@@ -89,15 +88,9 @@
     ...teams.map(team => ({ key: `${team.machine.id}:team:${team.team.id}`, kind: 'team' as const, team })),
     ...bots.map(bot => ({ key: `${bot.machine.id}:bot:${bot.row.profile.id}`, kind: 'bot' as const, bot }))
   ], entry => entry.key));
-  /** What Activity holds for the user: the threads waiting on them not seen by a middle click yet, and what contacts ask. */
-  const unseen = $derived(activitySeen.unseen(machines));
-  const waiting = $derived(unseen + inbox.contacts);
+  /** What Activity holds for the user: the threads waiting on them and what contacts ask. */
+  const waiting = $derived(threadsNeedingYou(stores) + inbox.contacts);
   const waitingLabel = $derived(waiting === 1 ? strings.app.rail.waitingOne : fill(strings.app.rail.waitingMany, { count: String(waiting) }));
-  /** What Activity's Mark all as read would clear on every machine (MarkAllRead.svelte): its questions and permissions stay. */
-  const readable = $derived(readableThreads(activityFeed(machines.flatMap(machine =>
-    machine.store.threads.filter(feedThread).map(thread => ({ machine, thread, project: undefined }))))));
-  /** Its name card: what waits, then the middle click while it has something to clear or a number to drop. */
-  const activityNote = $derived([waiting ? waitingLabel : null, readable.size > 0 || unseen > 0 ? strings.app.rail.middleClickRead : null].filter(Boolean).join(' · ') || null);
   /** The conversations at work on every machine, as the projects' Working counts read them: the Threads button's count. */
   const working = $derived(threadsAtWork(stores));
   const workingLabel = $derived(working === 1 ? strings.app.rail.workingOne : fill(strings.app.rail.workingMany, { count: String(working) }));
@@ -179,23 +172,23 @@
     store.sidebarCollapsed = false;
   }
   /** Activity takes the main card, as the phone's tab takes the screen: the open thread steps back to a draft, its panels with it. */
+  /**
+   * A middle click on Activity takes its finished rows off on every machine without opening it, each machine's on its
+   * own core; failures, stops, questions and permissions stay. The feed is read at the click, not kept by the rail.
+   */
+  function clearFinished(event: MouseEvent) {
+    if (event.button !== 1) return;
+    // The middle button scrolls by default; here it clears instead.
+    event.preventDefault();
+    const rows = activityFeed(machines.flatMap(machine => machine.store.threads.filter(feedThread).map(thread => ({ machine, thread, project: undefined }))));
+    for (const [machine, ids] of readableThreads(rows, ['done'])) void machine.store.markRead(ids);
+  }
   function showActivity() {
     inbox.open = true;
     // The Contacts page holds the main card: Activity takes it back.
     if (store.page === 'home') store.showChat();
     if (!onList || store.openThread) store.startDraft(undefined, { refresh: false });
     store.sidebarCollapsed = false;
-  }
-  /**
-   * A middle click on Activity runs its Mark all as read without opening it, and takes the questions and permissions
-   * it leaves off the badge until they ask again (lib/activity-seen.svelte.ts); the touch screens keep the page's button.
-   */
-  function markActivityRead(event: MouseEvent) {
-    if (event.button !== 1) return;
-    // The middle button scrolls by default; here it clears instead.
-    event.preventDefault();
-    activitySeen.see(machines);
-    for (const [machine, ids] of readable) void machine.store.markRead(ids);
   }
   /** A team's chat, in place of any form the Mochis page shows; with `edit` its edit dialog over it. */
   function openTeamChat({ machine, team }: TeamRow, edit = false) {
@@ -369,11 +362,11 @@
   <div class="slot" class:selected={onActivity}>
     <button type="button" class="rail-button" class:on={onActivity} aria-current={onActivity ? 'page' : undefined}
       aria-label={waiting ? `${strings.mobile.activity}, ${waitingLabel}` : strings.mobile.activity}
-      data-testid="nav-activity" onclick={showActivity} onmousedown={markActivityRead}>
+      data-testid="nav-activity" onclick={showActivity} onmousedown={clearFinished}>
       <Inbox size={19} strokeWidth={1.75} />
       {#if waiting}<span class="count" data-testid="rail-activity-waiting">{tally(waiting)}</span>{/if}
     </button>
-    {@render railName(strings.mobile.activity, null, activityNote)}
+    {@render railName(strings.mobile.activity, null, [waiting ? waitingLabel : null, strings.app.rail.middleClickFinished].filter(Boolean).join(' · '))}
   </div>
   <!-- Contacts, a place beside the threads and Activity, never a side of the Bots column. -->
   {#if contactsOn}

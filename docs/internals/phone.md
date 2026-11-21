@@ -401,13 +401,8 @@ followed by running and queued turns. A failure or a stop stays in Activity whil
 unread, as a finish does; Mark all as read (`MarkAllRead.svelte`, desktop and
 phone) calls `threads.markRead` on each machine's core for every listed
 failure, stop and finish, and leaves questions and permissions; a middle click on the
-desktop rail's Activity button (`AppRail.svelte`) runs the same over every machine
-without opening the page, and also takes the rows Needs you holds off the rail's badge
-and the Activity tab (`lib/activity-seen.svelte.ts`, kept in this device's
-`boite.activity.seen`). A row counts again once its key changes: the ids of the
-questions and permissions held for its threads, else its thread's state and last
-update (`storeNeedsKeys`). Activity's own sections, the project counts, the window
-title and the icon badge still count every row. Each list's header shows the machine,
+desktop rail's Activity button (`AppRail.svelte`) does the same for the finished rows
+alone, on every machine, without opening the page (`readableThreads` with `['done']`). Each list's header shows the machine,
 which opens its connection settings, over the screen's name, and the project
 the + starts in, whose sheet also adds a project for owners. A conversation, a mochi's
 page and an open keyboard hide the bar; the conversation's header shows its
