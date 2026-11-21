@@ -107,10 +107,13 @@ describe('projects', () => {
     const client = await harness.connect();
     const { threadId } = await echoThread(harness, client);
     const projectId = harness.core.projects.require(harness.core.threads.require(threadId).projectId).id;
-    harness.core.procs.spawnChild(threadId, process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: harness.dataDir });
+    const child = harness.core.procs.spawnChild(threadId, process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: harness.dataDir });
     await client.call('projects.remove', { projectId });
     expect(harness.core.procs.liveCount(threadId)).toBe(0);
-    expect(harness.core.journal.listProcesses(threadId, 10)).toHaveLength(1);
+    // Native Windows events also trace descendants: a console host the removal
+    // kills before it can be read stays as a nameless row. Count what this core launched.
+    const launched = harness.core.journal.listProcesses(threadId, 10).filter((row) => row.parentPid === process.pid);
+    expect(launched.map((row) => row.pid)).toEqual([child.pid!]);
   });
   test('a path that is not a directory is refused with the path', async () => {
     const client = await harness.connect();
