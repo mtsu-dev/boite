@@ -12,7 +12,7 @@ const STORAGE_PREFIX = 'boite.pull-requests.v1:';
 const MAX_ENTRIES = 500;
 const cache = new Map<string, CachedPullRequest>();
 const pending = new Map<string, CachedPullRequest>();
-let writeTimer: ReturnType<typeof setTimeout> | undefined;
+let writeTimer: number | undefined;
 
 function isEntry(value: unknown): value is CachedPullRequest {
   if (!value || typeof value !== 'object') return false;
@@ -47,10 +47,9 @@ function prune(): void {
 }
 
 function save(): void {
-  clearTimeout(writeTimer);
-  writeTimer = undefined;
-  window.removeEventListener('pagehide', save);
   try {
+    window.clearTimeout(writeTimer);
+    window.removeEventListener('pagehide', save);
     let grew = false;
     // Each window writes only its changed keys. Other windows keep their own updates.
     for (const [key, entry] of pending) {
@@ -61,8 +60,11 @@ function save(): void {
       grew ||= !previous;
     }
     if (grew) prune();
-  } catch { /* The in-memory copy still serves this page. */ }
-  finally { pending.clear(); }
+  } catch { /* The page or its storage is unavailable. */ }
+  finally {
+    writeTimer = undefined;
+    pending.clear();
+  }
 }
 
 export function cachedPullRequest(key: string): CachedPullRequest | undefined {
@@ -85,7 +87,7 @@ export function rememberPullRequest(key: string, pullRequest: PullRequest | null
   keepInMemory(key, entry);
   pending.set(key, entry);
   if (writeTimer !== undefined) return;
-  // Batch the writes from a poll round and flush them before a page reload.
-  writeTimer = setTimeout(save, 500);
+  // The page owns the timer and flushes the batch on pagehide.
+  writeTimer = window.setTimeout(save, 500);
   window.addEventListener('pagehide', save);
 }

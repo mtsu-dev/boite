@@ -33,6 +33,23 @@ test('PR answers from two windows keep their freshness on remount and reload', a
   expect(cachedPullRequest('thread-without-pr')).toMatchObject({ pullRequest: null, checkedAt });
 });
 
+test('a pending PR cache write is discarded when the window is gone', async () => {
+  vi.resetModules();
+  const { rememberPullRequest } = await import('./pull-request-cache');
+  vi.useFakeTimers();
+  try {
+    rememberPullRequest('closing-window', null);
+    // The test host can keep its timers running after discarding the window.
+    vi.stubGlobal('window', undefined);
+    await vi.advanceTimersByTimeAsync(500);
+  } finally {
+    vi.unstubAllGlobals();
+    window.dispatchEvent(new Event('pagehide'));
+    vi.useRealTimers();
+  }
+  expect(localStorage.getItem('boite.pull-requests.v1:closing-window')).toBeNull();
+});
+
 test('one unsupported probe covers concurrent threads on the same core', async () => {
   const call = vi.fn().mockRejectedValue(new RpcFailure({code:RpcErrorCode.MethodNotFound,message:'unknown method threads.pullRequest'}));
   const client = {call} as unknown as Client;
