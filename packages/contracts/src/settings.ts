@@ -172,8 +172,8 @@ export interface Settings {
   goalTracker?: GoalTrackerModel | null;
   /**
    * Automatic goals (`docs/internals/goals.md`): a long prompt starts a
-   * reviewed goal, and `boite goal track` lets an agent start one. False
-   * turns both off on this machine; missing or true, they are on.
+   * reviewed goal, and `boite goal track` lets an agent start one. True
+   * turns both on on this machine; missing or false, they are off.
    */
   autoGoals?: boolean;
   /**

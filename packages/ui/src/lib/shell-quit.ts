@@ -56,12 +56,16 @@ export function desktopQuit(stores: () => Store[], closed: () => void): () => Pr
 export function installQuitGuard(request: () => Promise<void>, failed: (error: unknown) => void): () => void {
   let disposed = false;
   let stop: (() => void) | undefined;
-  void import('@tauri-apps/api/event').then(async ({ listen }) => {
+  void Promise.all([import('@tauri-apps/api/event'), import('@tauri-apps/api/core')]).then(async ([{ listen }, { invoke }]) => {
     if (disposed) return;
-    stop = await listen('boite:quit-requested', () => { void request().catch(failed); });
+    stop = await listen<number>('boite:quit-requested', ({ payload }) => {
+      if (disposed) return;
+      void invoke<boolean>('quit_guard', { received: payload }).then((accepted) => {
+        if (accepted && !disposed) return request();
+      }).catch(failed);
+    });
     if (disposed) { stop(); return; }
-    const { invoke } = await import('@tauri-apps/api/core');
-    if (!disposed) await invoke('quit_guard');
+    await invoke('quit_guard');
   }).catch(failed);
   return () => { disposed = true; stop?.(); };
 }

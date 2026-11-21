@@ -59,6 +59,8 @@ export type AcpSdk = typeof import('@agentclientprotocol/sdk/unstable');
 
 export interface AcpDeps {
   loadSdk: () => Promise<AcpSdk>;
+  /** BoiteOS's agent shim, `BOITEOS_AGENT_SHIM` unless a test names another. */
+  agentShim?: string;
 }
 
 export type Timer = ReturnType<typeof setTimeout>;

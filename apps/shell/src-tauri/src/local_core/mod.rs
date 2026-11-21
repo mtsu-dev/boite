@@ -18,7 +18,7 @@ pub(crate) mod health;
 mod locate;
 mod resolve;
 mod spawn;
-mod starting;
+pub(crate) mod starting;
 #[cfg(test)]
 mod tests;
 
@@ -41,6 +41,23 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 pub struct CoreEndpoint {
     pub url: String,
     pub token: String,
+    #[serde(skip)]
+    port: u16,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub(crate) enum EndpointError {
+    Message(String),
+    Unresponsive {
+        message: String,
+        #[serde(rename = "restartGeneration")]
+        restart_generation: u64,
+    },
+}
+
+impl From<String> for EndpointError {
+    fn from(message: String) -> Self { Self::Message(message) }
 }
 
 #[derive(Default)]
@@ -126,6 +143,8 @@ pub struct CoreState {
     /// Set while an update installs: the core was stopped so the installer can
     /// replace its files, and nothing may start it again from the old ones.
     held: AtomicBool,
+    #[cfg(unix)]
+    install_lock: Mutex<Option<crate::update_stop::InstallLock>>,
 }
 
 /// The refusal a caller gets while an update installs.
@@ -143,16 +162,45 @@ impl CoreState {
             adopted: Mutex::new(None),
             launch,
             held: AtomicBool::new(false),
+            #[cfg(unix)]
+            install_lock: Mutex::new(None),
         }
     }
 
     /// Waits for startup before holding reconnects, then asks the core to hand its turns to the
     /// next one and stop. A core too old for that is asked for an idle-only stop, which
     /// cancellation can still call off.
-    pub(crate) fn wait_for_install(&self, control: &Mutex<crate::update_stop::InstallState>, idle_only: bool, still: impl Fn() -> bool, committed: impl Fn()) -> Result<bool, String> {
-        current_endpoint(self)?;
-        self.held.store(true, Ordering::SeqCst);
-        let stopped = crate::update_stop::stop_for_update(&self.launch.directory, control, idle_only, still, committed);
+    pub(crate) fn wait_for_install(&self, control: &Mutex<crate::update_stop::InstallState>, idle_only: bool, still: impl Fn() -> Result<bool, String>, committed: impl Fn()) -> Result<bool, String> {
+        use crate::update_stop;
+        if self.held.swap(true, Ordering::SeqCst) { return Err(HELD.into()); }
+        let stopped = (|| {
+            // Let an already claimed resolution publish, including a failed
+            // start. New resolutions see the hold and cannot spawn a sidecar.
+            wait_for_endpoint(&self.slot, self.launch.patience())?;
+            reap_child(self);
+            // On Windows the updater exits once NSIS starts. Repair without
+            // a live core needs NSIS to take over the lock for the copy.
+            #[cfg(unix)]
+            if let Some(lock) = update_stop::lock_without_core(&self.launch.directory)? {
+                let mut state = control.lock().map_err(|_| "update admission state is poisoned")?;
+                if state.cancelled() || !still()? { return Ok(false); }
+                *self.install_lock.lock().unwrap() = Some(lock);
+                *state = update_stop::InstallState::Committed;
+                committed();
+                return Ok(true);
+            }
+            if !update_stop::stop_for_update(&self.launch.directory, control, idle_only, still, committed)? {
+                return Ok(false);
+            }
+            #[cfg(unix)]
+            {
+                reap_child(self);
+                let lock = update_stop::lock_without_core(&self.launch.directory)?
+                    .ok_or("another core took the data directory after shutdown; nothing was installed")?;
+                *self.install_lock.lock().unwrap() = Some(lock);
+            }
+            Ok(true)
+        })();
         // The stop leaves the exit of a core this shell started to its `Child`.
         reap_child(self);
         if !matches!(stopped, Ok(true)) {
@@ -163,6 +211,8 @@ impl CoreState {
 
     /// The install did not happen: the next caller starts the core again.
     pub(crate) fn release_hold(&self) {
+        #[cfg(unix)]
+        self.install_lock.lock().unwrap().take();
         self.held.store(false, Ordering::SeqCst);
     }
 
@@ -192,14 +242,26 @@ impl CoreState {
 /// The core token rides in this answer, so the caller is checked like every
 /// other: a page a browser surface loaded asks and is told no.
 #[tauri::command]
-pub(crate) async fn core_endpoint(app: AppHandle, webview: Webview) -> Result<CoreEndpoint, String> {
+pub(crate) async fn core_endpoint(app: AppHandle, webview: Webview, reconnecting: Option<bool>) -> Result<CoreEndpoint, EndpointError> {
     quota_window::only_ui(&webview)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let state = app.try_state::<CoreState>().ok_or("the shell has not set up its core yet")?;
-        current_endpoint(&state)
+        let state = app.try_state::<CoreState>().ok_or_else(|| "the shell has not set up its core yet".to_string())?;
+        current_endpoint(&state, reconnecting.unwrap_or_default())
     })
     .await
     .map_err(|error| format!("the endpoint task did not finish: {error}"))?
+}
+
+/// The main UI sends the generation it offered to restart, never a process ID.
+#[tauri::command]
+pub(crate) async fn core_restart(app: AppHandle, webview: Webview, generation: u64) -> Result<CoreEndpoint, String> {
+    crate::browser::only_main(&webview)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.try_state::<CoreState>().ok_or("the shell has not set up its core yet")?;
+        force_restart(&state, generation)
+    })
+    .await
+    .map_err(|error| format!("the core restart task did not finish: {error}"))?
 }
 
 /// What the core does before it serves, while it says so: the window shows it
@@ -232,14 +294,40 @@ impl Settled {
 /// otherwise the caller resolves again, which adopts or starts a core, so a
 /// reload of the UI or its reconnect brings a stopped core back. Of several
 /// callers only the first to see the dead core resolves; the others wait for it.
-fn current_endpoint(state: &CoreState) -> Result<CoreEndpoint, String> {
+fn current_endpoint(state: &CoreState, reconnecting: bool) -> Result<CoreEndpoint, EndpointError> {
+    if state.held.load(Ordering::SeqCst) {
+        return Err(HELD.to_string().into());
+    }
     let patience = state.launch.patience();
     let settled = wait_for_endpoint(&state.slot, patience)?;
     reap_child(state);
     if !settled.stale() {
-        return settled.outcome;
+        if !reconnecting {
+            return Ok(settled.outcome?);
+        }
+        if let (Ok(endpoint), Some(pid)) = (&settled.outcome, settled.pid) {
+            let answers = health::health(endpoint.port, pid).is_some()
+                || (!settled.stale() && health::health(endpoint.port, pid).is_some());
+            if answers && !settled.stale() {
+                return Ok(settled.outcome?);
+            }
+            reap_child(state);
+            if !settled.stale() {
+                if read_starting(&state.launch.directory).is_some_and(|starting| starting.pid == pid) {
+                    return Err(format!("the local core (pid {pid}) is still starting").into());
+                }
+                // This process was observed serving before. Leave it alone
+                // when it cannot acknowledge a handoff of its active turns.
+                let message = format!("the local core (pid {pid}) is running but no longer answers");
+                return Err(if spawned_alive(state, pid) {
+                    EndpointError::Unresponsive { message, restart_generation: settled.generation }
+                } else {
+                    EndpointError::Message(message)
+                });
+            }
+        }
     }
-    if claim(&state.slot, settled.generation) {
+    if claim(state, settled.generation) {
         let reason = match (&settled.outcome, settled.pid) {
             // Only the first line: the core's output under it stays in the exit record's data.stderrTail.
             (Err(error), _) => format!("the last start failed ({})", error.lines().next().unwrap_or("")),
@@ -250,7 +338,59 @@ fn current_endpoint(state: &CoreState) -> Result<CoreEndpoint, String> {
             serde_json::json!({ "pid": settled.pid, "generation": settled.generation + 1 }));
         publish(&state.slot, resolve_core(state));
     }
-    wait_for_endpoint(&state.slot, patience)?.outcome
+    Ok(wait_for_endpoint(&state.slot, patience)?.outcome?)
+}
+
+fn spawned_alive(state: &CoreState, pid: u32) -> bool {
+    state.child.lock().unwrap().as_mut().is_some_and(|spawned| {
+        spawned.child.id() == pid && matches!(spawned.child.try_wait(), Ok(None))
+    })
+}
+
+fn force_restart(state: &CoreState, generation: u64) -> Result<CoreEndpoint, String> {
+    if state.held.load(Ordering::SeqCst) { return Err(HELD.into()); }
+    let settled = wait_for_endpoint(&state.slot, state.launch.patience())?;
+    if settled.generation != generation {
+        return Err("the local core has already changed".into());
+    }
+    let endpoint = settled.outcome?;
+    let pid = settled.pid.ok_or("the shell cannot identify the local core")?;
+    if !spawned_alive(state, pid) {
+        return Err("the local core is no longer a running child of this shell".into());
+    }
+    if read_starting(&state.launch.directory).is_some_and(|starting| starting.pid == pid)
+        || health::health(endpoint.port, pid).is_some()
+    {
+        return Err("the local core is responding or starting again".into());
+    }
+    if !claim(state, generation) {
+        return Err("the local core is already changing".into());
+    }
+    if let Err(error) = stop_spawned(state, pid) {
+        publish(&state.slot, Ok((endpoint, Some(pid), settled.start)));
+        return Err(error);
+    }
+    crate::shell_log::warn("core", "shell.core.force-restart", format!("restarting the local core pid {pid} at the owner's request"),
+        serde_json::json!({ "pid": pid }));
+    publish(&state.slot, resolve_core(state));
+    wait_for_endpoint(&state.slot, state.launch.patience())?.outcome
+}
+
+/// Only the Child retained by spawn_core can be stopped here. Under this
+/// mutex it cannot have been reaped and its PID reassigned between check and kill.
+fn stop_spawned(state: &CoreState, pid: u32) -> Result<(), String> {
+    let mut guard = state.child.lock().unwrap();
+    let child = &mut guard.as_mut().filter(|spawned| spawned.child.id() == pid)
+        .ok_or("the local core is no longer this shell's child")?.child;
+    let failed = |error| format!("could not stop the local core pid {pid}: {error}");
+    if child.try_wait().map_err(failed)?.is_some() { return Ok(()); }
+    child.kill().map_err(failed)?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while child.try_wait().map_err(failed)?.is_none() {
+        if Instant::now() >= deadline { return Err(format!("the local core pid {pid} did not exit")); }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+    Ok(())
 }
 
 /// Collects the exit of a core this shell started, if it exited. On Linux and
@@ -267,9 +407,9 @@ fn reap_child(state: &CoreState) {
 }
 
 /// Takes the slot for a new resolution if nobody did since `generation` settled.
-fn claim(slot: &(Mutex<Slot>, Condvar), generation: u64) -> bool {
-    let Ok(mut guard) = slot.0.lock() else { return false };
-    if !guard.done || guard.generation != generation {
+fn claim(state: &CoreState, generation: u64) -> bool {
+    let Ok(mut guard) = state.slot.0.lock() else { return false };
+    if state.held.load(Ordering::SeqCst) || !guard.done || guard.generation != generation {
         return false;
     }
     *guard = Slot { generation: generation + 1, ..Slot::default() };

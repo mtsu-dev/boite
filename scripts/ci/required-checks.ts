@@ -36,8 +36,32 @@ export function jobChecks(file: string, id: string, job: Job, load: Load = loadW
   return workflowChecks(called, load).map((inner) => `${name} / ${inner}`);
 }
 
+// A job with this condition runs after its needs whatever their result.
+const AFTER_EVERY_RESULT = '${{ !cancelled() && ';
+
+/**
+ * The shards a check reports through, each mapped to that check's job: a job
+ * that runs after every result of its needs and bears their name without the
+ * `<i>/<n>`, `Core tests (macOS x64)` for `Core tests (macOS x64) 1/2`. Its
+ * step fails unless each shard passed, so the ruleset requires it alone, and
+ * its name stays the one of the single job it replaced.
+ */
+export function shardJobs(jobs: Record<string, Job>): Map<string, string> {
+  const shards = new Map<string, string>();
+  for (const [id, job] of Object.entries(jobs)) {
+    if (!job.name || !job.if?.startsWith(AFTER_EVERY_RESULT)) continue;
+    for (const need of [job.needs ?? []].flat()) {
+      const name = jobs[need]?.name;
+      if (name?.startsWith(`${job.name} `) && /^\d+\/\d+$/.test(name.slice(job.name.length + 1))) shards.set(need, id);
+    }
+  }
+  return shards;
+}
+
 export function workflowChecks(file: string, load: Load = loadWorkflow): string[] {
-  return Object.entries(load(file).jobs).filter(([, job]) => job.if !== NOT_ON_PULL_REQUESTS)
+  const { jobs } = load(file);
+  const shards = shardJobs(jobs);
+  return Object.entries(jobs).filter(([id, job]) => job.if !== NOT_ON_PULL_REQUESTS && !shards.has(id))
     .flatMap(([id, job]) => jobChecks(file, id, job, load));
 }
 

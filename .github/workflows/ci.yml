@@ -250,22 +250,54 @@ jobs:
     timeout-minutes: 15
     steps: *core-steps
 
-  core-macos-x64:
-    name: Core tests (macOS x64)
+  core-macos-x64-1:
+    name: Core tests (macOS x64) 1/2
     needs: changes
     if: needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"macos-15-intel"')
     runs-on: macos-15-intel
     timeout-minutes: 15
+    env:
+      BOITE_TEST_SHARD: 1/2
     steps: *core-steps
 
-  # The native protection fixtures, about 11 minutes of compiler and provider
-  # matrices, run beside the Windows core shards rather than before them.
+  core-macos-x64-2:
+    name: Core tests (macOS x64) 2/2
+    needs: changes
+    if: needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"macos-15-intel"')
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    env:
+      BOITE_TEST_SHARD: 2/2
+    steps: *core-steps
+
+  # The Intel Mac's suite took 13 min 55 s of its job's 15 (2026-11-20): it runs
+  # in two shards and reports under the name the ruleset requires, failing
+  # unless both passed (shardJobs in scripts/ci/required-checks.ts).
+  macos-x64-core:
+    name: Core tests (macOS x64)
+    needs: [changes, core-macos-x64-1, core-macos-x64-2]
+    if: ${{ !cancelled() && needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"macos-15-intel"') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ needs.core-macos-x64-1.result }} ${{ needs.core-macos-x64-2.result }}
+        run: |
+          echo "Core tests (macOS x64) 1/2 and 2/2: $RESULTS"
+          [ "$RESULTS" = 'success success' ]
+
+  # The native protection fixtures run beside the Windows core shards rather
+  # than before them, one job per userspace helper: the SDK build here, with
+  # the diagnostics, and the MinGW build in native-windows-mingw. Each runs
+  # the same matrices, about 6 minutes, where one job ran both in 11.
   native-windows:
     name: Native Windows protection
     needs: changes
     if: needs.changes.outputs.core == 'true' && needs.changes.outputs.nativeWindows == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"windows-2025"')
     runs-on: windows-2025
     timeout-minutes: 25
+    env:
+      NATIVE_HELPER: protected-tool.exe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -362,7 +394,8 @@ jobs:
           path: ${{ runner.temp }}/windows-debug-map/
           retention-days: 3
           if-no-files-found: error
-      - name: Native Windows protected tools
+      - &native-tools
+        name: Native Windows protected tools
         env:
           BOITE_TEST_NATIVE_EXECUTION: '1'
           BOITE_DIAGNOSE_JOB_EVENTS: '1'
@@ -370,14 +403,10 @@ jobs:
           TMP: ${{ runner.temp }}
         shell: pwsh
         run: |
-          $failed = $false
-          foreach ($helper in @('protected-tool.exe', 'protected-tool-mingw.exe')) {
-            Write-Host "Native fixture helper: $helper"
-            $env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\$helper"
-            bun test packages/core/test/protected-windows.test.ts --timeout 120000
-            if ($LASTEXITCODE -ne 0) { $failed = $true }
-          }
-          if ($failed) { exit 1 }
+          Write-Host "Native fixture helper: $env:NATIVE_HELPER"
+          $env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\$env:NATIVE_HELPER"
+          bun test packages/core/test/protected-windows.test.ts --timeout 120000
+          if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: Preserve native helper comparison
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -385,14 +414,16 @@ jobs:
           name: protected-windows-helper-comparison
           path: ${{ runner.temp }}/protected-tool*.exe
           retention-days: 3
-      - name: Prepare synthetic native providers
+      - &native-providers
+        name: Prepare synthetic native providers
         id: native_providers
         if: ${{ !cancelled() && steps.native_helper.outcome == 'success' }}
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
         run: bun packages/core/test/fixtures/prepare-native-providers.ts
-      - name: Native Windows provider and shared scopes
+      - &native-scopes
+        name: Native Windows provider and shared scopes
         if: ${{ !cancelled() && steps.native_providers.outcome == 'success' }}
         env:
           BOITE_TEST_NATIVE_EXECUTION: '1'
@@ -401,16 +432,34 @@ jobs:
           TMP: ${{ runner.temp }}
         shell: pwsh
         run: |
+          Write-Host "Native provider/shared fixture helper: $env:NATIVE_HELPER"
+          $env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\$env:NATIVE_HELPER"
           $failed = $false
-          foreach ($helper in @('protected-tool.exe', 'protected-tool-mingw.exe')) {
-            Write-Host "Native provider/shared fixture helper: $helper"
-            $env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\$helper"
-            bun test packages/core/test/protected-drivers.test.ts packages/core/test/protected-adapters.test.ts packages/core/test/shared-access.test.ts -t 'native control|useful edits and child|protected .*(remote jobs|scopes retire)' --timeout 120000
-            if ($LASTEXITCODE -ne 0) { $failed = $true }
-            bun test packages/core/test/protected-muse.test.ts --timeout 120000
-            if ($LASTEXITCODE -ne 0) { $failed = $true }
-          }
+          bun test packages/core/test/protected-drivers.test.ts packages/core/test/protected-adapters.test.ts packages/core/test/shared-access.test.ts -t 'native control|useful edits and child|protected .*(remote jobs|scopes retire)' --timeout 120000
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
+          bun test packages/core/test/protected-muse.test.ts --timeout 120000
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
           if ($failed) { exit 1 }
+
+  # The same matrices with the MinGW build of the helper, which the SDK build
+  # must match (docs/internals/ci.md#pull-request-runs).
+  native-windows-mingw:
+    name: Native Windows protection (MinGW)
+    needs: changes
+    if: needs.changes.outputs.core == 'true' && needs.changes.outputs.nativeWindows == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"windows-2025"')
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      NATIVE_HELPER: protected-tool-mingw.exe
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - *native-helper
+      - *native-tools
+      - *native-providers
+      - *native-scopes
 
   # Two shards written out, like the core jobs; vitest splits the files by
   # count. The first also runs the type checks.

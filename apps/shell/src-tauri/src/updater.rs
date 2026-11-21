@@ -61,6 +61,20 @@ struct Operation<'a>(&'a AtomicBool);
 impl Drop for Operation<'_> { fn drop(&mut self) { self.0.store(false, Ordering::Release); } }
 
 impl AppUpdater {
+    #[cfg(windows)]
+    pub(crate) fn install_control(&self) -> Arc<Mutex<crate::update_stop::InstallState>> {
+        self.install.clone()
+    }
+
+    fn finish_install(&self, app: &AppHandle) {
+        if let Some(core) = app.try_state::<crate::local_core::CoreState>() { core.release_hold(); }
+        let restart = self.install.lock().unwrap().finish();
+        #[cfg(windows)]
+        if restart { crate::platform::watch::restart_webview(app); }
+        #[cfg(not(windows))]
+        let _ = restart;
+    }
+
     pub fn new(version: String, directory: PathBuf, supported: bool) -> Self {
         let current_channel = Track::of(&version);
         let preference = directory.join("update-channel.json");
@@ -335,31 +349,31 @@ fn read_policy(file: &std::path::Path) -> Option<String> {
     }
 }
 
-/// The refusal the policy's `updates.app` gives the app's updater, if any. A file
-/// that does not parse, or a value that is not off, check or auto, is the
-/// strictest value: off. The core enforces the same key for everything else.
-fn app_updates_refusal(text: Option<&str>, file: &str) -> Option<String> {
+/// The refusal the policy's `updates.app` gives the updater. Invalid policy
+/// fails closed. Check allows manual installs and disables quiet installs.
+fn app_updates_refusal(text: Option<&str>, file: &str, automatic_install: bool) -> Option<String> {
     let text = text?;
     let refusal = || Some(format!("Desktop app updates: blocked by your organization's policy, key updates.app in {file}"));
     let Ok(policy) = serde_json::from_str::<serde_json::Value>(text.trim_start_matches('\u{feff}')) else { return refusal() };
     let Some(policy) = policy.as_object() else { return refusal() };
     let Some(updates) = policy.get("updates")?.as_object() else { return refusal() };
     match updates.get("app").map(|value| value.as_str()) {
-        None | Some(Some("check")) | Some(Some("auto")) => None,
+        None | Some(Some("auto")) => None,
+        Some(Some("check")) if !automatic_install => None,
         _ => refusal(),
     }
 }
 
-fn app_updates_blocked() -> Result<(), String> {
+fn app_updates_blocked(automatic_install: bool) -> Result<(), String> {
     let file = policy_file();
     let text = read_policy(&file);
-    match app_updates_refusal(text.as_deref(), &file.display().to_string()) { Some(message) => Err(message), None => Ok(()) }
+    match app_updates_refusal(text.as_deref(), &file.display().to_string(), automatic_install) { Some(message) => Err(message), None => Ok(()) }
 }
 
 #[tauri::command]
 pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_, AppUpdater>, channel: Track, force: Option<bool>) -> Result<Snapshot, String> {
     crate::browser::only_main(&webview)?;
-    app_updates_blocked()?;
+    app_updates_blocked(false)?;
     // Only the owner's Check for updates passes `force`: an automatic check
     // reuses a recent answer and waits out GitHub's rate limit (#991).
     let current = state.snapshot.lock().unwrap().clone();
@@ -413,7 +427,7 @@ pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_,
 #[tauri::command]
 pub async fn app_update_download(webview: Webview, app: AppHandle, state: State<'_, AppUpdater>) -> Result<Snapshot, String> {
     crate::browser::only_main(&webview)?;
-    app_updates_blocked()?;
+    app_updates_blocked(false)?;
     let _operation = state.begin()?;
     if state.snapshot.lock().unwrap().phase != "available" { return Err("Check for an available update before downloading".into()); }
     let update = state.pending.lock().unwrap().as_ref().ok_or("No update to download")?.update.clone();
@@ -449,9 +463,7 @@ pub async fn app_update_cancel_install(webview: Webview, state: State<'_, AppUpd
     let control = state.install.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut install = control.lock().map_err(|_| "update admission state is poisoned")?;
-        if *install != crate::update_stop::InstallState::Waiting { return Ok(false); }
-        *install = crate::update_stop::InstallState::Cancelled;
-        Ok(true)
+        Ok(install.cancel())
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -471,6 +483,7 @@ pub async fn app_update_install_quietly(webview: Webview, app: AppHandle, state:
 }
 
 async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> Result<bool, String> {
+    app_updates_blocked(quiet)?;
     let _operation = state.begin()?;
     if state.snapshot.lock().unwrap().phase != "ready" { return Err("Download and verify an update before installing".into()); }
     // A window on screen may be in use, even with nothing running: its restart would take it away.
@@ -485,30 +498,37 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
         let error = "Downloaded update changed after signature verification".to_string();
         state.fail(&app, error.clone()); return Err(error);
     }
-    *state.install.lock().unwrap() = crate::update_stop::InstallState::Waiting;
+    if !state.install.lock().unwrap().start() {
+        *state.pending.lock().unwrap() = Some(pending);
+        return Ok(false);
+    }
     // Nobody waits on an automatic install: it says nothing until the core has agreed to stop.
-    if !quiet { state.change(&app, |s| s.phase = "waiting".into()); }
+    if !quiet { state.change(&app, |s| { s.phase = "waiting".into(); s.error = None; }); }
     let core = app.clone();
     let control = state.install.clone();
     let stopped = tauri::async_runtime::spawn_blocking(move || match core.try_state::<crate::local_core::CoreState>() {
         // Checked again right before the core is asked: a window restored from the tray meanwhile calls it off.
-        Some(engine) => engine.wait_for_install(&control, quiet, || !crate::window::main_window(&core).is_some_and(|window| window.is_visible().unwrap_or(true)), || {
-            core.state::<AppUpdater>().change(&core, |s| s.phase = "installing".into());
+        Some(engine) => engine.wait_for_install(&control, quiet, || {
+            app_updates_blocked(quiet)?;
+            Ok(!quiet || !crate::window::main_window(&core).is_some_and(|window| window.is_visible().unwrap_or(true)))
+        }, || {
+            core.state::<AppUpdater>().change(&core, |s| { s.phase = "installing".into(); s.error = None; });
         }),
         None => Err("the shell has no local core state; nothing was installed".into()),
     }).await;
     match stopped {
         Ok(Ok(true)) => {},
         Ok(Ok(false)) => {
-            *state.install.lock().unwrap() = crate::update_stop::InstallState::Idle;
             *state.pending.lock().unwrap() = Some(pending);
             state.change(&app, |s| { s.phase = "ready".into(); s.error = None; });
+            state.finish_install(&app);
             return Ok(false);
         },
         outcome => {
-            *state.install.lock().unwrap() = crate::update_stop::InstallState::Idle;
             let error = match outcome { Ok(Err(e)) => e, Err(e) => e.to_string(), _ => unreachable!() };
-            state.fail(&app, error.clone());
+            *state.pending.lock().unwrap() = Some(pending);
+            state.change(&app, |s| { s.phase = "ready".into(); s.error = Some(error.clone()); });
+            state.finish_install(&app);
             return Err(error);
         }
     }
@@ -521,9 +541,15 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
     crate::shell_log::info("updater", "shell.update.install", format!("starting the installer for app update {version}; the shell exits or restarts next"),
         serde_json::json!({ "version": version, "bytes": bytes.len() as u64 }));
     crate::shell_log::flush(Duration::from_millis(500));
-    let result = tauri::async_runtime::spawn_blocking(move || pending.update.install(bytes)).await;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let installed = crate::update_stop::launch_if_allowed(
+            || app_updates_blocked(quiet),
+            || pending.update.install(bytes).map_err(|e| e.to_string()),
+        );
+        (pending, installed)
+    }).await;
     match result {
-        Ok(Ok(())) => {
+        Ok((_pending, Ok(()))) => {
             // Windows never gets here: Tauri exits once the installer starts.
             std::env::set_var(crate::RESTARTED_AFTER_UPDATE, "1");
             crate::shell_log::info("updater", "shell.update.restart", format!("app update {version} installed; restarting the shell"), serde_json::json!({ "version": version }));
@@ -531,11 +557,21 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
             app.restart();
         }
         outcome => {
-            if let Some(core) = app.try_state::<crate::local_core::CoreState>() { core.release_hold(); }
             let _ = std::fs::remove_file(&state.quiet_restart);
-            *state.install.lock().unwrap() = crate::update_stop::InstallState::Idle;
-            let error = match outcome { Ok(Err(e)) => e.to_string(), Err(e) => e.to_string(), _ => unreachable!() };
-            state.fail(&app, error.clone());
+            let error = match outcome {
+                Ok((pending, Err(error))) => {
+                    *state.pending.lock().unwrap() = Some(pending);
+                    state.change(&app, |s| { s.phase = "ready".into(); s.error = Some(error.clone()); });
+                    error
+                }
+                Err(error) => {
+                    let error = error.to_string();
+                    state.fail(&app, error.clone());
+                    error
+                }
+                Ok((_, Ok(()))) => unreachable!(),
+            };
+            state.finish_install(&app);
             Err(error)
         }
     }
@@ -546,12 +582,13 @@ mod tests {
     use super::*;
     #[test]
     fn admin_policy_turns_app_updates_off_and_fails_closed() {
-        assert_eq!(app_updates_refusal(None, "p.json"), None);
-        assert_eq!(app_updates_refusal(Some("{}"), "p.json"), None);
-        assert_eq!(app_updates_refusal(Some(r#"{"updates":{"app":"check"}}"#), "p.json"), None);
-        assert!(app_updates_refusal(Some(r#"{"updates":{"app":"off"}}"#), "p.json").unwrap().contains("updates.app in p.json"));
-        assert!(app_updates_refusal(Some(r#"{"updates":{"app":"never"}}"#), "p.json").is_some());
-        assert!(app_updates_refusal(Some("{not json"), "p.json").is_some());
+        assert_eq!(app_updates_refusal(None, "p.json", true), None);
+        assert_eq!(app_updates_refusal(Some("{}"), "p.json", true), None);
+        assert_eq!(app_updates_refusal(Some(r#"{"updates":{"app":"check"}}"#), "p.json", false), None);
+        assert!(app_updates_refusal(Some(r#"{"updates":{"app":"check"}}"#), "p.json", true).is_some());
+        assert!(app_updates_refusal(Some(r#"{"updates":{"app":"off"}}"#), "p.json", false).unwrap().contains("updates.app in p.json"));
+        assert!(app_updates_refusal(Some(r#"{"updates":{"app":"never"}}"#), "p.json", false).is_some());
+        assert!(app_updates_refusal(Some("{not json"), "p.json", false).is_some());
     }
     #[test]
     fn policy_read_is_bounded_and_the_first_present_location_wins() {
@@ -567,7 +604,7 @@ mod tests {
         let large = dir.join("large.json");
         std::fs::write(&large, format!("{{\"pad\":\"{}\"}}", "x".repeat(MAX_POLICY_BYTES as usize))).unwrap();
         assert_eq!(read_policy(&large).as_deref(), Some(""));
-        assert!(app_updates_refusal(read_policy(&large).as_deref(), "p.json").is_some());
+        assert!(app_updates_refusal(read_policy(&large).as_deref(), "p.json", false).is_some());
         assert_eq!(first_present(&[dir.join("missing.json"), small.clone()]), Some(small));
         assert_eq!(first_present(&[dir.join("missing.json")]), None);
         std::fs::remove_dir_all(&dir).unwrap();

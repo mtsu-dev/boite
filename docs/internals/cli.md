@@ -863,8 +863,8 @@ or claimed cards, with the count in the refusal; the user's adds have no limit.
 
 `goal track` starts a reviewed goal on the agent's own thread whose objective is
 the user's last prompt (a steer included), verbatim, and, on a project thread that is not incognito, a linked card on the project board. It is
-refused when the owner turned automatic goals off on this machine (`autoGoals`,
-reason `auto-goals-off`), while a goal or a loop is under way, and when that prompt already started a goal
+refused while automatic goals are off on this machine (`autoGoals`, off unless
+`true`, reason `auto-goals-off`), while a goal or a loop is under way, and when that prompt already started a goal
 ([automatic goals](goals.md#automatic-goals)).
 
 `ask` draws a question card in the thread without stopping the agent: the

@@ -4,13 +4,30 @@ import type { FakeClient } from './fake-client';
 
 const prompt = (length: number) => `Fix the login page.\n${'x'.repeat(length - 20)}`;
 
+/** Automatic goals are off on a fresh machine: the owner turns them on, as these tests are about them. */
+async function goalsOn(client: FakeClient) {
+  await client.call('settings.set', { autoGoals: true });
+  return client;
+}
+
 async function freshThread(client: FakeClient) {
   const source = await client.call('threads.get', { threadId: 't-parser' });
   return client.call('threads.create', { projectId: source.projectId!, providerId: source.providerId, accountId: source.accountId, model: source.model ?? undefined });
 }
 
-test('the fake starts an automatic goal and its card on a long prompt, as the core does', async ({ createClient }) => {
+test('a fresh fake starts no automatic goal and refuses goal track, as the core does', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
+  expect((await client.call('settings.get', {})).autoGoals).toBeUndefined();
+  const thread = await freshThread(client);
+  await client.call('turns.start', { threadId: thread.id, prompt: prompt(5000) });
+  await client.settled();
+  expect((await client.call('threads.get', { threadId: thread.id })).activity?.goal ?? null).toBeNull();
+  await expect(client.call('threads.goal.track', { threadId: thread.id })).rejects.toThrow('automatic goals, which are off on this machine');
+  expect((await client.call('todos.list', { threadId: thread.id })).some(card => card.goalThreadId === thread.id)).toBe(false);
+});
+
+test('the fake starts an automatic goal and its card on a long prompt, as the core does', async ({ createClient }) => {
+  const client = await goalsOn(await createClient({ delayMs: 0 }));
   const short = await freshThread(client);
   await client.call('turns.start', { threadId: short.id, prompt: prompt(1499) });
   expect((await client.call('threads.get', { threadId: short.id })).activity?.goal ?? null).toBeNull();
@@ -32,15 +49,16 @@ test('the fake goal track takes the last prompt once and refuses with automatic 
   const client = await createClient({ delayMs: 0 });
   const thread = await freshThread(client);
   await client.call('turns.start', { threadId: thread.id, prompt: 'Fix the login and the signup' });
+  await expect(client.call('threads.goal.track', { threadId: thread.id })).rejects.toThrow('automatic goals, which are off on this machine');
   await client.call('settings.set', { autoGoals: false });
-  await expect(client.call('threads.goal.track', { threadId: thread.id })).rejects.toThrow('the owner turned off on this machine');
+  await expect(client.call('threads.goal.track', { threadId: thread.id })).rejects.toThrow('automatic goals, which are off on this machine');
   await client.call('settings.set', { autoGoals: true });
   expect((await client.call('threads.goal.track', { threadId: thread.id })).goal).toMatchObject({ objective: 'Fix the login and the signup', auto: true });
   await expect(client.call('threads.goal.track', { threadId: thread.id })).rejects.toThrow('already has a goal or a loop');
 });
 
 test('the fake takes the prompt\'s own turn as the goal\'s first and keeps the objective verbatim', async ({ createClient }) => {
-  const client = await createClient({ delayMs: 0 });
+  const client = await goalsOn(await createClient({ delayMs: 0 }));
   const thread = await freshThread(client);
   const text = `  ${prompt(1500)}\n`;
   await client.call('turns.start', { threadId: thread.id, prompt: text });
@@ -52,7 +70,7 @@ test('the fake takes the prompt\'s own turn as the goal\'s first and keeps the o
 });
 
 test('the fake goal track takes a steer as the last prompt', async ({ createClient }) => {
-  const client = await createClient({ delayMs: 300 });
+  const client = await goalsOn(await createClient({ delayMs: 300 }));
   const thread = await freshThread(client);
   const turn = await client.call('turns.start', { threadId: thread.id, prompt: 'Start' });
   await client.call('turns.steer', { threadId: thread.id, turnId: turn.id, prompt: 'Fix the login and the signup', clientRequestId: 'steer_track_01', expectedSelectionVersion: 0 });
@@ -61,7 +79,7 @@ test('the fake goal track takes a steer as the last prompt', async ({ createClie
 });
 
 test('the fake unlinks a claimed card when another goal replaces the automatic one', async ({ createClient }) => {
-  const client = await createClient({ delayMs: 0 });
+  const client = await goalsOn(await createClient({ delayMs: 0 }));
   const thread = await freshThread(client);
   await client.call('turns.start', { threadId: thread.id, prompt: prompt(1500) });
   const card = async () => (await client.call('todos.list', { threadId: thread.id })).find(todo => todo.text === 'Fix the login page.');

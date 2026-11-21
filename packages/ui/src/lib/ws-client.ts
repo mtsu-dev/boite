@@ -84,9 +84,9 @@ export class WsClient implements ObservableClient {
   #manuallyClosed = false;
   #opening: Promise<CoreInfo> | null = null;
   #cancelOpen: (() => void) | null = null;
-  /** Remote sockets are probed when silent; a loopback one never goes half-open. */
+  /** Remote sockets request sliced answers and race the old link on resume. */
   #remote: boolean;
-  #lastFrameAt = 0;
+  #lastFrameAt = Date.now();
   /** Frames received on this client: a call compares it with the count it was sent at, two of which may share a millisecond. */
   #framesReceived = 0;
   /** Bytes sent since the last frame arrived: the core answers nothing before it has read them. */
@@ -110,6 +110,7 @@ export class WsClient implements ObservableClient {
       device: options.device ?? (() => null),
       socketFactory: options.socketFactory ?? browserSocket,
       reconnect: options.reconnect ?? true,
+      monitorLocal: options.monitorLocal ?? false,
       backoff: options.backoff ?? defaultBackoff,
       openDeadline: options.openDeadline ?? openDeadline
     };
@@ -136,7 +137,12 @@ export class WsClient implements ObservableClient {
     return this.#state;
   }
 
-  /** A socket to another machine, which can go half-open; the shell's own core and a page on its machine cannot. */
+  /** The last received frame, or when this client first began waiting for one. */
+  get lastFrameAt(): number {
+    return this.#lastFrameAt;
+  }
+
+  /** A socket whose origin is outside loopback. */
   get remote(): boolean {
     return this.#remote;
   }
@@ -740,9 +746,9 @@ export class WsClient implements ObservableClient {
     this.#scheduleRetry('probe');
   }
 
-  /** One timer per ready remote socket, re-armed from its own callback rather than on every frame. */
+  /** One timer per watched socket, re-armed from its own callback rather than on every frame. */
   #armLiveness(delayMs: number): void {
-    if (!this.#remote || this.#liveness !== null) return;
+    if ((!this.#remote && !this.#options.monitorLocal) || this.#liveness !== null) return;
     this.#liveness = setTimeout(() => {
       this.#liveness = null;
       const socket = this.#socket;
@@ -751,9 +757,9 @@ export class WsClient implements ObservableClient {
       if (pageHidden()) { this.#armLiveness(IDLE_PROBE_MS); return; }
       const quiet = Date.now() - this.#lastFrameAt;
       if (quiet < IDLE_PROBE_MS) { this.#armLiveness(IDLE_PROBE_MS - quiet); return; }
-      // A core that answers in one frame may still be downloading the answer a call waits for:
-      // that call's own timeout asks the socket instead.
-      if (!this.#sliced() && this.#awaitingAnswer()) { this.#armLiveness(IDLE_PROBE_MS); return; }
+      // Over a remote link an unsliced answer may still be downloading. The
+      // local core's socket also needs a deadline when an RPC is outstanding.
+      if (!this.#options.monitorLocal && !this.#sliced() && this.#awaitingAnswer()) { this.#armLiveness(IDLE_PROBE_MS); return; }
       void this.#probeSocket(socket, PROBE_DEADLINE_MS).then((alive) => {
         if (alive) this.#armLiveness(IDLE_PROBE_MS);
         else this.#lost(socket);
