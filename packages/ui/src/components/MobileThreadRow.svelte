@@ -13,6 +13,7 @@
   import MachinePlace from './MachinePlace.svelte';
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline from './ThreadHeadline.svelte';
+  import ThreadBot from './ThreadBot.svelte';
   import PullRequestBadge from './PullRequestBadge.svelte';
   import ThreadState from './ThreadState.svelte';
   import { wordFit } from '../lib/word-fit';
@@ -24,6 +25,7 @@
   import ActivityKind from './ActivityKind.svelte';
   import ClampText from './ClampText.svelte';
   import { collapseRow } from '../lib/row-collapse';
+  import { agentDirectory } from '../lib/agent-directory.svelte';
 
   /**
    * A phone's thread row, the desktop row's grammar at a finger's size (ThreadHeadline.svelte): the title gets the
@@ -62,6 +64,7 @@
   const pin = $derived(items.find(item => item.id === 'pin'));
   const archive = $derived(items.find(item => item.id === 'archive'));
   const kind = $derived(thread.archived ? null : threadState(thread, rowAsks(owner, thread.id)));
+  const bot = $derived(agentDirectory(owner).rowAgentOf(thread));
   /** A dot when the user must act or a turn failed, the arc for work, each with its word; "Done" for news; the time alone otherwise (ThreadState draws it then). */
   const form = $derived(stateForm(kind));
   const away = $derived(owner.connection !== 'ready');
@@ -72,7 +75,7 @@
   /** "Offline" said once: on the place line, unless the card's head, the place's machine or the row's own state
       (work it last saw, ThreadState.svelte) already says it. */
   const chip = $derived(away && !placed && !where?.host?.away && form !== 'work');
-  const listLine = $derived(reason === undefined && (!!where || chip || !!branch || pullRequest !== null));
+  const listLine = $derived(reason === undefined && (!!bot || !!where || chip || !!branch || pullRequest !== null));
   /** Activity: what the thread asks, in words, a question whole; nothing when its reason only names the place line's project. */
   const ask = $derived(reason === undefined ? null : feedQuestion(owner, thread.id) ?? feedAsk(owner, thread.id, { reason, place: where?.project }));
   /** Activity: the whole command the thread asks to run, read before Allow. */
@@ -98,7 +101,17 @@
 </script>
 
 {#snippet placeLine(since?: number)}
-  <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}{#if pullRequest}<PullRequestBadge {pullRequest} />{/if}{#if branch}<span class="branch" data-testid="thread-branch" title={branch}><GitBranch size={12} /><span class="ui-label">{branch}</span></span>{/if}</span>{#if since !== undefined}<time class="since ui-label" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
+  <span class="meta" data-testid="mobile-row-meta">
+    <span class="where" data-testid="mobile-row-where" title={where?.text}>
+      {#if bot}<ThreadBot {bot} attention={kind === 'waiting'} />{/if}
+      {#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}
+      {#if where?.host}<MachinePlace host={where.host} />{/if}
+      {#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}
+      {#if pullRequest}<PullRequestBadge {pullRequest} />{/if}
+      {#if branch}<span class="branch" data-testid="thread-branch" title={branch}><GitBranch size={12} /><span class="ui-label">{branch}</span></span>{/if}
+    </span>
+    {#if since !== undefined}<time class="since ui-label" title={exactTime(since)}>{ago(since, now)}</time>{/if}
+  </span>
 {/snippet}
 {#snippet why()}{@render placeLine(verb || !feedKind ? at : undefined)}{/snippet}
 
@@ -121,7 +134,7 @@
       {#if reason !== undefined}
         <span class="title-line" data-row-title>{#if !feedKind && form !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} offline={away} ask={why} /></span>
       {:else}
-        <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} offline={away}
+        <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} showProvider={bot !== null} offline={away}
           at={rowSaysState(kind) ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
       {/if}
       {#if listLine}<span class="meta meta-room" aria-hidden="true"><span class="ui-label">&nbsp;</span></span>{/if}
@@ -162,6 +175,10 @@
      buttons under it. */
   .body { position: relative; display: flow-root; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); transition: transform var(--dur-3) var(--ease-out-quint); background: var(--row-background, var(--color-background)); }
   .body:global(.dragging) { transition: none; }
+  @media (hover: hover) {
+    .thread:hover + .list-meta { --avatar-rest: none; }
+  }
+  .thread:focus-visible + .list-meta { --avatar-rest: none; }
   /* The title's line, its mark and time at its end, then where it lives: a finger's 44 px at least. */
   .thread { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px; width: 100%; min-height: var(--touch-target); height: auto; padding: 10px 12px; border-radius: 0; text-align: left; font-size: var(--text-reading); color: var(--color-foreground); }
   /* The line under the title, in the list's quiet ink, from the title's edge: where the row lives, or a sub-agent
@@ -214,7 +231,7 @@
   /* The ring every row draws, inside the box: the list's edge would clip one outside it. */
   .thread:focus-visible { outline-offset: -2px; }
   .thread :global(.headline) { gap: 10px; align-items: flex-start; }
-  .thread :global(.headline > :is(.tile, .bot)) { margin-top: calc(0.36 * var(--text-reading) - 8px); }
+  .thread :global(.headline > .tile) { margin-top: calc(0.36 * var(--text-reading) - 8px); }
   .thread :global(.headline > .provider) { margin-top: calc(0.36 * var(--text-reading) - 7px); }
   /* A phone reads every title at full ink: the mark says which rows need the user. Two lines of it before the
      ellipsis in the lists; Activity's are whole, since the row is about them. */

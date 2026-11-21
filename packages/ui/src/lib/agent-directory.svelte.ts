@@ -173,6 +173,17 @@ export class AgentDirectory {
     return agentId ? snapshot.profiles.find(a => a.id === agentId) ?? null : null;
   }
 
+  /** The agent responsible for the thread in a list. Following a thread alone does not assign it. */
+  rowAgentOf(thread: ThreadSummary): AgentProfile | null {
+    const snapshot = this.snapshot;
+    if (!snapshot) return null;
+    const assigned = this.ownerOf(thread) ?? this.entrustmentOf(thread.id)?.agent;
+    if (assigned) return assigned;
+    const watch = snapshot.watches.find(watch => watch.threadId === thread.id && watch.coreId === undefined
+      && (watch.origin === 'started' || watch.origin === 'entrusted'));
+    return watch ? snapshot.profiles.find(agent => agent.id === watch.agentId) ?? null : null;
+  }
+
   /**
    * Every agent busy on this machine: a turn under way in its thread, or one
    * that waits on the user (a question or a permission). The one waiting on
