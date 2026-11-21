@@ -34,6 +34,13 @@ animation frame, computed overflow cached per element, layout read only for the
 containers on the pointer's path, and scroll and wheel listeners only while a
 thumb shows. Turning it off removes the class, the overlay and every listener.
 
+The app rail's `+` under the mochis follows the same gate in CSS, on its own:
+under it, the button rests at zero opacity and fades on the thumbs'
+`--dur-2` and `--ease-out-quint` while the pointer is over the rail, the
+keyboard is in it (`:focus-visible`) or its menu is open (`aria-expanded`).
+It keeps its place and its accessible name. A rail with no mochi or team yet
+shows it at rest. `touch-quiet.test.ts` and `desktop-ux.test.ts` cover it.
+
 ## Load on press
 
 Always on, with no switch.

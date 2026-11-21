@@ -16,7 +16,8 @@ at the picture to read it in words beside the mochi's name.
 ## Create a mochi
 
 1. On the desktop, press the `+` under the mochis in the app rail and pick a
-   new mochi. On a phone, open Mochis and press New mochi.
+   new mochi. Under a mouse, the `+` fades in when the pointer comes to the
+   rail. On a phone, open Mochis and press New mochi.
 2. Give it a name and, under What it does, its standing instructions, for
    example "every morning, read the new issues and sum them up in five lines".
 3. Its robot, model and projects come filled in; change them if you like. It
