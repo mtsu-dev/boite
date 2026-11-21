@@ -577,7 +577,7 @@ export class AccountStore {
       });
     } catch (error) {
       this.#core.providers.installs.release(provider.id);
-      void folders?.dispose();
+      this.operations.settle(accountId, folders?.dispose());
       throw refused(`the ${provider.name} agent did not start: ${messageOf(error)}`, {
         accountId,
         command: launch.executable,
@@ -660,8 +660,8 @@ export class AccountStore {
     acp.kill();
     this.#core.procs.killTree(loginThreadId(accountId));
     await acp.exited;
-    // Removing an unpacked agent takes seconds; the sign-in result does not wait for it.
-    void scratch?.();
+    // Removing an unpacked agent takes seconds; the sign-in result does not wait for it, an account removal does.
+    this.operations.settle(accountId, scratch?.());
     if (!this.#core.journal.isClosed()) {
       try {
         const provider = this.#core.providers.require(this.require(accountId).providerId);
