@@ -132,7 +132,7 @@ test('a single quota window fills the row in the desktop glance and narrow tray'
   }
 }, 60_000);
 
-test('a limits card keeps a step of room between its window lines, labels and bars, and the reset line', async () => {
+test('a limits card keeps room between its window lines, labels and bars, and the reset line', async () => {
   for (const view of ['desktop', 'tray', 'phone']) {
     await page.send('Emulation.setDeviceMetricsOverride', { width: view === 'desktop' ? 1280 : 390, height: view === 'desktop' ? 850 : 640, deviceScaleFactor: 1, mobile: view === 'phone' });
     await page.navigate(`${origin}/?fake=1&open=recent${view === 'desktop' ? '' : '&view=quotas'}`);
@@ -182,13 +182,11 @@ test('a limits card keeps a step of room between its window lines, labels and ba
           labels: labels.map(label => label.parentElement.querySelector('.track').getBoundingClientRect().left - label.getBoundingClientRect().right),
           overflow: name.scrollWidth > name.clientWidth };
       })()`);
-      // Between two window lines, at least a capital's height of free room; the name above and the reset line below keep that step.
+      // Between two window lines and under the name, at least a capital's height of free room. The reset line gets the
+      // 7 px five accounts leave in the 460 px tray (the popup test below keeps them all in view), up from main's 5.
       expect(room.lines).toHaveLength(count === 3 ? 1 : 0);
-      for (const gap of room.lines) expect(gap).toBeGreaterThanOrEqual(room.cap);
-      for (const gap of [room.name, room.reset]) {
-        expect(gap).toBeGreaterThanOrEqual(room.cap);
-        if (room.lines.length) expect(Math.abs(gap - room.lines[0]!)).toBeLessThanOrEqual(1.5);
-      }
+      for (const gap of [...room.lines, room.name]) expect(gap).toBeGreaterThanOrEqual(room.cap);
+      expect(room.reset).toBeGreaterThanOrEqual(7);
       // A label's column ends a step before its bar.
       for (const gap of room.labels) expect(gap).toBeCloseTo(8, 0);
       // A long account name stays on its one line, cut short, rather than pushing the windows down.
