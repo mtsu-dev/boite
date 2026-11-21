@@ -53,7 +53,7 @@
   import { tabHeader } from '../lib/tab-header.svelte';
   import EmptyState from './EmptyState.svelte';
   import MarkAllRead from './MarkAllRead.svelte';
-  import { threadsNeedingYou } from '../lib/app-rail';
+  import { activitySeen } from '../lib/activity-seen.svelte';
   import { needsUser, projectRollup, threadState } from '../lib/thread-state';
   import { foldQuiet } from '../lib/card-fold';
   import { minuteClock } from '../lib/clock.svelte';
@@ -366,7 +366,7 @@
 </header>
 
 {#if tabbed || leaving}
-  <MobileTabs {store} screen={headerList} waiting={threadsNeedingYou(machines.map(machine => machine.store)) + inbox.contacts} navigate={show} inert={leaving} />
+  <MobileTabs {store} screen={headerList} waiting={activitySeen.unseen(machines) + inbox.contacts} navigate={show} inert={leaving} />
 {/if}
 
 {#snippet contacts()}

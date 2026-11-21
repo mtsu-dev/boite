@@ -1,6 +1,6 @@
 import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
 import type { Delegated } from './thread-state';
-import { storeNeedsYou } from './activity-feed';
+import { storeNeedsKeys, type HeldAsks } from './activity-feed';
 
 /** How a bot stands, for its picture in the app rail and its row in the phone's bot list. */
 export type RailBotState = 'waiting' | 'failed' | 'working' | 'queued' | 'paused' | 'idle';
@@ -22,18 +22,19 @@ export function railBotState(profile: Pick<AgentProfile, 'status'>, status: Agen
   return profile.status === 'paused' || state === 'paused' ? 'paused' : 'idle';
 }
 
-interface WaitingStore {
+type WaitingStore = HeldAsks & {
   threads: readonly ThreadSummary[];
   subagents(threadId: string): Delegated;
-}
+};
 
 /**
  * What needs the user on every machine: the rows of Activity's Needs you
  * section (a thread that asks or failed, a helper's question once, on its
  * parent; a bot's own conversation counts on its picture, a team's or a
  * salon's nowhere). The rail's Activity badge and the phone's Activity tab
- * add what contacts ask, as the section lists it above.
+ * add what contacts ask, as the section lists it above. `seen` leaves out the rows a middle click on the rail's
+ * Activity already saw, by their keys (`storeNeedsKeys`, lib/activity-seen.svelte.ts).
  */
-export function threadsNeedingYou(stores: readonly WaitingStore[]): number {
-  return stores.reduce((total, store) => total + storeNeedsYou(store, store.threads), 0);
+export function threadsNeedingYou<S extends WaitingStore>(stores: readonly S[], seen: (store: S, key: string) => boolean = () => false): number {
+  return stores.reduce((total, store) => total + storeNeedsKeys(store, store.threads).filter(key => !seen(store, key)).length, 0);
 }

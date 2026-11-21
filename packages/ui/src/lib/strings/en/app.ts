@@ -39,6 +39,8 @@ export const strings = {
       unreadMany: '{count} new replies',
       /** The rail's limits button, in its name card under the sentence (LimitsButton.svelte): how long until the first account serves again. */
       limitsBack: 'back in {time}',
+      /** Activity's name card, while something there can be cleared: a middle click on the button runs Mark all as read. */
+      middleClickRead: 'middle-click to mark all read',
     }
   }
 } as const;

@@ -32,6 +32,8 @@ export const fr: Translation = {
       unreadMany: '{count} nouvelles réponses',
       /** The rail's limits button, in its name card under the sentence (LimitsButton.svelte): how long until the first account serves again. */
       limitsBack: 'retour dans {time}',
+      /** Activity's name card, while something there can be cleared: a middle click on the button runs Mark all as read. */
+      middleClickRead: 'clic du milieu pour tout marquer comme lu',
     }
   }
 };
