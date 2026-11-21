@@ -69,8 +69,8 @@ A long prompt starts a reviewed goal on itself, with its checklist and a card
 on the project board. The agent may also start one when your prompt lists
 several requests. Remove the goal from the bar to drop it.
 
-Settings, General, Agent replies, Automatic goals turns them off on that
-machine, for every device connected to it; they are on by default. Prompt
+Settings, General, Agent replies, Automatic goals turns them on on that
+machine, for every device connected to it; they are off by default. Prompt
 length, under the switch, sets the threshold: 1500 characters by default.
 Only the owner sees these settings.
 
