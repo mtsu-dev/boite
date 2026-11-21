@@ -2,7 +2,7 @@
 //! 30 seconds at most, stops, and resumes after the restart. A core too old for that handoff
 //! keeps the earlier rule: it stays usable until it grants an idle stop.
 use std::io::{Read, Write};
-use std::fs::{File, OpenOptions, TryLockError};
+use std::fs::{OpenOptions, TryLockError};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::Mutex;
@@ -13,6 +13,15 @@ use serde::Deserialize;
 use crate::local_core::health::{health, read_core_file, same_core, HEALTH_TIMEOUT};
 use crate::local_core::{health::CoreStart, starting::read_starting};
 use crate::platform::process::Watched;
+
+#[cfg(unix)]
+mod install_lock;
+#[cfg(unix)]
+pub(crate) use install_lock::InstallLock;
+#[cfg(windows)]
+pub(crate) type InstallLock = std::fs::File;
+#[cfg(all(test, unix))]
+pub(crate) mod legacy_core;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum InstallState {
@@ -92,7 +101,8 @@ fn core_is_running(directory: &Path) -> Result<bool, String> {
 
 /// Holds the same lock startup takes. A legacy PID record can still exclude
 /// us even without an OS lock. A live core must use authenticated admission.
-pub(crate) fn lock_without_core(directory: &Path) -> Result<Option<File>, String> {
+/// On Unix the shell publishes itself as the live owner so a legacy core cannot unlink the lock.
+pub(crate) fn lock_without_core(directory: &Path) -> Result<Option<InstallLock>, String> {
     if core_is_running(directory)? { return Ok(None); }
     let path = directory.join("core.lock");
     let failed = |error: std::io::Error| format!("cannot lock {} for the update: {error}", path.display());
@@ -123,6 +133,12 @@ pub(crate) fn lock_without_core(directory: &Path) -> Result<Option<File>, String
     {
         return Ok(None);
     }
+    #[cfg(unix)]
+    {
+        let pid = std::process::id();
+        InstallLock::publish(lock, path.clone(), pid, crate::platform::process::start_key(pid)).map_err(failed)
+    }
+    #[cfg(windows)]
     Ok(Some(lock))
 }
 
@@ -378,6 +394,56 @@ const server = Bun.serve({ hostname:'127.0.0.1', port:0, fetch(request) {
         }, || panic!("the updated policy prohibits launching the installer"));
         assert_eq!(result.unwrap_err(), "updates.app is now off");
     }
+    #[cfg(unix)]
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let directory = std::env::temp_dir().join(format!("boite-update-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_core_older_than_the_os_lock_stays_out_until_the_update_lets_go() {
+        let _guard = crate::process_test_guard();
+        let directory = scratch("legacy-lock");
+        let path = directory.join("core.lock");
+        let lock = lock_without_core(&directory).unwrap().expect("no core runs on the directory");
+        let record: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let pid = std::process::id();
+        assert_eq!((record["pid"].as_u64(), record["osLock"].as_bool()), (Some(pid.into()), Some(true)));
+        assert_eq!(record["startKey"].as_str().map(str::to_string), crate::platform::process::start_key(pid));
+        assert_eq!(legacy_core::start(&directory), format!("busy {pid}"));
+        assert!(lock_without_core(&directory).unwrap().is_none(), "a second update took the held lock");
+        drop(lock);
+        assert!(!path.exists(), "the record outlived the update");
+        // A cancelled or failed install takes it again from a free directory, then the older core starts.
+        drop(lock_without_core(&directory).unwrap().expect("the lock was let go"));
+        assert_eq!(legacy_core::start(&directory), "started");
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_update_never_writes_or_removes_the_record_of_a_core_that_replaced_the_file() {
+        let directory = scratch("replaced-lock");
+        let path = directory.join("core.lock");
+        let other = r#"{"pid":1,"startedAt":0}"#;
+        let lock = lock_without_core(&directory).unwrap().unwrap();
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, other).unwrap();
+        drop(lock);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), other);
+        // Replaced between the judgement and the record: the record lands in the old file only.
+        let judged = OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        judged.try_lock().unwrap();
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, other).unwrap();
+        assert!(InstallLock::publish(judged, path.clone(), std::process::id(), None).unwrap().is_none());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), other);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
     #[test]
     fn an_older_core_without_idle_admission_is_never_killed() {
         let _guard = crate::process_test_guard();

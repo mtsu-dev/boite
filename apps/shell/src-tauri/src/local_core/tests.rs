@@ -158,12 +158,28 @@ fn an_update_can_repair_a_failed_start_only_when_it_owns_the_idle_core_lock() {
     assert!(blocked.is_err());
     assert!(spawned_pid(&state).is_none(), "admission must not try to start the broken sidecar");
     drop(other);
+    // Called off once the lock is held: let go at once, with its record.
+    let cancelled = Mutex::new(InstallState::Cancelled);
+    assert!(!state.wait_for_install(&cancelled, false, true, || Ok(true), || panic!("a cancelled install committed")).unwrap());
+    #[cfg(unix)]
+    assert!(!path.exists(), "a cancelled install left its record");
     assert!(state.wait_for_install(&control, false, true, || Ok(true), || {}).unwrap());
-    let retry = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
-    assert!(retry.try_lock().is_err(), "startup stays blocked until the installer can take over");
+    let retry = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path).unwrap();
+    assert!(matches!(retry.try_lock(), Err(std::fs::TryLockError::WouldBlock)), "startup stays blocked until the installer can take over");
+    // A core older than the OS lock reads the record only.
+    #[cfg(unix)]
+    assert_eq!(crate::update_stop::legacy_core::start(&directory), format!("busy {}", std::process::id()));
     state.release_hold();
+    drop(retry);
+    let retry = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path).unwrap();
     retry.try_lock().unwrap();
     drop(retry);
+    #[cfg(unix)]
+    std::fs::remove_file(&path).unwrap();
+    #[cfg(unix)]
+    assert!(!path.exists(), "a failed install left its record");
+    #[cfg(unix)]
+    assert_eq!(crate::update_stop::legacy_core::start(&directory), "started");
     std::fs::remove_dir_all(directory).unwrap();
 }
 
@@ -295,7 +311,7 @@ fn a_core_stopped_for_an_install_stays_stopped_until_the_hold_is_released() {
     assert!(matches!(current_endpoint(&state, false), Err(EndpointError::Message(error)) if error == HELD));
     assert!(spawned_pid(&state).is_none_or(|pid| pid == first_pid), "a core was started during the install");
     let competing_lock = || {
-        let lock = std::fs::OpenOptions::new().read(true).write(true).open(directory.join("core.lock")).unwrap();
+        let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(directory.join("core.lock")).unwrap();
         lock.try_lock().is_ok()
     };
     assert!(!competing_lock(), "the install must exclude a new core after the original core exits");
@@ -307,6 +323,8 @@ fn a_core_stopped_for_an_install_stays_stopped_until_the_hold_is_released() {
     }
     // The installer never ran: the next ask brings the engine back.
     state.release_hold();
+    #[cfg(unix)]
+    assert!(!directory.join("core.lock").exists(), "an aborted installation must take its record away");
     #[cfg(unix)]
     assert!(competing_lock(), "an aborted installation must release the data directory");
     let second = current_endpoint(&state, false);

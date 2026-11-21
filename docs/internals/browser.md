@@ -896,7 +896,7 @@ have an account on.
 
 ## Verification
 
-`packages/core/test/browser.test.ts` drives a real headless Chromium when the
+`packages/core/test/browser.test.ts` and `browser-actions.test.ts` drive a real headless Chromium when the
 machine has one: opening, reading, clicking and typing, agent-browser's
 refs, fill, select, check, a form submitted with Enter, dialogs inside and
 outside a command and a covered element, presets and color scheme, diagnostics without query strings, a token kept to its conversation,
@@ -922,7 +922,7 @@ below the fold, and a frame of another site nested in the second: native clicks 
 fill and get reach them, and a frame ref is refused after the page moves on.
 It checks that the refs read in those frames keep their numbers after an
 element is added above them, stay unique on the page and still click.
-`browser.test.ts` checks, on a list of 100 rows, that a ref survives a row
+`browser-actions.test.ts` checks, on a list of 100 rows, that a ref survives a row
 inserted above it, that a removed row's ref is stale, and that a repeated
 snapshot prints the added, removed and renamed lines alone, that a snapshot
 without a view is whole and does not move the base of the next diff, and the

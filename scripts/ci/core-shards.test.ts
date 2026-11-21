@@ -1,4 +1,6 @@
 import { expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { coreFiles, coreShards, fileDurations, jobKey, mergeDurations, parseShard, readCoreDurations } from './core-shards.ts';
 import { CORE_ALL } from './changes.ts';
 
@@ -34,6 +36,7 @@ test('--shard takes <index>/<count> and nothing else', () => {
 test('every sharded core job reads a record of its own runner', () => {
   expect(jobKey('Core tests (Windows x64) 1/2')).toBe('win32-x64');
   expect(jobKey('Core tests (macOS arm64)')).toBe('darwin-arm64');
+  expect(jobKey('Core tests (macOS x64) 2/2')).toBe('darwin-x64');
   expect(jobKey('E2E 1/5')).toBeUndefined();
   const { seconds } = readCoreDurations();
   for (const runner of CORE_ALL.filter((runner) => runner.shards)) expect(Object.keys(seconds)).toContain(jobKey(`Core tests (${runner.name})`)!);
@@ -46,5 +49,19 @@ test('the recorded times split the current core files into two shards within 5 %
     expect(shards.flatMap((shard) => shard.files).sort()).toEqual(files);
     const times = shards.map((shard) => shard.seconds);
     expect(Math.max(...times) / Math.min(...times)).toBeLessThan(1.05);
+  }
+});
+
+// Each file has 300 s on every runner (BOITE_TEST_FILE_DEADLINE_MS in
+// packages/core/bin/test.ts), and a slower run than the recorded one cut
+// browser.test.ts there on the Intel Mac after 278 s: a file recorded past
+// 240 s is split before a run ends it.
+test('no recorded core file comes within a fifth of the file deadline on any runner', () => {
+  expect(readFileSync(join(import.meta.dir, '../../packages/core/bin/test.ts'), 'utf8')).toContain('BOITE_TEST_FILE_DEADLINE_MS ?? 300_000');
+  const { seconds } = readCoreDurations();
+  expect(Object.keys(seconds)).toContain('darwin-x64');
+  const files = coreFiles();
+  for (const [key, record] of Object.entries(seconds)) {
+    for (const [file, value] of Object.entries(record)) if (files.includes(file)) expect(value, `${key} ${file}`).toBeLessThan(240);
   }
 });

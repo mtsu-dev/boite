@@ -172,7 +172,7 @@ test('a real secret-file denial revokes letters, board execution and compute wit
     await waitFor(() => b.h.core.sharedCompute.journal.get(job.id, 'host')?.job.status === 'revoked');
     expect(b.h.core.sharedCompute.journal.get(job.id, 'host')?.job.result).toBeNull();
     expect(b.h.core.activity.get(board.id).goal).toBeNull();
-    expect(b.h.core.journal.lastTurn(board.id)?.status).not.toBe('running');
+    await waitFor(() => b.h.core.journal.lastTurn(board.id)?.status !== 'running');
     expect(b.h.core.journal.getTurn(turn.id)?.status).toBe('running');
     for (const sent of [letter, queued]) expect(letters().find(l => l.id === sent.id)?.status).toBe('rejected');
     expect(b.h.core.coordination.prepareWake(b.threadId, 'turn_late')).toBe(false);

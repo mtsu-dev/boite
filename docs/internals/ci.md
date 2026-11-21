@@ -133,6 +133,12 @@ reports its own name (`Desktop`), never the inner ones. So:
   publishes it. No ruleset requires it.
 - A job skipped because its dependency failed counts as passed in a ruleset, so
   the ruleset requires every job of each needs chain (`Plan`, `Build UI`).
+- A check split into shards after the ruleset required it keeps its name on a
+  job of its own: `Core tests (macOS x64)` needs `Core tests (macOS x64) 1/2`
+  and `2/2`, runs after them whatever their result (`!cancelled()`) on the
+  same plan output, and fails unless both passed, so a failed, timed out or
+  cancelled shard fails it. The ruleset requires that job and not its shards
+  (`shardJobs` in the script).
 
 `bun scripts/ci/required-checks.ts` prints the names a pull request
 reports. Its tests pin all of them, refuse a matrix or an expression in a name,
@@ -175,7 +181,7 @@ desktop legs are Linux x64 and macOS ARM64; warm/full runs use both
 architectures of each OS. The core suite follows the same rule for its Intel
 Mac: a group runs it on Linux x64/ARM64, Windows and macOS ARM64, and warm/full
 runs add `Core tests (macOS x64)` on `macos-15-intel` (`coreRunners` in
-`changes.ts`). That job took 322 to 409 s a PR on a scarce runner (2026-10-17);
+`changes.ts`), in two shards. That job took 322 to 409 s a PR on a scarce runner (2026-10-17);
 an Intel-only core failure now shows on the main push.
 
 `desktop.yml` holds the desktop builds: the Windows installer job and one job
@@ -462,8 +468,14 @@ bun scripts/ci/core-shards.ts refresh <run id> [<run id> ...]
 
 The first record (2026-11-17) was rebuilt from three runs' logs before the
 runner printed seconds, replaying its four workers from each file's end time.
-The Linux arm64 and macOS suites stay single: macOS runners are scarce, and
-neither is on the longest path.
+The Linux arm64 and macOS arm64 suites stay single: macOS runners are scarce,
+and neither is on the longest path. The Intel Mac's suite runs in two shards
+under one check (see [Check names](#check-names)): on 2026-11-20 it took 13 min
+55 s of its job's 15 and `browser.test.ts` reached its 300 s file deadline
+after 14 of its 17 tests, on main three times. `browser-actions.test.ts` took
+the refs, actions, windows and native pointer tests (121 s of its 278 s on the
+last green Intel run, 44711558586); until a refresh, each runner's record
+gives the two files that share of the old file's time.
 
 The UI tests run in two jobs; the first also runs the type checks. Vitest's
 own `--shard` cuts by file count in hash order and put 1218 s of tests on one
