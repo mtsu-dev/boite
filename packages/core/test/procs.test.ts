@@ -9,7 +9,7 @@ import type { ProcessPlatform } from '../src/platform/types.ts';
 import { NativeTie } from '../src/platform/linux-launcher.ts';
 import { Journal } from '../src/journal.ts';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { release, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const LONG_CHILD = process.platform === 'win32' ? 'ping -n 30 127.0.0.1' : 'exec sleep 30';
