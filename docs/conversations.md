@@ -50,7 +50,8 @@ after the project name, on desktop and phone.
 
 The Threads button in the app rail, and the Threads tab on a phone, show how
 many threads are at work across your machines. When subagents are at work too,
-a second, lighter number beside it counts them.
+a second, lighter number counts them: in the rail, under the first, both at
+the rail's edge so the button's icon stays readable; beside it on the phone's tab.
 
 A middle click on the Activity button in the app rail takes the finished
 threads off Activity on every machine, without opening it. Failures, stops,

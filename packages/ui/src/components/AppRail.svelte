@@ -94,7 +94,7 @@
   /** The conversations at work on every machine, as the projects' Working counts read them: the Threads button's count. */
   const working = $derived(threadsAtWork(stores));
   const workingLabel = $derived(working === 1 ? strings.app.rail.workingOne : fill(strings.app.rail.workingMany, { count: String(working) }));
-  /** Their subagents at work, the lighter number beside it. */
+  /** Their subagents at work, the lighter number under it. */
   const helpers = $derived(subagentsAtWork(stores));
   const busyLabel = $derived([
     working ? workingLabel : null,
@@ -355,7 +355,7 @@
       aria-label={busyLabel ? `${strings.sidebar.threads}, ${busyLabel}` : strings.sidebar.threads}
       data-testid="view-threads" onclick={showThreads}>
       <MessageSquare size={19} strokeWidth={1.75} />
-      {#if working || helpers}<span class="count work" class:pair={working && helpers}
+      {#if working || helpers}<span class="count work" class:pair={working && helpers} class:wide={working > 9 || helpers > 9}
         >{#if working}<span data-testid="rail-threads-working">{tally(working)}</span>{/if}{#if helpers}<span class="helpers" data-testid="rail-threads-subagents">{tally(helpers)}</span>{/if}</span
       >{/if}
     </button>
@@ -634,8 +634,17 @@
   .count.work { color: var(--color-accent); }
   /* Their subagents at work: a second number in the same pill, the accent lightened, so it reads as theirs, a step under. */
   .count .helpers { color: color-mix(in oklch, var(--color-accent) 60%, var(--color-foreground)); }
-  /* Both numbers: side by side, the pill's right edge held a little past the tile's so it stays on the card. */
-  .count.pair { left: auto; right: -6px; display: flex; gap: 4px; }
+  /* Both numbers: stacked in one upright pill, the threads over their subagents, its foot where the single pill's
+     stands. It sits past the tile, its ring flush with the rail's right edge (the column beside starts there), so it
+     stays clear of the glyph; nothing clips it there, the rail's overflow is visible. Its ring keeps the rail's
+     ground when the tile is hovered or open: it stands on the rail, not on the tile. */
+  .count.pair {
+    left: auto; right: calc((var(--rail-button) - var(--app-rail)) / 2 + 2px); top: auto; bottom: calc(50% - 17px);
+    height: auto; padding: 3px 5px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    --count-ring: var(--rail-ground);
+  }
+  /* Two digits or "99+" in either: a tighter pill, the text still at 11 px, the smallest a count reads at (MobileTabs.svelte). */
+  .count.pair.wide { padding: 2px 3px; gap: 1px; }
   .rail-button:hover:not(:disabled) { --count-ring: var(--color-surface-2); }
   .rail-button.on, .rail-button.on:hover:not(:disabled) { --count-ring: var(--color-surface-3); }
   /* A bot's or a team's one overlay, bottom right of its picture, cut out of the card: the amber dot for its turn,

@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import App from './App.svelte';
+import railSource from './components/AppRail.svelte?raw';
 import { store } from './lib/store.svelte';
 import { machineName, workspace } from './lib/workspace.svelte';
 import { writeExperiments } from './lib/experiments';
@@ -226,7 +227,30 @@ test("the rail counts the threads and subagents at work and a mochi's unread rep
     expect(helpers).toBeGreaterThan(1);
     await waitFor(() => document.querySelector('[data-testid=rail-threads-working]')?.textContent === String(working));
     await waitFor(() => document.querySelector('[data-testid=rail-threads-subagents]')?.textContent === String(helpers));
-    expect(query('[data-testid=view-threads]').getAttribute('aria-label')).toBe(`${strings.sidebar.threads}, ${fill(strings.app.rail.workingMany, { count: String(working) })}, ${fill(strings.app.rail.subagentsMany, { count: String(helpers) })}`);
+    // Both in one pill, stacked so the glyph stays readable beside it: the conversations on top, their subagents under.
+    const pill = query('[data-testid=view-threads] .count');
+    expect([...pill.children].map(number => number.getAttribute('data-testid'))).toEqual(['rail-threads-working', 'rail-threads-subagents']);
+    // jsdom applies no component style: the rail's own rules for the pair, injected as written.
+    const style = document.createElement('style');
+    style.textContent = [/\.count\.pair \{[^}]*\}/, /\.count\.pair\.wide \{[^}]*\}/].map(rule => railSource.match(rule)?.[0] ?? '').join('\n');
+    document.head.append(style);
+    try {
+      expect(getComputedStyle(pill).flexDirection).toBe('column');
+      // Past the tile, on the rail: its ring keeps the rail's ground, whatever the tile's state sets for the single pill.
+      expect((style.sheet!.cssRules[0] as CSSStyleRule).style.getPropertyValue('--count-ring').trim()).toBe('var(--rail-ground)');
+      expect(pill.classList.contains('wide')).toBe(working > 9 || helpers > 9);
+      expect(query('[data-testid=view-threads]').getAttribute('aria-label')).toBe(`${strings.sidebar.threads}, ${fill(strings.app.rail.workingMany, { count: String(working) })}, ${fill(strings.app.rail.subagentsMany, { count: String(helpers) })}`);
+      // Ten subagents or more: a tighter pill, so the two digits keep clear of the glyph.
+      const busy = store.threads.find(thread => thread.parentThreadId && subagentsAtWork([{ projects: store.projects, threads: [thread] }]) === 1)!;
+      store.threads = [...store.threads, ...Array.from({ length: 10 }, (_, at) => ({ ...busy, id: `wide-${at}` }))];
+      await waitFor(() => document.querySelector('[data-testid=rail-threads-subagents]')?.textContent === String(helpers + 10));
+      const wide = query('[data-testid=view-threads] .count');
+      expect(wide.classList.contains('wide')).toBe(true);
+      expect([getComputedStyle(wide).paddingTop, getComputedStyle(wide).paddingLeft]).toEqual(['2px', '3px']);
+    } finally {
+      style.remove();
+      store.threads = store.threads.filter(thread => !thread.id.startsWith('wide-'));
+    }
     // A mochi with replies not read: their number on its picture, where a bare dot stood.
     await waitFor(() => !!document.querySelector('[data-testid=rail-bot-unread]'));
     const unread = query('[data-testid=rail-bot-unread]');
