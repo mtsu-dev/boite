@@ -552,9 +552,9 @@ test('the same popup shares priorities across the app, tray and phone through th
       expect(await page.text(`${card}[data-account-id="${accounts[index]!.id}"] .primary-reset`)).toContain(`${reset.label} `);
     }
     await page.waitFor(`document.querySelector('${card}[data-account-id="${accounts[1]!.id}"] [data-testid="usage-limit-reorder"]')?.disabled === false`);
+    // The settings screen slides in; measure once it rests.
+    await page.settleAnimations();
     const touch = await page.evaluate<{ from: { x: number; y: number }; to: { x: number; y: number } }>(`(async () => {
-      // The settings screen slides in; measure once it rests.
-      await Promise.all(document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const grip = document.querySelector('${card}[data-account-id="${accounts[1]!.id}"] .name').getBoundingClientRect();
       const first = document.querySelector('${card}').getBoundingClientRect();

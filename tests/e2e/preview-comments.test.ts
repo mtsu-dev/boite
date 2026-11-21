@@ -42,7 +42,7 @@ test('preview references attach to the existing composer and remain clickable af
   })()`);
   await page.click(id('preview-annotate'));
   await page.waitFor(`(() => { const frame = document.querySelector('iframe[data-browser-id]'); const slot = document.querySelector('${id('browser-slot')}'); return Math.abs(frame.getBoundingClientRect().top - slot.getBoundingClientRect().top) < 1; })()`);
-  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+  await page.settleAnimations();
   const point = await page.evaluate<{ x: number; y: number }>(`(() => {
     const frame = document.querySelector('iframe[data-browser-id]');
     const outer = frame.getBoundingClientRect();

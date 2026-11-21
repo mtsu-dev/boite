@@ -45,7 +45,7 @@ test('local launch links and file actions use the owning desktop, with browser a
     expect(await page.evaluate('window.__fileOpens[2].path')).toBe('missing.pdf');
     await page.screenshot(join(import.meta.dir, '.artifacts', 'local-file-preview-error-desktop.png'));
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-    await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+    await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'local-file-preview-error-phone.png'));
 
     // A remote core must never hand its paths to this computer's opener.
@@ -57,7 +57,7 @@ test('local launch links and file actions use the owning desktop, with browser a
     // The browser/phone keeps the same download path, with no native opener.
     await page.evaluate('delete window.__TAURI_INTERNALS__');
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-    await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+    await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'local-file-phone.png'));
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   } finally { await page?.close(); await server.close(); }
