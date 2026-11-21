@@ -132,6 +132,72 @@ test('a single quota window fills the row in the desktop glance and narrow tray'
   }
 }, 60_000);
 
+test('a limits card keeps a step of room between its window lines, labels and bars, and the reset line', async () => {
+  for (const view of ['desktop', 'tray', 'phone']) {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: view === 'desktop' ? 1280 : 390, height: view === 'desktop' ? 850 : 640, deviceScaleFactor: 1, mobile: view === 'phone' });
+    await page.navigate(`${origin}/?fake=1&open=recent${view === 'desktop' ? '' : '&view=quotas'}`);
+    await page.evaluate(`(async () => {
+      const { FakeClient } = await import('/src/lib/fake-client.ts');
+      const call = FakeClient.prototype.call;
+      globalThis.quotaWindowCount = 3;
+      FakeClient.prototype.call = async function(method, params) {
+        if (method === 'quotas.list' && !this.longName) {
+          this.longName = true;
+          for (const account of await call.call(this, 'accounts.list', {})) {
+            if (account.providerId === 'codex') await call.call(this, 'accounts.rename', { accountId: account.id, label: 'nefreex2 + mtsu patrol, the shared research account for the night shift' });
+          }
+        }
+        const result = await call.call(this, method, params);
+        if (method !== 'quotas.list') return result;
+        const soon = Date.now() + 3 * 86400_000;
+        const windows = [
+          { id: 'month', label: 'Monthly', usedPercent: 42, resetsAt: soon, primary: true },
+          { id: 'primary', label: '5 hours', usedPercent: 3, resetsAt: Date.now() + 3600_000 },
+          { id: 'secondary', label: 'Weekly', usedPercent: 15, resetsAt: soon },
+        ];
+        return result.map(row => row.providerId !== 'codex' ? row : { ...row, windows: windows.slice(0, globalThis.quotaWindowCount) });
+      };
+    })()`);
+    if (view === 'desktop') await page.click('[data-testid="nav-limits"]');
+    const refresh = `[data-testid="${view === 'desktop' ? 'limits-glance' : 'quota'}-refresh"]`;
+    const account = '[data-testid="quota-provider"][data-provider="codex"]';
+    await page.waitFor(`document.querySelector('${refresh}')?.getAttribute('aria-busy') === 'false'`);
+    for (const count of [3, 2, 1]) {
+      await page.evaluate(`globalThis.quotaWindowCount = ${count}`);
+      await page.click(refresh);
+      await page.waitFor(`document.querySelector('${refresh}')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('${account} .mini-window').length === ${count}`);
+      await capture(`quota-spacing-${view}-${count}.png`);
+      // The labels are trimmed to their capitals: measure from letters to letters, as the eye reads them.
+      const room = await page.evaluate<{ cap: number; lines: number[]; name: number; reset: number; labels: number[]; overflow: boolean }>(`(() => {
+        const account = document.querySelector('${account}');
+        const letters = (element) => {
+          const box = element.getBoundingClientRect(), style = getComputedStyle(element);
+          return { top: box.top + parseFloat(style.paddingTop), bottom: box.bottom - parseFloat(style.paddingBottom) };
+        };
+        const labels = [...account.querySelectorAll('.mini-label')];
+        const lines = [...new Map(labels.map(label => [Math.round(label.getBoundingClientRect().top), letters(label)])).values()];
+        const name = account.querySelector('.name');
+        return { cap: lines[0].bottom - lines[0].top, lines: lines.slice(1).map((line, index) => line.top - lines[index].bottom),
+          name: lines[0].top - letters(name).bottom, reset: letters(account.querySelector('.reset .ui-label')).top - lines.at(-1).bottom,
+          labels: labels.map(label => label.parentElement.querySelector('.track').getBoundingClientRect().left - label.getBoundingClientRect().right),
+          overflow: name.scrollWidth > name.clientWidth };
+      })()`);
+      // Between two window lines, at least a capital's height of free room; the name above and the reset line below keep that step.
+      expect(room.lines).toHaveLength(count === 3 ? 1 : 0);
+      for (const gap of room.lines) expect(gap).toBeGreaterThanOrEqual(room.cap);
+      for (const gap of [room.name, room.reset]) {
+        expect(gap).toBeGreaterThanOrEqual(room.cap);
+        if (room.lines.length) expect(Math.abs(gap - room.lines[0]!)).toBeLessThanOrEqual(1.5);
+      }
+      // A label's column ends a step before its bar.
+      for (const gap of room.labels) expect(gap).toBeCloseTo(8, 0);
+      // A long account name stays on its one line, cut short, rather than pushing the windows down.
+      expect(room.overflow).toBe(true);
+    }
+    expect(page.errors()).toEqual([]);
+  }
+}, 90_000);
+
 for (const view of ['tray', 'desktop', 'phone', 'sidebar']) {
   test(`${view} restores each quota bar as its account answers`, async () => {
     // Windows runners may request reduced motion at the OS level.

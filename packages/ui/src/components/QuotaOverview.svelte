@@ -123,10 +123,12 @@
   .here { flex: none; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--color-background); color: var(--color-muted-foreground); font-size: var(--text-min); font-weight: 600; white-space: nowrap; }
   article.dragging { background: var(--color-active); outline: 1px solid var(--color-muted-foreground); }
   .account-heading { display: flex; align-items: stretch; gap: 2px; }
-  .summary { flex: 1; min-width: 0; width: 100%; height: auto; min-height: 44px; padding: 2px 4px; line-height: 1.2; display: flex; align-items: start; gap: 8px; text-align: left; border-radius: var(--radius-md); white-space: normal; }
+  .summary { flex: 1; min-width: 0; width: 100%; height: auto; min-height: 44px; padding: var(--space-1); line-height: 1.2; display: flex; align-items: start; gap: 8px; text-align: left; border-radius: var(--radius-md); white-space: normal; }
   .summary:disabled { opacity: 1; cursor: default; }
   .logo { flex: none; width: 20px; height: 20px; display: grid; place-items: center; }
-  .summary-content { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  /* Every label here is trimmed to its capitals (`ui-label`), so the gaps are all the room between two lines of letters.
+     The name, the window lines and the reset line keep one step: the 20 px headline adds about 5 px around the name. */
+  .summary-content { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
   .headline { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 20px; }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: 600; color: var(--color-foreground); }
   .amount { flex: none; color: var(--color-foreground); font-size: var(--text-md); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -137,8 +139,8 @@
   .summary.reorderable .name { touch-action: none; }
   .dragging .summary { cursor: grabbing; }
   /* Two windows per line; a lone window uses the full row. */
-  .meters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
-  .mini-window { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px; align-items: center; }
+  .meters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .mini-window { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2); align-items: center; }
   .mini-window:only-child { grid-column: 1 / -1; }
   .mini-label { width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; }
   .meters.stale { opacity: 0.45; }
@@ -150,7 +152,8 @@
   .track[data-tone='out'] { background: color-mix(in srgb, var(--color-danger) 35%, var(--color-surface-3)); }
   .caption { display: block; margin: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); font-weight: 400; overflow-wrap: anywhere; }
   article > .caption { margin: 4px 4px 0 32px; }
-  .reset { display: flex; align-items: center; gap: 5px; }
+  /* With the grid's gap, the same step under the bars as between two window lines. */
+  .reset { display: flex; align-items: center; gap: 5px; margin-top: var(--space-1); }
   .reset :global(svg) { flex: none; }
   .paid { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px 8px; }
   .paid-label { color: var(--color-muted-foreground); font-size: var(--text-xs); }
