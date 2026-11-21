@@ -90,7 +90,7 @@ export function createPosixPlatform(
     },
     readyGroups: () => groups.ready(),
     ...(os === 'linux' ? { readyLaunch: () => native.ready(), spawnTied: (options: Parameters<NativeTie['spawn']>[0]) => native.spawn(options) } : {}),
-    tieGroup: (pid) => { if (!native.holds(pid)) groups.add(pid); },
+    tieGroup: (pid) => { if (!native.claim(pid)) groups.add(pid); },
     untieGroup: (pid, leaderExited) => {
       if (native.holds(pid)) { if (leaderExited) native.leaderExited(pid); else native.release(pid); return; }
       if (leaderExited) groups.leaderExited(pid); else groups.remove(pid);
