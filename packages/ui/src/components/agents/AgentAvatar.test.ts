@@ -3,6 +3,8 @@ import { flushSync, mount, unmount } from 'svelte';
 import AgentAvatar from './AgentAvatar.svelte';
 import source from './AgentAvatar.svelte?raw';
 
+const restFilter = 'grayscale(1) brightness(0.92) contrast(0.95)';
+
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(() => {
   if (mounted) unmount(mounted, { outro: false });
@@ -24,7 +26,8 @@ function avatarRules(): void {
   }
   const style = document.createElement('style');
   style.dataset['avatarRules'] = '';
-  style.textContent = plain;
+  // The app normally supplies this token on :root in styles/tokens.css.
+  style.textContent = `:root { --avatar-rest: ${restFilter}; }\n${plain}`;
   document.head.append(style);
 }
 
@@ -40,5 +43,5 @@ test('a picture grey at rest leaves its ring its hue: no filter over the ring, t
   for (let node: Element | null = picture.querySelector('.avatar-ring'); node; node = node.parentElement) {
     expect(getComputedStyle(node).filter, node.getAttribute('class') ?? node.tagName).toBe('none');
   }
-  expect(getComputedStyle(picture.querySelector('.ui-label')!).filter).not.toBe('none');
+  expect(getComputedStyle(picture.querySelector('.ui-label')!).filter).toBe(restFilter);
 });

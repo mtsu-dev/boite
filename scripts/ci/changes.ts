@@ -40,6 +40,7 @@ export function affectedChecks(files: string[]) {
       // it and the Linux x64 desktop job builds it. The changes job always
       // runs its tests.
       checks.core = checks.web = checks.desktop = true;
+      if (file === 'apps/android-server/termux/minisign.ts') checks.server = true;
     } else if (file.startsWith('apps/android-server/') || file === '.github/workflows/android-server.yml' || file === 'scripts/ci/android-server-apk.ts' || file === 'scripts/ci/android-version.ts') {
       // Boite Server's APK drives the core through Termux and reads nothing from it.
       checks.androidServer = true;

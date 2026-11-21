@@ -25,7 +25,7 @@ export function protectedPi(ctx: SessionContext, head: ProtectedHead, declared: 
       if (name === 'models.json') writeFileSync(join(agentDir, 'models.json'), JSON.stringify(value), {mode: 0o600});
     }
     linkAccountFiles(source, agentDir, ['auth.json']);
-    writeFileSync(join(agentDir, 'settings.json'), JSON.stringify(selectionSettings(join(source, 'settings.json'), ['defaultProvider', 'defaultModel', 'defaultThinkingLevel'])));
+    writeFileSync(join(agentDir, 'settings.json'), JSON.stringify(selectionSettings(join(source, 'settings.json'), ['defaultProvider', 'defaultModel', 'defaultThinkingLevel', 'cacheWarming'])));
     const extension = bridge.asset('pi-protected.mjs', `
 const endpoint = ${JSON.stringify(bridge.url)}, authorization = ${JSON.stringify(`Bearer ${bridge.token}`)};
 const definitions = ${JSON.stringify(bridge.definitions)};

@@ -1,5 +1,4 @@
-use fs2::FileExt;
-use std::fs::{create_dir_all, File, OpenOptions};
+use std::fs::{create_dir_all, File, OpenOptions, TryLockError};
 use std::hash::{BuildHasher, Hasher};
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
@@ -32,10 +31,10 @@ pub fn acquire(directory: &Path) -> io::Result<Option<File>> {
         .create(true)
         .truncate(false)
         .open(directory.join("shell.lock"))?;
-    match file.try_lock_exclusive() {
+    match file.try_lock() {
         Ok(()) => Ok(Some(file)),
-        Err(error) if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() => Ok(None),
-        Err(error) => Err(error),
+        Err(TryLockError::WouldBlock) => Ok(None),
+        Err(TryLockError::Error(error)) => Err(error),
     }
 }
 

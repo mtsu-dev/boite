@@ -82,6 +82,32 @@ export const POLICY_KEYS = [
 ] as const;
 export type PolicyKey = typeof POLICY_KEYS[number];
 
+/** Every key at its strictest: what a file that does not parse means. */
+export const STRICTEST_POLICY: AdminPolicy = Object.freeze({
+  analytics: 'off',
+  updates: { app: 'off', server: 'off', agents: 'off' },
+  providers: { allow: [] },
+  gateway: false,
+  quotaReads: false,
+  plugins: { install: false, recommended: false },
+  issueReports: false,
+  dictation: 'off',
+  previews: { remoteResources: false },
+  agentBrowser: false,
+  agentDesktop: false,
+  network: { lan: false, tailscaleServe: false, groups: false, contacts: false, push: false },
+  pullRequests: false,
+  modelPrices: false,
+}) as AdminPolicy;
+
+/** The keys a policy's values lock, in `POLICY_KEYS` order. A `true` that restricts nothing locks nothing. */
+export function lockedKeys(values: AdminPolicy): PolicyKey[] {
+  return POLICY_KEYS.filter(key => {
+    const value = key.split('.').reduce<unknown>((node, part) => typeof node === 'object' && node !== null && !Array.isArray(node) ? (node as Record<string, unknown>)[part] : undefined, values);
+    return value === false || typeof value === 'string' || Array.isArray(value);
+  });
+}
+
 /** One thing wrong with the policy file: which file, which field, and what was expected there. */
 export interface PolicyProblem {
   file: string;
