@@ -383,7 +383,22 @@ export class ClaudeTurn {
         preTokens: meta.pre_tokens,
         postTokens: typeof meta.post_tokens === 'number' ? meta.post_tokens : null,
       });
+      if (typeof meta.post_tokens === 'number') this.#compacted(meta.post_tokens);
     }
+  }
+
+  /**
+   * The CLI compacted the conversation (`/compact` or its own threshold): the
+   * meter reads what is left at once rather than at the next request. The
+   * reading taken before the cut is the old conversation, so the result does
+   * not bring it back; a request after the cut measures again and wins.
+   */
+  #compacted(postTokens: number): void {
+    this.#contextTokens = postTokens;
+    this.#addedChars = 0;
+    this.#measuredFor = '';
+    this.#window = this.#window ?? this.ctx.thread.context?.window ?? null;
+    this.ctx.context({ tokens: postTokens, window: this.#window });
   }
 
   /**
@@ -602,7 +617,7 @@ export class ClaudeTurn {
     // The run a swap ended measured the old session: the core already reads the compacted one.
     if (this.#swap !== null) return;
     if (this.#contextTokens !== null) {
-      this.ctx.context({ tokens: this.#contextTokens, window: contextWindowOf(message, this.ctx.thread.model) });
+      this.ctx.context({ tokens: this.#contextTokens, window: this.#window });
     }
     const refused = this.#resumeRefused(message);
     if (refused !== null) {
