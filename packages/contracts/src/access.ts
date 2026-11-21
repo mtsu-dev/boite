@@ -452,6 +452,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['artifacts.previewClose', 'closing only an HTML preview belonging to its own conversation'],
   ['threads.tasks.set', 'the plan the tasks surface draws, from an agent whose protocol carries no todo tool'],
   ['threads.tasks.get', 'the same plan read back, so a new process continues the list it did not write'],
+  ['threads.tasks.change', 'edit one task in the agent’s own plan atomically'],
   ['todos.list', 'the project cards, shared with the other threads of the project'],
   ['todos.add', 'what surfaced during the work and belongs to the project, not to this turn'],
   ['todos.update', 'claiming a card it finished, which is a request for confirmation, never the confirmation'],

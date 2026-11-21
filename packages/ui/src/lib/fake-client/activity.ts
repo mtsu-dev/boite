@@ -1,6 +1,6 @@
 /** A thread's goal, loop and task list, and the timer that runs them. */
 import { errorText } from '../errors';
-import { AUTO_GOAL_MIN_CHARS, attachmentError, RpcErrorCode, threadActive, type AgentTask, type Thread, type ThreadActivity, type Turn } from '@boite/contracts';
+import { AUTO_GOAL_MIN_CHARS, agentTaskLimitProblem, applyAgentTaskChange, attachmentError, RpcErrorCode, threadActive, type AgentTask, type Thread, type ThreadActivity, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { refusal } from './shared';
 import { workflowAnswer, workflowChild } from './delegation';
@@ -296,6 +296,17 @@ function lastPrompt(thread: Thread): { turnId: string; messageId: string; text: 
 }
 
 export function activityMethods(ctx: FakeContext) {
+  function setTasks(thread: Thread, tasks: AgentTask[]): ThreadActivity {
+    const problem = agentTaskLimitProblem(tasks.length);
+    if (problem) throw refusal(problem, { count: tasks.length });
+    const activity: ThreadActivity = structuredClone(thread.activity ?? { goal: null, loop: null, tasks: [] });
+    activity.tasks = tasks.map(({ id, text, status }) => ({ id, text, status }));
+    // A fresh list is something new to look at, so a dismissal does not hold.
+    activity.tasksDismissed = false;
+    thread.activity = activity;
+    ctx.publishActivity(thread);
+    return structuredClone(activity);
+  }
   return {
     'threads.activity.set': async (params) => {
       const thread = ctx.thread(params.threadId);
@@ -339,15 +350,16 @@ export function activityMethods(ctx: FakeContext) {
       scheduleActivity(ctx, thread.id);
       return structuredClone(activity);
     },
-    'threads.tasks.set': async (params) => {
+    'threads.tasks.set': async ({ threadId, tasks }) => setTasks(ctx.thread(threadId), tasks),
+    'threads.tasks.change': async (params) => {
       const thread = ctx.thread(params.threadId);
-      const activity: ThreadActivity = structuredClone(thread.activity ?? { goal: null, loop: null, tasks: [] });
-      activity.tasks = params.tasks.map((task): AgentTask => ({ id: task.id, text: task.text, status: task.status }));
-      // A fresh list is something new to look at, so a dismissal does not hold.
-      activity.tasksDismissed = false;
-      thread.activity = activity;
-      ctx.publishActivity(thread);
-      return structuredClone(activity);
+      let tasks: AgentTask[];
+      try {
+        tasks = applyAgentTaskChange(thread.activity?.tasks ?? [], params);
+      } catch (error) {
+        throw refusal(errorText(error));
+      }
+      return setTasks(thread, tasks);
     },
     'threads.tasks.get': async (params) => {
       return structuredClone(ctx.thread(params.threadId).activity?.tasks ?? []);

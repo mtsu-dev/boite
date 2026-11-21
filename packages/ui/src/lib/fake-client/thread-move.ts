@@ -134,7 +134,7 @@ function move(ctx: FakeContext, threadId: ThreadId, projectId: string, stopBackg
 }
 
 /** A project named by id, by name (any case) or by its folder, as the core resolves `agent.move.project`. */
-export function resolveProject(ctx: FakeContext, threadId: ThreadId, query: string, method = 'agent.move'): Project {
+export function resolveProject(ctx: FakeContext, threadId: ThreadId | undefined, query: string, method = 'agent.move'): Project {
   const expected = 'the id, name or absolute folder of a project added to Boite';
   if (typeof query !== 'string' || query.trim().length === 0) throw refuse(`${method}.project must name a project`, { threadId, field: 'project', expected });
   const wanted = query.trim();

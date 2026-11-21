@@ -165,6 +165,32 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACT_MAIL_SCENARIOS,
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
+  'terminal creation retries keep the first thread and turn after its selection changes': async env => {
+    const setup = await echo(env);
+    const request = { project: setup.projectId, model: `${setup.provider.id}/${setup.model}`, prompt: 'Open a conversation', clientRequestId: 'contract-create-prompt' };
+    const first = await env.call('threads.createFromPrompt', request);
+    const threadId = first.thread.id;
+    check(first.thread.projectId === setup.projectId && first.turn.threadId === threadId, 'the first turn did not start in the selected project');
+    await env.call('threads.update', { threadId, permissionMode: 'yolo' });
+    const retry = await env.call('threads.createFromPrompt', request);
+    same([retry.thread.id, retry.turn.id], [threadId, first.turn.id], 'the original creation receipt');
+    await refusedWith(env.call('threads.createFromPrompt', { ...request, prompt: 'Different content' }), RpcErrorCode.Refused);
+    const created = (await env.call('threads.list', {})).filter(entry => entry.projectId === setup.projectId);
+    same(created.map(entry => entry.id), [threadId], 'the threads created by retries');
+    await until('the first turn to finish', async () => (await summary(env, threadId)).status === 'idle');
+    same((await env.call('threads.get', { threadId })).turns.map(turn => turn.id), [first.turn.id], 'the turns created by retries');
+  },
+  'concurrent task changes preserve distinct ids and let one task change independently': async env => {
+    const { id: threadId } = await thread(env, await echo(env));
+    const texts = ['Read the contract', 'Check the receipt'];
+    await Promise.all(texts.map(text => env.call('threads.tasks.change', { threadId, action: 'add', text })));
+    const tasks = await env.call('threads.tasks.get', { threadId });
+    same(tasks.map(task => task.text).sort(), [...texts].sort(), 'the atomically added tasks');
+    same(new Set(tasks.map(task => task.id)).size, 2, 'distinct task ids');
+    const chosen = tasks.find(task => task.text === texts[0])!;
+    await env.call('threads.tasks.change', { threadId, action: 'done', id: chosen.id });
+    same(await env.call('threads.tasks.get', { threadId }), tasks.map(task => task.id === chosen.id ? { ...task, status: 'completed' } : task), 'the task plan after completing one task');
+  },
   'thread usage applies the execution provider and reports coverage for the range': async (env) => {
     const setup = await echo(env);
     const { id: threadId } = await thread(env, setup);
