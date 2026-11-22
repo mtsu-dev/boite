@@ -1,4 +1,4 @@
-import { agentDefaultsToWrite, checkSettingsPatch, defaultSettings, followedPatch, keepLaterFavorites, readSettings, MACHINE_SETTINGS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
+import { agentDefaultsToWrite, browserUserAgentIsWhole, checkSettingsPatch, defaultSettings, followedPatch, keepLaterFavorites, readSettings, MACHINE_SETTINGS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { writesTitles } from './drivers/index.ts';
 import { invalidParams } from './errors.ts';
@@ -35,6 +35,12 @@ export class SettingsStore {
     const patch = { ...stored } as Partial<Settings>;
     Reflect.deleteProperty(patch, 'maxConcurrentTurns');
     Reflect.deleteProperty(patch, 'perAccountConcurrency');
+    // A whole User-Agent saved as a suffix, before `browserUserAgentError` refused one, sent the
+    // browser's own twice; read as the replacement it meant, so the list saves again as it is.
+    if (Array.isArray(patch.browserProfiles) && patch.browserProfiles.some(profile => profile.userAgent?.mode === 'suffix' && browserUserAgentIsWhole(profile.userAgent.value))) {
+      patch.browserProfiles = patch.browserProfiles.map(profile => profile.userAgent?.mode === 'suffix' && browserUserAgentIsWhole(profile.userAgent.value)
+        ? { ...profile, userAgent: { mode: 'replace', value: profile.userAgent.value } } : profile);
+    }
     return { ...defaultSettings(), ...patch };
   }
 

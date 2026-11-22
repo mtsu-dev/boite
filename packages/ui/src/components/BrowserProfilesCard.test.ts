@@ -77,6 +77,30 @@ function query<T extends HTMLElement = HTMLElement>(selector: string): T {
   return element;
 }
 
+test('a whole User-Agent typed as a suffix is flagged as typed and never saved, and the example follows the mode', async () => {
+  const save = showDeletableProfile();
+  query<HTMLButtonElement>('[data-testid=browser-user-agent-edit]').click();
+  flushSync();
+  const input = query<HTMLInputElement>('[data-testid=browser-user-agent-value]');
+  expect(input.placeholder).toBe('Program marker, e.g. MyTool/1.0');
+  input.value = 'Mozilla/5.0 Chrome/158.0.0.0';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+  expect(query('[data-testid=browser-user-agent-whole]').textContent).toContain('Replace entire value');
+  expect(query<HTMLButtonElement>('[data-testid=browser-user-agent-save]').disabled).toBe(true);
+  query<HTMLFormElement>('form.user-agent').requestSubmit();
+  flushSync();
+  expect(save).not.toHaveBeenCalled();
+  query<HTMLButtonElement>('[data-testid=browser-user-agent-mode]').click();
+  flushSync();
+  [...document.querySelectorAll<HTMLElement>('[role=menuitem], [role=menuitemradio]')].find(item => item.textContent?.includes('Replace entire value'))!.click();
+  flushSync();
+  expect(document.querySelector('[data-testid=browser-user-agent-whole]')).toBeNull();
+  expect(input.placeholder).toBe('Full User-Agent');
+  query<HTMLFormElement>('form.user-agent').requestSubmit();
+  await vi.waitFor(() => expect(store.settings?.browserProfiles).toEqual([{ id: 'p-one', name: 'One', userAgent: { mode: 'replace', value: 'Mozilla/5.0 Chrome/158.0.0.0' } }]));
+});
+
 test('overlapping User-Agent saves and a rename preserve every profile change', async () => {
   store.settings = { browserProfiles: [{ id: 'p-one', name: 'One' }, { id: 'p-two', name: 'Two' }] } as Settings;
   let finish!: () => void;

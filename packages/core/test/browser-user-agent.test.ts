@@ -33,6 +33,25 @@ test('profile settings keep User-Agent modes, normalize empty to absent and refu
     ...['x\r\nX-Injected: yes', '\t', '\x00', '\x7f', 'é', 'x'.repeat(8193)].map(value => ({ mode: 'suffix', value }))]) {
     expect(checkSettingsPatch({ browserProfiles: [{ ...profile, userAgent } as never] })).toMatchObject({ ok: false, field: 'browserProfiles' });
   }
+  // A whole User-Agent as a suffix would send the browser's own twice; as a replacement it is what it says.
+  const whole = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36';
+  expect(checkSettingsPatch({ browserProfiles: [{ ...profile, userAgent: { mode: 'suffix', value: ` ${whole.toLowerCase()}` } }] }))
+    .toMatchObject({ ok: false, field: 'browserProfiles', message: expect.stringContaining('cannot start with Mozilla/') });
+  expect(checkSettingsPatch({ browserProfiles: [{ ...profile, userAgent: { mode: 'replace', value: whole } }] }))
+    .toEqual({ ok: true, patch: { browserProfiles: [{ ...profile, userAgent: { mode: 'replace', value: whole } }] } });
+});
+
+test('a whole User-Agent stored as a suffix before it was refused reads as a replacement, so the list saves again', async () => {
+  const harness = await startTestCore();
+  try {
+    const whole = 'Mozilla/5.0 Chrome/158.0.0.0';
+    harness.core.journal.setSetting('settings', { ...harness.core.settings.stored(), browserProfiles: [{ id: 'p-old', name: 'Old', userAgent: { mode: 'suffix', value: whole } }, { id: 'p-tag', name: 'Tag', userAgent: { mode: 'suffix', value: 'Bounty/1' } }] });
+    expect(harness.core.settings.get().browserProfiles).toEqual([{ id: 'p-old', name: 'Old', userAgent: { mode: 'replace', value: whole } }, { id: 'p-tag', name: 'Tag', userAgent: { mode: 'suffix', value: 'Bounty/1' } }]);
+    const owner = await harness.connect();
+    await owner.call('settings.set', { browserProfiles: [...harness.core.settings.get().browserProfiles!, { id: 'p-new', name: 'New' }] });
+    expect(harness.core.settings.get().browserProfiles?.map(one => one.id)).toEqual(['p-old', 'p-tag', 'p-new']);
+    owner.close();
+  } finally { await harness.stop(); }
 });
 
 test('the engine is chosen per profile, the built-in default included, and refuses anything else', () => {

@@ -585,9 +585,19 @@ export interface BrowserBuiltinProfiles { default?: { engine?: BrowserEngine } }
 export function browserUserAgentError(value: unknown): string | null {
   if (value === undefined) return null;
   const setting = value as Partial<BrowserUserAgent> | null;
-  return !setting || !['suffix', 'replace'].includes(setting.mode as string)
-    || typeof setting.value !== 'string' || setting.value.length > 8192 || /[^\x20-\x7e]/.test(setting.value)
-    ? 'User-Agent needs suffix or replace mode and at most 8192 printable ASCII characters' : null;
+  if (!setting || !['suffix', 'replace'].includes(setting.mode as string)
+    || typeof setting.value !== 'string' || setting.value.length > 8192 || /[^\x20-\x7e]/.test(setting.value)) {
+    return 'User-Agent needs suffix or replace mode and at most 8192 printable ASCII characters';
+  }
+  // A whole User-Agent appended to the browser's own would send the browser's twice.
+  return setting.mode === 'suffix' && browserUserAgentIsWhole(setting.value) ? BROWSER_USER_AGENT_WHOLE_SUFFIX : null;
+}
+
+export const BROWSER_USER_AGENT_WHOLE_SUFFIX = 'a User-Agent suffix cannot start with Mozilla/: that is a whole User-Agent, so use replace mode, or leave it empty to keep the browser\'s own';
+
+/** Whether a User-Agent value is a whole one rather than a program marker. */
+export function browserUserAgentIsWhole(value: string): boolean {
+  return /^mozilla\//i.test(value.trim());
 }
 
 /** A profile's engine as `get` in the core reads it; `default` and `private` included. */
