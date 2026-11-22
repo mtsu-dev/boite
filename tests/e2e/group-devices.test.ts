@@ -215,7 +215,7 @@ test('a phone installed from one machine scans the code of another and lists and
     await phone.waitFor(`globalThis.__boiteTest.workspace.active.openThread?.id === ${JSON.stringify(thread)}`);
     await phone.waitFor(`document.querySelector('${id('composer-input')}')`);
     await phone.type(id('composer-input'), words);
-    await phone.click(id('composer-send'));
+    await phone.click(`${id('composer-send')}:enabled`);
     await phone.waitFor(`document.querySelector('${id('chat')}')?.textContent.split(${JSON.stringify(words)}).length > 2`, 20_000);
   }
   expect(await phone.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
