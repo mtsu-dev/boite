@@ -13,6 +13,7 @@ import { constants, existsSync, lstatSync, realpathSync, statSync } from 'node:f
 import type { BigIntStats, Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { open, readdir, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
 import type { FileContent, FileEntry, ThreadId, Timestamp } from '@boite/contracts';
@@ -21,7 +22,7 @@ import { locateFile } from './files.ts';
 import { refused, RpcFailure } from './errors.ts';
 import type { RpcContext } from './router.ts';
 import { newToken } from './ids.ts';
-import { currentOs } from './paths.ts';
+import { currentOs, homePath } from './paths.ts';
 import { worktreeRoot } from './worktree.ts';
 import type { SharedFilePermit } from './contacts/access-policy.ts';
 
@@ -52,6 +53,8 @@ export function assertDeviceReadable(core: Core, threadId: ThreadId): void {
   if (!deviceRoots(core, threadId).some((root) => contains(root, where))) {
     throw refused(`a paired device reads only inside the thread's project or its worktrees, not ${thread.cwd}`, { threadId });
   }
+  const login = homeLoginFolder(core, realOf(homePath()), where);
+  if (login !== null) throw loginRefusal(login, thread.cwd, threadId);
 }
 
 function deviceRoots(core: Core, threadId: ThreadId): string[] {
@@ -69,10 +72,70 @@ const DEVICE_SECRET_FILE =
   /^(\.env(\.(?!example$|sample$|template$)[^.]+)*|\.envrc|\.dev\.vars|\.netrc|_netrc|\.npmrc|\.pypirc|\.pgpass|\.htpasswd|\.git-credentials|\.credentials\.json|credentials(\.json)?|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.+\.(tfvars|tfstate|tfstate\.backup)|.+\.(pem|key|p12|pfx|jks|keystore|kdbx))$/i;
 
 /**
- * Inside a readable tree, a paired device still leaves two things to the owner.
+ * Where the owner's logins live: the home folder's hidden entries (every agent
+ * CLI, gh, rclone, keyrings, shell history) and the per-user stores of Windows
+ * and macOS. Denied as a whole rather than by a list of known names, since a
+ * new CLI brings a new folder. The temporary folder, which Windows keeps
+ * under AppData, holds no login, nor do the cloud drives macOS keeps under
+ * Library. The answer names the entry, for the refusal.
+ */
+function homeCredentialEntry(home: string, real: string): string | null {
+  if (!contains(home, real) || contains(realOf(tmpdir()), real)) return null;
+  const [first = '', second = ''] = relative(home, real).split(sep);
+  if (/^library$/i.test(first) && /^(cloudstorage|mobile documents)$/i.test(second)) return null;
+  return first.startsWith('.') || /^(appdata|library)$/i.test(first) ? first : null;
+}
+
+/**
+ * The home folder's known login folders, as segments: each agent CLI's, the key
+ * and token stores, and the ones other CLIs keep under the XDG folders. `AppData`
+ * and `Library` hold every Windows and macOS app's logins and count whole.
+ */
+const HOME_LOGIN_FOLDERS = [
+  '.codex', '.claude', '.gemini', '.grok', '.pi', '.hermes', '.vibe', '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker',
+  '.password-store', '.cargo', '.config/gh', '.config/gcloud', '.config/opencode', '.local/share/opencode', '.local/share/keyrings',
+  '.config/muse', '.local/share/muse', '.local/state/muse', '.config/opencode-v2', '.local/share/opencode-v2', '.local/state/opencode-v2',
+  '.cache/opencode-v2', 'appdata', 'library',
+].map((folder) => folder.split('/'));
+
+/**
+ * The login folder of the home folder that holds `real`, checked whatever the
+ * root: a project the owner registered at `~/.codex`, or a device adding
+ * `~/.config/gh`, reaches the same logins as the home folder would. Known
+ * folders only, so a project or worktree folder kept in another hidden folder
+ * (`~/.worktrees`, `~/.config/nvim`) stays readable. Boite's data folder is
+ * left to its own check, and the temporary folder and macOS' cloud drives hold
+ * no login.
+ */
+function homeLoginFolder(core: Core, home: string, real: string): string | null {
+  if (!contains(home, real) || contains(realOf(tmpdir()), real) || contains(realOf(core.dataDir), real)) return null;
+  const parts = relative(home, real).split(sep).filter(Boolean);
+  const lower = parts.map((part) => part.toLowerCase());
+  if (lower[0] === 'library' && (lower[1] === 'cloudstorage' || lower[1] === 'mobile documents')) return null;
+  const folder = HOME_LOGIN_FOLDERS.find((segments) => segments.every((segment, index) => lower[index] === segment));
+  return folder === undefined ? null : parts.slice(0, folder.length).join('/');
+}
+
+/** A known login folder of the home folder that `real` holds, such as `.config/gh` for `~/.config`. */
+function heldLoginFolder(home: string, real: string): string | null {
+  if (!contains(home, real) || real === home) return null;
+  const folder = HOME_LOGIN_FOLDERS.find((segments) => contains(real, join(home, ...segments)));
+  return folder === undefined ? null : folder.join('/');
+}
+
+function loginRefusal(entry: string, path: string, threadId?: ThreadId): RpcFailure {
+  return refused(`a paired device does not read the home folder's ${entry}, which holds logins; open ${path} on the owner's machine`, { ...(threadId ? { threadId } : {}), path, expected: `a path outside the home folder's ${entry}` });
+}
+
+/**
+ * Inside a readable tree, a paired device still leaves three things to the owner.
  * The core's own data (journal, accounts, tokens) when a project contains it,
  * which happens when a project is a home or desktop folder; a project or
- * worktree folder kept under the data folder stays readable. And files that
+ * worktree folder kept under the data folder stays readable. The home folder's
+ * hidden entries, where every CLI keeps its login, when the thread's folder or
+ * project is the home folder or holds it; a folder the owner chose inside one
+ * (a shared worktree folder in `~/.worktrees`, a drive in `~/Library`) keeps
+ * its reads, unless it is inside a known login folder. And files that
  * hold credentials, since a phone that is lost or borrowed should not carry a
  * key away. A path outside the tree is left to the read itself to refuse.
  */
@@ -80,26 +143,70 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
   const base = realOf(cwd);
   const target = realOf(resolve(cwd, path ?? ''));
   if (!contains(base, target)) return;
+  assertDeviceTarget(core, threadId, base, target, path);
+}
+
+/** The rules above, for `target` inside the real folder `base`. */
+function assertDeviceTarget(core: Core, threadId: ThreadId, base: string, target: string, path: string | undefined): void {
   const data = realOf(core.dataDir);
   if (contains(data, target) && !deviceRoots(core, threadId).some((root) => root !== data && contains(data, root) && contains(root, target))) {
     throw refused(`a paired device does not read boite's data folder: ${path ?? ''}`, { threadId });
   }
   const parts = relative(base, target).split(sep).filter(Boolean);
-  if (parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
-    throw refused(`a paired device does not read credential files; open ${path ?? ''} on the owner's machine`, { threadId });
+  const home = realOf(homePath());
+  if (![base, ...deviceRoots(core, threadId)].some((root) => contains(root, home))) {
+    const login = homeLoginFolder(core, home, target);
+    if (login !== null) throw loginRefusal(login, path ?? '', threadId);
+  }
+  const entry = [base, ...deviceRoots(core, threadId)].some((root) => contains(root, home)) ? homeCredentialEntry(home, target) : null;
+  if (entry !== null || parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
+    throw refused(`a paired device does not read credential files${entry === null ? '' : ` (the home folder's ${entry} holds logins)`}; open ${path ?? ''} on the owner's machine`, { threadId });
+  }
+}
+
+/**
+ * The file `git.diff` reads at HEAD for its old side, as git names it: a
+ * rename's origin, which the device may not have named. It answers to the
+ * rules of a file, and stays inside the thread's folder like one. Git reads
+ * the name HEAD records, not where a link in today's tree leads, so that name
+ * is checked as written as well as followed: `.aws/notes.txt` stays a
+ * credential file when `.aws` is now a link to an ordinary folder.
+ */
+export function assertDeviceHistoryFile(core: Core, threadId: ThreadId, cwd: string, absolute: string): void {
+  const base = realOf(cwd);
+  const recorded = resolve(base, relative(resolve(cwd), resolve(absolute)));
+  // A moved origin is on no disk: where it would lie is where its parent resolves.
+  const followed = landing(resolve(absolute), true);
+  for (const target of [recorded, followed]) {
+    if (target === null || !contains(base, target)) {
+      throw refused(`a paired device does not read ${absolute} at HEAD: it is outside the thread's working directory`, { threadId });
+    }
+    assertDeviceTarget(core, threadId, base, target, absolute);
   }
 }
 
 /**
  * A folder a paired device adds as a project becomes a root the checks above
- * read from, so it is held to the same two rules first: not boite's data
- * folder or inside it, and not a folder that holds keys or tokens or one inside it.
- * Its links are followed, as a read follows them.
+ * read from, so it is held to the same rules first: not boite's data folder or
+ * inside it, not the home folder, one of its parents or a disk root (they hold
+ * every login), not one of the home folder's known login folders, a folder
+ * inside one or a folder that holds one, and not a folder that holds keys or tokens or one inside it. A folder
+ * inside another hidden entry of the home folder (`~/.worktrees`, `~/.dotfiles`)
+ * is allowed: it is a root of its own, and the entry's other folders stay out
+ * of it. Its links are followed, as a read follows them.
  */
 export function assertDeviceProjectFolder(core: Core, folder: string): void {
   const real = realOf(folder);
   if (contains(realOf(core.dataDir), real)) {
     throw refused(`a paired device does not add boite's data folder, or a folder inside it, as a project: ${folder}`, { field: 'path', path: folder, expected: 'a folder outside boite\'s data folder' });
+  }
+  const home = realOf(homePath());
+  if (contains(real, home) || dirname(real) === real) {
+    throw refused(`a paired device does not add the home folder, a folder that contains it or a disk root as a project, since it holds every login on this machine; add a folder inside it, or add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder inside ${home}, not ${home} itself or a parent of it` });
+  }
+  const login = homeLoginFolder(core, home, real) ?? heldLoginFolder(home, real);
+  if (login !== null) {
+    throw refused(`a paired device does not add the home folder's ${login} as a project, since it holds logins; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside the home folder's ${login}` });
   }
   if (real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
     throw refused(`a paired device does not add a folder that holds keys or tokens as a project; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` });
@@ -243,11 +350,23 @@ export function writeLandsInside(cwd: string, path: string): boolean {
   const root = resolve(cwd);
   const absolute = isAbsolute(path) ? resolve(path) : resolve(root, path);
   if (!contains(root, absolute)) return false;
+  const lands = landing(absolute);
+  return lands !== null && contains(realOf(root), lands);
+}
+
+/**
+ * Where `absolute` lies once every link on the way is followed: its real path,
+ * or for a name that is not there, its nearest existing parent's with the rest
+ * appended. Null for a link to nothing or a path that cannot be read.
+ * `pastFiles` also climbs past a file standing where a folder of the path was
+ * (`ENOTDIR`): a name read from history, never one a write would create.
+ */
+function landing(absolute: string, pastFiles = false): string | null {
   const missing: string[] = [];
   let probe = absolute;
   for (;;) {
     try {
-      return contains(realOf(root), join(realpathSync(probe), ...missing));
+      return join(realpathSync(probe), ...missing);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === 'EACCES' || code === 'EPERM') {
@@ -255,25 +374,30 @@ export function writeLandsInside(cwd: string, path: string): boolean {
         // not read fails here. Only a link moves a name: anything else lies
         // where its parent resolves.
         try {
-          if (lstatSync(probe).isSymbolicLink()) return false;
+          if (lstatSync(probe).isSymbolicLink()) return null;
         } catch {
-          return false;
+          return null;
         }
         const parent = dirname(probe);
-        if (parent === probe) return false;
+        if (parent === probe) return null;
         missing.unshift(basename(probe));
         probe = parent;
         continue;
       }
-      if (code !== 'ENOENT') return false;
-      try {
-        lstatSync(probe);
-        return false;
-      } catch {
-        // Not there at all: its parent decides.
+      if (code === 'ENOTDIR' && pastFiles) {
+        // A parent of the name is a file now: that file decides, links followed.
+      } else if (code !== 'ENOENT') {
+        return null;
+      } else {
+        try {
+          lstatSync(probe);
+          return null;
+        } catch {
+          // Not there at all: its parent decides.
+        }
       }
       const parent = dirname(probe);
-      if (parent === probe) return false;
+      if (parent === probe) return null;
       missing.unshift(basename(probe));
       probe = parent;
     }

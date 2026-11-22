@@ -30,7 +30,10 @@ async function flowsWithoutHolder(sides: Awaited<ReturnType<typeof setup>>): Pro
   await a.stop();
   await cClient.call('contacts.update', { coreId: xId, trusted: true });
   const xThread = await thread(xClient, (await project(x, xClient, 'xray')).id, 'Xray work');
-  const cThread = await thread(cClient, (await project(c, cClient, 'mine')).id, 'Guest work');
+  const mine = await project(c, cClient, 'mine');
+  const cThread = await thread(cClient, mine.id, 'Guest work');
+  // The mochi connects only to a thread of a project opened to the contact.
+  c.core.contacts.grant({ coreId: xId, projectId: mine.id });
   remoteOn(x, xThread);
   remoteOn(c, cThread);
   const cBot = await contactsBotOf(c, cClient);

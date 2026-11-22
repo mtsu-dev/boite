@@ -78,8 +78,20 @@ Chat files and previews: Markdown file links, bare web URLs, absolute paths,
 parsing; enabling both adds no further link types.
 
 On the owning local desktop, this switch also makes an explicit click open a
-file or folder in its associated application, including Windows shortcuts and
-absolute paths outside the checkout, instead of Boite's preview. On a remote
+folder, or a document inside the thread's folder, in its associated application
+instead of Boite's preview. The shell's `open_chat_file` resolves the link inside
+that folder, links included, and opens only the document types its
+`CHAT_DOCUMENTS` list names (text, data, office files, pictures, sound, video),
+never a file with an execute bit or a macOS bundle. A program, script, shortcut
+(`.lnk`, `.url`, `.desktop`) or a path outside the folder is refused, and the
+answer shows it in the preview instead. A click on a link to `.exe`, `.com`,
+`.bat`, `.cmd`, `.msi` or `.AppImage`, or its menu's Open, shows the preview
+too, with or without the switch, and never reaches the shell. Only the
+preview's visible Open button launches it, with `open_local_file`; the
+program's name beside it does nothing. Another file's name in the preview goes
+through `open_chat_file`, so it opens only what a direct click would (a folder
+or a document inside the thread's folder) and shows the shell's refusal for the
+rest; the Open button stays the explicit launch. On a remote
 machine or phone, links still use the inline preview and its existing owner
 and working-directory checks. They never open a file on the device displaying
 the conversation.

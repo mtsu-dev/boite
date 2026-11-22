@@ -7,7 +7,7 @@
   import { featureOn } from '../lib/features.svelte';
   import type { Store } from '../lib/store.svelte';
   import ChatFile from './ChatFile.svelte';
-  import { executableLink, localFileDirectory, openLocalFile, openChatFile } from '../lib/local-files';
+  import { executableLink, localFileDirectory, openChatFile } from '../lib/local-files';
   import { glides } from '../lib/motion';
   import TypingIndicator from './TypingIndicator.svelte';
   import { selectionClicks } from '../lib/selection-clicks';
@@ -62,8 +62,11 @@
     opening = true;
     void located(written).then(path => {
       const directory = localFileDirectory(store, threadId);
-      if (directory && (directLinks || (executableLink(path) && !line))) return (directLinks ? openChatFile : openLocalFile)(directory, path);
-      selected = { path, ...(line ? { line: Number(line) } : {}) };
+      const preview = (): void => { selected = { path, ...(line ? { line: Number(line) } : {}) }; };
+      // A program is previewed first: only the preview's Open launches it, never the link itself.
+      // The shell opens only a folder or a document inside the thread's folder; what it refuses is previewed here.
+      if (directory && directLinks && !executableLink(path)) return openChatFile(directory, path).catch(preview);
+      preview();
     }).catch(reason => {
       store?.reportError(reason, 'minor');
     }).finally(() => { opening = false; });

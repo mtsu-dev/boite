@@ -314,8 +314,13 @@ Every surface reads the thread's working directory through the core, never the
 browser's file system: `git.status`, `git.diff`, `files.list`, `files.read`,
 `files.write`, `todos.*`, `threads.tasks.*` in `packages/contracts/src/` (`git.ts`, `files.ts`, `todos.ts`, `threads.ts`).
 Paths are relative to the thread's cwd, or absolute inside it, and a path that
-resolves outside (a symlink out, a `..`) is refused by name. `files.write` also
-refuses a link to nothing, since the write would create its target.
+resolves outside (a symlink out, a `..`) is refused by name. `git.status` names
+its changes the same way, though git gives them from the repository's root: a
+thread in a subfolder gets `b.md` for its own file and `../top.md` for one
+above it. The path the list shows is the one `git.diff` takes, and a `../`
+one is refused there like any path outside the directory: the list shows that
+change, but its diff is not read. `files.write` also refuses a link to nothing,
+since the write would create its target.
 
 The Changes tab reads the same checkout the agent writes in, so its git runs
 with `GIT_OPTIONAL_LOCKS=0` and counts lines with `git diff-index`, neither of

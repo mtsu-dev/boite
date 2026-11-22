@@ -129,17 +129,19 @@ export class SecretStore {
     return requests;
   }
 
-  /** The thread's text with every active secret's value replaced by `•••• (<NAME>)`. */
-  mask(threadId: ThreadId, text: string): string {
-    if (this.masks.empty) return text;
-    return this.masks.mask([threadScope(threadId)], text);
+  /**
+   * A thread's text with every known secret's value replaced by `•••• (<NAME>)`,
+   * whichever thread asked for it: a subagent, a fork or another thread of the
+   * project that reads the file a `write` produced shows the value as plainly
+   * as the asking thread would. The patterns are a few HMACs, so all of them run.
+   */
+  mask(_threadId: ThreadId, text: string): string {
+    return this.masks.maskAll(text);
   }
 
-  maskPart<T extends MessagePart>(threadId: ThreadId, part: T): T {
+  maskPart<T extends MessagePart>(_threadId: ThreadId, part: T): T {
     if (this.masks.empty || part.type === 'secret_request') return part;
-    const scopes = [threadScope(threadId)];
-    if (!this.masks.has(scopes)) return part;
-    return maskDeep(part, text => this.masks.mask(scopes, text));
+    return maskDeep(part, text => this.masks.maskAll(text));
   }
 
   maskAll(text: string): string {

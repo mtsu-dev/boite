@@ -9,7 +9,7 @@
   import { featureOn } from '../lib/features.svelte';
   import { fill, strings } from '../lib/strings';
   import { bytes, millis } from '../lib/format';
-  import { localFileDirectory, openLocalFile } from '../lib/local-files';
+  import { executableLink, localFileDirectory, openChatFile, openLocalFile } from '../lib/local-files';
   import { browserDownload, decodeBase64, saveAttachment, saveAttachmentUrl } from '../lib/attachment-save';
   import { galleryFrom, media, viewerHost, type Gallery, type MediaItem } from '../lib/media-gallery';
   import { videoPlayable } from '../lib/video-support';
@@ -47,6 +47,8 @@
   /** The attachment's decoded bytes, kept for the shell to save. */
   let body: Uint8Array<ArrayBuffer> | null = null;
   const directory = $derived(!file && path ? localFileDirectory(store, threadId) : null);
+  /** A program on this computer, from a chat link: only the visible Open button launches it, its name does nothing. */
+  const program = $derived(directory !== null && !!path && executableLink(path));
   const name = $derived(file?.name ?? path?.split('/').at(-1) ?? strings.composer.attachAlt);
   const rich = $derived(featureOn('chat-artifacts'));
   const image = $derived(/^image\/(png|jpeg|gif|webp|avif|bmp)$/.test(mime));
@@ -125,10 +127,15 @@
     view(shot);
   }
 
-  async function open(): Promise<void> {
+  /**
+   * The Open button is the explicit launch. The name opens only what the shell
+   * opens directly from a chat link (`open_chat_file`: a folder or a document
+   * inside the thread's folder), and shows why it refuses the rest.
+   */
+  async function open(direct = false): Promise<void> {
     if (!directory || !path || opening) return;
     opening = true;
-    try { await openLocalFile(directory, path); }
+    try { await (direct ? openChatFile : openLocalFile)(directory, path); }
     catch (reason) { error = errorText(reason); }
     finally { opening = false; }
   }
@@ -155,7 +162,8 @@
 
   /** The name or the icon: take the file out and open it. */
   async function launch(): Promise<void> {
-    if (directory && !image) return open();
+    if (program) return;
+    if (directory && !image) return open(true);
     if (file?.type === 'file' && file.dataDeferred) await load();
     if (!url) return;
     if (image) { imageRequested = true; view(shot); return; }
@@ -325,12 +333,12 @@
     </div>
   {/if}
   <div class="file-row">
-    <button type="button" class="identity" onclick={launch} disabled={opening || saving || loading || (!url && !directory && !(file?.type === 'file' && file.dataDeferred))} title={saved || name}
-      aria-label={fill(strings.chat.openFile, { name })} data-testid="artifact-launch">
+    <button type="button" class="identity" onclick={launch} disabled={program || opening || saving || loading || (!url && !directory && !(file?.type === 'file' && file.dataDeferred))} title={saved || name}
+      aria-label={program ? name : fill(strings.chat.openFile, { name })} data-testid="artifact-launch">
       {#if image}<Image size={18} />{:else if video}<Film size={18} />{:else if audio}<Music2 size={18} />{:else}<FileText size={20} />{/if}
       <span class="label"><span class="filename">{name}</span><small>{loading ? strings.artifacts.loading : saving ? strings.artifacts.saving : saved ? strings.artifacts.saved : [bytes(size), dimensions || (box ? `${box.width} × ${box.height}` : ''), duration ? millis(duration * 1000) : ''].filter(Boolean).join(' · ')}</small></span>
     </button>
-    {#if directory}<button class="ghost small" type="button" onclick={open} disabled={opening} data-testid="artifact-open"><span class="ui-label">{strings.common.open}</span></button>{/if}
+    {#if directory}<button class="ghost small" type="button" onclick={() => open()} disabled={opening} data-testid="artifact-open"><span class="ui-label">{strings.common.open}</span></button>{/if}
     {#if url || (file?.type === 'file' && file.dataDeferred)}
       {#if deferredImage}<button class="ghost small" type="button" onclick={() => { imageRequested = true; if (waiting) void load(); }} data-testid="artifact-load-image"><span class="ui-label">{strings.artifacts.loadImage}</span></button>
       {:else if rich && previewable && !inlineMedia}<button class="ghost small" type="button" onclick={() => expanded = !expanded} aria-expanded={expanded} data-testid="artifact-preview"><span class="ui-label">{strings.artifacts.preview}</span></button>{/if}

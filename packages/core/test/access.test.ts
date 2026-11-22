@@ -7,14 +7,15 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join, parse } from 'node:path';
 import type { RpcMethodName } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { AGENT_METHODS, DEVICE_METHODS } from '@boite/contracts';
 import { assertAllowed } from '../src/access.ts';
 import type { Connection } from '../src/router.ts';
+import { assertDeviceFile, assertDeviceProjectFolder, assertDeviceReadable } from '../src/workdir.ts';
 import { echoThread, startTestCore, testProject } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
@@ -291,6 +292,10 @@ describe('the access gate', () => {
       expect(await thrown(phone.call('projects.add', { path: join(home, '.SSH', 'keys') }))).toThrow('a paired device does not add a folder that holds keys or tokens');
       // The owner's own app is not held to the device's rules.
       expect((await owner.call('projects.add', { path: join(home, '.ssh', 'keys') })).path).toBe(join(home, '.ssh', 'keys'));
+      // This machine's home folder, a parent of it and a disk root hold every login.
+      for (const path of [homedir(), dirname(homedir()), parse(homedir()).root]) {
+        expect(await thrown(phone.call('projects.add', { path }))).toThrow('a paired device does not add the home folder');
+      }
 
       const failures: string[] = [];
       const attempts: (() => Promise<unknown>)[] = [
@@ -420,12 +425,194 @@ describe('a paired device reads a thread\'s changes and files', () => {
       }
       expect(await thrown(phone.call('files.list', { threadId, path: '.git' }))).toThrow('credential files');
       expect(await thrown(phone.call('git.diff', { threadId, path: '.env' }))).toThrow('credential files');
+      // A credential renamed and rewritten since HEAD: the origin git reads for the old side is checked
+      // too, when the device names it and when the core takes it from the status.
+      writeFileSync(join(root, 'deploy.pem'), 'inert fixture, not a key\n');
+      git(root, 'add', 'deploy.pem');
+      git(root, 'commit', '-qm', 'fixture');
+      git(root, 'mv', 'deploy.pem', 'notes.txt');
+      writeFileSync(join(root, 'notes.txt'), 'notes\n');
+      expect(await thrown(phone.call('git.diff', { threadId, path: 'notes.txt' }))).toThrow('credential files');
+      expect(await thrown(phone.call('git.diff', { threadId, path: 'notes.txt', oldPath: 'deploy.pem' }))).toThrow('credential files');
+      expect(await owner.call('git.diff', { threadId, path: 'notes.txt' })).toMatchObject({ oldPath: 'deploy.pem', oldText: 'inert fixture, not a key\n' });
       expect(await phone.call('files.read', { threadId, path: '.env.example' })).toMatchObject({ kind: 'text' });
       expect(await phone.call('files.read', { threadId, path: 'terraform.tfvars.example' })).toMatchObject({ kind: 'text' });
       expect(await owner.call('files.read', { threadId, path: '.env' })).toMatchObject({ kind: 'text', text: 'token\n' });
     } finally {
       phone.close();
     }
+  });
+
+  test('a thread in a subfolder diffs local renames and reads arrivals as additions, through a link to its folder too', async () => {
+    const owner = await harness.connect();
+    // Windows drops a trailing space from a folder name; elsewhere it is part of it.
+    const space = process.platform === 'win32' ? '' : ' ';
+    const root = join(harness.dataDir, `repo${space}`);
+    const cwd = join(root, `notes${space}`, 'docs');
+    mkdirSync(cwd, { recursive: true });
+    git(root, 'init', '-q');
+    writeFileSync(join(cwd, 'a.md'), 'one\n');
+    mkdirSync(join(cwd, 'old'));
+    writeFileSync(join(cwd, 'old', 'c.md'), 'inert notes in the old folder\n');
+    writeFileSync(join(root, 'incoming.md'), 'inert notes before the move\n');
+    writeFileSync(join(root, 'top.md'), 'top\n');
+    git(root, 'add', '.');
+    git(root, 'commit', '-qm', 'first');
+    git(cwd, 'mv', 'a.md', 'b.md');
+    writeFileSync(join(cwd, 'b.md'), 'two\n');
+    // A file now stands where the origin's folder was: its path ends at a file, not a folder.
+    git(cwd, 'mv', join('old', 'c.md'), 'c.md');
+    rmSync(join(cwd, 'old'), { recursive: true, force: true });
+    writeFileSync(join(cwd, 'old'), 'inert file where the folder was\n');
+    git(root, 'mv', 'incoming.md', join(`notes${space}`, 'docs', 'arrived.md'));
+    writeFileSync(join(cwd, 'arrived.md'), 'inert notes after the move\n');
+    writeFileSync(join(root, 'top.md'), 'changed\n');
+    // The project is named through a link, as macOS names `/private/var` through `/var`:
+    // a moved origin is on no disk, so only its folder resolves.
+    const linked = join(harness.dataDir, 'linked-docs');
+    symlinkSync(cwd, linked, process.platform === 'win32' ? 'junction' : 'dir');
+    const project = await owner.call('projects.add', { path: linked, name: 'docs' });
+    const account = (await owner.call('accounts.list', {})).find((entry) => entry.providerId === 'echo');
+    const { id: threadId } = await owner.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account?.id ?? '', title: 'docs' });
+    const phone = await pairedDevice();
+    try {
+      for (const client of [owner, phone]) {
+        const { changes } = await client.call('git.status', { threadId });
+        expect(changes.find((change) => change.path === 'b.md')).toMatchObject({ status: 'renamed', oldPath: 'a.md' });
+        expect(changes.find((change) => change.path === '../../top.md')).toMatchObject({ status: 'modified', additions: 1, deletions: 1 });
+        expect(await client.call('git.diff', { threadId, path: 'b.md' })).toMatchObject({ status: 'renamed', oldPath: 'a.md', oldText: 'one\n', newText: 'two\n' });
+        expect(await client.call('git.diff', { threadId, path: 'b.md', oldPath: 'a.md' })).toMatchObject({ oldPath: 'a.md', oldText: 'one\n', newText: 'two\n' });
+        const replaced = { status: 'renamed', oldPath: 'old/c.md', oldText: 'inert notes in the old folder\n' };
+        expect(await client.call('git.diff', { threadId, path: 'c.md' })).toMatchObject(replaced);
+        expect(await client.call('git.diff', { threadId, path: 'c.md', oldPath: 'old/c.md' })).toMatchObject(replaced);
+        const arrived = changes.find((change) => change.path === 'arrived.md')!;
+        expect(arrived).toMatchObject({ status: 'added', oldPath: null });
+        const addition = { status: 'added', oldPath: null, oldText: null, newText: 'inert notes after the move\n' };
+        expect(await client.call('git.diff', { threadId, path: arrived.path, oldPath: arrived.oldPath })).toMatchObject(addition);
+        expect(await client.call('git.diff', { threadId, path: arrived.path })).toMatchObject(addition);
+        expect(await thrown(client.call('git.diff', { threadId, path: arrived.path, oldPath: '../../incoming.md' })))
+          .toThrow("git.diff oldPath leaves the thread's working directory");
+      }
+    } finally {
+      phone.close();
+    }
+  });
+
+  test('a rename\'s origin is held to the name HEAD records, not to where a link in the tree now leads', async () => {
+    const owner = await harness.connect();
+    const { root, threadId } = await repoThread(owner);
+    mkdirSync(join(root, '.aws'));
+    writeFileSync(join(root, '.aws', 'notes.txt'), 'inert fixture, not a credential\n');
+    mkdirSync(join(root, 'drafts'));
+    writeFileSync(join(root, 'drafts', 'e.txt'), 'inert draft\n');
+    git(root, 'add', '.');
+    git(root, 'commit', '-qm', 'fixture');
+    git(root, 'mv', '.aws/notes.txt', 'moved.txt');
+    // And `drafts` is now a link to nothing: where its file would lie is unknown.
+    git(root, 'mv', 'drafts/e.txt', 'e.txt');
+    rmSync(join(root, 'drafts'), { recursive: true, force: true });
+    symlinkSync(join(root, 'nowhere'), join(root, 'drafts'), process.platform === 'win32' ? 'junction' : 'dir');
+    writeFileSync(join(root, 'moved.txt'), 'moved\n');
+    // `.aws` is now a link to an ordinary folder holding a file of the same name.
+    rmSync(join(root, '.aws'), { recursive: true, force: true });
+    mkdirSync(join(root, 'public'));
+    writeFileSync(join(root, 'public', 'notes.txt'), 'public\n');
+    symlinkSync(join(root, 'public'), join(root, '.aws'), process.platform === 'win32' ? 'junction' : 'dir');
+    const phone = await pairedDevice();
+    try {
+      expect(await thrown(phone.call('git.diff', { threadId, path: 'moved.txt' }))).toThrow('credential files');
+      expect(await thrown(phone.call('git.diff', { threadId, path: 'moved.txt', oldPath: '.aws/notes.txt' }))).toThrow('credential files');
+      expect(await owner.call('git.diff', { threadId, path: 'moved.txt' })).toMatchObject({ oldPath: '.aws/notes.txt', oldText: 'inert fixture, not a credential\n' });
+      for (const oldPath of [undefined, 'drafts/e.txt']) {
+        expect(await thrown(phone.call('git.diff', { threadId, path: 'e.txt', ...(oldPath ? { oldPath } : {}) }))).toThrow("outside the thread's working directory");
+      }
+      expect(await owner.call('git.diff', { threadId, path: 'e.txt' })).toMatchObject({ oldPath: 'drafts/e.txt', oldText: 'inert draft\n' });
+    } finally {
+      phone.close();
+    }
+  });
+
+  test('a project the owner made at the home folder keeps every hidden entry of it from the device', () => {
+    // The check resolves paths and reads nothing, so the real home folder is safe to name here.
+    const home = homedir();
+    const core = { dataDir: harness.dataDir, threads: { require: () => ({ cwd: home, projectId: 'p' }) }, projects: { require: () => ({ id: 'p', path: home }) }, settings: { get: () => ({}) } } as unknown as Parameters<typeof assertDeviceFile>[0];
+    for (const path of ['.codex/auth.json', '.config/gh/hosts.yml', '.gemini/oauth_creds.json', '.local/share/opencode/auth.json', '.pi/agent/auth.json', '.bash_history', 'AppData/Roaming/rclone/rclone.conf']) {
+      expect(() => assertDeviceFile(core, 't', home, path)).toThrow('credential files');
+    }
+    expect(() => assertDeviceFile(core, 't', home, 'notes/todo.md')).not.toThrow();
+  });
+
+  test('a project or worktree folder the owner keeps in cloud storage or a hidden folder stays readable and addable', () => {
+    // Real home paths, outside the temporary folder; nothing is read from disk.
+    const home = homedir();
+    const shared = join(home, '.worktrees');
+    for (const project of [join(home, 'Library', 'CloudStorage', 'Dropbox', 'site'), join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs', 'site'), join(home, '.dotfiles')]) {
+      const worktree = join(shared, 'site-p');
+      const core = {
+        dataDir: harness.dataDir,
+        threads: { require: (id: string) => ({ cwd: id === 'wt' ? worktree : project, projectId: 'p' }) },
+        projects: { require: () => ({ id: 'p', path: project }) },
+        settings: { get: () => ({ worktreeStorage: { mode: 'shared', directory: shared } }) },
+      } as unknown as Parameters<typeof assertDeviceFile>[0];
+      expect(() => assertDeviceFile(core, 't', project, 'README.md')).not.toThrow();
+      expect(() => assertDeviceFile(core, 'wt', worktree, 'src/app.ts')).not.toThrow();
+      expect(() => assertDeviceProjectFolder(core, project)).not.toThrow();
+      // Credential files stay out inside them.
+      expect(() => assertDeviceFile(core, 't', project, '.env')).toThrow('credential files');
+    }
+  });
+
+  test('every shipped agent\'s default folder in the home folder is a login folder to a device', () => {
+    // The descriptors' own roots, so a new agent's folder cannot be missed; only names are resolved.
+    const home = homedir();
+    const shipped = join(import.meta.dir, '..', 'src', 'providers', 'shipped');
+    const roots = readdirSync(shipped).filter((name) => name.endsWith('.json'))
+      .flatMap((name) => (JSON.parse(readFileSync(join(shipped, name), 'utf8')) as { roots?: string[] }).roots ?? [])
+      .filter((root) => root.startsWith('{home}/'));
+    expect(roots).toContain('{home}/.config/muse');
+    expect(roots).toContain('{home}/.local/share/opencode-v2');
+    for (const root of roots) {
+      const folder = join(home, ...root.slice('{home}/'.length).split('/'));
+      const core = { dataDir: harness.dataDir, threads: { require: () => ({ cwd: folder, projectId: 'p' }) }, projects: { require: () => ({ id: 'p', path: folder }) }, settings: { get: () => ({}) } } as unknown as Parameters<typeof assertDeviceFile>[0];
+      expect(() => assertDeviceProjectFolder(core, folder), root).toThrow('holds logins');
+      expect(() => assertDeviceFile(core, 't', folder, 'auth.json'), root).toThrow('holds logins');
+    }
+  });
+
+  test('a login folder of the home folder stays out of a device, added by it or already registered by the owner', () => {
+    // Real home paths, outside the temporary folder; only names are resolved, no file is opened.
+    const home = homedir();
+    for (const project of [join(home, '.codex'), join(home, '.config', 'gh'), join(home, '.local', 'share', 'opencode'), join(home, '.pi', 'agent'), join(home, 'AppData', 'Roaming', 'rclone'), join(home, 'Library', 'Keychains')]) {
+      const core = {
+        dataDir: harness.dataDir,
+        threads: { require: () => ({ cwd: project, projectId: 'p' }) },
+        projects: { require: () => ({ id: 'p', path: project }) },
+        settings: { get: () => ({}) },
+      } as unknown as Parameters<typeof assertDeviceFile>[0];
+      expect(() => assertDeviceProjectFolder(core, project), project).toThrow('holds logins');
+      expect(() => assertDeviceReadable(core, 't'), project).toThrow('holds logins');
+      for (const path of ['auth.json', 'hosts.yml', '.']) expect(() => assertDeviceFile(core, 't', project, path), `${project} ${path}`).toThrow('holds logins');
+    }
+    const at = (project: string, dataDir = harness.dataDir) => ({
+      dataDir,
+      threads: { require: () => ({ cwd: project, projectId: 'p' }) },
+      projects: { require: () => ({ id: 'p', path: project }) },
+      settings: { get: () => ({}) },
+    }) as unknown as Parameters<typeof assertDeviceFile>[0];
+    // A device does not add a folder that holds one; one the owner added keeps its other folders.
+    const config = join(home, '.config');
+    expect(() => assertDeviceProjectFolder(at(config), config)).toThrow('.config/gh');
+    expect(() => assertDeviceProjectFolder(at(config), join(home, '.local'))).toThrow('holds logins');
+    expect(() => assertDeviceFile(at(config), 't', config, 'gh/hosts.yml')).toThrow('holds logins');
+    expect(() => assertDeviceFile(at(config), 't', config, 'nvim/init.lua')).not.toThrow();
+    // A work folder in another folder of `.config`, and boite's data folder in `.local/share`, keep their reads.
+    const nvim = join(home, '.config', 'nvim');
+    expect(() => assertDeviceProjectFolder(at(nvim), nvim)).not.toThrow();
+    expect(() => assertDeviceReadable(at(nvim), 't')).not.toThrow();
+    const data = join(home, '.local', 'share', 'boite2');
+    const worktree = join(data, 'worktrees', 'app-p');
+    expect(() => assertDeviceReadable(at(worktree, data), 't')).not.toThrow();
+    expect(() => assertDeviceFile(at(worktree, data), 't', worktree, 'src/main.ts')).not.toThrow();
   });
 
   test('a project that holds boite\'s data folder does not open it to the device', async () => {
