@@ -64,6 +64,7 @@
   const secure = $derived(/^https:\/\//i.test(frame?.url ?? ''));
   const shown = $derived(frame ? shownSize(frame, painted) : null);
   const previewScale = $derived(shown ? (zoom || Math.min(areaWidth / shown.width, areaHeight / shown.height)) : 1);
+  const requestWidth = $derived(frame ? frame.width * (zoom || Math.min(areaWidth / frame.width, areaHeight / frame.height)) : areaWidth);
   // The screen's density, which changes when the window moves to another screen or the page is zoomed.
   let pixelRatio = $state(window.devicePixelRatio || 1);
   const validSize = $derived([viewportWidth, viewportHeight].every(n => typeof n === 'number' && Number.isInteger(n) && n >= 240 && n <= 3840));
@@ -72,8 +73,7 @@
   function blank() { frame = null; frameClient = null; painter.clear(); }
   /** Whether input may still name `target`: the page a live stream shows is the page; any other frame is good for five seconds. */
   const aged = (target: RemoteBrowserFrame) => !(stream?.live && target === frame) && performance.now() - (receivedAt.get(target) ?? -Infinity) > 5000;
-  /** The pixels the box shows across: its width on screen at the screen's density. */
-  const widest = () => frameMaxWidth(shown ? shown.width * previewScale : areaWidth, pixelRatio);
+  const widest = () => frameMaxWidth(requestWidth, pixelRatio);
   function watch(run: number) {
     const client = store.client;
     if (!client || client.state !== 'ready') { error = strings.remoteBrowser.reconnecting; return; }
@@ -96,7 +96,7 @@
     });
   }
   const pushed = () => !pullOnly && store.core?.features?.browserStream === true && typeof store.client?.frames === 'function';
-  $effect(() => { void previewScale; void areaWidth; void shown?.width; void pixelRatio; untrack(() => stream?.resized()); });
+  $effect(() => { void requestWidth; void pixelRatio; untrack(() => stream?.resized()); });
   $effect(() => { void tabId; untrack(() => { if (stream || pullOnly) { pullOnly = false; resume(); } }); });
   // A list stays with the page it was tapped on.
   $effect(() => { if (choice && (!frame || frame.width !== choice.tap.width || frame.height !== choice.tap.height || paused)) choice = null; });

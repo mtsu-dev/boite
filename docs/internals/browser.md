@@ -782,9 +782,11 @@ and as tall as the picture makes it (`shownSize` in
 for a picture taken before a resize or one a screencast draws at another size,
 and a box of the page's size stretched such a picture to fill it. A point on
 the canvas is measured against the picture shown, which covers the page whole.
-The width sent as `size` is the box's width on screen at the screen's density
-(`devicePixelRatio`, at most 2), asked again when the window moves to a denser
-screen or the page is zoomed.
+The width sent as `size` or `maxWidth` fits the page's CSS dimensions into the
+viewer, or uses the chosen zoom, then applies the screen's density
+(`devicePixelRatio`, at most 2). It never depends on the decoded picture's
+dimensions, so integer JPEG rounding cannot trigger another size request.
+A change of screen density or zoom asks for the new width.
 
 The ticket is 24 random bytes, opens one socket within 30 seconds, and belongs
 to the RPC connection that asked: the stream is refused or closed (1008) when
