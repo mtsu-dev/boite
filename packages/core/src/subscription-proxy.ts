@@ -323,6 +323,19 @@ function antigravityOnly(id: string): boolean {
   return routes.includes(ANTIGRAVITY) || proprietaryFamily(id) === 'google';
 }
 
+/**
+ * Whether a row an earlier version saved for this agent may still be offered:
+ * a list saved before Antigravity's models were kept to their harness can hold
+ * them, and it answers a picker before any fresh read. OpenCode's gateway rows
+ * carry the gateway's kind first (`douane/`); its own rows are left alone.
+ */
+export function savedRowOffered(core: Core, provider: ProviderDescriptor, id: string): boolean {
+  const proxy = activeSubscriptionProxy(core, provider);
+  if (!proxy || provider.id === ANTIGRAVITY) return true;
+  if (!isOpenCode(provider.id)) return !antigravityOnly(id);
+  return !(id.startsWith(`${proxy.kind}/`) && antigravityOnly(id.slice(proxy.kind.length + 1)));
+}
+
 /** Discovery is a bounded HTTP read on the core, so a phone uses its host's gateway. */
 export async function readSubscriptionProxyModels(core: Core, provider: ProviderDescriptor): Promise<ModelInfo[] | null> {
   if (!activeSubscriptionProxy(core, provider)) return null;

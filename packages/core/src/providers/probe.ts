@@ -3,7 +3,7 @@ import type { AccountId, ModelInfo, ProviderId, RpcEvents, RpcParams, RpcResult,
 import type { Core } from '../core.ts';
 import { forgetProbes, holdModels, probedModelsOf, probeModels, readModelsOf, refreshProbes, rememberExternalModels, settleRefresh } from '../drivers/index.ts';
 import { launchTemp, type LaunchTemp } from '../drivers/launch-temp.ts';
-import { mergeProxyModels, readSubscriptionProxyModels } from '../subscription-proxy.ts';
+import { mergeProxyModels, readSubscriptionProxyModels, savedRowOffered } from '../subscription-proxy.ts';
 import { invalidParams, refused } from '../errors.ts';
 import { logMessageOf } from '../log-errors.ts';
 import { forgetSavedCatalog, readNativeList, readSavedCatalog, saveCatalog, saveNativeList } from './saved-catalogs.ts';
@@ -197,7 +197,9 @@ export function registerProbeMethods(core: Core): ProviderProbe {
     // only held for a refresh, the saved one included, does not count.
     if (!params.refresh && params.model === undefined && known === undefined && core.providers.enabled(params.providerId)
       && readModelsOf(core.providers.require(params.providerId).protocol, params.providerId, params.accountId) === null) {
-      const saved = readSavedCatalog(core, params.providerId, params.accountId);
+      const stored = readSavedCatalog(core, params.providerId, params.accountId);
+      const provider = core.providers.require(params.providerId);
+      const saved = stored && { ...stored, models: stored.models.filter(row => savedRowOffered(core, provider, row.id)) };
       if (saved !== null) {
         // Model checks accept the list on screen until the fresh read settles,
         // whether this call starts that read or a refresh already runs.

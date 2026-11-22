@@ -641,6 +641,21 @@ test('a list saved before the agent\'s rows were kept apart still gives its rows
   } finally { restore(); }
 });
 
+test('a list saved before Antigravity\'s models were kept to their harness answers a picker without them', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { return new Response('down', { status: 503 }); } });
+  const sol = { id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol', default: true };
+  const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => { throw new Error('codex app-server did not start'); } });
+  try {
+    harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+    const owner = await harness.connect();
+    const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
+    saveCatalog(harness.core, 'codex', codex.id, { models: [sol, { id: 'antigravity/claude-opus-5-5-high', name: 'Opus' },
+      { id: 'antigravity/gpt-oss-120b-medium', name: 'GPT-OSS' }, { id: 'gemini-3-pro', name: 'Gemini' }, { id: 'codex/gpt-new', name: 'GPT new' }], probedAt: 1 });
+    expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id })).models.map(model => model.id))
+      .toEqual(['gpt-6.2-sol', 'codex/gpt-new']);
+  } finally { restore(); }
+});
+
 test('an agent list read under a gateway that changed meanwhile is never kept for the new one', async () => {
   const serve = (id: string) => Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
     return Response.json({ data: [{ id, name: id, supported_endpoint_types: ['openai-response'] }] });
