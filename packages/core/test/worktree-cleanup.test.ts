@@ -1,4 +1,4 @@
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, rmdirSync, symlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, rmdirSync, symlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
 import * as fs from 'node:fs';
 import * as promisedFs from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { ThreadSummary } from '@boite/contracts';
 import { assertAllowed } from '../src/access.ts';
 import { runCli } from '../src/cli.ts';
+import { keyOf } from '../src/checkouts.ts';
 import { realKey, restoreInterruptedCheckout } from '../src/checkout-removal.ts';
 import { finishCheckoutRecovery } from '../src/checkout-recovery.ts';
 import { Journal } from '../src/journal.ts';
@@ -228,10 +229,12 @@ describe('settled worktree cleanup', () => {
     const note = join(thread.cwd, 'notes.txt');
     if (!late) writeFileSync(note, 'keep me');
     if (late) {
+      const checkout = keyOf(realpathSync.native(thread.cwd));
       const spawn = harness.core.procs.spawn.bind(harness.core.procs);
       const removing = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
-        if (command === 'git' && args[0] === 'worktree' && (args[1] === 'move' || args[1] === 'remove') && args.at(args[1] === 'move' ? -2 : -1) === thread.cwd) {
-          writeFileSync(note, 'keep me');
+        if (command === 'git' && args[0] === 'worktree' && (args[1] === 'move' || args[1] === 'remove')) {
+          const location = args.at(args[1] === 'move' ? -2 : -1);
+          if (location && existsSync(location) && keyOf(realpathSync.native(location)) === checkout) writeFileSync(note, 'keep me');
         }
         return spawn(id, command, args, options);
       });
@@ -250,6 +253,7 @@ describe('settled worktree cleanup', () => {
     git(project.path, 'add', 'unchanged.txt', 'open.txt');
     git(project.path, 'commit', '-qm', 'add another file');
     const thread = await worktreeThread(project, 'Late tracked write');
+    const checkout = realpathSync.native(thread.cwd);
     const commit = git(thread.cwd, 'rev-parse', 'HEAD');
     await client.call('threads.archive', { threadId: thread.id });
     const fd = openSync(join(thread.cwd, 'README.md'), 'a');
@@ -277,7 +281,7 @@ describe('settled worktree cleanup', () => {
       expect(readFileSync(join(saved!, 'open.txt'), 'utf8')).toBe('before\nwritten after cleanup returned\n');
       expect(existsSync(join(saved!, '.git'))).toBe(false);
       if (process.platform === 'linux') expect(readdirSync(saved!).sort()).toEqual(['README.md', 'open.txt']);
-      expect(JSON.parse(readFileSync(join(dirname(saved!), 'recovery.json'), 'utf8'))).toMatchObject({ path: thread.cwd, commit });
+      expect(JSON.parse(readFileSync(join(dirname(saved!), 'recovery.json'), 'utf8'))).toMatchObject({ path: checkout, commit });
     } finally {
       log.mockRestore();
       closeSync(fd);
@@ -329,6 +333,7 @@ describe('settled worktree cleanup', () => {
     git(project.path, 'add', '.');
     git(project.path, 'commit', '-qm', 'attributes');
     const thread = await worktreeThread(project, 'Clean conversions');
+    const checkout = realpathSync.native(thread.cwd);
     const commit = git(thread.cwd, 'rev-parse', 'HEAD');
     expect(readFileSync(join(thread.cwd, 'doc.txt'), 'utf8')).toBe('one\r\ntwo\r\n');
     expect(readFileSync(join(thread.cwd, 'doc.fixture'), 'utf8')).toBe('text\n');
@@ -338,7 +343,7 @@ describe('settled worktree cleanup', () => {
     await client.call('threads.archive', { threadId: thread.id });
     expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch })]);
     const [recovery] = await client.call('worktrees.recoveries', {});
-    expect(recovery).toEqual({ path: thread.cwd, commit, recoveryPath: expect.any(String) });
+    expect(recovery).toEqual({ path: checkout, commit, recoveryPath: expect.any(String) });
     expect(readdirSync(recovery!.recoveryPath)).toEqual(['doc.fixture']);
     expect(readFileSync(join(recovery!.recoveryPath, 'doc.fixture'), 'utf8')).toBe('text\n');
     expect(readdirSync(dirname(thread.cwd)).filter(name => name.startsWith('.boite-removing-'))).toEqual([basename(dirname(recovery!.recoveryPath))]);
@@ -354,6 +359,7 @@ describe('settled worktree cleanup', () => {
     git(project.path, 'add', '.');
     git(project.path, 'commit', '-qm', 'attributes');
     const thread = await worktreeThread(project, 'Late filtered save');
+    const checkout = realpathSync.native(thread.cwd);
     const commit = git(thread.cwd, 'rev-parse', 'HEAD');
     expect(readFileSync(join(thread.cwd, 'doc.fixture'), 'utf8')).toBe('text\n');
     await client.call('threads.archive', { threadId: thread.id });
@@ -374,7 +380,7 @@ describe('settled worktree cleanup', () => {
     expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch })]);
     expect(saved).toBeDefined();
     expect(existsSync(thread.cwd)).toBe(false);
-    expect(await client.call('worktrees.recoveries', {})).toEqual([{ path: thread.cwd, commit, recoveryPath: saved! }]);
+    expect(await client.call('worktrees.recoveries', {})).toEqual([{ path: checkout, commit, recoveryPath: saved! }]);
     expect(readFileSync(join(saved!, 'doc.fixture'), 'utf8')).toBe('TeXt\n');
     expect(readdirSync(saved!)).toEqual(['doc.fixture']);
     git(project.path, 'worktree', 'add', '--detach', thread.cwd, commit);
@@ -387,11 +393,12 @@ describe('settled worktree cleanup', () => {
     mkdirSync(saved, { recursive: true });
     const path = join(saved, 'README.md');
     writeFileSync(path, 'captured edit\n');
+    const physicalPath = realpathSync.native(path);
     const rename = fs.renameSync;
     let captured: string | undefined;
     const intercept = spyOn(fs, 'renameSync').mockImplementation((from, to) => {
       rename(from, to);
-      if (from === path && typeof to === 'string') {
+      if (from === physicalPath && typeof to === 'string') {
         captured = to;
         writeFileSync(path, 'published again\n');
       }

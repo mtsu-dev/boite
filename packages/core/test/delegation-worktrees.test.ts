@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_DELEGATION_CONFIG, checkSteps } from '@boite/contracts';
@@ -126,8 +126,9 @@ test.each(['during stop', 'ignored during stop', 'ignored after the last status'
     if (timing === 'ignored after the last status' && command === 'git' && args[0] === 'worktree' && (args[1] === 'move' || args[1] === 'remove')) {
       const worktree = s.h.core.delegation.worktrees.get(id);
       const location = args.at(args[1] === 'move' ? -2 : -1);
-      // Git's worktree list uses forward slashes even when the recorded path uses Windows separators.
-      if (worktree && location && keyOf(location) === keyOf(worktree.path)) {
+      // Git can report the physical path while the child records an alias.
+      if (worktree && location && existsSync(location) && existsSync(worktree.path) &&
+        keyOf(realpathSync.native(location)) === keyOf(realpathSync.native(worktree.path))) {
         writeFileSync(join(worktree.path, 'late-note.txt'), 'keep me');
         wroteAfterStatus = true;
       }
