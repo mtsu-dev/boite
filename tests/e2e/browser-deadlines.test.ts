@@ -38,3 +38,19 @@ test('browser condition waits bound unresolved evaluations and refuse closed pag
   }
   // Only this regression allows the old 20-second call deadline to finish for the red run.
 }, 45_000);
+
+test('animation settling reads finished animations whose promises are still pending', async () => {
+  const page = await BrowserPage.launch({ url: 'about:blank' });
+  try {
+    await page.evaluate(`(() => {
+      const fade = document.body.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 100, fill: 'both' });
+      fade.finish();
+      // Chromium can report a finished animation before resolving its promise.
+      Object.defineProperty(fade, 'finished', { value: new Promise(() => {}) });
+      if (!document.getAnimations().includes(fade)) throw new Error('the finished animation is missing from the fixture');
+    })()`);
+    await page.settleAnimations();
+  } finally {
+    await page.close();
+  }
+}, 30_000);
