@@ -15,6 +15,7 @@ import { applyWaitingDone } from './agent-done';
 import { applyWaitingNewSession } from './new-session';
 import { sweepMergedPrFixtures } from './merged-pr-archive';
 import { autoTitle } from './titles';
+import { resumedAccountSession } from './account-sessions';
 import type { FakeContext } from './context';
 
 export async function stopTurn(ctx: FakeContext, threadId: ThreadId): Promise<boolean> {
@@ -49,7 +50,7 @@ export async function stopTurn(ctx: FakeContext, threadId: ThreadId): Promise<bo
   return stopped;
 }
 
-export function startTurn(ctx: FakeContext, threadId: ThreadId, prompt: string, attachments: Attachment[] = [], operation?: FakeOperation, activityKind?: 'goal' | 'loop', queuedTurn?: Turn, previewReferences: PreviewReference[] = [], automatic = false, label?: string): Turn {
+export function startTurn(ctx: FakeContext, threadId: ThreadId, prompt: string, attachments: Attachment[] = [], operation?: FakeOperation, activityKind?: 'goal' | 'loop', queuedTurn?: Turn, previewReferences: PreviewReference[] = [], automatic = false, label?: string, choice?: Pick<Thread, 'model' | 'effort' | 'speed'>): Turn {
   // The real transport serializes Svelte proxies before they reach the core.
   previewReferences = JSON.parse(JSON.stringify(previewReferences)) as PreviewReference[];
   const thread = ctx.thread(threadId);
@@ -69,7 +70,7 @@ export function startTurn(ctx: FakeContext, threadId: ThreadId, prompt: string, 
   // As the core: the first message after a move carries the note, unless it is a compact or a slash command.
   const moved = operation === 'compact' || prompt.trimStart().startsWith('/') ? undefined : thread.moveNote ?? undefined;
   if (moved) thread.moveNote = null;
-  const execution = turnExecution(thread, operation, automatic);
+  const execution = { ...turnExecution(thread, operation, automatic), ...choice, ...(choice ? { frozenSelection: true as const } : {}) };
   const turn: Turn = queuedTurn ?? {
     id: `turn-${++ctx.seq}`, threadId, status: 'running', queuedAt: at,
     startedAt: at, finishedAt: null, usage: null, error: null, execution
@@ -85,7 +86,7 @@ export function startTurn(ctx: FakeContext, threadId: ThreadId, prompt: string, 
     threadId,
     turnId: turn.id,
     // A compaction the fake core opened by itself is Boite's message, as the core's is.
-    role: automatic || operation === 'pull-request' ? 'system' : 'user',
+    role: automatic || operation === 'pull-request' || operation === 'resume' ? 'system' : 'user',
     // The images ride after the text, the order the core journals them in.
     parts: [
       userPart(thread, prompt, previewReferences, automatic, activityKind, moved, label),
@@ -102,6 +103,10 @@ export function startTurn(ctx: FakeContext, threadId: ThreadId, prompt: string, 
   }
 
   thread.status = 'running';
+  if (thread.recovery) {
+    thread.recovery = null;
+    thread.retry = null;
+  }
   thread.progress = { turnId: turn.id, phase: 'starting', detail: null, at };
   thread.sessionId = thread.sessionId ?? `sess-${turn.id}`;
   ctx.touch(thread);
@@ -135,12 +140,11 @@ function refuseTurn(ctx: FakeContext, thread: Thread, queuedTurn?: Turn): RpcFai
  * The operations the fake core opens by itself: a compaction, a delegated
  * child's turn, and a persistent agent's wakes, labelled in its conversation.
  */
-type FakeOperation = 'compact' | 'delegation' | 'routine' | 'event' | 'pull-request';
+type FakeOperation = 'compact' | 'delegation' | 'routine' | 'event' | 'pull-request' | 'resume';
 
 /**
  * The core's `threads/switch-notice.ts`: the difference from the last turn
- * that started, with what a new session would be handed when the account
- * changed, here every message of the thread whole.
+ * that started, with the fixture's whole messages the target session missed.
  */
 function turnSwitch(ctx: FakeContext, thread: Thread, execution: NonNullable<Turn['execution']>, turnId: string): TurnSwitch | undefined {
   if (execution.operation === 'keepalive') return undefined;
@@ -153,11 +157,14 @@ function turnSwitch(ctx: FakeContext, thread: Thread, execution: NonNullable<Tur
   const from = statedSelection(before.execution), to = statedSelection(execution);
   if (!selectionDiffers(from, to)) return undefined;
   const label = (id: string): string => ctx.accounts.find(account => account.id === id)?.label ?? '';
-  const history = thread.messages.filter(message => message.turnId !== turnId);
+  const resumed = resumedAccountSession(thread, to.accountId, execution.sessionId);
+  const after = resumed ? thread.turns.findIndex(turn => turn.id === resumed.after) : -1;
+  const missed = new Set(thread.turns.slice(after + 1).map(turn => turn.id));
+  const history = thread.messages.filter(message => message.turnId !== turnId && missed.has(message.turnId));
   const chars = history.reduce((sum, message) => sum + message.parts.reduce((size, part) => size + (part.type === 'text' ? part.text.length : 0), 0), 0);
   return {
     from: { ...from, account: label(from.accountId) }, to: { ...to, account: label(to.accountId) },
-    ...(from.accountId !== to.accountId ? { handover: { session: 'fresh' as const, full: history.length, cut: 0, omitted: 0, chars } } : {}),
+    ...(from.accountId !== to.accountId ? { handover: { session: resumed ? 'resumed' : 'fresh', full: history.length, cut: 0, omitted: 0, chars } } : {}),
   };
 }
 

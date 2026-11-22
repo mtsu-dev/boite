@@ -631,12 +631,20 @@ the turn's other events, which no channel holds back.
 - Returning to a recent thread selects its cached history synchronously. The
   subscription, unread acknowledgement and fresh snapshot run in the background.
   Unchanged messages and turns keep their identities through revalidation.
+  If the snapshot only proves part of the held window, bounded pages
+  start revalidating the rest at once. The snapshot's replacements appear
+  while those reads are in flight. The completed window can wait for idle
+  to reconcile, up to 100 ms or until visibility changes. Navigation
+  cancels that wait.
   The cache retains up to 16 visits, at most 4 MiB of text per thread and
-  16 MiB in total, with a 2,000-message bound per thread. A leave counts the
-  thread it leaves and keeps that size beside the entry, so it never measures
-  the other visits again (`ReadingCache` in `reading-cache.ts`). Once the page
-  is idle, a plain copy replaces the deep `$state` proxy the timeline drew,
-  which weighed several times its data.
+  16 MiB in total, with a 2,000-message bound per thread. The open thread
+  maintains the weight of its held messages in blocks of 64. Those blocks
+  stay with the held window, so a return can reuse them. A leave reuses the
+  weights to reserve space or reject an oversized page. The cache
+  projects eligible pages at idle or on a quick return. An unchanged page
+  keeps its reactive row projection, message placement and slot totals within
+  the visit bounds. Off-screen Markdown preparation starts at idle.
+  Compacted pages and visits without a prepared projection keep a plain copy.
 - Once a machine is ready and the page idle (`requestIdleCallback`, else
   1 s), its first sidebar threads are read ahead into the same cache
   (`IdlePreloads` in `lib/store/thread-preload.ts`): up to 4, one at a time,
@@ -994,8 +1002,7 @@ did: `toLocaleString` with a locale builds a new formatter per call.
 Every catalogue and the quota window are chunks of their own too, so a page
 downloads and parses only the language it speaks (`docs/internals/language.md`). Nine
 components the first frame does not draw load the same way
-(`lib/deferred-parts.ts`, the terminal drawer and, outside the shell, the
-phone's navigation, which the boot screen waits for): the image viewer, the
+(`lib/deferred-parts.ts`): the image viewer, the
 diff, the quota overview, the coordination panel, the updates notice, the
 robot face and the dictation button, prefetched in the idle pass. The
 dictation button draws a disabled microphone of the same size until its chunk
@@ -1006,6 +1013,12 @@ files at a time. Geist Mono ships as latin, latin-ext and rest subsets with
 its weight axis; its latin cut carries the arrows and box drawing a terminal
 draws. The text faces (Inter, Atkinson Hyperlegible Next, Source Sans 3, IBM
 Plex Sans) ship as latin and latin-ext.
+
+The HTML paints a localized Starting message with inline styles while it
+preloads the stylesheets. The entry applies them before mounting the app.
+Mobile pairing can open with the conversations navigation, chat, sidebar and
+Agents views still unloaded. The service worker precaches those views when
+it installs so a subsequent offline launch can still use them.
 
 A part whose chunk has not landed says it is loading, one whose chunk failed
 offers a retry, and every failed part asks again when the browser is back
@@ -1165,9 +1178,17 @@ message in that database.
 
 The entry loads the CLI for commands and the Core/server graph for server
 startup. Version metadata lives in `packages/core/src/version.ts`.
-The compiled launcher awaits the main module before dispatch, including with
-ESM bytecode. `packages/core/test/main-entry.test.ts` checks command imports,
-port refusal, the compiled binary and graceful lock release.
+The compiled launcher awaits the main module before dispatch. Its embedded ESM
+bytecode is split into chunks so the core can load the startup code separately
+from commands and drivers. The compiler limits bytecode depth to one. Compiling
+fewer nested functions ahead of time reduces the embedded bytecode cache.
+`packages/core/test/main-entry.test.ts` checks command imports, port refusal,
+the compiled binary and graceful lock release.
+
+Composer writes load the Zod schema when needed. The load happens before the
+outbox read, so validation and its compare-and-swap write run together.
+`packages/core/test/startup-imports.test.ts` checks that importing the core
+leaves Zod unloaded.
 
 Activity restoration selects threads with saved activities. Coordination
 recovery selects active threads and threads with potentially pending letters.
@@ -1590,7 +1611,7 @@ rows mount and style as they come. The load of the machine was not controlled.
 
 ## What a tap costs
 
-`bench/ui-latency.ts` times a phone's navigation in headless Chrome at
+`bench/mobile-navigation.ts` times a phone's navigation in headless Chrome at
 390 x 844, on the in-memory fake client: from the finger coming down (held
 40 ms, then lifted) or the Back, to the first DOM change, to the first frame
 after it, and to the end of the move it starts. `--cpu 4` slows the page four
@@ -1615,7 +1636,7 @@ What makes a Back quick:
   WebView's history.
 
 First frame, median of 5 runs in ms, two interleaved rounds of the build before
-(`24f44f9fd`) and after, `bun bench/ui-latency.ts --bundle <dir> --cpu <n>
+(`24f44f9fd`) and after, `bun bench/mobile-navigation.ts --bundle <dir> --cpu <n>
 --runs 5`, 2026-11-19, on a shared 16-thread Ryzen under load from other jobs:
 
 | Step | CPU 4x before | CPU 4x after | CPU 1x before | CPU 1x after |
@@ -1793,9 +1814,10 @@ What the UI held without bound:
 - The open thread's live end. Messages arriving on the subscribed thread were
   appended for as long as it stayed open, while a thread left keeps 4 MiB in
   the reading cache. Now, while the list follows the bottom,
-  `store/live-end.ts` weighs the live end each time a message arrives (never
-  on a delta) and, past twice the reading cache's per-thread bound (8 MiB or
-  2,000 messages), keeps the newest 4 MiB or 1,000 messages with their turns
+  `store/live-end.ts` checks the budget on message arrival. It reuses the
+  weights of unchanged messages in blocks of 64. Past the reading cache's
+  live window bound (8 MiB of UTF-16 data or 2,000 messages), it keeps the newest 4 MiB or
+  1,000 messages with their turns
   and sets `messagesBefore` to the first one kept: scrolling up reads the rest
   again from the core. The heights and rises the list measured for the rows
   that left go with them.

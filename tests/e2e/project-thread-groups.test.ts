@@ -143,6 +143,10 @@ for (const width of [1280, 390]) {
       const project = (machine: string, projectId: string) => `${root} ${id(width < 720 ? 'mobile-project-group' : 'project')}[data-machine-id="${machine}"][data-project-id="${projectId}"]`;
       const first = project(main, 'p-boite'), second = project(remote, 'p-boite');
       const row = (project: string, thread: string) => `${project} ${width < 720 ? '.row' : id('thread-row')}[data-thread-id="${thread}"]`;
+      const revealWorking = (card: string, thread: string) => page.waitFor(`(() => {
+        document.querySelector('${card} ${id('project-working')}')?.scrollIntoView({block:'center'});
+        return !!document.querySelector('${row(card, thread)}');
+      })()`);
       // The scroll lands before the press: its `scroll` event fires on the next frame and a menu that opened first
       // closes on it (ContextMenu.svelte), and a phone list may still snap. The press waits until two frames leave the target in place.
       const click = async (selector: string) => {
@@ -243,6 +247,9 @@ for (const width of [1280, 390]) {
       expect(await archivedHint(first)).toBe('1');
       expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived')}').hidden && !document.querySelector('${first} ${id('project-done')} ${id('done-thread')}')`)).toBe(true);
       expect(await archivedHint(second)).toBe(await page.evaluate<string | null>(`(() => { const p = globalThis.__boiteTest.workspace.machines[1].store.projects.find(p => p.id === 'p-boite'), n = (p?.archivedThreads ?? 0) - (p?.doneThreads ?? 0); return n > 0 ? String(n) : null; })()`));
+      // Opening the other machine's menu scrolls its card into view. The local fold stays open, even when its rows leave the viewport.
+      expect(await page.evaluate(`document.querySelector('${first} ${id('project-working-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
+      await revealWorking(first, 't-scheduler');
       expect(await page.evaluate(`!!document.querySelector('${row(first, 't-scheduler')}')`)).toBe(true);
       await shot('expanded');
       if (width < 720) {
@@ -257,7 +264,7 @@ for (const width of [1280, 390]) {
         expect(await page.evaluate(`document.querySelector('${first} ${id('project-working-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
         expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived')}').hidden`)).toBe(true);
         // The unfold grows the card below its header: its working list can land under the screen, where the list draws no row.
-        await page.waitFor(`(() => { document.querySelector('${first} ${id('project-working')}')?.scrollIntoView({block:'center'}); return !!document.querySelector('${row(first, 't-scheduler')}'); })()`);
+        await revealWorking(first, 't-scheduler');
         // A folded card whose only rows work counts them in its head, and that counter unfolds it onto its list, as the sidebar's does.
         await counterUnfolds(project(main, busy), busy);
       }

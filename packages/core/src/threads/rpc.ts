@@ -1,4 +1,4 @@
-import { ownerThreadSelection, pullRequestAddress, type AccountId, type ProviderId, type RpcResult, type ThreadId } from '@boite/contracts';
+import { ownerThreadSelection, pullRequestAddress, unreadInterruptionAt, type AccountId, type ProviderId, type RpcResult, type ThreadId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { promptOrigin } from '../client-preferences.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
@@ -94,6 +94,11 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return { ok: true };
   });
   core.router.register('threads.capabilities', params => threadCapabilities(core, params.threadId));
+  core.router.register('threads.previewAccountSwitch', params => {
+    const thread = requireAgent(core.threads, params.threadId);
+    const account = core.accounts.require(params.accountId);
+    return { session: account.id === thread.accountId ? 'unchanged' : core.threads.accountSessions.canResume(thread, account) ? 'resume' : 'fresh' };
+  });
   core.router.register('threads.stats', params => {
     core.threads.require(params.threadId);
     return { threadId: params.threadId, ...core.journal.threadStats(params.threadId) };
@@ -130,7 +135,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
   core.router.register('threads.mergeBack', params => core.threads.branching.mergeBack(params));
   core.router.register('threads.fork', (params) => core.threads.fork(params.threadId, params.messageId, params.worktree === true));
   core.router.register('threads.list', (params) => core.threads.list(params));
-  core.router.register('threads.listChanges', (params) => core.threads.listLog.answer(params));
+  core.router.register('threads.listChanges', (params, ctx) => core.threads.listLog.answer(params, ctx.connection));
   core.router.register('drafts.prepare', (params, ctx) => core.drafts.prepare(ctx.connection.id, params));
   core.router.register('drafts.release', async (params, ctx) => {
     await core.drafts.release(ctx.connection.id, params.preparationId);
@@ -182,7 +187,11 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
       ctx.connection.subscriptions.delete(params.open.previous);
       ctx.connection.setStreamChannels?.(params.open.previous, undefined);
     }
-    if (params.open.markRead) { core.threads.markRead(params.threadId); thread.unread = false; }
+    if (params.open.markRead) {
+      const read = core.threads.markRead(params.threadId, unreadInterruptionAt(thread), true);
+      thread.unread = read.unread;
+      thread.interruptionReadAt = read.interruptionReadAt ?? thread.interruptionReadAt;
+    }
     return { ...thread, opened: params.open.requests === false ? {} : {
       permissions: core.threads.listPermissions(params.threadId), questions: core.threads.listQuestions(params.threadId)
     } };
@@ -230,7 +239,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
   core.router.register('threads.moveCancel', (params) => core.threads.moves.cancel(params.threadId));
   core.router.register('threads.pin',(params) => core.threads.pin(params.threadId, params.pinned !== false));
   core.router.register('threads.markRead', (params) => {
-    core.threads.markRead(params.threadId);
+    core.threads.markRead(params.threadId, params.interruptionAt);
     return { ok: true } as const;
   });
   core.router.register('threads.trustContactHistory', (params) => {
@@ -264,6 +273,10 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return core.delegation.retirements.revivable(thread) ? core.delegation.retirements.revive(thread, start) : start();
   });
   core.router.register('turns.stop', (params, ctx) => {
+    if (params.expectedTurnId !== undefined) {
+      core.threads.require(params.threadId);
+      if (core.scheduler.stopTarget(params.threadId) !== params.expectedTurnId) return { stopped: false };
+    }
     const by = ctx.connection.identity.principal === 'agent' ? `agent of ${ctx.connection.identity.threadId}` : `${ctx.connection.identity.principal} from ${ctx.connection.sentFrom?.client ?? 'a client'}`;
     core.activity.pauseAll(params.threadId);
     // Stop ends what would wake the thread again, its pull request watches included.
@@ -276,6 +289,10 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
   core.router.register('turns.recover', async params => {
     if (params.action === 'resume') await requireCwd(core, params.threadId);
     return core.threads.recoverTurn(params);
+  });
+  core.router.register('turns.resume', async (params, ctx) => {
+    await requireCwd(core, params.threadId);
+    return core.threads.resumes.resume(params, pluginActor(core, ctx.connection.identity));
   });
   core.router.register('turns.cancelRetry', (params) => ({ cancelled: core.threads.cancelRetry(params.threadId) }));
   core.router.register('turns.steer', (params, ctx) => steerUser(core, core.threads, params, promptOrigin(ctx.connection, core.clients.use(ctx.connection)), pluginActor(core, ctx.connection.identity)));

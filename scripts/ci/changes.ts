@@ -16,7 +16,7 @@ export const INSTALLER_SCRIPTS = ['installer-hooks.test.ts', 'installer-shortcut
 // Unknown files run the complete suite. Documentation-only PRs still get the
 // required job, so branch protection never waits for a filtered-out workflow.
 export function affectedChecks(files: string[]) {
-  const checks = { core: false, web: false, desktop: false, shellRust: false, server: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false };
+  const checks = { core: false, web: false, desktop: false, shellRust: false, server: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false, browser: false };
   for (const file of files) {
     if (
       /^(docs\/.*\.md|README\.md|AGENTS\.md|CONTRIBUTING\.md|SECURITY\.md|CODE_OF_CONDUCT\.md|LICENSE)$/.test(file) ||
@@ -51,8 +51,9 @@ export function affectedChecks(files: string[]) {
       // fake cores, never this code; its build.rs reads only SCHEMA_VERSION,
       // which the desktop builds compile.
       checks.core = checks.web = checks.desktop = checks.server = checks.telemetry = checks.e2eTypes = checks.stress = true;
+      if (file.startsWith('packages/contracts/')) checks.browser = true;
     } else if (file.startsWith('tests/e2e/')) {
-      checks.desktop = checks.e2eTypes = true;
+      checks.desktop = checks.e2eTypes = checks.browser = true;
       // Stress fixtures use the same isolated core and browser harness.
       if (file.startsWith('tests/e2e/lib/')) checks.stress = true;
     } else if (file.startsWith('tests/contract/')) {
@@ -71,7 +72,7 @@ export function affectedChecks(files: string[]) {
     } else if (/^(Dockerfile$|\.dockerignore$|docker\/)/.test(file)) {
       checks.server = true;
     } else if (file.startsWith('packages/ui/')) {
-      checks.web = checks.desktop = checks.server = checks.stress = true;
+      checks.web = checks.desktop = checks.server = checks.stress = checks.browser = true;
       // browser.rs embeds these two page scripts with include_str!.
       if (/^packages\/ui\/src\/lib\/preview-(picker|highlight)\.js$/.test(file)) checks.shellRust = true;
     } else if (file.startsWith('telemetry/')) {
@@ -84,7 +85,7 @@ export function affectedChecks(files: string[]) {
       checks.web = true;
     } else {
       // Dependencies, shared builds and unknown inputs stay safe.
-      checks.core = checks.web = checks.desktop = checks.shellRust = checks.server = checks.androidServer = checks.telemetry = checks.e2eTypes = checks.stress = true;
+      checks.core = checks.web = checks.desktop = checks.shellRust = checks.server = checks.androidServer = checks.telemetry = checks.e2eTypes = checks.stress = checks.browser = true;
     }
   }
   return checks;
@@ -155,8 +156,8 @@ export function ciMode(event: string, force: boolean): Mode {
 
 // A pull request keeps the Linux core suite, type checks, UI tests, focused
 // checks and its bundle sizes; protection inputs also select Windows
-// core/native tests; macOS, desktop packages, E2E, stress, Docker and the
-// APKs wait for the merge queue.
+// core/native tests and browser inputs add a focused desktop/phone shard.
+// macOS, desktop packages, full E2E, stress, Docker and APKs wait for the queue.
 const CORE_PR: CoreRunner[] = CORE_QUEUE.slice(0, 1);
 
 export function plan(checks: ReturnType<typeof affectedChecks>, mode: Mode, nativeWindows = false) {
@@ -164,7 +165,7 @@ export function plan(checks: ReturnType<typeof affectedChecks>, mode: Mode, nati
     const pr = plan({ ...checks, desktop: false, server: false, androidServer: false, stress: false }, 'queue', nativeWindows);
     const runners = nativeWindows ? CORE_QUEUE.filter((runner) => runner.os === 'ubuntu-24.04' || runner.os === 'windows-2025') : CORE_PR;
     // The queue skips Bundle size, which compares a pull request with its base.
-    return { ...pr, size: checks.desktop, coreRunners: JSON.stringify(runners) };
+    return { ...pr, size: checks.desktop, e2ePr: checks.browser, coreRunners: JSON.stringify(runners) };
   }
   return {
     ...checks,
@@ -174,6 +175,7 @@ export function plan(checks: ReturnType<typeof affectedChecks>, mode: Mode, nati
     telemetry: checks.telemetry && !checks.core,
     e2eTypes: checks.e2eTypes && !checks.web,
     e2e: checks.desktop,
+    e2ePr: false,
     portable: JSON.stringify(mode === 'queue' ? PORTABLE_QUEUE : PORTABLE_ALL),
     coreRunners: JSON.stringify(mode === 'queue' ? CORE_QUEUE : CORE_ALL),
   };

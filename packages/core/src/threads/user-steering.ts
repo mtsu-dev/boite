@@ -52,7 +52,8 @@ export async function steerUser(core: Core, threads: ThreadStore, params: RpcPar
   const runner = threads.runner;
   const handle = runner.handles.get(threadId);
   const submit = handle?.steerUser?.bind(handle) ?? handle?.steer?.bind(handle);
-  if (userSteeringUnavailable(core, threads, threadId, turn) !== null || !submit) return { accepted: false };
+  if (userSteeringUnavailable(core, threads, threadId, turn) !== null || !handle || !submit) return { accepted: false };
+  core.sharedAccess.uploads(threadId, attachments);
   const expanded = expandSlashPrompt(core, prompt, threads.agentState.commands.get(threadId));
   const offset = expanded.length - prompt.length;
   const expandedReferences = references.map(reference => reference.mention ? {
@@ -66,10 +67,11 @@ export async function steerUser(core: Core, threads: ThreadStore, params: RpcPar
       ? { type: 'file', mimeType: attachment.mimeType, data: attachment.data, name: attachment.name }
       : { type: 'image', mimeType: attachment.mimeType, data: attachment.data, alt: attachment.name }),
   ] };
-  runner.steering.add(threadId);
+  const steering = runner.beginSteering(threadId, handle);
+  if (!steering) return { accepted: false };
   let published = false;
   const publish = (): void => {
-    if (published) return;
+    if (published || steering.signal.aborted) return;
     core.bus.afterCommit(() => core.journal.db.transaction(() => {
       core.journal.append({ type: 'message.started', threadId, version: 1, payload: message }, () => {
         core.journal.putMessage(message);
@@ -87,16 +89,17 @@ export async function steerUser(core: Core, threads: ThreadStore, params: RpcPar
   try {
     // Reserve before crossing the native boundary. A lost acknowledgement or crash cannot cause duplicate work.
     core.journal.putTurnRequest(threadId, clientRequestId, `steer:pending:${fingerprint}`, turnId);
-    if (!await submit(prepared.prompt, prepared.attachments, publish) && !published) {
+    if (!await steering.send(submit, prepared.prompt, prepared.attachments, publish) && !published) {
       core.journal.db.query('DELETE FROM turn_requests WHERE thread_id = ? AND request_id = ?').run(threadId, clientRequestId);
       return { accepted: false };
     }
     publish();
     return { accepted: true };
   } catch (error) {
+    if (published) return { accepted: true };
     throw refused(`delivery of this message is unconfirmed: ${messageOf(error)}`, { reason: 'delivery-uncertain', threadId });
   } finally {
-    runner.steering.delete(threadId);
+    steering.release();
     void threads.deferred.flushRunning(threadId);
   }
 }

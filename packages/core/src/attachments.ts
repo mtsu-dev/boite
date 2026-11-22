@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AnswerAttachment, Attachment, FileAttachment, ImageAttachment, MessagePart, ProviderDescriptor, QuestionAnswer } from '@boite/contracts';
+import { ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type AnswerAttachment, type Attachment, type FileAttachment, type ImageAttachment, type MessagePart, type ProviderDescriptor, type QuestionAnswer } from '@boite/contracts';
+import type { HistoryInput } from './continuation.ts';
+import { historyImagePreview } from './media.ts';
 
 /**
  * Copies this process wrote, or found equal to their upload, with the stats
@@ -154,5 +156,34 @@ export function prepareAttachments(dataDir: string, input: { prompt: string; att
   return {
     prompt: input.prompt + (files.length ? `\n\n${FILES_NOTE}\n${files.map(file => fileReference(dataDir, { ...file, kind: 'file' })).join('\n')}` : ''),
     attachments: input.attachments.filter(file => nativeImage(provider, file)),
+  };
+}
+
+/** Keep full-resolution bytes available locally while passing only historical previews to the driver. */
+export async function prepareHistoryImages(dataDir: string, input: HistoryInput): Promise<HistoryInput> {
+  if (!input.historicalImages?.length) return input;
+  const historical = new Set<Attachment>(input.historicalImages);
+  let room = ATTACHMENTS_TOTAL_MAX_BYTES;
+  for (const file of input.attachments) if (!historical.has(file)) room -= decodedBytes(file.data);
+  const attachments: Attachment[] = [];
+  const originals: string[] = [];
+  for (const file of input.attachments.toReversed()) {
+    if (file.kind !== 'image' || !historical.has(file)) {
+      attachments.push(file);
+      continue;
+    }
+    const preview = await historyImagePreview(file);
+    const bytes = preview === null ? 0 : decodedBytes(preview.data);
+    const fits = preview !== null && bytes <= room;
+    if (fits) {
+      attachments.push(preview);
+      room -= bytes;
+    }
+    const { line } = storeFile(dataDir, { ...file, kind: 'file', name: file.name ?? 'image.' + file.mimeType.slice('image/'.length) });
+    originals.push(fits ? line : line + ' (file only)');
+  }
+  return {
+    prompt: `Historical images, in order. Read an original file at full resolution when you need its detail.\n${originals.reverse().join('\n')}\n\n${input.prompt}`,
+    attachments: attachments.reverse(),
   };
 }

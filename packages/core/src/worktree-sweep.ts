@@ -19,7 +19,8 @@ import { inside, keyOf } from './checkouts.ts';
 import { fetchedRepositories } from './pull-requests.ts';
 
 export { inside } from './checkouts.ts';
-import { assertCheckoutVacant, realKey, withVacantCheckout } from './checkout-removal.ts';
+import { assertCheckoutVacant, publishInterruptedCheckoutRecoveries, realKey, removeCleanCheckout, restoreInterruptedCheckout, withVacantCheckout } from './checkout-removal.ts';
+import { listCheckoutRecoveries } from './checkout-recovery.ts';
 export { realKey } from './checkout-removal.ts';
 import { withRegistration, worktreeRoot } from './worktree.ts';
 
@@ -180,9 +181,10 @@ export class WorktreeSweep {
     const entry = await this.describe(project, target, wanted, await this.holders(project, listed));
     if (entry.missing) throw refused(`${path} is already gone`, { projectId: project.id, path });
     if (entry.dirty) throw refused('This worktree has uncommitted changes.', { projectId: project.id, path, dirty: true });
+    if (target.head === null) throw refused(`cannot verify the commit of ${path}`, { projectId: project.id, path });
     const proof = merged !== null && target.head === merged.sha ? merged : null;
     if (entry.unmerged && proof === null) throw refused('This worktree has commits on no other branch.', { projectId: project.id, path, unmerged: true });
-    const branchDeleted = await this.detach(project, path, target, proof ?? 'merged-only');
+    const branchDeleted = await this.detach(project, path, target, proof ?? { sha: target.head, branch: target.branch });
     return { branch: target.branch, branchDeleted };
   }
 
@@ -196,12 +198,13 @@ export class WorktreeSweep {
     // A vanished directory loses its registration to the same unforced
     // `remove` (git 2.55 exits 0 on it); `prune --expire` would keep it for an hour.
     const removal = ['worktree', 'remove', ...(branchRule === 'force' ? ['--force'] : []), target.path];
-    // The one check every removal shares, made again at the moment git deletes:
-    // no await between it and the spawn, so a thread restored or started during
-    // the reads above keeps its checkout.
-    const removed = await this.registered(project, () => withVacantCheckout(
-      this.core, project, target.path, () => this.git(project, project.path, removal), [path],
-    ));
+    // Reserve immediately after the final occupancy check and hold through removal.
+    const git = (args: string[], indexFile?: string) => this.git(project, project.path, args, indexFile);
+    const remove = () => typeof branchRule === 'string' ? git(removal) : removeCleanCheckout(this.core, target.path, git);
+    const removed = await this.registered(project, async () => {
+      if (typeof branchRule !== 'string') await restoreInterruptedCheckout(this.core, project, target.path, target.branch, git);
+      return withVacantCheckout(this.core, project, target.path, remove, [path]);
+    });
     if (removed.code !== 0) {
       throw refused(`git worktree remove failed for ${path}: ${removed.stderr.trim() || `exit ${removed.code}`}`, { projectId: project.id, path });
     }
@@ -219,7 +222,7 @@ export class WorktreeSweep {
   }
 
   private async deleteProvedBranch(project: Project, branch: string, proof: { sha: string; branch: string | null }): Promise<GitRun> {
-    if (proof.branch !== branch) return { code: 1, stdout: '', stderr: `the merged pull request proved ${proof.branch ?? 'a detached head'}, not ${branch}` };
+    if (proof.branch !== branch) return { code: 1, stdout: '', stderr: `the merge proof is for ${proof.branch ?? 'a detached head'}, not ${branch}` };
     // One locked section: `update-ref` does not refuse a branch a worktree has, so
     // no registration may take the branch back between the list and the deletion.
     return this.registered(project, async () => {
@@ -310,8 +313,8 @@ export class WorktreeSweep {
     return repositories.size > 0 ? repositories : null;
   }
 
-  async dirty(project: Project, path: string): Promise<boolean> {
-    const status = await this.read(project, path, ['status', '--porcelain=v1', '-z', '--untracked-files=normal']);
+  async dirty(project: Project, path: string, includeIgnored = false): Promise<boolean> {
+    const status = await this.read(project, path, ['status', '--porcelain=v1', '-z', '--untracked-files=normal', ...(includeIgnored ? ['--ignored=matching'] : [])]);
     if (status.code !== 0) throw refused(`git status failed in ${path}: ${status.stderr.trim() || `exit ${status.code}`}`, { projectId: project.id, path });
     return status.stdout.length > 0;
   }
@@ -340,10 +343,10 @@ export class WorktreeSweep {
   }
 
   /** A change under the project's trace id. No deadline: deleting a large tree takes what it takes. */
-  private async git(project: Project, cwd: string, args: string[]): Promise<GitRun> {
+  private async git(project: Project, cwd: string, args: string[], indexFile?: string): Promise<GitRun> {
     let spawned;
     try {
-      spawned = this.core.procs.spawn(traceId(project.id), 'git', args, { cwd });
+      spawned = this.core.procs.spawn(traceId(project.id), 'git', args, { cwd, env: indexFile === undefined ? undefined : { GIT_INDEX_FILE: indexFile } });
     } catch (error) {
       throw refused(`git did not start in ${cwd} (${messageOf(error)}): the worktree list needs git on PATH`, { projectId: project.id, cwd });
     }
@@ -355,5 +358,9 @@ export class WorktreeSweep {
 export function registerWorktreeMethods(core: Core, sweep: WorktreeSweep = new WorktreeSweep(core)): void {
   // Owner only, absent from DEVICE_METHODS: both name paths on the host, and a removal deletes a folder.
   core.router.register('worktrees.list', (params) => sweep.list(params.projectId));
+  core.router.register('worktrees.recoveries', async () => {
+    await publishInterruptedCheckoutRecoveries(core, (commonDir, publish) => withRegistration(commonDir, publish, { cwdIsCommonDir: true }));
+    return listCheckoutRecoveries(core);
+  });
   core.router.register('worktrees.remove', (params) => sweep.remove(params));
 }

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import SettingsSection from './SettingsSection.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
   import PrivateText from './PrivateText.svelte';
   import { accountName } from '../lib/account-name';
   import InfoTip from './InfoTip.svelte';
@@ -320,9 +322,7 @@
 {#snippet enabledSwitch(provider: ProviderSummary)}
   <!-- A provider the admin policy keeps off: the lock says which key, and no switch turns it back on. -->
   {#if provider.policy}<PolicyLock {store} keys={[provider.policy.policy]} />{/if}
-  <input
-    type="checkbox"
-    role="switch"
+  <SettingSwitch
     class="enabled-switch"
     aria-label={fill(strings.providerSettings.enable, { provider: provider.name })}
     title={fill(strings.providerSettings.enable, { provider: provider.name })}
@@ -691,34 +691,24 @@
 {/snippet}
 
 <div class="page" data-testid="accounts-page">
-  <header>
-    <div>
-      <h1 class="ui-label-box"><span class="ui-label">{strings.providerSettings.heading}</span><InfoTip topic={strings.providerSettings.heading} text={strings.providerSettings.intro} /></h1>
-    </div>
-  </header>
 
   {#if groups.connected.length > 0}
-    <div class="card flush list" data-testid="providers-connected">
+    <SettingsSection class="flush list" testid="providers-connected">
       {#each groups.connected as row (row.id)}{@render providerRow(row, false)}{/each}
-    </div>
+    </SettingsSection>
   {/if}
 
   {#if groups.rest.length > 0}
-    {#if groups.connected.length > 0}
-      <div class="group-heading"><h2>{strings.providerSettings.addHeading}</h2></div>
-    {/if}
-    <div class="card flush list" class:secondary-list={groups.connected.length > 0} data-testid="providers-add">
+    <SettingsSection class={groups.connected.length > 0 ? 'list secondary-list' : 'list flush'} testid="providers-add"
+      title={groups.connected.length > 0 ? strings.providerSettings.addHeading : undefined}>
       {#each groups.rest as row (row.id)}{@render providerRow(row, groups.connected.length > 0)}{/each}
-    </div>
+    </SettingsSection>
   {/if}
 
   {#if groups.off.length > 0}
-    <div class="group-heading">
-      <h2 class="ui-label-box"><span class="ui-label">{strings.providerSettings.offHeading}</span><InfoTip topic={strings.providerSettings.offHeading} text={strings.providerSettings.enableHint} /></h2>
-    </div>
-    <div class="card flush list secondary-list" data-testid="providers-off">
+    <SettingsSection class="list secondary-list" testid="providers-off" title={strings.providerSettings.offHeading} info={strings.providerSettings.enableHint}>
       {#each groups.off as row (row.id)}{@render providerRow(row, true)}{/each}
-    </div>
+    </SettingsSection>
   {/if}
   {#if store.owner}<LocalAcpCard {store} />{/if}
   {#if store.owner}<HarnessUpdatesCard {store} />{/if}
@@ -744,7 +734,7 @@
   .provider.secondary { padding: 8px var(--settings-padding); gap: 8px; }
   .secondary .name { font-size: var(--text-sm); font-weight: 400; color: var(--color-muted-foreground); }
   .secondary .summary:hover .name { color: var(--color-foreground); }
-  .secondary-list { background: transparent; }
+  .page > :global(.card.secondary-list) { padding-inline: 0; background: transparent; }
 
   /* Turned off: still listed, read as set aside. The switch keeps its full weight, it is the way back. */
   .provider.off .summary, .provider.off .summary :global(*), .member.off .member-line > :not(.act), .member.off .member-line > :not(.act) :global(*), .member.off .account, .member.off .account :global(*) { color: var(--color-subtle); }
@@ -850,7 +840,6 @@
   .default-model { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .pending-effort { color: var(--color-muted-foreground); font-size: var(--text-sm); text-transform: capitalize; padding: 2px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
 
-  header { flex-wrap: wrap; }
 
   /* Phones never reach this page. Beside the settings nav a small window leaves
      the row about 480 px, where the action drops under the name. */

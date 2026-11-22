@@ -498,7 +498,7 @@ describe('harness updates', () => {
     await client.call('providers.update', { providerId: 'update-fake' });
     const update = only(await failed);
     expect(update.current).toBe('1.0.0');
-    expect(update.message).toBe('Fake updating agent ran its updater and still reports 1.0.0: Upgrade failed for npm (exit code 1).');
+    expect(update).toMatchObject({ failedPhase: 'install', message: 'Fake updating agent ran its updater and still reports 1.0.0: Upgrade failed for npm (exit code 1).' });
   });
 
   test('npm permission failures report the denied path rather than progress or the log location', async () => {
@@ -601,7 +601,7 @@ describe('harness updates', () => {
     // An index apt could not fetch is no answer: the old one would say nothing is newer.
     writeFileSync(layout.offline, '');
     const offline = only(await client.call('providers.updates', { refresh: true }));
-    expect(offline.state).toBe('failed');
+    expect(offline).toMatchObject({ state: 'failed', failedPhase: 'check' });
     expect(offline.message).toContain("could not read the package index: W: Failed to fetch");
     rmSync(layout.offline);
     expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ route: 'self', current: '1.0.0', latest: '1.4.0', pending: true, state: 'idle' });
@@ -843,13 +843,13 @@ describe('harness updates', () => {
     // An agent with no session to resume: the history is the whole context.
     const thread = { ...core.threads.require(threadId), sessionId: null };
     const note = 'Boite paused this turn between two tool calls (test note).';
-    const context = core.threads.contexts.makeContext(thread, core.providers.require(thread.providerId), core.accounts.require(thread.accountId), core.journal.getTurn(turn.id)!, { memory: '', deferred: '', letters: '' }, note);
+    const context = await core.threads.contexts.makeContext(thread, core.providers.require(thread.providerId), core.accounts.require(thread.accountId), core.journal.getTurn(turn.id)!, { memory: '', deferred: '', letters: '' }, note);
     core.threads.noteSystem(threadId, turn.id, note, 'Resumed', 'turn.resumedAfterUpdate');
     const times = (text: string): number => text.split(note).length - 1;
     expect(context.prompt).toContain('build the release');
     expect(times(context.prompt)).toBe(1);
     // A driver that starts another fresh session later gets the same history, not the note again.
-    expect(times(context.continuation!().prompt)).toBe(1);
+    expect(times((await context.continuation!()).prompt)).toBe(1);
   });
 
   test("an update releases the provider's idle threads and sweeps what their agents left", async () => {

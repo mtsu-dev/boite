@@ -135,7 +135,7 @@ async function startThread(core: Core, bot: Bot, request: ContactRequest, name: 
   const spawned = await core.threads.spawns.spawn({
     threadId: bot.threadId, project: project.id, prompt, requestId: `contacts-${request.id}`, title: `${name}: ${brief.split('\n')[0]!}`.slice(0, 80),
     ...(params.worktree === undefined ? {} : { worktree: params.worktree }), ...(params.model === undefined ? {} : { model: params.model }), ...(params.effort === undefined ? {} : { effort: params.effort }),
-  });
+  }, true);
   const relation = core.contacts.relations.add({ coreId: request.coreId, contact: name, local: { threadId: spawned.thread.id, title: spawned.thread.title }, remote: request.from, requestId: request.id });
   return { request: core.contacts.requests.settle(request.id, true, undefined, undefined, by, relation), threadId: spawned.thread.id };
 }

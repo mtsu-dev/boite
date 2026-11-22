@@ -231,13 +231,14 @@ export function seedDelegationDemo(ctx: FakeContext): void {
 /** A profile, or the conversation's own route, whose model may be the provider's default. */
 export type ChildRoute = Omit<DelegationProfile, 'model'> & { model: string | null };
 
-export function workflowChild(ctx: FakeContext, root: Thread, profile: ChildRoute, title: string, task: string): ThreadId {
+export function workflowChild(ctx: FakeContext, root: Thread, profile: ChildRoute, title: string, task: string, context?: unknown): ThreadId {
   const id = `t-${++ctx.seq}`;
   const at = ctx.now();
+  const contextMode = fakeContextMode(ctx.providers.find(entry => entry.id === profile.providerId) ?? { protocol: 'echo', name: profile.providerId }, context);
   const turn: Turn = { id: `turn-${id}`, threadId: id, status: 'running', queuedAt: at, startedAt: at, finishedAt: null, usage: null, error: null };
   const child: Thread = {
     ...delegationProject(ctx, root), id, parentThreadId: root.id, parentIsBot: root.agentSessionId ? true : undefined, agentSessionId: undefined, title, titleSource: 'user',
-    providerId: profile.providerId, accountId: profile.accountId, model: profile.model, effort: profile.effort,
+    providerId: profile.providerId, accountId: profile.accountId, model: profile.model, effort: profile.effort, contextMode,
     status: 'running', unread: false, archived: false, pinned: false,
     sessionId: null, sessionGeneration: 0, selectionVersion: 0, load: null, context: null, activity: undefined, moveNote: null,
     createdAt: at, updatedAt: at, messagesBefore: null, turns: [turn], commands: [],
@@ -292,7 +293,7 @@ function seedWorkflowDemo(ctx: FakeContext, rootId: ThreadId): void {
       limits: { maxConcurrent: 2 },
       steps: [
         { id: 'scan', title: 'List changed files', profile: 'implementer', task: 'List the source files of src/parser that changed this week.', output: { files: ['string'] } },
-        { id: 'review', title: 'Review each file', profile: 'reviewer', forEach: 'scan.files', task: 'Review {{item}} for malformed-input bugs. Do not edit files.', output: { bugs: [{ line: 'number', text: 'string' }] } },
+        { id: 'review', title: 'Review each file', profile: 'reviewer', context: 'light', forEach: 'scan.files', task: 'Review {{item}} for malformed-input bugs. Do not edit files.', output: { bugs: [{ line: 'number', text: 'string' }] } },
         { id: 'fix', title: 'Fix the bugs', profile: 'implementer', when: { path: 'review.bugs', notEmpty: true }, task: 'Fix these bugs, one commit each: {{review.bugs}}' },
         { id: 'tests', title: 'Add regression tests', profile: 'implementer', when: { path: 'review.bugs', notEmpty: true }, task: 'Add one failing test per bug, in test/parser only: {{review.bugs}}' },
         { id: 'report', title: 'Write the report', profile: 'reviewer', after: ['fix', 'tests'], task: 'Summarize what was reviewed and fixed: {{review}}' }

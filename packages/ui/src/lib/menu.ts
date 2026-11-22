@@ -41,6 +41,26 @@ export function separator(id = 'sep'): MenuItem {
   return { id, label: '', separator: true };
 }
 
+export function menuRows(root: ParentNode | null | undefined): HTMLElement[] {
+  return [...(root?.querySelectorAll<HTMLElement>('[data-row]:not(:disabled)') ?? [])];
+}
+
+export function moveMenuFocus(event: KeyboardEvent, rows: HTMLElement[], preventScroll = true): void {
+  const count = rows.length;
+  if (count === 0) return;
+  const at = rows.indexOf(document.activeElement as HTMLElement);
+  let next: number;
+  switch (event.key) {
+    case 'ArrowDown': next = (at + 1) % count; break;
+    case 'ArrowUp': next = at <= 0 ? count - 1 : at - 1; break;
+    case 'Home': next = 0; break;
+    case 'End': next = count - 1; break;
+    default: return;
+  }
+  event.preventDefault();
+  rows[next]?.focus({ preventScroll });
+}
+
 /**
  * One order for every menu and sheet: a destructive row comes last, behind a
  * rule, wherever its caller listed it, so a thumb running down a list meets

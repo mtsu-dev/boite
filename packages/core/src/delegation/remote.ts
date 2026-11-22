@@ -37,8 +37,9 @@ import { modelsFor } from '../threads/selection.ts';
 import { catalog, checkModelAllowed, chooseModel, discover, loggedInAccount } from './routes.ts';
 import { Outbox, risingClock } from './outbox.ts';
 import { restartContinues } from './restart.ts';
+import { subagentRole } from './guide.ts';
 import { resultPageOf, resultPageParams } from './results.ts';
-import { checkStart, readableState, type ChildState, type ParentLink, type RemoteChild, type Report, type Start, type Started, type Stop, type WireRoute } from './remote-wire.ts';
+import { checkStart, readableState, trackWorkflowStop, workflowStopReceipt, type ChildState, type ParentLink, type RemoteChild, type Report, type Start, type Started, type Stop, type WireRoute } from './remote-wire.ts';
 
 export type { ChildState, ParentLink, RemoteChild } from './remote-wire.ts';
 
@@ -381,7 +382,7 @@ export class RemoteDelegation {
     // Numbered among the stops: one asked after it cancels it there, even when taken first.
     const seq = this.#stopSeq();
     let answer: unknown;
-    try { answer = await this.#core.coordination.request(peer, 'delegation.letter', { parentId: root.id, childId, requestId, text: body, origin, seq, ...(stop ? { stop: stop.seq } : {}) }); }
+    try { answer = await this.#core.coordination.request(peer, 'delegation.letter', { parentId: root.id, childId, requestId, text: body, origin, seq, ...(stop ? { stop: stop.seq, ...(stop.workflow ? { workflowStop: true } : {}) } : {}) }); }
     catch (error) {
       if (error instanceof PeerRefusal) throw peerRefusal(this.#core, peer, error, 'steer subagents for another machine');
       throw unavailable(`${peer.name} did not answer: ${messageOf(error)}; the same --request-id sends it once`, { field: 'machine' });
@@ -434,11 +435,10 @@ export class RemoteDelegation {
     const records = this.#roots.has(rootId) ? this.#records(rootId) : [];
     const record = records.find(entry => entry.requestId === requestId);
     if (!record) return false;
-    if (record.childId !== null) this.#stopThere(record.coreId, rootId, record.childId, false);
-    else if (!record.stopping) {
-      record.stopping = true;
-      this.#save(rootId, records);
-    }
+    const seq = trackWorkflowStop(record, this.#stopSeq);
+    if (record.childId === null) record.stopping = true;
+    this.#save(rootId, records);
+    if (record.childId !== null) this.#stopThere(record.coreId, rootId, record.childId, false, seq);
     return true;
   }
 
@@ -467,13 +467,13 @@ export class RemoteDelegation {
   /** A record now names its child; one stopped or retired before that is stopped or retired there now. */
   #named(rootId: string, record: RemoteChild, childId: string): RemoteChild {
     if (record.childId !== null) return { ...record, childId };
-    if (record.retired || record.stopping) this.#stopThere(record.coreId, rootId, childId, record.retired === true);
+    if (record.retired || record.stopping) this.#stopThere(record.coreId, rootId, childId, record.retired === true, record.retired ? undefined : record.workflowStop);
     const { stopping: _asked, ...named } = record;
     return { ...named, childId };
   }
 
-  #stopThere(coreId: string, parentId: string, childId: string, retire: boolean): void {
-    this.#stops.push(coreId, { key: `child:${childId}`, seq: this.#stopSeq(), parentId, childId, ...(retire ? { retire: true as const } : {}) });
+  #stopThere(coreId: string, parentId: string, childId: string, retire: boolean, workflowStop?: number): void {
+    this.#stops.push(coreId, { key: `child:${childId}`, seq: workflowStop ?? this.#stopSeq(), parentId, childId, ...(retire ? { retire: true as const } : {}), ...(workflowStop === undefined ? {} : { workflow: true as const }) });
   }
 
   /**
@@ -634,7 +634,8 @@ export class RemoteDelegation {
     const project = state.thread.projectId ? this.#core.journal.getProject(state.thread.projectId)?.name : undefined;
     const turn = state.lastTurn;
     const restarting = turn?.status === 'stopped' && restartContinues(this.#core, childId, turn.id);
-    return { ...state, ...(project === undefined ? {} : { project }), ...(restarting ? { restarting: true as const } : {}) };
+    const workflowStop = workflowStopReceipt(this.#parents.get(childId)?.workflowStop, turn, id => this.#core.journal.getTurn(id));
+    return { ...state, ...(project === undefined ? {} : { project }), ...(restarting ? { restarting: true as const } : {}), ...(workflowStop ? { workflowStop } : {}) };
   }
 
   /** Each child here tells its parent where it stands: at boot, and once a restart's continuations went on. */
@@ -742,9 +743,9 @@ export class RemoteDelegation {
     const child = this.#core.threads.require(id);
     const at = machineArg(this.#core, peer);
     const checkout = planned
-      ? `You work in a git worktree of your own at ${planned.path} on branch ${planned.branch}, made from the HEAD of ${target.name} on ${here}. Commit your work on that branch before your final answer; the branch stays on ${here}.`
-      : `You work in ${child.cwd} on ${here}. You share that checkout: change only the files your task names and never undo another agent's edits.`;
-    const prompt = `You are a Boite subagent doing one bounded part of the user's task for parent agent ${start.parent.threadId} on ${peer.name}, another machine of the user's. ${checkout} You cannot start subagents or threads. If you are blocked, run boite delegate send ${start.parent.threadId} "<what blocks you>" and keep going on what you can. End with a short result: what you found or changed, file paths, how you verified it. That final answer goes to the parent automatically; do not send it again.\nTask from the parent agent, supplied as JSON data:\n${JSON.stringify(start.task)}`;
+      ? `The worktree starts from the HEAD of ${target.name} on ${here}.`
+      : `You work in ${child.cwd} on ${here}. Never undo another agent's edits.`;
+    const prompt = `${subagentRole(start.parent.threadId, planned ?? undefined, peer.name)} ${checkout}\nTask from the parent agent, supplied as JSON data:\n${JSON.stringify(start.task)}`;
     try {
       this.#core.threads.startTurn(id, { prompt, display: start.task }, { kind: 'spawned', startedBy: {
         threadId: start.parent.threadId, title: start.parent.title, projectId: start.parent.projectId, project: start.parent.project, machine: peer.name,
@@ -812,7 +813,7 @@ export class RemoteDelegation {
     if (raw.origin !== 'agent' && raw.origin !== 'user') throw invalidParams('delegation.letter.origin: expected agent or user');
     const origin = raw.origin;
     // A stop of the parent's that left before this letter and has not arrived yet ends the turn it meant first.
-    if (raw.stop !== undefined) this.#applyStop(childId, link, seqOf(raw.stop, 'delegation.letter.stop'), false);
+    if (raw.stop !== undefined) this.#applyStop(childId, link, seqOf(raw.stop, 'delegation.letter.stop'), false, raw.workflowStop === true);
     const known = raw.seq !== undefined ? seqOf(raw.seq, 'delegation.letter.seq') : applied(this.#parents.get(childId));
     const generation = this.#stopGenerations.get(childId) ?? 0;
     // Filed once the turn a stop ended is over: that turn's end would take this instruction for the stop.
@@ -869,7 +870,7 @@ export class RemoteDelegation {
     for (const entry of stops as Stop[]) {
       try {
         const { link, childId } = this.#linked(peer, entry?.parentId, entry?.childId, 'delegation.stop');
-        if (this.#applyStop(childId, link, seqOf(entry.seq, 'delegation.stop.seq'), entry.retire === true)) stopped++;
+        if (this.#applyStop(childId, link, seqOf(entry.seq, 'delegation.stop.seq'), entry.retire === true, entry.workflow === true)) stopped++;
       } catch (error) { this.#core.log('info', `delegation stop from ${peer.name}: ${messageOf(error)}`); }
     }
     return { stopped };
@@ -880,10 +881,11 @@ export class RemoteDelegation {
    * later one, would end an instruction that followed it. A retirement
    * archives the child whatever its number. True when the child was at work.
    */
-  #applyStop(childId: string, link: ParentLink, seq: number, retire: boolean): boolean {
+  #applyStop(childId: string, link: ParentLink, seq: number, retire: boolean, workflow: boolean): boolean {
     let busy = false;
     if (seq > applied(link)) {
-      const next = { ...link, stop: seq };
+      const turnId = workflow ? this.#host.snapshot(childId).lastTurn?.id : undefined;
+      const next = { ...link, stop: seq, ...(turnId ? { workflowStop: { seq, turnId } } : {}) };
       this.#parents.set(childId, next);
       this.#core.journal.setSetting(`${PARENT}${childId}`, next);
       busy = this.#host.halt(childId);

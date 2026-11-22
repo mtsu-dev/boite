@@ -38,6 +38,7 @@
   import ProjectTile from './ProjectTile.svelte';
   import MachineIcon from './MachineIcon.svelte';
   import MachineOffline from './MachineOffline.svelte';
+  import ThreadListNotice from './ThreadListNotice.svelte';
   import ProjectRollup from './ProjectRollup.svelte';
   import RailFrame from './RailFrame.svelte';
   import FoldMore from './FoldMore.svelte';
@@ -262,13 +263,14 @@
       </SideHead>
     {:else}
       <ProjectViews entries={groups} {store} quiet={groups.length === 0 && needsAnAI(store) && !loading} />
+      {#if showRows && !archivedView.open}<ThreadListNotice machines={visible} />{/if}
     {/if}
   {/snippet}
     {#if contactsSide}
       {#if ContactRows}<div class="contact-rows" data-testid="side-contact-rows"><ContactRows {store} /></div>{/if}
     {:else if showRows && archivedView.open}
       <!-- The archive in the list's place (lib/archived-view.svelte.ts): the way back on its first line, then each
-           shown machine's archived threads, restored with a press. -->
+           shown machine's archived threads. -->
       <div class="archive" data-testid="sidebar-archived">
         <div class="archive-head">
           <button type="button" class="ghost small icon" title={strings.sidebar.backToThreads} aria-label={strings.sidebar.backToThreads} data-testid="sidebar-archived-back" onclick={closeArchived}><ArrowLeft size={16} /></button>
@@ -277,7 +279,7 @@
         </div>
         {#each archiveMachines as machine (machine.id)}
           {#if multi && archiveMachines.length > 1}<p class="archive-machine" class:away={machine.store.connection !== 'ready'}><MachineIcon icon={machine.icon} os={machine.store.core?.os} size={14} /><span class="ui-label">{machine.label}</span></p>{/if}
-          {#if ArchivedThreads}<ArchivedThreads store={machine.store} eager place="list" />{/if}
+          {#if ArchivedThreads}<ArchivedThreads store={machine.store} />{/if}
         {/each}
       </div>
     {:else if showRows}

@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
 import { MESSAGE_PAGE, MESSAGE_PAGE_MAX, boundedMessageWindow, pageBytes, pageBytesProblem, resumeAnchor, snapshotOptionsProblem } from '@boite/contracts';
-import type { Message, RpcParams, Thread, ThreadSummary, Turn } from '@boite/contracts';
+import type { Message, MessageSync, RpcParams, Thread, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../core';
 import { invalidParams, refused } from '../errors';
 import type { AgentState } from './agent-state';
 import { readMemoryEvents } from './memory-read';
 import { previewDigests } from '../journal/part-blobs';
 import { transportProjection } from './transport';
-import { contactHold } from '../contacts/letter-scopes';
+import { contactHistoryHold } from '../contacts/letter-scopes';
 
 type Projection = ReturnType<typeof transportProjection>;
 type Options = Pick<RpcParams<'threads.get'>, 'limit' | 'maxBytes' | 'compactTools' | 'compactFiles' | 'compactImages' | 'compactToolParts' | 'around' | 'sync' | 'open'>;
@@ -40,14 +40,25 @@ export function threadSnapshot(core: Core, thread: ThreadSummary, after: string 
   // Budgets apply to what the client receives, so compacted parts never block
   // a page. The proof covers the stored rows, deferred content included.
   const project = transportProjection(options, options.compactImages ? core.media.lookup(thread.id) : undefined);
-  const tail = from === null ? null : core.journal.listMessagesFrom(thread.id, from, limit, project, toolPreviews(options));
+  const known = options.sync && options.sync !== true ? options.sync : undefined;
+  const prefix = known?.prefix;
+  const preceding = from === null || !prefix ? undefined : prefix.count === 0 ? [] :
+    core.journal.listMessagePage(thread.id, { beforeRowid: from, limit: prefix.count, project, toolPreviews: toolPreviews(options) }).messages;
+  const verified = !prefix || (preceding && known?.from === after && prefix.count === preceding.length
+    && prefix.first === (preceding[0]?.id ?? after) && prefix.hash === hash(preceding, options));
+  const tail = from === null || !verified ? null : core.journal.listMessagesFrom(thread.id, from, limit, project, toolPreviews(options));
   // A tail is what the client misses, whole; only a page is cut to `maxBytes`.
   const page = tail === null ? pageAround(core, thread.id, options.around, limit, project, toolPreviews(options), pageBytes(options.maxBytes)) : { ...tail, before: null, after: null };
   const turns = core.journal.listTurnsFor(thread.id, page.messages.map(message => message.turnId));
   const anchor = options.sync ? resumeAnchor({ messages: page.messages, turns }) : null;
   const anchorIndex = anchor === null ? -1 : page.messages.findIndex(message => message.id === anchor);
-  const proof = anchor === null ? undefined : { from: anchor, hash: hash(page.messages.slice(anchorIndex), options) };
-  const known = options.sync && options.sync !== true ? options.sync : undefined;
+  const heldPrefix = tail === null ? page.messages.slice(0, anchorIndex) : preceding && [...preceding, ...page.messages.slice(0, anchorIndex)];
+  const proof: MessageSync | undefined = anchor === null ? undefined : {
+    from: anchor, hash: hash(page.messages.slice(anchorIndex), options),
+    ...(heldPrefix && heldPrefix.length <= MESSAGE_PAGE_MAX ? {
+      prefix: { first: heldPrefix[0]?.id ?? anchor, count: heldPrefix.length, hash: hash(heldPrefix, options) },
+    } : {}),
+  };
   const unchanged = tail !== null && after !== undefined && known?.from === after &&
     known.hash === (proof?.from === after ? proof.hash : hash(tail.messages, options));
   return {
@@ -66,7 +77,7 @@ export function threadSnapshot(core: Core, thread: ThreadSummary, after: string 
     ...(page.after === null ? {} : { messagesAfter: page.after }),
     messageOffset: positionOf(core, thread.id, tail === null ? page.messages[0]?.id : after),
     turns,
-    contactHold: contactHold(core, thread.id),
+    ...contactHistoryHold(core, thread.id),
   };
 }
 

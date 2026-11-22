@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { realpathSync, type BigIntStats } from 'node:fs';
-import { TOOL_FREE_CONTEXT, type ThreadSummary, type RpcMethodName, type RpcParams, type SharedAccessAction, type SharedAccessEvent, type SharedAccessPage, type SharedFileOverride, type SharedProjectActor, type SharedSecretClass } from '@boite/contracts';
+import { contactToolMethod, TOOL_FREE_CONTEXT, type ThreadSummary, type RpcMethodName, type RpcParams, type SharedAccessAction, type SharedAccessEvent, type SharedAccessPage, type SharedFileOverride, type SharedProjectActor, type SharedSecretClass } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import type { Connection, RpcContext } from '../router.ts';
 import { invalidParams, refused } from '../errors.ts';
@@ -9,7 +9,7 @@ import { SharedAccessJournal } from './access-journal.ts';
 import { PolicyPathError, policyFile, policyIdentity, secretPath, secretText, type PolicyFile } from './file-policy.ts';
 import type { SharedPeerContext } from './projects.ts';
 import { accessBinding, computeBinding, type AccessBinding } from './access-scopes.ts';
-import {letterScope} from './letter-scopes.ts';
+import {assertContactTool, letterScope} from './letter-scopes.ts';
 import {SharedNativeExecution} from './native-execution.ts';
 
 type FileAction = 'read' | 'publish';
@@ -129,6 +129,7 @@ export class SharedAccess {
   #rpc(method: RpcMethodName, params: unknown, ctx: RpcContext): void {
     if (ctx.connection.identity.principal !== 'agent') return;
     const id = ctx.connection.identity.threadId;
+    if (id && contactToolMethod(method)) assertContactTool(this.core, id, method);
     const record = id ? this.bound(id) : null;
     const letters = id ? letterScope(this.core, id) : null;
     if (record) this.#live(record);

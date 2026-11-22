@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Message } from '@boite/contracts';
-import { BLOCK_GAP, ESTIMATE, GAP, SlotClasses, THUMB_HEIGHT, estimateSlot, gapChanged, slotGap } from './message-window';
+import { BLOCK_GAP, ESTIMATE, GAP, SlotClasses, SlotTotals, THUMB_HEIGHT, estimateSlot, gapChanged, slotGap } from './message-window';
 
 test('a measured slot carries the gap its row keeps above it, and a changed seam asks for a new measure', () => {
   expect(slotGap(null, false)).toBe(GAP);
@@ -35,4 +35,15 @@ test('an unmeasured row is estimated from its length class, and a class measured
   const pictured: Message = { ...said('user', 10), parts: [{ type: 'text', text: 'see' }, { type: 'image', mimeType: 'image/png', data: '' } as Message['parts'][number]] };
   classes.learn(pictured, 900);
   expect(estimateSlot(pictured, classes)).toBe(ESTIMATE + THUMB_HEIGHT + 10);
+});
+
+test('restoring saved totals forgets the positions of the thread they served in between', () => {
+  const totals = new SlotTotals(new Map());
+  const first = [{ id: 'a1' }, { id: 'a2' }] as never[];
+  const second = [{ id: 'b1' }, { id: 'b2' }, { id: 'b3' }] as never[];
+  totals.totals(first, 'first');
+  const saved = totals.save(10)!;
+  totals.totals(second, 'second');
+  totals.restore(saved, first, 'first');
+  expect([...totals.positions.keys()]).toEqual(['a1', 'a2']);
 });

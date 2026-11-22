@@ -54,12 +54,13 @@ export function readingCacheBytes(messages: readonly Message[]): number {
 
 /**
  * The timelines left recently, oldest first, each with the size it was
- * counted at when it came in. A leave counts the thread it leaves and nothing
- * else: the running total comes from the sizes kept here, so no call site can
- * drop an entry and forget its bytes.
+ * counted at when it came in. Both waiting and prepared visits reserve
+ * space, so a busy renderer cannot accumulate pages behind its idle callbacks.
  */
 export class ReadingCache {
   readonly #threads = new Map<string, Thread>();
+  readonly #pending = new Map<string, { prepare: () => void; cancel: () => void }>();
+  readonly #copies = new Map<string, () => void>();
   readonly #bytes = new Map<string, number>();
   #total = 0;
   /** Counts every delete and clear, kept or not: what a page read before it no longer vouches for. */
@@ -73,7 +74,30 @@ export class ReadingCache {
 
   get size(): number { return this.#threads.size; }
 
-  get(id: string): Thread | undefined { return this.#threads.get(id); }
+  has(id: string): boolean { return this.#threads.has(id) || this.#pending.has(id); }
+
+  get(id: string): Thread | undefined {
+    this.#pending.get(id)?.prepare();
+    return this.#threads.get(id);
+  }
+
+  /** Prepare a visit after the destination can paint. A quick return can still use the page. */
+  defer(thread: Thread, bytes: number, page: (thread: Thread) => Thread, copy: (held: Thread) => Thread, settle: () => boolean): boolean {
+    const id = thread.id;
+    this.delete(id);
+    if (bytes > READING_CACHE_BYTES) return false;
+    const prepare = () => {
+      const pending = this.#pending.get(id);
+      if (pending?.prepare !== prepare) return;
+      pending.cancel();
+      this.#pending.delete(id);
+      const projected = page(thread);
+      this.#store(id, projected, readingCacheBytes(projected.messages), copy, settle);
+    };
+    this.#pending.set(id, { prepare, cancel: whenIdle(prepare) });
+    this.#retain(id, bytes);
+    return true;
+  }
 
   /**
    * Keeps `thread` as the newest visit when it fits, then lets the oldest go
@@ -82,12 +106,17 @@ export class ReadingCache {
    */
   remember(id: string, thread: Thread, bytes: number, copy?: (held: Thread) => Thread, settle: () => boolean = () => true): void {
     this.delete(id);
-    if (bytes > READING_CACHE_BYTES) return;
+    this.#store(id, thread, bytes, copy, settle);
+  }
+
+  #store(id: string, thread: Thread, bytes: number, copy: ((held: Thread) => Thread) | undefined, settle: () => boolean): void {
+    if (bytes > READING_CACHE_BYTES) { this.delete(id); return; }
     this.#threads.set(id, thread);
-    this.#bytes.set(id, bytes);
-    this.#total += bytes;
-    while (this.#threads.size > READING_CACHE_THREADS || this.#total > READING_CACHE_TOTAL) this.delete(this.#threads.keys().next().value!);
-    if (copy && this.#threads.get(id) === thread) whenIdle(() => { if (this.#threads.get(id) === thread && settle()) this.#threads.set(id, copy(thread)); });
+    this.#retain(id, bytes);
+    if (copy) this.#copies.set(id, whenIdle(() => {
+      this.#copies.delete(id);
+      if (this.#threads.get(id) === thread && settle()) this.#threads.set(id, copy(thread));
+    }));
   }
 
   /**
@@ -96,12 +125,17 @@ export class ReadingCache {
    * Answers whether it was kept.
    */
   prefill(id: string, thread: Thread, bytes: number): boolean {
-    if (this.#threads.has(id) || bytes > READING_CACHE_BYTES) return false;
-    if (this.#threads.size >= READING_CACHE_THREADS || this.#total + bytes > READING_CACHE_TOTAL) return false;
+    if (this.has(id) || bytes > READING_CACHE_BYTES) return false;
+    if (this.#bytes.size >= READING_CACHE_THREADS || this.#total + bytes > READING_CACHE_TOTAL) return false;
     this.#threads.set(id, thread);
-    this.#bytes.set(id, bytes);
-    this.#total += bytes;
+    this.#retain(id, bytes);
     return true;
+  }
+
+  #retain(id: string, bytes: number): void {
+    this.#total += bytes - (this.#bytes.get(id) ?? 0);
+    this.#bytes.set(id, bytes);
+    while (this.#bytes.size > READING_CACHE_THREADS || this.#total > READING_CACHE_TOTAL) this.delete(this.#bytes.keys().next().value!);
   }
 
   /** The point a read starts from; `droppedSince` answers whether its thread left the cache after it. */
@@ -120,11 +154,18 @@ export class ReadingCache {
   delete(id: string): boolean {
     // Counted even when nothing is held: a read ahead of the thread may be on its way.
     this.#dropped.set(id, ++this.#changes);
+    this.#copies.get(id)?.();
+    this.#copies.delete(id);
+    const pending = this.#pending.get(id);
+    if (pending) {
+      pending.cancel();
+      this.#pending.delete(id);
+    }
     const bytes = this.#bytes.get(id);
-    if (bytes === undefined) return false;
+    if (bytes === undefined) return pending !== undefined;
     this.#total -= bytes;
     this.#bytes.delete(id);
-    return this.#threads.delete(id);
+    return this.#threads.delete(id) || pending !== undefined;
   }
 
   /** Lets `id` go because what it holds can no longer be caught up from, and says so to whoever kept another copy. */
@@ -136,6 +177,10 @@ export class ReadingCache {
   clear(): void {
     this.#cleared = ++this.#changes;
     this.#dropped.clear();
+    for (const cancel of this.#copies.values()) cancel();
+    this.#copies.clear();
+    for (const pending of this.#pending.values()) pending.cancel();
+    this.#pending.clear();
     this.#threads.clear();
     this.#bytes.clear();
     this.#total = 0;

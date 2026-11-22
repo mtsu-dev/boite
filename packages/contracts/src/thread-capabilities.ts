@@ -1,8 +1,21 @@
-import type { Protocol, ProviderCapabilities, ProviderId, ThreadCapabilities, ThreadCapability, ThreadCapabilityReason, ThreadId } from './index.ts';
+import type { AccountId, Protocol, ProviderCapabilities, ProviderDescriptor, ProviderId, ProviderSummary, ThreadCapabilities, ThreadCapability, ThreadCapabilityReason, ThreadId } from './index.ts';
+
+export interface ThreadControlsRpcMethods {
+  /** Supported operations and their current availability for this thread. */
+  'threads.capabilities': { params: { threadId: ThreadId }; result: ThreadCapabilities };
+  /** Forecasts the native session after an account switch, without starting an agent or changing the thread. */
+  'threads.previewAccountSwitch': { params: { threadId: ThreadId; accountId: AccountId }; result: { session: 'unchanged' | 'resume' | 'fresh' } };
+}
 
 /** Known protocol support; a live handle still decides whether a turn can accept input. */
-export function protocolSupportsSteering(protocol: Protocol | null): boolean {
-  return protocol !== null && ['echo', 'claude-sdk', 'codex-appserver', 'pi', 'muse'].includes(protocol);
+export function providerSupportsSteering(provider: Pick<ProviderSummary, 'protocol' | 'acpSteering'> | undefined): boolean {
+  return provider !== undefined && (provider.protocol === 'acp' ? provider.acpSteering === true : ['echo', 'claude-sdk', 'codex-appserver', 'pi', 'muse'].includes(provider.protocol));
+}
+
+export function acpSteeringKind(provider: Pick<ProviderDescriptor, 'id' | 'quirks' | 'protocol'>): 'opencode' | 'grok' | null {
+  if (provider.protocol !== 'acp') return null;
+  if (provider.id === 'opencode-v2') return 'opencode';
+  return provider.quirks?.includes('grok') ? 'grok' : null;
 }
 
 /** Observed facts only. Gathering them must neither load a driver nor start a process. */

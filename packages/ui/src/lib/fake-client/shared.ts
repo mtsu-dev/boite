@@ -94,6 +94,9 @@ export function toSummary(thread: Thread): ThreadSummary {
   const started = thread.turns.filter(turn => turn.status === 'running' && turn.startedAt !== null).map(turn => turn.startedAt as number);
   const tasks = thread.background ?? [];
   const lastTurn = thread.turns.findLast(turn => turn.execution?.operation !== 'compact' && turn.execution?.operation !== 'keepalive') ?? null;
+  // As the core's `backgroundWaitOf`: a delegated agent at rest on its own background work, its last turn the truth.
+  const wait = thread.parentThreadId && thread.status !== 'queued'
+    ? backgroundWait({ status: 'idle', lastTurn, live: tasks, history: thread.backgroundHistory ?? [], now: Date.now() }) : null;
   return {
     ...rest,
     lastUserMessageAt: thread.messages.filter(m => m.role === 'user').at(-1)?.createdAt ?? null,
@@ -101,10 +104,8 @@ export function toSummary(thread: Thread): ThreadSummary {
     // A watch still waiting on checks carries the request on, like a monitor.
     requestSince: busy || tasks.length > 0 || (thread.pullRequestWatches ?? []).some(pullRequestWatchWaits) ? currentRequestSince(thread.turns) : null,
     backgroundWork: tasks.length === 0 ? null : { kinds: tasks.map(task => task.kind), since: Math.min(...tasks.map(task => task.startedAt)) },
-    // As the core's `backgroundWaitOf`: a delegated agent at rest on its own background work, its last turn the truth.
-    backgroundWait: thread.parentThreadId && thread.status !== 'queued'
-      ? backgroundWait({ status: 'idle', lastTurn, live: tasks, history: thread.backgroundHistory ?? [], now: Date.now() })
-      : null
+    backgroundWait: wait,
+    ...(wait?.state === 'interrupted' ? { interruptionReadAt: thread.interruptionReadAt ?? null } : {}),
   };
 }
 

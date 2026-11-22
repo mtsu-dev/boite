@@ -10,6 +10,8 @@
   import { changeCount, changeText } from '../lib/change-count';
   import { onView } from '../lib/on-view';
   import SurfaceHead from './SurfaceHead.svelte';
+  import PanelListRow from './PanelListRow.svelte';
+  import EmptyState from './EmptyState.svelte';
   import ChangeCount from './ChangeCount.svelte';
   import DiffView, { SPLIT_MIN_WIDTH } from './DiffView.svelte';
   import Menu from './Menu.svelte';
@@ -27,6 +29,7 @@
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
   let status = $state<GitStatus | null>(null);
+  let error = $state<string | null>(null);
   let loading = $state(false);
 
   let threadId = $derived(store.openThread?.id ?? null);
@@ -58,19 +61,25 @@
 
   /** Bumped by the refresh button, so the status and the diffs are all read again. */
   let asked = $state(0);
+  /** Status and visible diffs start a fresh read when the connection comes back. */
+  let readRound = $derived(store.connection === 'ready' ? `${store.clientGeneration}:${store.returns}:${finished}:${asked}` : null);
   /** The last status request; an older answer that lands after it is dropped. */
   let latest = 0;
   /** The thread the list on screen belongs to. */
   let listed: ThreadId | null = null;
 
-  async function refresh(id: ThreadId): Promise<void> {
+  async function refresh(id: ThreadId, round: string): Promise<void> {
     const mine = ++latest;
+    const clientGeneration = store.clientGeneration;
     loading = true;
     try {
       const answer = await store.gitStatus(id);
       // The thread may have changed, or a newer read gone out, while the call
       // was out: an answer about another working tree must not land in this list.
-      if (mine === latest && threadId === id) status = answer;
+      if (mine === latest && threadId === id && round === readRound && clientGeneration === store.clientGeneration) {
+        status = answer.ok ? answer.value : null;
+        error = answer.ok ? null : answer.error;
+      }
     } finally {
       if (mine === latest) loading = false;
     }
@@ -127,7 +136,7 @@
   }
 
   /** A read diff, with the text pair it is drawn from: one object per answer, so its rows and counts are read once. */
-  type Read = { diff: GitDiff | null; source: DiffSource | null };
+  type Read = { diff: GitDiff; source: DiffSource | null } | { error: string; source: null };
   let diffs = $state.raw<Record<string, Read>>({});
   /** The files whose diff is wanted: seen near the screen. The file asked for always is. */
   let wanted = $state<Record<string, true>>({});
@@ -163,14 +172,14 @@
   // agent is changing, so the list is stale the moment a turn finishes.
   $effect(() => {
     const id = threadId;
-    void finished;
-    void asked;
+    const round = readRound;
     // Another thread's files never stay on screen while this one's are read.
     if (id !== listed) {
       listed = id;
       status = null;
+      error = null;
     }
-    if (id !== null) void refresh(id);
+    if (id !== null && round !== null) void refresh(id, round);
   });
 
   /** The rename origin the list gives a file: null for none, undefined while the list does not hold it. */
@@ -187,7 +196,7 @@
   // another thread starts from blank.
   $effect(() => {
     const id = threadId;
-    const round = `${finished}:${asked}`;
+    const round = readRound;
     // Another thread wants none of the last one's files, and its file asked for is still to be scrolled to.
     if (id !== diffThread) {
       diffThread = id;
@@ -197,9 +206,10 @@
       jumped = null;
       pinned = null;
     }
+    if (id === null || round === null) return;
     const paths = new Set(Object.keys(wanted));
     if (selected !== null) paths.add(selected);
-    if (id === null) return;
+    const clientGeneration = store.clientGeneration;
     for (const path of paths) {
       const from = originOf(path);
       // A status that lands re-runs this. The read of this round still holds when
@@ -210,9 +220,14 @@
       const mine = ++diffSeq;
       reads.set(path, { round, from, seq: mine });
       void store.gitDiff(id, path, undefined, from).then((answer) => {
-        if (reads.get(path)?.seq !== mine || diffThread !== id) return;
-        const source = answer && !answer.binary ? { oldText: answer.oldText ?? '', newText: answer.newText ?? '' } : null;
-        diffs = { ...diffs, [path]: { diff: answer, source } };
+        if (reads.get(path)?.seq !== mine || threadId !== id || round !== readRound || clientGeneration !== store.clientGeneration) return;
+        if (!answer.ok) {
+          diffs = { ...diffs, [path]: { error: answer.error, source: null } };
+          return;
+        }
+        const diff = answer.value;
+        const source = diff.binary ? null : { oldText: diff.oldText ?? '', newText: diff.newText ?? '' };
+        diffs = { ...diffs, [path]: { diff, source } };
       });
     }
   });
@@ -261,7 +276,7 @@
   let codeWidth = $state(0);
 </script>
 
-<div class="changes-surface" class:narrow data-testid="changes-panel" bind:clientWidth={width}>
+<div class="changes-surface" data-testid="changes-panel" bind:clientWidth={width}>
   <!-- Its head: the files and their one count (the chip lists them), the layout, the refresh. -->
   <SurfaceHead>
     {#if status && changes.length > 0}
@@ -273,7 +288,7 @@
       </span>
     {:else if status}
       <span class="total" data-testid="changes-count"><ChangeCount files={0} added={0} removed={0} /></span>
-    {:else}
+    {:else if loading}
       <span class="total" data-testid="changes-count">{strings.changes.loading}</span>
     {/if}
     <span class="spacer"></span>
@@ -294,17 +309,19 @@
   <!-- The reader's own wheel, touch, press or key lets go of a jump's hold; the scroll itself is no control. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="detail" bind:this={body} bind:clientWidth={codeWidth} onwheel={release} ontouchstart={release} onpointerdown={release} onkeydown={release}>
-    {#if status && status.changes.length === 0 && entries.length === 0}
-      <p class="empty" data-testid="changes-empty">{strings.changes.clean}</p>
+    {#if error}
+      <p class="empty" role="status" data-testid="changes-error">{error}</p>
+    {:else if status && status.changes.length === 0 && entries.length === 0}
+      <EmptyState compact testid="changes-empty" line={strings.changes.clean} />
     {/if}
     {#each entries as { path, change } (path)}
       {@const read = diffs[path]}
       {@const open = !folded[path]}
       <section class="file" data-file={path} use:near={path}>
-        <button
-          type="button"
-          class="row"
-          class:on={path === selected}
+        <PanelListRow
+          kind="change"
+          selected={path === selected}
+          touch={narrow}
           aria-expanded={open}
           aria-current={path === selected ? 'true' : undefined}
           data-testid="changes-row"
@@ -329,15 +346,15 @@
             <span class="count added ui-label">{count.added ?? ''}</span>
             <span class="count removed ui-label">{count.removed ?? ''}</span>
           {/if}
-        </button>
+        </PanelListRow>
         {#if open}
           {#if !read}
             <!-- Read as it nears the screen: a quiet block holds its place meanwhile. -->
             <div class="pending" aria-busy="true"></div>
-          {:else if !read.diff}
-            <p class="empty">{strings.changes.clean}</p>
+          {:else if 'error' in read}
+            <p class="empty" role="status" data-testid="changes-diff-error">{read.error}</p>
           {:else if read.diff.binary}
-            <p class="empty" data-testid="changes-binary">{strings.changes.binary}</p>
+            <EmptyState compact testid="changes-binary" line={strings.changes.binary} />
           {:else}
             {#if read.diff.truncated}
               <p class="notice" data-testid="changes-truncated">{strings.changes.truncated}</p>
@@ -383,45 +400,9 @@
     border-top: 1px solid var(--color-border);
   }
   .pending { height: 48px; }
+  .empty { margin: 0; padding: 10px 12px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
   .file + .file { border-top: 1px solid var(--color-border); }
-
-  /* A file's header stays at the top while its diff scrolls under it, then the next one takes its place. */
-  .row {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    height: var(--row);
-    padding: 0 10px 0 6px;
-    border: none;
-    border-bottom: 1px solid var(--color-border);
-    border-radius: 0;
-    background: var(--color-surface-3);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-    font-weight: 400;
-    text-align: left;
-  }
-  /* Fingers, not a pointer: every header is a full target. */
-  .narrow .row { height: auto; min-height: var(--touch-target); }
-
-  .row:hover:not(:disabled),
-  .row:focus-visible {
-    background: color-mix(in srgb, var(--color-hover) 60%, var(--color-surface-3));
-  }
-  .row:focus-visible { outline-offset: -2px; }
-
-  .row:active:not(:disabled) {
-    transform: none;
-  }
-
-  .row.on {
-    color: var(--color-foreground);
-  }
 
   .fold { display: inline-flex; flex: none; color: var(--color-subtle); transform: rotate(-90deg); transition: transform var(--motion-duration, var(--dur-2)) var(--ease-out-quint); }
   .fold.open { transform: none; }
@@ -503,13 +484,6 @@
 
   .count.removed {
     color: var(--color-danger);
-  }
-
-  .empty {
-    margin: 0;
-    padding: 10px 12px;
-    font-size: var(--text-sm);
-    color: var(--color-muted-foreground);
   }
 
   .notice {

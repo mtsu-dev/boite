@@ -8,6 +8,9 @@ import { MemoryNotices } from './memory-notices.ts';
 import { newId } from '../ids.ts';
 import { withLoad } from './records.ts';
 
+const ANSWERS = 'deferred-answers:';
+type SavedAnswers = { held: string[]; consumed?: string; idleTurn?: string | null };
+
 /**
  * What reaches an agent outside a prompt the user typed: answers to
  * asynchronous questions, steered in or held for the next turn, and the
@@ -41,6 +44,37 @@ export class DeferredInput {
     this.#core = core;
     this.#threads = threads;
     this.memory = new MemoryNotices(core, threads);
+    const rows = core.journal.db.query('SELECT key FROM settings WHERE key >= ? AND key < ?').all(ANSWERS, 'deferred-answers;') as { key: string }[];
+    for (const { key } of rows) {
+      const threadId = key.slice(ANSWERS.length);
+      const saved = core.journal.getSetting(key) as SavedAnswers;
+      if (saved.held.length) this.deferredAnswers.set(threadId, saved.held);
+      if (saved.consumed) this.consumed.set(threadId, saved.consumed);
+    }
+  }
+
+  /** Part of the commit that answers the card, before any attempt at native input. */
+  saveAnswer(threadId: ThreadId, text: string): void {
+    const idleTurn = this.#threads.isBusy(threadId) || this.#threads.runner.steering.has(threadId)
+      ? undefined : this.#core.journal.lastTurn(threadId)?.id ?? null;
+    this.#save(threadId, [...(this.deferredAnswers.get(threadId) ?? []), text], this.consumed.get(threadId), idleTurn);
+  }
+
+  #save(threadId: ThreadId, held: string[], consumed = this.consumed.get(threadId), idleTurn?: string | null): void {
+    const journal = this.#core.journal;
+    if (held.length || consumed) journal.setSetting(ANSWERS + threadId, { held, consumed, idleTurn } satisfies SavedAnswers);
+    else journal.deleteSetting(ANSWERS + threadId);
+  }
+
+  /** Retry an idle card's dispatch or the flush after a successful turn. */
+  recoverAnswers(): void {
+    const journal = this.#core.journal;
+    // A refused admission puts its answer back for the next prompt.
+    for (const threadId of [...this.deferredAnswers.keys()]) {
+      const saved = journal.getSetting(ANSWERS + threadId) as SavedAnswers | undefined;
+      const last = journal.lastTurn(threadId);
+      if (saved && (last?.status === 'done' || saved.idleTurn === (last?.id ?? null))) this.flushDeferred(threadId);
+    }
   }
 
   /**
@@ -85,7 +119,8 @@ export class DeferredInput {
     const turn = core.journal.runningTurn(threadId);
     if (turn?.execution?.operation === 'compact' || turn?.execution?.operation === 'keepalive') return;
     const turnId = turn?.id;
-    runner.steering.add(threadId);
+    const steering = runner.beginSteering(threadId, handle);
+    if (!steering) return;
     let recorded = false;
     try {
       while (!core.stopping && runner.handles.get(threadId) === handle) {
@@ -93,24 +128,26 @@ export class DeferredInput {
         if (text === undefined) break;
         recorded = false;
         const accepted = () => {
-          if (recorded || core.stopping) return;
-          if (turnId) runner.answerAfter.set(turnId, this.#recordAnswer(threadId, turnId, text));
-          const held = answers.get(threadId) ?? [];
-          const index = held.indexOf(text);
-          if (index >= 0) held.splice(index, 1);
+          if (recorded || core.stopping || steering.signal.aborted) return;
+          const current = answers.get(threadId);
+          if (current?.[0] !== text) return;
+          const held = current.slice(1);
+          if (turnId) runner.answerAfter.set(turnId, this.#recordAnswer(threadId, turnId, text, Date.now(), () => this.#save(threadId, held)));
+          else this.#save(threadId, held);
+          if (held.length) answers.set(threadId, held);
           if (!held.length) answers.delete(threadId);
           recorded = true;
           this.#changed(threadId);
         };
-        if (await submit(text, undefined, accepted)) accepted();
+        if (await steering.send(submit, text, undefined, accepted)) accepted();
         if (!recorded) break;
       }
     } catch (error) {
       // A transport may have sent the text before it lost the acknowledgement.
       if (!recorded) this.#uncertain.add(handle);
-      if (!core.stopping) core.log('warn', `thread ${threadId}: steering an async answer failed, it waits for the next turn: ${messageOf(error)}`);
+      if (!core.stopping && !steering.signal.aborted) core.log('warn', `thread ${threadId}: steering an async answer failed, it waits for the next turn: ${messageOf(error)}`);
     } finally {
-      runner.steering.delete(threadId);
+      steering.release();
       // A late rejection must not undo Stop or retry a failed turn.
       if (!core.stopping && !runner.handles.has(threadId) && turnId && core.journal.getTurn(turnId)?.status === 'done') this.flushDeferred(threadId);
     }
@@ -126,10 +163,13 @@ export class DeferredInput {
     if (thread) this.#core.bus.emit('thread.updated', withLoad(this.#core, thread));
   }
 
-  #recordAnswer(threadId: ThreadId, turnId: string, text: string, createdAt = Date.now()): number {
+  #recordAnswer(threadId: ThreadId, turnId: string, text: string, createdAt: number, consume: () => void): number {
     const core = this.#core;
     const message: Message = { id: newId('msg_'), threadId, turnId, role: 'user', state: 'complete', createdAt, parts: [{ type: 'text', text }] };
-    core.journal.append({ type: 'message.started', threadId, version: 1, payload: message }, () => core.journal.putMessage(message));
+    core.journal.append({ type: 'message.started', threadId, version: 1, payload: message }, () => {
+      core.journal.putMessage(message);
+      consume();
+    });
     core.bus.emit('message.started', message);
     core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
     return createdAt;
@@ -141,12 +181,14 @@ export class DeferredInput {
     const held = this.deferredAnswers.get(threadId);
     if (!held?.length) return;
     const text = held.join('\n\n');
-    this.#recordAnswer(threadId, turnId, text, promptAt - 1);
-    // No `changed` here: this runs inside the startTurn transaction, and the
-    // status event after it already sees the empty map.
-    this.deferredAnswers.delete(threadId);
     const previous = this.consumed.get(threadId);
-    this.consumed.set(threadId, previous ? `${previous}\n\n${text}` : text);
+    const consumed = previous ? `${previous}\n\n${text}` : text;
+    this.#recordAnswer(threadId, turnId, text, promptAt - 1, () => this.#save(threadId, [], consumed));
+    this.#core.bus.whenCommitted(() => {
+      this.deferredAnswers.delete(threadId);
+      this.consumed.set(threadId, consumed);
+      this.#changed(threadId);
+    });
   }
 
   /** The held answers as one prompt, when the thread can take one. */
@@ -158,12 +200,19 @@ export class DeferredInput {
     if (held === undefined || thread === null || thread.archived) return;
     if (this.#threads.isBusy(threadId) || this.#threads.runner.steering.has(threadId)) return;
     answers.delete(threadId);
+    let admitted = false;
     try {
-      this.#threads.startTurn(threadId, held.join('\n\n'));
+      this.#threads.startTurn(threadId, held.join('\n\n'), undefined, { persistAdmission: () => {
+        this.#save(threadId, []);
+        return () => { admitted = true; };
+      } });
     } catch (error) {
-      // Kept for the next prompt the user sends, which carries them first.
-      answers.set(threadId, held);
-      this.#core.log('warn', `thread ${threadId}: async answers wait for the next prompt: ${messageOf(error)}`);
+      if (admitted) this.#core.log('warn', `thread ${threadId}: async answers were journaled but turn startup failed: ${messageOf(error)}`);
+      else {
+        // Kept for the next prompt the user sends, which carries them first.
+        answers.set(threadId, held);
+        this.#core.log('warn', `thread ${threadId}: async answers wait for the next prompt: ${messageOf(error)}`);
+      }
     }
     this.#changed(threadId);
   }
@@ -181,7 +230,8 @@ export class DeferredInput {
     const held = this.deferredAnswers.get(threadId);
     if (held === undefined) return null;
     const turnId = this.#core.journal.runningTurn(threadId)?.id;
-    if (turnId) this.#threads.runner.answerAfter.set(turnId, this.#recordAnswer(threadId, turnId, held.join('\n\n')));
+    if (!turnId) return null;
+    this.#threads.runner.answerAfter.set(turnId, this.#recordAnswer(threadId, turnId, held.join('\n\n'), Date.now(), () => this.#save(threadId, [])));
     this.deferredAnswers.delete(threadId);
     this.#changed(threadId);
     return `The user answered while you were working:\n\n${held.join('\n\n')}`;
@@ -192,6 +242,10 @@ export class DeferredInput {
     if (this.#threads.runner.steering.has(threadId)) return '';
     const consumed = this.consumed.get(threadId);
     const held = this.deferredAnswers.get(threadId);
+    const turnId = this.#core.journal.runningTurn(threadId)?.id;
+    const clear = () => this.#core.journal.deleteSetting(ANSWERS + threadId);
+    if (held?.length && turnId) this.#recordAnswer(threadId, turnId, held.join('\n\n'), Date.now(), clear);
+    else if (consumed || held) clear();
     this.consumed.delete(threadId);
     if (held !== undefined) {
       this.deferredAnswers.delete(threadId);

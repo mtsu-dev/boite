@@ -31,6 +31,8 @@ To install one from a repository:
 
 You can also ask an agent: "add this plugin" with its link. The agent puts a
 card in the conversation that opens the same preview, and you decide.
+If the agent asks you to open Plugins, press Open settings on its card. Owners
+can open the page from the card on a computer or phone.
 
 ## Permissions a plugin asks for
 
@@ -64,8 +66,9 @@ the plugin should not get, then press Allow.
   plugins, Boite's updates, pairing or your contacts.
 - To change its grants later, press the gear on its card, then Edit under
   Authorizations. A running service or app restarts with the new ones.
-- What a plugin does in your name is marked: a message it sent reads "By
-  plugin" and its name, and a thread it archived says so.
+- A message sent by a plugin names it under "By plugin". A conversation
+  resumed by a plugin shows its name where work resumed. An archived thread
+  also records which plugin archived it.
 - An older plugin shows Reaches all of Boite: its program gets your own
   access, not a list of permissions.
 

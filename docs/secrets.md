@@ -6,8 +6,9 @@ masked card, and Boite hands it to one file or one command.
 
 ## Give an agent a key
 
-1. The agent asks for a secret by name, with the reason it needs it. A card
-   appears above the message box: Secret requested by the agent.
+1. The agent opens Secret Drop when it needs a secret or you tell it you're
+   ready to provide one. The card above the message box shows its name and
+   why it's needed.
 2. Type or paste the value in the field. It is Never shown to the agent.
 3. Press Send, or Decline to refuse.
 4. The conversation shows a receipt, such as "API_KEY sent for one use". The

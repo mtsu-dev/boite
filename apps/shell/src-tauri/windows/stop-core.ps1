@@ -5,9 +5,9 @@
 #   BOITE_STOP_IDLE  1 for installation, 0 for explicit uninstall
 #   BOITE_STOP_EXPLICIT  1 only after accepting the interactive shell Kill prompt
 # Only this install's executable or the Bun PID in core.json running its
-# entry bundle is touched. Installation requires idle
-# admission unless the user accepted Kill. Explicit stop requests /shutdown,
-# then ends a core that has not exited after 15 seconds.
+# entry bundle is touched. Accepting the install prompt requests a restart
+# handoff. Silent installs and cores without handoff support require idle
+# admission. Uninstall requests ordinary shutdown.
 
 # installer-hooks.test.ts names a file here to learn which scripts ran; a
 # trace that cannot be written never stops the script.
@@ -71,20 +71,33 @@ try { $running = Get-Cores } catch {
 }
 if ($running.Count -eq 0) { exit 0 }
 
-if ($env:BOITE_STOP_IDLE -eq '1' -and $env:BOITE_STOP_EXPLICIT -ne '1') {
+if ($env:BOITE_STOP_IDLE -eq '1') {
   try {
     $core = Get-Content -Raw -LiteralPath (Join-Path $env:BOITE_STOP_DIR 'core.json') -ErrorAction Stop | ConvertFrom-Json
     if ($running.Count -ne 1 -or $running[0] -ne [int]$core.pid) { throw 'core.json must identify the only running core of this install' }
     $headers = @{ Authorization = "Bearer $($core.token)" }
-    $response = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "http://127.0.0.1:$($core.port)/shutdown-if-idle?pid=$($core.pid)" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+    $endpoint = "http://127.0.0.1:$($core.port)"
+    $response = $null
+    $exitSeconds = 15
+    if ($env:BOITE_STOP_EXPLICIT -eq '1') {
+      try {
+        $response = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$endpoint/shutdown-for-update?pid=$($core.pid)" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+        $exitSeconds = 60
+      } catch {
+        $status = [int]$_.Exception.Response.StatusCode
+        if ($status -ne 404 -and $status -ne 501) { throw }
+      }
+    }
+    if ($null -eq $response) {
+      $response = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$endpoint/shutdown-if-idle?pid=$($core.pid)" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+    }
     $ack = $response.Content | ConvertFrom-Json
-    if ($response.StatusCode -ne 202 -or $ack.ok -ne $true -or $ack.pid -ne $core.pid) { throw 'idle admission must acknowledge the expected core pid' }
-    Wait-Cores 15
+    if ($response.StatusCode -ne 202 -or $ack.ok -ne $true -or $ack.pid -ne $core.pid) { throw 'update admission must acknowledge the expected core pid' }
+    Wait-Cores $exitSeconds
     if ((Get-Cores).Count -gt 0) { throw 'the admitted core did not exit' }
     exit 0
   } catch {
-    # A busy, older or unreachable core is kept intact. The installer aborts.
-    Write-Output 'Boite could not confirm an idle core. Let its work finish or stop it explicitly, then retry installation.'
+    Write-Output 'Boite could not confirm safe update admission and core exit. Let its work finish, then retry installation.'
     exit 2
   }
 }

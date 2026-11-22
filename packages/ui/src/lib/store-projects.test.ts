@@ -1,28 +1,70 @@
 import { afterEach, expect, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { Store } from './store.svelte';
+import { RpcFailure } from './client';
+import { RpcErrorCode, type Project } from '@boite/contracts';
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test('the draft the boot lands on reuses the project list of the boot, and a draft the user opens asks again', async ({ createStore }) => {
+test('the landing uses the boot list and simultaneous draft opens refresh their selected project once', async ({ createStore }) => {
   const { store, client } = createStore({ delayMs: 0 });
   const asked = vi.spyOn(client, 'call');
   store.attach(client);
   await store.connect();
   const lists = () => asked.mock.calls.filter(([method]) => method === 'projects.list').length;
+  const gitReads = () => asked.mock.calls.filter(([method]) => method === 'projects.git');
   expect(lists()).toBe(1);
 
   await store.openLanding();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(store.draft).not.toBeNull();
   expect(lists()).toBe(1);
+  expect(gitReads()).toHaveLength(0);
 
   // New thread pressed right away still asks, so a `git init` done meanwhile shows.
-  store.startDraft();
+  store.startDraft('p-boite');
+  store.startDraft('p-boite');
   await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(lists()).toBe(2);
+  expect(lists()).toBe(1);
+  expect(gitReads()).toEqual([['projects.git', { projectId: 'p-boite' }]]);
+});
+
+test('older cores still refresh projects when a draft is opened', async ({ createStore }) => {
+  const { store, client } = createStore({ delayMs: 0 });
+  store.attach(client);
+  await store.connect();
+  const call = client.call.bind(client);
+  const asked = vi.spyOn(client, 'call').mockImplementation((method, params, options) =>
+    method === 'projects.git' ? Promise.reject(new RpcFailure({ code: RpcErrorCode.MethodNotFound, message: 'Unknown method' })) : call(method, params, options));
+  store.startDraft('p-boite');
+  await vi.waitFor(() => expect(asked.mock.calls.filter(([method]) => method === 'projects.list')).toHaveLength(1));
+  store.startDraft('p-notes');
+  await vi.waitFor(() => expect(asked.mock.calls.filter(([method]) => method === 'projects.list')).toHaveLength(2));
+  expect(asked.mock.calls.filter(([method]) => method === 'projects.git')).toHaveLength(1);
+});
+
+test('an earlier project list preserves the Git state already refreshed for a draft', async ({ createStore }) => {
+  const { store, client } = createStore({ delayMs: 0 });
+  store.attach(client);
+  await store.connect();
+  let resolveList!: (rows: Project[]) => void;
+  const list = new Promise<Project[]>(resolve => { resolveList = resolve; });
+  const rows = store.projects.map(project => project.id === 'p-boite'
+    ? { ...project, name: 'Renamed on disk', repository: true } : project);
+  const call = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation(async (method, params, options) => {
+    if (method === 'projects.list') return list;
+    if (method === 'projects.git') return { repository: false };
+    return call(method, params, options);
+  });
+  const refresh = store.refreshProjects();
+  store.startDraft('p-boite');
+  await vi.waitFor(() => expect(store.projects.find(project => project.id === 'p-boite')?.repository).toBe(false));
+  resolveList(rows);
+  await refresh;
+  expect(store.projects.find(project => project.id === 'p-boite')).toMatchObject({ name: 'Renamed on disk', repository: false });
 });
 
 test('archiving the open project lands elsewhere, and another client hears the flag', async ({ createStore }) => {

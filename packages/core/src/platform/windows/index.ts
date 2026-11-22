@@ -35,10 +35,14 @@ export const platform: ProcessPlatform = {
     guard.setGuardMute(settings.muteAgents);
   },
   attach: jobs.assignToThreadJob,
+  detachedChildren: false,
+  stopChild(_pid, running, signal) { if (running()) signal(); return undefined; },
+  memoryVictimsMustBeRegistered: true,
   hasProcesses: jobs.threadJobHasProcesses,
   startup: jobs.setThreadStartup,
   terminate: jobs.terminateThreadJob,
   terminateProcess: jobs.terminateJobProcess,
+  terminateSubtree: jobs.terminateJobSubtree,
   // Only a pid captured by the registry may reach this fallback. Async, so
   // taskkill's start (tens to hundreds of ms) does not hold the event loop.
   // The registry also calls the child's own kill method.

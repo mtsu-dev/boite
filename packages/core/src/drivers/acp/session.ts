@@ -9,7 +9,7 @@ import type {
   SessionConfigOption,
   SessionNotification,
 } from '@agentclientprotocol/sdk/unstable';
-import type { OsProfile, PermissionMode, ProviderDescriptor, ProviderId, ModelInfo } from '@boite/contracts';
+import type { PermissionMode, ProviderId, ModelInfo } from '@boite/contracts';
 import { messageOf, unavailable } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { agentEnv, profileFor, resolveLaunch } from '../../providers/resolve.ts';
@@ -18,6 +18,7 @@ import { grokLaunchArgs } from '../grok.ts';
 import { stderrLines } from '../lines.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import { IdleTimer } from '../idle-timer.ts';
+import { SessionTurns } from '../session-turns.ts';
 import type { LiveTurnSettings, ProbeContext, ProbeFilter, SessionContext } from '../types.ts';
 import { OpenCommands } from './commands.ts';
 import { ModelRefused, SessionControls } from './controls.ts';
@@ -39,17 +40,6 @@ import {protectedAcp} from './protected.ts';
 const GLOG_INFO = /^I\d{4} \d{2}:\d{2}:\d{2}\.\d+\s/;
 /** How long an agent gets to answer `session/cancel` before its process is closed. */
 const STOP_GRACE_MS = 3_000;
-
-/**
- * The argv a turn spawns with: the descriptor's `launch.args` as they are, plus
- * the thread's permission mode spliced in for an agent whose mode is a command
- * line option rather than a `session/set_mode`. A probe has no thread and no
- * mode, so it launches the declared line untouched.
- */
-function launchArgs(profile: OsProfile | undefined, prefix: string[], provider: ProviderDescriptor, mode: PermissionMode): string[] {
-  const declared = profile?.launch?.args ?? [];
-  return [...prefix, ...(isGrok(provider) ? grokLaunchArgs(declared, mode) : declared)];
-}
 
 /**
  * What the driver learns about agents across their processes, for the life of
@@ -125,12 +115,15 @@ export class AcpSession {
   #active: AcpTurn | null = null;
   /** Armed by a stop on a prompt in flight: an agent that ignores the cancel is closed. */
   #stopTimer: Timer | null = null;
-  #queue: Promise<void> = Promise.resolve();
+  readonly #turns = new SessionTurns<AcpTurn>(turn => this.#runTurn(turn), (turn, error) => {
+    if (turn.isStopped) turn.stopNow();
+    else turn.fail(messageOf(error));
+    this.#endTurn(turn, true);
+  });
   /** Antigravity's shell commands, the ones that outlived their turn included. */
   readonly #commands = new OpenCommands();
   /** Grok answered `_x.ai/interject` with an error once: this process has no mid-turn input. */
   #interjectRefused = false;
-  #running = 0;
   #closing = false;
   #ended = false;
   #catalogValid = true;
@@ -249,7 +242,7 @@ export class AcpSession {
   }
 
   busy(): boolean {
-    return this.#running > 0;
+    return this.#turns.busy;
   }
 
   /**
@@ -274,17 +267,8 @@ export class AcpSession {
   attach(turn: AcpTurn, warmMs: number): void {
     this.#warmMs = warmMs;
     this.#retention.beginTurn();
-    this.#running += 1;
     this.#idle.clear();
-    this.#queue = this.#queue.then(async () => {
-      try {
-        await this.#runTurn(turn);
-      } catch (error) {
-        if (turn.isStopped) turn.stopNow();
-        else turn.fail(messageOf(error));
-        this.#endTurn(turn, true);
-      }
-    });
+    this.#turns.enqueue(turn);
   }
 
   /**
@@ -340,9 +324,9 @@ export class AcpSession {
     return this.#connection instanceof OpenCodeConnection;
   }
 
-  async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void): Promise<boolean> {
+  async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.isStopped || !(this.#connection instanceof OpenCodeConnection)) return false;
-    return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted);
+    return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted, signal);
   }
 
   #cancel(): void {
@@ -429,13 +413,19 @@ export class AcpSession {
     if (this.#replaces !== null && this.#replaces === turn.ctx.sessionId) {
       this.#replaces = null;
       try {
-        const carried = turn.ctx.continuation?.();
+        const carried = await turn.ctx.continuation?.();
+        if (turn.isStopped) {
+          turn.stopNow();
+          this.#endTurn(turn, true);
+          return;
+        }
         if (carried !== undefined) {
           prompt = carried.prompt;
           attachments = carried.attachments;
         }
       } catch (error) {
-        turn.fail(messageOf(error));
+        if (turn.isStopped) turn.stopNow();
+        else turn.fail(messageOf(error));
         this.#endTurn(turn, true);
         return;
       }
@@ -463,7 +453,17 @@ export class AcpSession {
       this.#endTurn(turn, turn.isStopped);
       return;
     }
-    const judged = this.#costBaseline(turn);
+    let judged = false;
+    const connection = this.#connection;
+    if (connection instanceof OpenCodeConnection) {
+      // A failed read at the end of the previous turn leaves the native total unknown.
+      turn.costBefore = connection.sessionCost ?? await connection.readSessionCost(turn);
+      if (turn.isStopped) {
+        turn.stopNow();
+        this.#endTurn(turn, true);
+        return;
+      }
+    } else judged = this.#costBaseline(turn);
     this.#current = turn;
     let response: PromptResponse;
     try {
@@ -478,6 +478,7 @@ export class AcpSession {
       // more without a word on the wire, which must not read as a start.
       else turn.ctx.reportProgress?.('waiting');
       response = await pending;
+      if (this.#canLoad) turn.ctx.sessionAccepted?.(sessionId);
     } catch (error) {
       this.#current = null;
       if (turn.isStopped) {
@@ -496,7 +497,7 @@ export class AcpSession {
     // A resumed session whose first total came in below what the session
     // already cost: this agent counts each process from zero.
     const total = turn.costUsdEquivalent;
-    if (judged && total !== null && total < turn.costBefore && !this.#memory.costPerProcess.has(turn.ctx.provider.id)) {
+    if (judged && total !== null && turn.costBefore !== null && total < turn.costBefore && !this.#memory.costPerProcess.has(turn.ctx.provider.id)) {
       this.#memory.costPerProcess.add(turn.ctx.provider.id);
       turn.ctx.log('info', `acp: ${turn.ctx.provider.id} reports a resumed session's cost from zero; its cold turns are charged their whole total`);
     }
@@ -508,8 +509,7 @@ export class AcpSession {
    * total is measured from. A total this process already reported is exact. A
    * session it created starts at zero. A session it loaded and that has said
    * nothing yet starts where the journal left it, since the protocol defines
-   * the cost as the session's and OpenCode computes it from the session's
-   * stored messages; an agent seen to count from zero again starts at zero.
+   * the cost as the session's. An agent seen to count from zero starts at zero.
    * True when the turn's reading has to tell which of the two the agent does.
    */
   #costBaseline(turn: AcpTurn): boolean {
@@ -536,12 +536,12 @@ export class AcpSession {
     const outlived = !drop && !this.#closing && turn.antigravity && this.#commands.promote(turn.ctx);
     const dropping = drop || this.#closing || (!outlived && this.#retention.idleMs(this.#warmMs) <= 0);
     turn.settle();
-    this.#running = Math.max(0, this.#running - 1);
+    this.#turns.end();
     if (dropping) {
       this.#drop();
       return;
     }
-    if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
+    if (!this.busy() && !this.#retention.viewed) this.#armIdle();
   }
 
   #start(ctx: SessionContext): Promise<void> {
@@ -581,10 +581,11 @@ export class AcpSession {
     const native = ctx.provider.id === OPENCODE_V2 && openCodeServerReachable(launch.executable, this.#deps.agentShim);
     if (ctx.provider.id === OPENCODE_V2 && !native) ctx.log('info', `acp: ${launch.executable} runs OpenCode 2 in a sandbox the core cannot connect to; it speaks ACP on its stdio`);
     const password = native ? randomBytes(32).toString('base64url') : null;
-    const args = launchArgs(profile, launch.prefix, ctx.provider, ctx.thread.permissionMode);
+    const declared = profile?.launch?.args ?? [];
+    const args = [...launch.prefix, ...(isGrok(ctx.provider) ? grokLaunchArgs(declared, ctx.thread.permissionMode) : declared)];
     // Preserve executable wrappers and fixture prefixes, replace only the ACP
     // subcommand. The native server's stdin is its ownership lease.
-    const nativeArgs = [...launch.prefix, ...(profile?.launch?.args ?? ['acp']).filter(arg => arg !== 'acp'), 'serve', '--stdio', '--port', '0'];
+    const nativeArgs = [...launch.prefix, ...declared.filter(arg => arg !== 'acp'), 'serve', '--stdio', '--port', '0'];
     // OpenCode 2 compacts at the thread's limit once a process has read the
     // model's window; until then it keeps its own ceiling.
     const buffer = native ? wantedCompactionBuffer(this.#memory, ctx) : null;
@@ -859,6 +860,10 @@ export class AcpSession {
     }
     const turn = this.#current;
     if (turn === null) return;
+    if (this.#canLoad && this.#sessionId !== null && params.sessionId === this.#sessionId
+      && (update.sessionUpdate === 'agent_message_chunk' || update.sessionUpdate === 'agent_thought_chunk' || update.sessionUpdate === 'tool_call')) {
+      turn.ctx.sessionAccepted?.(this.#sessionId);
+    }
     drawUpdate(turn, update);
   }
 }

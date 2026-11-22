@@ -22,14 +22,23 @@ export function jobPacketAction(message: number, key: number, pid: number, globa
   return message === MSG_NEW_PROCESS && pid > 0 ? 'open' : 'post';
 }
 
-/** Membership reconciliation when the completion-port Worker cannot run. */
+/** A job snapshot for subtree stops and for reconciliation if the Worker cannot run. */
 export function listJobPids(api: {queryJobInfo(job: number, klass: number, buffer: Uint8Array): boolean}, job: number): Set<number> | null {
-  const capacity = 256;
-  const buffer = new Uint8Array(8 + capacity * 8);
-  if (!api.queryJobInfo(job, 3 /* JobObjectBasicProcessIdList */, buffer)) return null;
-  const view = new DataView(buffer.buffer);
-  const count = Math.min(view.getUint32(4, true), capacity);
-  const pids = new Set<number>();
-  for (let index = 0; index < count; index += 1) pids.add(Number(view.getBigUint64(8 + index * 8, true)));
-  return pids;
+  let capacity = 256;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const buffer = new Uint8Array(8 + capacity * 8);
+    const view = new DataView(buffer.buffer);
+    const read = api.queryJobInfo(job, 3 /* JobObjectBasicProcessIdList */, buffer);
+    const assigned = view.getUint32(0, true);
+    if (assigned > capacity) {
+      capacity = Math.max(capacity * 2, assigned);
+      continue;
+    }
+    if (!read) return null;
+    const count = Math.min(view.getUint32(4, true), capacity);
+    const pids = new Set<number>();
+    for (let index = 0; index < count; index += 1) pids.add(Number(view.getBigUint64(8 + index * 8, true)));
+    return pids;
+  }
+  return null;
 }

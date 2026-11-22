@@ -129,20 +129,19 @@ when previous instructions must leave the context.
 
 Communication and delegation defaults come from the thread policy, independently
 of a connected brain. Ordinary conversations enable both; saved owner restrictions
-remain authoritative. Compact feature instructions follow that policy and the
-request, with named delegation profiles making them available on each turn. These name
-authorized contacts and
-profiles, messaging commands, shared-checkout rules and current limits.
+remain authoritative. Coordination and delegation instructions name authorized
+contacts and profiles, messaging commands, shared-checkout rules and current
+limits. A session receives each guide in full when it starts, after
+compaction, or when that guide changes. Ordinary requests about delegation or
+workflows can receive a short command reminder.
 Delegation also teaches dynamic workflows: `after`, `forEach`, `when` and
 `boite workflow extend`, with `boite workflow help` for the full format.
 
 ### Short answers
 
-Settings > General > Short answers, on by default, puts one paragraph before every
-normal turn: reduce text before or between tool calls and make the final reply
-self-contained with the result and everything the user needs to know. It asks
-for short plain sentences, without preamble or hedging, while keeping every
-fact, number, path and command the user needs. It goes every turn
+Settings > General > Short answers, on by default, puts a short reminder before
+every normal turn: keep updates brief, lead with the result, and give a plain,
+concise, self-contained final reply. It goes every turn
 rather than once a session because harnesses ask for progress notes and a
 style said once fades within a few answers. It is `SHORT_ANSWERS` in
 `packages/core/src/agent-guide.ts`. Context modes without

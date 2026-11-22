@@ -20,7 +20,7 @@ export const PROMPT_EFFORT = 'ultrathink';
 export type QueryFn = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query;
 
 export interface ClaudeDeps {
-  /** Resolved on the first turn: importing the SDK costs about 69 MB of resident memory. */
+  /** Resolved on first use to keep the Claude SDK out of core startup. */
   loadQuery: () => Promise<QueryFn>;
   /** How long a turn waits for the CLI's `init` before the start counts as failed; `START_DEADLINE_MS` by default. */
   startDeadlineMs?: number;

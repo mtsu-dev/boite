@@ -1,5 +1,5 @@
 import type { Store } from './store.svelte';
-import { archivedFocus } from './archived-focus.svelte';
+import { archivedFocus, clearArchivedFocus } from './archived-focus.svelte';
 
 /**
  * The archive's place in the thread list: the list column turns to the
@@ -13,9 +13,14 @@ export function openArchived(owner: Store, projectId: string | null = null): voi
   archivedFocus.store = projectId ? owner : null;
   archivedFocus.projectId = projectId;
   if (typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches) owner.showSettings('general', 'archived');
-  else archivedView.open = true;
+  else {
+    if (owner.page !== 'chat') owner.showChat();
+    if (owner.sidebarCollapsed) owner.toggleSidebar();
+    archivedView.open = true;
+  }
 }
 
 export function closeArchived(): void {
   archivedView.open = false;
+  clearArchivedFocus();
 }

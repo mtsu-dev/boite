@@ -5,13 +5,13 @@
  * be caught up from.
  */
 
-import { forTransport, withoutTrailingSlashes, type Thread, type ThreadId } from '@boite/contracts';
+import { forTransport, withoutTrailingSlashes, type Thread, type ThreadId, type TransportOptions } from '@boite/contracts';
 import { whenIdle } from '../idle';
-import { resumeRequest } from '../thread-rows';
 import { SNAPSHOT_READ_WAIT_MS, SNAPSHOT_WRITE_DELAY_MS, threadSnapshots, type ThreadSnapshots } from '../thread-snapshots';
 import type { StoreContext } from './context';
 import { lightPage, type ReadingPosition } from './reading-pages.svelte';
 import { readingAround } from './thread-preload';
+import { snapshotPayload } from './snapshot-payload';
 
 /** The page a visit leaves in the reading cache, and on the device: an expanded tool gives its full output back to the core first. */
 export function readingPage(ctx: StoreContext, thread: Thread): Thread {
@@ -29,6 +29,7 @@ interface Pages {
 export class DeviceSnapshots {
   /** The writes waiting for their page to settle, by thread. */
   readonly #writes = new Map<ThreadId, () => void>();
+  readonly #versions = new WeakMap<Thread, number>();
   /** Bumped when the store lets its machine go: a write that fires after it is not made. */
   #generation = 0;
   /** Stops hearing of purges, which let the waiting writes go early (the database keeps them out anyway). */
@@ -41,9 +42,14 @@ export class DeviceSnapshots {
   }
 
   /** What to write for a thread: its page on screen, or the one the reading cache holds. */
-  #page(threadId: ThreadId): Thread | undefined {
+  #page(threadId: ThreadId): { thread?: Thread; transport?: TransportOptions } {
     const open = this.pages.openThread;
-    return open?.id === threadId && !this.unloaded.has(threadId) ? readingPage(this.ctx, open) : this.pages.readingThreads.get(threadId);
+    return open?.id === threadId && !this.unloaded.has(threadId) ? { thread: open, transport: lightPage(this.ctx) } : { thread: this.pages.readingThreads.get(threadId) };
+  }
+
+  changed(thread: Thread): void {
+    const version = this.#versions.get(thread);
+    if (version !== undefined) this.#versions.set(thread, version + 1);
   }
 
   /**
@@ -98,19 +104,34 @@ export class DeviceSnapshots {
     const generation = this.#generation;
     let live = true;
     let cancelIdle: (() => void) | null = null;
-    const timer: ReturnType<typeof setTimeout> = setTimeout(() => {
-      cancelIdle = whenIdle(() => {
-        this.#writes.delete(threadId);
-        // The page is taken once the mark is read, never before: a page held from earlier could predate a drop the mark already counts.
-        void mark.then(() => {
-          if (!live || this.#generation !== generation || this.ctx.store.core?.coreId !== target.machine) return;
-          const thread = this.#page(threadId);
-          if (!thread || thread.messages.length === 0) return;
-          void target.snapshots.write(target.machine, target.url, thread, resumeRequest(threadId, thread).after ?? null, mark);
-        });
+    const active = () => live && this.#generation === generation && this.ctx.store.core?.coreId === target.machine;
+    const idle = () => new Promise<boolean>(resolve => {
+      if (!active()) { resolve(false); return; }
+      const cancel = whenIdle(() => { cancelIdle = null; resolve(active()); }, { fallback: 20 });
+      cancelIdle = () => { cancel(); resolve(false); };
+    });
+    const run = async () => {
+      // The mark precedes every read of the page. Even if IndexedDB was busy,
+      // projection begins in an idle turn and returns there between batches.
+      await mark;
+      if (!await idle()) return;
+      const { thread, transport } = this.#page(threadId);
+      if (!thread?.messages.length) return;
+      const version = this.#versions.get(thread) ?? 0;
+      this.#versions.set(thread, version);
+      const messages = thread.messages, count = messages.length, turns = thread.turns, turnCount = turns.length;
+      const current = () => active() && this.#versions.get(thread) === version && thread.messages === messages && messages.length === count && thread.turns === turns && turns.length === turnCount;
+      const plain = await snapshotPayload(thread, transport, async () => await idle() && current());
+      if (plain !== undefined && current()) await target.snapshots.writePrepared(target.machine, target.url, threadId, mark, plain, current);
+      if (active() && !current()) this.schedule(threadId);
+    };
+    const timer = setTimeout(() => {
+      void run().catch(() => undefined).finally(() => {
+        if (this.#writes.get(threadId) === cancel) this.#writes.delete(threadId);
       });
     }, SNAPSHOT_WRITE_DELAY_MS);
-    this.#writes.set(threadId, () => { live = false; clearTimeout(timer); cancelIdle?.(); this.#writes.delete(threadId); });
+    const cancel = () => { live = false; clearTimeout(timer); cancelIdle?.(); this.#writes.delete(threadId); };
+    this.#writes.set(threadId, cancel);
   }
 
   /** A purge here or in another window that concerns this machine lets the waiting writes go. */

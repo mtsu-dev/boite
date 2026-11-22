@@ -62,7 +62,7 @@ export function updaterManifest(version: string, repository: string, payloads: P
   }
   const missing = TARGETS.map(([target]) => target).filter((target) => !platforms[target]);
   if (missing.length) throw new Error(`missing signed payloads for ${missing.join(', ')}`);
-  return { version, notes, pub_date: date, journal_schema, platforms };
+  return { version, notes, pub_date: date, journal_schema, windows_data_lock: true, platforms };
 }
 
 /** Every file a release publishes, refusing anything the pipeline did not expect. */

@@ -1,12 +1,54 @@
-import {afterEach, describe, expect, test} from 'bun:test';
-import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {afterEach, describe, expect, spyOn, test} from 'bun:test';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {SharedNativeExecution} from '../src/contacts/native-execution.ts';
 import type {AccessBinding} from '../src/contacts/access-scopes.ts';
+import {captureExecutionPolicy} from '../src/execution-policy.ts';
+import {ProtectedCheckout} from '../src/platform/protected-checkout.ts';
 import {startTestCore, type TestCore} from './harness.ts';
 
 let h: TestCore | undefined;
 afterEach(async () => {await h?.stop(); h = undefined;});
+
+test.skipIf(process.platform !== 'linux')('a protected checkout containing the core data directory omits the whole directory', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'boite-core-credentials-')));
+  try {
+    const dataDir = join(root, 'local-state');
+    mkdirSync(dataDir);
+    h = await startTestCore({dataDir});
+    writeFileSync(join(dataDir, 'ordinary-name.txt'), 'Core state fixture');
+    writeFileSync(join(root, 'project.txt'), 'Project fixture');
+    const client = await h.connect(), project = await client.call('projects.add', {path: root});
+    const echo = h.core.accounts.list().find(account => account.providerId === 'echo')!;
+    const thread = await client.call('threads.create', {projectId: project.id, providerId: 'echo', accountId: echo.id});
+    const account = {...echo, id: 'synthetic-native-account', providerId: 'pi', isolationDir: null};
+    h.core.journal.putAccount(account);
+    h.core.journal.putThread({...thread, providerId: 'pi', accountId: account.id, permissionMode: 'yolo'});
+    const binding = {threadId: thread.id, checkoutPath: root, job: {id: null, sharedProjectId: 'synthetic-association', grantRevision: 1}} as AccessBinding;
+    const registry = h.core.procs.protection;
+    Object.defineProperty(registry, 'available', {value: true});
+    let installed: ReturnType<typeof captureExecutionPolicy> | null = null;
+    spyOn(registry, 'policy').mockImplementation(id => id === thread.id ? installed : null);
+    const install = spyOn(registry, 'install').mockImplementation(async (_id, input) => {
+      const policy = captureExecutionPolicy(input);
+      const checkout = new ProtectedCheckout(policy);
+      try {
+        expect(readFileSync(join(checkout.root, 'project.txt'), 'utf8')).toBe('Project fixture');
+        expect(existsSync(join(checkout.root, 'local-state'))).toBe(false);
+      } finally { checkout.close(); }
+      installed = policy;
+      return policy;
+    });
+    await new SharedNativeExecution(h.core, () => binding, () => {}).prepare(thread.id);
+    expect(install).toHaveBeenCalledTimes(1);
+  } finally {
+    await h?.stop();
+    h = undefined;
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
 describe.skipIf(process.platform !== 'linux' || process.env.BOITE_TEST_NATIVE_EXECUTION !== '1')('configured native account files', () => {
   test.each(['pi', 'opencode-file', 'opencode-data', 'muse-config', 'muse-data', 'muse-state'] as const)('%s cannot expose custom credential/model configuration inside the checkout', async route => {
     h = await startTestCore();

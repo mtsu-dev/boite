@@ -30,7 +30,7 @@ async function capture(name: string) {
 
 const saved = 'document.querySelector("[data-testid=subscription-proxy-result]")?.textContent.includes("saved")';
 const gatewayRow = 'document.querySelector("[data-testid=account-gateway][data-provider=claude]")';
-const showGatewayRow = `${gatewayRow} || document.querySelector("[data-testid=provider-settings][data-provider-id=claude] [data-testid=provider-details-toggle]").click()`;
+const showGatewayRow = `void (${gatewayRow} || document.querySelector("[data-testid=provider-settings][data-provider-id=claude] [data-testid=provider-details-toggle]").click())`;
 const grokRow = 'document.querySelector("[data-testid=provider-settings][data-provider-id=grok]")';
 
 async function expectOpenCodeGateways(name: 'Douane' | 'CLIProxyAPI') {
@@ -38,7 +38,7 @@ async function expectOpenCodeGateways(name: 'Douane' | 'CLIProxyAPI') {
     const row = `document.querySelector("[data-testid=provider-settings][data-provider-id=${provider}]")`;
     const gateway = `[data-testid=account-gateway][data-provider=${provider}]`;
     await page.waitFor(row);
-    await page.evaluate(`document.querySelector(${JSON.stringify(gateway)}) || ${row}.querySelector("[data-testid=provider-details-toggle]").click()`);
+    await page.evaluate(`void (document.querySelector(${JSON.stringify(gateway)}) || ${row}.querySelector("[data-testid=provider-details-toggle]").click())`);
     await page.waitFor(`document.querySelector(${JSON.stringify(gateway)})?.textContent.includes(${JSON.stringify(name)})`);
     expect(await page.evaluate(`document.querySelectorAll(${JSON.stringify(gateway)}).length`)).toBe(1);
     expect(await page.text(gateway)).toContain(dashboard);

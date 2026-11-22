@@ -6,7 +6,7 @@ import { codexBehindLauncher } from './codex-launcher.ts';
 import { substituteHome } from './expand.ts';
 import { globalRoots, resolveNpm } from './npm.ts';
 import { prefixPackageOf } from './termux.ts';
-import { majorAt } from './versions.ts';
+import { majorAt, pendingVersion } from './versions.ts';
 import { which } from './which.ts';
 
 /**
@@ -166,6 +166,17 @@ function takesScripts(profile: OsProfile): boolean {
  * how it was installed from the environment that launcher sets.
  */
 export function resolveCommand(profile: OsProfile, ask = true, launcher = false): ResolvedCommand | null {
+  const command = resolveCommandOrRead(profile, ask, launcher);
+  return command instanceof Promise ? null : command;
+}
+
+/** The first unresolved candidate blocks the command and every fallback after it. */
+export function pendingCommandVersion(profile: OsProfile): Promise<void> | undefined {
+  const command = resolveCommandOrRead(profile, true, false);
+  return command instanceof Promise ? command : undefined;
+}
+
+function resolveCommandOrRead(profile: OsProfile, ask: boolean, launcher: boolean): ResolvedCommand | Promise<void> | null {
   if (HOST_CANDIDATES.has(profile.executable)) return null;
   const scripts = takesScripts(profile);
   for (const candidate of profile.executable) {
@@ -176,13 +187,13 @@ export function resolveCommand(profile: OsProfile, ask = true, launcher = false)
       const program = (!launcher && candidate.value === 'codex' ? codexBehindLauncher(found) : null) ?? found;
       const fits = atMajor(candidate, program, profile, ask);
       // Not known yet: a later candidate must not stand in for the one that may well be right.
-      if (fits === undefined) return null;
+      if (fits === undefined) return ask ? pendingVersion(program) ?? null : null;
       if (fits) return { executable: program, prefix: [], shown: found, updateEnv };
     } else if (candidate.kind === 'file') {
       for (const path of filePaths(candidate.value, profile)) {
         if (!runnableFile(path)) continue;
         const fits = atMajor(candidate, path, profile, ask);
-        if (fits === undefined) return null;
+        if (fits === undefined) return ask ? pendingVersion(path) ?? null : null;
         if (fits) return { executable: path, prefix: [], shown: path, updateEnv };
       }
     } else if (candidate.kind === 'npm') {

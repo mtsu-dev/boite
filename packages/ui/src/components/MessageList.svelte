@@ -40,7 +40,11 @@
   import { retryTurn } from '../lib/composer-edit';
   import { TurnProgress } from '../lib/turn-progress.svelte';
   import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, gapChanged, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
-  import { TimelineRows, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
+  import { rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
+  import { ReactiveTimelineRows } from '../lib/timeline-rows.svelte';
+  import { promptAtRow } from '../lib/message-outline';
+  import { readingRevision, type ReadingPosition } from '../lib/store/reading-pages.svelte';
+  import { READING_CACHE_MESSAGES } from '../lib/reading-cache';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
@@ -53,7 +57,7 @@
   import { MessageReveal } from '../lib/message-reveal.svelte';
   import { viewPart } from '../lib/inline-view';
   import { inlineTimeline } from '../lib/inline-timeline.svelte';
-  import { firstAssistantByTurn, firstByTurn, publishedFile, quietKeepalives } from '../lib/message-order';
+  import { firstAssistantByTurn, firstByTurn, publishedFile, quietKeepalives, readingOrder } from '../lib/message-order';
 
   /** A phone has no room left of the bubbles for the outline rail: it is not drawn there. */
   const narrow = new MediaQuery('(max-width: 720px)');
@@ -89,30 +93,33 @@
   /** The turns of the thread this list shows, open or delegated. */
   const shownTurns = $derived(store.openThread?.id === threadId ? store.openThread.turns : store.delegationThread?.id === threadId ? store.delegationThread.turns : []);
   const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards));
-  const inline = inlineTimeline(() => grouped.timeline, () => shownTurns);
+  const savedReading = untrack(() => store.readingPositions?.get(threadId));
+  const revision = $derived(readingRevision(store.openThread, threadId, messages));
+  const order = $derived(revision && messages.length <= READING_CACHE_MESSAGES ? (savedReading?.revision === revision && savedReading.order) || readingOrder(messages) : undefined);
+  const inline = inlineTimeline(() => grouped.timeline, () => shownTurns, () => grouped.timeline === messages ? order?.files : undefined);
   /** Boite's cache pings are one line; an agent's own thread folds its finished turns (`lib/agent-turns.ts`). */
   const agentTimeline = new AgentTimeline();
   const shaped = $derived(agentTimeline.build(quietKeepalives(inline.placed, shownTurns), shownTurns, memoryPassOf(store, threadId)));
   const timeline = $derived(shaped.timeline);
   const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
-  /** What the window lists and measures: a row per message, several for the message of a long turn (lib/timeline-rows.ts). */
-  const cut = new TimelineRows(), gapRows = new GapRows();
-  /** Where the held messages sit in the thread, on a core that says so: each stretch missing between them is a gap row. */
   const placement = $derived(store.openThread?.id === threadId ? store.messagePlacement?.(threadId, messages) ?? null : null);
+  const localRows = new ReactiveTimelineRows(() => ({ timeline, breaks: placement?.gaps })), gapRows = new GapRows();
+  const cut = $derived(store.timelineRows?.(threadId, timeline)?.rows ?? localRows);
+  let indexedRevision: string | undefined, indexedOrder: ReadingPosition['order'], indexedRows: TimelineRow[] | undefined;
+  let lastCut: ReactiveTimelineRows | undefined;
   const positional = $derived((placement?.first ?? null) !== null);
   const gapped = $derived.by(() => {
-    const placed = gapRows.place(cut.build(timeline, undefined, placement?.gaps), messages, placement?.gaps ?? NO_GAPS);
+    const placed = gapRows.place(cut.build(), messages, placement?.gaps ?? NO_GAPS);
+    indexedRevision = revision; indexedOrder = order; indexedRows = placed.rows;
     // A row that grew or was cut weighs something else until it is measured.
-    if (placed.at(cut.changedFrom) < slots.dirty) slots.dirty = placed.at(cut.changedFrom);
+    slots.dirty = Math.min(slots.dirty, lastCut === cut ? placed.at(cut.changedFrom) : 0);
+    lastCut = cut;
     return placed;
   });
   const rows = $derived(gapped.rows);
   const timelineOrder = $derived.by(() => { void rows; return gapped.gaps.length ? rows.map(row => row.id).join('\0') : cut.order; });
-  const savedReading = untrack(() => store.readingPositions?.get(threadId));
 
-  /** How often the bottom message's height is allowed to speak to the pin. */
   const TAIL_GAP_MS = 100;
-
   let viewport = $state<HTMLDivElement | undefined>(undefined);
   let pinned = $state(savedReading?.pinned ?? true);
   let behind = $state(false);
@@ -141,14 +148,13 @@
   const estimates = new RowEstimates((count) => gapHeight(count)), slots = new SlotTotals<TimelineRow>(heights, row => estimates.of(row));
   /** Where the reader is, and the rows on the page by id (lib/reading-anchor.ts). */
   const anchors = new ReadingAnchor(savedReading);
-  const savedTop = untrack(() => {
-    const anchor = savedReading?.pinned ? undefined : anchors.current;
-    const at = anchor ? rows.findIndex(row => row.id === anchor.id) : -1;
-    return at < 0 ? savedReading?.top ?? 0 : Math.max(0, (slots.totals(rows, timelineOrder)[at] ?? 0) - anchor!.offset);
-  });
+  const savedTop = untrack(() => anchors.restore(savedReading, slots, rows, timelineOrder, indexedRevision));
   let scrollTop = $state(savedTop);
   let column = $state<HTMLDivElement | undefined>(undefined);
-  function rememberAnchor() { anchors.remember(viewport, column); }
+  function rememberAnchor() {
+    const id = lastView && rows[lastView.first]?.id;
+    anchors.remember(viewport, column, id ? anchors.nodes.get(id) : undefined);
+  }
   /** Typing in a field never leaves the thread: a chord, Enter, Escape or a key outside a field reads the anchor. */
   function rememberBeforeKey(event: KeyboardEvent) { if (!typingKey(event)) rememberAnchor(); }
   function restoreAnchor(anchor: RowAnchor | undefined = anchors.current) {
@@ -171,9 +177,11 @@
   });
   let restoredReading = false;
   onDestroy(() => {
+    anchors.cancelPending();
     if (!viewport || !store.readingPositions) return;
     store.readingPositions.delete(threadId);
-    store.readingPositions.set(threadId, { top: scrollTop, pinned, heights: new Map(heights), anchor: anchors.saved(), height: viewHeight, reservePrompt, followPrompt: promptTarget });
+    const index = slots.save(READING_CACHE_MESSAGES);
+    store.readingPositions.set(threadId, { top: scrollTop, pinned, heights: new Map(heights), anchor: anchors.saved(), height: viewHeight, reservePrompt, followPrompt: promptTarget, revision: indexedRevision, slots: index, rows: index && indexedRows ? new WeakRef(indexedRows) : undefined, order: indexedOrder });
     while (store.readingPositions.size > 32) store.readingPositions.delete(store.readingPositions.keys().next().value!);
   });
   let viewHeight = $state(savedReading?.height ?? 0);
@@ -200,14 +208,12 @@
   onDestroy(stopLift);
   const activePrompt = $derived.by(() => {
     void measured;
-    if (!pinned && promptTarget && timeline.some(message => message.id === promptTarget)) return promptTarget;
+    if (pinned) return drawnPrompts.at(-1)?.id ?? null;
     const total = totals(rows);
-    const at = pinned ? rows.length - 1 : atOrBefore(total, rows.length, scrollTop + 24);
-    for (let index = Math.min(at, rows.length - 1); index >= 0; index--) {
-      if (rows[index]?.message.role === 'user') return rows[index]!.message.id;
-    }
-    return null;
+    if (promptTarget && slots.positions.has(promptTarget)) return promptTarget;
+    return promptAtRow(drawnPrompts, slots.positions, atOrBefore(total, rows.length, scrollTop + 24));
   });
+  const drawnPrompts = $derived(timeline.filter(message => message.role === 'user'));
 
   /** To a message, or to the row of it that draws `part` when a long one is cut in several, and to the element `anchor` in that row. */
   function jumpToMessage(id: string, part?: number, offset?: number, anchor?: string) {
@@ -317,13 +323,14 @@
     if (!id || lifting || !viewport) return;
     const frame = requestAnimationFrame(() => {
       if (!viewport || promptTarget !== id) return;
-      if (room <= 1) {
+      const top = promptTop(id); // Bottom padding can scroll away without cutting off the answer.
+      if (room <= 1 && viewport.scrollHeight - viewport.clientHeight - top > endRoom) {
         viewport.scrollTop = viewport.scrollHeight;
         scrollTop = viewport.scrollTop;
         pinned = true;
       } else {
         pinned = false;
-        viewport.scrollTop = promptTop(id);
+        viewport.scrollTop = top;
         scrollTop = viewport.scrollTop;
         behind = false;
         markSeen();
@@ -366,7 +373,8 @@
     return lastView = sameView(lastView, { start, end, first, above: total[start] ?? 0, below: whole - (total[end] ?? 0) });
   });
   const rendered = $derived(rows.slice(view.start, view.end));
-  const history = new HistoryPrepare(); $effect(() => { const all = rows, { start, end } = view; untrack(() => history.prepare(all, start, end)); });
+  const history = new HistoryPrepare(); $effect(() => { const { start, end } = view; history.schedule(rows, start, end); });
+  onDestroy(() => history.cancel());
   $effect(() => { void view; untrack(() => warmth.wake(() => ({ rows, start: view.start, end: view.end }), () => { warmed += 1; flushSync(); }, id => layOut(anchors.nodes.get(id)))); }); onDestroy(() => warmth.stop()); // Off-screen answers render in a worker, edge slices mount and lay out in idle time (lib/row-cost.ts).
   /**
    * A rendered message's real height replaces its estimate. One above what the user reads would push the text down
@@ -481,8 +489,6 @@
         frame = 0;
         const batch = measurable([...pending.values()], id => slots.indexOf(rows, id) >= 0);
         pending.clear();
-        // Estimated rows can be taller than their slot totals. Keep the actual
-        // visible message, then align it after Svelte updates the spacers.
         rememberAnchor();
         const anchor = anchors.current;
         onMeasured(batch);
@@ -520,8 +526,7 @@
     scrollTop = box.scrollTop;
     viewHeight = box.clientHeight;
     if (navigationTarget || promptTarget) return;
-    // Read the anchor after the render, before another navigation can restore it.
-    void tick().then(rememberAnchor);
+    anchors.schedule(rememberAnchor);
     if (glide.active) {
       if (distance > 1) return;
       endGlide(false);
@@ -629,11 +634,9 @@
   }
 
   $effect(() => () => { glide.stop(); hold.release(); });
-
   /** Follow new messages and measured tail growth, never text deltas. */
   $effect(() => {
     void timeline.length;
-    // A long answer being written gains rows as it is cut: the bottom is still its last one.
     void rows.length;
     void tail.value;
     const box = viewport;
@@ -644,7 +647,6 @@
       behind = false;
       untrack(markSeen);
     } else if (opened || pinned) {
-      // Held by the reader or on its way down, the list is still at the bottom: it takes the new height once free.
       if (opened || untrack(following)) {
         // Followed, the live end lets go of the messages far above it, and the heights measured for them; never those within reach of the view.
         if (untrack(following) && untrack(() => store.releaseOlder(threadId, () => heldNear(totals(rows), rows, messages, viewHeight * (READ_AHEAD + 1), inline.views))) > 0) void tick().then(() => keepOnly([heights, risen], rows, messages));
@@ -678,10 +680,10 @@
   // Finished and streaming messages are derived apart, so a delta never rescans the thread.
   const progress = new TurnProgress(() => messages);
   /** One model attribution per turn, independent of the rendered window and streamed parts. */
-  const firstAssistantInTurn = $derived(firstAssistantByTurn(messages));
+  const firstAssistantInTurn = $derived(order?.assistants ?? firstAssistantByTurn(messages));
   /** The last row of each turn: a later message of the same turn replaces an earlier one. */
   const lastInTurn = $derived(new Map(timeline.filter(message => !newConversationOf(message)).map((message): [string, string] => [message.turnId, message.id])));
-  const firstInTurn = $derived(firstByTurn(messages));
+  const firstInTurn = $derived(order?.first ?? firstByTurn(messages));
   /** Each turn end's files and the tool line its count joins (`lib/turn-changes.svelte.ts`). */
   const turnChanges = new TurnChanges(() => store, () => threadId, () => messages,
     () => timeline.filter(message => !cards.has(message.id) && !grouped.groups.has(message.id) && !shaped.folds.has(message.id) && !movedBy(message) && !newConversationOf(message) && !startedFrom(message)));
@@ -693,7 +695,7 @@
   const branchable = $derived(store.openThread?.id === threadId && (!!store.openThread.agentSessionId || store.openThread.projectId !== null));
   const forkable = $derived(branchable && !store.openThread?.agentSessionId);
   // A prompt still waiting in the queue would run after the edit, on the rewound thread, as would an edit started under a prompt still on its way to the core.
-  const atRest = $derived(branchable && !store.busy && (store.composerStates[threadId]?.queued.length ?? 0) === 0 && !store.composerStates[threadId]?.sending);
+  const atRest = $derived(branchable && !store.openThread?.archived && !store.busy && (store.composerStates[threadId]?.queued.length ?? 0) === 0 && !store.composerStates[threadId]?.sending);
 
   async function editMessage(message: Message): Promise<void> {
     if (await editWhole(store, threadId, message)) focusComposer({ typing: true });

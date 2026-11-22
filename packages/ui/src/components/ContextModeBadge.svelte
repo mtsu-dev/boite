@@ -6,10 +6,10 @@
   import { contextDropped, type ThreadContextMode } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
 
-  let { mode, compact = false, testid = 'context-mode' }: { mode: ThreadContextMode; compact?: boolean; testid?: string } = $props();
+  let { mode, compact = false, requested = false, testid = 'context-mode' }: { mode: ThreadContextMode; compact?: boolean; requested?: boolean; testid?: string } = $props();
 
   const Icon = $derived(mode.label === 'light' ? Feather : mode.label === 'neutral' ? Scale : SlidersHorizontal);
-  const label = $derived(strings.contextMode[mode.label]);
+  const label = $derived(requested ? fill(strings.workflow.contextRequested, { label: strings.contextMode[mode.label] }) : strings.contextMode[mode.label]);
   const detail = $derived([
     fill(strings.contextMode.heading, { label }),
     ...(contextDropped(mode).length ? [fill(strings.contextMode.without, { parts: contextDropped(mode).map(part => strings.contextMode[part]).join(', ') })] : []),

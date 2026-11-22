@@ -277,7 +277,7 @@ test.each(['connected', 'disabled', 'disconnected'] as const)('Boite guide reach
   expect(first).toContain('Use it only when steps help you and the user.');
   if (state === 'connected') {
     expect(first).toContain('Shared convention');
-    expect(first.indexOf('Shared convention')).toBeLessThan(first.indexOf('boite where'));
+    expect(first.indexOf('boite where')).toBeLessThan(first.indexOf('Shared convention'));
   }
   else expect(first).not.toContain('Shared convention');
   expect(first).toContain('boite threads send');
@@ -340,7 +340,11 @@ test('short answers ride every turn until switched off, and the first lists the 
   };
   try {
     h.core.settings.set({ shortAnswers: true });
+    file(join(root, 'AGENTS.md'), 'Shared fixture rules.');
+    await owner.call('brain.configure', { path: root, enabled: true, boiteGuide: true });
     const first = await run('Hello');
+    expect(first).toStartWith('You run in Boite:');
+    expect(first.indexOf('boite where')).toBeLessThan(first.indexOf('Shared fixture rules.'));
     // Said once a session, the style would fade: the warm second turn carries it as well.
     const second = await run('Again');
     expect(second).not.toContain('boite where');
@@ -369,7 +373,7 @@ test('the brain goes once a native session: again when it changes, after a compa
   let directive = 'Hello';
   const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
     prompts.push(ctx.prompt);
-    if (ctx.prompt.includes('Continue me')) continuation = ctx.continuation?.().prompt ?? null;
+    if (ctx.prompt.includes('Continue me')) void Promise.resolve(ctx.continuation?.()).then(value => { continuation = value?.prompt ?? null; });
     if (directive === 'background compaction') {
       // A compaction the agent ran in its own session, flagged as background, as pi reports one.
       const id = ctx.emit.startMessage('assistant');

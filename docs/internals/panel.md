@@ -96,7 +96,7 @@ it, and the menu's last row, Choose the buttons, leads back to the switches.
 | Browser  | one      | the conversation's browser, the one its agent drives: a webview of the Windows desktop app on its own core, frames from the thread's machine elsewhere, covered until Show except a tab the owner opens there; see [browser.md](browser.md) |
 | Preview  | many     | a `boite preview` page, in a shell child webview with persistent cookies, where preview comments pick elements; test fixtures use an iframe |
 | Changes  | one      | `git.status` of the working directory, a file's diff on click                 |
-| Files    | one      | the working directory as a tree, `files.list` one directory at a time         |
+| Files    | one      | the working directory as a tree, with directory lists cached per connection   |
 | File     | per path | a text editor with save, an image viewer with zoom and pan, a video or audio player |
 | Tasks    | one      | goal and loop, pull request watches, the agent's tasks, the project's todo list |
 | Discussions | one   | agent exchanges grouped by discussion, then one discussion's back and forth; a chat row opens it on its burst |
@@ -245,7 +245,13 @@ after eviction or a core restart to obtain a new URL. Remote
 desktop clients need a direct connection to the preview's additional HTTP port;
 a proxy that forwards only the core port does not forward artifact previews.
 
-### Editing files
+### Browsing and editing files
+
+The Files tree loads directories on expansion. When opened at a known path,
+it requests any missing ancestors together. Recent listings for the same
+thread and working directory are reused when the tab remounts, then refreshed
+when idle. The cache holds at most 32 directories and four full directory
+listings' worth of entries per connection.
 
 A text file is edited in place and saved with the Save button or the platform's
 save chord through `files.write`.

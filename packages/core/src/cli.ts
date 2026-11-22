@@ -249,6 +249,15 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       const message = await client.call('artifacts.publish', { threadId, path: absolute(io.cwd, want(0, 'a file')) });
       print([`attached: ${rest[0]}`, `message: ${message.id}`], message);
     },
+    proof: async () => {
+      if (rest.length < 3 || rest.length > 4) throw new Usage('boite proof <message-id> <output-line> <unchecked> [capture]');
+      const [messageId, line, unchecked, capture] = rest;
+      const message = await client.call('artifacts.prove', {
+        threadId, messageId: messageId!, line: line!, unchecked: unchecked!,
+        ...(capture === undefined ? {} : { path: absolute(io.cwd, capture) }),
+      });
+      print([`proof: ${message.id}`], message);
+    },
     delegate: async () => {
       const { DELEGATE_ACTIONS, delegateCommand } = await families();
       if (rest[0] === undefined) throw new Usage(`delegate needs ${DELEGATE_ACTIONS}`);
@@ -533,7 +542,12 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       else if (action === 'clear') change = { action };
       else if (action === 'start' || action === 'done' || action === 'remove') change = { action, id: want(1, 'a task id') };
       else throw new Usage(`task: unknown action ${action}`);
-      const activity = await client.call('threads.tasks.change', { threadId, ...change });
+      const { applyAgentTaskChange, isMethodNotFound } = await families();
+      const activity = await client.call('threads.tasks.change', { threadId, ...change }).catch(async (error: unknown) => {
+        if (!isMethodNotFound(error)) throw error;
+        const current = await client.call('threads.tasks.get', { threadId });
+        return client.call('threads.tasks.set', { threadId, tasks: applyAgentTaskChange(current, change) });
+      });
       print(activity.tasks.length === 0 ? ['tasks: none'] : activity.tasks.map(taskRow), activity.tasks);
     },
     todo: async () => {
@@ -647,7 +661,9 @@ export function watchStatus(watch: import('@boite/contracts').PullRequestWatch):
   const { total, running, failed } = seen.checks;
   const checks = total === 0 ? 'no checks' : `${total} checks, ${running} running, ${failed} failed`;
   const queue = seen.queue ? `merge queue position ${seen.queue.position}` : null;
-  return [`head ${seen.head}`, checks, seen.conflicting ? `conflicts with ${seen.base}` : null, seen.behind ? `behind ${seen.base}` : null, queue, paused].filter(Boolean).join('; ');
+  const baseFailure = seen.baseFailure;
+  const baseStatus = baseFailure ? `base ${seen.base} (${baseFailure.sha.slice(0, 7)}): ${baseFailure.name} failed (${baseFailure.conclusion.toLowerCase()})${baseFailure.url ? ` ${baseFailure.url}` : ''}` : null;
+  return [`head ${seen.head}`, checks, baseStatus, seen.conflicting ? `conflicts with ${seen.base}` : null, seen.behind ? `behind ${seen.base}` : null, queue, paused].filter(Boolean).join('; ');
 }
 
 /**

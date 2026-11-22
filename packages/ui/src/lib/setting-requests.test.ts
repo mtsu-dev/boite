@@ -34,7 +34,9 @@ test('Show and Open are offered only where this client draws the target card', (
   expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: false })).toBe(true);
   expect(settingsReachable(open('general', 'quiet'), { owner: false, phone: false })).toBe(false);
-  expect(settingsReachable(open('resources', 'quiet'), { owner: true, phone: true })).toBe(false);
+  expect(settingsReachable(open('resources', 'quiet'), { owner: true, phone: true })).toBe(true);
+  expect(settingsReachable(open('plugins', null), { owner: true, phone: true })).toBe(true);
+  expect(settingsReachable(open('plugins', null), { owner: false, phone: true })).toBe(false);
   // A Release has no Experiments page: there the card that points at it has nowhere to land.
   const primary = {};
   followDesktopOf(primary);

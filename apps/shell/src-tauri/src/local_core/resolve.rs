@@ -81,11 +81,15 @@ fn adopt(state: &CoreState, core: &CoreFile) -> Resolved {
 
 fn replace_stale(state: &CoreState, core: &CoreFile, version: &str) -> Result<(), String> {
     let launch = &state.launch;
+    #[cfg(target_os = "linux")]
+    let deployment = core.pid.and_then(|pid| super::appimage::running_deployment(&launch.directory, pid));
     shell_log::info("core", "shell.core.stale", format!("the running core is version {version} and this shell {}: stopping it", launch.version),
         json!({ "pid": core.pid, "coreVersion": version, "shellVersion": launch.version }));
-    resident::stop_identified_core(core, &launch.directory.join("core.json"), resident::GRACE).map_err(|error| {
+    let _stopped = resident::stop_identified_core(core, &launch.directory.join("core.json"), resident::GRACE).map_err(|error| {
         format!("the core of version {version} an earlier install left running could not be stopped: {error}")
     })?;
+    #[cfg(target_os = "linux")]
+    if let (Some(_), Some(deployment)) = (_stopped, deployment) { let _ = std::fs::remove_dir_all(deployment); }
     Ok(())
 }
 

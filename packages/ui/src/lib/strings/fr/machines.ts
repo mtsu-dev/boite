@@ -7,6 +7,8 @@ export const fr: Translation = {
     heading: 'Machines', local: 'Cet ordinateur', projects: 'Projets', recent: 'Récent',
     intro: 'Chaque machine exécute ses propres agents sur ses propres fichiers.',
     details: 'Détails', address: 'Adresse', updateFailed: 'Mise à jour échouée',
+    updatePhaseFailed: { check: 'Vérification de version échouée', install: 'Installation échouée' },
+    updateSource: { app: 'Application Boite', server: 'Serveur Boite' },
     label: 'Nom de la machine', icon: 'Icône de la machine', icons: { desktop: 'Ordinateur fixe', laptop: 'Portable', phone: 'Téléphone', tablet: 'Tablette', apple: 'Mac', server: 'Serveur', rack: 'Baie', nas: 'NAS', database: 'Base de données', cloud: 'Cloud', cpu: 'Processeur', router: 'Routeur', terminal: 'Terminal', bot: 'Bot', gamepad: 'Console', tv: 'Télé', house: 'Maison' }, link: "Lien d'une autre machine", add: 'Ajouter une machine', adding: 'Connexion', connect: 'Connecter',
     addHint: "Sur une machine de votre groupe, ouvrez Réglages, Machines, Ajouter un appareil, copiez le lien et collez-le ici.",
     scan: 'Scanner le code', pasteLink: 'Coller le lien', scanTitle: 'Scannez le code',

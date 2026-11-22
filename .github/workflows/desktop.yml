@@ -122,6 +122,12 @@ jobs:
           # v2: v1 held crates built with an explicit release profile, which no build uses any more.
           shared-key: desktop-release-v2
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Restore the pinned Bun baseline runtime
+        id: bun-baseline
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: node_modules/.cache/boite-bun-runtime
+          key: desktop-windows-x64-bun-baseline-${{ hashFiles('package.json', 'apps/shell/scripts/stage-sidecar.ts') }}
       - name: Set nightly artifact version
         if: inputs.channel == 'nightly' && inputs.version != ''
         env:
@@ -152,7 +158,12 @@ jobs:
             throw "Unsupported build channel: $env:BUILD_CHANNEL"
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          bun run apps/shell/scripts/stage-sidecar.ts
+      - name: Cache the verified Bun baseline runtime
+        if: github.ref == 'refs/heads/main' && steps.bun-baseline.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: node_modules/.cache/boite-bun-runtime
+          key: ${{ steps.bun-baseline.outputs.cache-primary-key }}
       # The UI and core bundles just packaged hold no cut feature above the build's kind
       # (docs/internals/experiments.md#out-of-the-build).
       - name: Feature cut of this build
@@ -213,7 +224,10 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Install Linux shell dependencies
         if: runner.os == 'Linux'
-        run: bash scripts/ci/ubuntu-apt.sh libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb dbus-x11 xdg-utils
+        run: |
+          fuse=libfuse2
+          if apt-cache show libfuse2t64 >/dev/null 2>&1; then fuse=libfuse2t64; fi
+          bash scripts/ci/ubuntu-apt.sh libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb dbus-x11 xdg-utils binutils squashfs-tools "$fuse"
       - name: Run Intel binaries under Rosetta
         if: runner.os == 'macOS' && env.BOITE_TARGET == 'x86_64-apple-darwin'
         run: arch -x86_64 /usr/bin/true 2>/dev/null || sudo softwareupdate --install-rosetta --agree-to-license
@@ -279,6 +293,9 @@ jobs:
           # shellcheck disable=SC2086 # BUNDLE_CONFIGS holds several arguments.
           bun apps/shell/scripts/tauri.ts build $BUNDLE_CONFIGS --bundles deb
           sudo dpkg -i "$BUNDLE_DIR"/deb/*.deb
+          # The group launcher as the package and its installation hold it: the one built here, a static executable, 0755.
+          bun scripts/ci/linux-package-launcher.ts deb "$BUNDLE_DIR"/deb/*.deb packages/core/dist/boite-launch
+          bun scripts/ci/linux-package-launcher.ts root / packages/core/dist/boite-launch
           dbus-run-session -- xvfb-run -a bun scripts/ci/desktop-smoke.ts /usr/bin/boite-shell
       - name: Bundle and test Linux AppImage
         if: runner.os == 'Linux'
@@ -300,10 +317,11 @@ jobs:
           mkdir "$RUNNER_TEMP/appimage"
           appimage=$(realpath "$BUNDLE_DIR"/appimage/*.AppImage)
           (cd "$RUNNER_TEMP/appimage" && "$appimage" --appimage-extract > /dev/null)
+          bun scripts/ci/linux-package-launcher.ts appimage "$appimage" "$RUNNER_TEMP/appimage/squashfs-root" packages/core/dist/boite-launch
           if [ "$(uname -m)" = aarch64 ]; then
             cmp packages/core/dist/boite-core "$RUNNER_TEMP/appimage/squashfs-root/usr/bin/boite-core"
           fi
-          dbus-run-session -- xvfb-run -a bun scripts/ci/desktop-smoke.ts "$RUNNER_TEMP/appimage/squashfs-root/AppRun"
+          dbus-run-session -- xvfb-run -a bun scripts/ci/desktop-smoke.ts "$appimage" --resident
       - name: Build and test macOS application bundle
         if: runner.os == 'macOS'
         env:

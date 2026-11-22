@@ -11,6 +11,7 @@
   import { pluginUi } from '../lib/plugin-ui.svelte';
   import { focusComposer, focusedElement, restoreFocus } from '../lib/focus';
   import { projectName } from '../lib/format';
+  import { keyCap } from '../lib/keybindings';
   import { BOTS_SECTION, paletteSections, threadGroup, type PaletteItem, type PaletteSection } from '../lib/palette';
   import { threadState } from '../lib/thread-state';
   import { strings } from '../lib/strings';
@@ -296,7 +297,7 @@
           spellcheck="false"
           data-testid="palette-input"
         />
-        <span class="kbd ui-label-box"><span class="ui-label">Esc</span></span>
+        <span class="kbd ui-label-box"><span class="ui-label">{keyCap('Escape')}</span></span>
       </label>
       <div class="list" role="listbox" bind:this={list} data-testid="palette-list">
         {#each sections as section, at (section.id)}

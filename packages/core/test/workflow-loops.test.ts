@@ -11,7 +11,7 @@ const restores: (() => void)[] = [];
 afterEach(async () => { for (const h of cores.splice(0)) await h.stop(); for (const restore of restores.splice(0)) restore(); });
 
 /** Every turn answers at once from `reply`, which sees the prompt and how many turns its thread had before. */
-function scripted(reply: (ctx: TurnContext, turn: number) => string) {
+function scripted(reply: (ctx: TurnContext, turn: number) => string, measured: (ctx: TurnContext) => boolean = () => true) {
   const prompts: { threadId: string; prompt: string }[] = [];
   restores.push(setDriver('echo', { protocol: 'echo', startTurn(ctx) {
     const turn = prompts.filter(p => p.threadId === ctx.thread.id).length;
@@ -22,7 +22,7 @@ function scripted(reply: (ctx: TurnContext, turn: number) => string) {
       const id = ctx.emit.startMessage('assistant');
       ctx.emit.part(id, 0, { type: 'text', text: reply(ctx, turn) });
       ctx.emit.complete(id, 'complete');
-      resolve({ status: 'done', sessionId: `session:${ctx.thread.id}`, usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: null } });
+      resolve({ status: 'done', sessionId: `session:${ctx.thread.id}`, usage: measured(ctx) ? { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: null } : null });
     });
     return { done, stop() {} };
   } }));
@@ -86,6 +86,30 @@ test('a loop runs its steps again in their own conversations, told why, until it
   expect(prompts.find(p => p.threadId === threadId && p.prompt.includes('Boite workflow done'))!.prompt).toContain('"id":"review","title":"review","status":"done","round":2');
 });
 
+test('a loop matches unique items across reordering and opens fresh conversations for replacements and duplicates', async () => {
+  const rounds = [['a.ts', 'b.ts', 'd.ts', 'd.ts'], ['b.ts', 'a.ts', 'c.ts', 'd.ts']];
+  scripted((ctx, turn) => {
+    if (!ctx.thread.parentThreadId) return 'noted';
+    if (taskOf(ctx.prompt) === 'List.') return '```json\n' + JSON.stringify({ files: rounds[turn] }) + '\n```';
+    return verdict('APPROVE');
+  });
+  const { h, owner, threadId } = await setup();
+  const plan: WorkflowPlan = { name: 'Review files', steps: [
+    { id: 'list', task: 'List.', output: { files: ['string'] } },
+    { id: 'review', forEach: 'list.files', task: 'Review {{item}}.' },
+    { id: 'judge', after: ['review'], task: 'Judge.', output: { verdict: 'string' },
+      repeat: { from: 'list', until: { path: 'judge.verdict', equals: 'MISSING' }, max: 2 } },
+  ] };
+  const run = await owner.call('workflows.start', { threadId, plan, requestId: 'reordered-items' });
+  const failed = await settled(h, threadId, run.id);
+  const review = failed.nodes.find(node => node.id === 'review')!;
+  const old = review.previous!.map(inst => inst.threadId);
+  const current = review.instances.map(inst => inst.threadId);
+  expect(current.slice(0, 2)).toEqual([old[1]!, old[0]!]);
+  expect(current.slice(2).every(id => id !== null && !old.includes(id))).toBe(true);
+  expect(review.instances.map(inst => inst.usage?.inputTokens)).toEqual([20, 20, 10, 10]);
+});
+
 test('a loop out of rounds fails its closing step, is told to the parent, and a retry runs one round more', async () => {
   let approve = false;
   const prompts = scripted(ctx => !ctx.thread.parentThreadId ? 'noted' : taskOf(ctx.prompt) === 'Review.' ? verdict(approve ? 'APPROVE' : 'CHANGES') : 'ok');
@@ -103,22 +127,26 @@ test('a loop out of rounds fails its closing step, is told to the parent, and a 
   await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'review' });
   const done = await settled(h, threadId, run.id);
   expect([done.status, done.nodes.find(n => n.id === 'review')!.round, done.nodes.find(n => n.id === 'report')!.status]).toEqual(['done', 3, 'done']);
-  const fixThread = done.nodes.find(n => n.id === 'fix')!.instances[0]!.threadId!;
-  expect(prompts.filter(p => p.threadId === fixThread).map(p => p.prompt.slice(0, 60))).toEqual([
-    expect.stringContaining('You are one step'), expect.stringContaining('round 2 of 2'), expect.stringContaining('round 3 of 2'),
+  const oldFix = failed.nodes.find(n => n.id === 'fix')!.instances[0]!.threadId!;
+  const newFix = done.nodes.find(n => n.id === 'fix')!.instances[0]!;
+  expect(newFix.threadId).not.toBe(oldFix);
+  expect(newFix.previousAttempts).toEqual([expect.objectContaining({ threadId: oldFix })]);
+  expect(prompts.filter(p => p.threadId === oldFix).map(p => p.prompt)).toEqual([
+    expect.stringContaining(`Boite workflow step fix (run ${run.id}).`), expect.stringContaining('round 2 of 2'),
   ]);
+  expect(prompts.find(p => p.threadId === newFix.threadId)?.prompt).toContain('round 3 of 2');
 });
 
 test('a closing step fanned out over an empty list still checks its condition, and its retry runs another round', async () => {
-  // Round 1 reviews one file and asks for changes, rounds 2 and 3 list nothing.
-  const rounds = [['a.ts'], [], []];
+  // Round 1 reviews two files and asks for changes, with one measurement missing.
+  const rounds = [['a.ts', 'b.ts'], [], []];
   let files: string[] = [];
   const prompts = scripted(ctx => {
     if (!ctx.thread.parentThreadId) return 'noted';
     const task = taskOf(ctx.prompt);
     if (task === 'List.') { files = rounds.shift() ?? files; return '```json\n' + JSON.stringify({ files }) + '\n```'; }
     return verdict(rounds.length ? 'CHANGES' : 'APPROVE');
-  });
+  }, ctx => taskOf(ctx.prompt) !== 'Review b.ts.');
   const { h, owner, threadId } = await setup();
   const plan: WorkflowPlan = { name: 'Empty', steps: [
     { id: 'list', profile: 'fast', task: 'List.', output: { files: ['string'] } },
@@ -129,6 +157,7 @@ test('a closing step fanned out over an empty list still checks its condition, a
   const failed = await settled(h, threadId, run.id);
   const review = failed.nodes.find(n => n.id === 'review')!;
   expect([failed.status, review.status, review.round, review.instances.length, review.exhausted]).toEqual(['failed', 'failed', 3, 0, true]);
+  expect(review.usage).toMatchObject({ inputTokens: 10, outputTokens: 5 });
   // Round 2 hears what round 1's review said; round 3 follows an empty round and hears nothing older.
   const listPrompts = prompts.filter(p => p.threadId === failed.nodes.find(n => n.id === 'list')!.instances[0]!.threadId).map(p => p.prompt);
   expect(listPrompts.map(p => p.includes('notes CHANGES'))).toEqual([false, true, false]);
@@ -136,6 +165,8 @@ test('a closing step fanned out over an empty list still checks its condition, a
   await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'review' });
   const done = await settled(h, threadId, run.id);
   expect([done.status, done.nodes.find(n => n.id === 'review')!.round, done.nodes.find(n => n.id === 'review')!.exhausted]).toEqual(['done', 4, undefined]);
+  expect(done.nodes.find(n => n.id === 'review')?.usage).toMatchObject({ inputTokens: 20, outputTokens: 10 });
+  expect(done.nodes.find(n => n.id === 'review')).toMatchObject({ usagePartial: true });
 });
 
 test('every round counts toward the run\'s execution limit', async () => {

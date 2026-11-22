@@ -4,7 +4,7 @@
   import type { Message, Turn } from '@boite/contracts';
   import { bytes, count } from '../lib/format';
   import { decodedBytes } from '../lib/attachments';
-  import { browserDownload, decodeBase64, saveAttachment } from '../lib/attachment-save';
+  import { browserDownload, decodeBase64, saveAttachment, saveAttachmentUrl } from '../lib/attachment-save';
   import { galleryFrom, media, viewerHost, type Gallery, type MediaItem } from '../lib/media-gallery';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -101,45 +101,22 @@
     if (host) host.open(gallery); else viewing = gallery;
   }
 
-  /** The picture as the viewer shows it, under a name a saved copy can keep; none while its original is on the core. */
-  function viewed(image: ImagePart, at: number): MediaItem | null {
-    if (image.dataDeferred || !image.data) return null;
+  /** The viewer resolves a deferred original when the picture is selected. */
+  function viewed(image: ImagePart, index: number, at: number): MediaItem {
     const extension = image.mimeType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png';
     const name = image.alt || `image-${at + 1}.${extension}`;
-    const src = `data:${image.mimeType};base64,${image.data}`;
+    const { threadId, id } = message;
+    const owner = store;
+    const src = image.dataDeferred || !image.data ? '' : `data:${image.mimeType};base64,${image.data}`;
     return {
       src, name, mimeType: image.mimeType, kind: 'image',
-      save: () => {
-        if (!desktopShell()) { browserDownload(src, name); return; }
-        saveAttachment(name, decodeBase64(image.data), false).catch((error: unknown) => { store.reportError(error, 'minor'); });
+      ...(!src ? { load: () => owner.loadMediaAttachment(threadId, id, index, image.mimeType) } : {}),
+      save: (url: string) => {
+        if (!desktopShell()) { browserDownload(url, name); return; }
+        const saved = url.startsWith('data:') ? saveAttachment(name, decodeBase64(url.slice(url.indexOf(',') + 1)), false) : saveAttachmentUrl(name, url, false);
+        saved.catch((error: unknown) => owner.reportError(error, 'minor'));
       }
     };
-  }
-  /** The picture whose original is on its way to the viewer. */
-  let opening = $state<number | null>(null);
-  /**
-   * The viewer shows the original. A deferred picture is drawn from its light
-   * copy, so its original is fetched first, once, and then opens.
-   */
-  async function open(from: HTMLElement, image: ImagePart, index: number, at: number): Promise<void> {
-    let shown = image;
-    if (image.dataDeferred) {
-      if (opening !== null) return;
-      opening = index;
-      try {
-        // A message the store holds gets its bytes too; one drawn from elsewhere opens from the answer.
-        const data = await store.loadMessageAttachment(message.threadId, message.id, index);
-        if (data === null) return;
-        shown = { ...image, data, dataDeferred: undefined };
-      } catch (error) {
-        store.reportError(error, 'minor');
-        return;
-      } finally {
-        opening = null;
-      }
-    }
-    const item = viewed(shown, at);
-    if (item) show(galleryFrom(from, item));
   }
   const copyText = $derived(message.parts.flatMap((part) => part.type === 'text' ? [promptText(part)] : []).join('\n\n'));
   /** The move this prompt told the agent about, first thing the core put before its words. */
@@ -193,10 +170,9 @@
           type="button"
           class="shot"
           title={image.alt ?? strings.chat.imagePart}
-          aria-busy={opening === index}
           inert={at >= (cover ? fits - 1 : fits)}
-          use:media={() => viewed(image, at)}
-          onclick={(event) => void open(event.currentTarget, image, index, at)}
+          use:media={() => viewed(image, index, at)}
+          onclick={(event) => show(galleryFrom(event.currentTarget, viewed(image, index, at)))}
           data-testid="image-open"
         >
           <ChatImage {store} threadId={message.threadId} messageId={message.id} partIndex={index} {image} tile={THUMB_HEIGHT} />
@@ -320,10 +296,6 @@
 
   .more:hover {
     background: color-mix(in oklab, var(--color-background) 58%, transparent);
-  }
-
-  .shot[aria-busy='true'] {
-    cursor: progress;
   }
 
 </style>
