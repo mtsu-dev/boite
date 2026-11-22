@@ -53,6 +53,7 @@ import { SETTLED_VIEWPORT_SCRIPT } from './browser/scripts.ts';
 import { screenTurns, takeTurn } from './browser/frames.ts';
 import { automate, awaitDocument, documentToken, PAGE_ACTIONS, settleLoaded } from './browser/automation.ts';
 import { pageFrames } from './browser/page-frames.ts';
+import { readsConsole } from './browser/page-runtime.ts';
 import { sleepState, TabSleep } from './browser/sleep.ts';
 import { TabsJoining } from './browser/joining.ts';
 import { BrowserPopups, type PopupTarget } from './browser/popups.ts';
@@ -393,9 +394,11 @@ export class AgentBrowser {
   async #navigate(tab: Tab, url: string): Promise<BrowserReply> {
     const token = await documentToken(tab.page);
     const seq = this.#downloads.seq;
+    // Off before the navigation starts: the new process of an app webview keeps the runtime it began with (`followHostedPage`).
+    if (!readsConsole(url)) await tab.page.frames?.runtime?.follow(url);
     const reply = await tab.engine.cdp.send<{ errorText?: string; loaderId?: string; isDownload?: boolean }>('Page.navigate', { url }, tab.sessionId);
+    if (reply.isDownload || reply.errorText) await tab.page.frames?.runtime?.follow(tab.url || 'about:blank');
     if (reply.isDownload) {
-      // The address is a file: the page stays where it was and the file goes to the quarantine.
       await this.#downloads.began(tab.threadId, seq, DOWNLOAD_BEGIN_MS);
       const at = tab.url || 'about:blank';
       return { tabId: tab.id, url: at, title: tab.title, value: { ok: true, url: at, title: tab.title, note: `${url} is a download; the page did not change` } };

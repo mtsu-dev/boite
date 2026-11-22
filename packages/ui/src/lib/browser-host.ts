@@ -71,6 +71,8 @@ export function compactPageEvent(method: string, params: Record<string, unknown>
     const redirect = params.redirectResponse as { status?: unknown; headers?: unknown; mimeType?: unknown } | undefined;
     return {
       requestId: params.requestId, type: params.type, documentURL: params.documentURL,
+      // A document's frame: the core turns the runtime off as soon as the top frame asks for a public page (`followHostedPage`).
+      ...(params.type === 'Document' ? { frameId: params.frameId } : {}),
       request: { url: request?.url, method: request?.method, headers: request?.headers, hasPostData: request?.hasPostData === true || request?.postData !== undefined },
       ...(redirect ? { redirectResponse: { status: redirect.status, headers: redirect.headers, mimeType: redirect.mimeType } } : {}),
     };

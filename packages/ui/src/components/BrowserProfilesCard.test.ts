@@ -21,8 +21,8 @@ afterEach(async () => {
   document.body.innerHTML = '';
 });
 
-function showDeletableProfile() {
-  store.settings = { browserProfiles: [{ id: 'p-one', name: 'One' }] } as Settings;
+function showDeletableProfile(settings: Partial<Settings> = { browserProfiles: [{ id: 'p-one', name: 'One' }] }) {
+  store.settings = settings as Settings;
   const save = vi.fn(async (patch: Partial<Settings>) => {
     store.settings = { ...store.settings!, ...patch };
     return true;
@@ -77,8 +77,32 @@ function query<T extends HTMLElement = HTMLElement>(selector: string): T {
   return element;
 }
 
+test('a whole User-Agent typed as a suffix is flagged as typed and never saved, and the example follows the mode', async () => {
+  const save = showDeletableProfile({ browserProfiles: [{ id: 'p-one', name: 'One', engine: 'chrome' }] });
+  query<HTMLButtonElement>('[data-testid=browser-user-agent-edit]').click();
+  flushSync();
+  const input = query<HTMLInputElement>('[data-testid=browser-user-agent-value]');
+  expect(input.placeholder).toBe('Program marker, e.g. MyTool/1.0');
+  input.value = 'Mozilla/5.0 Chrome/158.0.0.0';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+  expect(query('[data-testid=browser-user-agent-whole]').textContent).toContain('Replace entire value');
+  expect(query<HTMLButtonElement>('[data-testid=browser-user-agent-save]').disabled).toBe(true);
+  query<HTMLFormElement>('form.user-agent').requestSubmit();
+  flushSync();
+  expect(save).not.toHaveBeenCalled();
+  query<HTMLButtonElement>('[data-testid=browser-user-agent-mode]').click();
+  flushSync();
+  [...document.querySelectorAll<HTMLElement>('[role=menuitem], [role=menuitemradio]')].find(item => item.textContent?.includes('Replace entire value'))!.click();
+  flushSync();
+  expect(document.querySelector('[data-testid=browser-user-agent-whole]')).toBeNull();
+  expect(input.placeholder).toBe('Full User-Agent');
+  query<HTMLFormElement>('form.user-agent').requestSubmit();
+  await vi.waitFor(() => expect(store.settings?.browserProfiles).toEqual([{ id: 'p-one', name: 'One', engine: 'chrome', userAgent: { mode: 'replace', value: 'Mozilla/5.0 Chrome/158.0.0.0' } }]));
+});
+
 test('overlapping User-Agent saves and a rename preserve every profile change', async () => {
-  store.settings = { browserProfiles: [{ id: 'p-one', name: 'One' }, { id: 'p-two', name: 'Two' }] } as Settings;
+  store.settings = { browserProfiles: [{ id: 'p-one', name: 'One', engine: 'chrome' }, { id: 'p-two', name: 'Two', engine: 'chrome' }] } as Settings;
   let finish!: () => void;
   const pending = new Promise<void>(resolve => { finish = resolve; });
   const patches: Partial<Settings>[] = [];
@@ -117,7 +141,54 @@ test('overlapping User-Agent saves and a rename preserve every profile change', 
     await vi.waitFor(() => expect(patches).toHaveLength(3));
   }
   await vi.waitFor(() => expect(store.settings?.browserProfiles).toEqual([
-    { id: 'p-one', name: 'Renamed', userAgent: { mode: 'suffix', value: 'Bounty/1' } },
-    { id: 'p-two', name: 'Two', userAgent: { mode: 'suffix', value: 'Bounty/2' } },
+    { id: 'p-one', name: 'Renamed', engine: 'chrome', userAgent: { mode: 'suffix', value: 'Bounty/1' } },
+    { id: 'p-two', name: 'Two', engine: 'chrome', userAgent: { mode: 'suffix', value: 'Bounty/2' } },
   ]));
+});
+
+function pickEngine(row: string, name: string) {
+  query<HTMLButtonElement>(`[data-profile=${row}] [data-testid=browser-profile-engine]`).click();
+  flushSync();
+  query<HTMLElement>(`[data-testid=browser-profile-engine-menu]`);
+  [...document.querySelectorAll<HTMLElement>('[role=menuitemradio]')].find(item => item.textContent?.includes(name))!.click();
+  flushSync();
+}
+
+test('each profile, Default included, shows its engine with the choice checked, and only a Chrome profile has a User-Agent', async () => {
+  const save = showDeletableProfile({ browserProfiles: [{ id: 'p-one', name: 'One' }, { id: 'p-old', name: 'Old', userAgent: { mode: 'suffix', value: 'Tool/1' } }] });
+  const engine = (row: string) => query(`[data-profile=${row}] [data-testid=browser-profile-engine]`).textContent?.trim();
+  expect(engine('default')).toBe('Engine: App window');
+  expect(engine('p-one')).toBe('Engine: App window');
+  // A profile saved with a User-Agent before engines existed runs in Chrome, as it did.
+  expect(engine('p-old')).toBe('Engine: Chrome');
+  expect(document.querySelector('[data-profile=default] [data-testid=browser-user-agent-edit]')).toBeNull();
+  expect(document.querySelector('[data-profile=p-one] [data-testid=browser-user-agent-edit]')).toBeNull();
+  query('[data-profile=p-old] [data-testid=browser-user-agent-edit]');
+
+  query<HTMLButtonElement>('[data-profile=p-one] [data-testid=browser-profile-engine]').click();
+  flushSync();
+  const checked = [...document.querySelectorAll<HTMLElement>('[role=menuitemradio]')].map(item => [item.textContent?.trim(), item.getAttribute('aria-checked')]);
+  expect(checked).toEqual([['App window', 'true'], ['Chrome', 'false']]);
+  [...document.querySelectorAll<HTMLElement>('[role=menuitemradio]')].find(item => item.textContent?.includes('Chrome'))!.click();
+  await vi.waitFor(() => expect(store.settings?.browserProfiles?.[0]).toEqual({ id: 'p-one', name: 'One', engine: 'chrome' }));
+  flushSync();
+  expect(engine('p-one')).toBe('Engine: Chrome');
+
+  // While a User-Agent is edited the engine under it cannot change.
+  query<HTMLButtonElement>('[data-profile=p-one] [data-testid=browser-user-agent-edit]').click();
+  flushSync();
+  expect(query<HTMLButtonElement>('[data-profile=p-one] [data-testid=browser-profile-engine]').disabled).toBe(true);
+  expect(query<HTMLButtonElement>('[data-profile=p-old] [data-testid=browser-profile-engine]').disabled).toBe(false);
+  [...document.querySelectorAll<HTMLButtonElement>('[data-profile=p-one] form.user-agent button')].find(button => button.textContent === 'Cancel')!.click();
+  flushSync();
+  expect(query<HTMLButtonElement>('[data-profile=p-one] [data-testid=browser-profile-engine]').disabled).toBe(false);
+
+  // The built-in profile keeps its engine beside the list, which stays as it was.
+  save.mockClear();
+  pickEngine('default', 'Chrome');
+  await vi.waitFor(() => expect(save).toHaveBeenCalledWith({ browserBuiltinProfiles: { default: { engine: 'chrome' } } }));
+  flushSync();
+  expect(engine('default')).toBe('Engine: Chrome');
+  expect(store.settings?.browserProfiles).toHaveLength(2);
+  expect(document.querySelector('[data-profile=default] [data-testid=browser-user-agent-edit]')).toBeNull();
 });

@@ -1,4 +1,4 @@
-import type { BrowserProfile } from './browser';
+import type { BrowserBuiltinProfiles, BrowserProfile } from './browser';
 import type { AccountId, ProviderId, RequestId } from './ids';
 import type { ExperimentId, FinishedExperimentId } from './experiments.ts';
 import type { ClientPreferences, SettingAsk, SettingRequestParams } from './setting-requests.ts';
@@ -61,6 +61,12 @@ export interface Settings {
   browserProfiles?: BrowserProfile[];
   /** The profile a new browser tab opens in. Missing or unknown means `default`; never `private`. */
   browserDefaultProfile?: string;
+  /**
+   * What the built-in profiles keep, which `browserProfiles` does not list:
+   * the engine of `default`. Missing means `app`. Owner-only, like
+   * `browserProfiles`: no agent method reads or writes it.
+   */
+  browserBuiltinProfiles?: BrowserBuiltinProfiles;
   /** HTTPS origin served by the reverse proxy, used in phone pairing links. */
   publicUrl?: string | null;
   /** Minutes a Claude process stays warm after a turn. 0 releases it at once. */
