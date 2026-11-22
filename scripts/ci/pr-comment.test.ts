@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { acceptReport, FOOTER, findPull, jobAttempt, mainTipAt, MARKER, newestRun, ownComment, renderComment, type WorkflowRun } from './pr-comment.ts';
+import { acceptReport, FOOTER, findPull, jobAttempt, mainTipAt, MARKER, newestRun, noArtifact, ownComment, renderComment, type WorkflowRun } from './pr-comment.ts';
 import { bundleReport, SIZES, TRANSFER, transferReport } from './pr-report.test.ts';
 
 const HEAD = 'a'.repeat(40);
@@ -91,7 +91,16 @@ test('a job that ran and left no report says so, never that nothing changed', ()
   expect(body).toContain('Thread transfer left no report: the job stopped before writing it');
   expect(body).toContain('Bundle size left no report: the job stopped before writing it');
   expect(body).not.toContain('changes neither');
-  expect(renderComment('o/r', run(), 'absent', 'absent')).toContain('this run has no `Thread transfer` job.');
+});
+
+test('a branch whose workflow predates the reports gets no comment for them', () => {
+  // Its bundle job passes and uploads nothing: that is a workflow without the report, not a job that stopped.
+  expect(noArtifact('success')).toBe('absent');
+  expect(noArtifact('failure')).toBe('missing');
+  expect(noArtifact('cancelled')).toBe('missing');
+  const body = renderComment('o/r', run(), 'absent', 'absent');
+  expect(body).toContain("this branch's workflow predates the report, merging main brings it in.");
+  expect(body).not.toContain('Bundle size');
 });
 
 test("a base other than main's tip when the run started compares nothing", () => {
