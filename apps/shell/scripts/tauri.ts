@@ -22,7 +22,8 @@ if (process.platform === 'linux' && packaging) {
 if (process.env.BOITE_TARGET && ['build', 'bundle'].includes(args[0] ?? '') && !args.some(arg => arg === '--target' || arg.startsWith('--target='))) {
   args.push('--target', process.env.BOITE_TARGET);
 }
-if (process.env.BOITE_SIGN_UPDATES === '1') {
+// Only a build takes the updater's config and its key: `signer` reads its own key options, a path included.
+if (process.env.BOITE_SIGN_UPDATES === '1' && ['build', 'bundle'].includes(args[0] ?? '')) {
   if (!process.env.TAURI_SIGNING_PRIVATE_KEY) throw new Error('TAURI_SIGNING_PRIVATE_KEY is required for signed update artifacts');
   // An absent password makes minisign read the terminal, even for an unencrypted key.
   env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ??= '';

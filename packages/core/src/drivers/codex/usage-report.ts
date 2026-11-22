@@ -26,7 +26,8 @@ export class CodexUsageReports {
 
   finish(turn: CodexTurn): void {
     if (turn.turnId === null || !turn.ctx.openLateUsage) return;
-    this.#drainUntil = turn.nativeFinished ? performance.now() + USAGE_DRAIN_MS : 0;
+    // A turn that ended without its native completion expects no late usage, and leaves an earlier turn's window open.
+    if (turn.nativeFinished) this.#drainUntil = performance.now() + USAGE_DRAIN_MS;
     this.#finished ??= turn.ctx.openLateUsage<Tally>();
     const { id, startedAt } = turn.ctx.turn;
     const { usageCounts, usageTotal, usageLast } = turn;

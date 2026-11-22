@@ -162,6 +162,8 @@ export class SlotTotals<S extends Slot = Slot> {
   restore(index: SlotIndex, list: readonly S[], order: string): void {
     if (index.order !== order || index.sums.length !== list.length + 1) return;
     this.sums = index.sums.slice();
+    // The totals may have served another thread since: its ids do not stay behind.
+    this.positions.clear();
     for (const [id, at] of index.positions) this.positions.set(id, at);
     this.sumsCount = this.dirty = list.length;
     this.sumsHead = list[0]?.id ?? '';
