@@ -134,7 +134,7 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   await waitFor(home);
   expect(rows('mobile-settings-home')).toEqual([
     'settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage',
-    'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-diagnostics'
+    'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'
   ]);
   // A row holding one value shows it before its chevron: the theme and language, the machine reached, dictation on or off once read.
   expect(query('[data-testid=settings-tab-appearance-value]').textContent).toBe(`${strings.settings.themeSystem} · ${strings.settings.languageNames.en}`);
@@ -177,8 +177,8 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
   await back();
 
-  // Every feature is finished: Settings has no Experiments page to list switches on, the Whip's sits in Appearance.
-  expect(document.querySelector('[data-testid=settings-tab-experiments]')).toBeNull();
+  // The one experiment has its switch on the Experiments page; the Whip, finished, keeps its own in Appearance.
+  expect(document.querySelector('[data-testid=settings-tab-experiments]')).not.toBeNull();
   await open('settings-tab-advanced', advanced);
 
   Element.prototype.scrollIntoView ??= vi.fn();

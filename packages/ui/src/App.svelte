@@ -169,6 +169,11 @@
    * replaces it as on a desktop, so no chat is built for nothing.
    */
   const phoneSettings = $derived(!inShell && narrow.current && store.page === 'settings' && settingsFrom === 'chat');
+  /**
+   * The chat is mounted but out of sight, under a phone's list, its recovery screen or its settings: the two
+   * covers of `.body` below, which only a narrow window applies. A phone turned wide shows the chat again.
+   */
+  const chatCovered = $derived(phoneSettings || (!inShell && narrow.current && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)));
   let documentVisible = $state(!document.hidden);
   // What the first screen does not draw stays out of the first chunk: the right
   // panel and its six surfaces, the palette and the two dialogs were a third of
@@ -624,7 +629,7 @@
             <Deferred part={activityPage}>{#snippet children(ActivityPage)}<ActivityPage {store} />{/snippet}</Deferred>
           {:else}
             {#key store}
-              <Deferred part={chatView}>{#snippet children(ChatView)}<ChatView {store} />{/snippet}</Deferred>
+              <Deferred part={chatView}>{#snippet children(ChatView)}<ChatView {store} covered={chatCovered} />{/snippet}</Deferred>
             {/key}
           {/if}
         </div>

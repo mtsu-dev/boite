@@ -994,7 +994,8 @@ baseline runtime archive for the pinned Bun version and caches it under
 
 `tests/e2e/lib/cdp.ts` starts a muted headless browser with a disposable profile.
 The browser override is `BOITE_E2E_BROWSER`. Local Windows uses native ANGLE;
-CI uses CPU compositing with software GL disabled. Browser launch failure
+CI uses CPU compositing with software GL disabled. `BOITE_E2E_ANGLE` names
+another ANGLE backend (`vulkan`) on a machine whose default one draws no WebGL. Browser launch failure
 reports early exit or the CDP deadline and saves the last 16 KiB of stderr.
 Screenshots go to the ignored `tests/e2e/.artifacts/`. Open desktop and phone
 captures before claiming a visual change is verified.

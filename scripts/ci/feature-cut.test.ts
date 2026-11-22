@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EXPERIMENT_IDS, EXPERIMENT_STAGES, FEATURE_CUTS, featureDefines, featureFlag, featureMarker, type ExperimentId, type FeatureStage } from '../../packages/contracts/src/experiments.ts';
@@ -20,7 +20,7 @@ function bundle(files: Record<string, string>): string {
   return dir;
 }
 
-// No feature is cut today: two stand-in ids, a dev feature cut from both bundles and a nightly one cut from the UI.
+// Two stand-in ids, so the scan is tried on a dev feature cut from both bundles beside a nightly one cut from the UI.
 const WHIP = 'whip' as unknown as ExperimentId;
 const TEAMS = 'teams' as unknown as ExperimentId;
 const stages: Record<ExperimentId, FeatureStage> = { ...EXPERIMENT_STAGES, [WHIP]: 'dev', [TEAMS]: 'nightly' };
@@ -78,6 +78,25 @@ test('the five finished features left the registry, their lazy entries load with
   // The contracts file names no marker in full, or every bundle would hold them all.
   const contracts = read('packages/contracts/src/experiments.ts');
   for (const id of EXPERIMENT_IDS) expect(contracts, id).not.toContain(featureMarker(id));
+});
+
+test('every feature declared cut has one lazy entry that writes its flag in full', () => {
+  const root = join(import.meta.dir, '..', '..');
+  /** The entry of each cut feature, by bundle: the only module that imports the feature's code. */
+  const entries: Partial<Record<ExperimentId, { ui?: string; core?: string }>> = {
+    'draft-backdrop': { ui: 'packages/ui/src/lib/backdrop-entry.svelte.ts' },
+  };
+  expect(Object.keys(entries).sort()).toEqual(Object.keys(FEATURE_CUTS).sort());
+  for (const [id, cut] of Object.entries(FEATURE_CUTS) as [ExperimentId, { ui: boolean; core: boolean }][]) {
+    for (const side of ['ui', 'core'] as const) {
+      const entry = entries[id]?.[side];
+      expect(entry !== undefined, `${id} ${side}`).toBe(cut[side]);
+      if (!entry) continue;
+      expect(existsSync(join(root, entry)), entry).toBe(true);
+      // The gate is the flag written in full, in the entry itself: nothing less folds.
+      expect(readFileSync(join(root, entry), 'utf8'), entry).toContain(`typeof ${featureFlag(id)} === 'undefined' || ${featureFlag(id)}`);
+    }
+  }
 });
 
 test('the UI build and the core build define the kind and the flags of the stamped version', async () => {

@@ -30,9 +30,13 @@
   import { firstRunScreen, needsAnAI } from '../lib/first-run';
   import { closingLine } from '../lib/closing-line';
   import { loadCouncilSalon } from '../lib/council-entry';
+  import { backdropEntry } from '../lib/backdrop-entry.svelte';
 
-  /** `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's). */
-  let { store, locked = null }: { store: Store; locked?: string | null } = $props();
+  /**
+   * `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's).
+   * `covered`: the chat is mounted but out of sight, under a phone's list or its settings.
+   */
+  let { store, locked = null, covered = false }: { store: Store; locked?: string | null; covered?: boolean } = $props();
 
   let thread = $derived(store.openThread);
   const phone = new MediaQuery('(max-width: 720px)');
@@ -111,6 +115,8 @@
    * from there instead of jumping.
    */
   let chat = $state<HTMLElement>();
+  // The empty screen's scene, fetched the first time its experiment is found on (lib/backdrop-entry.svelte.ts).
+  $effect(() => { if (!thread && !sending) backdropEntry.need(); });
   let leftFrom: number | null = null;
   let leaving = $derived(!thread && !!sending);
   $effect.pre(() => {
@@ -140,6 +146,9 @@
      the prompt is on its way the composer is at the bottom, at its thread size,
      or it shrinks a second time when the thread opens. -->
   <section class="chat" class:drafting={!thread && !sending} bind:this={chat} data-testid="chat">
+    <!-- First in the column and on no layer of its own: the positioned pieces after it (the heading, the
+         composer, the tail) paint over the scene, and their menus keep their own layers. -->
+    {#if !thread && !sending && backdropEntry.feature}{@const DraftBackdrop = backdropEntry.feature.DraftBackdrop}<DraftBackdrop area={chat} {covered} />{/if}
     {#if thread?.forkOrigin}{#key thread.id}<ForkReturn {store} {thread} />{/key}{/if}
     <div class="discussion" class:draft-body={!thread && !sending} bind:this={discussion} data-testid={!thread && !sending ? 'draft-empty' : undefined}>
     {#if pinnedQuotas.current.pinned}<div class="quota-room" bind:this={quotaRoom} aria-hidden="true"></div>{/if}
@@ -157,7 +166,7 @@
     {:else if sending}
       <MessageList {store} threadId={DRAFT_STASH_KEY} {messages} />
     {:else}
-        <div class="mobile-welcome">
+        <div class="mobile-welcome" data-backdrop-calm>
           <img src={appMark()} alt="" width="42" height="42" />
           <h1>{strings.mobile.draftTitle}</h1>
           <p>{strings.mobile.draftHint}</p>
@@ -168,7 +177,7 @@
           {#if draftChoice}<small>{modePhrase(draftChoice.permissionMode, draftProvider)}</small>{/if}
           {#if store.draft?.worktree}<small>{strings.thread.inWorktree}</small>{/if}
         </div>
-        <div class="draft-heading" data-testid="draft-sentence">
+        <div class="draft-heading" data-testid="draft-sentence" data-backdrop-calm>
           <h1 class="start">
             <span class="ui-label">{strings.thread.start}</span>
             <span class="ui-label">{strings.thread.inProject}</span>
@@ -309,6 +318,7 @@
   }
 
   .draft-tail {
+    position: relative;
     flex: 4 1 0;
     min-height: 0;
     display: flex;

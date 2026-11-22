@@ -3,9 +3,7 @@
 Experiments are features that are not finished yet. They can change or
 disappear, so each one has a switch in Settings, Experiments.
 
-There is no experiment today: every feature ships in every build, so
-Settings has no Experiments page. The page comes back with the next
-experiment.
+One experiment exists today: the [new thread background](#new-thread-background).
 
 ## Where they exist
 
@@ -36,6 +34,23 @@ Dev only.
   computer, and follows it when they change. Settings on a phone has its own
   Experiments row. Flipping a switch there keeps the phone's own set; Same as
   the computer, at the top, follows the desktop app again.
+
+## New thread background
+
+An animated scene plays behind the empty new thread screen, drawn in thin
+dark lines around the heading and the message box: a wire tunnel, a tunnel of
+characters, contour lines or a belt of wire crates. It follows your theme and
+accent colour, and stays dim around the heading so the words remain easy to
+read.
+
+1. In Settings, Experiments, turn on New thread background.
+2. In Settings, Appearance, pick it under New thread background: Off,
+   Random or one of the four scenes. Random shows a different one each time
+   the screen opens.
+
+The pick belongs to the device. A device that asks for reduced motion gets a
+still picture. On a device whose browser cannot draw it, the screen stays as
+it was.
 
 ## Finished experiments
 

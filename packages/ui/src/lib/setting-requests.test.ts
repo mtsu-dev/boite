@@ -1,6 +1,7 @@
-import { expect, test } from 'vitest';
+import { expect, onTestFinished, test } from 'vitest';
 import { REQUESTABLE_SETTINGS, readSettings, settledSetting, type RequestableKey, type Settings, type SettingAsk } from '@boite/contracts';
 import { retiredHint, settingLabel, settingsReachable, settingsSectionLabel, settingValueText } from './setting-requests';
+import { followDesktopOf, heardBuild, writeExperiments } from './experiments';
 import { strings } from './strings';
 
 const open = (page: SettingAsk['page'], section: string | null): SettingAsk => ({ kind: 'open', page, section });
@@ -13,8 +14,8 @@ test('Show and Open are offered only where this client draws the target card', (
   // The live device stream runs on the owner's machine: only the owner's System draws its card, on a phone too.
   expect(settingsReachable(open('advanced', 'device-stream'), { owner: false, phone: false })).toBe(false);
   expect(settingsReachable(open('advanced', 'device-stream'), { owner: true, phone: true })).toBe(true);
-  // No build lists an experiment today: a card that points at Experiments has nowhere to land.
-  expect(settingsReachable(open('experiments', null), { owner: true, phone: false })).toBe(false);
+  // This build lists an experiment, so a card that points at Experiments lands on its page.
+  expect(settingsReachable(open('experiments', null), { owner: true, phone: false })).toBe(true);
   // Except a card asked while the keepalive, background compaction or the stream was an experiment: it leads to System now.
   for (const section of ['cache-keepalive', 'background-compaction', 'device-stream']) {
     expect(settingsReachable(open('experiments', section), { owner: true, phone: true }), section).toBe(true);
@@ -36,6 +37,18 @@ test('Show and Open are offered only where this client draws the target card', (
   expect(settingsReachable(open('resources', 'quiet'), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('plugins', null), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('plugins', null), { owner: false, phone: true })).toBe(false);
+  // A Release has no Experiments page: there the card that points at it has nowhere to land.
+  const primary = {};
+  followDesktopOf(primary);
+  onTestFinished(() => {
+    followDesktopOf(null);
+    window.localStorage.clear();
+    // Through the writer, so the build this test named is forgotten.
+    writeExperiments([]);
+    window.localStorage.clear();
+  });
+  heardBuild(primary, '2.0.0');
+  expect(settingsReachable(open('experiments', null), { owner: true, phone: false })).toBe(false);
 });
 
 test('an automatic compaction change that only adds a moment reads differently from the current one', () => {

@@ -15,7 +15,7 @@
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
   import { COMMAND_GROUPS } from '../lib/keybindings';
-  import { experimentsListed, experimentsShown } from '../lib/experiments.svelte';
+  import { experimentOn, experimentsListed, experimentsShown } from '../lib/experiments.svelte';
   import { experimentCopy } from '../lib/experiment-copy';
   import { fill, strings } from '../lib/strings';
   import type { SettingsTab, Store } from '../lib/store.svelte';
@@ -262,6 +262,7 @@
     ['appearance', 'theme', strings.settings.material],
     ['appearance', 'theme', strings.settings.language],
     ['appearance', 'theme', strings.features.whip.title],
+    ...(experimentOn('draft-backdrop') ? [['appearance', 'theme', strings.settings.backdrop] as [SettingsTab, string, string]] : []),
     ['advanced', 'details', strings.features.edgeScrollbars.title],
     ['advanced', 'details', strings.settings.terminalCursor],
     ['appearance', 'reading', strings.settings.font],

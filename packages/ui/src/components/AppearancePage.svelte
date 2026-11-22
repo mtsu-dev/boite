@@ -21,6 +21,8 @@
   import SurfaceIcon from './SurfaceIcon.svelte';
   import { featureOn } from '../lib/features.svelte';
   import { setFeature } from '../lib/features';
+  import { experimentOn } from '../lib/experiments.svelte';
+  import { backdropEntry } from '../lib/backdrop-entry.svelte';
 
   /**
    * Visual choices only: language, theme, colours, widths, the Whip, faces,
@@ -33,6 +35,7 @@
    * list, is one row in its own face that opens the others (`ChoiceSelect`).
    */
   let { store, phone = false }: { store: Store; phone?: boolean } = $props();
+  $effect(() => backdropEntry.need());
 
   // The terminal is the owner's to hide; Add a project is too, unless the device's core lets it add.
   let groups = $derived(controlGroups(store.owner, store.addsProjects));
@@ -225,6 +228,8 @@
         {/snippet}
       </SettingField>
     {/if}
+    <!-- The scene behind the empty new thread screen, offered while its experiment is on (lib/backdrop-entry.svelte.ts). -->
+    {#if experimentOn('draft-backdrop') && backdropEntry.feature}{@const BackdropPicker = backdropEntry.feature.BackdropPicker}<BackdropPicker />{/if}
     <SettingField id="settings-whip" title={strings.features.whip.title} hint={strings.features.whip.hint}>
       {#snippet control(attributes)}
         <SettingSwitch {...attributes} data-testid="setting-whip" checked={featureOn('whip')}
