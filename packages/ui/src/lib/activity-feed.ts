@@ -1,4 +1,4 @@
-import { activityEvents, activityKind, feedThread, NEEDS_RANK, rowAsks, statusRank, threadState, type ActivityKind, type Delegated, type PermissionRequest, type Project, type QuestionRequest, type RowSource, type ThreadState, type ThreadSummary } from '@boite/contracts';
+import { activityEvents, activityKind, activityThreadState, feedThread, NEEDS_RANK, rowAsks, statusRank, unreadInterruptionAt, type ActivityKind, type Delegated, type PermissionRequest, type Project, type QuestionRequest, type RowSource, type RpcParams, type ThreadState, type ThreadSummary } from '@boite/contracts';
 import { projectName } from './format';
 import { fill, strings } from './strings';
 import { describeTool, permissionSentence } from './tool-summary';
@@ -125,7 +125,7 @@ export function storeNeeds(store: RowSource<Delegated>, threads: readonly Thread
 }
 
 export function activityFeed<M extends { id: string; store: Owner }>(all: readonly FeedSource<M>[], place?: FeedPlace<M>): FeedRow<M>[] {
-  const stateOf = (entry: FeedSource<M>) => threadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id));
+  const stateOf = (entry: FeedSource<M>) => activityThreadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id));
   return feedEvents(all).flatMap(({ lead, helpers, rank }) => {
     const section: FeedSection = rank <= NEEDS_RANK ? 'needs' : 'updates';
     const row = (entry: FeedSource<M>, nested: boolean): FeedRow<M> => {
@@ -142,11 +142,13 @@ export function activityFeed<M extends { id: string; store: Owner }>(all: readon
  * answer settles; a sub-agent's row counts as its own. Each machine's threads apart, since ids collide between them.
  * `kinds` narrows it: the rail's middle click on Activity clears the finished rows alone (AppRail.svelte).
  */
-export function readableThreads<M>(rows: readonly Pick<FeedRow<M>, 'machine' | 'thread' | 'kind'>[], kinds: readonly ('failed' | 'stopped' | 'done')[] = ['failed', 'stopped', 'done']): Map<M, ThreadSummary['id'][]> {
-  const byMachine = new Map<M, ThreadSummary['id'][]>();
+export function readableThreads<M>(rows: readonly Pick<FeedRow<M>, 'machine' | 'thread' | 'kind'>[], kinds: readonly ('failed' | 'stopped' | 'done')[] = ['failed', 'stopped', 'done']): Map<M, RpcParams<'threads.markRead'>[]> {
+  const byMachine = new Map<M, RpcParams<'threads.markRead'>[]>();
   for (const row of rows) {
     if (!kinds.some(kind => kind === row.kind)) continue;
-    byMachine.set(row.machine, [...byMachine.get(row.machine) ?? [], row.thread.id]);
+    const interruptionAt = row.kind === 'stopped' && row.thread.interruptionReadAt !== undefined ? unreadInterruptionAt(row.thread) : undefined;
+    const request = { threadId: row.thread.id, ...(interruptionAt === undefined ? {} : { interruptionAt }) };
+    byMachine.set(row.machine, [...byMachine.get(row.machine) ?? [], request]);
   }
   return byMachine;
 }

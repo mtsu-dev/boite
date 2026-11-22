@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, readFileSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_ENV, EXPERIMENT_STAGES, privateTerminalComposerId, type ExperimentId, type FeatureStage } from '@boite/contracts';
+import { AGENT_ENV, EXPERIMENT_STAGES, privateTerminalComposerId, RpcErrorCode, type ExperimentId, type FeatureStage } from '@boite/contracts';
 import { runCli, splitLine } from '../src/cli.ts';
 import { parse } from '../src/cli-args.ts';
 import { continuationInput } from '../src/continuation.ts';
@@ -9,10 +9,11 @@ import * as cwdCheck from '../src/threads/cwd.ts';
 import type { CliIo } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnResult } from '../src/drivers/index.ts';
+import { RpcFailure } from '../src/errors.ts';
 import { echoThread, startTestCore, waitFor } from './harness.ts';
 import { makeAgent } from './agent-fixture.ts';
 import type { TestCore } from './harness.ts';
-import { thrown } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 
 let harness: TestCore;
 let threadId: string;
@@ -371,6 +372,10 @@ describe('usage', () => {
     const help = await boite(['help']);
     expect(help.code).toBe(0);
     expect(help.err).toContain('usage: boite');
+    expect(help.err).toContain('projects recoveries');
+    expect(help.err).toContain('proof <message-id> <output-line> <unchecked> [capture]');
+    expect(help.err).toContain('mochi new-session');
+    expect(Buffer.byteLength(help.err)).toBeLessThanOrEqual(18_922);
     expect(help.out).toBe('');
     // Help names bots and threads; the old spellings still run but are not shown.
     for (const shown of ['threads find <words>', 'threads send <thread> <text>', 'mochi remember <fact>', 'settings mochi request', 'threads [list] [--project <p>] [--archived]']) expect(help.err).toContain(shown);
@@ -581,6 +586,20 @@ describe('panel', () => {
 });
 
 describe('tasks', () => {
+  test.each([RpcErrorCode.MethodNotFound, RpcErrorCode.Refused])('edits tasks on an older core only for MethodNotFound (%s)', async errorCode => {
+    harness.core.router.register('threads.tasks.change', () => {
+      throw new RpcFailure(errorCode, 'unknown method threads.tasks.change');
+    });
+    const add = await boite(['task', 'add', 'Read the docs']);
+    if (errorCode === RpcErrorCode.Refused) {
+      expect(add).toEqual({ code: 1, out: '', err: 'error: unknown method threads.tasks.change\n' });
+      expect((await boite(['task', 'list'])).out).toBe('tasks: none\n');
+      return;
+    }
+    expect(add).toEqual({ code: 0, out: 't1 [ ] Read the docs\n', err: '' });
+    expect((await boite(['task', 'done', '1'])).out).toBe('t1 [x] Read the docs\n');
+  });
+
   test('concurrent adds keep both tasks with distinct ids', async () => {
     const results = await Promise.all(['left', 'right'].map(text => boite(['task', 'add', text])));
     expect(results.map(result => result.code)).toEqual([0, 0]);
@@ -717,6 +736,28 @@ test('owner CLI sends wait behind an active turn and deduplicate retries', async
   expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user')).toHaveLength(2);
 });
 
+test.each([RpcErrorCode.MethodNotFound, RpcErrorCode.Refused])('owner send falls back only for MethodNotFound and keeps its key (%s)', async errorCode => {
+  const keys: string[] = [];
+  harness.core.router.register('composer.enqueue', ({ clientRequestId }) => {
+    keys.push(clientRequestId);
+    throw new RpcFailure(errorCode, 'unknown method composer.enqueue');
+  });
+  const args = ['thread', 'send', threadId, 'Use the older core', '--request-id', 'legacy-send-key', '--json'];
+  const first = await ownerBoite(args);
+  if (errorCode === RpcErrorCode.Refused) {
+    expect(first).toEqual({ code: 1, out: '', err: 'error: unknown method composer.enqueue\n' });
+    expect(harness.core.journal.lastTurn(threadId)).toBeNull();
+    return;
+  }
+  const retry = await ownerBoite(args);
+  expect([first.code, retry.code]).toEqual([0, 0]);
+  expect(keys).toEqual(['legacy-send-key', 'legacy-send-key']);
+  const saved = harness.core.journal.turnRequest(threadId, 'legacy-send-key');
+  expect(saved?.turn_id).toBe(JSON.parse(first.out).turnId);
+  expect(JSON.parse(retry.out)).toMatchObject({ requestId: keys[0], turnId: saved?.turn_id });
+  expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user')).toHaveLength(1);
+});
+
 test('owner CLI queues incognito sends across a reconnect without publishing the private queue', async () => {
   const client = await harness.connect();
   const project = await client.call('projects.drafts', {});
@@ -728,6 +769,9 @@ test('owner CLI queues incognito sends across a reconnect without publishing the
   expect([initial.code, initial.err]).toEqual([0, '']);
   expect(JSON.parse(initial.out).status).toBe('queued');
   expect(await client.call('composer.list', {})).toEqual([]);
+  expect(await client.call('composer.listPage', {})).toEqual({ records: [] });
+  const { reason } = await rejection(client.call('composer.get', { section: 'inputs', id: privateTerminalComposerId(privateThread.id) }));
+  expect(reason).toMatchObject({ rpc: { code: RpcErrorCode.NotFound } });
   expect(harness.core.journal.db.query('SELECT value FROM composer_records').all()).toEqual([]);
   const retry = await ownerBoite(args);
   expect([retry.code, retry.err]).toEqual([0, '']);

@@ -38,6 +38,20 @@ export function focusWithin(root: Element | null | undefined): boolean {
   return !!root && document.activeElement instanceof Element && root.contains(document.activeElement);
 }
 
+/** Wrap Tab at either end of an application dialog, including when focus is on its frame. */
+export function trapModalTab(event: KeyboardEvent, dialog: HTMLElement | undefined): void {
+  if (event.key !== 'Tab' || event.defaultPrevented || !dialog) return;
+  const active = document.activeElement;
+  const other = active?.closest('[aria-modal=true], dialog[open]');
+  if (other && other !== dialog) return;
+  const stops = [...dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], summary, [tabindex]')].filter(element =>
+    element.tabIndex >= 0 && !element.matches(':disabled, input[type=hidden]') && !element.closest('[hidden], [inert]'));
+  const first = stops[0], last = stops.at(-1);
+  if (active && dialog.contains(active) && active !== dialog && (event.shiftKey ? active !== first : active !== last)) return;
+  event.preventDefault();
+  ((event.shiftKey ? last : first) ?? dialog).focus({ preventScroll: true });
+}
+
 /** What had the focus before an overlay took it, or null when that was nothing worth coming back to. */
 export function focusedElement(): HTMLElement | null {
   const active = document.activeElement;

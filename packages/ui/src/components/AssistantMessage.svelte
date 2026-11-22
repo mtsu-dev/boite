@@ -125,7 +125,7 @@
    * An error that ended the thread's last turn, at rest, can be answered in
    * place: the same prompt sent again (`retryTurn`, the turn's own Retry).
    */
-  const retryable = $derived(store.openThread?.id === threadId && !store.busy && store.openThread.turns.at(-1)?.id === message.turnId
+  const retryable = $derived(store.openThread?.id === threadId && !store.openThread.archived && !store.busy && store.openThread.turns.at(-1)?.id === message.turnId
     && !store.composerStates[threadId]?.sending && (store.composerStates[threadId]?.queued.length ?? 0) === 0);
   const end = $derived(to ?? message.parts.length);
   /**
@@ -226,7 +226,7 @@
 
       {:else if part.type === 'artifact' && part.view}
         <InlineView {part} {store} {threadId} messageId={message.id} partIndex={index} />
-      {:else if part.type === 'file' || part.type === 'artifact'}
+      {:else if part.type === 'file' || (part.type === 'artifact' && !part.windowCapture)}
         <ChatFile file={part} {store} {threadId} messageId={message.id} partIndex={index} />
       {:else if part.type === 'tool' && planOf(part.name, part.input) !== null}
         {@render plan(planOf(part.name, part.input) ?? '')}
@@ -317,7 +317,7 @@
         <!-- The agent warned and went on: a notice of the timeline, not a failure of the turn. -->
         <AgentNoticeLine notice={part.notice} detail={part.detail} />
       {:else if part.type === 'window_capture'}
-        <WindowCard {part} />
+        <WindowCard {part} {store} threadId={message.threadId} messageId={message.id} />
       {:else if part.type === 'window_consent'}
         <WindowCard {store} threadId={message.threadId} agent={agentName ?? (execution ? providerName(store, execution.providerId) : strings.windows.consent.anAgent)} {part} />
       {:else if part.type === 'error'}

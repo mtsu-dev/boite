@@ -19,7 +19,7 @@ const DRIVERS = new Map<Protocol, Driver>([
   [
     'claude-sdk',
     lazyDriver('claude-sdk', () => import('./claude.ts').then(module => module.createClaudeDriver({
-      loadQuery: () => import('@anthropic-ai/claude-agent-sdk').then(sdk => sdk.query),
+      loadQuery: () => import('@anthropic-ai/claude-agent-sdk/core').then(sdk => sdk.query),
     // Declared here, not read from the module: the core checks it before the driver loads.
     })), { titles: true, prepare: true, sideQuestion: true, capabilities: { stepSwap: true } }),
   ],

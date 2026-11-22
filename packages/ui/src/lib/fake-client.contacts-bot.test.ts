@@ -145,3 +145,23 @@ test('a request that names no contact waits for the mochi, which picks the conta
   expect((await host.call('collaboration.get', { threadId: 't-trace' })).requests).toMatchObject([{ id: waiting.id, contact: 'Guest desk' }]);
   await vi.waitFor(() => expect(changed).toContain('t-trace'));
 });
+
+test('the fake Contacts mochi and a thread it starts for a contact cannot list owner windows', async () => {
+  const host = await fake({ coreId: 'core-host', coreName: 'host' });
+  const guest = await fake({ coreId: 'core-guest', coreName: 'guest' });
+  await host.call('contacts.join', { link: (await guest.call('contacts.invite', { share: false })).link });
+  await host.call('contacts.update', { coreId: 'core-guest', trusted: true });
+  await host.call('contacts.grant', { coreId: 'core-guest', projectId: 'p-boite' });
+  await host.call('contacts.settings', { settings: { minTier: 2 } });
+  await guest.call('contacts.settings', { settings: { minTier: 2 } });
+  await host.call('agents.builtin.ensure', { kind: 'contacts' });
+  const bot = (await host.call('contacts.get', {})).bot!.threadId;
+  const contact = (await guest.call('contacts.get', {})).contacts.find(entry => entry.coreId === 'core-host')!;
+  const request = await guest.call('collaboration.ask', { threadId: 't-trace', contact: contact.name, text: 'Check the notes' });
+  const started = await host.call('contacts.bot.start', { threadId: bot, id: request.id, project: 'p-boite', brief: 'Check the notes' });
+  await host.call('contacts.cutRelation', { id: started.request.relation!.id });
+  for (const threadId of [bot, started.threadId]) {
+    host.becomes('agent', threadId);
+    await expect(host.call('windows.list', { threadId })).rejects.toThrow('this conversation is handling contact instructions');
+  }
+});

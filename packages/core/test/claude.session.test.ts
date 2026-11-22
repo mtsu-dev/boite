@@ -875,7 +875,7 @@ test('Send now during cold Claude startup stops the old turn and sends one new p
   } finally { ready.resolve(); }
 });
 
-test('user follow-ups enter the running Claude prompt stream without a second turn or interrupt', async () => {
+test.each(['separate', 'merged', 'legacy-merged', 'capped', 'unnamed', 'foreign'] as const)('Claude keeps steered input in the same turn (%s results)', async results => {
   const { client, threadId } = await openClaudeThread();
   scripted(fake => fake.emit(init('sess-steer')));
   const turn = await client.call('turns.start', { threadId, prompt: 'Keep working' });
@@ -887,10 +887,29 @@ test('user follow-ups enter the running Claude prompt stream without a second tu
     { type: 'text', text: 'Use this image' },
     { type: 'image', source: { type: 'base64', media_type: 'image/png', data: image.data } },
   ]);
+  if (results === 'capped') {
+    for (let index = 0; index < 63; index++) {
+      expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: `More context ${index}`, clientRequestId: `claude_batch_${index}` })).toEqual({ accepted: true });
+    }
+    await waitFor(() => calls[0]?.ids.length === 65);
+  }
   expect(queries[0]!.interrupts).toBe(0);
   expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
-  const finished = client.next('turn.finished', record => record.id === turn.id);
+  const finished = client.next('turn.finished', record => record.id === turn.id, 2000);
+  const [initial, followUp] = calls[0]!.ids;
+  if (results === 'separate') {
+    queries[0]!.emit(assistant('sess-steer', [{ type: 'text', text: 'Initial reply' }]));
+    queries[0]!.emit(sdk({ ...success('sess-steer'), user_message_uuid: initial, user_message_uuids: [initial] }));
+  }
   queries[0]!.emit(assistant('sess-steer', [{ type: 'text', text: 'Follow-up applied' }]));
-  queries[0]!.emit(success('sess-steer'));
-  expect((await finished).status).toBe('done');
+  queries[0]!.emit(sdk({ ...success('sess-steer'), ...(results === 'merged' ? { user_message_uuids: [initial, followUp] }
+    : results === 'capped' ? { user_message_uuid: calls[0]!.ids.at(-1), user_message_uuids: calls[0]!.ids.slice(-64) }
+    : results === 'separate' || results === 'legacy-merged' ? { user_message_uuid: followUp }
+    // A replayed or rewritten stream names ids this turn never sent: its result still ends the turn.
+    : results === 'foreign' ? { user_message_uuid: 'not-ours', user_message_uuids: ['not-ours'] } : {}) }));
+  const result = await finished;
+  expect(result.status).toBe('done');
+  if (results === 'separate') expect(result.usage?.outputTokens).toBe(6);
+  const messages = [...harness.core.journal.walkTurnMessages(threadId, turn.id)];
+  expect(messages.some(message => message.role === 'assistant' && message.parts.some(part => part.type === 'text' && part.text.includes('Follow-up applied')))).toBe(true);
 });

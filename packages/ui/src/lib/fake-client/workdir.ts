@@ -1,11 +1,14 @@
 /** A thread's working directory: files, git, the panel and published artifacts. */
-import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, PANEL_SURFACE_KINDS, RpcErrorCode, VIEW_BLOCK_MAX_BYTES, VIEW_DEFAULT_HEIGHT, VIEW_MAX_BYTES, VIEW_TITLE_MAX, viewDocument, viewTitleOf, type ArtifactContent, type FileContent, type FileEntry, type GitDiff, type GitStatus, type Message, type PanelSurface } from '@boite/contracts';
+import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, PANEL_SURFACE_KINDS, ProofInputError, RpcErrorCode, VIEW_BLOCK_MAX_BYTES, VIEW_DEFAULT_HEIGHT,
+  VIEW_MAX_BYTES, VIEW_TITLE_MAX, chatPreviewSizeProblem, deviceBound, proofPart, viewDocument, viewTitleOf,
+  type FileContent, type FileEntry, type GitDiff, type GitStatus, type Message, type MessagePart, type PanelSurface } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { FAKE_CHANGES, FAKE_DIFFS, FAKE_MEDIA, FAKE_MEDIA_PATHS, fakeBytes, fakeLanguage } from './files';
 import { seededArtifact } from './agents-demo';
 import { refusal, T0 } from './shared';
 import type { FakeContext, FakeMethods } from './context';
 import { fakeSharedFile } from './shared-access';
+import { inFakeCredentialStore } from './projects';
 
 /** A stable time per path, so two runs of a capture read the same tree. */
 function fileTime(ctx: FakeContext, path: string): number {
@@ -72,6 +75,9 @@ function inside(ctx: FakeContext, cwd: string, path: unknown, what: string, expe
     else if (parts.pop() === undefined) throw refusal(`${what} leaves the thread's working directory: ${path}`);
   }
   const relative = parts.join('/');
+  if (deviceBound(ctx.bus.principal) && inFakeCredentialStore(`${root}/${relative}`)) {
+    throw refusal(`a paired device does not read credential files; open ${path} on the owner's machine`);
+  }
   if (expect === undefined) return relative;
   const isFile = ctx.files.has(relative) || FAKE_MEDIA[relative] !== undefined;
   const isDir = isDirPath(ctx, relative);
@@ -128,7 +134,40 @@ function checkSurface(ctx: FakeContext, cwd: string, surface: PanelSurface): Pan
 }
 
 export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'browser.command'>) {
-  const snapshots = new Map<string, ArtifactContent>();
+  const snapshots = ctx.artifacts;
+  async function publish(threadId: string, source: string | undefined, parts: MessagePart[]): Promise<Message> {
+    const method = parts.length ? 'artifacts.prove' : 'artifacts.publish';
+    const thread = ctx.thread(threadId);
+    if (thread.archived) throw refusal(`${method} needs an active thread`);
+    const turn = thread.turns.at(-1);
+    if (!turn) throw refusal(`${method} needs a thread with a turn`);
+    if (source === undefined && !parts.length) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'artifacts.publish.path: expected a file path', data: { field: 'path' } });
+    if (source !== undefined) {
+      const path = inside(ctx, thread.cwd, source, 'artifacts.publish path', 'file');
+      const media = FAKE_MEDIA[path];
+      const body = media ? new Uint8Array(await (await fetch(media.url())).arrayBuffer()) : new TextEncoder().encode(ctx.files.get(path) ?? '');
+      if (body.length > ARTIFACT_MAX_BYTES) throw refusal('artifacts.publish file must be at most 512 MB');
+      if (thread.archived) throw refusal(`${method} needs an active thread`);
+      const name = path.split('/').at(-1) ?? path;
+      const mimeType = media?.mime ?? 'application/octet-stream';
+      if (body.length > ATTACHMENT_MAX_BYTES) {
+        const id = `artifact-${++ctx.seq}`;
+        const url = URL.createObjectURL(new Blob([body], { type: mimeType }));
+        ctx.artifactUrls.add(url);
+        snapshots.set(id, { name, mimeType, url, bytes: body.length });
+        parts.push({ type: 'artifact', id, name, mimeType, bytes: body.length });
+      } else {
+        let binary = '';
+        for (const byte of body) binary += String.fromCharCode(byte);
+        parts.push({ type: 'file', name, mimeType, data: btoa(binary) });
+      }
+    }
+    const message: Message = { id: `m-${++ctx.seq}`, threadId, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: ctx.now(), parts };
+    thread.messages.push(message);
+    ctx.emitToThread(thread.id, 'message.started', structuredClone(message));
+    ctx.emitToThread(thread.id, 'message.completed', { threadId, messageId: message.id, state: 'complete' });
+    return structuredClone(message);
+  }
   /** Each block's page by its HTML, so a block drawn again keeps its address, as the core's ticket does. */
   const viewBlocks = new Map<string, string>();
   return {
@@ -146,11 +185,22 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
       inside(ctx, thread.cwd, path, 'artifacts.previewClose path');
       return { ok: true as const };
     },
-    'artifacts.read': async ({ threadId, messageId, artifactId, view }) => {
+    'artifacts.read': async ({ threadId, messageId, artifactId, view, previewMax }) => {
+      const problem = chatPreviewSizeProblem(previewMax);
+      if (problem) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `artifacts.read.previewMax: expected one of ${problem.expected}`, data: problem });
       const message = ctx.thread(threadId).messages.find(m => m.id === messageId);
       const value = snapshots.get(artifactId) ?? seededArtifact(ctx, artifactId);
       const part = message?.parts.find(p => p.type === 'artifact' && p.id === artifactId);
       if (!value || part?.type !== 'artifact') throw refusal('artifacts.read needs an artifact from this message and thread');
+      if (previewMax !== undefined) {
+        const key = JSON.stringify([threadId, messageId, artifactId, previewMax]);
+        const copy = await ctx.imagePreviews.read(key, previewMax, async () => {
+          const response = await fetch(value.url);
+          return response.ok ? response.blob() : null;
+        });
+        if (!copy) return { ...value, url: '', mimeType: 'image/webp' };
+        return { ...value, url: `data:${copy.mimeType};base64,${copy.data}`, mimeType: copy.mimeType };
+      }
       if (view && !part.view) throw refusal('artifacts.read view needs an artifact published with boite view');
       return { ...value };
     },
@@ -210,36 +260,19 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
       ctx.emitToThread(thread.id, 'message.completed', { threadId: thread.id, messageId: message.id, state: 'complete' });
       return { message: structuredClone(message), checked: false, advice: [] };
     },
-    'artifacts.publish': async (params) => {
-      const thread = ctx.thread(params.threadId);
-      if (thread.archived) throw refusal('artifacts.publish needs an active thread');
-      const turn = thread.turns.at(-1);
-      if (!turn) throw refusal('artifacts.publish needs a thread with a turn');
-      const path = inside(ctx, thread.cwd, params.path, 'artifacts.publish path', 'file');
-      const media = FAKE_MEDIA[path];
-      const body = media ? new Uint8Array(await (await fetch(media.url())).arrayBuffer()) : new TextEncoder().encode(ctx.files.get(path) ?? '');
-      if (body.length > ARTIFACT_MAX_BYTES) throw refusal('artifacts.publish file must be at most 512 MB');
-      if (thread.archived) throw refusal('artifacts.publish needs an active thread');
-      if (body.length > ATTACHMENT_MAX_BYTES) {
-        const id = `artifact-${++ctx.seq}`;
-        const name = path.split('/').at(-1) ?? path;
-        const mimeType = media?.mime ?? 'application/octet-stream';
-        const url = URL.createObjectURL(new Blob([body], { type: mimeType }));
-        ctx.artifactUrls.add(url);
-        snapshots.set(id, { name, mimeType, url, bytes: body.length });
-        const message: Message = { id: `m-${++ctx.seq}`, threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: ctx.now(), parts: [{ type: 'artifact', id, name, mimeType, bytes: body.length }] };
-        thread.messages.push(message);
-        ctx.emitToThread(thread.id, 'message.started', structuredClone(message));
-        ctx.emitToThread(thread.id, 'message.completed', { threadId: thread.id, messageId: message.id, state: 'complete' });
-        return structuredClone(message);
+    'artifacts.publish': params => publish(params.threadId, params.path, []),
+    'artifacts.prove': async (params) => {
+      const { threadId, messageId } = params;
+      const message = ctx.thread(threadId).messages.find(entry => entry.id === messageId);
+      if (!message) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `message ${messageId} is not a message of thread ${threadId}`, data: { messageId } });
+      let proof: MessagePart;
+      try {
+        proof = proofPart(params, message.parts);
+      } catch (error) {
+        if (error instanceof ProofInputError) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: error.message, data: { field: error.field } });
+        throw error;
       }
-      let binary = '';
-      for (const byte of body) binary += String.fromCharCode(byte);
-      const message: Message = { id: `m-${++ctx.seq}`, threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: ctx.now(), parts: [{ type: 'file', name: path.split('/').at(-1) ?? path, mimeType: media?.mime ?? 'application/octet-stream', data: btoa(binary) }] };
-      thread.messages.push(message);
-      ctx.emitToThread(thread.id, 'message.started', structuredClone(message));
-      ctx.emitToThread(thread.id, 'message.completed', { threadId: thread.id, messageId: message.id, state: 'complete' });
-      return structuredClone(message);
+      return publish(params.threadId, params.path, [proof]);
     },
     'panel.open': async (params) => {
       const thread = ctx.thread(params.threadId);

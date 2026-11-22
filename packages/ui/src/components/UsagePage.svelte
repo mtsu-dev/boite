@@ -27,6 +27,7 @@
 </script>
 
 <script lang="ts">
+  import SettingsSection from './SettingsSection.svelte';
   import { errorText } from '../lib/errors';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -56,12 +57,13 @@
     type UsageTotals
   } from '../lib/usage';
   import InfoTip from './InfoTip.svelte';
+  import SettingsPageHeader from './SettingsPageHeader.svelte';
   import Menu from './Menu.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import UsageChart from './UsageChart.svelte';
   import UsageThreadPage from './UsageThreadPage.svelte';
 
-  let { store }: { store: Store } = $props();
+  let { store, showTitle = true }: { store: Store; showTitle?: boolean } = $props();
 
   type MachineThread = UsageHistoryThread & { machine: Machine };
   type MachineProject = UsageHistoryProject & { machine: Machine };
@@ -420,10 +422,12 @@
 {/snippet}
 
 <div class="page usage" data-testid="usage-page">
-  <header>
-    <h1 class="ui-label-box"><span class="ui-label">{strings.usage.heading}</span><InfoTip topic={strings.usage.heading} text={`${strings.usage.intro} ${strings.usage.note}`} /></h1>
-    {#if !inBand}{@render refreshButton()}{/if}
-  </header>
+  {#if showTitle || !inBand}
+    <header class:quota-actions={!showTitle}>
+      {#if showTitle}<SettingsPageHeader title={strings.usage.heading} page="usage" />{/if}
+      {#if !inBand}{@render refreshButton()}{/if}
+    </header>
+  {/if}
 
   <div class="filters">
     <div class="segmented" role="group" aria-label={strings.usage.range}>
@@ -550,8 +554,7 @@
       </section>
 
       {#if view.total.turns > 0}
-        <section class="card" id="settings-usage-threads">
-          <h2>{strings.usage.threads}</h2>
+        <SettingsSection id="settings-usage-threads" title={strings.usage.threads}>
           {#if threads.length === 0}<p class="muted">{strings.usage.noRankedThreads}</p>{/if}
           <ol class="threads" data-testid="usage-threads">
             {#each threads as thread, index (`${thread.machine.id}\u0000${thread.threadId}`)}
@@ -562,11 +565,10 @@
               </li>
             {/each}
           </ol>
-        </section>
+        </SettingsSection>
 
         {#if project === null && rankedProjects.length > 0}
-          <section class="card" id="settings-usage-projects">
-            <h2>{strings.usage.projects}</h2>
+          <SettingsSection id="settings-usage-projects" title={strings.usage.projects}>
             <ol class="projects" data-testid="usage-projects">
               {#each projectsOpen ? rankedProjects : rankedProjects.slice(0, PROJECTS_SHOWN) as entry (projectKey(entry.machine, entry.projectId))}
                 <li>
@@ -589,17 +591,16 @@
                 {projectsOpen ? strings.usage.projectsLess : fill(strings.usage.projectsMore, { count: String(rankedProjects.length) })}
               </button>
             {/if}
-          </section>
+          </SettingsSection>
         {/if}
 
-        <section class="card breakdown" id="settings-usage-breakdown">
-          <div class="card-head">
-            <h2>{strings.usage.breakdown}</h2>
+        <SettingsSection class="breakdown" id="settings-usage-breakdown" title={strings.usage.breakdown}>
+          {#snippet actions()}
             <div class="segmented" role="group" aria-label={strings.usage.breakdown}>
               <button type="button" class:on={breakdown === 'model'} aria-pressed={breakdown === 'model'} data-testid="usage-by-model" onclick={() => { breakdown = 'model'; }}><span class="ui-label">{strings.usage.byModel}</span></button>
               <button type="button" class:on={breakdown === 'day'} aria-pressed={breakdown === 'day'} data-testid="usage-by-day" onclick={() => { breakdown = 'day'; }}><span class="ui-label">{strings.usage.byDay}</span></button>
             </div>
-          </div>
+          {/snippet}
           <div class="table" class:scroll={breakdown === 'day'}>
             <table data-testid="usage-breakdown">
               {#if breakdown === 'model'}
@@ -636,7 +637,7 @@
               ? fill(strings.usage.pricingLive, { source: pricing.source.replace(/^https?:\/\//, '').replace(/\/.*$/, ''), when: relativeTime(pricing.updatedAt) })
               : fill(strings.usage.pricingBundled, { when: calendarDate.format(pricing.updatedAt) })}</p>
           {/if}
-        </section>
+        </SettingsSection>
       {/if}
     {/if}
   </div>
@@ -701,10 +702,7 @@
   .bar span { transition: width var(--dur-3) var(--ease-out-quint); display: block; height: 100%; border-radius: 2px; }
   .chart { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--color-border); }
 
-  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
-  .card-head h2 { margin: 0; }
-  .breakdown .card-head h2 { margin-bottom: 0; }
-  .breakdown { container-type: inline-size; }
+  .page :global(.breakdown) { container-type: inline-size; }
   .table { overflow-x: auto; margin: 0 calc(-1 * var(--settings-padding)); }
   /* Ninety days is ninety rows: the day view scrolls under its sticky header. */
   .table.scroll { max-height: 420px; overflow-y: auto; }

@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import App from './App.svelte';
 import { store } from './lib/store.svelte';
+import { sharedProjectThreads } from './lib/deferred-parts';
 import { workspace } from './lib/workspace.svelte';
 import { closeTour } from './lib/onboarding.svelte';
 
@@ -55,6 +56,8 @@ test('opening a conversation asks the core once for each thing the panel and the
   const [first, second] = ids.filter((id) => id !== store.openThread?.id);
   await workspace.select(store, first!);
   await waitFor(() => store.openThread?.id === first);
+  // The shared rows of each expanded project read once when their chunk arrives: that is not the open measured below.
+  await sharedProjectThreads.load();
   await settle();
 
   const client = store.client!;

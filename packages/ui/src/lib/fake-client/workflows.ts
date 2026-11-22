@@ -6,15 +6,11 @@ import {
   WORKFLOW_LIMITS,
   checkPlan,
   checkSteps,
-  closeLoop,
-  conditionHolds,
-  executionsUsed,
-  itemLabel,
-  loopAgain,
-  loopSpent,
-  renderTask,
-  resolvePath,
+  openWorkflowNode,
+  retryWorkflowSteps,
+  settleWorkflowNodes,
   shapeMismatch,
+  workflowInstance,
   workflowLevels,
   workflowValues,
   type DelegationConfig,
@@ -26,6 +22,7 @@ import {
   type SettingMachine,
   type Thread,
   type ThreadId,
+  type Turn,
   type Usage,
   type WorkflowInstance,
   type WorkflowNode,
@@ -50,7 +47,7 @@ export interface WorkflowHost {
   /** Unpauses the delegation team, what an owner resume does in the core. */
   resumeTeam(rootId: ThreadId): void;
   /** A child thread of the root on that profile, its task as the first message. */
-  child(root: Thread, profile: ChildRoute, title: string, task: string): ThreadId;
+  child(root: Thread, profile: ChildRoute, title: string, task: string, context?: WorkflowStepPlan['context']): ThreadId;
   /** The child's answer lands and it goes idle; `ok` false leaves an error instead. */
   answer(threadId: ThreadId, text: string, ok: boolean): void;
   /** A loop's next round in a child that already ran: the task as a new message, the child at work again. */
@@ -58,9 +55,11 @@ export interface WorkflowHost {
   /** A step's `machine` names another member of the group, refused in `delegate spawn --machine`'s words under `field`. */
   member(query: string, field: string): void;
   /** The step's subagent on that member, routed there; throws what that machine or the core refuses. */
-  there(root: Thread, profile: ChildRoute, step: WorkflowStepPlan, title: string, task: string): { machine: SettingMachine; childId: ThreadId; providerId: string; model: string | null; effort: string | null; worktree: DelegationWorktree | null };
+  there(root: Thread, profile: ChildRoute, step: WorkflowStepPlan, title: string, task: string): {
+    machine: SettingMachine; childId: ThreadId; worktree: DelegationWorktree | null;
+  } & Pick<WorkflowInstance, 'providerId' | 'accountId' | 'model' | 'effort' | 'contextMode'>;
   /** As `answer`, for the subagent on that machine; null while the page does not reach it. Answers the turn it ended. */
-  answerThere(coreId: string, threadId: ThreadId, text: string, ok: boolean): string | null;
+  answerThere(coreId: string, threadId: ThreadId, text: string, ok: boolean): Pick<Turn, 'id' | 'usage'> | null;
   changed(rootId: ThreadId, runId: string, templatesProjectId?: string | null): void;
   now(): number;
   delayMs(): number;
@@ -73,7 +72,14 @@ const LIST_LIMIT = 20;
 const STEP_TICKS = 60;
 const ended = (status: WorkflowStepStatus) => status === 'done' || status === 'skipped';
 const broken = (status: WorkflowStepStatus) => status === 'failed' || status === 'stopped';
-const NOT_STARTED = 'Not started: another step of the run failed';
+
+function addUsage(into: Usage, from: Usage): void {
+  into.inputTokens += from.inputTokens;
+  into.outputTokens += from.outputTokens;
+  into.cacheReadTokens += from.cacheReadTokens;
+  into.cacheWriteTokens += from.cacheWriteTokens;
+  if (from.costUsdEquivalent !== null) into.costUsdEquivalent = (into.costUsdEquivalent ?? 0) + from.costUsdEquivalent;
+}
 
 function invalid(message: string): RpcFailure {
   return new RpcFailure({ code: RpcErrorCode.InvalidParams, message });
@@ -208,7 +214,7 @@ export class FakeWorkflows {
       const entry = this.#steps.get(threadId);
       if (!entry) throw refusal('boite workflow output works only inside a workflow step');
       const run = this.#runs.get(entry.runId)!;
-      const inst = this.#instance(run, entry.key);
+      const inst = workflowInstance(run, entry.key);
       if (!inst || inst.status !== 'running' || inst.threadId !== threadId) throw refusal(`step ${entry.key} is not running`);
       const shape = run.plan.steps.find(s => s.id === entry.key.split('#')[0])?.output;
       const mismatch = shape === undefined ? null : shapeMismatch(value, shape);
@@ -284,7 +290,7 @@ export class FakeWorkflows {
   /** Ends one running execution now, the way its timer would, for a demo that must not move. */
   finish(runId: string, key: string, ok = true): void {
     const run = this.#runs.get(runId);
-    const inst = run && this.#instance(run, key);
+    const inst = run && workflowInstance(run, key);
     if (!run || !inst || inst.status !== 'running') return;
     const step = run.plan.steps.find(s => s.id === key.split('#')[0])!;
     const failing = !ok || /\bfail\b/i.test(inst.task ?? '');
@@ -292,10 +298,14 @@ export class FakeWorkflows {
     const answer = failing ? 'The step could not finish: the task asked it to fail.' : output === null ? `${step.title ?? step.id}: done, nothing else to report.` : `Done.\n\n\`\`\`json\n${JSON.stringify(output, null, 2)}\n\`\`\``;
     if (inst.threadId) this.host.answer(inst.threadId, answer, !failing);
     else if (inst.machine?.childId && inst.machine.coreId) {
-      const turnId = this.host.answerThere(inst.machine.coreId, inst.machine.childId, answer, !failing);
+      const turn = this.host.answerThere(inst.machine.coreId, inst.machine.childId, answer, !failing);
       // Out of reach, that machine reports nothing: the step waits, as the core's does, and settles once it is back.
-      if (turnId === null) return this.#arm(run.id, inst);
-      inst.machine.turnId = turnId;
+      if (turn === null) return this.#arm(run.id, inst);
+      if (turn.usage && turn.id !== inst.machine.turnId) {
+        if (inst.usage) addUsage(inst.usage, turn.usage);
+        else inst.usage = { ...turn.usage };
+      }
+      inst.machine.turnId = turn.id;
     }
     const now = this.host.now();
     if (failing) Object.assign(inst, { status: 'failed', error: 'The turn failed', finishedAt: now });
@@ -347,21 +357,29 @@ export class FakeWorkflows {
 
   #view(run: WorkflowRun): WorkflowRun {
     const empty = (): Usage => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: null });
-    const add = (into: Usage, from: Usage) => {
-      into.inputTokens += from.inputTokens; into.outputTokens += from.outputTokens;
-      into.cacheReadTokens += from.cacheReadTokens; into.cacheWriteTokens += from.cacheWriteTokens;
-      if (from.costUsdEquivalent !== null) into.costUsdEquivalent = (into.costUsdEquivalent ?? 0) + from.costUsdEquivalent;
-    };
     const byKey = new Map<string, Usage>();
+    const byNode = new Map<string, Usage>();
+    const partial = new Set<string>();
     const usage = empty();
     for (const [threadId, step] of this.#steps) {
       if (step.runId !== run.id) continue;
-      for (const turn of this.host.thread(threadId).turns) if (turn.usage) {
+      const id = step.key.split('#', 1)[0]!;
+      for (const turn of this.host.thread(threadId).turns) {
+        if (!turn.usage) {
+          if (turn.startedAt !== null && turn.finishedAt !== null && turn.execution?.operation !== 'compact' && turn.execution?.operation !== 'keepalive') partial.add(id);
+          continue;
+        }
         const bucket = byKey.get(step.key) ?? empty();
-        add(bucket, turn.usage); add(usage, turn.usage); byKey.set(step.key, bucket);
+        const rounds = byNode.get(id) ?? empty();
+        addUsage(bucket, turn.usage); addUsage(rounds, turn.usage); addUsage(usage, turn.usage);
+        byKey.set(step.key, bucket); byNode.set(id, rounds);
       }
     }
-    return structuredClone({ ...run, usage, nodes: run.nodes.map(node => ({ ...node, instances: node.instances.map(inst => ({ ...inst, usage: byKey.get(inst.key) ?? null })) })) });
+    const nodes = run.nodes.map(node => ({ ...node, ...((node.round ?? 1) > 1 ? { usage: byNode.get(node.id), usagePartial: partial.has(node.id) } : {}), instances: node.instances.map(inst => {
+      if (inst.machine && inst.usage) addUsage(usage, inst.usage);
+      return { ...inst, usage: inst.usage ?? byKey.get(inst.key) ?? null };
+    }) }));
+    return structuredClone({ ...run, usage, nodes });
   }
 
   #save(run: WorkflowRun): void {
@@ -371,25 +389,13 @@ export class FakeWorkflows {
     for (const node of run.nodes) for (const inst of node.instances) if (inst.threadId) this.host.changed(inst.threadId, run.id);
   }
 
-  #instance(run: WorkflowRun, key: string): WorkflowInstance | undefined {
-    for (const node of run.nodes) {
-      const found = node.instances.find(i => i.key === key);
-      if (found) return found;
-    }
-    return undefined;
-  }
-
-  #halted(run: WorkflowRun): boolean {
-    return run.nodes.some(node => broken(node.status) || node.instances.some(i => broken(i.status)));
-  }
-
   #advance(runId: string): void {
     const run = this.#runs.get(runId);
     if (!run) return;
     // Paused, nothing new launches, but the steps already out still end.
     if (run.status === 'paused') return this.#settle(run);
     if (run.status !== 'running') return;
-    this.#settleNodes(run);
+    settleWorkflowNodes(run, this.host.now());
     const config = this.host.config(run.rootThreadId);
     if (config.enabled && config.paused) {
       Object.assign(run, { status: 'paused', error: 'Subagents are paused for this thread. Resume to continue.' });
@@ -403,12 +409,11 @@ export class FakeWorkflows {
         if (node.status !== 'waiting' || node.instances.length) continue;
         const deps = node.after.map(id => run.nodes.find(n => n.id === id)!);
         if (!deps.every(dep => ended(dep.status))) continue;
-        this.#open(run, node, values);
+        openWorkflowNode(run, node, values, this.host.now(), id => !this.#archived(id));
         progress = true;
       }
     }
     for (;;) {
-      if (this.#halted(run)) break;
       const running = run.nodes.reduce((n, node) => n + node.instances.filter(i => i.status === 'running').length, 0);
       if (running >= run.limits.maxConcurrent) break;
       const localRunning = run.nodes.filter(n => !run.plan.steps.find(s => s.id === n.id)!.compute).reduce((n, node) => n + node.instances.filter(i => i.status === 'running').length, 0);
@@ -422,53 +427,16 @@ export class FakeWorkflows {
 
   /** The core's `settle`: a run with nothing running is over, a paused one only once every step is done. */
   #settle(run: WorkflowRun): void {
-    this.#settleNodes(run);
+    settleWorkflowNodes(run, this.host.now());
     const now = this.host.now();
     const was = run.status;
-    if (!run.nodes.some(node => node.instances.some(i => i.status === 'running'))) {
+    if (!run.nodes.some(node => node.status === 'running')) {
       const failure = run.nodes.find(node => node.status === 'failed') ?? run.nodes.find(node => broken(node.status));
       // The fake has no parent turn to wait for: the summary counts as handed back at once.
       if (failure && was === 'running') Object.assign(run, { status: 'failed', error: `${failure.title}: ${failure.error ?? failure.status}`, finishedAt: now, delivered: true });
       else if (!failure && run.nodes.every(node => ended(node.status))) Object.assign(run, { status: 'done', error: null, finishedAt: now, delivered: true });
     }
     this.#save(run);
-  }
-
-  #open(run: WorkflowRun, node: WorkflowNode, values: Record<string, unknown>): void {
-    const step = run.plan.steps.find(s => s.id === node.id)!;
-    const now = this.host.now();
-    const fail = (error: string) => Object.assign(node, { status: 'failed', error, startedAt: now, finishedAt: now });
-    if (step.when && !conditionHolds(step.when, values)) {
-      Object.assign(node, { status: 'skipped', startedAt: now, finishedAt: now });
-      return;
-    }
-    let items: unknown[] | null = null;
-    if (step.forEach) {
-      const list = resolvePath(values, step.forEach.split('.'));
-      if (!Array.isArray(list)) return void fail(`forEach: ${step.forEach} is not a list`);
-      items = list;
-    }
-    const used = executionsUsed(run);
-    const count = items ? items.length : 1;
-    if (used + count > run.limits.maxSteps) return void fail(`${count} executions would pass this run's limit of ${run.limits.maxSteps} (${used} used); raise limits.maxSteps up to ${WORKFLOW_LIMITS.maxSteps} or narrow the list`);
-    if (items && items.length === 0) {
-      Object.assign(node, { status: 'done', startedAt: now, finishedAt: now });
-      closeLoop(run, node, now);
-      return;
-    }
-    node.instances = (items ?? [undefined]).map((item, index) => {
-      const key = items ? `${node.id}#${index}` : node.id;
-      // A loop's next round reuses the conversation each execution had.
-      const last = node.previous?.find(inst => inst.key === key && inst.threadId !== null && !this.#archived(inst.threadId));
-      return {
-        key, index: items ? index : null, label: items ? itemLabel(item) : '',
-        threadId: last?.threadId ?? null, providerId: last?.providerId ?? null, model: last?.model ?? null, ...(last?.effort === undefined ? {} : { effort: last.effort }),
-        status: 'waiting', attempts: 0,
-        task: renderTask(step.task, items ? { ...values, item, index } : values), result: null, output: null,
-        error: null, startedAt: null, finishedAt: null,
-      };
-    });
-    Object.assign(node, { status: 'running', startedAt: now, error: null });
   }
 
   #launch(run: WorkflowRun, node: WorkflowNode, inst: WorkflowInstance, config: DelegationConfig): void {
@@ -485,10 +453,19 @@ export class FakeWorkflows {
       }
       const title = this.#title(run, node, inst);
       const effort = step.effort ?? profile.effort;
-      const threadId = this.host.child(root, { ...profile, effort }, title, inst.task ?? '');
-      this.#steps.set(threadId, { runId: run.id, key: inst.key });
-      Object.assign(inst, { threadId, providerId: profile.providerId, model: profile.model, effort });
+      try {
+        const threadId = this.host.child(root, { ...profile, effort }, title, inst.task ?? '', step.context);
+        this.#steps.set(threadId, { runId: run.id, key: inst.key });
+        Object.assign(inst, { threadId, providerId: profile.providerId, model: profile.model, effort });
+      } catch (error) {
+        Object.assign(inst, { status: 'failed', error: error instanceof Error ? error.message : String(error), startedAt: now, finishedAt: now });
+        return;
+      }
     } else if ((node.round ?? 1) > 1 && inst.attempts === 0) this.host.again(inst.threadId, inst.task ?? '');
+    if (inst.threadId) {
+      const child = this.host.thread(inst.threadId);
+      Object.assign(inst, { accountId: child.accountId, contextMode: child.contextMode ?? null });
+    }
     Object.assign(inst, { status: 'running', attempts: 1, error: null, result: null, output: null, startedAt: now, finishedAt: null });
     this.#arm(run.id, inst);
   }
@@ -503,7 +480,7 @@ export class FakeWorkflows {
     const timer = setTimeout(() => {
       this.#timers.delete(timer);
       const run = this.#runs.get(runId);
-      if (attempt !== undefined && (run && this.#instance(run, key))?.machine?.requestId !== attempt) return;
+      if (attempt !== undefined && (run && workflowInstance(run, key))?.machine?.requestId !== attempt) return;
       this.finish(runId, key);
     }, this.host.delayMs() * STEP_TICKS);
     this.#timers.add(timer);
@@ -538,31 +515,13 @@ export class FakeWorkflows {
       children.push({ coreId: child.machine.coreId, threadId: child.childId });
       this.#remoteSteps.set(run.rootThreadId, children);
       inst.machine = { ...inst.machine, name: child.machine.name, coreId: child.machine.coreId, childId: child.childId };
-      Object.assign(inst, { providerId: child.providerId, model: child.model, effort: child.effort });
+      Object.assign(inst, { providerId: child.providerId, accountId: child.accountId, model: child.model, effort: child.effort, contextMode: child.contextMode });
       if (child.worktree) inst.worktree = child.worktree;
       else delete inst.worktree;
       return true;
     } catch (error) {
       fail(error instanceof Error ? error.message : String(error));
       return false;
-    }
-  }
-
-  #settleNodes(run: WorkflowRun): void {
-    const halted = this.#halted(run);
-    const now = this.host.now();
-    for (const node of run.nodes) {
-      if (node.status !== 'running' || !node.instances.length) continue;
-      const running = node.instances.some(i => i.status === 'running');
-      const done = node.instances.every(i => ended(i.status));
-      if (!done && (running || !halted)) continue;
-      for (const inst of node.instances) if (inst.status === 'waiting') Object.assign(inst, { status: 'stopped', error: NOT_STARTED, finishedAt: now });
-      const failed = node.instances.find(i => i.status === 'failed');
-      const stopped = node.instances.find(i => i.status === 'stopped');
-      node.status = failed ? 'failed' : stopped ? 'stopped' : 'done';
-      node.error = (failed ?? stopped)?.error ?? null;
-      node.finishedAt = now;
-      closeLoop(run, node, now);
     }
   }
 
@@ -589,30 +548,10 @@ export class FakeWorkflows {
         if (principal === 'session') throw refusal('retrying a workflow step is an owner action');
         if (run.status === 'done') throw refusal('the run finished; start it again instead');
         if (run.status === 'paused' && principal !== 'owner') throw refusal('the run is paused; the owner resumes it');
-        const nodes = params.stepId === undefined ? run.nodes.filter(n => broken(n.status) || n.instances.some(i => broken(i.status))) : run.nodes.filter(n => n.id === params.stepId);
-        if (params.stepId !== undefined && !nodes.length) throw invalid(`stepId: no step ${params.stepId} in this run`);
-        // Work on a copy: a refused retry leaves the run as it was, as the core does.
-        const next = structuredClone(run);
-        const targets = new Set(nodes.map(node => node.id));
-        // A loop out of rounds goes one round more.
-        for (const node of next.nodes) if (targets.has(node.id) && loopSpent(next, node)) loopAgain(next, node);
-        for (const node of next.nodes) {
-          const target = targets.has(node.id);
-          for (const inst of node.instances) if (target && broken(inst.status)) {
-            // An archived step conversation takes no turn: the retry gets a new one.
-            const archived = inst.threadId !== null && this.#archived(inst.threadId);
-            Object.assign(inst, { status: 'waiting', finishedAt: null, ...(archived ? { threadId: null } : {}) });
-          }
-          // Stopped only because another step failed, it never ran: it waits again with the retried one.
-          else if (inst.status === 'stopped' && inst.error === NOT_STARTED) Object.assign(inst, { status: 'waiting', error: null, finishedAt: null });
-          if (target && !node.instances.length && broken(node.status)) Object.assign(node, { status: 'waiting', error: null, startedAt: null, finishedAt: null });
-          else if (node.instances.some(i => i.status === 'waiting')) Object.assign(node, { status: 'running', error: null, finishedAt: null });
-          else if (node.status === 'stopped' && !node.instances.length) Object.assign(node, { status: 'waiting', error: null, startedAt: null, finishedAt: null });
-        }
-        const holding = next.nodes.filter(node => broken(node.status) || node.instances.some(i => broken(i.status))).map(node => node.id);
-        if (holding.length) throw refusal(`the run stays stopped while ${holding.join(', ')} ${holding.length === 1 ? 'has' : 'have'} failed; retry ${holding.length === 1 ? 'that step' : 'those steps'} too, or retry the whole run without naming a step`);
+        if (params.stepId !== undefined && !run.nodes.some(node => node.id === params.stepId)) throw invalid(`stepId: no step ${params.stepId} in this run`);
+        if (!retryWorkflowSteps(run, params.stepId)) throw refusal('there is no failed or stopped execution to retry');
         this.#resumeTeam(run.rootThreadId);
-        Object.assign(run, next, { status: 'running', error: null, finishedAt: null, delivered: false });
+        Object.assign(run, { status: 'running', error: null, finishedAt: null, delivered: false });
         break;
       }
       default:

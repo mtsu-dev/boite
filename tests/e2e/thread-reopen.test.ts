@@ -166,7 +166,9 @@ for (const phone of [true, false]) {
         const row = phone ? `[data-testid=mobile-thread-${id}]` : `[data-thread-id="${id}"]`;
         // A project card folds its quiet threads under "Show N more": the reader unfolds it to reach an older one.
         await page.waitFor(`!!document.querySelector('${row}') || !!document.querySelector('[data-testid=project-more][aria-expanded=false]')`);
-        await page.evaluate(`document.querySelector('${row}') || document.querySelectorAll('[data-testid=project-more][aria-expanded=false]').forEach((button) => button.click())`);
+        await page.evaluate(`(() => {
+          if (!document.querySelector('${row}')) document.querySelectorAll('[data-testid=project-more][aria-expanded=false]').forEach(button => button.click());
+        })()`);
         await page.click(row);
         // The short thread holds no message; the long one is open once its rows are drawn.
         await page.waitFor(`${STORE}.openThread?.id === '${id}' && ${STORE}.loadingThreadId === null${id === long ? " && !!document.querySelector('[data-testid=timeline] [data-mid]')" : ''}`, 60_000);
@@ -187,9 +189,20 @@ for (const phone of [true, false]) {
 
       // The picture is a placeholder that fetches it as it nears the screen, before it is on it.
       expect(await page.evaluate<boolean | string>(reveal(PICTURE, { near: '.images' }), 120_000)).toBe(true);
-      await page.waitFor(`document.querySelector('[data-mid="${PICTURE}"] [data-testid=image-part]')?.naturalWidth === 220`, 30_000);
+      const pictureRow = `[data-mid="${PICTURE}"]`;
+      await page.waitFor(`(() => {
+        const thumbnail = document.querySelector('${pictureRow} [data-testid=image-part]');
+        return thumbnail?.naturalWidth === 192 && thumbnail.naturalHeight === 192;
+      })()`, 30_000);
       expect(await page.evaluate<boolean | string>(reveal(PICTURE), 120_000)).toBe(true);
       await page.screenshot(join(artifacts, `thread-reopen-picture-${name}.png`));
+      await page.click(`${pictureRow} [data-testid=image-open]`);
+      await page.waitFor(`(() => {
+        const original = document.querySelector('[data-testid=image-viewer] img');
+        return original?.naturalWidth === 220 && original.naturalHeight === 220;
+      })()`);
+      await page.click('[data-testid=image-viewer-close]');
+      await page.waitFor('!document.querySelector("[data-testid=image-viewer]")');
 
       // Pages hold about one screen: the next one above lands under a reader whose text stays put.
       expect(await page.evaluate<number | string>(landingDrift(), 30_000)).toBe(0);

@@ -5,8 +5,7 @@
  */
 
 /**
- * The rail is available to the owner.
- * A paired device can send a human reply from a shared conversation.
+ * The rail is available to the owner. A paired device can send a human reply from a shared conversation.
  */
 export function contactsShown(store: { owner: boolean }): boolean {
   return store.owner;

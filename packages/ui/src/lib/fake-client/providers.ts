@@ -121,10 +121,10 @@ export const PROBED_MODELS: ModelInfo[] = [
   ...PROBED_CATALOGUE.map(([id, name]): ModelInfo => ({ id, name, default: false, effort: PROBED_EFFORT }))
 ];
 
-export const PROBE_PROVIDERS: Pick<ProviderSummary, 'id' | 'name' | 'protocol' | 'login'>[] = [
+export const PROBE_PROVIDERS: Pick<ProviderSummary, 'id' | 'name' | 'protocol' | 'login' | 'acpSteering'>[] = [
   { id: 'codex', name: 'Codex', protocol: 'codex-appserver', login: { kind: 'device' } },
   { id: 'pi', name: 'pi', protocol: 'pi', login: false },
-  { id: 'grok', name: 'Grok', protocol: 'acp', login: { kind: 'command' } },
+  { id: 'grok', name: 'Grok', protocol: 'acp', login: { kind: 'command' }, acpSteering: true },
   { id: 'muse', name: 'Muse Code', protocol: 'muse', login: { kind: 'command' } },
   { id: 'vibe', name: 'Mistral Vibe', protocol: 'acp', login: { kind: 'terminal' } }
 ];

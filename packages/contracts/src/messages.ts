@@ -152,7 +152,7 @@ export type MessagePart =
    * `omitted`: characters a page left out of the end of `text` because the
    * message was too heavy to send whole (`MESSAGE_SENT_MAX_BYTES`). Never persisted.
    */
-  | { type: 'text'; text: string; complete?: boolean; displayText?: string; previewReferences?: PreviewReference[]; activity?: ActivityTurn; moved?: MoveNotice; newConversation?: NewConversationNotice; startedBy?: ThreadLink; started?: ThreadLink; sentFrom?: SentFrom; byPlugin?: PluginActor; omitted?: number; teamPost?: TeamPostRef }
+  | { type: 'text'; text: string; complete?: boolean; displayText?: string; previewReferences?: PreviewReference[]; activity?: ActivityTurn; moved?: MoveNotice; newConversation?: NewConversationNotice; startedBy?: ThreadLink; started?: ThreadLink; sentFrom?: SentFrom; byPlugin?: PluginActor; omitted?: number; teamPost?: TeamPostRef; proof?: true }
   /**
    * An image the user sent with the prompt, journalled with the message. A page
    * asked with `compactImages` leaves a large one's `data` empty, with
@@ -171,7 +171,7 @@ export type MessagePart =
    * end of its turn instead of a file card, and one that does not know the field still offers
    * the download.
    */
-  | { type: 'artifact'; id: string; mimeType: string; bytes: number; name: string; view?: InlineView }
+  | { type: 'artifact'; id: string; mimeType: string; bytes: number; name: string; view?: InlineView; windowCapture?: true }
   /** The model's reasoning as the provider streams it, folded in the UI. */
   | { type: 'thinking'; text: string; startedAt?: Timestamp; finishedAt?: Timestamp | null; omitted?: number }
   | {
@@ -277,7 +277,7 @@ export type MessagePart =
    * not be made; `path` is the file the agent asked for, `width` and `height`
    * that file's size (the window's for a stream).
    */
-  | { type: 'window_capture'; kind: WindowCaptureKind; windowId: string; process: string; width: number; height: number; at: Timestamp; thumbnail: { data: string; width: number; height: number } | null; path?: string; frames?: number }
+  | { type: 'window_capture'; kind: WindowCaptureKind; windowId: string; process: string; width: number; height: number; at: Timestamp; thumbnail: { data: string; width: number; height: number } | null; path?: string; frames?: number; artifactId?: string }
   /**
    * An agent asked to capture an app the project does not allow: the owner
    * answers Allow once, Always for this project or Refuse. `answer` is null
@@ -395,15 +395,73 @@ export const DISPLAY_IMAGE_MAX = 1280;
  */
 export const DISPLAY_THUMB_MAX = 320;
 
+/** Maximum long edges of chat previews, in device pixels. Quantized to bound cached copies. */
+export const CHAT_PREVIEW_SIZES = [192, 320, 384, 480, 576, 704, 832, 1024, 1280, 1536, 1792, 2048] as const;
+export type ChatPreviewSize = typeof CHAT_PREVIEW_SIZES[number];
+export const CHAT_PREVIEW_IMAGES = /^image\/(png|jpeg|gif|webp|avif|bmp)$/;
+
+export function chatPreviewSize(pixels: number): ChatPreviewSize {
+  return CHAT_PREVIEW_SIZES.find(size => size >= pixels) ?? CHAT_PREVIEW_SIZES.at(-1)!;
+}
+
+export function chatPreviewSizeProblem(value: unknown): { field: 'previewMax'; expected: string } | null {
+  return value === undefined || CHAT_PREVIEW_SIZES.some(size => size === value) ? null
+    : { field: 'previewMax', expected: CHAT_PREVIEW_SIZES.join(', ') };
+}
+
+export interface ProofSource { threadId: ThreadId; messageId: MessageId; line: string; unchecked: string; path?: string }
+
+export class ProofInputError extends Error {
+  constructor(readonly field: keyof ProofSource, expected: string) {
+    super(`artifacts.prove.${field}: ${expected}`);
+  }
+}
+
+function recordedCommand(tool: Extract<MessagePart, { type: 'tool' }>): string {
+  if (tool.status !== 'done' && tool.status !== 'error') return '';
+  const input = typeof tool.input === 'object' && tool.input ? tool.input as Record<string, unknown> : {};
+  const command = input.command ?? input.cmd;
+  if (typeof command === 'string') return command.trim();
+  return Array.isArray(command) && command.length > 0 && command.every(arg => typeof arg === 'string') ? JSON.stringify(command) : '';
+}
+
+/** Compose a journal-backed proof in the existing Markdown and attachment renderers. */
+export function proofPart(source: ProofSource, parts: readonly MessagePart[]): Extract<MessagePart, { type: 'text' }> {
+  if (typeof source.line !== 'string' || !source.line.trim() || source.line.length > 1000 || /[\r\n]/.test(source.line)) {
+    throw new ProofInputError('line', 'expected one output line of 1 to 1000 characters');
+  }
+  if (typeof source.unchecked !== 'string' || !source.unchecked.trim() || source.unchecked.length > 1000) {
+    throw new ProofInputError('unchecked', 'expected 1 to 1000 characters describing what remains unchecked');
+  }
+  if (source.path !== undefined && (typeof source.path !== 'string' || !source.path.trim())) {
+    throw new ProofInputError('path', 'expected a capture path inside the checkout');
+  }
+  const line = source.line.trim();
+  const commands = parts.flatMap(part => {
+    if (part.type !== 'tool' || !part.output?.split(/\r?\n/).some(output => output.trim() === line)) return [];
+    const command = recordedCommand(part);
+    return command ? [command] : [];
+  });
+  if (commands.length !== 1) throw new ProofInputError('line', 'expected a line from exactly one completed command in this message');
+  const evidence = `${commands[0]}\n${line}`;
+  let fenceLength = 3;
+  for (const run of evidence.matchAll(/`{3,}/g)) fenceLength = Math.max(fenceLength, run[0].length + 1);
+  const fence = '`'.repeat(fenceLength);
+  return { type: 'text', text: `${fence}\n${evidence}\n${fence}\n\n${source.unchecked.trim()}`, proof: true };
+}
+
 export interface MessagesRpcMethods {
   /** Explicitly publish a bounded file snapshot from this thread's working directory. */
   'artifacts.publish': { params: { threadId: ThreadId; path: string }; result: Message };
+  /** Publish a line of a completed tool's output and optionally a snapshot from the thread's checkout. */
+  'artifacts.prove': { params: ProofSource; result: Message };
   /**
    * `view: true` asks for the address a published view opens as a page at
    * (`VIEW_ROUTE`), which only an artifact carrying `view` has; without it the
-   * address downloads.
+   * address downloads. `previewMax` asks for the cached chat image at that
+   * maximum long edge. A source that cannot be rendered has no preview URL.
    */
-  'artifacts.read': { params: { threadId: ThreadId; messageId: MessageId; artifactId: string; renew?: string; view?: true }; result: ArtifactContent };
+  'artifacts.read': { params: { threadId: ThreadId; messageId: MessageId; artifactId: string; renew?: string; view?: true; previewMax?: ChatPreviewSize }; result: ArtifactContent };
   /**
    * Publish an HTML page of this thread's working directory as an inline view
    * (`boite view`). Local files it names are embedded, a remote resource or a
@@ -516,7 +574,8 @@ export interface MessagesRpcMethods {
    * the answers to decoded pictures in 93 ms and 12 ms.
    */
   'messages.attachment': {
-    params: { threadId: ThreadId; messageId: MessageId; partIndex: number; display?: boolean; thumb?: boolean; ticket?: boolean };
+    /** `previewMax` requests a chat-sized copy. A small original may answer if it already fits. */
+    params: { threadId: ThreadId; messageId: MessageId; partIndex: number; display?: boolean; thumb?: boolean; ticket?: boolean; previewMax?: ChatPreviewSize };
     result: { data: string; mimeType?: string; url?: string; bytes?: number };
   };
 }

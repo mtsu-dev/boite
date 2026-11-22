@@ -8,15 +8,16 @@ import { CodexTurn } from './codex/turn.ts';
 import { ModelProbes } from './model-probes.ts';
 import type { Driver, SessionContext, TurnContext, TurnHandle } from './types.ts';
 import { noteWarmSession } from './driver-log.ts';
+import { ThreadSessions } from './thread-sessions.ts';
 export { readCodexQuota } from './codex/models.ts';
 
 const MINUTE_MS = 60_000;
 
 /** One `codex app-server` process per thread, kept between turns like the ACP one. */
 export function createCodexDriver(): Driver {
-  const sessions = new Map<ThreadId, CodexSession>();
+  const sessions = new ThreadSessions<CodexSession>();
   const probes = new ModelProbes(async context => {
-    const session = context.catalogThread ? sessions.get(context.catalogThread.id) : undefined;
+    const session = context.catalogThread ? sessions.current.get(context.catalogThread.id) : undefined;
     if (session) {
       try {
         const models = await session.catalog(context);
@@ -25,13 +26,12 @@ export function createCodexDriver(): Driver {
     }
     return readModels(context);
   });
-  const viewed = new Set<ThreadId>();
 
   function acquire(ctx: SessionContext): CodexSession {
     const threadId = ctx.thread.id;
     const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
     const key = sessionKey(ctx);
-    let session = sessions.get(threadId) ?? null;
+    let session = sessions.current.get(threadId) ?? null;
     let previousClosed = Promise.resolve();
     const usable = session?.usable(key, warmMs) === true;
     const setupChange = 'the thread changed mode, account, folder or compaction limit';
@@ -41,11 +41,9 @@ export function createCodexDriver(): Driver {
       session = null;
     }
     if (session === null) {
-      session = new CodexSession(key, warmMs, ended => {
-        if (sessions.get(threadId) === ended) sessions.delete(threadId);
-      }, previousClosed);
-      if (viewed.has(threadId)) session.setViewed(true);
-      sessions.set(threadId, session);
+      session = new CodexSession(key, warmMs, ended => sessions.ended(threadId, ended), previousClosed);
+      if (sessions.viewed.has(threadId)) session.setViewed(true);
+      sessions.current.set(threadId, session);
     }
     return session;
   }
@@ -60,11 +58,7 @@ export function createCodexDriver(): Driver {
     title: (context) => titleTurn(context),
 
     prepare: (ctx, options) => acquire(ctx).prepare(ctx, options?.forTurn),
-    setViewed(threadId, active) {
-      if (active) viewed.add(threadId);
-      else viewed.delete(threadId);
-      sessions.get(threadId)?.setViewed(active);
-    },
+    setViewed: sessions.setViewed,
 
     startTurn(ctx: TurnContext): TurnHandle {
       const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
@@ -73,7 +67,7 @@ export function createCodexDriver(): Driver {
       running.attach(turn, warmMs);
       return {
         done: turn.done,
-        steer: (text, attachments) => running.steer(turn, text, attachments),
+        steer: (text, attachments, onAccepted, signal) => running.steer(turn, text, attachments, onAccepted, signal),
         applySettings: change => running.applySettings(turn, change),
         stop: (): void => {
           running.stopTurn(turn);
@@ -82,14 +76,14 @@ export function createCodexDriver(): Driver {
     },
 
     releaseThread(threadId: ThreadId): void {
-      const session = sessions.get(threadId);
+      const session = sessions.current.get(threadId);
       if (session === undefined || session.busy()) return;
-      void session.close(null);
+      session.release();
     },
 
     shutdown(): void {
-      const open = [...sessions.values()];
-      viewed.clear();
+      const open = [...sessions.current.values()];
+      sessions.viewed.clear();
       probes.forget();
       for (const session of open) void session.close(null);
     },

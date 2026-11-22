@@ -8,6 +8,7 @@ import type { FakeContext } from './context';
  * as it now stands, its own mail kept.
  */
 const mail = new WeakMap<FakeContext, Map<ThreadId, string[]>>();
+const toolHolds = new WeakMap<FakeContext, Set<ThreadId>>();
 // The shared-compute fake names its remote job threads, where a history stops.
 const workers = new WeakMap<FakeContext, (threadId: ThreadId) => boolean>();
 
@@ -25,7 +26,7 @@ function heldMail(ctx: FakeContext): Map<ThreadId, string[]> {
   return held;
 }
 
-function history(ctx: FakeContext, threadId: ThreadId): ThreadId[] {
+export function contactHistory(ctx: FakeContext, threadId: ThreadId): ThreadId[] {
   const ids: ThreadId[] = [];
   for (let thread = ctx.threads.get(threadId); thread && !ids.includes(thread.id); thread = thread.parentThreadId ? ctx.threads.get(thread.parentThreadId) : undefined) {
     ids.push(thread.id);
@@ -35,7 +36,7 @@ function history(ctx: FakeContext, threadId: ThreadId): ThreadId[] {
 }
 
 function holdOf(ctx: FakeContext, threadId: ThreadId): Thread['contactHold'] {
-  const contacts = [...new Set(history(ctx, threadId).flatMap(id => heldMail(ctx).get(id) ?? []))];
+  const contacts = [...new Set(contactHistory(ctx, threadId).flatMap(id => heldMail(ctx).get(id) ?? []))];
   return contacts.length ? { contacts } : null;
 }
 
@@ -49,7 +50,12 @@ function settle(ctx: FakeContext, changed: ThreadId[]): void {
     const thread = ctx.threads.get(id);
     if (!thread) continue;
     const hold = holdOf(ctx, id);
-    if (JSON.stringify(thread.contactHold ?? null) !== JSON.stringify(hold)) { thread.contactHold = hold; ctx.touch(thread); }
+    const toolsHeld = contactHistory(ctx, id).some(parent => contactToolsHeld(ctx, parent));
+    if (JSON.stringify(thread.contactHold ?? null) !== JSON.stringify(hold) || !!thread.contactToolsHeld !== toolsHeld) {
+      thread.contactHold = hold;
+      thread.contactToolsHeld = toolsHeld;
+      ctx.touch(thread);
+    }
     for (const child of ctx.threads.values()) if (child.parentThreadId === id && !sharedWorker(ctx, child.id)) queue.push(child.id);
   }
 }
@@ -57,12 +63,26 @@ function settle(ctx: FakeContext, changed: ThreadId[]): void {
 /** Mail from these contacts, outside a shared project, reached the thread; earlier holders stay. */
 export function holdContactMail(ctx: FakeContext, threadId: ThreadId, contacts: string[]): void {
   heldMail(ctx).set(threadId, [...new Set([...(heldMail(ctx).get(threadId) ?? []), ...contacts])]);
+  recordContactDelivery(ctx, threadId);
+}
+
+export function recordContactDelivery(ctx: FakeContext, threadId: ThreadId): void {
+  let holds = toolHolds.get(ctx);
+  if (!holds) { holds = new Set(); toolHolds.set(ctx, holds); }
+  holds.add(threadId);
   settle(ctx, [threadId]);
 }
 
+export function contactToolsHeld(ctx: FakeContext, threadId: ThreadId): boolean {
+  return toolHolds.get(ctx)?.has(threadId) ?? false;
+}
+
 export function trustContactMail(ctx: FakeContext, threadId: ThreadId): void {
-  const ids = history(ctx, threadId);
-  for (const id of ids) heldMail(ctx).delete(id);
+  const ids = contactHistory(ctx, threadId);
+  for (const id of ids) {
+    heldMail(ctx).delete(id);
+    toolHolds.get(ctx)?.delete(id);
+  }
   settle(ctx, ids);
 }
 

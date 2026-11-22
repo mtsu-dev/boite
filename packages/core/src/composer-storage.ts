@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { Attachment, ComposerAttachment, ComposerRecord, ComposerValue } from '@boite/contracts';
-import { answerAttachmentError, composerInputThreadId, decodedBytes, privateTerminalComposerId, stableComposerValue, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES } from '@boite/contracts';
+import type { Attachment, ComposerAttachment, ComposerCursor, ComposerPage, ComposerRecord, ComposerValue } from '@boite/contracts';
+import { answerAttachmentError, composerInputThreadId, composerPage, composerRevision, COMPOSER_RECORD_MAX_BYTES, decodedBytes, isComposerKey, privateTerminalComposerId, stableComposerValue, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, notFound, refused } from './errors.ts';
 import type { Connection } from './router.ts';
@@ -14,6 +14,7 @@ export interface Delivery {
 
 export const digest = (value: unknown): string => createHash('sha256').update(stableComposerValue(value)).digest('hex');
 export const recordKey = (section: string, id: string): string => JSON.stringify([section, id]);
+const wireBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 
 /** Composer data has its own rows: typing never rewrites a message or an attachment. */
 export class ComposerStorage {
@@ -42,6 +43,27 @@ export class ComposerStorage {
   list(ownerId?: string): ComposerRecord[] {
     const memory = [...this.#privateRecords.values()].filter(record => ownerId === undefined || this.owner(record)?.id === ownerId);
     return [...(this.#core.journal.db.query('SELECT * FROM composer_records ORDER BY section, id').all() as Row[]).map(row => this.#decode(row)), ...memory].map(record => structuredClone(record));
+  }
+
+  listPage(ownerId: string, after: ComposerCursor | undefined): ComposerPage {
+    if (after !== undefined && (!isComposerKey(after) || (after.privateMode !== undefined && after.privateMode !== true))) {
+      throw invalidParams('composer.listPage.after: expected a cursor from an earlier page');
+    }
+    return composerPage(this.#orderedRecords(ownerId, after), wireBytes);
+  }
+
+  *#orderedRecords(ownerId: string, after: ComposerCursor | undefined): Iterable<ComposerRecord> {
+    if (!after?.privateMode) {
+      const statement = this.#core.journal.db.prepare(after
+        ? 'SELECT * FROM composer_records WHERE (section, id) > (?, ?) ORDER BY section, id'
+        : 'SELECT * FROM composer_records ORDER BY section, id');
+      try {
+        const rows = after ? statement.iterate(after.section, after.id) : statement.iterate();
+        for (const row of rows) yield this.#decode(row as Row);
+      } finally { statement.finalize(); }
+    }
+    const compare = (a: ComposerCursor, b: ComposerCursor) => a.section !== b.section ? (a.section < b.section ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    yield* [...this.#privateRecords.values()].filter(record => this.owner(record)?.id === ownerId && (!after?.privateMode || compare(record, after) > 0)).sort(compare);
   }
 
   owner(record: Pick<ComposerRecord, 'section' | 'id'>): Connection | undefined { return this.#privateOwners.get(recordKey(record.section, record.id)); }
@@ -81,11 +103,13 @@ export class ComposerStorage {
       (section === 'inputs' && this.#core.journal.getThread(composerInputThreadId(id))?.incognito === true);
   }
 
-  save(section: ComposerRecord['section'], id: string, value: ComposerValue | null, owner?: Connection): ComposerRecord {
+  save(section: ComposerRecord['section'], id: string, value: ComposerValue | null, owner?: Connection, excludeConnection?: string): ComposerRecord {
     const previous = this.get(section, id);
     const references = value ? this.references(value).map(reference => reference.assetId) : [];
     const privateMode = this.privateMode(section, id, value);
     const record: ComposerRecord = { section, id, value, revision: previous.revision + 1, updatedAt: Date.now(), ...(privateMode ? { privateMode: true } : {}) };
+    const bytes = wireBytes(record);
+    if (bytes > COMPOSER_RECORD_MAX_BYTES) throw invalidParams(`composer.value: expected at most ${COMPOSER_RECORD_MAX_BYTES} serialized UTF-8 bytes`);
     if (privateMode) {
       if (previous.revision && !this.#privateRecords.has(recordKey(section, id))) throw refused('composer: a persisted composer cannot become incognito; use a new draft');
       const connection = this.#privateOwners.get(recordKey(section, id)) ?? owner;
@@ -105,8 +129,9 @@ export class ComposerStorage {
     }
     if (previous.value) this.#collectAssets(this.references(previous.value).map(reference => reference.assetId).filter(assetId => !references.includes(assetId)));
     const privateOwner = this.#privateOwners.get(recordKey(section, id));
-    if (privateOwner) privateOwner.sendEvent('composer.updated', structuredClone(record));
-    else this.#core.bus.emit('composer.updated', structuredClone(record));
+    if (privateOwner) {
+      if (privateOwner.id !== excludeConnection) privateOwner.sendEvent('composer.updated', structuredClone(record));
+    } else this.#core.bus.emit('composer.updated', structuredClone(record), { excludeConnection, composerRevision: composerRevision(record, previous, () => bytes) });
     return record;
   }
 

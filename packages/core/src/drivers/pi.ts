@@ -7,13 +7,13 @@ import { PiSession } from './pi/session.ts';
 import { PiTurn } from './pi/turn.ts';
 import type { Driver, ProbeContext, ProbeFilter, ProbeResult, SessionContext, TurnContext, TurnHandle } from './types.ts';
 import { noteWarmSession } from './driver-log.ts';
+import { ThreadSessions } from './thread-sessions.ts';
 
 const MINUTE_MS = 60_000;
 
 /** One `pi --mode rpc` process per thread, kept between turns like the Codex one. */
 export function createPiDriver(): Driver {
-  const sessions = new Map<ThreadId, PiSession>();
-  const viewed = new Set<ThreadId>();
+  const sessions = new ThreadSessions<PiSession>();
   const probes = new ModelProbes(readModels);
 
   function acquire(ctx: SessionContext): PiSession {
@@ -22,33 +22,27 @@ export function createPiDriver(): Driver {
     const key = sessionKey(ctx);
     const compaction = compactionSetting(ctx);
 
-    let session = sessions.get(threadId) ?? null;
+    let session = sessions.current.get(threadId) ?? null;
     const usable = session?.usable(key, warmMs, compaction) === true;
     noteWarmSession(ctx, 'pi', { kept: session !== null, usable, sameSetup: session?.key === key, setupChange: 'the thread changed model, effort, account or folder' });
     if (session !== null && !usable) {
-      sessions.delete(threadId);
+      sessions.current.delete(threadId);
       session.close(session.key !== key ? 'the thread changed model, effort, account or folder'
         : session.compaction !== compaction ? 'the background compaction setting changed' : null, ctx);
       session = null;
     }
     if (session === null) {
-      session = new PiSession(key, warmMs, (ended) => {
-        if (sessions.get(threadId) === ended) sessions.delete(threadId);
-      }, compaction);
-      sessions.set(threadId, session);
+      session = new PiSession(key, warmMs, ended => sessions.ended(threadId, ended), compaction);
+      sessions.current.set(threadId, session);
     }
     const running = session;
-    if (viewed.has(threadId)) running.setViewed(true);
+    if (sessions.viewed.has(threadId)) running.setViewed(true);
     return running;
   }
 
   return {
     prepare: (ctx, options) => acquire(ctx).prepare(ctx, options?.forTurn),
-    setViewed(threadId, active) {
-      if (active) viewed.add(threadId);
-      else viewed.delete(threadId);
-      sessions.get(threadId)?.setViewed(active);
-    },
+    setViewed: sessions.setViewed,
     protocol: 'pi',
 
     probe(ctx: ProbeContext): Promise<ProbeResult> {
@@ -70,7 +64,7 @@ export function createPiDriver(): Driver {
       running.attach(turn, warmMs);
       return {
         done: turn.done,
-        steer: (message, attachments) => running.steer(turn, message, attachments),
+        steer: (message, attachments, onAccepted, signal) => running.steer(turn, message, attachments, onAccepted, signal),
         applySettings: change => running.applySettings(turn, change),
         stop: (): void => {
           running.stopTurn(turn);
@@ -79,17 +73,12 @@ export function createPiDriver(): Driver {
     },
 
     releaseThread(threadId: ThreadId): void {
-      viewed.delete(threadId);
-      const session = sessions.get(threadId);
-      if (session === undefined || session.busy()) return;
-      sessions.delete(threadId);
-      session.close(null);
+      sessions.viewed.delete(threadId);
+      sessions.takeIdle(threadId)?.close(null);
     },
 
     shutdown(): void {
-      const open = [...sessions.values()];
-      sessions.clear();
-      viewed.clear();
+      const open = sessions.takeAll();
       for (const session of open) session.close(null);
       probes.forget();
     },

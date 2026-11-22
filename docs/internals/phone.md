@@ -378,7 +378,12 @@ home folder's hidden entries, `AppData` or `Library`, so a new agent CLI's folde
 is covered before anyone lists it. The temporary folder and the cloud drives under
 `Library/CloudStorage` and `Library/Mobile Documents` are not among them. A project
 or shared worktree folder the owner keeps inside one of them (`~/.worktrees`, iCloud
-Drive, the data folder) is a root of its own and keeps its reads. At a phone's width the Changes panel shows
+Drive, the data folder) is a root of its own and keeps its reads. In a shared
+XDG folder, the provider's declared login files and SQLite sidecars stay private,
+including the targets of links. A paired device cannot add a nested folder
+that directly holds a declared login file as a project. It can add projects
+beside or inside that folder. A provider's declared dedicated roots stay
+private as a whole. At a phone's width the Changes panel shows
 the list, then one diff with Back and previous/next file; a file reads as wrapped,
 numbered lines with no editor.
 
@@ -522,9 +527,11 @@ Safari 17 and Chrome 114 for the complete layout:
 This table describes features in the built CSS and `lib/floating.ts`. It does
 not record real Safari 15/16 device testing.
 
-A browser under the floor fails to parse the app, so `main.ts` never runs. An
-inline script in `index.html` notices on `load` and writes one sentence in the
-page instead: this browser cannot start Boite, and the versions it needs. A
+The HTML paints a localized Starting message while the app files load. On a
+fresh phone, the scan and paste controls can open before the conversations
+navigation is fetched. A browser under the floor fails to parse the app, so
+`main.ts` never runs. On `load`, an inline script in `index.html` replaces the
+status with a notice listing the browser versions Boite needs. A
 browser that has `Array.prototype.at`, `Object.hasOwn`, `structuredClone` and
 `oklch()`, which Safari 15.4 and Chrome 111 are the first to have together,
 failed before the entry ran instead, most often on a chunk lost on the way
@@ -676,11 +683,12 @@ the locale map of an inline script: the language the page last spoke, which it
 writes beside the notification words, else the device's first language the
 build has, else English. The app mounts only with a catalogue, so an offline
 open needs it as much as the entry; the other languages stay on the wire until
-someone picks one. It also stores the phone navigation's chunk and the files
-it imports, which the build lists in a `boite-offline` meta tag
-(`offlineParts` in `packages/ui/vite.config.ts`): the header and the recovery
-screen live there, and the browser fetches nothing for that tag, so the
-desktop shell never loads them (`tests/e2e/offline-phone.test.ts`). Every
+someone picks one. Once a connection is accepted, the app asks the worker
+to store the phone navigation, conversation list, chat and agent views listed in
+`boite-offline-conversations`. On desktop the build preloads the views with
+the entry, reusing the document's links, and draws them together once connected.
+A fresh phone can pair before the views load
+(`tests/e2e/phone-startup.test.ts`, `tests/e2e/offline-phone.test.ts`). Every
 successful navigation refreshes the offline
 HTML. Network errors and HTTP 5xx responses fall back to that cached shell.
 Secondary screens are cached when opened; an uncached Settings screen names

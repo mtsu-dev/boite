@@ -17,6 +17,22 @@ async function settle() {
   flushSync();
 }
 
+test('context menus mask account labels and announce radio choices', async () => {
+  running = mount(ContextMenu, { target: document.body });
+  await settle();
+  contextMenu.open(new MouseEvent('contextmenu'), [
+    { id: 'account', label: 'Work <demo@example.com>', radio: true, checked: true },
+    { id: 'unavailable', label: 'Unavailable', disabled: true },
+    { id: 'other', label: 'Other' }
+  ], () => {});
+  await settle();
+  const account = document.querySelector<HTMLElement>('[data-value=account]')!;
+  expect(account.getAttribute('role')).toBe('menuitemradio');
+  expect(account.querySelector('.private-email')?.textContent).toBe('demo@example.com');
+  account.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+  expect(document.activeElement?.getAttribute('data-value')).toBe('other');
+});
+
 test('a scroll beside the row a menu was opened on leaves it open, and one that moves the row closes it', async () => {
   running = mount(ContextMenu, { target: document.body }); await settle();
   const sidebar = document.body.appendChild(document.createElement('nav'));
@@ -85,7 +101,7 @@ test('a phone long press is the shared sheet from its first frame: docked, its c
     expect(sheet.dataset['mobileSheet']).toBe('true');
     expect([sheet.style.left, sheet.style.bottom]).toEqual(['0px', '0px']);
     await settle();
-    expect(Array.from(sheet.children).map((one) => one.getAttribute('data-value') ?? one.className.split(' ')[0])).toEqual(['section', 'pin', 'rule', 'delete']);
+    expect(Array.from(sheet.children, (one) => one.getAttribute('data-value') ?? one.getAttribute('role'))).toEqual(['presentation', 'pin', 'separator', 'delete']);
     expect(sheet.querySelector('.section')?.textContent).toBe('Project and branch');
     const pin = sheet.querySelector('[data-value=pin]')!;
     expect(pin.lastElementChild?.classList.contains('check')).toBe(true);

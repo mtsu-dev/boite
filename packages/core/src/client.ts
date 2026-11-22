@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, RPC_PATH } from '@boite/contracts';
+import { PROTOCOL_VERSION, RPC_PATH, RpcErrorCode } from '@boite/contracts';
 import { TextSocket, UpgradeError } from './ws-client.ts';
 import type {
   CoreInfo,
@@ -66,6 +66,10 @@ class RpcCallError extends Error {
     super(rpc.message);
     this.name = 'RpcCallError';
   }
+}
+
+export function isMethodNotFound(error: unknown): boolean {
+  return error instanceof RpcCallError && error.rpc.code === RpcErrorCode.MethodNotFound;
 }
 
 function socketUrl(url: string): string {

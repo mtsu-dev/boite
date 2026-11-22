@@ -24,6 +24,12 @@ export function isLoopbackAddress(address: string | null): boolean {
   return bare === '::1' || /^127\.\d+\.\d+\.\d+$/.test(bare);
 }
 
+/** Local process probes carry both a loopback peer and a loopback Host. */
+export function localHealthProbe(address: string | null, headers: Headers): boolean {
+  return isLoopbackAddress(address) && isLoopbackHost(headers.get('host'))
+    && !['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-real-ip', 'tailscale-funnel-request', RELAYED_LINK_HEADER].some(name => headers.has(name));
+}
+
 /**
  * The header a member of the group sets when it carries a client's socket to
  * another member (`group/relay.ts`): `encrypted` or `plain`, for the hop from

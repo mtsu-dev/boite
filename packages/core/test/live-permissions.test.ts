@@ -87,7 +87,8 @@ test.each([[false, false], [true, false], [false, true]])('restart coalesces mod
     if (!stop) {
       expect(attempts[1]!.thread.permissionMode).toBe('default');
       expect(attempts[1]!.sessionId).toBe('native-session');
-      expect(attempts[1]!.prompt).toContain('Do not repeat completed work');
+      expect(attempts[1]!.prompt).toContain('The user set permission mode to default. Resume where you stopped, keeping later instructions.');
+      expect(attempts[1]!.prompt).toEndWith('Request for reference:\nKeep working');
       expect(attempts[1]!.sessionBefore).toEqual(totals ? { costUsd: 0.9, tokens: 40 } : { costUsd: 0.1, tokens: 6 });
       expect(saved.agentTotals).toEqual(totals ? { costUsd: 0.9, tokens: 40 } : undefined);
       expect(saved.usage).toMatchObject({ inputTokens: 7, outputTokens: 10, cacheReadTokens: 1 });

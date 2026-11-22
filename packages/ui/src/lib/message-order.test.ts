@@ -13,16 +13,17 @@ function message(id: string, turnId: string, kind: 'text' | 'file' | 'artifact' 
 const ids = (messages: readonly Message[]) => messages.map((entry) => entry.id);
 
 test('a finished turn shows its published files after its answer, in publish order, and its pages after them', () => {
+  const proof: Message = { ...message('proof', 'a'), parts: [{ type: 'text', text: 'recorded result', proof: true }] };
   const timeline = [
-    message('ask', 'a', 'text', 'user'), message('shot', 'a', 'file'), message('page', 'a', 'view'), message('answer', 'a'),
+    message('ask', 'a', 'text', 'user'), message('shot', 'a', 'file'), message('page', 'a', 'view'), proof, message('answer', 'a'),
     message('video', 'a', 'artifact'), message('more', 'a'),
     message('ask-2', 'b', 'text', 'user'), message('only', 'b', 'file')
   ];
   const turns = [{ id: 'a', status: 'done' as const }, { id: 'b', status: 'done' as const }];
   const files = filesLast(timeline, turns);
-  expect(ids(files)).toEqual(['ask', 'page', 'answer', 'more', 'shot', 'video', 'ask-2', 'only']);
+  expect(ids(files)).toEqual(['ask', 'page', 'answer', 'more', 'shot', 'proof', 'video', 'ask-2', 'only']);
   expect(filesLast(files, turns)).toBe(files);
-  expect(ids(placeViews(files, turns))).toEqual(['ask', 'answer', 'more', 'shot', 'video', 'page', 'ask-2', 'only']);
+  expect(ids(placeViews(files, turns))).toEqual(['ask', 'answer', 'more', 'shot', 'proof', 'video', 'page', 'ask-2', 'only']);
 });
 
 test('a running turn shows each file where it came, and a user upload or a page is no published file', () => {

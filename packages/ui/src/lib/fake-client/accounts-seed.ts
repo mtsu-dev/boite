@@ -183,6 +183,7 @@ export function seedAccounts() {
     // until the user turns it on, and its row says Experimental.
     {
       id: 'opencode-v2',
+      acpSteering: true,
       name: 'OpenCode 2',
       shortName: 'OpenCode 2',
       protocol: 'acp',

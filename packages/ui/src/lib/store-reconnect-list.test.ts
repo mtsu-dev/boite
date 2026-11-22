@@ -55,6 +55,37 @@ test('a reconnect after one thread changed among two thousand reads that thread,
   expect(store.error).toBeNull();
 });
 
+test('startup paints the first list page and keeps a newer edit through the final page', async () => {
+  const client = new FakeClient({ delayMs: 0, idle: 3000 });
+  const store = new Store();
+  stores.push(store);
+  store.attach(client);
+  const real = client.call.bind(client);
+  let release!: () => void;
+  const nextPage = new Promise<void>(resolve => { release = resolve; });
+  const calls = vi.spyOn(client, 'call').mockImplementation(((method: string, params: { page?: unknown }, options?: never) => {
+    const answer = real(method as never, params as never, options);
+    return method === 'threads.listChanges' && typeof params.page === 'string' ? nextPage.then(() => answer) : answer;
+  }) as typeof client.call);
+  const loading = store.connect();
+  try {
+    await vi.waitFor(() => expect(store.threads.length).toBeGreaterThan(0), { timeout: 2000 });
+    expect(store.threads.length).toBeLessThan(3000);
+    const shown = store.threads.find(thread => !thread.pinned)!;
+    await client.call('threads.pin', { threadId: shown.id, pinned: true });
+    expect(store.threads.find(thread => thread.id === shown.id)?.pinned).toBe(true);
+    release();
+    await loading;
+    await store.reload();
+    expect(store.threads.length).toBeGreaterThan(3000);
+    expect(store.threads.find(thread => thread.id === shown.id)?.pinned).toBe(true);
+    expect(calls.mock.calls.some(([method, params]) => method === 'threads.listChanges' && typeof (params as { page?: unknown }).page === 'string')).toBe(true);
+  } finally {
+    release();
+    await loading;
+  }
+});
+
 test('a thread deleted and one archived while away leave the sidebar', async () => {
   const { client, store } = await connected();
   expect(store.threads.some(row => row.id === 't-trace')).toBe(true);
@@ -68,6 +99,31 @@ test('a thread deleted and one archived while away leave the sidebar', async () 
   expect(store.threads.map(row => row.id)).not.toContain('t-trace');
   expect(store.threads.map(row => row.id)).not.toContain('t-descriptors');
   expect(store.threads.length).toBeGreaterThan(0);
+});
+
+test('a failed startup continuation restarts the full list without dropping visible rows', async () => {
+  const client = new FakeClient({ delayMs: 0, idle: 3000 });
+  const store = new Store();
+  stores.push(store);
+  store.attach(client);
+  const real = client.call.bind(client);
+  let starts = 0;
+  let continuations = 0;
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: { page?: unknown }, options?: never) => {
+    if (method === 'threads.listChanges' && params.page === true && ++starts === 2) {
+      expect(store.threads.length).toBeGreaterThan(0);
+      expect(store.threads.length).toBeLessThan(3000);
+    }
+    if (method === 'threads.listChanges' && typeof params.page === 'string' && ++continuations === 1) {
+      return Promise.reject(new Error('continuation timed out'));
+    }
+    return real(method as never, params as never, options);
+  }) as typeof client.call);
+  await store.connect();
+  expect(store.threads).toHaveLength((await real('threads.list', {})).length);
+  expect(starts).toBe(2);
+  expect(continuations).toBeGreaterThan(1);
+  expect(store.error).toBeNull();
 });
 
 test('a thread created while away joins the sidebar', async () => {

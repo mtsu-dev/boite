@@ -1,9 +1,10 @@
 <script lang="ts">
   import { Bot, CloudOff, Square } from '@lucide/svelte';
-  import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
+  import type { ThreadSummary } from '@boite/contracts';
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
   import { ago, elapsed, exactTime } from '../lib/format';
+  import { pullRequestWait, watchStatus } from '../lib/pull-request-watch';
   import { fill, strings } from '../lib/strings';
   import { threadState } from '../lib/thread-state';
   import { stateForm } from '../lib/status-order';
@@ -39,7 +40,7 @@
    * palette). In both, the word stays in the tooltip and the accessible name.
    * An archived thread carries no live state: its time alone.
    */
-  let { thread, now, subagents = null, team = null, away = false, mark = false, fit = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches' | 'archived'>>; now: number; subagents?: WorkingChildren | null; team?: WorkingChildren | null; away?: boolean; mark?: boolean; fit?: boolean } = $props();
+  let { thread, now, subagents = null, team = null, away = false, mark = false, fit = false, elapsedShownSince = null }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches' | 'archived'>>; now: number; subagents?: WorkingChildren | null; team?: WorkingChildren | null; away?: boolean; mark?: boolean; fit?: boolean; elapsedShownSince?: number | null } = $props();
 
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
@@ -50,8 +51,7 @@
   let wait = $derived(thread.backgroundWait ?? null);
   /** The states that count time: the turn, its sub-agents, or the work it left running. */
   let live = $derived(form === 'work' && kind !== 'queued');
-  /** The pull requests the row still waits on: their checks run. */
-  let watches = $derived((thread.pullRequestWatches ?? []).filter(pullRequestWatchWaits));
+  let { active: watches, paused: pausedWatch } = $derived(pullRequestWait(thread.pullRequestWatches));
   /** What was under way when the machine went away is only its last known state. */
   let stale = $derived(away && (live || kind === 'queued'));
   /**
@@ -65,11 +65,11 @@
     stale ? null
     : kind === 'working' ? earliest(thread.requestSince, thread.runningSince)
     : kind === 'monitoring' ? thread.requestSince ?? thread.backgroundWork?.since ?? null
-    : kind === 'watching' ? thread.requestSince ?? (watches.length ? Math.min(...watches.map(watch => watch.since)) : null)
+    : kind === 'watching' ? pausedWatch ? null : thread.requestSince ?? (watches.length ? Math.min(...watches.map(watch => watch.since)) : null)
     : kind === 'delegating' ? subagents?.since ?? null
     : live ? thread.backgroundWork?.since ?? (wait?.state === 'waiting' ? wait.since : null) : null);
   /** Counting time reads the second clock, only while the agent works: the list's clock ticks far slower. */
-  let spent = $derived(since === null ? null : elapsed(Math.max(secondClock.now, now) - since));
+  let spent = $derived(since === null || since === elapsedShownSince ? null : elapsed(Math.max(secondClock.now, now) - since));
   /**
    * The word beside the mark: what the work waits on, so a list tells a CI run from a command or a workflow
    * without a hover ("CI running", "Command", "Sub-agents"); the turn itself reads "Working", an unreached
@@ -80,7 +80,10 @@
     if (kind === null) return null;
     const words = strings.sidebar.state.workWord;
     if (kind === 'delegating' || kind === 'monitoring') return words[kind];
-    if (kind === 'watching') return watches.length > 0 && watches.every(watch => watch.seen?.queue && watch.seen.checks.running === 0) ? words.mergeQueue : words.ci;
+    if (kind === 'watching') {
+      if (pausedWatch) return strings.sidebar.state.watching;
+      return watches.length > 0 && watches.every(watch => watch.seen?.queue && watch.seen.checks.running === 0) ? words.mergeQueue : words.ci;
+    }
     if (kind === 'background') {
       const kinds = thread.backgroundWork?.kinds ?? [];
       const heaviest = (['workflow', 'agent', 'shell'] as const).find(each => kinds.includes(each));
@@ -103,6 +106,7 @@
       return `${head}\n${what}`;
     }
     if (kind === 'watching') {
+      if (pausedWatch) return `#${pausedWatch.number} · ${watchStatus(pausedWatch)}`;
       const head = watches.length === 1 ? state.watching : fill(state.watchingMany, { count: String(watches.length) });
       const queued = (watch: (typeof watches)[number]) => watch.seen?.queue ? ` (${fill(strings.tasks.watchQueued, { position: String(watch.seen.queue.position) })})` : '';
       return `${head}\n${watches.map(watch => `#${watch.number}${queued(watch)}`).join(', ')}${spent === null ? '' : `\n${spent}`}`;

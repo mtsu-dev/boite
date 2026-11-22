@@ -5,6 +5,7 @@ import { DEFAULT_DELEGATION_CONFIG } from '@boite/contracts';
 import { saveThread } from '../src/threads/records.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
+import { refused } from '../src/errors.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 import { agentValue } from './agent-fixture.ts';
@@ -52,6 +53,62 @@ test('a tool boundary reaches an unsubscribed client and follow-ups join the run
   expect(h.core.threads.require(threadId).status).toBe('running');
   const conflicting = await owner.call('turns.steer', { ...params, prompt: 'Different content' }).catch(error => error);
   expect(conflicting.message).toContain('different content');
+});
+
+test('shared upload policy rejects a steered attachment before admission or journaling', async () => {
+  const { owner, threadId, turn, inputs } = await running();
+  const attachment = { kind: 'file' as const, mimeType: 'text/plain', data: 'c2FtcGxl', name: 'sample.txt' };
+  const params = { threadId, turnId: turn.id, prompt: 'Read the attachment', attachments: [attachment], clientRequestId: 'shared_upload' };
+  const access = h.core.sharedAccess;
+  const uploads = access.uploads;
+  access.uploads = (id, files) => {
+    expect(id).toBe(threadId);
+    expect(files).toEqual([attachment]);
+    throw refused('upload refused by policy');
+  };
+  try {
+    expect(await thrown(owner.call('turns.steer', params))).toThrow('upload refused by policy');
+    expect(inputs).toEqual([]);
+    expect(h.core.journal.turnRequest(threadId, params.clientRequestId)).toBeNull();
+    expect(h.core.journal.lastUserMessage(threadId, turn.id)?.parts).toEqual([{ type: 'text', text: 'Keep working' }]);
+  } finally { access.uploads = uploads; }
+});
+
+test('an acknowledgement from a stopped attempt cannot block or write into the next turn', async () => {
+  const { owner, threadId, turn } = await running();
+  const first = Promise.withResolvers<boolean>();
+  let late: (() => void) | undefined;
+  h.core.threads.runner.handles.get(threadId)!.steer = (_text, _attachments, accepted) => {
+    late = accepted;
+    return first.promise;
+  };
+  const previous = { threadId, turnId: turn.id, prompt: 'Late acknowledgement', clientRequestId: 'late_acknowledgement' };
+  const result = owner.call('turns.steer', previous).catch(error => error);
+  try {
+    await waitFor(() => late !== undefined);
+    await owner.call('turns.stop', { threadId });
+    await waitFor(() => h.core.scheduler.stopTarget(threadId) === undefined);
+    const next = await owner.call('turns.start', { threadId, prompt: 'A new task' });
+    await waitFor(() => h.core.threads.runner.handles.has(threadId));
+    expect(await owner.call('turns.steer', { threadId, turnId: next.id, prompt: 'Continue', clientRequestId: 'next_attempt' })).toEqual({ accepted: true });
+    expect(await result).toBeInstanceOf(Error);
+    late!();
+    first.resolve(true);
+    expect(await thrown(owner.call('turns.steer', previous))).toThrow('unconfirmed');
+    expect(h.core.journal.lastUserMessage(threadId, turn.id)?.parts).toEqual([{ type: 'text', text: 'Keep working' }]);
+  } finally { first.resolve(false); }
+});
+
+test('a confirmed effort change unlocks steering on the same active selection', async () => {
+  h = await startTestCore();
+  const owner = await h.connect();
+  const { threadId } = await echoThread(h, owner);
+  const turn = await owner.call('turns.start', { threadId, prompt: '[sleep:60000]' });
+  await waitFor(() => h.core.threads.runner.handles.has(threadId));
+  const selection = await owner.call('threads.update', { threadId, effort: 'low' });
+  await waitFor(() => h.core.journal.getTurn(turn.id)?.execution?.selectionVersion === selection.selectionVersion);
+  expect(await owner.call('turns.steer', { threadId, turnId: turn.id, prompt: 'Continue', clientRequestId: 'live_effort', expectedSelectionVersion: selection.selectionVersion })).toEqual({ accepted: true });
+  expect(h.core.journal.getTurn(turn.id)?.execution?.effort).toBe('low');
 });
 
 test('an async question answer is visible while steering and becomes one user message on acceptance', async () => {

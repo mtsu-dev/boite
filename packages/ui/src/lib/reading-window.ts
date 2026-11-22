@@ -83,16 +83,17 @@ const editRequests = new WeakMap<Store, object>();
  * the failure shown, when one of them could not be read.
  */
 export async function editWhole(store: Store, threadId: string, message: Message, current: () => boolean = () => true): Promise<boolean> {
+  const client = store.client, thread = store.openThread;
+  if (thread?.id !== threadId || thread.archived) return false;
   const request = {};
   editRequests.set(store, request);
-  const client = store.client, thread = store.openThread;
   const state = store.composerStates[threadId];
   const text = state?.text, editing = state?.editing;
   const attachments = [...state?.attachments ?? []], references = [...state?.previewReferences ?? []];
   if (!(await store.loadAttachments(threadId, message))) return false;
   // A late read belongs to the visit and draft that asked, never to text typed meanwhile.
   const now = store.composerStates[threadId];
-  if (editRequests.get(store) !== request || store.client !== client || store.openThread !== thread || !current() ||
+  if (editRequests.get(store) !== request || store.client !== client || store.openThread !== thread || thread.archived || !current() ||
     now !== state || now?.text !== text || now?.editing !== editing ||
     (now?.attachments.length ?? 0) !== attachments.length || attachments.some((part, index) => now?.attachments[index] !== part) ||
     (now?.previewReferences?.length ?? 0) !== references.length || references.some((reference, index) => now?.previewReferences?.[index] !== reference)) return false;

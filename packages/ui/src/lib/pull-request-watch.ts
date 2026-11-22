@@ -1,10 +1,20 @@
-import type { PullRequestWatch } from '@boite/contracts';
-import { time } from './format';
+import { pullRequestWatchWaits, type PullRequestWatch } from '@boite/contracts';
+import { dayClock } from './format';
 import { fill, strings } from './strings';
+
+/**
+ * An individual pause never hides checks or queue work another watch is still following,
+ * and a paused watch whose checks settled waits for nothing.
+ */
+export function pullRequestWait(watches: readonly PullRequestWatch[] | undefined) {
+  const active = (watches ?? []).filter(watch => !watch.paused && pullRequestWatchWaits(watch));
+  const paused = active.length === 0 ? watches?.find(watch => watch.paused && pullRequestWatchWaits(watch)) : undefined;
+  return { active, paused };
+}
 
 /** What a pull request watch last saw, or why it waits: the line beside its number in the panel and the header's menu. */
 export function watchStatus(watch: PullRequestWatch): string {
-  if (watch.paused) return fill(watch.paused.reason === 'rate-limit' ? strings.tasks.watchRateLimited : strings.tasks.watchUnreachable, { time: time(watch.paused.until) });
+  if (watch.paused) return fill(watch.paused.reason === 'rate-limit' ? strings.tasks.watchRateLimited : strings.tasks.watchUnreachable, { time: dayClock(watch.paused.until) });
   const seen = watch.seen;
   if (!seen) return strings.tasks.watchNotRead;
   const { total, running, failed } = seen.checks;

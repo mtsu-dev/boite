@@ -23,6 +23,6 @@ export function observeProgress<E extends RpcEventName>(ctx: FakeContext, thread
   published.set(ctx, times);
   if (old?.phase !== phase || old.detail !== detail || ctx.now() - (times.get(threadId) ?? 0) >= 1000) {
     times.set(threadId, ctx.now());
-    ctx.touch(thread);
+    ctx.emit('thread.progress', { threadId, progress: thread.progress });
   }
 }

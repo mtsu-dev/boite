@@ -14,6 +14,7 @@ import { replaceInHistory } from '../composer-history';
 import { secureId } from '../secure-id';
 import { fitHeld } from '../turn-fit';
 import { attachedBytes } from '../attachments';
+import { sameValue } from '../plain-data';
 
 export type Input = Composer['composerStates'][string];
 /**
@@ -25,7 +26,7 @@ type Journal = { updatedAt?: number; inputs?: Record<string, unknown>; drafts?: 
 type Source = { section: 'inputs' | 'drafts'; id: string; input: Input; draft?: Draft; parked?: number; choice?: Choice | null };
 /** One composer as it is now: a thread's box and queue, or a draft with its project and choice. */
 export type LiveSource = Source;
-type CachedEntry = { section: Source['section']; id: string; value: unknown; serialized: string; updatedAt: number; backedUp: boolean };
+type CachedEntry = { section: Source['section']; id: string; value: unknown; serialized: string; assetRevision: number | null; backedUp: boolean };
 const entryKey = (section: Source['section'], id: string) => JSON.stringify([section, id]);
 /** A draft's row: its words, and whether it was sent while its machine was away and waits for it, or was refused. */
 export type DraftEntry = {
@@ -75,8 +76,11 @@ export class Drafts {
   #changed = false;
   #writingAssets = new Set<string>();
   #storedAssetIds = new Set<string>();
+  #assetRevision = 0;
   #failedEntries = new Set<string>();
+  #failedBackups = new Set<string>();
   #pending: { key: string; value: unknown } | null = null;
+  #checkpointDue = false;
   #writing: Promise<void> | null = null;
   #generation = 0;
   #revision = 0;
@@ -86,8 +90,6 @@ export class Drafts {
   #durableReady = $state(false);
   /** A file the durable journal has never held: its bytes live nowhere else yet. */
   #newAsset = false;
-  /** The synchronous backup refused the last write, so the durable journal is the only copy. */
-  #backupFailed = false;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #waitingSince = 0;
   /** When the armed timer writes the durable journal. */
@@ -124,6 +126,7 @@ export class Drafts {
     } catch { /* An unavailable or malformed journal leaves the current session usable. */ }
     this.#hydrated = true;
     this.persist();
+    this.#pruneAssets();
     const root = $effect.root(() => {
       $effect(() => {
         const sources = this.#sources();
@@ -152,6 +155,7 @@ export class Drafts {
     const data = overlayBackup(this.#key!, previous);
     const assets = journalAssets(durable);
     this.#storedAssetIds = new Set(assets.keys());
+    this.#assetRevision++;
     for (const [id, bytes] of assets) this.#assetIds.set(bytes, id);
     this.#resolvePending(assets);
     this.#revision = Math.max(this.#revision, typeof data?.updatedAt === 'number' && Number.isFinite(data.updatedAt) ? data.updatedAt : 0);
@@ -204,7 +208,10 @@ export class Drafts {
       ...Object.entries(this.saved).map(([id, entry]) => [entryKey('drafts', id), entry.input] as const)
     ];
     // Keys first: the open draft and its saved entry can share one input.
-    for (const [key, input] of inputs) if (input && pendingFiles(input).some(file => assets.has(unresolvedAssetId(file)!))) this.#entries.delete(key);
+    for (const [key, input] of inputs) if (input && pendingFiles(input).some(file => assets.has(unresolvedAssetId(file)!))) {
+      this.#entries.delete(key);
+      this.#failedBackups.delete(key);
+    }
     for (const [, input] of inputs) if (input) resolvePending(input, assets);
   }
 
@@ -241,9 +248,10 @@ export class Drafts {
         this.#restore(local, durable);
         this.#durableReady = true;
         this.#writeFailed = false;
-        if (noticed && s.error === strings.errors.draftStorage && !this.#backupFailed && !this.#failedEntries.size) s.error = null;
+        if (noticed && s.error === strings.errors.draftStorage && !this.#failedBackups.size && !this.#failedEntries.size) s.error = null;
         this.#changed = true;
         this.persist();
+        this.#pruneAssets();
         return;
       }
     } catch {
@@ -262,9 +270,11 @@ export class Drafts {
     this.#durableReady = false;
     this.#entries.clear();
     this.#changed = false;
+    this.#checkpointDue = false;
     this.#assetIds.clear();
     this.#storedAssetIds.clear();
     this.#failedEntries.clear();
+    this.#failedBackups.clear();
     this.#choiceUnsaved.clear();
     this.saved = {};
   }
@@ -397,7 +407,7 @@ export class Drafts {
     while (this.#writing) await this.#writing;
     // Without IndexedDB, every entry must have reached its synchronous backup.
     return this.readable && !this.#writeFailed && !this.#failedEntries.size
-      && (typeof indexedDB !== 'undefined' || [...this.#entries.values()].every(entry => entry.backedUp));
+      && (typeof indexedDB !== 'undefined' || this.#failedBackups.size === 0);
   }
 
   /**
@@ -454,7 +464,6 @@ export class Drafts {
     } finally {
       this.#collecting = false;
       if (this.#changed || this.#writeFailed) this.#checkpoint();
-      else this.#pruneAssets();
     }
   }
 
@@ -511,19 +520,23 @@ export class Drafts {
       const input = kept && hasContent(kept) ? savedInput(kept, this.#assetId) : null;
       const value = input && source ? source.section === 'drafts' ? { draft: source.draft, input, parked: source.parked ?? 0, choice: source.choice ? $state.snapshot(source.choice) : null } : input : null;
       const stored = this.#storedAssetIds;
-      // Until a strict durable write succeeds, keep inline bytes in the atomic
-      // backup too. This also preserves old journals without IndexedDB.
-      const serialized = JSON.stringify(value, function (this: { assetId?: string }, field, value) {
-        return field === 'data' && stored.has(this.assetId ?? '') ? undefined : value;
-      });
+      const assetRevision = input && (input.attachments.length || input.queued.some(item => item.attachments.length)) ? this.#assetRevision : null;
       untrack(() => {
         const previous = this.#entries.get(key);
         this.#failedEntries.delete(key);
         // A blank placeholder cannot delete a journal entry we did not read.
         if (value === null && !previous) return;
-        if (previous?.serialized === serialized && previous.backedUp) return;
+        if (previous?.backedUp && previous.assetRevision === assetRevision && sameValue(previous.value, value)) return;
+        // Until a strict durable write succeeds, the atomic backup keeps inline bytes.
+        const serialized = JSON.stringify(value, function (this: { assetId?: string }, field, value) {
+          return field === 'data' && stored.has(this.assetId ?? '') ? undefined : value;
+        });
+        if (previous?.backedUp && previous.serialized === serialized) {
+          previous.assetRevision = assetRevision;
+          return;
+        }
         const updatedAt = this.#revision = Math.max(Date.now(), this.#revision + 1);
-        const entry = { section: source?.section ?? previous!.section, id: source?.id ?? previous!.id, value, serialized, updatedAt, backedUp: false };
+        const entry = { section: source?.section ?? previous!.section, id: source?.id ?? previous!.id, value, serialized, assetRevision, backedUp: false };
         this.#entries.set(key, entry);
         if (!source || !this.#incognito(source)) this.ctx.sync.touched(entry.section, entry.id, value === null);
         // Each atomic entry includes its own revision; null is a deletion tombstone.
@@ -538,6 +551,8 @@ export class Drafts {
           // Without a journal, or while a late one is still opening, the backup is the only copy.
           if (typeof indexedDB === 'undefined' || (this.#hydrated && !this.#durableReady)) this.ctx.store.error = strings.errors.draftStorage;
         }
+        if (entry.backedUp) this.#failedBackups.delete(key);
+        else this.#failedBackups.add(key);
         this.#changed = true;
         if (!this.#collecting) this.#checkpoint();
       });
@@ -550,15 +565,9 @@ export class Drafts {
 
   #checkpoint(): void {
     this.#changed = false;
-    this.#backupFailed = [...this.#entries.values()].some(entry => !entry.backedUp);
-    if (this.#durableReady) {
-      const inputs: Record<string, unknown> = {}, drafts: Record<string, unknown> = {};
-      for (const entry of this.#entries.values()) if (entry.value !== null) (entry.section === 'inputs' ? inputs : drafts)[entry.id] = entry.value;
-      this.#pending = { key: this.#key!, value: { inputs, drafts, updatedAt: this.#revision } };
-      if (this.#newAsset || this.#backupFailed) this.#writeNow();
-      else this.#writeLater();
-    }
-    this.#pruneAssets();
+    this.#checkpointDue = true;
+    if (this.#durableReady && (this.#newAsset || this.#failedBackups.size)) this.#writeNow();
+    else this.#writeLater();
   }
 
   #pruneAssets(): void {
@@ -596,7 +605,14 @@ export class Drafts {
   #writeNow(): void {
     if (this.#timer !== undefined) clearTimeout(this.#timer);
     this.#timer = undefined;
-    this.#newAsset = false;
+    if (this.#durableReady && this.#checkpointDue) {
+      const inputs: Record<string, unknown> = {}, drafts: Record<string, unknown> = {};
+      for (const entry of this.#entries.values()) if (entry.value !== null) (entry.section === 'inputs' ? inputs : drafts)[entry.id] = entry.value;
+      this.#pending = { key: this.#key!, value: { inputs, drafts, updatedAt: this.#revision } };
+      this.#checkpointDue = false;
+      this.#newAsset = false;
+    }
+    this.#pruneAssets();
     if (this.#pending) this.#schedule();
   }
 
@@ -638,10 +654,14 @@ export class Drafts {
         if (next.key === this.#key) {
           this.#writeFailed = false;
           if (typeof indexedDB !== 'undefined') {
-            this.#storedAssetIds = new Set(journalAssets(next.value).keys());
+            const assets = journalAssets(next.value);
+            if (assets.size !== this.#storedAssetIds.size || [...assets.keys()].some(id => !this.#storedAssetIds.has(id))) {
+              this.#storedAssetIds = new Set(assets.keys());
+              this.#assetRevision++;
+            }
             // Retire the complete legacy backup only after the strict commit
             // and a successful synchronous backup for every current entry.
-            if ([...this.#entries.values()].every(entry => entry.backedUp)) {
+            if (this.#failedBackups.size === 0) {
               try { localStorage.removeItem(next.key); } catch { /* Keep the older backup. */ }
             }
           }

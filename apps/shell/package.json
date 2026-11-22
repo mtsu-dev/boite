@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "bun scripts/tauri.ts",
+    "tauri:cli": "tauri"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.6"

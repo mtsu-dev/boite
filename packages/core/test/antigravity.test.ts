@@ -7,9 +7,9 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { Attachment, Settings, ThreadId } from '@boite/contracts';
 import { readAntigravityQuota, type Fetch } from '../src/antigravity-quota.ts';
 import type { CoreClient } from '../src/client.ts';
@@ -19,6 +19,7 @@ import { shareProfile, variableHome } from '../src/profile-share.ts';
 import { profileFor } from '../src/providers/resolve.ts';
 import { saveCatalog } from '../src/providers/saved-catalogs.ts';
 import { LAUNCH_TEMP_DIR } from '../src/drivers/launch-temp.ts';
+import * as fsRetry from '../src/fs-retry.ts';
 import { startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -31,7 +32,38 @@ const SEED_BODY = '{"auth":{"type":"oauth-personal"}}';
 let harness: TestCore | null = null;
 let logFile = '';
 
+/**
+ * A sign-in's launch folder whose removal a test holds until it releases it:
+ * removing an unpacked agent takes seconds on a real machine, and a removal
+ * that deleted the account around it left the account's directory behind.
+ */
+interface HeldScratch {
+  started: ReturnType<typeof Promise.withResolvers<void>>;
+  release: ReturnType<typeof Promise.withResolvers<void>>;
+  done: boolean;
+}
+let heldScratch: HeldScratch | null = null;
+const realRemoveDir = fsRetry.removeDir;
+mock.module('../src/fs-retry.ts', () => ({
+  removeDir: async (path: string, log?: (message: string) => void, attempts?: number, delayMs?: number): Promise<boolean> => {
+    const held = heldScratch;
+    if (held === null || !path.includes(`${sep}${LAUNCH_TEMP_DIR}${sep}run-`)) return realRemoveDir(path, log, attempts, delayMs);
+    held.started.resolve();
+    await held.release.promise;
+    const removed = await realRemoveDir(path, log, attempts, delayMs);
+    held.done = true;
+    return removed;
+  },
+}));
+
+function holdScratch(): HeldScratch {
+  heldScratch = { started: Promise.withResolvers(), release: Promise.withResolvers(), done: false };
+  return heldScratch;
+}
+
 afterEach(async () => {
+  heldScratch?.release.resolve();
+  heldScratch = null;
   const open = harness;
   harness = null;
   delete process.env['AGY_FAKE_LOG'];
@@ -239,6 +271,50 @@ describe('antigravity', () => {
     expect(existsSync(account.isolationDir)).toBe(false);
     expect(await client.call('accounts.logins', {})).toEqual([]);
   });
+
+  test('removing an account waits for the launch folder its cancelled sign-in is still removing', async () => {
+    const client = await startCore();
+    const account = await agyAccount(client);
+    await client.call('accounts.login', { accountId: account.id });
+    await waitFor(() => fakeLog().includes('callback:'), 20_000);
+    const held = holdScratch();
+    let doneWhenRemoved = null as boolean | null;
+    const removing = client.call('accounts.remove', { accountId: account.id }).then(() => {
+      doneWhenRemoved = held.done;
+    });
+    await held.started.promise;
+    // Released once the removal answered, or after a second it spent waiting.
+    await Promise.race([removing, Bun.sleep(1000)]);
+    held.release.resolve();
+    await removing;
+    expect(doneWhenRemoved).toBe(true);
+    expect(existsSync(account.isolationDir)).toBe(false);
+  }, 40_000);
+
+  test('a sign-in answers before its launch folder is gone', async () => {
+    const client = await startCore();
+    const account = await agyAccount(client);
+    const states: string[] = [];
+    client.on('account.login', (event) => {
+      if (event.accountId === account.id) states.push(event.state);
+    });
+    await client.call('accounts.login', { accountId: account.id });
+    await waitFor(() => fakeLog().includes('callback:'), 20_000);
+    const callback = fakeLog()
+      .split('\n')
+      .find((line) => line.startsWith('callback:'))
+      ?.slice('callback:'.length);
+    const held = holdScratch();
+    await client.call('accounts.loginInput', { accountId: account.id, text: callback ?? '' });
+    await held.started.promise;
+    await waitFor(() => states.includes('done') || states.includes('failed'), 20_000);
+    expect(states.at(-1)).toBe('done');
+    expect(held.done).toBe(false);
+    held.release.resolve();
+    await client.call('accounts.remove', { accountId: account.id });
+    expect(held.done).toBe(true);
+    expect(existsSync(account.isolationDir)).toBe(false);
+  }, 40_000);
   test('every account is isolated, and the seed file and the browser no-op are written before any spawn', async () => {
     const client = await startCore();
     const account = await agyAccount(client);

@@ -3,8 +3,8 @@
  * steps read, the executions a run has spent, and the loops of `repeat`. Pure,
  * so both engines turn a loop the same way.
  */
-import type { WorkflowInstance, WorkflowNode, WorkflowRun, WorkflowStepPlan } from './workflows';
-import { conditionHolds, conditionText, loopBody } from './workflow-plan';
+import { WORKFLOW_LIMITS, type WorkflowInstance, type WorkflowNode, type WorkflowRun, type WorkflowStepPlan } from './workflows';
+import { conditionHolds, conditionText, itemLabel, loopBody, renderTask, resolvePath } from './workflow-plan';
 
 const valueOf = (inst: WorkflowInstance) => inst.output ?? inst.result;
 
@@ -42,10 +42,12 @@ export function lastRound(run: WorkflowRun, closing: string): unknown {
 }
 
 /** Every step of the loop waits again, one round further, its executions kept to reuse their conversations. */
-function rewind(run: WorkflowRun, body: Set<string>): void {
+function rewind(run: WorkflowRun, body: Set<string>, fresh = false): void {
   for (const node of run.nodes) {
     if (!body.has(node.id)) continue;
     node.previous = node.instances;
+    if (fresh) node.freshRound = true;
+    else delete node.freshRound;
     delete node.exhausted;
     Object.assign(node, { spent: (node.spent ?? 0) + node.instances.length, round: (node.round ?? 1) + 1, instances: [], status: 'waiting', error: null, startedAt: null, finishedAt: null });
   }
@@ -69,13 +71,131 @@ export function closeLoop(run: WorkflowRun, node: WorkflowNode, now: number): 'o
   return 'spent';
 }
 
-/** A loop that ran out of rounds: its closing step failed though every execution of it, if any, ended done. */
-export function loopSpent(run: WorkflowRun, node: WorkflowNode): boolean {
-  return node.exhausted === true && node.status === 'failed' && !!run.plan.steps.find(s => s.id === node.id)?.repeat;
+function canonicalItem(item: unknown): string | undefined {
+  return JSON.stringify(item, (_key, value: unknown) => value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left < right ? -1 : left === right ? 0 : 1))
+    : value);
 }
 
-/** A retry of a loop that ran out of rounds: one round more. */
-export function loopAgain(run: WorkflowRun, node: WorkflowNode): void {
+/** Only an item unique in both rounds can inherit a conversation and its usage key. */
+export function workflowExecutions(run: WorkflowRun, node: WorkflowNode, items: unknown[] | null) {
+  if (items === null) return [{ key: node.id, previous: node.previous?.[0], itemIdentity: undefined }];
+  const identities = loopOf(run, node.id) ? items.map(canonicalItem) : [];
+  const previous = new Map<string, WorkflowInstance | undefined>();
+  for (const execution of node.previous ?? []) if (execution.itemIdentity !== undefined) {
+    const identity = execution.itemIdentity;
+    previous.set(identity, previous.has(identity) ? undefined : execution);
+  }
+  return items.map((_item, index) => {
+    const itemIdentity = identities[index];
+    const matched = itemIdentity !== undefined && identities.indexOf(itemIdentity) === identities.lastIndexOf(itemIdentity) ? previous.get(itemIdentity) : undefined;
+    return { key: matched?.key ?? `${node.id}#${(node.spent ?? 0) + index}`, previous: matched, itemIdentity };
+  });
+}
+
+/** The route a round can reuse, or the earlier conversation a fresh round replaces. */
+export function workflowContinuation(previous: WorkflowInstance | undefined, fresh: boolean, available: (threadId: string) => boolean): Partial<WorkflowInstance> {
+  if (!previous?.threadId) return {};
+  if (fresh) return { previousAttempts: [...previous.previousAttempts ?? [], { threadId: previous.threadId, finishedAt: previous.finishedAt }] };
+  if (!available(previous.threadId)) return {};
+  const { threadId, providerId, model, effort, previousAttempts } = previous;
+  return { threadId, providerId, model, effort, previousAttempts };
+}
+
+export function workflowInstance(run: WorkflowRun, key: string): WorkflowInstance | undefined {
+  for (const node of run.nodes) {
+    const instance = node.instances.find(inst => inst.key === key);
+    if (instance) return instance;
+  }
+}
+
+export function clipWorkflowText(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, Math.max(0, max - 40))}\n[Truncated; the step's conversation has the rest.]` : value;
+}
+
+function describe(value: unknown): string {
+  if (value === null || value === undefined) return 'empty';
+  if (typeof value === 'string') return `the text ${JSON.stringify(clipWorkflowText(value, 40))}`;
+  return typeof value === 'object' ? 'an object' : `the ${typeof value} ${String(value)}`;
+}
+
+/** Expand a ready step atomically, or record why it will not start. */
+export function openWorkflowNode(run: WorkflowRun, node: WorkflowNode, values: Record<string, unknown>, now: number, available: (id: string) => boolean): void {
   const step = run.plan.steps.find(s => s.id === node.id)!;
-  rewind(run, loopBody(run.nodes, step.repeat!.from, step.id));
+  const finish = (status: 'skipped' | 'failed' | 'done', error: string | null = null) => {
+    Object.assign(node, { status, error, startedAt: now, finishedAt: now });
+  };
+  if (step.when && !conditionHolds(step.when, values)) return finish('skipped');
+  const items = step.forEach ? resolvePath(values, step.forEach.split('.')) : null;
+  if (step.forEach && !Array.isArray(items)) return finish('failed', `forEach: ${step.forEach} is ${describe(items)}, not a list`);
+  const list = Array.isArray(items) ? items : null;
+  const used = executionsUsed(run);
+  const count = list?.length ?? 1;
+  if (used + count > run.limits.maxSteps) return finish('failed', `${count} executions would pass this run's limit of ${run.limits.maxSteps} (${used} used); raise limits.maxSteps up to ${WORKFLOW_LIMITS.maxSteps} or narrow the list`);
+  if (count === 0) {
+    finish('done');
+    closeLoop(run, node, now);
+    return;
+  }
+  const instances: WorkflowInstance[] = [];
+  for (const [index, { key, previous, itemIdentity }] of workflowExecutions(run, node, list).entries()) {
+    const item = list?.[index];
+    const task = renderTask(step.task, list ? { ...values, item, index } : values);
+    if (task.length > WORKFLOW_LIMITS.taskChars) return finish('failed', `the task is ${task.length} characters once filled in; the limit is ${WORKFLOW_LIMITS.taskChars}. Pass a field rather than a whole output`);
+    instances.push({
+      key, itemIdentity, index: list ? index : null, label: list ? itemLabel(item) : '',
+      threadId: null, providerId: null, model: null, status: 'waiting', attempts: 0, task, result: null, output: null,
+      error: null, startedAt: null, finishedAt: null, ...workflowContinuation(previous, node.freshRound === true, available),
+    });
+  }
+  delete node.freshRound;
+  Object.assign(node, { instances, status: 'running', startedAt: now, error: null });
+}
+
+/** Close a node after all its executions end and their worktrees have settled. */
+export function settleWorkflowNodes(run: WorkflowRun, now: number, isSettling?: (id: string) => boolean): boolean {
+  let changed = false;
+  for (const node of run.nodes) {
+    if (node.status !== 'running' || !node.instances.length) continue;
+    if (node.instances.some(inst => inst.status === 'waiting' || inst.status === 'running' || (inst.threadId && isSettling?.(inst.threadId)))) continue;
+    const failure = node.instances.find(inst => inst.status === 'failed') ?? node.instances.find(inst => inst.status === 'stopped');
+    Object.assign(node, { status: failure?.status ?? 'done', error: failure?.error ?? null, finishedAt: now });
+    closeLoop(run, node, now);
+    changed = true;
+  }
+  return changed;
+}
+
+const broken = (status: WorkflowInstance['status']) => status === 'failed' || status === 'stopped';
+const NOT_STARTED = 'Not started: another step of the run failed';
+
+/** Reopen selected failures while keeping unrelated outcomes, including failures, in the run. */
+export function retryWorkflowSteps(run: WorkflowRun, stepId?: string): boolean {
+  const targets = new Set(run.nodes.filter(node =>
+    (stepId === undefined || node.id === stepId) && (broken(node.status) || node.instances.some(inst => broken(inst.status)))));
+  if (targets.size === 0) return false;
+  // The closing step of an exhausted loop failed despite its executions completing. Retry one more round.
+  for (const node of targets) {
+    if (node.exhausted !== true || node.status !== 'failed') continue;
+    const step = run.plan.steps.find(s => s.id === node.id);
+    if (step?.repeat) rewind(run, loopBody(run.nodes, step.repeat.from, step.id), true);
+  }
+  for (const node of run.nodes) {
+    for (const inst of node.instances) {
+      if (inst.status === 'stopped' && inst.error === NOT_STARTED) {
+        // A persisted run from an older scheduler may still have untouched executions.
+        Object.assign(inst, { status: 'waiting', error: null, finishedAt: null });
+      } else if (targets.has(node) && broken(inst.status)) {
+        if (inst.threadId !== null) inst.previousAttempts = [...inst.previousAttempts ?? [], { threadId: inst.threadId, finishedAt: inst.finishedAt }];
+        Object.assign(inst, { status: 'waiting', error: null, threadId: null, startedAt: null, finishedAt: null });
+        delete inst.outputCorrection;
+      }
+    }
+    if (!node.instances.length && ((targets.has(node) && broken(node.status)) || node.status === 'stopped' && run.status === 'stopped')) {
+      Object.assign(node, { status: 'waiting', error: null, startedAt: null, finishedAt: null });
+    } else if (node.instances.some(inst => inst.status === 'waiting')) {
+      Object.assign(node, { status: 'running', error: null, finishedAt: null });
+    }
+  }
+  return true;
 }

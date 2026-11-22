@@ -15,22 +15,28 @@
    * here they are shown as drawn. `action` is the button or the short note
    * under the line.
    */
-  let { line, robot = HOUSE_BOT, testid, markTestid, small = false, action }: {
+  let { line, robot = HOUSE_BOT, testid, markTestid, small = false, compact = false, action }: {
     line: string;
     robot?: Robot | null;
     testid?: string;
     markTestid?: string;
     /** A list's empty pane rather than a whole screen: a smaller bot and line. */
     small?: boolean;
+    /** Plain copy within a list or panel, without a heading or illustration. */
+    compact?: boolean;
     action?: Snippet;
   } = $props();
 </script>
 
-<div class="empty-state" class:small data-testid={testid}>
-  {#if robot}<span class="mark" data-testid={markTestid} aria-hidden="true"><RobotFace {robot} /></span>{/if}
-  <h1 class="line">{line}</h1>
-  {#if action}<div class="action">{@render action()}</div>{/if}
-</div>
+{#if compact}
+  <p class="compact" data-testid={testid}>{line}</p>
+{:else}
+  <div class="empty-state" class:small data-testid={testid}>
+    {#if robot}<span class="mark" data-testid={markTestid} aria-hidden="true"><RobotFace {robot} /></span>{/if}
+    <h1 class="line">{line}</h1>
+    {#if action}<div class="action">{@render action()}</div>{/if}
+  </div>
+{/if}
 
 <style>
   .empty-state { flex: 1; align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); min-height: 0; padding: var(--space-8) var(--space-6); text-align: center; animation: rise var(--dur-3) var(--ease-out-quint); }
@@ -42,6 +48,7 @@
   .small { gap: var(--space-3); }
   .small .mark { width: 64px; height: 64px; margin-bottom: var(--space-1); }
   .small .line { font-size: var(--text-md); }
+  .compact { margin: 0; padding: 10px var(--empty-inline-padding, 12px); font-size: var(--text-sm); color: var(--color-muted-foreground); }
   /* A phone gives the bot a list pane's size: at 96 px it pushed the action toward the fold. */
   @media (max-width: 720px) { .mark { width: 64px; height: 64px; margin-bottom: 0; } }
 </style>

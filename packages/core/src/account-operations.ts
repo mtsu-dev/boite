@@ -46,10 +46,13 @@ interface Open {
  * check, model discovery, quota reads and resets. One owner admits them, so
  * that removing the account can close admission, stop each one and wait for
  * it before the directory and the credentials go. A new kind of account work
- * opens an operation here; removal then covers it without a list to keep.
+ * opens an operation here; removal then covers it without a list to keep. What
+ * a login leaves running once it answered, the removal of its folders, settles
+ * here too, so that the directory is not deleted around it.
  */
 export class AccountOperations {
   readonly #open = new Map<AccountId, Set<Open>>();
+  readonly #settling = new Map<AccountId, Set<Promise<unknown>>>();
 
   constructor(private readonly core: Core) {}
 
@@ -121,17 +124,31 @@ export class AccountOperations {
     };
   }
 
+  /** Work that outlives the request it served and runs no process, which `drain` waits for. It must not reject. */
+  settle(accountId: AccountId, work: Promise<unknown> | undefined): void {
+    if (work === undefined) return;
+    const set = this.#settling.get(accountId) ?? new Set<Promise<unknown>>();
+    set.add(work);
+    this.#settling.set(accountId, set);
+    const forget = (): void => {
+      set.delete(work);
+      if (set.size === 0 && this.#settling.get(accountId) === set) this.#settling.delete(accountId);
+    };
+    void work.then(forget, forget);
+  }
+
   /**
-   * Stops every operation of the account and waits until each has closed. The
-   * caller has already closed admission (`accounts.require` refuses), so the
-   * work that notices its process died cannot start another. An operation
-   * whose processes could not be stopped is asked again; if they still do not
-   * stop, the account is not drained and this refuses, naming them.
+   * Stops every operation of the account and waits until each has closed, and
+   * for the work that settles. The caller has already closed admission
+   * (`accounts.require` refuses), so the work that notices its process died
+   * cannot start another. An operation whose processes could not be stopped is
+   * asked again; if they still do not stop, the account is not drained and this
+   * refuses, naming them.
    */
   async drain(accountId: AccountId): Promise<void> {
     const open = [...(this.#open.get(accountId) ?? [])];
     for (const entry of open) this.core.procs.killTree(entry.owner);
-    await Promise.all(open.map((entry) => entry.closed));
+    await Promise.all([...open.map((entry) => entry.closed), ...(this.#settling.get(accountId) ?? [])]);
     for (const entry of open) {
       if (entry.failure === null) continue;
       try {

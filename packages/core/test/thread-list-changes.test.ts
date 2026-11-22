@@ -40,6 +40,35 @@ async function seeded(count: number): Promise<{ client: CoreClient; threadId: st
 }
 
 describe('threads.listChanges', () => {
+  test('a list exceeding a frame pages in stable order while changes keep arriving', async () => {
+    harness = await startTestCore();
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    seed(harness.core, harness.core.threads.require(threadId), 25_000);
+    const first = await client.call('threads.listChanges', { page: true });
+    if (first.kind !== 'full') throw new Error('expected first page of the full list');
+    expect(bytes(first)).toBeLessThan(1_100_000);
+    expect(first.threads.length).toBeGreaterThan(0);
+    const ids = new Set(first.threads.map(thread => thread.id));
+    const changed = await echoThread(harness, client, 'Created between pages');
+    let next = first.next;
+    expect(next).toBeDefined();
+    while (next) {
+      const page = await client.call('threads.listChanges', { page: next });
+      if (page.kind !== 'full') throw new Error('expected continuation of the full list');
+      expect(page.cursor).toEqual(first.cursor);
+      expect(bytes(page)).toBeLessThan(1_100_000);
+      for (const thread of page.threads) {
+        if (ids.has(thread.id)) throw new Error(`duplicate thread ${thread.id}`);
+        ids.add(thread.id);
+      }
+      next = page.next;
+    }
+    expect(ids.size).toBe(25_001);
+    const delta = await client.call('threads.listChanges', { since: first.cursor });
+    expect(delta.threads.map(thread => thread.id)).toContain(changed.threadId);
+  });
+
   test('a reconnect after one change among two thousand reads that thread alone', async () => {
     const { client, threadId, first } = await seeded(2000);
     expect(first.threads).toHaveLength(2001);
