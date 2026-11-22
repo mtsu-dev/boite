@@ -19,7 +19,7 @@ export const STRIDE = 9;
 export const TEX = { flat: 0, checker: 1, crate: 2, grid: 3, glow: 4, glyph: 5, streak: 6, beam: 7 } as const;
 
 /** The three colours a scene may use: the text colour, the accent and the accent turned toward blue. */
-export const TINT = { text: 0, accent: 1, second: 2 } as const;
+export const TINT = { text: 0, accent: 1, blend: 2 } as const;
 
 export class Batch {
   data: Float32Array;

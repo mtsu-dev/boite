@@ -17,7 +17,7 @@
 
 import { markFeature } from '@boite/contracts';
 import { Batch, STRIDE, TEX } from './batch';
-import { turnHue, type Rgb } from './math';
+import { themeTints, type Rgb } from './math';
 import { GLYPH_INK, GLYPHS, SCENES, type Frame, type SceneId } from './scenes';
 
 const ATLAS_COLUMNS = 5;
@@ -68,7 +68,7 @@ float checker(vec2 p) {
   vec2 i = 2.0 * (abs(fract((p - 0.5 * w) * 0.5) - 0.5) - abs(fract((p + 0.5 * w) * 0.5) - 0.5)) / w;
   vec2 rim = abs(fract(p * 0.5) - 0.5);
   float seam = smoothstep(0.47 - w.x * 0.5, 0.47, rim.x) + smoothstep(0.47 - w.y * 0.5, 0.47, rim.y);
-  return mix(0.42, 1.0, 0.5 - 0.5 * i.x * i.y) * (1.0 - 0.55 * min(seam, 1.0) / (1.0 + 3.0 * max(w.x, w.y)));
+  return mix(0.3, 1.0, 0.5 - 0.5 * i.x * i.y) * (1.0 - 0.55 * min(seam, 1.0) / (1.0 + 3.0 * max(w.x, w.y)));
 }
 
 float grid(vec2 p) {
@@ -89,10 +89,10 @@ float crate(vec2 p) {
   float brace = 1.0 - smoothstep(0.085 - w, 0.085 + w, abs(f.x - f.y));
   float plank = fract(f.y * 4.0);
   float seam = 1.0 - smoothstep(0.0, 0.07 + 4.0 * w, min(plank, 1.0 - plank));
-  float body = (0.4 + 0.14 * mod(floor(f.y * 4.0), 2.0)) * (1.0 - 0.4 * seam);
-  float m = mix(mix(body, 0.85, brace), 1.0, frame) * (1.0 - 0.45 * groove);
+  float body = (0.15 + 0.07 * mod(floor(f.y * 4.0), 2.0)) * (1.0 - 0.4 * seam);
+  float m = mix(mix(body, 0.72, brace), 1.0, frame) * (1.0 - 0.45 * groove);
   float nail = 1.0 - smoothstep(0.02, 0.02 + 2.0 * w, length(abs(f - 0.5) - 0.435));
-  return mix(m, 0.4, nail * frame);
+  return mix(m, 0.45, nail * frame);
 }
 
 void main() {
@@ -298,7 +298,7 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
     if (probeContext) {
       const text = colorOf(probeContext, style, '--color-foreground') ?? [255, 255, 255];
       const accent = colorOf(probeContext, style, '--color-accent') ?? text;
-      [text, accent, turnHue(accent, -70)].forEach((rgb, i) => {
+      themeTints(text, accent).forEach((rgb, i) => {
         tints[i * 3] = rgb[0] / 255; tints[i * 3 + 1] = rgb[1] / 255; tints[i * 3 + 2] = rgb[2] / 255;
       });
     }

@@ -336,8 +336,8 @@ The canvas is the first child of the chat column and takes no layer of its
 own: the heading, the composer and the tail are positioned after it and
 paint over it, and their menus keep their own layers. It never takes a
 click. `lib/backdrop/scenes.ts` turns a time into triangles and the engine
-draws them with WebGL 2, in the theme's text colour and accent over a
-transparent ground, so a scene follows the theme, the accent and the code
+draws them with WebGL 2, in the theme's text colour, its accent and a mix
+of the two, never a hue of its own, over a transparent ground, so a scene follows the theme, the accent and the code
 face. The two console scenes are drawn at a fraction of the resolution,
 smoothed and stretched, with brightness cut to 63 steps through an ordered
 dither; the characters are drawn at the screen's density. The words of the

@@ -25,20 +25,10 @@ export function wrap(value: number, span: number): number {
 }
 
 /**
- * The colour with its hue turned by `degrees`, lightness and saturation kept
- * (HSL). The scenes' second colour is the accent turned 70 degrees toward
- * blue, so it follows whatever accent the device picked.
+ * The three tints a scene draws in: the theme's text colour, its accent, and
+ * the accent halfway to the text colour. Nothing else, so a scene never shows
+ * a colour the theme does not hold.
  */
-export function turnHue([red, green, blue]: Rgb, degrees: number): Rgb {
-  const r = red / 255, g = green / 255, b = blue / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const light = (max + min) / 2, spread = max - min;
-  const chroma = 1 - Math.abs(2 * light - 1);
-  const saturation = spread && chroma ? spread / chroma : 0;
-  let hue = 0;
-  if (spread) hue = max === r ? ((g - b) / spread) % 6 : max === g ? (b - r) / spread + 2 : (r - g) / spread + 4;
-  hue = wrap(hue * 60 + degrees, 360);
-  const c = chroma * saturation, x = c * (1 - Math.abs(((hue / 60) % 2) - 1)), m = light - c / 2;
-  const [r1, g1, b1] = hue < 60 ? [c, x, 0] : hue < 120 ? [x, c, 0] : hue < 180 ? [0, c, x] : hue < 240 ? [0, x, c] : hue < 300 ? [x, 0, c] : [c, 0, x];
-  return [Math.round((r1 + m) * 255), Math.round((g1 + m) * 255), Math.round((b1 + m) * 255)];
+export function themeTints(text: Rgb, accent: Rgb): [Rgb, Rgb, Rgb] {
+  return [text, accent, [(text[0] + accent[0]) / 2, (text[1] + accent[1]) / 2, (text[2] + accent[2]) / 2]];
 }

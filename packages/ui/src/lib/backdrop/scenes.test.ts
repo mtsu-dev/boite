@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { Batch, STRIDE, TEX, TINT } from './batch';
-import { turnHue, wrap } from './math';
+import { themeTints, wrap } from './math';
 import { GLYPHS, SCENES, type Frame, type SceneId } from './scenes';
 
 const IDS: SceneId[] = ['glyphs', 'crates', 'tunnel'];
@@ -31,6 +31,14 @@ test('every scene fills whole triangles of finite numbers, in materials the shad
   }
 });
 
+// The opaque pass replaces pixels: a lamp drawn there cut a hole in the wall as it dimmed.
+test('the tunnel puts only its walls in the opaque pass, so a dimming lamp shows the wall behind it', () => {
+  for (const time of [3, 21.9, 61.7]) {
+    const { solid } = drawn('tunnel', time);
+    for (let vertex = 0; vertex < solid.count; vertex++) expect([TEX.checker, TEX.grid]).toContain(solid.data[vertex * STRIDE + 6]);
+  }
+});
+
 test('a scene is a function of its time: the still frame of reduced motion is the same every time', () => {
   for (const id of IDS) {
     const once = drawn(id, 3), again = drawn(id, 3);
@@ -57,11 +65,17 @@ test('a batch grows past its first size instead of dropping triangles', () => {
   expect(batch.data[59 * STRIDE]).toBe(8.5);
 });
 
-test('the second colour is the accent turned toward blue, and a grey stays grey', () => {
-  const [red, green, blue] = turnHue([168, 85, 247], -70);
-  expect(blue).toBeGreaterThan(red);
-  expect(blue).toBeGreaterThan(green);
-  expect(green).toBeGreaterThan(red);
-  expect(turnHue([128, 128, 128], -70)).toEqual([128, 128, 128]);
+test('a scene draws only in the theme: its text colour, its accent and a mix of the two', () => {
+  const text: [number, number, number] = [236, 236, 241], accent: [number, number, number] = [168, 85, 247];
+  const tints = themeTints(text, accent);
+  expect(tints[0]).toEqual(text);
+  expect(tints[1]).toEqual(accent);
+  // On the line from the text colour to the accent, channel by channel: no hue of its own.
+  for (const tint of tints) {
+    const share = (tint[0] - text[0]) / (accent[0] - text[0]);
+    expect(share).toBeGreaterThanOrEqual(0);
+    expect(share).toBeLessThanOrEqual(1);
+    for (let channel = 1; channel < 3; channel++) expect(tint[channel]).toBeCloseTo(text[channel]! + (accent[channel]! - text[channel]!) * share);
+  }
   expect(wrap(-1, 34)).toBe(33);
 });
