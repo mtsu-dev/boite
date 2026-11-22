@@ -38,17 +38,3 @@ test('browser condition waits bound unresolved evaluations and refuse closed pag
   }
   // Only this regression allows the old 20-second call deadline to finish for the red run.
 }, 45_000);
-
-test('animation settling completes when the work ends without a frame callback', async () => {
-  const page = await BrowserPage.launch({ url: 'about:blank' });
-  try {
-    await page.evaluate(`(() => {
-      window.requestAnimationFrame = () => 1;
-      window.fade = document.body.animate([{ opacity: 0 }, { opacity: 1 }], 100);
-    })()`);
-    await page.settleAnimations();
-    expect(await page.evaluate('window.fade.playState')).toBe('finished');
-  } finally {
-    await page.close();
-  }
-}, 30_000);

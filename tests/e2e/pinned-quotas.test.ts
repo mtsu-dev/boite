@@ -15,7 +15,7 @@ beforeAll(async () => {
   server = await startDevUi(port);
   origin = `http://127.0.0.1:${port}`;
   page = await BrowserPage.launch({
-    url: `${origin}/?fake=1&open=recent&contactNotice=0`, windowSize: { width: 1440, height: 1000 },
+    url: `${origin}/?fake=1&open=recent`, windowSize: { width: 1440, height: 1000 },
     args: ['--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4'],
   });
 }, 120_000);
@@ -25,7 +25,7 @@ async function boot(width = 2000, machines = false, agents = false) {
   await page.send('Emulation.setDeviceMetricsOverride', { width, height: width === 390 ? 844 : 1000, deviceScaleFactor: 1, mobile: width === 390 });
   await page.send('Emulation.setTouchEmulationEnabled', { enabled: width === 390, maxTouchPoints: 1 });
   await page.evaluate(`localStorage.removeItem('boite.experiments'); localStorage.removeItem('boite.pinned-quotas.v1'); localStorage.removeItem('boite.quotas')`);
-  await page.navigate(`${origin}/?fake=1&open=recent&contactNotice=0${machines ? '&machines=1' : ''}${agents ? '&agents=1' : ''}`);
+  await page.navigate(`${origin}/?fake=1&open=recent${machines ? '&machines=1' : ''}${agents ? '&agents=1' : ''}`);
   await page.waitFor('globalThis.__boiteTest?.workspace.active?.openThread');
   if (machines) await page.waitFor('globalThis.__boiteTest.workspace.machines.length === 2');
   await fixture();
@@ -195,8 +195,9 @@ test.each([1024, 390])('pinning quotas preserves the empty draft layout without 
   await page.evaluate('globalThis.__boiteTest.workspace.active.sidebarCollapsed = true');
   await page.send('Emulation.setDeviceMetricsOverride', { width, height: width === 390 ? 844 : 1000, deviceScaleFactor: 1, mobile: width === 390 });
   await page.send('Emulation.setTouchEmulationEnabled', { enabled: width === 390, maxTouchPoints: 1 });
-  // On resize the phone's lazy header takes a row above the draft.
-  if (width === 390) await page.waitFor(`document.querySelector('[data-testid="mobile-header"]')?.offsetHeight > 0`);
+  await page.waitFor(`innerWidth === ${width}`);
+  // Resizing from desktop loads the phone's header, which takes up a grid row.
+  if (width === 390) await page.waitFor(`document.querySelector('[data-testid="mobile-back"]')`);
   await page.evaluate(`(async () => { const { pinnedQuotas } = await import('/src/lib/pinned-quotas.svelte.ts'); pinnedQuotas.set(false); })()`);
   await page.waitFor(`!document.querySelector('${card}')`);
   await page.settleAnimations();
