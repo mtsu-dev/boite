@@ -44,6 +44,8 @@ interface GitRun {
   stderr: string;
 }
 
+type BranchProof = { sha: string; branch: string | null; requireContainment?: true };
+
 export interface Listed {
   path: string;
   head: string | null;
@@ -184,7 +186,7 @@ export class WorktreeSweep {
     if (target.head === null) throw refused(`cannot verify the commit of ${path}`, { projectId: project.id, path });
     const proof = merged !== null && target.head === merged.sha ? merged : null;
     if (entry.unmerged && proof === null) throw refused('This worktree has commits on no other branch.', { projectId: project.id, path, unmerged: true });
-    const branchDeleted = await this.detach(project, path, target, proof ?? { sha: target.head, branch: target.branch });
+    const branchDeleted = await this.detach(project, path, target, proof ?? { sha: target.head, branch: target.branch, requireContainment: true });
     return { branch: target.branch, branchDeleted };
   }
 
@@ -194,7 +196,7 @@ export class WorktreeSweep {
    * (`branch -D`); a proof deletes it only while it still points at the
    * proved head (`update-ref -d` compares first) and no worktree has it.
    */
-  private async detach(project: Project, path: string, target: Listed, branchRule: 'force' | 'merged-only' | { sha: string; branch: string | null }): Promise<boolean> {
+  private async detach(project: Project, path: string, target: Listed, branchRule: 'force' | 'merged-only' | BranchProof): Promise<boolean> {
     // A vanished directory loses its registration to the same unforced
     // `remove` (git 2.55 exits 0 on it); `prune --expire` would keep it for an hour.
     const removal = ['worktree', 'remove', ...(branchRule === 'force' ? ['--force'] : []), target.path];
@@ -221,7 +223,7 @@ export class WorktreeSweep {
     return branchDeleted;
   }
 
-  private async deleteProvedBranch(project: Project, branch: string, proof: { sha: string; branch: string | null }): Promise<GitRun> {
+  private async deleteProvedBranch(project: Project, branch: string, proof: BranchProof): Promise<GitRun> {
     if (proof.branch !== branch) return { code: 1, stdout: '', stderr: `the merge proof is for ${proof.branch ?? 'a detached head'}, not ${branch}` };
     // One locked section: `update-ref` does not refuse a branch a worktree has, so
     // no registration may take the branch back between the list and the deletion.
@@ -230,6 +232,13 @@ export class WorktreeSweep {
       if (listed.code !== 0) return { code: listed.code, stdout: '', stderr: `cannot list worktrees: ${listed.stderr.trim() || `exit ${listed.code}`}` };
       const holder = parseWorktreeList(listed.stdout).find((worktree) => worktree.branch === branch);
       if (holder !== undefined) return { code: 1, stdout: '', stderr: `${branch} is checked out at ${holder.path}` };
+      if (proof.requireContainment) {
+        try {
+          if (await this.unmerged(project, { head: proof.sha, branch })) return { code: 1, stdout: '', stderr: 'no other branch contains its commit' };
+        } catch (error) {
+          return { code: 1, stdout: '', stderr: messageOf(error) };
+        }
+      }
       return this.git(project, project.path, ['update-ref', '-d', `refs/heads/${branch}`, proof.sha]);
     });
   }
@@ -320,7 +329,7 @@ export class WorktreeSweep {
   }
 
   /** HEAD on no ref but the worktree's own branch. A worktree on an unborn branch has nothing to lose. */
-  async unmerged(project: Project, worktree: Listed): Promise<boolean> {
+  async unmerged(project: Project, worktree: Pick<Listed, 'head' | 'branch'>): Promise<boolean> {
     if (worktree.head === null) return false;
     const refs = await this.read(project, project.path, ['for-each-ref', '--format=%(refname)', '--contains', worktree.head, 'refs/heads/', 'refs/remotes/']);
     if (refs.code !== 0) throw refused(`git for-each-ref failed in ${project.path}: ${refs.stderr.trim() || `exit ${refs.code}`}`, { projectId: project.id });

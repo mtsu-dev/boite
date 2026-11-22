@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, mkdtempSync } from 'node:fs';
-import { link, lstat, mkdir, readdir, readFile, realpath, rename, rmdir, unlink } from 'node:fs/promises';
+import { link, lstat, mkdir, readdir, readFile, readlink, realpath, rename, rmdir, symlink, unlink } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
@@ -125,7 +125,7 @@ async function emptyDirectories(root: string): Promise<void> {
 }
 
 /** Only these Git index entries can leave the staged checkout. No recursive file deletion. */
-async function setAside(staged: string, saved: string, files: string[]): Promise<void> {
+async function setAside(staged: string, saved: string, files: string[]): Promise<string | null> {
   const root = await realKey(staged);
   for (const name of files) {
     const from = resolve(staged, name);
@@ -137,11 +137,12 @@ async function setAside(staged: string, saved: string, files: string[]): Promise
     });
     // An absent sparse entry needs no move. Gitlinks and replaced directories keep their checkout.
     if (!info) continue;
-    if (!info.isFile() && !info.isSymbolicLink()) throw refused(`checkout entry ${from} is not a file or symlink`, { path: from });
+    if (!info.isFile() && !info.isSymbolicLink()) return `checkout entry ${from} is not a file or symlink`;
     const to = join(saved, name);
     await mkdir(dirname(to), { recursive: true });
     await rename(from, to);
   }
+  return null;
 }
 
 /** A hard link publishes each saved file only if its old name is still free. */
@@ -156,6 +157,17 @@ async function restoreFile(from: string, to: string): Promise<void> {
   await unlink(from);
 }
 
+async function restoreSymlink(from: string, to: string): Promise<void> {
+  const target = await readlink(from);
+  try { await symlink(target, to); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    // A previous recovery can stop after publishing the link. Keep any different entry in place.
+    if (await readlink(to).catch(() => null) !== target) throw error;
+  }
+  await unlink(from);
+}
+
 async function putBack(saved: string, staged: string): Promise<void> {
   const root = await realKey(staged);
   for (const entry of await readdir(saved, { withFileTypes: true, recursive: true })) {
@@ -164,7 +176,8 @@ async function putBack(saved: string, staged: string): Promise<void> {
     const to = join(staged, relative(saved, from));
     await containedParent(root, to);
     await mkdir(dirname(to), { recursive: true });
-    await restoreFile(from, to);
+    if (entry.isSymbolicLink()) await restoreSymlink(from, to);
+    else await restoreFile(from, to);
   }
   await emptyDirectories(saved);
 }
@@ -289,7 +302,8 @@ export async function removeCleanCheckout(core: Core, path: string, git: Checkou
     const tracked = await git(['-C', staged, 'ls-files', '-z']);
     if (tracked.code !== 0) return tracked;
     const files = [...new Set(tracked.stdout.split('\0').filter(Boolean)), '.git'];
-    await setAside(staged, saved, files);
+    const obstruction = await setAside(staged, saved, files);
+    if (obstruction !== null) return failure(obstruction);
     if (await checkoutAdmin(saved) !== admin) return failure('the Git directory changed during cleanup');
     const savedStatus = await git(statusArgs(saved));
     if (savedStatus.code !== 0) return savedStatus;
