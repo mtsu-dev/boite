@@ -54,6 +54,8 @@ test('opening a conversation asks the core once for each thing the panel and the
   closeTour();
   running = mount(App, { target });
   await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null));
+  // The sidebar and the chat are chunks of their own: on a slow runner they drew after the store booted, and their first reads landed in the open measured below.
+  await waitFor(() => document.querySelector('section[data-testid=project]') !== null && document.querySelector('[data-testid=chat]') !== null, 10_000);
   workspace.view = 'projects';
   const ids = (await store.client!.call('threads.list', {})).filter((thread) => !thread.parentThreadId && !thread.archived).map((thread) => thread.id);
   const [first, second] = ids.filter((id) => id !== store.openThread?.id);
