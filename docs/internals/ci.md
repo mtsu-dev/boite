@@ -631,7 +631,9 @@ Bun's compressor shows as an error, not as growth. What belongs to the machine
 running the bench is left out before counting: `core.log`, `process.*` and
 `thread.load` frames, the data folder's path (written `/data`), memory and CPU readings.
 Random ids come from a seeded generator and the clock stands still, so a
-commit gives the same numbers on every run: about 15 s for the three agents.
+commit gives the same numbers on every run of one OS: about 15 s for the three
+agents. CI measures on its Linux runners; a Windows run counts a few dozen
+bytes more, so compare runs of the same OS.
 
 `thread-transfer.yml` measures every main commit, one job the next push never
 cancels, and keeps the numbers 90 days as the `thread-transfer` artifact. The
