@@ -172,8 +172,24 @@ as it was; it then reports what the page logged before. On public pages
 exception. A frame of another origin on the same site, which needs an
 execution context, is reached through the isolated world `boite-kit`
 (`Page.createIsolatedWorld`), the same one each time and invisible to the
-page. A tab of the desktop app's webviews keeps the runtime on its own
-session, since the shell reads its console.
+page.
+
+A tab of the desktop app's webviews has one DevTools session, the shell's,
+and nothing can hold its requests or open a second session there. The shell
+enables the runtime only on the user's own tabs
+(`platform/browser_diagnostics.rs`); on an agent's tab the core turns it on
+and off on that session by the same rule (`hostedRuntime`). It turns on once a
+private document committed, and off before the core or a viewer in the panel
+sends the tab to a public address (`#navigate` in `browser.ts`,
+`remote-drive.ts`). A navigation the page starts itself is seen at its
+request, which the app relays with its frame (`compactPageEvent` in
+`packages/ui/src/lib/browser-host.ts`): `Runtime.disable` is sent then, but
+it reaches only the page that leaves. Chromium gives the new document's
+process the runtime as it was when the navigation began, so a page of this
+machine that sends the tab to a public site, a link, a redirect or the back
+button, still shows that public page the runtime for its first milliseconds.
+A tab that never showed a page of this machine never has it, and the agent's
+own `open` and `navigate` turn it off before the navigation begins.
 
 This brings it level with the same Chrome running with a window on the same
 network, not past it. Etsy, SeLoger and Reddit still asked for a captcha on
@@ -476,12 +492,12 @@ its iframe. The kit lists each such iframe that has a size, and the core reads
 its document in the frame's own context and sets the lines under the iframe
 (`browser/page-frames.ts`):
 
-- A frame of the same site runs in the page's renderer, in an execution context
-  of its own on the tab's session; the core keeps each frame's context from the
-  `Runtime.executionContextCreated` events.
+- A frame of the same site runs in the page's renderer. The kit runs there in
+  the frame's isolated world `boite-kit`, which needs no runtime.
 - A frame of another site runs in a process of its own, a target whose id is
-  the frame's. The command attaches to it, enables its runtime, so its own
-  frames of the same site are listed too, and leaves it when it ends.
+  the frame's. The command attaches to it, reaches its own frames of the same
+  site through their isolated world on that session, and leaves it when it
+  ends.
 - The iframe's element names its frame through `DOM.describeNode`.
 
 Refs are stable: the kit keeps, in each document's own window, the ref of
@@ -519,10 +535,9 @@ against it would hide lines.
 
 A snapshot reads at most 30 frames of other origins, within its 40,000
 characters; one past either is a note under its iframe. With `-i`, a frame with
-nothing to act on is left out. The desktop app relays no
-`Runtime.executionContextDestroyed` and attaches to no frame's process: a hosted
-tab reaches a frame of the same site through its context, and a frame of
-another site shows as a note.
+nothing to act on is left out. The desktop app attaches to no frame's process:
+a hosted tab reaches a frame of the same site through its isolated world, and
+a frame of another site shows as a note.
 
 ## The desktop app hosts the tabs
 
