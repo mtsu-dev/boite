@@ -19,30 +19,78 @@ afterEach(() => {
   delete window.__TAURI_INTERNALS__;
 });
 
-test('clicking a local executable opens the original file without downloading or previewing it', async () => {
+/** `files.read` of an inert program fixture: its bytes are never run, only described. */
+const programFile = vi.fn(async (_threadId: string, path: string) => ({
+  ok: true, value: { kind: 'binary', path, bytes: 18, modifiedAt: 0, mime: 'application/octet-stream', url: 'http://127.0.0.1:9/file/fixture' },
+}));
+
+test.each([false, true])('a click on a program link shows its preview, and only the preview\'s Open launches it (open-chat-links: %s)', async (direct) => {
   setFeature('chat-artifacts', true);
+  setFeature('open-chat-links', direct);
+  // A simulated shell: nothing is launched, the opener's calls are only recorded.
   const invoke = vi.fn(async () => {});
   window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'game', cwd: 'C:/project' }], readFile: vi.fn() } as unknown as Store;
+  const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'game', cwd: 'C:/project' }], readFile: programFile } as unknown as Store;
   running = mount(Prose, { target: document.body, props: { text: '[Launch game](target/release/game.exe)', store, threadId: 'game' } });
   flushSync();
-  expect(invoke).not.toHaveBeenCalled();
   query<HTMLAnchorElement>('a[data-file-path]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=artifact-open]')).not.toBeNull());
+  expect(store.readFile).toHaveBeenCalledWith('game', 'target/release/game.exe');
+  expect(invoke).not.toHaveBeenCalled();
+  // The program's name beside Open launches nothing; only the visible Open button does.
+  query<HTMLButtonElement>('[data-testid=artifact-launch]').click();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(invoke).not.toHaveBeenCalled();
+  query<HTMLButtonElement>('[data-testid=artifact-open]').click();
   await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_local_file', { directory: 'C:/project', path: 'target/release/game.exe' }, undefined));
-  expect(store.readFile).not.toHaveBeenCalled();
-  expect(document.querySelector('[data-testid=chat-file]')).toBeNull();
+  expect(invoke).toHaveBeenCalledTimes(1);
 });
 
-test('a native open failure is shown and never falls back to downloading', async () => {
+test('the preview\'s name opens only what the shell opens directly, and Open stays the explicit launch', async () => {
+  setFeature('chat-artifacts', true);
+  // A simulated shell: open_chat_file refuses a script as the real one does, and nothing is launched.
+  const invoke = vi.fn(async (command: string, args?: { path?: string }) => {
+    if (command === 'open_chat_file' && args?.path?.endsWith('.sh')) throw 'path tools/run.sh: expected a document (txt, md) that is not executable';
+  });
+  window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
+  const readFile = vi.fn(async (_threadId: string, path: string) => ({ ok: true, value: { kind: 'text', path, bytes: 6, modifiedAt: 0, text: 'inert\n', truncated: false, language: null } }));
+  const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'local', cwd: 'C:/project' }], readFile } as unknown as Store;
+  running = mount(Prose, { target: document.body, props: { text: '[Run](tools/run.sh) [Notes](notes.txt)', store, threadId: 'local' } });
+  flushSync();
+  const calls = (command: string) => invoke.mock.calls.filter(([name]) => name === command);
+  const [script, notes] = document.querySelectorAll<HTMLAnchorElement>('a[data-file-path]');
+  script!.click();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=artifact-open]')).not.toBeNull());
+  query<HTMLButtonElement>('[data-testid=artifact-launch]').click();
+  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_chat_file', { directory: 'C:/project', path: 'tools/run.sh' }, undefined));
+  await vi.waitFor(() => expect(document.querySelector('[role=alert] p')?.textContent).toContain('expected a document'));
+  expect(calls('open_local_file')).toHaveLength(0);
+  query<HTMLButtonElement>('[data-testid=artifact-open]').click();
+  await vi.waitFor(() => expect(calls('open_local_file')).toEqual([['open_local_file', { directory: 'C:/project', path: 'tools/run.sh' }, undefined]]));
+  // A document the shell opens directly keeps its name as an Open.
+  notes!.click();
+  await vi.waitFor(() => expect(readFile).toHaveBeenCalledWith('local', 'notes.txt'));
+  await vi.waitFor(() => expect(query('[data-testid=artifact-launch]').textContent).toContain('notes.txt'));
+  query<HTMLButtonElement>('[data-testid=artifact-launch]').click();
+  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_chat_file', { directory: 'C:/project', path: 'notes.txt' }, undefined));
+  expect(calls('open_local_file')).toHaveLength(1);
+});
+
+test('a native open failure is shown in the preview and never falls back to downloading', async () => {
   setFeature('chat-artifacts', true);
   const invoke = vi.fn(async () => { throw 'game.exe: file does not exist'; });
   window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const reportError = vi.fn();
-  const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'game', cwd: 'C:/project' }], reportError } as unknown as Store;
+  const store = {
+    owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'game', cwd: 'C:/project' }],
+    readFile: vi.fn(async () => ({ ok: false, error: 'game.exe: file does not exist' })),
+  } as unknown as Store;
   running = mount(Prose, { target: document.body, props: { text: '[Launch game](game.exe)', store, threadId: 'game' } });
   flushSync();
   query<HTMLAnchorElement>('a[data-file-path]').click();
-  await vi.waitFor(() => expect(reportError).toHaveBeenCalledWith('game.exe: file does not exist', 'minor'));
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=artifact-open]')).not.toBeNull());
+  query<HTMLButtonElement>('[data-testid=artifact-open]').click();
+  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_local_file', { directory: 'C:/project', path: 'game.exe' }, undefined));
+  await vi.waitFor(() => expect(document.querySelector('[role=alert] p')?.textContent).toBe('game.exe: file does not exist'));
   expect(document.querySelector('[data-testid=artifact-download]')).toBeNull();
 });
 
@@ -72,11 +120,11 @@ function query<T extends Element>(selector: string): T {
   return node;
 }
 
-test('dragging across a game path never launches it, and the next click still does', async () => {
+test('dragging across a game path never previews it, the next click does, and no click launches it', async () => {
   setFeature('chat-artifacts', true);
   const invoke = vi.fn(async () => {});
   window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'game', cwd: 'C:/project' }] } as unknown as Store;
+  const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'game', cwd: 'C:/project' }], readFile: programFile } as unknown as Store;
   running = mount(Prose, { target: document.body, props: { text: '[Launch game](build/game.exe)', store, threadId: 'game' } });
   flushSync();
   const link = query<HTMLAnchorElement>('a[data-file-path]');
@@ -85,15 +133,17 @@ test('dragging across a game path never launches it, and the next click still do
   link.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, button: 0, clientX: 60, clientY: 10 }));
   link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
   await vi.dynamicImportSettled();
-  expect(invoke).not.toHaveBeenCalled();
+  expect(store.readFile).not.toHaveBeenCalled();
   link.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
   link.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
   link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=chat-file]')).not.toBeNull());
   await vi.dynamicImportSettled();
+  // A second click on the same link keeps the one preview and still launches nothing.
   link.click();
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(2));
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_local_file', { directory: 'C:/project', path: 'build/game.exe' }, undefined));
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(document.querySelectorAll('[data-testid=chat-file]')).toHaveLength(1);
+  expect(invoke).not.toHaveBeenCalled();
 });
 
 test.each([false, true])('selecting external link text skips navigation, then a click still opens it (shell: %s)', async (shell) => {
@@ -122,9 +172,9 @@ test.each([false, true])('selecting external link text skips navigation, then a 
 
 test('the open-chat-links switch asks the shell on a click, and previews what the shell refuses to open', async () => {
   setFeature('chat-artifacts', false);
-  // As the shell: a shortcut or a path outside the thread's folder is not opened.
-  const invoke = vi.fn(async (command: string, args?: { path?: string }) => {
-    if (command === 'open_chat_file' && args?.path?.endsWith('.lnk')) throw new Error('path: expected a document that is not executable');
+  // Both links point outside the thread's folder, so the shell refuses them.
+  const invoke = vi.fn(async (command: string) => {
+    if (command === 'open_chat_file') throw new Error('path: expected a file or folder inside E:/project');
   });
   window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
   const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'local', cwd: 'E:/project' }], readFile: vi.fn() } as unknown as Store;
@@ -141,7 +191,7 @@ test('the open-chat-links switch asks the shell on a click, and previews what th
   await vi.waitFor(() => expect(store.readFile).toHaveBeenCalledTimes(1));
   await tick(); links[1]!.click();
   await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_chat_file', { directory: 'E:/project', path: 'E:/reports/test result.txt' }, undefined));
-  expect(store.readFile).toHaveBeenCalledTimes(1);
+  await vi.waitFor(() => expect(store.readFile).toHaveBeenNthCalledWith(2, 'local', 'E:/reports/test result.txt'));
   setFeature('open-chat-links', false); flushSync();
   expect(document.querySelector('a[data-file-path]')).toBeNull();
 });

@@ -215,7 +215,7 @@ describe('git.diff', () => {
     expect(binary).toMatchObject({ binary: true, oldText: null, newText: null });
   });
 
-  test('one git reads a diff when the client gives the origin from its status, two when the core must find it', async () => {
+  test('one git reads a diff when the client gives the origin from its status; to find it, the core reads the status and the folder prefix together first', async () => {
     const path = await fixture();
     const threadId = await threadIn(path, 'repo');
     const spawned: string[] = [];
@@ -238,7 +238,8 @@ describe('git.diff', () => {
     };
     try {
       const walked = await counted({ path: 'moved.txt' });
-      expect(walked.spawned).toEqual(['status', 'cat-file']);
+      // The prefix names the status's root-relative paths from cwd, as `git.status` does.
+      expect(walked.spawned).toEqual(['status', 'rev-parse', 'cat-file']);
       const given = await counted({ path: 'moved.txt', oldPath: 'keep.txt' });
       expect(given.spawned).toEqual(['cat-file']);
       expect(given.diff).toEqual(walked.diff);

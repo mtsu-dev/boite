@@ -1456,7 +1456,8 @@ validates its current attachments and page references before rewinding history;
 attachments deliberately removed from the recalled prompt stay removed.
 
 Original file links in the local desktop thread may open through the system
-application, with executable links retaining their explicit local behavior.
+application. A program link first shows its preview; only the preview's Open
+button launches it, not its name.
 The shell resolves symlinks, checks thread containment and rejects browsed-webview
 callers. Remote cores, browsers and phones retain preview/download behavior.
 Published snapshots from `boite attach` use the separate safe download/open rules

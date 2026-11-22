@@ -63,6 +63,7 @@ Settings, General, Open chat links in their apps is off by default and exists
 only in the desktop app. On, a click on a document or folder inside the
 conversation's folder opens it in its default app. Programs, scripts, shortcuts
 and files outside that folder never open this way: they show in the preview.
+A program on this computer starts only from the preview's Open button.
 Only links from this computer open this way. On another machine or a phone, links keep the
 preview.
 
