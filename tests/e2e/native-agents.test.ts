@@ -63,14 +63,36 @@ test('native agents remain visible beside Boite subagents on desktop and phone',
 }, 40_000);
 
 test('running native agents contribute to one count without becoming Boite subagents', async () => {
-  await onStore('store.delegation.nativeAgents[1].status = "running";');
-  await page.waitFor('document.querySelector("[data-testid=agent-dock]")?.dataset.count === "1"');
-  await onStore('store.delegation.nativeAgents[0].status = "running";');
-  // Two count on the one waiting line, by name; the team still lists them, never as Boite subagents.
-  await page.waitFor('document.querySelector("[data-testid=agent-dock-label]")?.textContent === "Waiting on 2 subagents"');
-  // The names may be cut at a word on screen; the tooltip holds them whole.
-  expect(await page.evaluate('document.querySelector("[data-testid=agent-dock-names]").title.split(", ").length')).toBe(2);
-  expect(await page.evaluate('document.querySelectorAll("[data-testid=delegation-member]").length')).toBe(0);
+  // Give refreshes the same agent states as the explicit reads in this test.
+  await onStore(`
+    const client = store.client;
+    const call = client.call;
+    let running = 1;
+    client.call = async (method, params) => {
+      const view = await call.call(client, method, params);
+      if (method === "delegation.get" && params.threadId === "t-native") {
+        for (const agent of view.nativeAgents.slice(-running)) agent.status = "running";
+      }
+      return view;
+    };
+    globalThis.runBothNativeAgents = () => { running = 2; return store.loadDelegation("t-native"); };
+    globalThis.restoreNativeAgentFixture = () => {
+      client.call = call;
+      delete globalThis.runBothNativeAgents;
+      delete globalThis.restoreNativeAgentFixture;
+    };
+    await store.loadDelegation("t-native");
+  `);
+  try {
+    await page.waitFor('document.querySelector("[data-testid=agent-dock]")?.dataset.count === "1"');
+    await page.evaluate('globalThis.runBothNativeAgents()');
+    await page.waitFor('document.querySelector("[data-testid=agent-dock-label]")?.textContent === "Waiting on 2 subagents"');
+    // The tooltip holds both names in full.
+    expect(await page.evaluate('document.querySelector("[data-testid=agent-dock-names]").title.split(", ").length')).toBe(2);
+    expect(await page.evaluate('document.querySelectorAll("[data-testid=delegation-member]").length')).toBe(0);
+  } finally {
+    await page.evaluate('globalThis.restoreNativeAgentFixture()');
+  }
 }, 15_000);
 
 test('a detached CLI agent keeps the waiting line until its own exit on desktop and phone', async () => {

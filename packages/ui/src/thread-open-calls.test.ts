@@ -37,7 +37,10 @@ async function waitFor(check: () => boolean, attempts = 2000): Promise<void> {
   throw new Error('gave up waiting');
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 300));
+/** Resolves once no call has started or been pending for 300 ms: a fixed wait let a slow machine's late reads of the first open land in the measured one. */
+async function quiet(calls: { last: number; pending: number }): Promise<void> {
+  await waitFor(() => calls.pending === 0 && Date.now() - calls.last >= 300, 10_000);
+}
 
 test('opening a conversation asks the core once for each thing the panel and the watchers read', async () => {
   window.history.replaceState(null, '', '/?fake=1&open=recent');
@@ -48,30 +51,43 @@ test('opening a conversation asks the core once for each thing the panel and the
   store.draft = null;
   store.page = 'chat';
   store.composerStates = {};
+  workspace.view = 'projects';
   closeTour();
   running = mount(App, { target });
   await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null));
-  workspace.view = 'projects';
+  // The sidebar and the chat are chunks of their own: on a slow runner they drew after the store booted, and their first reads landed in the open measured below.
+  await waitFor(() => document.querySelector('section[data-testid=project]') !== null && document.querySelector('[data-testid=chat]') !== null, 10_000);
   const ids = (await store.client!.call('threads.list', {})).filter((thread) => !thread.parentThreadId && !thread.archived).map((thread) => thread.id);
   const [first, second] = ids.filter((id) => id !== store.openThread?.id);
+  const client = store.client!;
+  const asked: string[] = [];
+  // Who asked and for what: a repeat on a slow runner is only readable with its caller.
+  const askers: string[] = [];
+  const calls = { last: Date.now(), pending: 0 };
+  const call = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
+    asked.push(method);
+    askers.push(`${method} ${JSON.stringify(params)} from ${new Error().stack?.split('\n').slice(3, 9).map((line) => line.trim().replace(/^.*\/packages\/ui\//, '')).join(' < ')}`);
+    calls.last = Date.now();
+    calls.pending++;
+    const settled = () => { calls.pending--; calls.last = Date.now(); };
+    const result = call(method as never, params as never);
+    result.then(settled, settled);
+    return result;
+  }) as typeof client.call);
   await workspace.select(store, first!);
   await waitFor(() => store.openThread?.id === first);
   // The shared rows of each expanded project read once when their chunk arrives: that is not the open measured below.
   await sharedProjectThreads.load();
-  await settle();
+  await quiet(calls);
 
-  const client = store.client!;
-  const asked: string[] = [];
-  const call = client.call.bind(client);
-  vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
-    asked.push(method);
-    return call(method as never, params as never);
-  }) as typeof client.call);
+  asked.length = 0;
+  askers.length = 0;
   await workspace.select(store, second!);
   await waitFor(() => store.openThread?.id === second && store.openThread?.messages !== undefined);
-  await settle();
+  await quiet(calls);
 
   const counts = Object.fromEntries([...new Set(asked)].map((method) => [method, asked.filter((name) => name === method).length]));
-  const twice = Object.entries(counts).filter(([, count]) => count > 1);
+  const twice = Object.entries(counts).filter(([, count]) => count > 1).map(([method]) => askers.filter((asker) => asker.startsWith(`${method} `)));
   expect({ counts, twice }).toMatchObject({ twice: [] });
 });

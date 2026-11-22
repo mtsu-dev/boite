@@ -51,7 +51,10 @@ test('inspect and stop a real delegated thread from the panel, which launches no
   await page.waitFor('document.querySelector("[data-testid=delegation-activity]")?.getAttribute("aria-expanded") === "true"');
   expect(await page.evaluate('document.querySelectorAll("[data-testid=delegation-agent][data-state=working]").length')).toBe(1);
   await page.click('[data-testid="delegation-activity"]');
-  await openAgents();
+  await page.click('[data-testid="composer-foot-fold"]');
+  expect(await page.text('[data-testid="agent-dock-model"]')).toBe('Echo');
+  await page.click('[data-testid="composer-foot-fold"]');
+  await page.click('[data-testid="agent-dock-panel"]');
   await page.waitFor('!!document.querySelector("[data-testid=delegation-member]")');
   expect(await page.evaluate('document.querySelector("[data-testid=delegation-member-route]").title')).toContain('Echo · Echo');
   expect(await page.evaluate('!!document.querySelector("[data-testid=delegation-active] [data-testid=delegation-member]")')).toBe(true);
@@ -108,8 +111,7 @@ test('a newly started workflow appears above the composer without reopening the 
   await page.waitFor('document.querySelector("[data-testid=agent-dock]")?.dataset.runs === "1"');
   expect(await page.text('[data-testid="agent-dock-label"]')).toBe('Waiting on 1 workflow');
   expect(await page.text('[data-testid="agent-dock-names"]')).toContain('Check the workflow indicator');
-  // The line's two controls: its fold and a Stop that names what it stops.
-  expect(await page.evaluate('[...document.querySelectorAll("[data-testid=agent-dock] button")].map(button => button.dataset.testid)')).toEqual(['composer-foot-fold', 'agent-dock-stop']);
+  expect(await page.evaluate('[...document.querySelectorAll("[data-testid=agent-dock] button")].map(button => button.dataset.testid)')).toEqual(['composer-foot-fold', 'agent-dock-panel', 'agent-dock-stop']);
   expect(await page.text('[data-testid="agent-dock-stop"]')).toBe('Stop workflows');
   await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)');
   await page.screenshot(join(import.meta.dir, '.artifacts/workflow-dock-desktop.png'));
@@ -122,6 +124,10 @@ test('a newly started workflow appears above the composer without reopening the 
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)');
   await page.screenshot(join(import.meta.dir, '.artifacts/workflow-dock-phone.png'));
+  await page.click('[data-testid="agent-dock-panel"]');
+  await page.waitFor(`document.querySelector('[data-testid=delegation-run][data-run-id="${run.id}"]')`);
+  await page.click('[data-testid="panel-close"]');
+  await page.waitFor('!document.querySelector("[data-testid=right-panel]")');
   // Stop on the waiting line stops the run.
   await page.click('[data-testid="agent-dock-stop"]');
   await page.waitFor('!document.querySelector("[data-testid=agent-dock]")');
