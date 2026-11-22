@@ -113,6 +113,15 @@ export async function jobAttempt(run: Pick<WorkflowRun, 'id' | 'run_attempt'>, n
   return 'missing';
 }
 
+/**
+ * Why a job that ran left no report. Its upload runs whatever the job's
+ * outcome, so a job that passed without one ran a workflow from before the
+ * report: a branch that has not merged main since.
+ */
+export function noArtifact(conclusion: string | null): NoReport {
+  return conclusion === 'success' ? 'absent' : 'missing';
+}
+
 /** A report `text` that belongs to pull request `pr` at `head`, or an error saying why not. */
 export function acceptReport<K extends Report['kind']>(text: string, kind: K, pr: number, head: string): Extract<Report, { kind: K }> {
   const report = parseReport(text, kind);
@@ -136,7 +145,7 @@ const onTip = (view: { report: Report; tip: string | undefined }) => view.report
 
 const NO_TRANSFER: Record<NoReport, string> = {
   skipped: 'Thread transfer was not measured: this pull request changes neither the core nor the UI.',
-  absent: 'Thread transfer was not measured: this run has no `Thread transfer` job.',
+  absent: "Thread transfer was not measured: this branch's workflow predates the report, merging main brings it in.",
   missing: 'Thread transfer left no report: the job stopped before writing it, its log is in the run below.',
 };
 
@@ -195,7 +204,7 @@ async function download(run: WorkflowRun, kind: 'transfer' | 'bundle'): Promise<
   const name = `${ARTIFACTS[kind]}-${attempt}`;
   const { artifacts } = await api<{ artifacts: { name: string; expired: boolean; size_in_bytes: number }[] }>(`actions/runs/${run.id}/artifacts?per_page=100&name=${name}`);
   const artifact = artifacts.find((entry) => entry.name === name && !entry.expired);
-  if (!artifact) return 'missing';
+  if (!artifact) return noArtifact(await jobConclusion(run, attempt, REPORT_JOBS[kind]));
   if (artifact.size_in_bytes > MAX_REPORT_BYTES) throw new Error(`${name}: ${artifact.size_in_bytes} bytes, expected at most ${MAX_REPORT_BYTES}`);
   const dir = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), `${name}-`));
   const got = Bun.spawnSync(['gh', 'run', 'download', String(run.id), '--name', name, '--dir', dir, '--repo', process.env.GITHUB_REPOSITORY!], { stdout: 'inherit', stderr: 'inherit' });
@@ -204,6 +213,11 @@ async function download(run: WorkflowRun, kind: 'transfer' | 'bundle'): Promise<
   const stat = lstatSync(path, { throwIfNoEntry: false });
   if (!stat?.isFile() || stat.size > MAX_REPORT_BYTES) throw new Error(`${name}: ${REPORT_FILES[kind]} is ${stat ? `not a plain file of at most ${MAX_REPORT_BYTES} bytes` : 'missing'}`);
   return readFileSync(path, 'utf8');
+}
+
+async function jobConclusion(run: WorkflowRun, attempt: number, name: string): Promise<string | null> {
+  const { jobs } = await api<{ jobs: { name: string; conclusion: string | null }[] }>(`actions/runs/${run.id}/attempts/${attempt}/jobs?per_page=100`);
+  return jobs.find((entry) => entry.name === name)?.conclusion ?? null;
 }
 
 const isNoReport = (value: unknown): value is NoReport => value === 'skipped' || value === 'absent' || value === 'missing';
