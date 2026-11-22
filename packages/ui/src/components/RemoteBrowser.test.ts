@@ -562,6 +562,41 @@ test('a core that pushes frames is asked for a stream once: its frames are ackno
   } finally { vi.unstubAllGlobals(); }
 });
 
+test('the picture is never stretched: the box takes the proportions of the picture painted, and a new screen density asks for a sharper one', async () => {
+  for (const [name, value] of [['clientWidth', 700], ['clientHeight', 500]] as const) {
+    vi.spyOn(HTMLElement.prototype, name, 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('screen-area') ? value : 0; });
+  }
+  const density: (() => void)[] = [];
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener: (_: string, listener: () => void) => density.push(listener), removeEventListener() {} }));
+  const ratio = (value: number) => Object.defineProperty(window, 'devicePixelRatio', { configurable: true, writable: true, value });
+  ratio(1);
+  const tabId = await streamed();
+  const sent: string[] = [], open = client.frames.bind(client);
+  vi.spyOn(client, 'frames').mockImplementation((path) => { const socket = open(path), send = socket.send.bind(socket); socket.send = (text) => { sent.push(text); send(text); }; return socket; });
+  // The page says 1280 × 800; the picture that comes is 380 × 450, as a picture taken before a resize is.
+  const { decodes } = canvasStub();
+  vi.useFakeTimers();
+  try {
+    app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace', tabId } }); await settle();
+    await vi.advanceTimersByTimeAsync(60); await settle();
+    const box = () => { const screen = document.querySelector<HTMLElement>('.screen')!; return [parseFloat(screen.style.width), parseFloat(screen.style.height)]; };
+    // Nothing painted yet: the page's own proportions.
+    expect(box()).toEqual([700, 437.5]);
+    decodes[0]!.done(); await settle();
+    const [width, height] = box();
+    expect(width! / height!).toBeCloseTo(380 / 450, 3);
+    expect(height).toBe(500);
+    // The core is asked for the width the box now shows, then for twice as many pixels once the view moves to a denser screen.
+    await vi.advanceTimersByTimeAsync(250); await settle();
+    const sizes = () => sent.map(text => JSON.parse(text) as { type: string; maxWidth?: number }).filter(message => message.type === 'size').map(message => message.maxWidth);
+    expect(sizes()).toEqual([422]);
+    ratio(2);
+    for (const listener of density.splice(0)) listener();
+    await vi.advanceTimersByTimeAsync(250); await settle();
+    expect(sizes()).toEqual([422, 844]);
+  } finally { vi.unstubAllGlobals(); ratio(1); }
+});
+
 test('a stream that closes is opened again with a growing pause, a hidden page closes it, and a closed tab says so', async () => {
   const tabId = await streamed();
   const calls = vi.spyOn(client, 'call');

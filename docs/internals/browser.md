@@ -775,6 +775,17 @@ size or quality. The viewer decodes one picture at a time off
 the main thread (`createImageBitmap`), keeps only the newest one waiting, and
 draws it on a canvas (`lib/remote-browser-stream.ts`).
 
+The box around the canvas keeps the proportions of the picture painted in it,
+never the page's: it is as wide as the page's CSS width at the view's scale,
+and as tall as the picture makes it (`shownSize` in
+`lib/remote-browser-view.ts`). The `page` message and the pictures come apart,
+for a picture taken before a resize or one a screencast draws at another size,
+and a box of the page's size stretched such a picture to fill it. A point on
+the canvas is measured against the picture shown, which covers the page whole.
+The width sent as `size` is the box's width on screen at the screen's density
+(`devicePixelRatio`, at most 2), asked again when the window moves to a denser
+screen or the page is zoomed.
+
 The ticket is 24 random bytes, opens one socket within 30 seconds, and belongs
 to the RPC connection that asked: the stream is refused or closed (1008) when
 that connection is gone or no longer subscribed to the conversation, so the

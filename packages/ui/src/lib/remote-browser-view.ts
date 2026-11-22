@@ -29,6 +29,18 @@ export function frameMaxWidth(drawnWidth: number, pixelRatio: number): number | 
   return Math.max(160, Math.min(3840, Math.round(drawnWidth * Math.min(2, Math.max(1, pixelRatio || 1)))));
 }
 
+/**
+ * The page as the view lays it out, in CSS pixels: as wide as the page says
+ * and as tall as the picture painted makes it. The page's size and its
+ * pictures come apart, for a picture taken before a resize or a screencast
+ * that draws the page at another size, and a box of the page's proportions
+ * would stretch the picture: the picture's own proportions are kept instead.
+ */
+export function shownSize(page: { width: number; height: number }, picture: { width: number; height: number } | null): { width: number; height: number } {
+  if (!picture || !(picture.width > 0 && picture.height > 0 && page.width > 0)) return { width: page.width, height: page.height };
+  return { width: page.width, height: page.width * picture.height / picture.width };
+}
+
 /** A lighter JPEG when frames take long to arrive. */
 export function frameQuality(roundTrip: number): number {
   return roundTrip < 400 ? 55 : roundTrip < 1000 ? 45 : 35;
