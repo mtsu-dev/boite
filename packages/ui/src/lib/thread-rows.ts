@@ -21,8 +21,10 @@ export function patchLoad(row: Pick<ThreadSummary, 'load'>, load: ThreadLoad): v
 }
 
 export function patchProgress(row: ThreadSummary, progress: ThreadProgress): boolean {
-  if ((row.status !== 'running' && row.status !== 'waiting') || row.progress?.turnId !== progress.turnId
-    || (row.progress.providerAt ?? row.progress.at) > (progress.providerAt ?? progress.at)) return false;
+  if (row.status !== 'running' && row.status !== 'waiting') return false;
+  // A busy row that holds no progress yet takes the first one of its turn.
+  if (row.progress && (row.progress.turnId !== progress.turnId
+    || (row.progress.providerAt ?? row.progress.at) > (progress.providerAt ?? progress.at))) return false;
   if (!same(row.progress, progress)) row.progress = progress;
   return true;
 }

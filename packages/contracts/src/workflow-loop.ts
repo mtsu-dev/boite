@@ -187,7 +187,7 @@ export function retryWorkflowSteps(run: WorkflowRun, stepId?: string): boolean {
         Object.assign(inst, { status: 'waiting', error: null, finishedAt: null });
       } else if (targets.has(node) && broken(inst.status)) {
         if (inst.threadId !== null) inst.previousAttempts = [...inst.previousAttempts ?? [], { threadId: inst.threadId, finishedAt: inst.finishedAt }];
-        Object.assign(inst, { status: 'waiting', threadId: null, startedAt: null, finishedAt: null });
+        Object.assign(inst, { status: 'waiting', error: null, threadId: null, startedAt: null, finishedAt: null });
         delete inst.outputCorrection;
       }
     }
