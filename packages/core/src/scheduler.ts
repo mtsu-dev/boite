@@ -64,7 +64,8 @@ export class Scheduler {
   /** Recovered admissions can start once the server listens and their own providers are ready. */
   startupReady(): void {
     this.#startupReady = true;
-    this.onSettingsChanged();
+    // Nothing waited for the start: no reader needs an empty queue told again.
+    if (this.#queue.size > 0) this.onSettingsChanged();
   }
 
   state(): SchedulerState {
