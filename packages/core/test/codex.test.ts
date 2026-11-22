@@ -865,6 +865,35 @@ describe('codex driver', () => {
     } finally { CAPACITY_RETRY.delaysMs = delays; }
   });
 
+  test('a Codex usage limit parses reset text, ignores expired rate-limit snapshots and handles turn/start RPC rejections', async () => {
+    const { client, threadId } = await startThread({ autoResumeLimitedThreads: true });
+    const before = Date.now();
+    const { finished: textDone } = await startTurn(client, threadId, 'Go on [usage-limited-text]', 20000);
+    expect((await textDone).status).toBe('error');
+    const expectedMin = before + (2 * 3600 + 14 * 60) * 1000;
+    const expectedMax = before + (2 * 3600 + 16 * 60) * 1000;
+    await waitFor(() => {
+      const at = harness!.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt;
+      return typeof at === 'number' && at >= expectedMin && at <= expectedMax;
+    }, 3000);
+    expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+
+    const beforeStale = Date.now();
+    const { finished: staleDone } = await startTurn(client, threadId, 'Go on [usage-limited-stale-window]', 20000);
+    expect((await staleDone).status).toBe('error');
+    await waitFor(() => {
+      const at = harness!.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt;
+      return typeof at === 'number' && at >= beforeStale + (2 * 3600 + 55 * 60) * 1000;
+    }, 3000);
+    expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+
+    const { finished: rpcDone } = await startTurn(client, threadId, 'Go on [usage-limited-rpc]', 20000);
+    expect((await rpcDone).status).toBe('error');
+    const expectedRpc = Date.parse('2030-05-01T15:00:00Z');
+    await waitFor(() => harness!.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === expectedRpc, 3000);
+    expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+  });
+
   test('service tiers are model-specific, persisted and sent on the frozen turn', async () => {
     const client = await startCore();
     const { projectId, accountId } = await codexAccount(client);

@@ -13,7 +13,7 @@ import { CARRY_ON, RESUME_TEXT, type PlannedReason } from './resume-text.ts';
  * and the least a resume waits after a core start.
  */
 export const RESUME_TIMING = {
-  limit: { marginMs: 60_000, startDelayMs: 2_000 },
+  limit: { marginMs: 60_000, startDelayMs: 2_000, maxStepMs: 60_000 },
   carryOn: { delaysMs: [60_000, 300_000], startDelayMs: 3_000 },
 };
 
@@ -293,11 +293,16 @@ export class ResumePlanner {
   #arm(threadId: ThreadId, delayMs: number): void {
     this.#disarm(threadId);
     if (this.#closed) return;
-    // A timer longer than 2^31 - 1 ms fires at once: a far plan is checked again on the way.
+    // Cap each timer slice so wall-clock jumps across OS sleep or hibernation still fire promptly,
+    // and never exceed 2^31 - 1 ms (which fires at once).
+    const cap = Math.max(1, RESUME_TIMING.limit.maxStepMs);
+    const remaining = Math.max(0, delayMs);
+    const step = Math.min(remaining, cap, 2_000_000_000);
+    const stepped = step < remaining;
     const timer = setTimeout(() => {
       this.#timers.delete(threadId);
-      this.#fire(threadId);
-    }, Math.max(0, Math.min(delayMs, 2_000_000_000)));
+      this.#fire(threadId, undefined, stepped);
+    }, step);
     timer.unref?.();
     this.#timers.set(threadId, timer);
   }
@@ -309,13 +314,14 @@ export class ResumePlanner {
     this.#timers.delete(threadId);
   }
 
-  #fire(threadId: ThreadId, expected?: Plan): void {
+  #fire(threadId: ThreadId, expected?: Plan, stepped = false): void {
     if (this.#closed || this.#core.stopping || this.#core.journal.isClosed()) return;
     const record = this.#load();
     const entry = record[threadId];
     const plan = entry?.plan;
     if (entry === undefined || plan === undefined || plan.dispatching || (expected !== undefined && plan !== expected)) return;
-    if (plan.at > Date.now() + 1_000) { this.#arm(threadId, plan.at - Date.now()); return; }
+    const remaining = plan.at - Date.now();
+    if (remaining > (stepped ? 25 : 1_000)) { this.#arm(threadId, remaining); return; }
     // A cache ping holds the thread only to keep it warm: it gives way, and the resume goes once it stopped.
     if (this.threads.cacheKeepalive.yieldTo(threadId)) { this.#arm(threadId, PING_YIELD_MS); return; }
     const thread = this.#core.journal.getThread(threadId);

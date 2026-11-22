@@ -115,6 +115,11 @@ export class CodexTurn extends DecidedTurnParts {
     this.decide();
   }
 
+  noteRefusal(info: unknown, message: string | undefined): void {
+    if (this.decided) return;
+    this.#refusal = codexRefusal(info, message, this.spentWindowResetsAt);
+  }
+
   fail(reason: string, diagnostic?: string): void {
     if (this.decided) return;
     this.decided = true;

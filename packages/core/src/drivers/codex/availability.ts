@@ -2,6 +2,7 @@ import type { CodexTurnError } from './protocol.ts';
 import type { CodexTurn } from './turn.ts';
 import type { TurnRefusal } from '../types.ts';
 import { errorCodeOf, httpStatusOf } from '../driver-log.ts';
+import { parseUsageLimitReset } from '../usage-limit.ts';
 
 /*
  * What Codex says about availability: a model at capacity, a spent usage
@@ -33,7 +34,10 @@ export function turnError(turn: CodexTurn, params: Record<string, unknown>): voi
 export function codexRefusal(info: unknown, message: string | undefined, resetsAt: number | null): TurnRefusal | undefined {
   const code = errorCodeOf(info);
   if (code === 'serverOverloaded' || /\bSelected model is at capacity\b/i.test(message ?? '')) return { kind: 'capacity' };
-  if (code === 'usageLimitExceeded' || /\bYou['\u2019]ve hit your usage limit\b/i.test(message ?? '')) return { kind: 'usage-limit', resetsAt };
+  const isLimit = code === 'usageLimitExceeded'
+    || code === 'usage_limit_exceeded'
+    || /\bYou(?:'ve|\u2019ve|\s+have)\s+hit\s+your\s+usage\s+limit\b/i.test(message ?? '');
+  if (isLimit) return { kind: 'usage-limit', resetsAt: resetsAt ?? parseUsageLimitReset(message) };
   return undefined;
 }
 
@@ -73,10 +77,10 @@ export class SpentWindows {
     return true;
   }
 
-  /** The latest reset among spent windows: the one that blocks. Null when none is spent. */
-  latest(): number | null {
+  /** The latest future reset among spent windows: the one that blocks. Null when none is currently spent. */
+  latest(now = Date.now()): number | null {
     let latest: number | null = null;
-    for (const at of this.byLimit.values()) if (at !== null && (latest === null || at > latest)) latest = at;
+    for (const at of this.byLimit.values()) if (at !== null && at > now && (latest === null || at > latest)) latest = at;
     return latest;
   }
 }

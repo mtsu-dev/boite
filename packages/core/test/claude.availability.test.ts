@@ -83,3 +83,87 @@ test.each([
   expect(recovery?.kind).toBe(kind);
   expect(recovery?.resetsAt).toBe(resetsAt);
 });
+
+test('a Claude rate_limit without a rate_limit_event parses the reset time from CLI text (timezone and local clock)', async () => {
+  harness.core.settings.set({ autoResumeLimitedThreads: true });
+  const client = await harness.connect();
+  const threadId = await claudeThread(client);
+  scripted(() => {}, (fake) => {
+    fake.emit(init('sess-text-tz'));
+    for (const message of apiError('sess-text-tz', 'rate_limit', "You've hit your limit · resets Nov 23, 2030, 5pm (Europe/Paris)")) fake.emit(message);
+  });
+  expect(await runTurn(client, threadId, 'hello')).toBe('error');
+  const expected = Date.parse('2030-11-23T16:00:00.000Z');
+  await waitFor(() => harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === expected, 2000);
+  expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+
+  // Local clock without a date (e.g. "resets 11:59pm") must resolve to a future timestamp within 24h.
+  const before = Date.now();
+  scripted(() => {}, (fake) => {
+    fake.emit(init('sess-text-local'));
+    for (const message of apiError('sess-text-local', 'rate_limit', "You've hit your limit · resets 11:59pm")) fake.emit(message);
+  });
+  expect(await runTurn(client, threadId, 'again')).toBe('error');
+  await waitFor(() => {
+    const at = harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt;
+    return typeof at === 'number' && at > before && at <= before + 24 * 3600 * 1000 + 60_000;
+  }, 2000);
+  expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+});
+
+test('an allowed seven_day rate_limit_event does not clear a rejected five_hour reset', async () => {
+  harness.core.settings.set({ autoResumeLimitedThreads: true });
+  const client = await harness.connect();
+  const threadId = await claudeThread(client);
+  const resetsAt = Math.floor(Date.now() / 1000) + 3 * 3600;
+  scripted(() => {}, (fake) => {
+    fake.emit(init('sess-windows'));
+    fake.emit(sdk({ type: 'rate_limit_event', session_id: 'sess-windows', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt } }));
+    fake.emit(sdk({ type: 'rate_limit_event', session_id: 'sess-windows', rate_limit_info: { status: 'allowed', rateLimitType: 'seven_day' } }));
+    for (const message of apiError('sess-windows', 'rate_limit', "You've hit your limit")) fake.emit(message);
+  });
+  expect(await runTurn(client, threadId, 'hello')).toBe('error');
+  await waitFor(() => harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === resetsAt * 1000, 2000);
+  expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+});
+
+test('a late ISO rate_limit_event after the assistant error frame still provides the reset time', async () => {
+  harness.core.settings.set({ autoResumeLimitedThreads: true });
+  const client = await harness.connect();
+  const threadId = await claudeThread(client);
+  const iso = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
+  scripted(() => {}, (fake) => {
+    fake.emit(init('sess-late-iso'));
+    const [assistantErr, resultErr] = apiError('sess-late-iso', 'rate_limit', "You've hit your limit");
+    fake.emit(assistantErr!);
+    fake.emit(sdk({ type: 'rate_limit_event', session_id: 'sess-late-iso', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: iso } }));
+    fake.emit(resultErr!);
+  });
+  expect(await runTurn(client, threadId, 'hello')).toBe('error');
+  await waitFor(() => harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === Date.parse(iso), 2000);
+  expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+});
+
+test('a result-only or unknown-coded Claude usage limit is classified and plans a resume', async () => {
+  harness.core.settings.set({ autoResumeLimitedThreads: true });
+  const client = await harness.connect();
+  const threadId = await claudeThread(client);
+  const expectedIso = Date.parse('2030-11-24T17:00:00.000Z');
+  scripted(() => {}, (fake) => {
+    fake.emit(init('sess-result-only'));
+    fake.emit(sdk({ ...(success('sess-result-only') as object), is_error: true, result: "You've hit your limit · resets 2030-11-24T17:00:00Z" }));
+  });
+  expect(await runTurn(client, threadId, 'hello')).toBe('error');
+  await waitFor(() => harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === expectedIso, 2000);
+  expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+
+  const pipeEpoch = Math.floor(Date.now() / 1000) + 4 * 3600;
+  scripted(() => {}, (fake) => {
+    fake.emit(init('sess-unknown-pipe'));
+    for (const message of apiError('sess-unknown-pipe', 'unknown', `Claude AI usage limit reached|${pipeEpoch}`)) fake.emit(message);
+  });
+  expect(await runTurn(client, threadId, 'again')).toBe('error');
+  await waitFor(() => harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === pipeEpoch * 1000, 2000);
+  expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+});
+
