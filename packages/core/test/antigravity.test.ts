@@ -295,11 +295,15 @@ describe('antigravity', () => {
     const client = await startCore();
     const account = await agyAccount(client);
     const states: string[] = [];
+    let announced = false;
     client.on('account.login', (event) => {
-      if (event.accountId === account.id) states.push(event.state);
+      if (event.accountId !== account.id) return;
+      states.push(event.state);
+      if (event.url !== null) announced = true;
     });
     await client.call('accounts.login', { accountId: account.id });
-    await waitFor(() => fakeLog().includes('callback:'), 20_000);
+    // The core takes a redirect only once it has the link the agent printed.
+    await waitFor(() => announced && fakeLog().includes('callback:'), 20_000);
     const callback = fakeLog()
       .split('\n')
       .find((line) => line.startsWith('callback:'))
