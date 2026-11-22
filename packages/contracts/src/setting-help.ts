@@ -40,4 +40,5 @@ export const SETTING_HELP: Readonly<Record<string, string>> = {
   "groupBots": "A mochi of another machine of the group may look after the projects of this machine its owner entrusted to it: list, read and steer their threads and answer their questions. Never tool permissions, deleting threads or this machine's settings. Turning it off cuts them off at once. Off by default.",
   "agentBotCreation": "Create mochis without asking: A mochi created this way has full access to this machine.",
   "coordinationReach": "This project: An agent lists, reads and writes to the conversations of its own project only. This machine: An agent lists, reads and writes to the conversations of every project on this machine. All my machines: An agent lists, reads and writes to the conversations of every project, here and on the machines you trust.",
+  "experiment.draft-backdrop": "An animated scene in the manner of an early 2000s console behind the empty new thread screen. Pick it under Appearance. Respects reduced motion.",
 };

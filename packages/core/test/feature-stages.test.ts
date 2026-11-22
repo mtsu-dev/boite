@@ -11,6 +11,8 @@ const NIGHTLY = '2.0.1-nightly.20261113.1';
 const DEV = '2.0.0-beta.1';
 /** The experiments finished and removed from the list since, as an older app still reports them. */
 const GRADUATED = ['whip', 'contacts', 'auto-goal', 'teams', 'debates'] as unknown as ExperimentId[];
+/** The finished features: on in every build, with no switch. */
+const FINISHED = EXPERIMENT_IDS.filter(id => EXPERIMENT_STAGES[id] === 'release');
 const report = (experiments: ExperimentId[]): ClientPreferences => ({ app: 'app-desktop-0001', language: 'en', experiments, labels: {} });
 
 const cores: TestCore[] = [];
@@ -27,17 +29,18 @@ async function core(version: string, dataDir?: string): Promise<TestCore> {
 /** The desktop app of the machine: the one whose switches the core and the phones follow. */
 const desktop = (h: TestCore) => connect(h.url, h.token, { client: { version: 'test', name: 'shell' } });
 
-test('a version without a prerelease part is a Release, and no build lists a switch while every feature is finished', () => {
+test('a version without a prerelease part is a Release, which lists no switch; a Nightly and a Dev build list the one experiment', () => {
   expect(['2.0.0', '0.1.1', '', null, undefined].map(isReleaseVersion)).toEqual([true, true, true, true, true]);
   expect(['2.0.0-nightly.20261111.1', '2.0.0-beta.1', '2.0.0-test.0'].map(isReleaseVersion)).toEqual([false, false, false]);
 
   // Every switch has a stage, and the sort is the one the docs state.
   expect(Object.keys(EXPERIMENT_STAGES).sort()).toEqual([...EXPERIMENT_IDS].sort());
-  for (const version of [RELEASE, NIGHTLY, DEV]) expect(listedExperiments(version), version).toEqual([]);
+  expect([RELEASE, NIGHTLY, DEV].map(version => listedExperiments(version))).toEqual([[], ['draft-backdrop'], ['draft-backdrop']]);
 
-  // Finished features are on whatever a device stored, in every build.
-  for (const version of [RELEASE, NIGHTLY, DEV]) expect(effectiveExperiments([], version), version).toEqual([...EXPERIMENT_IDS]);
-  expect(effectiveExperiments([...GRADUATED, 'gone' as ExperimentId], RELEASE)).toEqual([...EXPERIMENT_IDS]);
+  // Finished features are on whatever a device stored, in every build; the experiment only where chosen and listed.
+  for (const version of [RELEASE, NIGHTLY, DEV]) expect(effectiveExperiments([], version), version).toEqual(FINISHED);
+  expect(effectiveExperiments([...GRADUATED, 'gone' as ExperimentId], RELEASE)).toEqual(FINISHED);
+  expect([RELEASE, NIGHTLY, DEV].map(version => effectiveExperiments(['draft-backdrop'], version).includes('draft-backdrop'))).toEqual([false, true, true]);
 });
 
 test('a build has one of three kinds, read from its version', () => {
@@ -85,12 +88,12 @@ test('a dev feature exists in a Dev build only, a nightly one in a Nightly and a
 test('a build is compiled with one constant for its kind and one flag per tagged feature', () => {
   const dev = { ...EXPERIMENT_STAGES, 'resident-agents': 'dev' } as const;
   const nightly = { ...EXPERIMENT_STAGES, 'resident-agents': 'nightly' } as const;
-  expect(featureDefines(RELEASE, dev)).toEqual({ __BOITE_BUILD_KIND__: '"release"', __BOITE_HAS_RESIDENT_AGENTS__: 'false' });
-  expect(featureDefines(NIGHTLY, dev)).toEqual({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_RESIDENT_AGENTS__: 'false' });
-  expect(featureDefines(NIGHTLY, nightly)).toEqual({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_RESIDENT_AGENTS__: 'true' });
-  expect(featureDefines(DEV, dev)).toEqual({ __BOITE_BUILD_KIND__: '"dev"', __BOITE_HAS_RESIDENT_AGENTS__: 'true' });
-  // A finished feature has no flag: nothing of it is ever cut.
-  expect(Object.keys(featureDefines(RELEASE))).toEqual(['__BOITE_BUILD_KIND__']);
+  expect(featureDefines(RELEASE, dev)).toEqual({ __BOITE_BUILD_KIND__: '"release"', __BOITE_HAS_RESIDENT_AGENTS__: 'false', __BOITE_HAS_DRAFT_BACKDROP__: 'false' });
+  expect(featureDefines(NIGHTLY, dev)).toEqual({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_RESIDENT_AGENTS__: 'false', __BOITE_HAS_DRAFT_BACKDROP__: 'true' });
+  expect(featureDefines(NIGHTLY, nightly)).toEqual({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_RESIDENT_AGENTS__: 'true', __BOITE_HAS_DRAFT_BACKDROP__: 'true' });
+  expect(featureDefines(DEV, dev)).toEqual({ __BOITE_BUILD_KIND__: '"dev"', __BOITE_HAS_RESIDENT_AGENTS__: 'true', __BOITE_HAS_DRAFT_BACKDROP__: 'true' });
+  // A finished feature has no flag: nothing of it is ever cut. The one experiment has its own.
+  expect(Object.keys(featureDefines(RELEASE))).toEqual(['__BOITE_BUILD_KIND__', '__BOITE_HAS_DRAFT_BACKDROP__']);
   // From source nothing is compiled out, and a finished feature is in every bundle.
   expect(featureCompiled('resident-agents')).toBe(true);
   expect(featureCompiled('resident-agents', 'release')).toBe(true);
@@ -144,15 +147,35 @@ test('a former experiment\'s card says it is finished, and the former experiment
   // The historic field and the chosen list: every feature is in force, whatever the app chose.
   // An older app still names the experiments since finished: the core drops them from its own reading, and
   // names every finished id back in both lists, for a phone older than it that still gates on them.
-  expect(await owner.call('client.preferences', report(GRADUATED))).toEqual({ ok: true, desktop: withFinished([...EXPERIMENT_IDS]), desktopChosen: withFinished([]) });
+  expect(await owner.call('client.preferences', report(GRADUATED))).toEqual({ ok: true, desktop: withFinished(FINISHED), desktopChosen: withFinished([]) });
   const read = await owner.call('agent.settings', { threadId });
+  // A Release lists no experiment, and says which builds have the one it is asked for.
   expect(read.settings.filter(setting => setting.key.startsWith('experiment.'))).toEqual([]);
+  const asked = await owner.call('settings.request', { threadId, reason: 'Try the background', key: 'experiment.draft-backdrop', value: true }).catch((error: Error) => error.message);
+  expect(asked).toContain(`experiment.draft-backdrop runs in Nightly and Dev builds only, and this machine runs a Release (${RELEASE})`);
   expect(read.settings.find(setting => setting.key === 'cacheKeepalive')).toMatchObject({ value: null, page: 'advanced', section: 'cache-keepalive' });
 
   expect(await owner.call('settings.request', { threadId, reason: 'Try the mochis', key: 'experiment.resident-agents', value: true }).catch((error: Error) => error.message)).toContain('no longer an experiment');
   expect(await owner.call('settings.request', { threadId, reason: 'Try the whip', key: 'experiment.whip', value: true }).then(() => 'accepted', (error: Error) => error.message)).not.toBe('accepted');
   const { setting } = await owner.call('settings.request', { threadId, reason: 'Watch the phone', key: 'deviceStream', value: true });
   expect(setting).toMatchObject({ kind: 'change', key: 'deviceStream', value: true, previous: false, page: 'advanced', section: 'device-stream' });
+  owner.close();
+});
+
+test('a Nightly core keeps the experiment an app chose beside the finished features, and an agent reads it and asks for it', async () => {
+  const h = await core(NIGHTLY);
+  const owner = await desktop(h);
+  const { threadId } = await echoThread(h, owner);
+  // A card needs a turn to sit under.
+  const finished = owner.next('turn.finished', turn => turn.threadId === threadId, 10000);
+  await owner.call('turns.start', { threadId, prompt: 'hello' });
+  await finished;
+  expect(await owner.call('client.preferences', report([]))).toEqual({ ok: true, desktop: withFinished(FINISHED), desktopChosen: withFinished([]) });
+  const read = await owner.call('agent.settings', { threadId });
+  expect(read.settings.filter(setting => setting.key.startsWith('experiment.')).map(setting => [setting.key, setting.value])).toEqual([['experiment.draft-backdrop', false]]);
+  const { setting } = await owner.call('settings.request', { threadId, reason: 'Try the background', key: 'experiment.draft-backdrop', value: true });
+  expect(setting).toMatchObject({ kind: 'change', key: 'experiment.draft-backdrop', value: true, previous: false });
+  expect(await owner.call('client.preferences', report(['draft-backdrop']))).toEqual({ ok: true, desktop: withFinished([...EXPERIMENT_IDS]), desktopChosen: withFinished(['draft-backdrop']) });
   owner.close();
 });
 

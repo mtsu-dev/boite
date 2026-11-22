@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { strings } from '../lib/strings';
 import { flushSync, mount, unmount } from 'svelte';
 import AppearancePage from './AppearancePage.svelte';
@@ -9,6 +9,8 @@ import { phoneWidth } from '../test/phone-width';
 import { setLocaleSetting } from '../lib/i18n.svelte';
 import { presetPalette, setPalette } from '../lib/theme-colors';
 import { appCss } from '../test/app-css';
+import { BACKDROP_STORAGE_KEY, backdrop } from '../lib/backdrop/choice.svelte';
+import { setExperiment } from '../lib/experiments';
 
 let running: Record<string, unknown> | null = null;
 
@@ -16,7 +18,9 @@ afterEach(() => {
   if (running) unmount(running, { outro: false });
   running = null;
   document.body.innerHTML = '';
+  setExperiment('draft-backdrop', false);
   localStorage.clear();
+  backdrop.load();
   Object.assign(chatPrefs, readChatPrefs());
 });
 
@@ -255,4 +259,27 @@ test('round 20: each face shows a sample line in itself, and the chat width a pa
   document.querySelector<HTMLButtonElement>('[data-testid=chat-width-full]')!.click();
   flushSync();
   expect(width()).toBe('full');
+});
+
+test('the new thread background is offered while its experiment is on, and the pick is stored', async () => {
+  running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
+  flushSync();
+  expect(document.querySelector('[data-testid=backdrop-random]')).toBeNull();
+
+  // The row comes with the feature's own chunk, fetched once the switch is on.
+  setExperiment('draft-backdrop', true);
+  flushSync();
+  await vi.dynamicImportSettled();
+  flushSync();
+  expect(pressed('backdrop-random')).toBe('true');
+
+  document.querySelector<HTMLButtonElement>('[data-testid=backdrop-crates]')!.click();
+  flushSync();
+  expect(pressed('backdrop-crates')).toBe('true');
+  expect(pressed('backdrop-random')).toBe('false');
+  expect(localStorage.getItem(BACKDROP_STORAGE_KEY)).toBe('crates');
+
+  setExperiment('draft-backdrop', false);
+  flushSync();
+  expect(document.querySelector('[data-testid=backdrop-crates]')).toBeNull();
 });
