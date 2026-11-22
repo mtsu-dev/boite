@@ -304,7 +304,7 @@ test("a right click on a mochi's rail picture opens its menu, not the webview's,
   }
 });
 
-test("the rail's Add rests out of sight beside the mochis and says while its menu is open, so the menu keeps it shown", async () => {
+test("the rail's Add rests out of sight beside the mochis and stays while its menu is open, so the menu keeps it shown", async () => {
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {
