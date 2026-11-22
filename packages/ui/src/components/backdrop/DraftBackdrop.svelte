@@ -9,9 +9,12 @@
   /**
    * The scene behind the empty new thread screen. `area` is the column it
    * fills: the pieces there marked `data-backdrop-calm` hold the words the
-   * scene is dimmed around.
+   * scene is dimmed around. `covered` says the screen is mounted but out of
+   * sight, under a phone's list or its settings: the scene waits there.
    */
-  let { area = null }: { area?: HTMLElement | null } = $props();
+  let { area = null, covered = false }: { area?: HTMLElement | null; covered?: boolean } = $props();
+  let live = $state.raw<RunningBackdrop | null>(null);
+  $effect(() => { live?.cover(covered); });
 
   // Random settles once per empty screen: the scene holds while the screen stays.
   const drawn = BACKDROP_SCENES[Math.floor(Math.random() * BACKDROP_SCENES.length)] ?? 'glyphs';
@@ -44,7 +47,7 @@
     const moved = new ResizeObserver(() => running?.settle());
     void import('../../lib/backdrop/engine').then(({ startBackdrop }) => {
       if (gone) return;
-      running = startBackdrop(node, id, { ready: () => { node.dataset['ready'] = ''; }, calm: () => calmOf(node) });
+      running = live = startBackdrop(node, id, { ready: () => { node.dataset['ready'] = ''; }, calm: () => calmOf(node), covered });
       if (!running || !area) return;
       for (const piece of area.querySelectorAll<HTMLElement>('[data-backdrop-calm], [data-testid=composer]')) moved.observe(piece);
     }, () => { /* the screen is whole without its scene */ });
@@ -52,6 +55,7 @@
       destroy() {
         gone = true;
         moved.disconnect();
+        if (live === running) live = null;
         running?.stop();
       }
     };

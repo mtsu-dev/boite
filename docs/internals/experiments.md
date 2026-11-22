@@ -344,8 +344,9 @@ dither; the characters are drawn at the screen's density. The words of the
 empty screen (the pieces marked `data-backdrop-calm`) are measured, and the
 shader dims the scene in an oval around them. A device that asks for reduced
 motion gets one still frame. A phone keeps the draft mounted under its list
-and its settings, skipped by `content-visibility`: an `IntersectionObserver`
-on the canvas stops the loop there and starts it again on the way back. A
+and its settings: `App.svelte` says so to `ChatView` (`covered`), which stops
+the loop there and starts it again on the way back, on a browser without
+`content-visibility` too. A
 canvas that leaves deletes its program, buffer and texture, then drops its
 context. Without WebGL 2 the canvas stays empty and the screen is the one it
 was.

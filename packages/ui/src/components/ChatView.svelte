@@ -32,8 +32,11 @@
   import { loadCouncilSalon } from '../lib/council-entry';
   import { backdropEntry } from '../lib/backdrop-entry.svelte';
 
-  /** `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's). */
-  let { store, locked = null }: { store: Store; locked?: string | null } = $props();
+  /**
+   * `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's).
+   * `covered`: the chat is mounted but out of sight, under a phone's list or its settings.
+   */
+  let { store, locked = null, covered = false }: { store: Store; locked?: string | null; covered?: boolean } = $props();
 
   let thread = $derived(store.openThread);
   const phone = new MediaQuery('(max-width: 720px)');
@@ -145,7 +148,7 @@
   <section class="chat" class:drafting={!thread && !sending} bind:this={chat} data-testid="chat">
     <!-- First in the column and on no layer of its own: the positioned pieces after it (the heading, the
          composer, the tail) paint over the scene, and their menus keep their own layers. -->
-    {#if !thread && !sending && backdropEntry.feature}{@const DraftBackdrop = backdropEntry.feature.DraftBackdrop}<DraftBackdrop area={chat} />{/if}
+    {#if !thread && !sending && backdropEntry.feature}{@const DraftBackdrop = backdropEntry.feature.DraftBackdrop}<DraftBackdrop area={chat} {covered} />{/if}
     {#if thread?.forkOrigin}{#key thread.id}<ForkReturn {store} {thread} />{/key}{/if}
     <div class="discussion" class:draft-body={!thread && !sending} bind:this={discussion} data-testid={!thread && !sending ? 'draft-empty' : undefined}>
     {#if pinnedQuotas.current.pinned}<div class="quota-room" bind:this={quotaRoom} aria-hidden="true"></div>{/if}

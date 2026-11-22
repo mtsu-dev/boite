@@ -125,6 +125,8 @@ export const stats = { frames: 0, milliseconds: 0 };
 export interface RunningBackdrop {
   /** Reads the place of the words again, after they moved or changed size. */
   settle(): void;
+  /** The screen went under a cover, or came back: nothing is drawn under one. */
+  cover(covered: boolean): void;
   stop(): void;
 }
 
@@ -141,6 +143,8 @@ export interface BackdropOptions {
   ready?: () => void;
   /** Where the words to keep readable are. The scene is dimmed in an oval around them; the middle of the canvas without it. */
   calm?: () => CalmBox | null;
+  /** The screen starts under a cover. */
+  covered?: boolean;
 }
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader | null {
@@ -204,8 +208,8 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   let quiet: WebGLUniformLocation | null = null;
   let levels: WebGLUniformLocation | null = null;
   let width = 0, height = 0, family = '', raf = 0, last = 0, stopped = false, announced = false;
-  /** Whether the canvas is on screen: false under a cover that skips it (a phone's list, its settings). */
-  let seen = true;
+  /** Whether the canvas is on screen: false under a cover the app names (a phone's list, its settings). */
+  let seen = !options.covered;
   let wantX = 0, wantY = 0;
   /** The quiet oval: its middle and its two radii, in CSS pixels from the canvas's top left corner. */
   const zone = { x: 0, y: 0, across: 1, down: 1 };
@@ -258,6 +262,8 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
 
   /** Gives back every object `build` made, a half-built set included. */
   function release(): void {
+    // A program still in use is only marked for deletion.
+    context.useProgram(null);
     context.deleteProgram(program);
     context.deleteBuffer(buffer);
     context.deleteVertexArray(vertexArray);
@@ -345,7 +351,7 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   }
 
   function draw(): void {
-    if (!program || !width || !height || context.isContextLost()) return;
+    if (!program || !seen || !width || !height || context.isContextLost()) return;
     const began = performance.now();
     solid.reset();
     soft.reset();
@@ -388,8 +394,8 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
 
   /**
    * Runs the loop, or draws one still frame for a device that asked for reduced
-   * motion. Nothing runs while the canvas is off screen: `watched` calls back
-   * when it returns, and the scene resumes where it was.
+   * motion. Nothing runs under a cover: `cover` calls back when it lifts, and
+   * the scene resumes where it was.
    */
   function pace(): void {
     cancelAnimationFrame(raf);
@@ -409,7 +415,7 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   const rest = () => { wantX = 0; wantY = 0; };
   const repaint = () => { restyle(); if (still.matches) draw(); };
   const lost = (event: Event) => { event.preventDefault(); cancelAnimationFrame(raf); raf = 0; program = buffer = vertexArray = atlas = null; };
-  const restored = () => { if (build()) { restyle(); pace(); } };
+  const restored = () => { if (build()) { restyle(); pace(); } else release(); };
 
   if (!build()) {
     release();
@@ -423,17 +429,6 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   // The theme, the accent and the faces are all stamped on the root element.
   const themed = new MutationObserver(repaint);
   themed.observe(document.documentElement, { attributes: true });
-  // A phone keeps the draft mounted under its list and its settings, skipped by
-  // `content-visibility`: skipped content never intersects, so this stops the loop there.
-  const watched = typeof IntersectionObserver === 'function'
-    ? new IntersectionObserver((entries) => {
-      const now = entries[entries.length - 1]?.isIntersecting ?? true;
-      if (now === seen) return;
-      seen = now;
-      pace();
-    })
-    : null;
-  watched?.observe(canvas);
   dark.addEventListener('change', repaint);
   still.addEventListener('change', pace);
   window.addEventListener('pointermove', point, { passive: true });
@@ -447,12 +442,16 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
       settle();
       if (still.matches) draw();
     },
+    cover(covered) {
+      if (seen === !covered) return;
+      seen = !covered;
+      pace();
+    },
     stop() {
       stopped = true;
       cancelAnimationFrame(raf);
       sized.disconnect();
       themed.disconnect();
-      watched?.disconnect();
       dark.removeEventListener('change', repaint);
       still.removeEventListener('change', pace);
       window.removeEventListener('pointermove', point);
