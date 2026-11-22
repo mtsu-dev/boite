@@ -195,6 +195,9 @@ test.each([1024, 390])('pinning quotas preserves the empty draft layout without 
   await page.evaluate('globalThis.__boiteTest.workspace.active.sidebarCollapsed = true');
   await page.send('Emulation.setDeviceMetricsOverride', { width, height: width === 390 ? 844 : 1000, deviceScaleFactor: 1, mobile: width === 390 });
   await page.send('Emulation.setTouchEmulationEnabled', { enabled: width === 390, maxTouchPoints: 1 });
+  await page.waitFor(`innerWidth === ${width}`);
+  // Resizing from desktop loads the phone's header, which takes up a grid row.
+  if (width === 390) await page.waitFor(`document.querySelector('[data-testid="mobile-back"]')`);
   await page.evaluate(`(async () => { const { pinnedQuotas } = await import('/src/lib/pinned-quotas.svelte.ts'); pinnedQuotas.set(false); })()`);
   await page.waitFor(`!document.querySelector('${card}')`);
   await page.settleAnimations();
