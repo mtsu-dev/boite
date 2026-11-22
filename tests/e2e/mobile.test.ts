@@ -478,7 +478,7 @@ test('a phone pins and archives a thread without a right-click, from the header 
   await page.click('[data-testid=thread-menu-trigger]');
   await page.waitFor(`document.querySelector('[data-testid=thread-menu-trigger-menu]')`);
   // The thread's own actions; the panel has its door, so the menu does not repeat it.
-  expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=thread-menu-trigger-menu] [data-value]')].map(row => row.dataset.value)`)).toEqual(['find', 'rename', 'retitle', 'pin', 'done', 'archive', 'move', 'delete']);
+  expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=thread-menu-trigger-menu] [data-value]')].map(row => row.dataset.value)`)).toEqual(['find', 'rename', 'retitle', 'pin', 'copy-thread-id', 'done', 'archive', 'move', 'delete']);
   await capture('mobile-thread-menu.png');
   await page.evaluate('history.back()');
   await page.waitFor(`!document.querySelector('[data-testid=thread-menu-trigger-menu]')`);

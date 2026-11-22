@@ -12,6 +12,7 @@
  * as its tooltip. A selection copied across a drawing copies its source.
  */
 import { VIEW_BLEED } from '@boite/contracts';
+import { copyByCommand } from './clipboard';
 import { fill, strings } from './strings';
 import type { MediaItem } from './media-gallery';
 import type { RichMarkdownOptions } from './rich-markdown';
@@ -234,32 +235,6 @@ export function viewerItem(figure: HTMLElement): MediaItem {
   svg.setAttribute('style', [...colors, svg.getAttribute('style') ?? '', background ? `background:${background}` : ''].filter(Boolean).join(';'));
   const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
   return { src: URL.createObjectURL(blob), name: `${strings.chat.diagram.label}.svg`, mimeType: 'image/svg+xml', kind: 'image' };
-}
-
-/**
- * Copies `text` the older way, which needs no secure page: the copy command
- * takes the selection, so a field off screen holds the text, selected. Safari
- * copies only from a selection, not from a copy event's own data.
- */
-function copyByCommand(text: string): boolean {
-  const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const field = document.createElement('textarea');
-  field.className = 'md-copy-field';
-  field.value = text;
-  // Read-only, so focusing it on a phone opens no keyboard; it can still be selected and copied.
-  field.readOnly = true;
-  field.setAttribute('aria-hidden', 'true');
-  document.body.append(field);
-  field.focus({ preventScroll: true });
-  field.setSelectionRange(0, text.length);
-  try {
-    return document.execCommand?.('copy') ?? false;
-  } catch {
-    return false;
-  } finally {
-    field.remove();
-    before?.focus({ preventScroll: true });
-  }
 }
 
 const BLOCKS = new Set(['p', 'div', 'li', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr', 'table', 'ul', 'ol', 'hr']);

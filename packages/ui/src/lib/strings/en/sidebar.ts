@@ -115,6 +115,7 @@ export const strings = {
     settings: 'Settings',
     projectMenu: 'Project actions',
     copyPath: 'Copy path',
+    copyThreadId: 'Copy thread ID',
     manageProject: 'Manage project',
     renameProject: 'Rename project',
     projectName: 'Project name',

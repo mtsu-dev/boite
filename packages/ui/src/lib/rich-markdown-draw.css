@@ -112,14 +112,3 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
   text-decoration: underline dotted var(--color-danger);
   text-underline-offset: 3px;
 }
-
-/* The field a copy without the clipboard API selects, for the length of one command. 16px keeps Safari from zooming. */
-.md-copy-field {
-  position: fixed;
-  top: 0;
-  left: -9999px;
-  width: 1px;
-  height: 1px;
-  font-size: 16px;
-  opacity: 0;
-}

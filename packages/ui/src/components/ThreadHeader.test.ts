@@ -276,15 +276,16 @@ test("a phone's header is back, the title, one menu of the thread's actions and 
   const menu = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
   const values = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('[data-value]')].map(node => node.dataset['value']);
   const rows = values(menu);
-  // Find first (a phone has no Ctrl+F), the frequent actions, the named group, then Delete: eight rows at most, no section of panels.
+  // Find first (a phone has no Ctrl+F), the thread actions, the named group, then Delete.
   expect(menu.querySelectorAll('.section')).toHaveLength(0);
   expect(rows[0]).toBe('find');
   // The made-again title beside Rename: both name the thread.
   expect(rows.indexOf('retitle')).toBe(rows.indexOf('rename') + 1);
-  expect(rows.length).toBeLessThanOrEqual(8);
+  expect(rows.length).toBeLessThanOrEqual(9);
   expect(rows.at(-1)).toBe('delete');
-  // No bot to give it to and no path on a phone: the folder group holds the thread's pull request and the move, never a copy.
+  // The phone offers the ID up front and leaves Copy path to the desktop.
   expect(rows).toContain('more');
+  expect(rows).toContain('copy-thread-id');
   expect(rows).not.toContain('copy');
   menu.querySelector<HTMLElement>('[data-value=more]')!.click(); await settle();
   expect(values(menu)).toEqual(expect.arrayContaining(['thread-pr', 'move']));
@@ -299,18 +300,18 @@ test("a phone's header is back, the title, one menu of the thread's actions and 
   expect(store.panelOpen).toBe(!was);
 });
 
-test("a desktop header's menu has find first, eight rows at most and names its group for what it holds, with no panel", async () => {
+test("a desktop header's menu has find first, nine rows at most and names its group for what it holds, with no panel", async () => {
   await start();
   document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
   const menu = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
   expect(menu.querySelector('[data-value="kind:changes"]')).toBeNull();
   // Every row in view on a 900 px window: the default 360 px cap scrolled Delete out of sight.
   expect(parseFloat(menu.style.maxHeight)).toBeGreaterThan(360);
-  // Find first, the frequent actions, the named group, then Delete: eight rows at most.
+  // Find first, the thread actions, the named group, then Delete.
   const actions = [...menu.querySelectorAll<HTMLElement>('[data-value]')].map(node => node.dataset['value']);
   expect(actions[0]).toBe('find');
-  expect(actions.length).toBeLessThanOrEqual(8);
-  for (const id of ['find', 'rename', 'retitle', 'pin', 'done', 'archive']) expect(menu.querySelector(`[data-value="${id}"]`)).not.toBeNull();
+  expect(actions.length).toBeLessThanOrEqual(9);
+  for (const id of ['find', 'rename', 'retitle', 'pin', 'copy-thread-id', 'done', 'archive']) expect(menu.querySelector(`[data-value="${id}"]`)).not.toBeNull();
   expect(actions.indexOf('retitle')).toBe(actions.indexOf('rename') + 1);
   const group = menu.querySelector<HTMLButtonElement>('[data-value="more"]');
   // Named for what it holds: no bot here, so the move and the folder.

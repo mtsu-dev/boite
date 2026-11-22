@@ -62,7 +62,7 @@ test('recent view filters one owning project and creates its draft', async () =>
   await page.waitFor(`!document.querySelector('${id('palette-input')}')`);
 }, 20_000);
 
-test('copy path stays readable with a long working directory in conversation menus', async () => {
+test('conversation menus copy the thread ID and keep a long working directory readable', async () => {
   await page.evaluate(`localStorage.setItem('boite.locale', 'fr')`);
   await page.navigate(url);
   await page.waitFor(`globalThis.__boiteTest?.workspace.active.openThread`);
@@ -73,20 +73,33 @@ test('copy path stays readable with a long working directory in conversation men
     s.threads = s.threads.map(t => ({...t, cwd}));
     return cwd;
   })()`);
+  const threadId = await page.evaluate<string>('globalThis.__boiteTest.workspace.active.openThread.id');
   await page.send('Browser.grantPermissions', { origin: new URL(url).origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
   await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
   for (const opener of ['thread-row', 'thread-title']) {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1300, height: 850, deviceScaleFactor: 1, mobile: false });
-    await page.evaluate(`(() => {
+    const openMenu = `(() => {
       const { workspace } = globalThis.__boiteTest;
       const owner = workspace.active;
       const machine = workspace.machines.find(m => m.store === owner);
       const target = '${opener}' === 'thread-row'
-        ? Array.from(document.querySelectorAll('${id('thread-row')}')).find(e => e.dataset.machineId === machine.id && e.dataset.threadId === owner.openThread.id)
+        ? Array.from(document.querySelectorAll('${id('thread-row')}')).find(e => e.dataset.machineId === machine.id && e.dataset.threadId !== owner.openThread.id)
         : document.querySelector('${id(opener)}');
       target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 180 }));
-    })()`);
+      return target.dataset.threadId ?? owner.openThread.id;
+    })()`;
     const menu = id('context-menu');
+    const copyId = `${menu} [data-value=copy-thread-id]`;
+    const expectedId = await page.evaluate<string>(openMenu);
+    if (opener === 'thread-row') expect(expectedId).not.toBe(threadId);
+    await page.waitFor(`document.querySelector('${copyId}')`);
+    if (opener === 'thread-row') await capture('copy-thread-id-desktop.png');
+    await page.evaluate(`navigator.clipboard.writeText('')`);
+    await page.click(copyId);
+    await page.waitFor(`!document.querySelector('${menu}')`);
+    await page.waitFor(`navigator.clipboard.readText().then(text => text === ${JSON.stringify(expectedId)})`);
+
+    await page.evaluate(openMenu);
     const copy = `${menu} [data-value=copy]`;
     // Copy path sits in the menu's named group of where the thread goes (lib/thread-menu.ts), one step in.
     await page.waitFor(`document.querySelector('${copy}, ${menu} [data-value=more]')`);
@@ -103,13 +116,29 @@ test('copy path stays readable with a long working directory in conversation men
     // clipboard write is asynchronous and nothing awaits it.
     await page.waitFor(`navigator.clipboard.readText().then(text => text === ${JSON.stringify(cwd)})`);
   }
-  // A phone leaves the path to the desktop: its title menu has no Copy path.
+  // The phone header offers the ID and leaves the path to the desktop.
   await page.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 1, mobile: true });
   await page.click(id('thread-menu-trigger'));
-  await page.waitFor(`document.querySelector('${id('thread-menu-trigger-menu')} [data-value=rename]')`);
-  expect(await page.evaluate(`document.querySelector('${id('thread-menu-trigger-menu')} [data-value=copy]')`)).toBeNull();
-  await page.click(id('thread-menu-trigger'));
-  await page.waitFor(`!document.querySelector('${id('thread-menu-trigger-menu')}')`);
+  const phoneMenu = id('thread-menu-trigger-menu');
+  const phoneCopyId = `${phoneMenu} [data-value=copy-thread-id]`;
+  await page.waitFor(`document.querySelector('${phoneCopyId}')`);
+  expect(await page.evaluate(`document.querySelector('${phoneMenu} [data-value=copy]')`)).toBeNull();
+  await capture('copy-thread-id-phone.png');
+  await page.evaluate(`navigator.clipboard.writeText('')`);
+  // On a plain HTTP LAN the Clipboard API is unavailable, even after a tap.
+  await page.evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })`);
+  try {
+    const point = await page.evaluate<{ x: number; y: number }>(`(() => {
+      const bounds = document.querySelector('${phoneCopyId}').getBoundingClientRect();
+      return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+    })()`);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitFor(`!document.querySelector('${phoneMenu}')`);
+  } finally {
+    await page.evaluate(`delete navigator.clipboard`);
+  }
+  await page.waitFor(`navigator.clipboard.readText().then(text => text === ${JSON.stringify(threadId)})`, 2000);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1300, height: 850, deviceScaleFactor: 1, mobile: false });
   await page.send('Emulation.setFocusEmulationEnabled', { enabled: false });
 }, 20_000);

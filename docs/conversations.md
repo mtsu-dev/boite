@@ -139,6 +139,7 @@ refined once the first answer is done. A title you set yourself is never
 replaced.
 
 - Rename a thread with Rename in its thread menu, or in the header.
+- Choose Copy thread ID in the thread menu to put the thread's ID on the clipboard.
 - Regenerate title, in the thread menu or the title menu, asks again. The item
   reads Writing a title while it works.
 - Settings, General, Agent replies, Title model picks the model. Automatic
