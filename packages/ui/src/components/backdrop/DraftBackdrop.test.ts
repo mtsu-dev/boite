@@ -31,7 +31,7 @@ test('no canvas while the experiment is off, one per picked scene once it is on'
   flushSync();
   // Nothing picked: the draw settles on one of the three and keeps it.
   const first = canvas()?.dataset['scene'];
-  expect(['glyphs', 'crates', 'tunnel']).toContain(first);
+  expect(['tunnel', 'glyphs', 'relief', 'crates']).toContain(first);
   expect(canvas()?.getAttribute('aria-hidden')).toBe('true');
 
   backdrop.set('crates');

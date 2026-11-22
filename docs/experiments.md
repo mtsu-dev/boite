@@ -37,14 +37,15 @@ Dev only.
 
 ## New thread background
 
-An animated scene plays behind the empty new thread screen, in the manner of
-an early 2000s console: a tunnel of characters, crates tumbling through dust
-or a checkered tunnel. It follows your theme and accent colour, and stays
-dim around the heading so the words remain easy to read.
+An animated scene plays behind the empty new thread screen, drawn in thin
+dark lines around the middle of the screen: a wire tunnel, a tunnel of
+characters, contour lines or a belt of wire crates. It follows your theme and
+accent colour, and stays dim around the heading so the words remain easy to
+read.
 
 1. In Settings, Experiments, turn on New thread background.
 2. In Settings, Appearance, pick it under New thread background: Off,
-   Random or one of the three scenes. Random shows a different one each time
+   Random or one of the four scenes. Random shows a different one each time
    the screen opens.
 
 The pick belongs to the device. A device that asks for reduced motion gets a

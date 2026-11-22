@@ -7,7 +7,7 @@ import { startDevUi } from './lib/ui';
 const id = (name: string) => `[data-testid="${name}"]`;
 const CANVAS = `document.querySelector('${id('draft-backdrop')}')`;
 const shot = (name: string) => join(import.meta.dir, '.artifacts', `backdrop-${name}.png`);
-const SCENES = ['glyphs', 'crates', 'tunnel'] as const;
+const SCENES = ['tunnel', 'glyphs', 'relief', 'crates'] as const;
 
 interface Pace { rate: number; cost: number }
 
@@ -47,7 +47,7 @@ test('the new thread background rides its experiment, follows the pick in Appear
     const drawn = await page.evaluate<boolean>(`!!document.createElement('canvas').getContext('webgl2')`);
 
     await settings(page, 'experiments', 'experiment-draft-backdrop');
-    // Nothing picked yet: one of the three, drawn for this screen.
+    // Nothing picked yet: one of the four, drawn for this screen.
     await page.waitFor(CANVAS);
     expect(SCENES as readonly string[]).toContain(await page.evaluate<string>(`${CANVAS}.dataset.scene`));
 

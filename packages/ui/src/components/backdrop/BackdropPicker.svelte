@@ -10,9 +10,10 @@
   let options = $derived<{ id: BackdropChoice; label: string }[]>([
     { id: 'off', label: strings.settings.backdropOff },
     { id: 'random', label: strings.settings.backdropRandom },
+    { id: 'tunnel', label: strings.settings.backdropTunnel },
     { id: 'glyphs', label: strings.settings.backdropGlyphs },
-    { id: 'crates', label: strings.settings.backdropCrates },
-    { id: 'tunnel', label: strings.settings.backdropTunnel }
+    { id: 'relief', label: strings.settings.backdropRelief },
+    { id: 'crates', label: strings.settings.backdropCrates }
   ]);
 </script>
 
@@ -28,11 +29,11 @@
 </div>
 
 <style>
-  /* On a phone the label sits above its five choices, as the page's other rows do. */
+  /* On a phone the label sits above its six choices, as the page's other rows do, in two rows of three: one row cut their names short. */
   @media (max-width: 720px) {
     :global(.settings .page) .switch-row { flex-direction: column; align-items: stretch; }
-    :global(.settings .page) .segmented { display: flex; }
-    .segmented button { flex: 1 1 auto; min-width: 0; padding: 0 6px; }
+    :global(.settings .page) .segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .segmented button { min-width: 0; padding: 0 6px; }
     .segmented button .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   }
 </style>

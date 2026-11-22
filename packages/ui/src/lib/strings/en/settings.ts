@@ -241,6 +241,7 @@ export const strings = {
     backdropGlyphs: 'Glyphs',
     backdropCrates: 'Crates',
     backdropTunnel: 'Tunnel',
+    backdropRelief: 'Contours',
     /** One plain line under the chat width row: what the chosen width does. */
     /** A paragraph in a small window under the chat width row, set at the width picked or pointed at. */
     /** The width preview's small conversation: a question, then a reply set at the width picked. */

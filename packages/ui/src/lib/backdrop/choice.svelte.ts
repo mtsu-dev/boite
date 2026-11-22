@@ -1,6 +1,6 @@
 /*
  * The animated scene behind the empty new thread screen, per device: one of
- * three, a fresh draw among them each time the screen opens, or none. It rides
+ * four, a fresh draw among them each time the screen opens, or none. It rides
  * behind the `draft-backdrop` experiment, so `shown` answers `off` until that
  * switch is on, and a device that switched it on without picking gets the draw.
  *
@@ -16,7 +16,7 @@ markFeature('boite-feature:draft-backdrop');
 
 export type BackdropChoice = 'off' | 'random' | SceneId;
 
-export const BACKDROP_SCENES: readonly SceneId[] = ['glyphs', 'crates', 'tunnel'];
+export const BACKDROP_SCENES: readonly SceneId[] = ['tunnel', 'glyphs', 'relief', 'crates'];
 export const BACKDROP_CHOICES: readonly BackdropChoice[] = ['off', 'random', ...BACKDROP_SCENES];
 export const BACKDROP_DEFAULT: BackdropChoice = 'random';
 export const BACKDROP_STORAGE_KEY = 'boite.backdrop';

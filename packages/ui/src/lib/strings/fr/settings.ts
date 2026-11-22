@@ -230,6 +230,7 @@ export const fr: Translation = {
     backdropGlyphs: 'Glyphes',
     backdropCrates: 'Caisses',
     backdropTunnel: 'Tunnel',
+    backdropRelief: 'Relief',
     /** The width preview's small conversation: a question, then a reply set at the width picked. */
     chatWidthAsk: 'Pourquoi le build échoue sur Windows ?',
     chatWidthSample: 'L\'éditeur de liens ne trouve pas le SDK Windows, alors la dernière étape s\'arrête. Ouvrez une invite développeur, ou ajoutez le dossier lib du SDK à LIB, puis relancez : le code lui-même compile.',

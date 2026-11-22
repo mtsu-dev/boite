@@ -316,10 +316,10 @@ nothing for a thread on a server.
 ## New thread background
 
 The `draft-backdrop` experiment draws an animated scene behind the empty new
-thread screen: a tunnel of characters, crates tumbling through dust or a
-checkered tunnel, the last two in the soft low resolution of an early 2000s
-console. With the switch on, Settings > Appearance offers Off, Random and the
-three scenes for this device (`lib/backdrop/choice.svelte.ts`, key
+thread screen, in thin dark lines built around the middle of the screen: a
+wire tunnel, a tunnel of characters, the contour lines of a slow relief or a
+belt of wire crates. With the switch on, Settings > Appearance offers Off, Random and the
+four scenes for this device (`lib/backdrop/choice.svelte.ts`, key
 `boite.backdrop`); nothing stored means Random, which draws one scene each
 time the screen opens. That module follows the key's `storage` event, so a
 pick made in another window reaches the picker and the screen.
@@ -336,11 +336,17 @@ The canvas is the first child of the chat column and takes no layer of its
 own: the heading, the composer and the tail are positioned after it and
 paint over it, and their menus keep their own layers. It never takes a
 click. `lib/backdrop/scenes.ts` turns a time into triangles and the engine
-draws them with WebGL 2, in the theme's text colour, its accent and a mix
-of the two, never a hue of its own, over a transparent ground, so a scene follows the theme, the accent and the code
-face. The two console scenes are drawn at a fraction of the resolution,
-smoothed and stretched, with brightness cut to 63 steps through an ordered
-dither; the characters are drawn at the screen's density. The words of the
+draws them with WebGL 2 in one blended pass at the screen's density, capped
+at two device pixels per CSS pixel, in the theme's text colour, its accent
+and a mix of the two, never a hue of its own, over a transparent ground, so a
+scene follows the theme, the accent and the code face. A pixel is a tint
+times an opacity, kept low: the scene stays close to the ground it is drawn
+on. The tunnel and the crates are strokes and discs a constant number of
+pixels wide (`Batch.stroke`, `Batch.dot` in `lib/backdrop/batch.ts`); the
+contours and the characters are one quad over the whole screen, which the
+fragment shader fills from a handful of numbers the scene sets each frame
+(`Frame.data`), the characters read from an atlas drawn at device pixel size
+and never filtered. The words of the
 empty screen (the pieces marked `data-backdrop-calm`) are measured, and the
 shader dims the scene in an oval around them. A device that asks for reduced
 motion gets one still frame. A phone keeps the draft mounted under its list
