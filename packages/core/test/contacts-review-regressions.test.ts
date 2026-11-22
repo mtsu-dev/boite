@@ -1,5 +1,5 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {holdAccountTurns, startTestCore, waitFor, type TestCore} from './harness.ts';
