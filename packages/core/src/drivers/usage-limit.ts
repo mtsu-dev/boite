@@ -214,11 +214,7 @@ export function parseUsageLimitReset(text: string | null | undefined, now = Date
 
   // Optional timezone either in parentheses `(Europe/Paris)` / `(UTC)` or trailing `UTC` / `GMT`.
   const parenTz = /\(([A-Za-z_][A-Za-z0-9_/+.-]{1,63})\)/.exec(fragment);
-  let explicitTz: string | null = null;
-  if (parenTz !== null) {
-    explicitTz = validTimeZone(parenTz[1]);
-    if (explicitTz === null) return null;
-  }
+  const explicitTz = parenTz === null ? null : validTimeZone(parenTz[1]);
   const clean = (parenTz !== null ? fragment.slice(0, parenTz.index) : fragment).trim().replace(/[.)]+$/, '').trim();
   let trailingTz: string | null = null;
   const withoutTrailingTz = clean.replace(/\s+(UTC|GMT|Z)$/i, (_full, tz: string) => {

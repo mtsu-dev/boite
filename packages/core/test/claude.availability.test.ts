@@ -52,6 +52,25 @@ test('a rejected window before a rate_limit error plans the resume at that windo
   expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
 });
 
+test('an expired rejected window does not hide a future reset in the Claude error text', async () => {
+  harness.core.settings.set({ autoResumeLimitedThreads: true });
+  const client = await harness.connect();
+  const threadId = await claudeThread(client);
+  const expired = Math.floor(Date.now() / 1000) - 60;
+  const future = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
+  const expected = Date.parse(future);
+  scripted(() => {}, (fake) => {
+    fake.emit(init('sess-limit-expired'));
+    fake.emit(sdk({ type: 'rate_limit_event', session_id: 'sess-limit-expired', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: expired } }));
+    for (const message of apiError('sess-limit-expired', 'rate_limit', `You've hit your limit · resets ${future}`)) fake.emit(message);
+  });
+  expect(await runTurn(client, threadId, 'hello')).toBe('error');
+  const { recovery } = await client.call('threads.get', { threadId });
+  expect(recovery?.resetsAt).toBe(expected);
+  await waitFor(() => harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === expected);
+  expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+});
+
 test('a rate limit on a gateway route names the provider of its model, not a Claude account', async () => {
   const client = await harness.connect();
   const threadId = await claudeThread(client);
@@ -69,6 +88,7 @@ test('a rate limit on a gateway route names the provider of its model, not a Cla
 
 test.each([
   ['rate_limit', "API Error: Request rejected (429) · this client's share is used up until 2030-02-03T04:05:06Z; its share cap is reached", 'usage-limit', Date.parse('2030-02-03T04:05:06Z')],
+  ['rate_limit', "You've hit your limit · resets Nov 23, 2030, 5pm UTC (daily)", 'usage-limit', Date.parse('2030-11-23T17:00:00Z')],
   ['server_error', 'API Error: 503 no available subscription for this model; connect an account or wait for its quota reset.', 'usage-limit', null],
   ['server_error', 'API Error: 503 upstream unavailable', 'interrupted', undefined],
 ] as const)('a Claude %s with %s offers the matching recovery', async (code, text, kind, resetsAt) => {

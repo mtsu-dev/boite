@@ -467,13 +467,10 @@ export class RejectedWindows {
 
   latest(now = Date.now()): number | null {
     let latestFuture: number | null = null;
-    let latestAny: number | null = null;
     for (const at of this.#windows.values()) {
-      if (at === null) continue;
-      if (latestAny === null || at > latestAny) latestAny = at;
-      if (at > now && (latestFuture === null || at > latestFuture)) latestFuture = at;
+      if (at !== null && at > now && (latestFuture === null || at > latestFuture)) latestFuture = at;
     }
-    return latestFuture ?? latestAny;
+    return latestFuture;
   }
 }
 
