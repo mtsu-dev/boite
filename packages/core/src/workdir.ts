@@ -175,9 +175,10 @@ function assertDeviceTarget(core: Core, threadId: ThreadId, base: string, target
 export function assertDeviceHistoryFile(core: Core, threadId: ThreadId, cwd: string, absolute: string): void {
   const base = realOf(cwd);
   const recorded = resolve(base, relative(resolve(cwd), resolve(absolute)));
-  const followed = realOf(absolute);
+  // A moved origin is on no disk: where it would lie is where its parent resolves.
+  const followed = landing(resolve(absolute), true);
   for (const target of [recorded, followed]) {
-    if (!contains(base, target)) {
+    if (target === null || !contains(base, target)) {
       throw refused(`a paired device does not read ${absolute} at HEAD: it is outside the thread's working directory`, { threadId });
     }
     assertDeviceTarget(core, threadId, base, target, absolute);
@@ -349,11 +350,23 @@ export function writeLandsInside(cwd: string, path: string): boolean {
   const root = resolve(cwd);
   const absolute = isAbsolute(path) ? resolve(path) : resolve(root, path);
   if (!contains(root, absolute)) return false;
+  const lands = landing(absolute);
+  return lands !== null && contains(realOf(root), lands);
+}
+
+/**
+ * Where `absolute` lies once every link on the way is followed: its real path,
+ * or for a name that is not there, its nearest existing parent's with the rest
+ * appended. Null for a link to nothing or a path that cannot be read.
+ * `pastFiles` also climbs past a file standing where a folder of the path was
+ * (`ENOTDIR`): a name read from history, never one a write would create.
+ */
+function landing(absolute: string, pastFiles = false): string | null {
   const missing: string[] = [];
   let probe = absolute;
   for (;;) {
     try {
-      return contains(realOf(root), join(realpathSync(probe), ...missing));
+      return join(realpathSync(probe), ...missing);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === 'EACCES' || code === 'EPERM') {
@@ -361,25 +374,30 @@ export function writeLandsInside(cwd: string, path: string): boolean {
         // not read fails here. Only a link moves a name: anything else lies
         // where its parent resolves.
         try {
-          if (lstatSync(probe).isSymbolicLink()) return false;
+          if (lstatSync(probe).isSymbolicLink()) return null;
         } catch {
-          return false;
+          return null;
         }
         const parent = dirname(probe);
-        if (parent === probe) return false;
+        if (parent === probe) return null;
         missing.unshift(basename(probe));
         probe = parent;
         continue;
       }
-      if (code !== 'ENOENT') return false;
-      try {
-        lstatSync(probe);
-        return false;
-      } catch {
-        // Not there at all: its parent decides.
+      if (code === 'ENOTDIR' && pastFiles) {
+        // A parent of the name is a file now: that file decides, links followed.
+      } else if (code !== 'ENOENT') {
+        return null;
+      } else {
+        try {
+          lstatSync(probe);
+          return null;
+        } catch {
+          // Not there at all: its parent decides.
+        }
       }
       const parent = dirname(probe);
-      if (parent === probe) return false;
+      if (parent === probe) return null;
       missing.unshift(basename(probe));
       probe = parent;
     }

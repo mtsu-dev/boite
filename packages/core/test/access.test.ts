@@ -443,7 +443,7 @@ describe('a paired device reads a thread\'s changes and files', () => {
     }
   });
 
-  test('a thread in a subfolder diffs local renames and reads arrivals as additions', async () => {
+  test('a thread in a subfolder diffs local renames and reads arrivals as additions, through a link to its folder too', async () => {
     const owner = await harness.connect();
     // Windows drops a trailing space from a folder name; elsewhere it is part of it.
     const space = process.platform === 'win32' ? '' : ' ';
@@ -452,16 +452,26 @@ describe('a paired device reads a thread\'s changes and files', () => {
     mkdirSync(cwd, { recursive: true });
     git(root, 'init', '-q');
     writeFileSync(join(cwd, 'a.md'), 'one\n');
+    mkdirSync(join(cwd, 'old'));
+    writeFileSync(join(cwd, 'old', 'c.md'), 'inert notes in the old folder\n');
     writeFileSync(join(root, 'incoming.md'), 'inert notes before the move\n');
     writeFileSync(join(root, 'top.md'), 'top\n');
     git(root, 'add', '.');
     git(root, 'commit', '-qm', 'first');
     git(cwd, 'mv', 'a.md', 'b.md');
     writeFileSync(join(cwd, 'b.md'), 'two\n');
+    // A file now stands where the origin's folder was: its path ends at a file, not a folder.
+    git(cwd, 'mv', join('old', 'c.md'), 'c.md');
+    rmSync(join(cwd, 'old'), { recursive: true, force: true });
+    writeFileSync(join(cwd, 'old'), 'inert file where the folder was\n');
     git(root, 'mv', 'incoming.md', join(`notes${space}`, 'docs', 'arrived.md'));
     writeFileSync(join(cwd, 'arrived.md'), 'inert notes after the move\n');
     writeFileSync(join(root, 'top.md'), 'changed\n');
-    const project = await owner.call('projects.add', { path: cwd, name: 'docs' });
+    // The project is named through a link, as macOS names `/private/var` through `/var`:
+    // a moved origin is on no disk, so only its folder resolves.
+    const linked = join(harness.dataDir, 'linked-docs');
+    symlinkSync(cwd, linked, process.platform === 'win32' ? 'junction' : 'dir');
+    const project = await owner.call('projects.add', { path: linked, name: 'docs' });
     const account = (await owner.call('accounts.list', {})).find((entry) => entry.providerId === 'echo');
     const { id: threadId } = await owner.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account?.id ?? '', title: 'docs' });
     const phone = await pairedDevice();
@@ -472,6 +482,9 @@ describe('a paired device reads a thread\'s changes and files', () => {
         expect(changes.find((change) => change.path === '../../top.md')).toMatchObject({ status: 'modified', additions: 1, deletions: 1 });
         expect(await client.call('git.diff', { threadId, path: 'b.md' })).toMatchObject({ status: 'renamed', oldPath: 'a.md', oldText: 'one\n', newText: 'two\n' });
         expect(await client.call('git.diff', { threadId, path: 'b.md', oldPath: 'a.md' })).toMatchObject({ oldPath: 'a.md', oldText: 'one\n', newText: 'two\n' });
+        const replaced = { status: 'renamed', oldPath: 'old/c.md', oldText: 'inert notes in the old folder\n' };
+        expect(await client.call('git.diff', { threadId, path: 'c.md' })).toMatchObject(replaced);
+        expect(await client.call('git.diff', { threadId, path: 'c.md', oldPath: 'old/c.md' })).toMatchObject(replaced);
         const arrived = changes.find((change) => change.path === 'arrived.md')!;
         expect(arrived).toMatchObject({ status: 'added', oldPath: null });
         const addition = { status: 'added', oldPath: null, oldText: null, newText: 'inert notes after the move\n' };
@@ -490,9 +503,15 @@ describe('a paired device reads a thread\'s changes and files', () => {
     const { root, threadId } = await repoThread(owner);
     mkdirSync(join(root, '.aws'));
     writeFileSync(join(root, '.aws', 'notes.txt'), 'inert fixture, not a credential\n');
+    mkdirSync(join(root, 'drafts'));
+    writeFileSync(join(root, 'drafts', 'e.txt'), 'inert draft\n');
     git(root, 'add', '.');
     git(root, 'commit', '-qm', 'fixture');
     git(root, 'mv', '.aws/notes.txt', 'moved.txt');
+    // And `drafts` is now a link to nothing: where its file would lie is unknown.
+    git(root, 'mv', 'drafts/e.txt', 'e.txt');
+    rmSync(join(root, 'drafts'), { recursive: true, force: true });
+    symlinkSync(join(root, 'nowhere'), join(root, 'drafts'), process.platform === 'win32' ? 'junction' : 'dir');
     writeFileSync(join(root, 'moved.txt'), 'moved\n');
     // `.aws` is now a link to an ordinary folder holding a file of the same name.
     rmSync(join(root, '.aws'), { recursive: true, force: true });
@@ -504,6 +523,10 @@ describe('a paired device reads a thread\'s changes and files', () => {
       expect(await thrown(phone.call('git.diff', { threadId, path: 'moved.txt' }))).toThrow('credential files');
       expect(await thrown(phone.call('git.diff', { threadId, path: 'moved.txt', oldPath: '.aws/notes.txt' }))).toThrow('credential files');
       expect(await owner.call('git.diff', { threadId, path: 'moved.txt' })).toMatchObject({ oldPath: '.aws/notes.txt', oldText: 'inert fixture, not a credential\n' });
+      for (const oldPath of [undefined, 'drafts/e.txt']) {
+        expect(await thrown(phone.call('git.diff', { threadId, path: 'e.txt', ...(oldPath ? { oldPath } : {}) }))).toThrow("outside the thread's working directory");
+      }
+      expect(await owner.call('git.diff', { threadId, path: 'e.txt' })).toMatchObject({ oldPath: 'drafts/e.txt', oldText: 'inert draft\n' });
     } finally {
       phone.close();
     }
