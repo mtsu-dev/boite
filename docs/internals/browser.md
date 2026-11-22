@@ -35,7 +35,11 @@ version every other visitor of a site runs. Both are things a bot check reads.
 A machine meant to browse the public web installs Chrome stable.
 
 `BOITE_BROWSER` names the executable instead, and is then the only place
-looked at. Edge ships with Windows 10 and 11, so a Windows machine always has
+looked at. It names the browser of the Chrome engine only: while the desktop
+app hosts a profile ([Engine of a profile](#engine-of-a-profile)) the core looks
+for no browser at all and ignores the variable, so on Windows with the app it
+matters for the profiles set to Chrome, a profile with a User-Agent, and a core
+that runs without the app. Edge ships with Windows 10 and 11, so a Windows machine always has
 one. A machine without any says so: `browser.remoteStatus` answers
 `available: false` with the reason, the panel shows it, and `browser open`
 fails with the same sentence. Nothing is installed or downloaded.

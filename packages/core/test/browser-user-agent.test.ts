@@ -1,7 +1,7 @@
 import { expect, spyOn, test } from 'bun:test';
 import { browserEngineOf, checkSettingsPatch } from '@boite/contracts';
 import { assertAllowed } from '../src/access.ts';
-import { profileIdentity } from '../src/browser/chromium.ts';
+import { findChromium, profileIdentity } from '../src/browser/chromium.ts';
 import { BrowserEngines } from '../src/browser/engines.ts';
 import { BrowserHost } from '../src/browser/host.ts';
 import { Cdp } from '../src/browser/cdp.ts';
@@ -84,6 +84,28 @@ test('an agent can neither set nor ask for a browser profile or its engine', asy
     expect(harness.core.settings.get().browserBuiltinProfiles).toBeUndefined();
     owner.close();
   } finally { await harness.stop(); }
+});
+
+test('BOITE_BROWSER names the Chrome engine\'s browser and is not looked at for a profile the app hosts', async () => {
+  const harness = await startTestCore();
+  const host = new BrowserHost();
+  host.attach({ identity: { principal: 'owner' }, sentFrom: { client: 'shell' }, remote: false } as Connection);
+  const finding = { calls: 0 };
+  const engines = new BrowserEngines(harness.core, host, () => { finding.calls++; return findChromium({ BOITE_BROWSER: '/own/chrome' }, 'linux', () => null, () => false); },
+    'fixture', 'system:browser', () => {}, () => {}, { prepare: () => harness.dataDir, lost: () => {} });
+  const hosting = spyOn(host, 'connect').mockImplementation(() => { throw new Error('the app was asked'); });
+  try {
+    harness.core.settings.set({ browserProfiles: [{ id: 'p-a', name: 'A', engine: 'chrome' }] });
+    expect(await thrown(engines.get('default'))).toThrow('the app was asked');
+    expect(finding.calls).toBe(0);
+    expect(await thrown(engines.get('p-a'))).toThrow('BOITE_BROWSER names /own/chrome, which does not exist');
+    expect(finding.calls).toBe(1);
+    expect(hosting).toHaveBeenCalledTimes(1);
+  } finally {
+    hosting.mockRestore();
+    host.detach();
+    await harness.stop();
+  }
 });
 
 test('a profile set to Chrome starts Chromium while the app hosts, and the other engine only from its next start', async () => {
