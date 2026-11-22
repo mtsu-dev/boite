@@ -230,31 +230,15 @@ export class Accounts {
     }
   }
 
-  async removeAccount(accountId: string): Promise<void> {
-    const client = this.ctx.client;
-    if (!client) return;
-    const generation = this.ctx.clientGeneration;
-    try {
-      await client.call('accounts.remove', { accountId });
-      if (!this.ctx.currentClient(client, generation)) return;
+  removeAccount(accountId: string): Promise<void> {
+    return this.ctx.command('accounts.remove', { accountId }, () => {
       this.accounts = this.accounts.filter((a) => a.id !== accountId);
       delete this.logins[accountId];
-    } catch (error) {
-      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
-    }
+    });
   }
 
-  async cancelLogin(accountId: string): Promise<void> {
-    const client = this.ctx.client;
-    if (!client) return;
-    const generation = this.ctx.clientGeneration;
-    try {
-      await client.call('accounts.loginCancel', { accountId });
-      if (!this.ctx.currentClient(client, generation)) return;
-      this.dismissLogin(accountId);
-    } catch (error) {
-      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
-    }
+  cancelLogin(accountId: string): Promise<void> {
+    return this.ctx.command('accounts.loginCancel', { accountId }, () => this.dismissLogin(accountId));
   }
 
   /** Hide the login result and prevent an older reload snapshot from restoring it. */
@@ -264,27 +248,15 @@ export class Accounts {
   }
 
   /** Start the provider's login for this account; the rest arrives as `account.login`. */
-  async loginAccount(accountId: string): Promise<void> {
-    const client = this.ctx.client;
-    if (!client) return;
-    const generation = this.ctx.clientGeneration;
-    try {
-      await client.call('accounts.login', { accountId });
-    } catch (error) {
-      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
-    }
+  loginAccount(accountId: string): Promise<void> {
+    return this.ctx.command('accounts.login', { accountId });
   }
 
   /** One line into the running login, for a CLI that asks for a code to paste. */
   async sendLoginInput(accountId: string, text: string): Promise<void> {
-    const client = this.ctx.client;
-    if (!client || text.trim().length === 0) return;
-    const generation = this.ctx.clientGeneration;
-    try {
-      await client.call('accounts.loginInput', { accountId, text: text.trim() });
-    } catch (error) {
-      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
-    }
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    return this.ctx.command('accounts.loginInput', { accountId, text: trimmed });
   }
 
   async checkAccount(accountId: string, refresh = false): Promise<Account | null> {
@@ -361,30 +333,12 @@ export class Accounts {
     if (updates.some((update) => updateStale(update.checkedAt, now))) await this.loadHarnessUpdates(true, true);
   }
 
-  async updateHarness(providerId: ProviderId): Promise<void> {
-    const client = this.ctx.client;
-    if (!client) return;
-    const generation = this.ctx.clientGeneration;
-    try {
-      const update = await client.call('providers.update', { providerId });
-      if (!this.ctx.currentClient(client, generation)) return;
-      this.putHarnessUpdate(update);
-    } catch (error) {
-      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
-    }
+  updateHarness(providerId: ProviderId): Promise<void> {
+    return this.ctx.command('providers.update', { providerId }, update => this.putHarnessUpdate(update));
   }
 
-  async skipHarnessUpdate(providerId: ProviderId, version: string | null): Promise<void> {
-    const client = this.ctx.client;
-    if (!client) return;
-    const generation = this.ctx.clientGeneration;
-    try {
-      const update = await client.call('providers.updateSkip', { providerId, version });
-      if (!this.ctx.currentClient(client, generation)) return;
-      this.putHarnessUpdate(update);
-    } catch (error) {
-      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
-    }
+  skipHarnessUpdate(providerId: ProviderId, version: string | null): Promise<void> {
+    return this.ctx.command('providers.updateSkip', { providerId, version }, update => this.putHarnessUpdate(update));
   }
 
   /** One agent's row as its core answered it, in place. */
@@ -470,29 +424,15 @@ export class Accounts {
   }
 
   async cancelInstall(providerId: ProviderId): Promise<void> {
-    const client = this.ctx.client;
     const state = this.ctx.store.installOf(providerId);
-    if (!client || state === null || state.state === 'absent' || state.state === 'installed' || state.state === 'failed')
-      return;
-    const generation = this.ctx.clientGeneration;
-    try {
-      await client.call('providers.installCancel', { providerId, operationId: state.operationId });
-    } catch (error) {
-      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
-    }
+    if (state === null || state.state === 'absent' || state.state === 'installed' || state.state === 'failed') return;
+    return this.ctx.command('providers.installCancel', { providerId, operationId: state.operationId });
   }
 
   /** Delete the files. Refused by the core while a process of that provider is alive. */
-  async uninstallProvider(providerId: ProviderId): Promise<void> {
-    const client = this.ctx.client;
-    if (!client) return;
-    const generation = this.ctx.clientGeneration;
-    try {
-      const state = await client.call('providers.uninstall', { providerId });
-      if (!this.ctx.currentClient(client, generation)) return;
+  uninstallProvider(providerId: ProviderId): Promise<void> {
+    return this.ctx.command('providers.uninstall', { providerId }, state => {
       this.installStates = { ...this.installStates, [providerId]: state };
-    } catch (error) {
-      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
-    }
+    });
   }
 }

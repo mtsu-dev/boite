@@ -436,7 +436,7 @@ test('a member whose Boite does not know these operations is reported too old, a
   expect(desk.core.delegation.remote.holds(threadId, 'old-1')).toBe(false);
 });
 
-test('a parent archived or deleted before its child there was named retires that child once a report names it', async () => {
+test('archiving a parent or removing its project retires an unnamed remote child once it reports', async () => {
   const { held } = answering();
   const { desk, pc, owner, threadId, pcId, deskId, machine, cli, childrenOnPc } = await setup();
   const request = desk.core.coordination.request.bind(desk.core.coordination);
@@ -460,25 +460,26 @@ test('a parent archived or deleted before its child there was named retires that
   expect(pc.core.threads.require(child.id).archived).toBe(true);
   expect(held.has(child.id)).toBe(false);
 
-  // Deleted for good: nothing of that parent stays here but the retirement, until a report names its child.
+  // Removing the project hides the parent and keeps its delegation so a late report can still retire the child.
   mkdirSync(join(desk.dataDir, 'other'), { recursive: true });
   const project = await owner.call('projects.add', { path: join(desk.dataDir, 'other'), name: 'Other' });
   const parent = desk.core.threads.require(threadId);
   const other = await owner.call('threads.create', { projectId: project.id, providerId: parent.providerId, accountId: parent.accountId, title: 'Second helper' });
   away = true;
-  expect((await cli(['delegate', 'spawn', 'Read HOLD-ON', '--machine', machine, '--project', 'notes', '--request-id', 'delete-lost'], desk, other.id)).err).toContain('lost start reply');
+  expect((await cli(['delegate', 'spawn', 'Read HOLD-ON', '--machine', machine, '--project', 'notes', '--request-id', 'remove-lost'], desk, other.id)).err).toContain('lost start reply');
   const orphan = childrenOnPc().find(thread => thread.id !== child.id)!;
   await waitFor(() => held.has(orphan.id));
-  await owner.call('threads.remove', { threadId: other.id });
-  desk.core.journal.db.query('UPDATE thread_deletions SET deleted_at = 0 WHERE thread_id = ?').run(other.id);
-  desk.core.threads.purgeDeleted();
-  expect(desk.core.delegation.remote.has(other.id)).toBe(false);
+  await owner.call('projects.remove', { projectId: project.id });
+  expect(desk.core.journal.getThread(other.id)).toBeNull();
+  expect(desk.core.delegation.remote.has(other.id)).toBe(true);
   away = false;
   await pc.core.delegation.remote.flush(deskId);
   await desk.core.delegation.remote.flush(pcId);
-  // Before, the report of a parent this machine forgot was dropped, and the child kept working there.
   expect(pc.core.threads.require(orphan.id).archived).toBe(true);
   expect(held.has(orphan.id)).toBe(false);
+
+  expect(await owner.call('projects.add', { path: project.path })).toMatchObject({ id: project.id });
+  expect(await owner.call('threads.get', { threadId: other.id })).toMatchObject({ id: other.id, archived: false });
 });
 
 test('a stop sent again because its answer was lost does not stop the instruction that follows it', async () => {

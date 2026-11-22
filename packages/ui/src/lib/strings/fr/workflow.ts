@@ -33,6 +33,10 @@ export const fr: Translation = {
     skipped: "Sautée : sa condition n'était pas remplie.",
     show: 'Voir le workflow',
     tokens: '{tokens} jetons',
+    tokensPartial: '{tokens} jetons (partiel)',
+    tokensUnknown: 'Jetons inconnus',
+    contextRequested: '{label} (demandé)',
+    routeRequested: 'Demandé',
     tokensHelp: 'Usage transmis par les tours terminés, lectures et écritures du cache et nouvelles tentatives comprises.'
   }
 };

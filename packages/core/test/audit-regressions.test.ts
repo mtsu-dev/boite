@@ -2,13 +2,16 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import type { ProviderInstall } from '@boite/contracts';
+import { setDriver } from '../src/drivers/index.ts';
+import type { TurnResult } from '../src/drivers/types.ts';
 import { readTreeSide } from '../src/git/read.ts';
 import { InstallManager } from '../src/providers/install.ts';
 import { extractRelease } from '../src/providers/install-unpack.ts';
 import { snapshot } from '../src/threads/checkpoint-files.ts';
-import { echoThread, startTestCore, type TestCore } from './harness.ts';
+import { ThreadStore } from '../src/threads.ts';
+import { echoThread, holdAccountTurns, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
 let harness: TestCore | undefined;
@@ -105,6 +108,92 @@ test('held answers are journaled once and still prefix the next prompt', async (
   expect(harness.core.threads.deferred.takeDeferred(threadId)).toBe('held once\n\n');
   expect(harness.core.threads.deferred.takeDeferred(threadId)).toBe('');
   expect((await client.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
+});
+
+test.each([
+  { name: 'survives a core restart', archived: false },
+  { name: 'does not reappear after archive and restart', archived: true },
+])('an answer held behind a queued turn $name', async ({ archived }) => {
+  const dataDir = outside('boite-held-answer-');
+  harness = await startTestCore({ dataDir });
+  const client = await harness.connect();
+  const { threadId, accountId } = await echoThread(harness, client);
+  holdAccountTurns(harness, accountId);
+  await client.call('turns.start', { threadId, prompt: 'queued before the answer' });
+  const { questionId } = await client.call('questions.ask', { threadId, text: 'Which option?' });
+  await client.call('questions.answer', { threadId, questionId, optionIds: [], text: 'Keep this answer' });
+  const text = '> Which option?\n\nKeep this answer';
+  expect((await client.call('threads.get', { threadId })).pendingAnswers).toEqual([text]);
+  if (archived) await client.call('threads.archive', { threadId });
+  await harness.stop();
+
+  harness = await startTestCore({ dataDir });
+  const restarted = await harness.connect();
+  if (archived) {
+    await restarted.call('threads.archive', { threadId, archived: false });
+    expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
+    return;
+  }
+  expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([text]);
+  expect(await restarted.call('questions.list', { threadId })).toEqual([]);
+  const turn = await restarted.call('turns.start', { threadId, prompt: 'continue after restart' });
+  await waitFor(() => harness!.core.journal.getTurn(turn.id)?.finishedAt != null);
+  expect(harness.core.journal.getTurn(turn.id)).toMatchObject({ status: 'done', error: null });
+  await waitFor(() => (harness!.core.journal.getThread(threadId)?.status ?? '') === 'idle');
+  expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user' &&
+    message.parts.some(part => part.type === 'text' && part.text === text))).toHaveLength(1);
+  expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
+});
+
+test.each(['idle card', 'completed turn', 'stopped turn', 'refused dispatch'] as const)('a durable async answer survives an interrupted dispatch (%s)', async point => {
+  const dataDir = outside('boite-held-answer-dispatch-');
+  harness = await startTestCore({ dataDir });
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client);
+  spyOn(harness.core.threads.deferred, 'flushDeferred').mockImplementation(() => {});
+  const result = Promise.withResolvers<TurnResult>();
+  const settle = (status: 'done' | 'stopped') => result.resolve({ status, usage: null, sessionId: null });
+  const restore = setDriver('echo', { protocol: 'echo', startTurn: () => ({ done: result.promise, stop: () => settle('stopped') }) });
+  try {
+    const first = await client.call('turns.start', { threadId, prompt: 'First prompt' });
+    await waitFor(() => harness!.core.threads.runner.handles.has(threadId));
+    const { questionId } = await client.call('questions.ask', { threadId, text: 'Which option?' });
+    if (point === 'idle card' || point === 'refused dispatch') {
+      await client.call('turns.stop', { threadId });
+      await waitFor(() => harness!.core.journal.getTurn(first.id)?.status === 'stopped');
+    }
+    await client.call('questions.answer', { threadId, questionId, optionIds: [], text: 'Keep this answer' });
+    if (point === 'stopped turn') await client.call('turns.stop', { threadId });
+    if (point === 'completed turn') settle('done');
+    await waitFor(() => harness!.core.journal.getTurn(first.id)?.finishedAt != null);
+  } finally {
+    settle('stopped');
+    restore();
+  }
+  const text = '> Which option?\n\nKeep this answer';
+  expect((await client.call('threads.get', { threadId })).pendingAnswers).toEqual([text]);
+  await harness.stop();
+
+  const refusal = point === 'refused dispatch' ? spyOn(ThreadStore.prototype, 'startTurn').mockImplementationOnce(() => {
+    throw new Error('Test admission refusal');
+  }) : undefined;
+  try {
+    harness = await startTestCore({ dataDir });
+    if (refusal) expect(refusal).toHaveBeenCalledTimes(1);
+  } finally { refusal?.mockRestore(); }
+  const restarted = await harness.connect();
+  const delivered = () => harness!.core.journal.listMessages(threadId).filter(message => message.role === 'user' &&
+    message.parts.some(part => part.type === 'text' && part.text === text));
+  if (point === 'stopped turn' || point === 'refused dispatch') {
+    expect(delivered()).toHaveLength(0);
+    expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([text]);
+    const turn = await restarted.call('turns.start', { threadId, prompt: 'Continue' });
+    await waitFor(() => harness!.core.journal.getTurn(turn.id)?.status === 'done');
+  } else {
+    await waitFor(() => delivered().length > 0);
+  }
+  expect(delivered()).toHaveLength(1);
+  expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
 });
 
 const binaryInstall = (path: string): ProviderInstall => ({

@@ -132,6 +132,7 @@ function describe(ctx: FakeContext, worktree: FakeWorktree): WorktreeEntry {
 
 export function worktreeMethods(ctx: FakeContext) {
   return {
+    'worktrees.recoveries': async () => [],
     'worktrees.list': async (params) => {
       const project = repository(ctx, params.projectId);
       return ctx.worktrees

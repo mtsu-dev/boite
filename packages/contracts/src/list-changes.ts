@@ -1,4 +1,38 @@
-import type { ListCursor } from './threads';
+import type { ListCursor, ThreadListChanges, ThreadSummary } from './threads';
+import { utf8Bytes } from './transport';
+
+export const THREAD_LIST_PAGE_BYTES = 1024 * 1024;
+
+/** A full read freezes membership and order; events still update its rows while it leaves. */
+export class ThreadListPages {
+  #read: { cursor: ListCursor; ids: string[]; offset: number; token: string } | null = null;
+
+  start(cursor: ListCursor, ids: string[], token: string): string {
+    this.#read = { cursor, ids, offset: 0, token };
+    return token;
+  }
+
+  take(token: string, readThread: (id: string) => ThreadSummary | null): ThreadListChanges | null {
+    const read = this.#read;
+    if (!read || read.token !== token) return null;
+    const threads: ThreadSummary[] = [];
+    let bytes = 2;
+    for (; read.offset < read.ids.length; read.offset++) {
+      const thread = readThread(read.ids[read.offset]!);
+      if (!thread || thread.archived) continue;
+      const size = utf8Bytes(JSON.stringify(thread)) + 1;
+      if (threads.length && bytes + size > THREAD_LIST_PAGE_BYTES) break;
+      threads.push(thread);
+      bytes += size;
+    }
+    if (read.offset === read.ids.length) {
+      this.#read = null;
+      return { kind: 'full', cursor: read.cursor, threads };
+    }
+    read.token = `${token.split(':')[0]}:${read.offset}`;
+    return { kind: 'full', cursor: read.cursor, threads, next: read.token };
+  }
+}
 
 /**
  * How many distinct ids a `ChangeLog` remembers. A thread that changes again

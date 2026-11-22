@@ -9,17 +9,24 @@ import { closeTour } from '../lib/onboarding.svelte';
 import { work } from '../lib/work-prefs.svelte';
 import { rightPanel } from '../lib/right-panel.svelte';
 import { openUrl } from './opener';
+import { mockPhoneViewport } from './phone-width';
 
 let running: Record<string, unknown> | null = null;
 
 // The settings page scrolls to the card it was opened on; jsdom draws nothing to scroll.
 Element.prototype.scrollIntoView ??= vi.fn();
 
-export const test = fixtureTest.extend<{ app: void }>({
+export const test = fixtureTest.extend<{ app: void; viewport: ReturnType<typeof mockPhoneViewport> }>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest reads fixture dependencies from this pattern
   app: async ({}, use) => {
     await mountOnFake();
     await use();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest reads fixture dependencies from this pattern
+  viewport: async ({}, use) => {
+    const viewport = mockPhoneViewport();
+    try { await use(viewport); }
+    finally { viewport.restore(); }
   },
 });
 
@@ -148,8 +155,13 @@ export async function mountOnFake(search = '/?fake=1'): Promise<void> {
   // which is the point of it and not what these tests are about.
   closeTour();
   running = mount(App, { target });
-  // `.app.ready` is what the screen shows: outside the shell it also waits for the phone's navigation chunk (App.svelte).
-  await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null) && document.querySelector('.app.ready') !== null);
+  // Connection and the phone header can be ready before the conversation views load.
+  await waitFor(() => {
+    const chat = target.querySelector('.thread-chat');
+    return store.booted && (store.openThread !== null || store.draft !== null)
+      && target.querySelector('.app.ready [data-testid=sidebar]') !== null
+      && chat !== null && chat.querySelector(':scope > [data-testid^="deferred-"]') === null;
+  });
 }
 
 /** The thread every workbench test works in, with an empty strip to start on. */
@@ -223,6 +235,7 @@ export async function showMobileThreads(): Promise<void> {
   // jsdom does not implement dialog methods; the browser suite exercises the modal.
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function(this: HTMLDialogElement) { this.open = true; } });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function(this: HTMLDialogElement) { this.open = false; } });
+  await waitFor(() => document.querySelector('[data-testid=mobile-back], [data-testid=mobile-tabs]') !== null);
   // A conversation hides the bottom bar: Back leads to the list that has it.
   if (!document.querySelector('[data-testid=mobile-tabs]')) {
     query<HTMLButtonElement>('[data-testid=mobile-back]').click();

@@ -131,8 +131,10 @@ retry after 30 s. Waiting for the WAL to catch up uses the same delay before
 any statistics or pruning work, without changing the batch size. Stopping
 retention or closing the journal prevents further ticks.
 Project removal sets `projects.removed_at`, archives the project's saved threads
-and hides the project and its threads from the app's lists. The saved history
-stays available for audits and usage. Adding the same folder again clears
+and hides the project and its threads from the app's lists. Saved turns still
+count toward usage totals. Their ranking entries stay available to the owner
+and return to paired devices with the project.
+Adding the same folder again clears
 `removed_at` and reopens the saved threads that were open. Removal erases
 incognito threads and their transcripts, as on any close.
 Foreign keys are disabled, so a purge clears thread-keyed tables explicitly.
@@ -459,9 +461,9 @@ processes stay separate. [Windows setup](contacts.md#native-windows-tool-executi
 requires an explicitly built userspace helper. macOS has no protected execution
 backend and refuses these routes.
 
-Windows Job Objects provide tree membership events and resource caps. For ordinary
-processes, Linux and macOS record direct children; their process-group termination
-cannot catch a child that starts its own session. The capability report exposes those limits.
+Windows Job Objects provide tree membership events and resource caps. Linux and
+macOS record direct children. Stopping a live child signals its group and
+captures its current descendants, including those that started a separate session.
 [Trace](trace.md#platform-boundary) owns process records, caps, guards and shutdown.
 
 ## Drivers, one interface

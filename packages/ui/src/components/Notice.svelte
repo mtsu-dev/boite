@@ -8,8 +8,8 @@
    * The one notice of the app: a banner, a line in the composer's place, a
    * failure in the transcript and a toast are all this form. A mark in the
    * tone's ink, one plain line that says what happened, an optional quieter
-   * second line, the rest behind an "i", then at most two buttons of the
-   * family and an optional dismiss. Its ground is the tone's soft wash, no
+   * second line, the rest behind an "i", then the available actions
+   * and an optional dismiss. Its ground is the tone's soft wash, no
    * hairline; a toast (`floating`) adds the overlays' one elevation.
    * `docked` gives it the composer's column; `replaces` sizes it for the
    * composer's slot, where it stands when the thread cannot run.
@@ -109,7 +109,7 @@
   .sub { color: var(--color-subtle); }
   .sub :global(a) { margin-left: 6px; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
   .sub :global(a:hover) { color: var(--color-foreground); }
-  .actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; }
   .dismiss { flex: none; margin-top: calc((var(--control-sm) - var(--icon-button)) / 2); color: var(--color-subtle); }
   @media (max-width: 720px) {
     /* A phone row is short: the words wrap beside the buttons, which go under them only past a few words' width. */

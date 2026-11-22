@@ -52,6 +52,24 @@ test('desktop and paired phone replace an edited message and silently skip a que
         await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
         await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
       }
+      await page.waitFor(`matchMedia('(max-width: 720px)').matches === ${mobile} && [...document.querySelectorAll('[data-testid=message-edit]')].at(-1)?.getBoundingClientRect().height > 0`);
+      await capture(page, `message-targets-${mobile ? 'phone' : 'desktop'}.png`);
+      if (mobile) {
+        const targets = await page.evaluate<{ editWidth: boolean; editHeight: boolean; inputHeight: number }>(`(() => {
+          const edit = [...document.querySelectorAll('[data-testid=message-edit]')].at(-1);
+          const input = document.querySelector('[data-testid=composer-input]');
+          const rect = edit.getBoundingClientRect();
+          const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+          const hits = (dx, dy) => edit.contains(document.elementFromPoint(x + dx, y + dy));
+          return {
+            editWidth: hits(-21.5, 0) && hits(21.5, 0),
+            editHeight: hits(0, -21.5) && hits(0, 21.5),
+            inputHeight: input.getBoundingClientRect().height,
+          };
+        })()`);
+        expect(targets).toEqual({ editWidth: true, editHeight: true, inputHeight: expect.any(Number) });
+        expect(targets.inputHeight).toBeGreaterThanOrEqual(44);
+      }
       await page.evaluate('Array.from(document.querySelectorAll("[data-role=user]")).find(row => row.querySelector("[data-testid=text-part]")?.textContent === "Original request").querySelector("[data-testid=message-edit]").click()');
       await page.waitFor('document.querySelector("[data-testid=composer-editing]") && document.querySelector("[data-testid=composer-input]").value === "Original request"');
       await page.evaluate('document.querySelector("[data-testid=composer-input]").focus(); document.querySelector("[data-testid=composer-input]").select()');

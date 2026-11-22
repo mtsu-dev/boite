@@ -1,11 +1,10 @@
 import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
-import { composerInputThreadId, privateTerminalComposerId } from '@boite/contracts';
+import { composerInputThreadId, isComposerKey, privateTerminalComposerId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
 import { invalidParams, messageOf, notFound, refused } from './errors.ts';
-import { ComposerStorage, digest, recordKey, type Delivery } from './composer-storage.ts';
-import { composerValue } from './composer-validation.ts';
+import { ComposerStorage, digest, recordKey } from './composer-storage.ts';
 import { steerUser, userSteeringUnavailable } from './threads/user-steering.ts';
 import { DraftReservationLedger, type DraftOwnership } from './threads/draft-reservation-ledger.ts';
 import { needsModelDiscovery } from './threads/selection.ts';
@@ -60,11 +59,20 @@ export class Composer {
       }
     });
     core.router.register('composer.list', (_params, ctx) => this.storage.list(ctx.connection.id));
+    core.router.register('composer.listPage', (params, ctx) => this.storage.listPage(ctx.connection.id, params?.after));
+    core.router.register('composer.get', (params, ctx) => {
+      if (!isComposerKey(params)) throw invalidParams('composer.get: expected section inputs/drafts and a nonempty id');
+      this.storage.requireOwner(params, ctx.connection.id);
+      return this.storage.get(params.section, params.id);
+    });
     // The owner terminal has no shared draft state. It appends one prompt through the same outbox.
     core.router.register('composer.enqueue', (params, ctx) => this.enqueue(params, ctx.connection));
     core.router.register('composer.asset.put', (params, ctx) => this.storage.putAsset(params.attachment, params.incognito === true, ctx.connection));
     core.router.register('composer.asset.get', (params, ctx) => this.storage.getAsset(params.assetId, ctx.connection.id));
-    core.router.register('composer.put', (params, ctx) => this.put(params, ctx.connection));
+    core.router.register('composer.put', async (params, ctx) => {
+      const { composerValue } = await import('./composer-validation.ts');
+      return this.#put(params, ctx.connection, composerValue);
+    });
   }
 
   start(): void {
@@ -84,18 +92,16 @@ export class Composer {
     }
     // Existing recovery holds every never-started turn. Server-owned accepted
     // queues may resume those safe rows; legacy client queues remain held.
-    const delivered = this.#core.journal.db.query("SELECT * FROM composer_deliveries WHERE status = 'delivered'").all() as Delivery[];
-    for (const delivery of delivered) {
-      if (!delivery.thread_id) continue;
-      const thread = this.#core.journal.getThread(delivery.thread_id);
+    const held = this.#core.journal.db.query(`SELECT t.id, t.thread_id FROM turns t
+      WHERE t.status = 'queued' AND t.started_at IS NULL AND t.queue_hold IS NOT NULL AND EXISTS (
+        SELECT 1 FROM turn_requests r JOIN composer_deliveries d ON d.thread_id = r.thread_id AND d.request_id = r.request_id
+        WHERE r.thread_id = t.thread_id AND r.turn_id = t.id AND d.status = 'delivered')`).all() as { id: string; thread_id: string }[];
+    for (const { id, thread_id } of held) {
+      const thread = this.#core.journal.getThread(thread_id);
       const project = thread?.projectId ? this.#core.journal.getProject(thread.projectId) : null;
       if (!thread || thread.archived || (thread.projectId && (!project || project.archived))) continue;
-      const receipt = this.#core.journal.turnRequest(delivery.thread_id, delivery.request_id);
-      const turn = receipt && this.#core.journal.getTurn(receipt.turn_id);
-      if (turn?.queueHold && turn.startedAt === null) {
-        try { this.#core.threads.recoverTurn({ threadId: thread.id, turnId: turn.id, action: 'resume' }); }
-        catch (error) { this.#core.log('warn', `queued composer input remains held: ${messageOf(error)}`); }
-      }
+      try { this.#core.threads.recoverTurn({ threadId: thread.id, turnId: id, action: 'resume' }); }
+      catch (error) { this.#core.log('warn', `queued composer input remains held: ${messageOf(error)}`); }
     }
     this.#schedule(this.storage.queued.values());
   }
@@ -107,6 +113,9 @@ export class Composer {
     if (typeof params?.threadId !== 'string' || typeof params.prompt !== 'string' || !params.prompt.trim() || typeof params.clientRequestId !== 'string') {
       throw invalidParams('composer.enqueue: expected threadId, a non-empty prompt and clientRequestId');
     }
+    // Load the schema before reading the outbox. Validation and the CAS write
+    // can then run together when the record is ready.
+    const { composerValue } = await import('./composer-validation.ts');
     const { threadId, prompt, clientRequestId: requestId } = params;
     const thread = this.#core.threads.require(threadId);
     const { turn } = checkTurnRequest(this.#core.journal, threadId, prompt, [], [], requestId);
@@ -148,13 +157,13 @@ export class Composer {
       this.storage.save('inputs', recordId, value, this.#connection);
       this.#schedule([record]);
     } else {
-      const saved = this.put({ section: 'inputs', id: recordId, expectedRevision: record.revision, value }, connection);
+      const saved = this.#put({ section: 'inputs', id: recordId, expectedRevision: record.revision, value }, connection, composerValue, false);
       if (!saved.accepted) throw refused('the composer changed; retry with the same clientRequestId');
     }
     return { requestId, status: value.input.paused ? 'held' as const : 'queued' as const };
   }
 
-  put(params: RpcParams<'composer.put'>, connection: Connection): { accepted: boolean; record: ComposerRecord } {
+  #put(params: RpcParams<'composer.put'>, connection: Connection, parseValue: (value: unknown) => ComposerValue | null, returnsRecord = true): { accepted: boolean; record: ComposerRecord } {
     if (!params || !['inputs', 'drafts'].includes(params.section) || typeof params.id !== 'string' || !params.id || !Number.isSafeInteger(params.expectedRevision) || params.expectedRevision < 0) throw invalidParams('composer.put: expected section inputs/drafts, non-empty id and non-negative expectedRevision');
     if (params.section === 'inputs' && composerInputThreadId(params.id) !== params.id) throw notFound('composer.id: expected an existing thread');
     // Soft-deleted rows remain undoable. Missing rows cannot adopt an offline
@@ -165,7 +174,7 @@ export class Composer {
     this.storage.requireOwner(params, connection.id);
     const current = this.storage.get(params.section, params.id);
     if (current.revision !== params.expectedRevision) return { accepted: false, record: current };
-    const value = composerValue(params.value);
+    const value = parseValue(params.value);
     const captured = this.#captured.get(recordKey(params.section, params.id)) ?? [];
     if (captured.some(item => !value?.input.queued.some(next => next.id === item.id && digest(next) === digest(item)))) return { accepted: false, record: current };
     if (value) {
@@ -191,7 +200,7 @@ export class Composer {
         }
       }
     }
-    const record = this.#atomic(() => this.storage.save(params.section, params.id, value, connection));
+    const record = this.#atomic(() => this.storage.save(params.section, params.id, value, connection, returnsRecord ? connection.id : undefined));
     if (params.section === 'inputs') {
       if (!record.value?.input.queued.length) { this.#boundaries.delete(params.id); this.#forced.delete(params.id); }
       else if (params.sendNow) this.#forced.set(params.id, record.value.input.queued[0]!.id);

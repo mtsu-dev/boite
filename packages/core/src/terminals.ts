@@ -684,8 +684,7 @@ export class TerminalStore {
     if (!this.#core.endsKept) {
       for (const session of [...this.#sessions.values()]) {
         if (session.kept === null || session.closing) continue;
-        this.#sessions.delete(session.id);
-        this.#core.procs.disown(session.id as ThreadId);
+        if (this.#core.procs.disown(session.id as ThreadId).length === 0) this.#sessions.delete(session.id);
       }
     }
     await Promise.all([...this.#sessions.keys()].map((id) => this.close(id)));

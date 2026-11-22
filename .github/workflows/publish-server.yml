@@ -53,6 +53,27 @@ jobs:
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?filter=all&per_page=100" | jq '[.[].jobs[]]' > proof/jobs.json
           bun scripts/ci/server-provenance.ts verify proof/server-images.json proof/release.json proof/run.json proof/jobs.json proof/tag.json
 
+  desktop-feed:
+    name: Publish stable desktop feed
+    needs: verified
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      # The reviewed tag may predate the feed script. Read the publication
+      # code from the default branch, after verifying the release above.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: package.json
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bun scripts/ci/desktop-feed.ts stable "$RELEASE_TAG"
+
   publish:
     needs: verified
     runs-on: ubuntu-24.04

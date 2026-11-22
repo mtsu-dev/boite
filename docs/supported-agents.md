@@ -68,6 +68,8 @@ starts the agent. It then appears in the model picker like the others.
 
 Each card in Settings, Providers has a switch. An agent that is turned off
 disappears from the model picker. Nothing is uninstalled and your sign-in stays.
+If you own the machine, press the turned-off provider label below the
+conversation to open Providers on a computer or phone.
 
 ## Going further
 

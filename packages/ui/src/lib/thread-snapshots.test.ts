@@ -80,6 +80,15 @@ test('an incognito thread or one with a secret card is never stored, and loses a
   expect(await snapshots.read('core-a', 't1')).toBeUndefined();
 });
 
+test('a rejected page built before a purge cannot delete a newer snapshot', async () => {
+  const { snapshots } = setup();
+  const mark = snapshots.mark('core-a', 't1');
+  await snapshots.purgeMachine('core-a');
+  expect(await snapshots.write('core-a', null, thread('t1', 'Fresh page'), null)).toBe(true);
+  expect(await snapshots.writePrepared('core-a', null, 't1', mark, null, () => true)).toBe(false);
+  expect((await snapshots.read('core-a', 't1'))?.thread.messages[0]?.parts[0]).toEqual({ type: 'text', text: 'Fresh page' });
+});
+
 test('a record that does not decrypt is dropped, and so is one moved to another thread', async () => {
   const { db, snapshots } = setup();
   await snapshots.write('core-a', null, thread('t1'), null);

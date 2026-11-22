@@ -894,16 +894,15 @@ test('a reconnect catches up the agent transcript and the team statuses the gap 
   await store.open('t-trace');
   await store.loadDelegation('t-trace');
   await store.selectDelegatedAgent('t-team-running');
-  const answer = store.delegationThread!.messages.at(-1)!;
-  const full = (answer.parts[0] as { text: string }).text;
   // What the gap loses: the end of a streamed reply and a status change.
-  answer.parts = [{ type: 'text', text: 'I found the' }];
   store.delegation!.agents.find((agent) => agent.thread.id === 't-team-running')!.thread.status = 'idle';
   const called = vi.spyOn(client, 'call');
   client.drop();
+  const { partIndex } = client.streamPastClient('t-team-running', 2);
   await client.restore();
   await waitFor(() => (store.delegation?.agents.find((agent) => agent.thread.id === 't-team-running')?.thread.status === 'running' ? true : undefined));
-  await waitFor(() => ((store.delegationThread?.messages.at(-1)?.parts[0] as { text?: string } | undefined)?.text === full ? true : undefined));
+  await waitFor(() => store.delegationThread?.messages.at(-1)?.parts[partIndex] ? true : undefined);
+  expect(store.delegationThread?.messages.at(-1)?.parts[partIndex]).toMatchObject({ type: 'text', text: 'Arrived.' });
   expect(store.delegationSelectedAgentId).toBe('t-team-running');
   expect(store.delegationThread?.messages.map((message) => message.id)).toEqual(['m-t-team-running-1', 'm-t-team-running-2']);
   // Light like the thread's own pages: the transcript draws a call's name and status, never its output.
@@ -1231,8 +1230,11 @@ test.for(['input', 'inputText', 'output', 'documents'])('reading cache excludes 
   part[field] = field === 'documents' ? [{ kind: 'markdown', text: large }] : field === 'input' ? { nested: { text: large } } : large;
   store.openThread!.messages.unshift({ id: 'cached-only', threadId: 't-bench', turnId: 'old', role: 'assistant', parts: [part], state: 'complete', createdAt: 0 });
   await store.open('t-scheduler');
-  await store.open('t-bench');
+  const opening = store.open('t-bench');
   const cached = store.openThread!.messages.find(message => message.id === 'cached-only');
+  await opening;
+  // The core does not have this fixture message. Only the cached paint can show it.
+  expect(store.openThread!.messages.some(message => message.id === 'cached-only')).toBe(false);
   // What a page would defer stays deferred in the cache, a successful output with no preview; a streaming input has nothing to fetch back.
   if (field === 'output') expect(cached?.parts[0]).toMatchObject({ outputDeferred: true, output: '' });
   else if (field === 'input') expect(cached?.parts[0]).toMatchObject({ inputDeferred: true, input: { nested: { text: large.slice(0, 1024) } } });
@@ -2007,7 +2009,7 @@ describe('Store', () => {
     expect(store.settings?.publicUrl).toBe('https://boite.example.com');
   });
 
-  test('archiving a thread lets go of its panel, browser views, composer and terminal', async ({ store }) => {
+  test('archiving a thread closes its panel and terminal and keeps its draft', async ({ store }) => {
     const destroy = vi.spyOn(browserBridge, 'destroy');
     try {
       const thread = store.threads.find((t) => t.status === 'idle' && !t.parentThreadId)!;
@@ -2021,22 +2023,22 @@ describe('Store', () => {
 
       expect(destroy.mock.calls.map(([id]) => id)).toEqual([view.id]);
       expect(rightPanel.threads[store.threadKey(thread.id)]).toBeUndefined();
-      expect(store.composerStates[thread.id]).toBeUndefined();
+      expect(store.composerStates[thread.id]?.text).toBe('half a prompt');
       expect(store.terminalShown(thread.id)).toBe(false);
     } finally { destroy.mockRestore(); }
   });
 
-  test('a thread archived from another client drops its panel here too', async ({ store, client }) => {
+  test('a thread archived from another client drops its panel and keeps its draft', async ({ store, client }) => {
     const [shown, other] = store.threads.filter((t) => t.status === 'idle' && !t.parentThreadId);
     await store.open(shown!.id);
     rightPanel.for(store.threadKey(other!.id)).open('trace');
     store.editComposerText(other!.id, 'draft');
     await client.call('threads.archive', { threadId: other!.id, archived: true });
     await waitFor(() => (rightPanel.threads[store.threadKey(other!.id)] === undefined ? true : undefined));
-    expect(store.composerStates[other!.id]).toBeUndefined();
+    expect(store.composerStates[other!.id]?.text).toBe('draft');
   });
 
-  test.for(['manual', 'pr-merged'] as const)('the open archived thread releases reading state and preserves automatic archive input: %s', async (reason, { store, client }) => {
+  test.for(['manual', 'pr-merged'] as const)('leaving an archived thread preserves its draft: %s', async (reason, { store, client }) => {
     const destroy = vi.spyOn(browserBridge, 'destroy');
     try {
       const [shown, next] = store.threads.filter((t) => t.status === 'idle' && !t.parentThreadId);
@@ -2068,7 +2070,7 @@ describe('Store', () => {
       } else {
         expect(rightPanel.threads[key]).toBeUndefined();
         expect(rightPanel.documents.drafted(key)).toBe(false);
-        expect(store.composerStates[shown!.id]).toBeUndefined();
+        expect(store.composerStates[shown!.id]?.text).toBe('unsent prompt');
         expect(destroy.mock.calls.map(([id]) => id)).toEqual([view.id]);
       }
     } finally { destroy.mockRestore(); }

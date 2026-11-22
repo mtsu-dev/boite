@@ -513,6 +513,11 @@ describe('threads.move', () => {
     recordingEcho();
     const alpha = await repoProject('alpha');
     const beta = await repoProject('beta');
+    git(beta.path, 'branch', '-m', 'main');
+    git(beta.path, 'config', 'init.defaultBranch', 'main');
+    const defaultTip = git(beta.path, 'rev-parse', 'HEAD').trim();
+    git(beta.path, 'checkout', '-b', 'unrelated');
+    git(beta.path, 'commit', '-q', '--allow-empty', '-m', 'unrelated work');
     const moving = await thread(alpha.id, 'Worktree work', true);
     expect(moving.branch).toMatch(/^boite\/wt-[a-z0-9]{8}$/);
     const oldCwd = moving.cwd;
@@ -523,6 +528,7 @@ describe('threads.move', () => {
     expect(moved.branchNamingPending).toBe(true);
     expect(moved.cwd).not.toBe(oldCwd);
     expect(moved.cwd).toContain(join('beta', '.boite', 'worktrees'));
+    expect(git(moved.cwd, 'rev-parse', 'HEAD').trim()).toBe(defaultTip);
     expect(git(beta.path, 'worktree', 'list')).toContain(basename(moved.cwd));
     expect(existsSync(oldCwd)).toBe(true);
     expect(git(alpha.path, 'worktree', 'list')).toContain(basename(oldCwd));

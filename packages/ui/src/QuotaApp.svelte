@@ -124,5 +124,4 @@
   /* Windows 11 draws the native frame; other hosts use the same edge as the in-app popup. */
   main { height: 100dvh; display: flex; flex-direction: column; background: var(--color-surface-2); border: 1px solid var(--color-edge); overflow: hidden; }
   main[data-frame='native'] { border: none; }
-  main :global(.quota-popup) { flex: 1; }
 </style>

@@ -7,6 +7,7 @@
  */
 
 import { KEYBINDING_COMMANDS, parseChord, type Chord, type KeybindingCommand, type Keybindings } from '@boite/contracts';
+import { strings } from './strings';
 
 /** What each command answers to until the file says otherwise. Null is a command with no key. */
 const DEFAULT_BINDINGS: Record<KeybindingCommand, string | null> = {
@@ -134,7 +135,6 @@ export function commandForKey(table: BindingTable, event: KeyboardEvent, mac: bo
 const KEY_LABELS: Record<string, string> = {
   ' ': 'Space',
   enter: 'Enter',
-  escape: 'Esc',
   tab: 'Tab',
   backspace: 'Backspace',
   delete: 'Del',
@@ -149,6 +149,13 @@ const KEY_LABELS: Record<string, string> = {
   arrowright: 'Right'
 };
 
+/** Display a single key as it appears in a shortcut. */
+export function keyCap(key: string): string {
+  const normalized = key.toLowerCase();
+  if (normalized === 'escape') return strings.keyboard.escapeKey;
+  return KEY_LABELS[normalized] ?? normalized.toUpperCase();
+}
+
 /** `['Ctrl', 'Shift', 'K']`: one entry per key cap, what the Keyboard page draws. */
 export function chordParts(chord: Chord, mac: boolean = isMac()): string[] {
   const parts: string[] = [];
@@ -156,7 +163,7 @@ export function chordParts(chord: Chord, mac: boolean = isMac()): string[] {
   if (chord.alt) parts.push(mac ? 'Option' : 'Alt');
   if (chord.shift) parts.push('Shift');
   if (chord.meta || (chord.mod && mac)) parts.push(mac ? 'Cmd' : 'Win');
-  parts.push(KEY_LABELS[chord.key] ?? chord.key.toUpperCase());
+  parts.push(keyCap(chord.key));
   return parts;
 }
 

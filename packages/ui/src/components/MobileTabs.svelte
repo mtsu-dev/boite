@@ -6,7 +6,7 @@
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { followAgentDirectories } from '../lib/agent-directory.svelte';
-  import { agentsAtWork, subagentsAtWork, threadsAtWork } from '../lib/work-counts';
+  import { agentsAtWork, subagentsAtWork, threadsAtWork, workCountLabel } from '../lib/work-counts';
 
   /**
    * The phone's places, along the bottom edge where a thumb rests, the
@@ -36,13 +36,9 @@
   followAgentDirectories(() => stores, () => bots);
   /** The conversations at work, as the desktop rail's Threads button counts them. */
   const working = $derived(threadsAtWork(stores));
-  const workingLabel = $derived(working === 1 ? strings.app.rail.workingOne : fill(strings.app.rail.workingMany, { count: String(working) }));
   /** Their subagents at work, the lighter number beside it, as on the rail. */
   const helpers = $derived(subagentsAtWork(stores));
-  const busyLabel = $derived([
-    working ? workingLabel : null,
-    helpers ? helpers === 1 ? strings.app.rail.subagentsOne : fill(strings.app.rail.subagentsMany, { count: String(helpers) }) : null
-  ].filter(Boolean).join(', ') || null);
+  const busyLabel = $derived(workCountLabel(working, helpers));
   const tally = (value: number) => value > 99 ? '99+' : value;
 </script>
 

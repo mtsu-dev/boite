@@ -9,17 +9,38 @@ type Workflow = { jobs: Record<string, { steps: { name?: string; run?: string }[
 const workflow = (name: string) => Bun.YAML.parse(readFileSync(join(import.meta.dir, `../../.github/workflows/${name}`), 'utf8')) as Workflow;
 const installer = 'bash scripts/ci/ubuntu-apt.sh ';
 const step = workflow('desktop.yml').jobs['portable-linux-x64']!.steps.find(s => s.name === 'Install Linux shell dependencies')!.run!.trim();
-const packages = step.slice(installer.length).split(' ');
 const script = readFileSync(join(import.meta.dir, 'ubuntu-apt.sh'), 'utf8');
 
+function desktopPackages(hasFuseT64: boolean): string[] {
+  // Let the workflow choose the packages without installing them on the test host.
+  const result = Bun.spawnSync(['bash', '-ec', `
+apt-cache() { [ "$*" = 'show libfuse2t64' ] && ${hasFuseT64 ? 'true' : 'false'}; }
+apt-get() { return 1; }
+sudo() { return 1; }
+bash() {
+  test "$1" = scripts/ci/ubuntu-apt.sh
+  shift
+  printf '%s\\n' "$@"
+}
+${step}`], { stdout: 'pipe', stderr: 'pipe' });
+  if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+  return result.stdout.toString().trim().split('\n');
+}
+
 test('both Linux apt steps install through the Ubuntu-only script', () => {
-  expect(step.startsWith(installer)).toBe(true);
+  expect(step.split('\n').some(line => line.trimStart().startsWith(installer))).toBe(true);
+  expect(step).not.toContain('apt-get');
+  if (process.platform === 'linux' && Bun.which('bash')) {
+    expect(desktopPackages(false).filter(name => name.startsWith('libfuse2'))).toEqual(['libfuse2']);
+    expect(desktopPackages(true).filter(name => name.startsWith('libfuse2'))).toEqual(['libfuse2t64']);
+  }
   const x11 = workflow('ci.yml').jobs['core-linux-x64-1']!.steps.find(s => s.name === 'X11 window capture and virtual desktop under Xvfb')!.run!;
   expect(x11).toContain(installer);
   expect(x11).not.toContain('apt-get');
 });
 
 function fixture(format: 'list' | 'sources', failure?: 'unavailable' | 'signature' | 'unresolvable') {
+  const packages = desktopPackages(format === 'sources');
   const root = mkdtempSync(join(tmpdir(), 'boite-linux-apt-'));
   const command = (args: string[]) => {
     const result = Bun.spawnSync(args, { stdout: 'pipe', stderr: 'pipe' });
@@ -89,7 +110,7 @@ ${script.replaceAll('/etc/apt', sources).replaceAll('/etc/os-release', `${root}/
     const result = Bun.spawnSync(['bash', '-c', run], {
       env: { ...process.env, APT_CONFIG: config }, stdout: 'pipe', stderr: 'pipe',
     });
-    return { code: result.exitCode, output: result.stdout.toString() + result.stderr.toString() };
+    return { code: result.exitCode, output: result.stdout.toString() + result.stderr.toString(), packages };
   } finally {
     Bun.spawnSync(['gpgconf', '--homedir', join(root, 'keys'), '--kill', 'gpg-agent'], { stdout: 'ignore', stderr: 'ignore' });
     rmSync(root, { recursive: true, force: true });
@@ -101,7 +122,7 @@ for (const format of ['list', 'sources'] as const) {
     const result = fixture(format);
     expect(result.output).not.toContain('missing-microsoft');
     expect(result.code, result.output).toBe(0);
-    for (const name of packages) expect(result.output).toContain(`Inst ${name} `);
+    for (const name of result.packages) expect(result.output).toContain(`Inst ${name} `);
   });
 }
 
@@ -120,5 +141,5 @@ test.skipIf(!available)('Linux shell dependencies fall back to Ubuntu\'s archive
   expect(result.output.split("Temporary failure resolving 'boite-fixture.invalid'").length - 1).toBe(2);
   expect(result.output).not.toContain('missing-microsoft');
   expect(result.code, result.output).toBe(0);
-  for (const name of packages) expect(result.output).toContain(`Inst ${name} `);
+  for (const name of result.packages) expect(result.output).toContain(`Inst ${name} `);
 });

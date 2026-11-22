@@ -44,6 +44,7 @@ beforeEach(async () => {
   const platform: ProcessPlatform = {
     ...createPosixPlatform('linux', null),
     capability: () => ({ os: 'windows', mode: 'events', note: 'synthetic captured native events, no Windows execution' }),
+    memoryVictimsMustBeRegistered: true,
     retain(jobs, guardEvents) {
       sink = jobs;
       guards = guardEvents;

@@ -29,9 +29,12 @@
   import { pullRequestLabel } from './ThreadHeadline.svelte';
   import { openExternal } from '../lib/links';
   import PluginSlotButtons from './PluginSlotButtons.svelte';
+  import WaitLine from './WaitLine.svelte';
+  import { threadWait } from '../lib/background';
   let { store }: { store: Store } = $props();
   let thread = $derived(store.openThread);
   const mobile = new MediaQuery('(max-width: 720px)');
+  const wait = $derived(store.connection === 'ready' ? threadWait(thread, store) : null);
   /** Under a phone's title: where the conversation lives, its machine once there are two. */
   let place = $derived.by(() => {
     if (!thread) return null;
@@ -233,7 +236,13 @@
             <span class="ui-label">{thread.title}</span>
           </button>
           <!-- On a phone the title reads as text over its place, and the one menu closes the header's row. -->
-          {#if mobile.current}<span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{#if place.project}<span class="place-project">{place.project}</span>{/if}{#if place.machine}<MachinePlace host={place.machine} />{/if}</span>{/if}</span>{/if}
+          {#if mobile.current}
+            <span class="title-lines" class:waiting={wait !== null}>
+              <span class="title-text ui-label">{thread.title}</span>
+              {#if wait}<WaitLine {wait} />{/if}
+              {#if place}<span class="title-place ui-label" data-testid="thread-place">{#if place.project}<span class="place-project">{place.project}</span>{/if}{#if place.machine}<MachinePlace host={place.machine} />{/if}</span>{/if}
+            </span>
+          {/if}
           <!-- A small chevron exposes thread actions on the desktop. -->
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <span class="title-menu">
@@ -243,6 +252,7 @@
           </span>
           <!-- The desktop's crumb names project and thread; the machine follows in the phone's muted form, once there are two. -->
         {/if}
+        {#if wait && !mobile.current}<span class="header-wait"><WaitLine {wait} /></span>{/if}
         {@const pending = pendingLine(thread)}
         {#if pending}
           <!-- A move asked for while the turn runs. A phone keeps only the mark; its sidebar row carries the words. -->
@@ -308,6 +318,7 @@
 
 <style>
   .thread-header { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 100%; }
+  .header-wait { min-width: 0; max-width: 32%; }
   .title {
     height: var(--control);
     padding: 0 6px;
@@ -407,6 +418,7 @@
     .title-menu :global(.trigger.icon-button) { margin: calc((var(--icon-button-target) - var(--icon-button)) / 2); }
     .title-lines { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; line-height: 1.25; font-weight: 600; color: var(--color-foreground); }
     .title-lines ~ .spacer { display: none; }
+    .title-lines.waiting { line-height: 1.1; }
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */
     .title-lines > .ui-label { margin-block: 0; padding-block: 0; text-box: normal; }
     /* A long title takes a second line rather than losing its end. */

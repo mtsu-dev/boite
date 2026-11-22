@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest';
 import { listAbsent } from './list-absent';
 
-const machine = (over: Partial<{ connection: string; projects: unknown[]; draftEntries: unknown[] }> = {}) =>
-  ({ connection: 'ready', projects: [], draftEntries: [], ...over }) as never;
+const machine = (over: Partial<{ connection: string; projects: unknown[]; draftEntries: unknown[]; threadListIssue: string }> = {}) =>
+  ({ connection: 'ready', projects: [], draftEntries: [], threadListIssue: null, ...over }) as never;
 
 test('the desktop list column is absent only before the first project, once every machine answered', () => {
   expect(listAbsent([machine()], false)).toBe(true);
@@ -11,5 +11,6 @@ test('the desktop list column is absent only before the first project, once ever
   expect(listAbsent([machine(), machine({ projects: [{}] })], false)).toBe(false);
   expect(listAbsent([machine({ draftEntries: [{}] })], false)).toBe(false);
   expect(listAbsent([machine({ connection: 'connecting' })], false)).toBe(false);
+  expect(listAbsent([machine({ threadListIssue: 'failed' })], false)).toBe(false);
   expect(listAbsent([], false)).toBe(false);
 });

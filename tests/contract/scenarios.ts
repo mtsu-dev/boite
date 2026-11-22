@@ -131,8 +131,8 @@ async function summary(env: ContractEnv, threadId: string): Promise<ThreadSummar
 }
 
 /** One echo turn, run to its end, so the thread has a turn to ask in. */
-async function finishedTurn(env: ContractEnv, threadId: string): Promise<void> {
-  await env.call('turns.start', { threadId, prompt: 'hello' });
+async function finishedTurn(env: ContractEnv, threadId: string, prompt = 'hello'): Promise<void> {
+  await env.call('turns.start', { threadId, prompt });
   await until('the turn to finish', async () => !['queued', 'running', 'waiting'].includes((await summary(env, threadId)).status));
 }
 
@@ -165,6 +165,14 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACT_MAIL_SCENARIOS,
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
+  'turns.resume refuses a completed turn without opening another turn': async env => {
+    const { id: threadId } = await thread(env, await echo(env));
+    const { id: turnId } = await env.call('turns.start', { threadId, prompt: 'Finish this once' });
+    await until('the completed turn', async () => (await summary(env, threadId)).status === 'idle');
+    const data = await refusedWith(env.call('turns.resume', { threadId, turnId }), RpcErrorCode.Refused);
+    same(data, { field: 'turnId', threadId, turnId }, 'the rejected source');
+    same((await env.call('threads.get', { threadId })).turns.map(turn => turn.id), [turnId], 'the turns after refusal');
+  },
   'terminal creation retries keep the first thread and turn after its selection changes': async env => {
     const setup = await echo(env);
     const request = { project: setup.projectId, model: `${setup.provider.id}/${setup.model}`, prompt: 'Open a conversation', clientRequestId: 'contract-create-prompt' };
@@ -245,6 +253,16 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   ...COUNCIL_SCENARIOS,
   ...STATE_SCENARIOS,
+  'worktree recovery paths are visible to the owner only': async env => {
+    same(await env.call('worktrees.recoveries', {}), [], 'the empty recovery inventory');
+    const { id } = await thread(env, await echo(env), 'Worktree recovery access');
+    const agent = await env.peer({ agentThreadId: id });
+    try {
+      await refusedWith(agent.call('worktrees.recoveries', {}), RpcErrorCode.Refused);
+    } finally {
+      agent.disconnect();
+    }
+  },
   'agent.done refuses another thread, puts an idle one in Done and refuses it there': async (env) => {
     const setup = await echo(env);
     const own = await thread(env, setup, 'own');
@@ -372,8 +390,15 @@ export const SCENARIOS: Record<string, Scenario> = {
   'deferred attachment metadata downloads the original bytes and rejects a different conversation': async env => {
     const setup = await echo(env), created = await thread(env, setup);
     const data = btoa('attachment bytes preserved');
-    await env.call('turns.start', { threadId: created.id, prompt: 'read the file', attachments: [{ kind: 'file', name: 'fixture.txt', mimeType: 'text/plain', data }] });
-    await until('the attachment turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    await env.call('threads.get', { threadId: created.id, compactFiles: true, open: {} });
+    const live: RpcEvents['message.started'][] = [];
+    const off = env.on('message.started', message => live.push(message));
+    try {
+      await env.call('turns.start', { threadId: created.id, prompt: 'read the file', attachments: [{ kind: 'file', name: 'fixture.txt', mimeType: 'text/plain', data }] });
+      await until('the attachment turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    } finally { off(); }
+    const liveFile = live.flatMap(message => message.parts).find(part => part.type === 'file');
+    check(liveFile?.dataDeferred === true && liveFile.data === '' && liveFile.bytes === atob(data).length, 'the live file included its bytes or lost its metadata');
     const compact = await env.call('threads.get', { threadId: created.id, compactFiles: true, sync: true });
     const message = compact.messages.find(message => message.parts.some(part => part.type === 'file'));
     check(message !== undefined, 'the attachment disappeared');
@@ -381,6 +406,9 @@ export const SCENARIOS: Record<string, Scenario> = {
     const part = message.parts[partIndex];
     check(part?.type === 'file' && part.dataDeferred === true && part.data === '' && part.bytes === atob(data).length, 'the file was transferred before being requested');
     same((await env.call('messages.attachment', { threadId: created.id, messageId: message.id, partIndex })).data, data, 'downloaded attachment bytes');
+    const ticket = await env.call('messages.attachment', { threadId: created.id, messageId: message.id, partIndex, ticket: true });
+    check(typeof ticket.url === 'string' && ticket.url.length > 0, 'the ticketed original did not return a URL');
+    same([ticket.data, ticket.mimeType, ticket.bytes], ['', 'text/plain', atob(data).length], 'ticketed attachment metadata');
     const other = await thread(env, setup);
     await refusedWith(env.call('messages.attachment', { threadId: other.id, messageId: message.id, partIndex }), RpcErrorCode.NotFound, ['messageId']);
     await refusedWith(env.call('messages.attachment', { threadId: created.id, messageId: message.id, partIndex: -1 }), RpcErrorCode.InvalidParams, ['field']);
@@ -394,8 +422,15 @@ export const SCENARIOS: Record<string, Scenario> = {
     // A PNG header for 640 by 360, padded past the 8 KiB a light page keeps inline: the size comes from the header alone.
     const header = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 2, 0x80, 0, 0, 1, 0x68, 8, 2, 0, 0, 0];
     const data = btoa(String.fromCharCode(...header, ...new Array(9000).fill(0)));
-    await env.call('turns.start', { threadId: created.id, prompt: 'see', attachments: [{ kind: 'image', name: 'shot.png', mimeType: 'image/png', data }] });
-    await until('the picture turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    await env.call('threads.get', { threadId: created.id, compactImages: true, open: {} });
+    const live: RpcEvents['message.started'][] = [];
+    const off = env.on('message.started', message => live.push(message));
+    try {
+      await env.call('turns.start', { threadId: created.id, prompt: 'see', attachments: [{ kind: 'image', name: 'shot.png', mimeType: 'image/png', data }] });
+      await until('the picture turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    } finally { off(); }
+    const liveImage = live.flatMap(message => message.parts).find(part => part.type === 'image');
+    check(liveImage?.dataDeferred === true && liveImage.data === '' && liveImage.width === 640 && liveImage.height === 360, 'the live picture included its bytes or lost its dimensions');
     const light = await env.call('threads.get', { threadId: created.id, compactImages: true });
     const message = light.messages.find(message => message.parts.some(part => part.type === 'image'));
     const part = message?.parts.find(part => part.type === 'image');
@@ -563,6 +598,20 @@ export const SCENARIOS: Record<string, Scenario> = {
     const pending = await env.call('questions.list', { threadId });
     check(!pending.some((request) => request.id === questionId), 'an answered question is still pending');
   },
+  'artifacts.prove publishes a recorded command line and rejects invented output': async (env) => {
+    const setup = await echo(env);
+    const { id: threadId } = await thread(env, setup);
+    await finishedTurn(env, threadId, '[tool-stream]');
+    const { messages } = await env.call('threads.get', { threadId });
+    const message = messages.find(entry => entry.parts.some(part => part.type === 'tool'));
+    check(message !== undefined, 'the command is missing');
+    const source = { threadId, messageId: message.id, unchecked: 'Windows remains unchecked.' };
+    same((await refusedWith(env.call('artifacts.prove', { ...source, line: 'invented' }), RpcErrorCode.InvalidParams, ['field'])).field, 'line', 'invalid output field');
+    same((await refusedWith(env.call('artifacts.prove', { ...source, line: 'streamed', path: '' }), RpcErrorCode.InvalidParams, ['field'])).field, 'path', 'invalid capture field');
+    const proof = await env.call('artifacts.prove', { ...source, line: 'streamed' });
+    check(proof.parts.some(entry => entry.type === 'text' && entry.proof === true && entry.text.includes('streamed') && entry.text.includes(source.unchecked)), 'the proof omitted its line or remaining scope');
+    check((await env.call('threads.get', { threadId })).messages.some(entry => entry.id === proof.id), 'the proof was not stored');
+  },
   'questions.ask refuses empty text, too many options and a non-boolean multiple': async (env) => {
     const setup = await echo(env);
     const { id: threadId } = await thread(env, setup);
@@ -621,6 +670,27 @@ export const SCENARIOS: Record<string, Scenario> = {
     const setup = await echo(env);
     const created = await env.call('threads.create', { projectId: setup.projectId, providerId: setup.provider.id, accountId: setup.account.id, title: '' });
     same([created.title, created.model, created.effort, created.cwd], ['New thread', setup.model, null, setup.projectPath], 'the new thread');
+  },
+  'threads.previewAccountSwitch forecasts a fresh session and a saved session without mutating the thread': async (env) => {
+    const setup = await echo(env);
+    const created = await thread(env, setup);
+    const second = await env.call('accounts.add', { providerId: setup.provider.id, label: 'Second', useDefaultLocation: false });
+    const turn = await env.call('turns.start', { threadId: created.id, prompt: 'Remember this exchange' });
+    await until('the first account has a session', async () => (await env.call('threads.get', { threadId: created.id })).turns.some(item => item.id === turn.id && item.status === 'done'));
+    const preview = (accountId: string) => env.call('threads.previewAccountSwitch', { threadId: created.id, accountId });
+    const before = await summary(env, created.id);
+    check(before.sessionId !== null, 'the first account has a native session');
+    same((await preview(second.id)).session, 'fresh', 'preview for unused account');
+    same((await preview(setup.account.id)).session, 'unchanged', 'preview for current account');
+    same(await summary(env, created.id), before, 'preview leaves the thread intact');
+    await env.call('threads.update', { threadId: created.id, accountId: second.id });
+    const missed = await env.call('turns.start', { threadId: created.id, prompt: 'An exchange on the second account' });
+    await until('the second account finished its turn', async () => (await env.call('threads.get', { threadId: created.id })).turns.some(item => item.id === missed.id && item.status === 'done'));
+    same((await preview(setup.account.id)).session, 'resume', 'preview for saved account');
+    const restored = await env.call('threads.update', { threadId: created.id, accountId: setup.account.id, requireSavedSession: true });
+    same(restored.sessionId, before.sessionId, 'switch restores the previewed session');
+    const resumed = await env.call('turns.start', { threadId: created.id, prompt: 'Continue on the original account' });
+    await until('the turn reports a resumed session', async () => (await env.call('threads.get', { threadId: created.id })).turns.find(item => item.id === resumed.id)?.switched?.handover?.session === 'resumed');
   },
   'threads.update keeps the title when the new one is empty': async (env) => {
     const setup = await echo(env);
@@ -704,9 +774,13 @@ export const SCENARIOS: Record<string, Scenario> = {
     const created = await thread(env, setup);
     const listedBefore = (await env.call('projects.list', {})).find((entry) => entry.id === setup.projectId);
     check(listedBefore?.missing !== true, 'a folder that is there is not missing');
+    const gitBefore = await env.call('projects.git', { projectId: setup.projectId });
+    check(gitBefore.missing !== true, 'Git status found the registered folder missing');
     const updates = record(env, ['project.updated']);
     try {
       await env.removeFolder(setup.projectPath);
+      const gitAfter = await env.call('projects.git', { projectId: setup.projectId });
+      same([gitAfter.repository, gitAfter.missing], [false, true], 'Git status for the deleted folder');
       const listed = (await env.call('projects.list', {})).find((entry) => entry.id === setup.projectId);
       same(listed?.missing, true, 'the listed project');
       same(listed?.repository, false, 'a folder that is gone is no repository');
@@ -962,6 +1036,10 @@ export const SCENARIOS: Record<string, Scenario> = {
   'projects.remove archives each thread before removing it': async (env) => {
     const setup = await echo(env);
     const created = await thread(env, setup);
+    await finishedTurn(env, created.id, 'Keep this conversation');
+    const archived = await thread(env, setup);
+    const done = await env.call('threads.archive', { threadId: archived.id, archived: true, onlyIfIdle: true });
+    check(typeof done.doneAt === 'number', 'the second conversation was marked done');
     const events = record(env, ['thread.updated', 'thread.removed', 'project.removed']);
     await env.call('projects.remove', { projectId: setup.projectId });
     await until('project.removed', () => events.events.some((event) => event.name === 'project.removed'));
@@ -970,6 +1048,16 @@ export const SCENARIOS: Record<string, Scenario> = {
       .filter((event) => event.name === 'project.removed' || (event.payload as { id?: string; threadId?: string }).id === created.id || (event.payload as { threadId?: string }).threadId === created.id)
       .map((event) => (event.name === 'thread.updated' ? `thread.updated archived=${(event.payload as ThreadSummary).archived}` : event.name));
     same(order.filter((entry, index) => index === 0 || entry !== order[index - 1]), ['thread.updated archived=true', 'thread.removed', 'project.removed'], 'the events');
+    check(!events.events.some(event => event.name === 'thread.updated' && (event.payload as ThreadSummary).id === done.id),
+      'the already archived conversation was archived again');
+    await refusedWith(env.call('threads.get', { threadId: created.id }), RpcErrorCode.NotFound);
+    const project = await env.call('projects.add', { path: setup.projectPath });
+    same(project.id, setup.projectId, 'the re-added project id');
+    same(project.doneThreads, 1, 'the restored project keeps its Done count');
+    const restored = await env.call('threads.get', { threadId: created.id });
+    check(!restored.archived && restored.messages.some(message => message.role === 'user' &&
+      message.parts.some(part => part.type === 'text' && part.text === 'Keep this conversation')), 'the restored project lost its conversation');
+    same((await env.call('threads.get', { threadId: done.id })).doneAt, done.doneAt, 'the re-added conversation keeps its Done time');
   },
   'projects.drafts reopens the same drafts project and its open threads after removal': async (env) => {
     const setup = await echo(env);

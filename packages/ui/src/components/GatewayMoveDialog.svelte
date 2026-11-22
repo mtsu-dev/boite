@@ -1,9 +1,11 @@
 <script lang="ts">
+  import ModalScrim from './ModalScrim.svelte';
   import { tick, untrack } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import type { GatewayMoveItem, GatewayMoveOutcome, GatewayMovePlan, GatewayMoveTarget } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { errorText } from '../lib/errors';
+  import { trapModalTab } from '../lib/focus';
   import { mobileOverlay } from '../lib/mobile-history';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
@@ -100,23 +102,14 @@
   function onkeydown(event: KeyboardEvent) {
     if (!overlay.open) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
-    if (event.key !== 'Tab' || !card) return;
-    const stops = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const first = stops[0], last = stops[stops.length - 1];
-    if (!first || !last) return;
-    const active = document.activeElement;
-    const inside = active instanceof Node && card.contains(active);
-    if (event.shiftKey ? inside && active !== first : inside && active !== last) return;
-    event.preventDefault();
-    (event.shiftKey ? last : first).focus({ preventScroll: true });
+    trapModalTab(event, card);
   }
 </script>
 
 <svelte:window onkeydowncapture={onkeydown} />
 
 {#if overlay.shown}
-  <div class="scrim" class:closing={overlay.closing} role="presentation" use:overlay.attach onanimationend={overlay.end}
-    onclick={(event) => { if (event.target === event.currentTarget) close(); }}>
+  <ModalScrim {overlay} onclose={close} sheet --modal-top="min(10vh, 96px)">
     <div class="dialog" class:closing={overlay.closing} role="dialog" aria-modal="true" aria-labelledby="gateway-move-title" aria-describedby="gateway-move-intro" tabindex="-1" bind:this={card} data-testid="gateway-move-dialog">
       <div class="head">
         <h2 id="gateway-move-title">{text.title}</h2>
@@ -160,18 +153,10 @@
         </button>
       </div>
     </div>
-  </div>
+  </ModalScrim>
 {/if}
 
 <style>
-  .scrim {
-    position: fixed; inset: 0; z-index: 60;
-    display: flex; align-items: flex-start; justify-content: center;
-    padding-top: min(10vh, 96px);
-    background: var(--color-scrim);
-    animation: fade var(--dur-2) var(--ease-out-quint);
-  }
-  .scrim.closing { animation-name: fade-out; pointer-events: none; }
   .dialog {
     width: min(580px, calc(100vw - 32px));
     max-height: min(80vh, 680px);
@@ -213,7 +198,6 @@
   .error { margin: 0; padding: 8px 18px 0; }
   .actions { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--color-border); }
   @media (max-width: 720px) {
-    .scrim { align-items: flex-end; padding-top: 0; }
     .dialog { width: 100vw; max-height: 88dvh; border-radius: var(--radius-overlay) var(--radius-overlay) 0 0; padding-bottom: env(safe-area-inset-bottom); }
     .row { align-items: flex-start; flex-wrap: wrap; }
     .status { max-width: none; flex-basis: 100%; text-align: left; padding-left: 26px; }

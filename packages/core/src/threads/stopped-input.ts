@@ -1,5 +1,5 @@
-import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type Message, type MessagePart, type TurnId } from '@boite/contracts';
-import type { PartPlace } from '../continuation.ts';
+import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type ImageAttachment, type Message, type MessagePart, type TurnId } from '@boite/contracts';
+import type { HistoryInput, PartPlace } from '../continuation.ts';
 import type { Journal } from '../journal.ts';
 import { nativeCommandPrompt } from './operations.ts';
 
@@ -18,10 +18,10 @@ export function stoppedInput(
   journal: Journal,
   threadId: string,
   turnId: TurnId,
-  input: { prompt: string; attachments: Attachment[] },
+  input: HistoryInput,
   fileReference: (file: FilePart, place: PartPlace) => string,
   through = false,
-): { prompt: string; attachments: Attachment[] } {
+): HistoryInput {
   const opening = journal.db.query(through
     ? 'SELECT MAX(rowid) + 1 AS first FROM messages WHERE thread_id = ? AND turn_id = ?'
     : 'SELECT MIN(rowid) AS first FROM messages WHERE thread_id = ? AND turn_id = ?').get(threadId, turnId) as { first: number | null };
@@ -55,7 +55,7 @@ export function stoppedInput(
     if (kept.size >= slots || room < 0) break;
     kept.add(image);
   }
-  const attachments: Attachment[] = [];
+  const attachments: ImageAttachment[] = [];
   const history = messages.map(message => {
     const parts = message.parts.map((part, partIndex) => {
       const place = { messageId: message.id, partIndex };
@@ -71,5 +71,6 @@ export function stoppedInput(
   return {
     prompt: `Earlier user messages were stopped and may be missing from your native session. Keep them as conversation context; the current user request determines what to do next. Do not repeat completed work.\n\n<interrupted-user-messages>\n${history}\n</interrupted-user-messages>\n\nCurrent user request:\n${input.prompt}`,
     attachments: [...attachments, ...input.attachments],
+    historicalImages: [...attachments, ...(input.historicalImages ?? [])],
   };
 }

@@ -12,7 +12,8 @@ export const processPlatform: ProcessPlatform = os === 'windows'
   ? (await import('./windows/index.ts')).platform
   : createPosixPlatform(os, os === 'macos' ? new (await import('./macos-memory.ts')).MacMemory() : undefined);
 
-export const registryPlatform: () => ProcessPlatform = os === 'windows' ? scopedPlatforms(processPlatform) : () => processPlatform;
+/** One backend, a scope of its own per registry: equal thread ids of two cores in one process never share a job or a load. */
+export const registryPlatform: () => ProcessPlatform = scopedPlatforms(processPlatform);
 
 /** The OS-held file lock behind the data-directory and maintenance locks. */
 export const lockFile: FileLocker = os === 'windows'

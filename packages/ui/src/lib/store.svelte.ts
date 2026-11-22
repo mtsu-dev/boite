@@ -1,5 +1,5 @@
 import { startDiagnosticsReport } from './diagnostics-report';
-import { RpcErrorCode, type AgentShape, type Message, type MessageId, type PermissionMode, type ProjectId, type ProviderId, type ThreadId } from '@boite/contracts';
+import { RpcErrorCode, type AgentShape, type Message, type MessageId, type PermissionMode, type ProjectId, type ProviderId, type RpcParams, type ThreadId } from '@boite/contracts';
 import type { Client } from './client';
 import { RpcFailure, wasClosed, wasDropped } from './rpc-error';
 import { readModelDefaults } from './model-defaults';
@@ -93,7 +93,7 @@ export interface PickPatch {
  * that asked prints instead. A refused path belongs to that surface, not to the
  * app's toast, so these calls hand the message back rather than raising it.
  */
-export type FileAnswer<T> = { ok: true; value: T } | { ok: false; error: string };
+export type FileAnswer<T> = { ok: true; value: T } | { ok: false; error: string; inaccessible?: true };
 
 /**
  * The state of one machine's UI and every action on it, the object components
@@ -177,6 +177,7 @@ export class Store {
     ctx.off.push(ctx.draftStartup.watch());
     ctx.off.push(watchIncognito(ctx));
     ctx.off.push(watchIdlePreloads(ctx));
+    ctx.off.push(ctx.threads.readingWeights.watch());
     // Each machine hears about this window's own failures. Unit tests drive
     // fake timers through stores by the hundred, so the reporter stays out of them.
     if (import.meta.env.MODE !== 'test') ctx.off.push(startDiagnosticsReport(client));
@@ -219,6 +220,7 @@ export class Store {
     ctx.off = [];
     ctx.composer.inputBoundaries = {};
     ctx.client = null;
+    ctx.connection.threadListIssue = null;
     ctx.threads.subscribedThreadId = null;
     ctx.delegation.delegationSubscribedThreadId = null;
   }
@@ -228,6 +230,7 @@ export class Store {
   // -------------------------------------------------------------------------
 
   get connection() { return this.#ctx.connection.connection; }
+  get threadListIssue() { return this.#ctx.connection.threadListIssue; }
   set connection(value) { this.#ctx.connection.connection = value; }
   get returns() { return this.#ctx.connection.returns; }
   get core() { return this.#ctx.connection.core; }
@@ -266,6 +269,7 @@ export class Store {
   pairWith(...args: Parameters<Connection['pairWith']>) { return this.#ctx.connection.pairWith(...args); }
   useLocalCore(...args: Parameters<Connection['useLocalCore']>) { return this.#ctx.connection.useLocalCore(...args); }
   reload(...args: Parameters<Connection['reload']>) { return this.#ctx.connection.reload(...args); }
+  retryThreadList() { return this.#ctx.connection.retryThreadList(); }
 
   // -------------------------------------------------------------------------
   // Pairing: store/pairing.svelte.ts
@@ -609,15 +613,31 @@ export class Store {
   loadNewer() { return this.#ctx.threads.newer.loadNewer(); }
   loadLatest() { return this.#ctx.threads.newer.loadLatest(); }
   /** Where `messages` of `threadId` sit in it and what is missing between them (`lib/store/message-positions`). */
-  messagePlacement(threadId: string, messages: readonly Message[]) { return this.#ctx.positions.placement(threadId, messages); }
+  messagePlacement(threadId: string, messages: readonly Message[]) {
+    return this.timelineRows(threadId, messages)?.placement ?? this.#ctx.positions.placement(threadId, messages);
+  }
+  timelineRows(threadId: string, timeline: readonly Message[]) {
+    const open = this.#ctx.threads.openThread;
+    if (open?.id === threadId && open.messages === timeline) return this.#ctx.threads.timelineRows.get(open);
+  }
   get loadingRange() { return this.#ctx.positions.loading; }
   loadRange(from: number, limit: number, landing?: () => void, below?: MessageId) { return this.#ctx.positions.loadRange(from, limit, landing, below); }
   loadAttachments(threadId: ThreadId, message: Message) { return loadAttachments(this.#ctx, threadId, message); }
   loadOlder(...args: Parameters<Threads['loadOlder']>) { return this.#ctx.threads.loadOlder(...args); }
-  releaseOlder(threadId: ThreadId, near?: () => number) { return releaseOlder(this.#ctx, threadId, near); }
+  releaseOlder(threadId: ThreadId, near?: () => number, weights = this.#ctx.threads.readingWeights) { return releaseOlder(this.#ctx, threadId, near, weights); }
   createThread(...args: Parameters<Threads['createThread']>) { return this.#ctx.threads.createThread(...args); }
   update(...args: Parameters<Threads['update']>) { return this.#ctx.threads.update(...args); }
   recoverTurn(...args: Parameters<Threads['recoverTurn']>) { return this.#ctx.threads.recoverTurn(...args); }
+  async resumeTurn(params: RpcParams<'turns.resume'>): Promise<void> {
+    const { client, clientGeneration, threads } = this.#ctx;
+    if (!client) return;
+    try {
+      const turn = await client.call('turns.resume', params);
+      if (this.#ctx.currentClient(client, clientGeneration)) threads.upsertTurn(params.threadId, turn);
+    } catch (error) {
+      if (this.#ctx.currentClient(client, clientGeneration) && this.openThread?.id === params.threadId) this.#ctx.fail(error);
+    }
+  }
   /** Gives up the retry the core planned for the thread; its row's `retry` clears with the core's update. */
   async cancelRetry(threadId: ThreadId) {
     const client = this.#ctx.client;
@@ -625,6 +645,7 @@ export class Store {
     try { await client.call('turns.cancelRetry', { threadId }); } catch (error) { this.#ctx.fail(error); }
   }
   threadCapabilities(...args: Parameters<Threads['capabilities']>) { return this.#ctx.threads.capabilities(...args); }
+  previewAccountSwitch(...args: Parameters<Threads['previewAccountSwitch']>) { return this.#ctx.threads.previewAccountSwitch(...args); }
   threadStats(...args: Parameters<Threads['stats']>) { return this.#ctx.threads.stats(...args); }
   /** What the thread's last Claude request carried, read from its transcript on this store's machine. */
   agentShape(threadId: ThreadId): Promise<AgentShape> {
@@ -636,7 +657,7 @@ export class Store {
   rename(...args: Parameters<Threads['rename']>) { return this.#ctx.threads.rename(...args); }
   retitle(...args: Parameters<Threads['retitle']>) { return this.#ctx.threads.retitle(...args); }
   pin(...args: Parameters<Threads['pin']>) { return this.#ctx.threads.pin(...args); }
-  markRead(threadIds: readonly ThreadId[]) { return markThreadsRead(this.#ctx, threadIds); }
+  markRead(requests: readonly RpcParams<'threads.markRead'>[]) { return markThreadsRead(this.#ctx, requests); }
   trustContactHistory(...args: Parameters<Threads['trustContactHistory']>) { return this.#ctx.threads.trustContactHistory(...args); }
   move(...args: Parameters<Threads['move']>) { return this.#ctx.threads.move(...args); }
   cancelMove(...args: Parameters<Threads['cancelMove']>) { return this.#ctx.threads.cancelMove(...args); }
@@ -693,6 +714,7 @@ export class Store {
   get permissionRequests() { return this.#ctx.requests.permissionRequests; }
   set permissionRequests(value) { this.#ctx.requests.permissionRequests = value; }
   get pendingQuestions() { return this.#ctx.requests.pendingQuestions; }
+  hasRequest(...args: Parameters<Requests['hasRequest']>) { return this.#ctx.requests.hasRequest(...args); }
   get pendingSecrets() { return this.#ctx.requests.pendingSecrets; }
   set pendingQuestions(value) { this.#ctx.requests.pendingQuestions = value; }
   get questionRequests() { return this.#ctx.requests.questionRequests; }

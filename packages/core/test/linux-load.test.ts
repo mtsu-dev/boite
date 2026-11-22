@@ -172,9 +172,9 @@ describe('a thread load on Linux', () => {
       // cached-topology samples and the samples that refresh that topology.
       expect(load.sample('thr')?.cpuPercent).toBe(50);
     }
+    // No children files here: the shared scan answers, and reads the root's stat again when it refreshes.
     expect(reads.filter(path => path === '/proc')).toHaveLength(3);
-    expect(reads.filter(path => path === '/proc/100/stat')).toHaveLength(8);
-    expect(reads.some(path => path.includes('/task'))).toBe(false);
+    expect(reads.filter(path => path === '/proc/100/stat')).toHaveLength(8 + 3);
   });
 
   test('one parent snapshot supplies stat reads across threads and refreshes after 500 ms', () => {
@@ -193,8 +193,8 @@ describe('a thread load on Linux', () => {
     expect(load.sample('first')?.processes).toBe(2);
     expect(load.sample('second')?.processes).toBe(1);
     expect(reads.filter(path => path === '/proc')).toHaveLength(1);
-    expect(reads.filter(path => path.endsWith('/stat'))).toHaveLength(3);
-    expect(reads.some(path => path.includes('/task'))).toBe(false);
+    // The scan's three, and each root's own, read before its children are looked up.
+    expect(reads.filter(path => path.endsWith('/stat'))).toHaveLength(3 + 2);
     proc.files.set('/proc', '100 101 102 200');
     proc.files.set('/proc/102/stat', stat(102, 10, 0, 'new-child', 100));
     proc.files.set('/proc/102/status', status(4000));
@@ -410,6 +410,128 @@ describe('a thread load on Linux', () => {
     load.add('thr', 100);
 
     expect(load.sample('thr')).toMatchObject({ processes: 3, memoryBytes: 8000 * 1024 });
+  });
+
+  test('a thread whose kernel has children files reads an unrelated process only once per backstop period', () => {
+    const proc = new FakeProc();
+    proc.set(100, 10, 0, 1000);
+    proc.files.set('/proc/101/stat', stat(101, 10, 0, 'cc', 100));
+    proc.files.set('/proc/101/status', status(2000));
+    proc.files.set('/proc/200/stat', stat(200, 10, 0, 'other', 1));
+    proc.files.set('/proc/200/status', status(5000));
+    proc.files.set('/proc', '100 101 200 self');
+    proc.files.set('/proc/100/task/100/children', '101');
+    proc.files.set('/proc/101/task/101/children', '');
+    const reads: string[] = [];
+    const load = new LinuxLoad(2, path => { reads.push(path); return proc.read(path); }, proc.now);
+    load.add('thr', 100);
+
+    for (let tick = 0; tick < 5; tick++) {
+      expect(load.sample('thr')).toMatchObject({ processes: 2, memoryBytes: 3000 * 1024 });
+      proc.at += 1000;
+    }
+    expect(reads.filter(path => path.startsWith('/proc/200/'))).toEqual(['/proc/200/stat']);
+    expect(load.sample('thr')?.processes).toBe(2);
+    expect(reads.filter(path => path.startsWith('/proc/200/'))).toEqual(['/proc/200/stat', '/proc/200/stat']);
+  });
+
+  test('a descendant that starts after a sample and that the children files leave out counts from the next tick', () => {
+    const proc = new FakeProc();
+    proc.set(100, 10, 0, 1000);
+    proc.files.set('/proc', '100');
+    proc.files.set('/proc/100/task/100/children', '');
+    const load = new LinuxLoad(2, proc.read, proc.now);
+    load.add('thr', 100);
+    const counts = [load.sample('thr')?.processes];
+    proc.files.set('/proc/102/stat', stat(102, 10, 0, 'rustc', 100));
+    proc.files.set('/proc/102/status', status(5000));
+    proc.files.set('/proc', '100 102');
+    for (let tick = 0; tick < 5; tick++) { proc.at += 1000; counts.push(load.sample('thr')?.processes); }
+    expect(counts).toEqual([1, 2, 2, 2, 2, 2]);
+  });
+
+  test('a descendant that moved under another root of the thread still counts', () => {
+    const proc = new FakeProc();
+    proc.set(100, 10, 0, 1000);
+    proc.set(200, 10, 0, 1000);
+    proc.files.set('/proc/203/stat', stat(203, 10, 0, 'rustc', 100));
+    proc.files.set('/proc/203/status', status(5000));
+    proc.files.set('/proc', '100 200 203');
+    proc.files.set('/proc/100/task/100/children', '');
+    proc.files.set('/proc/200/task/200/children', '');
+    const load = new LinuxLoad(2, proc.read, proc.now);
+    load.add('thr', 100);
+    load.add('thr', 200);
+    expect(load.sample('thr')?.workingSets?.map(set => set.pid)).toEqual([100, 200, 203]);
+    proc.at += 1000;
+    proc.files.set('/proc/203/stat', stat(203, 10, 0, 'rustc', 200));
+    proc.files.set('/proc/200/task/200/children', '203');
+    expect(load.sample('thr')?.workingSets?.map(set => set.pid)).toEqual([100, 200, 203]);
+  });
+
+  test('a member the backstop scan names is dropped once its pid has another parent', () => {
+    const proc = new FakeProc();
+    proc.set(100, 10, 0, 1000);
+    proc.files.set('/proc/102/stat', stat(102, 10, 0, 'rustc', 100));
+    proc.files.set('/proc/102/status', status(5000));
+    proc.files.set('/proc', '100 102');
+    proc.files.set('/proc/100/task/100/children', '');
+    const load = new LinuxLoad(2, proc.read, proc.now);
+    load.add('thr', 100);
+    expect(load.sample('thr')?.processes).toBe(2);
+    // 102 exited and its pid went to a process of someone else, inside the scan's lifetime.
+    proc.at += 1000;
+    proc.files.set('/proc/102/stat', stat(102, 10, 0, 'stranger', 1, 900));
+    expect(load.sample('thr')).toMatchObject({ processes: 1, memoryBytes: 1000 * 1024 });
+  });
+
+  test('stopping a root leaves a descendant branch registered to another thread alive, even in its own session', () => {
+    const proc = new FakeProc();
+    proc.set(100, 10, 0, 1000);
+    proc.files.set('/proc/200/stat', stat(200, 10, 0, 'helper', 100));
+    proc.files.set('/proc/300/stat', stat(300, 10, 0, 'agent', 100));
+    proc.files.set('/proc/400/stat', stat(400, 10, 0, 'agent-child', 300));
+    proc.files.set('/proc', '100 200 300 400');
+    const signalled: number[] = [];
+    const load = new LinuxLoad(2, proc.read, proc.now, pid => { signalled.push(pid); });
+    load.add('thr', 100);
+    load.add('other', 300);
+    expect(load.sample('thr')?.workingSets?.map(set => set.pid)).toEqual([100]);
+
+    load.captureTree(100, 'thr')?.('SIGTERM');
+    expect(load.killTree(100, 'thr')).toBe(true);
+    expect(signalled).toEqual([200, 100, 100, 200]);
+    // The other thread's root still stops its own branch.
+    signalled.length = 0;
+    expect(load.killTree(300, 'other')).toBe(true);
+    expect(signalled).toEqual([300, 400]);
+  });
+
+  test('a pid rejected on a stale parent edge counts once a later current children file confirms it', () => {
+    const proc = new FakeProc();
+    for (const pid of [100, 200, 300, 400, 500]) proc.set(pid, 10, 0, 1000);
+    proc.files.set('/proc/200/stat', stat(200, 10, 0, 'shell', 100));
+    proc.files.set('/proc/500/stat', stat(500, 10, 0, 'make', 100));
+    proc.files.set('/proc/300/stat', stat(300, 10, 0, 'reaper', 500));
+    proc.files.set('/proc/400/stat', stat(400, 10, 0, 'rustc', 200));
+    proc.files.set('/proc/100/task/100/children', '200 500');
+    proc.files.set('/proc/200/task/200/children', '400');
+    proc.files.set('/proc/500/task/500/children', '300');
+    proc.files.set('/proc/300/task/300/children', '');
+    proc.files.set('/proc', '100 200 300 400 500');
+    const load = new LinuxLoad(2, proc.read, proc.now);
+    load.add('thr', 100);
+    expect(load.sample('thr')?.processes).toBe(5);
+    // 200 exits and 300, a subreaper, adopts 400. The listing between backstop
+    // scans still names 400 under 200, so 400 is reached before its new parent.
+    proc.at += 1000;
+    proc.files.set('/proc/200/task/200/children', '');
+    proc.files.set('/proc/400/stat', stat(400, 10, 0, 'rustc', 300));
+    proc.files.set('/proc/300/task/300/children', '400');
+    const sampled = load.sample('thr');
+    expect(sampled?.workingSets?.map(set => set.pid)).toEqual([100, 200, 500, 300, 400]);
+    expect(sampled?.processes).toBe(5);
+    expect(sampled?.memoryBytes).toBe(5 * 1000 * 1024);
   });
 
   test('stopping a descendant signals its own children too, and fails only when it cannot be signalled', () => {

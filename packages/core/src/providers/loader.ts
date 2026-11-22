@@ -1,8 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { forgetWhich } from './which.ts';
 import {
+  acpSteeringKind,
   threadActive,
+  type Account,
   type PolicyRefusalData,
   type ProviderDescriptor,
   type ProviderId,
@@ -15,7 +17,7 @@ import type { Core } from '../core.ts';
 import { writesTitles } from '../drivers/index.ts';
 import { InstallManager } from './install.ts';
 import { compareVersions, INSTALL_LATEST_MAX_AGE_MS, LATEST_MAX_AGE_MS, resolveLatestInstall } from './install-latest.ts';
-import { detectResolves, HOST_CANDIDATES, hostAgentsEnabled, launcherScriptOnly, profileFor, resolveCommand } from './resolve.ts';
+import { detectResolves, HOST_CANDIDATES, hostAgentsEnabled, launcherScriptOnly, pendingCommandVersion, profileFor, resolveCommand } from './resolve.ts';
 import { Rejection, validateDescriptor } from './validate.ts';
 import { attachVersions, loadVersions, readVersion, versionsSettled } from './versions.ts';
 import { programName } from '../threads/provider-process-log.ts';
@@ -33,6 +35,9 @@ import vibeShipped from './shipped/vibe.json';
 import echoShipped from './shipped/echo.json';
 import { detectionLogger, installLogger } from './install-log.ts';
 import { registerLocalCommands } from './local-command.ts';
+import { homePath } from '../paths.ts';
+import { ISOLATION_DEFAULTS, variableHome } from '../profile-share.ts';
+import { addSessionFilePaths, below, providerLoginHome, providerSessionFiles } from './session-paths.ts';
 
 /**
  * Echo is the fake agent the tests and the bench drive: no CLI, it repeats the
@@ -119,6 +124,7 @@ export function summarize(
     alwaysIsolated: entry.descriptor.isolation?.alwaysIsolated === true,
     models: entry.descriptor.models,
     capabilities: entry.descriptor.capabilities,
+    ...(acpSteeringKind(entry.descriptor) !== null ? { acpSteering: true } : {}),
     install: installs.stateOf(entry.descriptor.id, install),
     titles: writesTitles(entry.descriptor.protocol),
     enabled,
@@ -367,6 +373,14 @@ export class ProviderRegistry {
     finally { clearTimeout(timer); }
   }
 
+  /** A version read still needed to resolve this enabled provider's executable. */
+  pendingVersion(id: ProviderId): Promise<void> | undefined {
+    const entry = this.entries.get(id);
+    if (entry === undefined || !this.#enabledEntry(entry)) return undefined;
+    const profile = profileFor(entry.descriptor);
+    return profile === undefined ? undefined : pendingCommandVersion(profile);
+  }
+
   /** What the journal kept of the user's choices. Anything that is not a boolean is dropped. */
   loadSwitches(stored: unknown): void {
     this.#switches.clear();
@@ -400,6 +414,45 @@ export class ProviderRegistry {
 
   get(id: ProviderId): ProviderDescriptor | undefined {
     return this.entries.get(id)?.descriptor;
+  }
+
+  /** Dedicated login subtrees and exact paths, including session leaves outside those subtrees. */
+  credentialPaths(accounts: readonly Account[], forProjectRoot = false): { roots: Set<string>; exact: Set<string> } {
+    const protectedRoots = new Set<string>();
+    const exact = new Set<string>();
+    for (const { descriptor } of this.entries.values()) {
+      const roots = descriptor.roots.filter(root => isAbsolute(root) && !root.includes('{isolationDir}'));
+      for (const root of roots) protectedRoots.add(root);
+      if (descriptor.auth.kind === 'none') continue;
+      const profile = profileFor(descriptor);
+      const login = providerLoginHome(descriptor, profile);
+      const loginRoot = resolve(login.path);
+      const shared = login.variable?.startsWith('XDG_') === true;
+      if (!shared) protectedRoots.add(loginRoot);
+      addSessionFilePaths(exact, loginRoot, providerSessionFiles(descriptor, profile), shared && forProjectRoot);
+      for (const key of Object.keys(profile?.isolation ?? {})) {
+        const location = variableHome(key, profile);
+        if (location === null || !isAbsolute(location)) continue;
+        if (!key.startsWith('XDG_')) {
+          protectedRoots.add(location);
+          continue;
+        }
+        const segments = ISOLATION_DEFAULTS[key];
+        if (segments === undefined) continue;
+        const base = join(homePath(), ...segments);
+        // XDG homes are shared by applications. Only relocate the provider's own subtrees.
+        for (const root of roots) {
+          if (below(base, root)) protectedRoots.add(join(location, relative(base, root)));
+        }
+      }
+    }
+    for (const { isolationDir, providerId } of accounts) {
+      if (isolationDir === null) continue;
+      protectedRoots.add(isolationDir);
+      const descriptor = this.get(providerId);
+      if (descriptor !== undefined) addSessionFilePaths(exact, isolationDir, providerSessionFiles(descriptor));
+    }
+    return { roots: protectedRoots, exact };
   }
 
   require(id: ProviderId): ProviderDescriptor {
@@ -439,6 +492,12 @@ export class ProviderRegistry {
       .sort()
       .map((name) => join(dir, name));
   }
+}
+
+export function registerUpdateMethods(core: Core): void {
+  core.router.register('providers.updates', (params) => core.updates.list(params.refresh === true));
+  core.router.register('providers.update', (params) => core.updates.update(core.providers.require(params.providerId).id));
+  core.router.register('providers.updateSkip', (params) => core.updates.skip(core.providers.require(params.providerId).id, params.version));
 }
 
 export function registerProviderMethods(core: Core): void {

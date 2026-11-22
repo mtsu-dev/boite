@@ -219,10 +219,8 @@ export class ThreadTitles {
       if (branch === null || this.#core.journal.isClosed()) return;
       // Delegated threads and forks can stand in the same checkout. Their
       // branch badges must follow Git too, without changing a provider session.
-      for (const holder of this.#core.journal.listThreads()) {
-        if (holder.cwd === thread.cwd && holder.branch === thread.branch) {
-          saveThread(this.#core, { ...holder, branch, branchNamingPending: false }, 'thread.updated');
-        }
+      for (const holder of this.#core.journal.listThreadsOnBranch(thread.cwd, current.branch)) {
+        saveThread(this.#core, { ...holder, branch, branchNamingPending: false }, 'thread.updated');
       }
     } catch (error) {
       this.#core.log('warn', `no branch name for thread ${thread.id}: ${messageOf(error)}`);

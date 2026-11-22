@@ -1,9 +1,10 @@
 import type { MemoryEvent, Message, MessagePart } from '@boite/contracts';
 import { promptText, visibleAnswer } from './message-display';
-import { failedRun } from './failed-attempts';
+import { failedRun, failureKind } from './failed-attempts';
 import { writtenPlan } from './plan';
 import { textSlotEstimate } from './message-window';
 import { placedPath } from './inline-view';
+import { textRevision } from './text-revisions';
 
 /**
  * What the timeline's window counts and measures. A message is one row, except
@@ -92,33 +93,58 @@ const CONTINUES = /^(?:[ \t]{2,}|\t|[-*+][ \t]|\d+[.)][ \t]|\|)/;
  * ends. Empty under `SPLIT_FROM`.
  */
 export function textCuts(text: string): number[] {
-  if (text.length < SPLIT_FROM) return [];
-  const cuts: number[] = [];
-  let fence = '';
-  let rowStart = 0;
-  let blank = false;
-  let afterList = false;
-  for (let start = 0; start < text.length;) {
-    const end = text.indexOf('\n', start);
-    if (end < 0) break;
-    const line = text.slice(start, end);
-    const trimmed = line.trim();
-    if (fence) {
-      if (trimmed.startsWith(fence) && trimmed.replaceAll(fence[0]!, '') === '') fence = '';
-      blank = false;
-    } else {
-      if (blank && trimmed && !afterList && start - rowStart >= ROW_CHARS && !CONTINUES.test(line)) {
-        cuts.push(start);
-        rowStart = start;
-      }
-      const open = /^(`{3,}|~{3,})/.exec(trimmed);
-      if (open) fence = open[1]!;
-      if (trimmed) afterList = CONTINUES.test(line);
-      blank = trimmed === '';
+  return new TextCutScan().slices(text).slice(1).map(slice => slice.start);
+}
+
+/** A trusted append only needs new lines. Completed lines determine the cuts and their page joins. */
+class TextCutScan {
+  #epoch: object | undefined;
+  #length = 0;
+  #lineStart = 0;
+  #previousLine = '';
+  #fence = '';
+  #rowStart = 0;
+  #blank = false;
+  #afterList = false;
+  #slices: TextSlice[] = [];
+
+  slices(text: string, epoch?: object): TextSlice[] {
+    if (epoch === undefined || epoch !== this.#epoch || text.length < this.#length) {
+      this.#length = this.#lineStart = this.#rowStart = 0;
+      this.#previousLine = this.#fence = '';
+      this.#blank = this.#afterList = false;
+      this.#slices = [];
     }
-    start = end + 1;
+    this.#epoch = epoch;
+    if (text.length < SPLIT_FROM || text.length === this.#length) return this.#slices;
+    let slices = this.#slices;
+    for (let end = text.indexOf('\n', this.#length); end >= 0; end = text.indexOf('\n', this.#lineStart)) {
+      const start = this.#lineStart;
+      const line = text.slice(start, end);
+      const trimmed = line.trim();
+      this.#lineStart = end + 1;
+      if (this.#fence) {
+        if (trimmed.startsWith(this.#fence) && trimmed.replaceAll(this.#fence[0]!, '') === '') this.#fence = '';
+        this.#blank = false;
+      } else {
+        const continues = CONTINUES.test(line);
+        if (this.#blank && trimmed && !this.#afterList && start - this.#rowStart >= ROW_CHARS && !continues) {
+          const paths = cutPaths(this.#previousLine, line);
+          if (slices === this.#slices) slices = slices.slice();
+          const tail = slices.pop() ?? { start: 0 };
+          slices.push({ ...tail, end: start, ...(paths ? { pages: { ...tail.pages, below: paths } } : {}) },
+            paths ? { start, pages: { above: paths } } : { start });
+          this.#rowStart = start;
+        }
+        this.#fence = /^(`{3,}|~{3,})/.exec(trimmed)?.[1] ?? '';
+        if (trimmed) this.#afterList = continues;
+        this.#blank = trimmed === '';
+      }
+      if (trimmed) this.#previousLine = line.trimEnd();
+    }
+    this.#length = text.length;
+    return this.#slices = slices;
   }
-  return cuts;
 }
 
 function samePaths(a?: readonly string[], b?: readonly string[]): boolean {
@@ -134,16 +160,20 @@ function samePages(a: TextSlice['pages'], b: TextSlice['pages']): boolean {
  * memory notice is anchored on and written plans left whole. A system
  * message is never cut: its note draws its mark beside the whole text.
  */
-function textPieces(message: Message, anchored?: ReadonlySet<number>): { part: number; slices: TextSlice[] }[] {
+function textPieces(message: Message, scans: WeakMap<MessagePart, TextCutScan>, anchored?: ReadonlySet<number>): { part: number; slices: TextSlice[] }[] {
   if (message.role !== 'assistant') return [];
   const pieces: { part: number; slices: TextSlice[] }[] = [];
   message.parts.forEach((part, index) => {
-    if (part.type !== 'text' || part.text.length < SPLIT_FROM || anchored?.has(index)) return;
-    const shown = shownText(message, part);
+    if (part.type !== 'text' || anchored?.has(index)) return;
+    const text = part.text;
+    if (text.length < SPLIT_FROM) return;
+    const shown = visibleAnswer(text);
     // A written plan is drawn whole in its card, which copies and saves all of it.
     if (writtenPlan(shown)) return;
-    const cuts = textCuts(shown);
-    if (cuts.length) pieces.push({ part: index, slices: [0, ...cuts].map((start, at) => textSlice(shown, start, cuts[at])) });
+    let scan = scans.get(part);
+    if (!scan) scans.set(part, scan = new TextCutScan());
+    const slices = scan.slices(shown, textRevision(part));
+    if (slices.length) pieces.push({ part: index, slices });
   });
   return pieces;
 }
@@ -151,10 +181,12 @@ function textPieces(message: Message, anchored?: ReadonlySet<number>): { part: n
 /** The paths the lines on either side of the cut at `at` place: the last line written above it and its first line. */
 function pagesAt(text: string, at: number): string[] | undefined {
   const before = text.slice(0, at).trimEnd();
-  const above = placedPath(before.slice(before.lastIndexOf('\n') + 1));
   const lineEnd = text.indexOf('\n', at);
-  const below = placedPath(text.slice(at, lineEnd < 0 ? undefined : lineEnd));
-  const paths = [above, below].filter((path): path is string => path !== null);
+  return cutPaths(before.slice(before.lastIndexOf('\n') + 1), text.slice(at, lineEnd < 0 ? undefined : lineEnd));
+}
+
+function cutPaths(above: string, below: string): string[] | undefined {
+  const paths = [placedPath(above), placedPath(below)].filter((path): path is string => path !== null);
   return paths.length ? paths : undefined;
 }
 
@@ -230,6 +262,13 @@ function anchoredParts(events: readonly MemoryEvent[] | undefined): ReadonlySet<
   return new Set(events.flatMap(event => event.anchor ? [event.anchor.partIndex] : []));
 }
 
+type MessageShape = {
+  cuts: number[];
+  pieces: ReturnType<typeof textPieces>;
+};
+
+type Memo = <T>(read: () => T) => () => T;
+
 /**
  * The rows of a timeline, and the same row objects from one call to the next
  * for the messages that did not change: a part arriving at the bottom of a
@@ -237,10 +276,38 @@ function anchoredParts(events: readonly MemoryEvent[] | undefined): ReadonlySet<
  * that draws them runs again.
  */
 export class TimelineRows {
+  readonly #scans = new WeakMap<MessagePart, TextCutScan>();
+  readonly #failures = new WeakMap<Message, () => ReturnType<typeof failureKind>>();
+  readonly #shapes = new WeakMap<Message, { events: MemoryEvent[] | undefined; count: number; read: () => MessageShape }>();
   #known = new Map<string, TimelineRow>();
   #rows: TimelineRow[] = [];
   #order = '';
   #changedFrom = 0;
+
+  constructor(private readonly memo: Memo = read => read) {}
+
+  #failure = (message: Message): ReturnType<typeof failureKind> => {
+    let read = this.#failures.get(message);
+    if (!read) this.#failures.set(message, read = this.memo(() => failureKind(message)));
+    return read();
+  };
+
+  #shape(message: Message, count: number, events: MemoryEvent[] | undefined): MessageShape {
+    let shape = this.#shapes.get(message);
+    if (!shape || shape.count !== count || shape.events !== events) {
+      let previous: MessageShape | undefined;
+      const read = this.memo(() => {
+        const anchored = anchoredParts(events);
+        const cuts = rowCuts(message, anchored);
+        const pieces = textPieces(message, this.#scans, anchored);
+        if (previous && previous.cuts.length === cuts.length && cuts.every((cut, at) => cut === previous!.cuts[at]) &&
+          previous.pieces.length === pieces.length && pieces.every((piece, at) => previous!.pieces[at]?.part === piece.part && previous!.pieces[at]?.slices === piece.slices)) return previous;
+        return previous = { cuts, pieces };
+      });
+      this.#shapes.set(message, shape = { count, events, read });
+    }
+    return shape.read();
+  }
 
   /** The ids of the last rows built, in order and joined: what tells a reordered list from the same one. */
   get order(): string { return this.#order; }
@@ -252,9 +319,9 @@ export class TimelineRows {
   get changedFrom(): number { return this.#changedFrom; }
 
   build(timeline: readonly Message[], memory?: ReadonlyMap<string, MemoryEvent[]>, breaks?: ReadonlyMap<string, unknown>): TimelineRow[] {
-    const known = new Map<string, TimelineRow>();
-    const rows: TimelineRow[] = [];
-    let changedFrom = -1;
+    let rows = this.#rows;
+    let length = 0;
+    let changedFrom = rows.length;
     const add = (id: string, message: Message, from: number, to: number, first: boolean, last: boolean, failures?: readonly Message[], text?: TextSlice): void => {
       const before = this.#known.get(id);
       const sameFailures = before?.failures === failures || !!failures && before?.failures?.length === failures.length && failures.every((item, i) => before.failures?.[i] === item);
@@ -262,35 +329,40 @@ export class TimelineRows {
       const sameText = before?.text?.start === text?.start && before?.text?.end === text?.end && samePages(before?.text?.pages, text?.pages);
       const row = before && before.message === message && before.from === from && before.to === to && before.first === first && before.last === last && sameFailures && sameText
         ? before : { id, message, from, to, first, last, ...(failures ? { failures } : {}), ...(text ? { text } : {}) };
-      known.set(id, row);
-      if (changedFrom < 0 && this.#rows[rows.length] !== row) changedFrom = rows.length;
-      rows.push(row);
+      if (rows === this.#rows && rows[length] !== row) {
+        changedFrom = length;
+        rows = rows.slice(0, length);
+      }
+      if (rows !== this.#rows) rows.push(row);
+      length++;
     };
     for (let index = 0; index < timeline.length; index += 1) {
       const message = timeline[index]!;
-      const failures = failedRun(timeline, index, memory, breaks);
+      const failures = failedRun(timeline, index, this.#failure, memory, breaks);
       if (failures) {
         const last = failures.at(-1)!;
         add(message.id, last, 0, last.parts.length, true, true, failures);
         index += failures.length - 1;
         continue;
       }
-      const count = message.parts.length;
-      const anchored = anchoredParts(memory?.get(message.id));
-      const cuts = count > CUT_FROM ? rowCuts(message, anchored) : [];
       // A long turn that ends on a long answer takes both cuts: the answer is sliced inside its rows of parts.
-      const pieces = textPieces(message, anchored);
-      if (pieces.length) { sliceRows(message, pieces, cuts, add); continue; }
+      const count = message.parts.length;
+      const { cuts, pieces } = this.#shape(message, count, memory?.get(message.id));
+      if (pieces.length) { sliceRows(message, count, pieces, cuts, add); continue; }
       if (cuts.length === 0) { add(message.id, message, 0, count, true, true); continue; }
       add(message.id, message, 0, cuts[0]!, true, false);
       cuts.forEach((from, index) => add(`${message.id}#${index + 1}`, message, from, cuts[index + 1] ?? count, false, index === cuts.length - 1));
     }
-    this.#known = known;
-    this.#changedFrom = changedFrom < 0 ? rows.length : changedFrom;
+    this.#changedFrom = Math.min(changedFrom, length);
     // The same array while every row is the same object: what reads it has nothing to redo.
-    if (changedFrom < 0 && rows.length === this.#rows.length) return this.#rows;
+    if (rows === this.#rows) {
+      if (length === rows.length) return rows;
+      rows = rows.slice(0, length);
+    }
+    for (let index = this.#changedFrom; index < this.#rows.length; index++) this.#known.delete(this.#rows[index]!.id);
+    for (let index = this.#changedFrom; index < rows.length; index++) this.#known.set(rows[index]!.id, rows[index]!);
+    if (rows.length !== this.#rows.length || rows.some((row, index) => row.id !== this.#rows[index]?.id)) this.#order = rows.map(row => row.id).join('\0');
     this.#rows = rows;
-    this.#order = rows.map(row => row.id).join('\0');
     return rows;
   }
 }
@@ -305,7 +377,7 @@ type AddRow = (id: string, message: Message, from: number, to: number, first: bo
  * message's id; a slice is `<message>#<part>.<block>`, a row of parts
  * `<message>#<its first part>`.
  */
-function sliceRows(message: Message, pieces: { part: number; slices: TextSlice[] }[], partCuts: readonly number[], add: AddRow): void {
+function sliceRows(message: Message, count: number, pieces: { part: number; slices: TextSlice[] }[], partCuts: readonly number[], add: AddRow): void {
   const spans: { id: string; from: number; to: number; text?: TextSlice }[] = [];
   const range = (from: number, to: number): void => {
     for (const at of [...partCuts.filter(cut => cut > from && cut < to), to]) {
@@ -319,7 +391,7 @@ function sliceRows(message: Message, pieces: { part: number; slices: TextSlice[]
     slices.forEach((text, block) => spans.push({ id: `${message.id}#${part}.${block}`, from: part, to: part + 1, text }));
     from = part + 1;
   }
-  if (from < message.parts.length) range(from, message.parts.length);
+  if (from < count) range(from, count);
   spans.forEach((span, index) => add(index === 0 ? message.id : span.id, message, span.from, span.to, index === 0, index === spans.length - 1, undefined, span.text));
 }
 

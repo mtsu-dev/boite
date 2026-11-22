@@ -230,9 +230,9 @@ export { attachmentError, answerAttachmentError, decodedBytes } from './attachme
 export { AUTO_COMPACT_MOMENTS, AUTO_COMPACT_TOKENS, DEFAULT_AUTO_COMPACT, AUTO_GOAL_MIN_CHARS, CACHE_KEEPALIVE_HOURS, MODEL_FAVORITES_MAX, checkSettingsPatch, compareModelFavorites, keepLaterFavorites, type AutoCompact, type AutoCompactMoment, type CacheKeepalive } from './settings-validation.ts';
 export { checkRpcParams } from './rpc-params.ts';
 export { defaultTitleModel } from './title-models.ts';
-export { ChangeLog, listCursorProblem } from './list-changes.ts';
+export { ChangeLog, LIST_CHANGES_IDS, listCursorProblem, THREAD_LIST_PAGE_BYTES, ThreadListPages } from './list-changes.ts';
 export { GOAL_TRACKER_DEFAULTS, GOAL_CHECKLIST_MAX_ITEMS, GOAL_CHECKLIST_SOURCE_MAX, GOAL_CHECKLIST_TEXT_MAX, defaultTrackerModel, trackerEffort } from './goal-tracker.ts';
-export { DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, deviceBound, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, type Caller } from './access.ts';
+export { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, deviceBound, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, type Caller } from './access.ts';
 export {
   APP_LANGUAGES, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTINGS_PAGES, botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isSettingsPage, readSettings,
   sameClientPreferences, settingAnswerText, settledMachineSetting, settledSetting,
@@ -260,9 +260,9 @@ export {
 export { SPEECH_CATALOGUE, SPEECH_CUSTOM_ID, SPEECH_DEFAULT_MODEL, isSpeechModelId, speechUrlProblem, type SpeechCatalogueModel } from './speech-models.ts';
 
 export { sideQuestionSnapshot } from './side-question-snapshot.ts';
-export { deriveThreadCapabilities, protocolSupportsSteering, type ThreadCapabilitySnapshot } from './thread-capabilities.ts';
-export { resumeAnchor, snapshotOptionsProblem } from './thread-sync.ts';
-export { previewImageData, type ImagePreviews } from './file-preview.ts';
+export { acpSteeringKind, deriveThreadCapabilities, providerSupportsSteering, type ThreadCapabilitySnapshot } from './thread-capabilities.ts';
+export { resumeAnchor, snapshotOptionsProblem, type MessageSync } from './thread-sync.ts';
+export { IMAGE_INLINE_CHARS, previewImageData, type ImagePreviews } from './file-preview.ts';
 export { imageSize } from './image-size.ts';
 export {
   VIEW_ROUTE, VIEW_MAX_BYTES, VIEW_BLOCK_MAX_BYTES, VIEW_WIDTH, VIEW_NARROW_WIDTH, VIEW_BLEED, VIEW_DEFAULT_HEIGHT, VIEW_TITLE_MAX,

@@ -18,7 +18,7 @@ function worktreeSwitch(): HTMLButtonElement | null | undefined {
 }
 
 test('the draft worktree chip puts the first send on its own branch, and the header names it', async ({ app: _app }) => {
-
+  await waitFor(() => document.querySelector('[data-testid=composer-options]') !== null);
   // A thread keeps its directory: no chip while one is open.
   await waitFor(() => worktreeSwitch() === null);
 

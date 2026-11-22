@@ -12,17 +12,25 @@ export { harnessOffered, harnessSkipped } from '@boite/contracts';
 
 export interface MachineUpdates {
   /** Boite on a machine that updates itself; null on the computer the desktop app runs on, and before the first answer. */
-  server: Pick<ServerUpdateStatus, 'phase'> | null;
+  server: Pick<ServerUpdateStatus, 'phase'> & Partial<Pick<ServerUpdateStatus, 'error'>> | null;
   /** The desktop app's own updater, on the computer it runs on; null anywhere else. */
-  app: { phase: string } | null;
+  app: { phase: string; error?: string | null } | null;
   agents: readonly HarnessUpdate[];
 }
 
 const BUSY = ['downloading', 'waiting', 'installing'];
 
-export function machineUpdateState({ server, app, agents }: MachineUpdates): MachineUpdateState | null {
+export function machineUpdateFailure({ server, app, agents }: MachineUpdates) {
+  if (server?.phase === 'error') return { source: 'server', reason: server.error ?? null } as const;
+  if (app?.phase === 'error') return { source: 'app', reason: app.error ?? null } as const;
+  const agent = agents.find(update => update.state === 'failed');
+  return agent ? { source: 'agent' as const, name: agent.name, phase: agent.failedPhase, reason: agent.message } : null;
+}
+
+export function machineUpdateState(updates: MachineUpdates): MachineUpdateState | null {
+  const { server, app, agents } = updates;
   const phases = [server?.phase, app?.phase];
-  if (phases.includes('error') || agents.some((update) => update.state === 'failed')) return 'failed';
+  if (machineUpdateFailure(updates)) return 'failed';
   if (phases.some((phase) => phase !== undefined && BUSY.includes(phase)) || agents.some((update) => update.state === 'updating')) return 'updating';
   // `ready` is the desktop app's downloaded release, waiting for a restart.
   if (phases.includes('available') || phases.includes('ready') || agents.some(harnessOffered)) return 'available';

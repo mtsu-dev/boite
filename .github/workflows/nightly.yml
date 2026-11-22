@@ -263,3 +263,22 @@ jobs:
           else
             gh release create "$RELEASE_TAG" "${installers[@]}" "${apks[@]}" ./*.sig latest.json SHA256SUMS.txt --target "$NIGHTLY_SHA" --title "boite (de nuit) $RELEASE_TAG" --prerelease --latest=false --notes-file release-notes.md
           fi
+
+  desktop-feed:
+    name: Publish nightly desktop feed
+    needs: [revision, release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: package.json
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.revision.outputs.tag }}
+        run: bun scripts/ci/desktop-feed.ts nightly "$RELEASE_TAG"

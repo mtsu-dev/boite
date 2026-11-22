@@ -1,4 +1,4 @@
-import type { RpcParams, Thread } from '@boite/contracts';
+import type { Message, RpcParams, Thread, Turn } from '@boite/contracts';
 import { RpcErrorCode } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import type { FakeContext } from './context';
@@ -86,5 +86,38 @@ export function publishFakeThread(ctx: FakeContext, thread: Thread, subscribe = 
   ctx.emit('thread.created', structuredClone(toSummary(thread)));
   const project = ctx.projects.find(p => p.id === thread.projectId);
   if (project?.archived === true) archiveProject(ctx, project.id, false);
+  return structuredClone(toSummary(thread));
+}
+
+export function writeFakeFork(ctx: FakeContext, source: Thread, kept: Message[], placed: ReturnType<typeof fakeWorktree> | null = null) {
+  const title = `${source.title} (fork)`;
+  const now = ctx.now();
+  const id = `t-${++ctx.seq}`;
+  const turnIds = new Map<string, string>();
+  const messages: Message[] = kept.map((message) => {
+    if (!turnIds.has(message.turnId)) turnIds.set(message.turnId, `turn-${++ctx.seq}`);
+    return { ...structuredClone(message), id: `m-${++ctx.seq}`, threadId: id, turnId: turnIds.get(message.turnId) ?? message.turnId, state: message.state === 'streaming' ? 'complete' : message.state };
+  });
+  const turns: Turn[] = source.turns.filter((turn) => turnIds.has(turn.id)).map((turn) => ({
+    ...structuredClone(turn),
+    id: turnIds.get(turn.id) ?? turn.id,
+    threadId: id,
+    status: turn.status === 'queued' || turn.status === 'running' ? 'stopped' : turn.status,
+    queueHold: null,
+    startedAt: turn.startedAt ?? turn.queuedAt,
+    finishedAt: turn.finishedAt ?? now,
+    usage: null,
+  }));
+  const thread: Thread = {
+    id, projectId: source.projectId, title, titleSource: source.titleSource,
+    providerId: source.providerId, accountId: source.accountId, model: source.model, effort: source.effort, speed: source.speed ?? null,
+    cwd: placed?.path ?? source.cwd, branch: placed?.branch ?? source.branch, branchNamingPending: placed?.namingPending ?? false, permissionMode: source.permissionMode,
+    status: 'idle', unread: false, archived: false, doneAt: null, pinned: false,
+    forkOrigin: { threadId: source.id, messageId: kept.at(-1)?.id ?? null, turnId: kept.at(-1)?.turnId ?? null, mode: 'seeded' },
+    sessionId: null, sessionGeneration: 1, selectionVersion: 0, load: null, context: null,
+    createdAt: now, updatedAt: now, messages, turns, commands: [], messagesBefore: null,
+  };
+  ctx.threads.set(id, thread);
+  ctx.emit('thread.created', structuredClone(toSummary(thread)));
   return structuredClone(toSummary(thread));
 }

@@ -23,7 +23,7 @@
   import { keepFocus } from '../lib/focus';
   import { contextLevel, contextPercent } from '../lib/tokens';
   import { speedControl } from '../lib/model-speeds';
-  import { desktopSettings } from '../lib/settings-tabs';
+  import { desktopSettings, settingsDestination } from '../lib/settings-tabs';
   import { machineAway } from '../lib/machine-away';
   import { declineHint } from '../lib/composer-placeholder';
   import { repliesOf } from '../lib/question-reply.svelte';
@@ -157,7 +157,7 @@
    * nowhere, and the sentence behind it is the one a send would answer with.
    */
   const phoneWidth = new MediaQuery('(max-width: 720px)');
-  let providersReachable = $derived(store.owner && desktopSettings(phoneWidth.current));
+  let providersReachable = $derived(settingsDestination('accounts', null, { owner: store.owner, phone: !desktopSettings(phoneWidth.current) }));
   // One word per mode, one plain line under it, the long sentence on hover.
   // A legacy mode still live (`plan`) keeps its own choice until another is picked.
   let modeChoices = $derived<ModeChoice[]>([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]
@@ -206,9 +206,14 @@
     if (thread) {
       const changedModel = patch.model !== undefined || patch.accountId !== undefined;
       const target = { ...choice, ...patch, effort: patch.effort !== undefined ? patch.effort : changedModel ? null : choice.effort, speed: patch.speed !== undefined ? patch.speed : changedModel ? null : choice.speed ?? null };
+      const expectedSelectionVersion = thread.selectionVersion ?? 0;
       picking = true;
       try {
-        if (switchDropsHistory(thread, target.accountId)) {
+        const historyAtRisk = switchDropsHistory(thread, target.accountId);
+        const preview = historyAtRisk && !botRoute ? await store.previewAccountSwitch(thread.id, target.accountId) : null;
+        const resumes = preview?.session === 'resume';
+        if (historyAtRisk && !resumes) {
+          chip?.close();
           slider?.close();
           const from = providerName(store, thread.providerId);
           const to = providerName(store, target.providerId);
@@ -238,10 +243,12 @@
         }
         const accepted = await store.update(thread.id, {
           accountId: target.accountId, model: target.model, effort: target.effort, speed: target.speed,
-          expectedSelectionVersion: thread.selectionVersion ?? 0,
+          expectedSelectionVersion,
+          ...(resumes ? { requireSavedSession: true } : {}),
         });
         if (accepted) store.remember(target);
-      } finally { picking = false; }
+      } catch (error) { store.error = errorText(error); }
+      finally { picking = false; }
       return;
     }
 

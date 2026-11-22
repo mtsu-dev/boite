@@ -9,7 +9,7 @@ import type { RpcEventName, RpcMethodName } from './index';
 
 /** The file a plugin repository carries at its root. */
 export const PLUGIN_MANIFEST_FILE = 'boite-plugin.json';
-/** Every manifest schema this core reads. */
+/** Every manifest schema this core reads. Schema 1 manifests still load as they always did. */
 export const PLUGIN_MANIFEST_SCHEMAS = [1, 2] as const;
 /** `${process.platform}-${process.arch}` keys an artifact may be published for. */
 export const PLUGIN_PLATFORMS = ['win32-x64', 'win32-arm64', 'darwin-x64', 'darwin-arm64', 'linux-x64', 'linux-arm64'] as const;
@@ -96,7 +96,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
       'threads.create', 'threads.update', 'threads.retitle', 'threads.archive', 'threads.remove', 'threads.restore', 'threads.pin', 'threads.markRead',
       'threads.move', 'threads.moveCancel', 'threads.fork', 'threads.rewind', 'threads.mergeBack', 'threads.compact',
       'threads.btw', 'threads.btw.cancel', 'threads.btw.fork', 'threads.activity.set', 'threads.activity.control', 'threads.unwatchPullRequest',
-      'turns.start', 'turns.steer', 'turns.stop', 'turns.recover', 'turns.cancelRetry',
+      'turns.start', 'turns.steer', 'turns.stop', 'turns.recover', 'turns.resume', 'turns.cancelRetry',
       'composer.asset.put', 'drafts.prepare', 'drafts.release', 'attachments.upload', 'attachments.release',
     ],
     events: [],
@@ -178,7 +178,13 @@ export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
   { name: 'push.', reason: 'notifications belong to the device that subscribed' },
   { name: 'client.', reason: 'each app\'s language and experiments are its own' },
   { name: 'threads.focus', reason: 'which conversation the person is looking at decides their notifications' },
+  { name: 'threads.previewAccountSwitch', reason: 'the owner\'s clients confirm account changes and can preview whether a saved provider session will resume' },
+  { name: 'thread.progress', reason: 'the live progress feed publishes provider activity and timing for the owner\'s clients' },
+  { name: 'projects.git', reason: 'an on-demand Git probe of a local project can start work on the host' },
   { name: 'speech.', reason: 'the microphone belongs to the person speaking to the app' },
+  { name: 'composer.listPage', reason: 'paged sync of the owner\'s drafts and queued inputs belongs to the owner\'s clients' },
+  { name: 'composer.get', reason: 'point reads of in-progress composer records belong to the owner\'s client sync protocol' },
+  { name: 'composer.revision', reason: 'composer revision hints are for clients that can fetch the revised record through composer.get' },
   { name: 'composer.put', reason: 'a queued line goes out as the owner\'s own; a plugin sends with turns.start or turns.steer, which name it' },
   { name: 'diagnostics.report', reason: 'the app reports its own errors' },
   { name: 'windows.consent', reason: 'only the owner lets an agent see a window' },

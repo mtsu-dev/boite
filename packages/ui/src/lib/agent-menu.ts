@@ -33,20 +33,32 @@ export function agentMenuItems(store: Store, agent: AgentProfile, options: Agent
   const labels = strings.agents;
   const owner = store.owner && agent.status !== 'archived';
   const pin: MenuItem = { id: 'pin', label: agent.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: agent.pinned ? PinOff : Pin };
-  const status: MenuItem = agent.status === 'paused' ? { id: 'resume', label: labels.resume, glyph: Play } : { id: 'pause', label: labels.pause, glyph: Pause };
-  const archive: MenuItem = agent.builtin ? { id: 'reset', label: labels.builtin.reset, glyph: RotateCcw, danger: true } : { id: 'archive', label: labels.archive, glyph: Archive, danger: true };
+  const lifecycle = owner ? agentLifecycleItems(agent) : [];
   const rename: MenuItem = { id: 'rename', label: strings.common.rename, glyph: PencilLine };
   const edit: MenuItem = { id: 'edit', label: labels.edit, glyph: Settings2 };
-  const fresh: MenuItem[] = options.conversation ? [{ id: 'new-session', label: labels.newConversation.menu, glyph: MessageSquarePlus }] : [];
-  if (options.phone) return owner ? [rename, pin, edit, ...fresh, separator('sep-archive'), status, archive] : [];
+  const fresh = options.conversation ? [newConversationItem()] : [];
+  if (options.phone) return owner ? [rename, pin, edit, ...fresh, separator('sep-archive'), ...lifecycle] : [];
   // Like "Move to project": a picker opens where the menu stood. A move that waits for the turn's end is cancelled instead.
   const move: MenuItem[] = options.leaving ? [{ id: 'move-cancel', label: strings.threadMove.cancelMove, glyph: X }]
     : moveMachines(store).others.length > 0 ? [{ id: 'move', label: labels.move.menu, glyph: ArrowRightLeft }] : [];
   return [
     { id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open },
-    ...(owner ? [separator('sep-open'), rename, pin, edit, ...fresh, ...move, separator('sep-archive'), status, archive] : []),
+    ...(owner ? [separator('sep-open'), rename, pin, edit, ...fresh, ...move, separator('sep-archive'), ...lifecycle] : []),
     separator('sep-tools'),
     { id: 'copy', label: strings.sidebar.copyPath, glyph: Copy }
+  ];
+}
+
+function newConversationItem(): MenuItem {
+  return { id: 'new-session', label: strings.agents.newConversation.menu, glyph: MessageSquarePlus };
+}
+
+export function agentLifecycleItems(agent: AgentProfile, conversation = false): MenuItem[] {
+  const labels = strings.agents;
+  return [
+    ...(conversation ? [newConversationItem()] : []),
+    agent.status === 'paused' ? { id: 'resume', label: labels.resume, glyph: Play } : { id: 'pause', label: labels.pause, glyph: Pause },
+    agent.builtin ? { id: 'reset', label: labels.builtin.reset, glyph: RotateCcw, danger: true } : { id: 'archive', label: labels.archive, glyph: Archive, danger: true },
   ];
 }
 
@@ -66,14 +78,20 @@ export function pickAgentAction(owner: AgentsView, agent: AgentProfile, action: 
     case 'edit': view.edit(); return;
     case 'rename': view.rename(); return;
     case 'pin': void saveAgent(owner, agent.id, { pinned: !agent.pinned }, view.report); return;
-    case 'pause': void saveAgent(owner, agent.id, { status: 'paused' }, view.report); return;
-    case 'resume': void saveAgent(owner, agent.id, { status: 'active' }, view.report); return;
-    case 'archive': void confirmArchive(agent.name).then(sure => sure && saveAgent(owner, agent.id, { status: 'archived' }, view.report)); return;
-    case 'reset': void resetBuiltin(owner, agent); return;
-    case 'new-session': void startNewConversation(owner, agent, view.report); return;
     case 'move': contextMenu.follow(moveItems(owner.store, agent.id), id => void moveBot(owner, agent, id, view.report)); return;
     case 'move-cancel': void cancelMove(owner, agent, view.report); return;
     case 'copy': void copyBrainPath(owner, agent.id, view.report); return;
+    default: pickAgentLifecycle(owner, agent, action, view.report);
+  }
+}
+
+export function pickAgentLifecycle(owner: AgentsView, agent: AgentProfile, action: string, report: Store): void {
+  switch (action) {
+    case 'new-session': void startNewConversation(owner, agent, report); return;
+    case 'pause': void saveAgent(owner, agent.id, { status: 'paused' }, report); return;
+    case 'resume': void saveAgent(owner, agent.id, { status: 'active' }, report); return;
+    case 'archive': void confirmArchive(agent.name).then(sure => sure && saveAgent(owner, agent.id, { status: 'archived' }, report)); return;
+    case 'reset': void resetBuiltin(owner, agent); return;
   }
 }
 

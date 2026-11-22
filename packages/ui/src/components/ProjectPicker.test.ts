@@ -119,3 +119,19 @@ test('a path typed while the first folder loads stays when the listing arrives',
   await vi.waitFor(() => expect(document.querySelector<HTMLButtonElement>('[data-testid=project-add]')!.disabled).toBe(false));
   expect(input.value).toBe('D:\\work\\typed-first');
 });
+
+test('Tab returns focus to the project dialog when its container or the page has focus', async ({ createStore }) => {
+  const outside = document.createElement('button');
+  document.body.append(outside);
+  await draw(createStore);
+  const dialog = document.querySelector<HTMLElement>('[data-testid=project-picker]')!;
+  const first = dialog.querySelector('button:not(:disabled)');
+  const last = [...dialog.querySelectorAll('button:not(:disabled)')].at(-1);
+
+  dialog.focus();
+  dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+  expect(document.activeElement).toBe(first);
+  outside.focus();
+  outside.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+  expect(document.activeElement).toBe(last);
+});

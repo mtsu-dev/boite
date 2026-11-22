@@ -121,7 +121,7 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   });
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
-  const summary = store.threads[0]!;
+  const summary = store.threads.find(thread => thread.id === 't-trace')!;
   const history = await client.call('threads.get', { threadId: summary.id });
   expect(history.messages.length).toBeGreaterThan(0);
   store.threads = Array.from({ length: 1000 }, (_, index) => ({ ...summary, id: index === 999 ? summary.id : `offscreen-${index}`, updatedAt: 1000 - index }));
@@ -300,9 +300,12 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     // The Projects list reads the same store: the same radar there. Back in Recent, the filter holds.
     workspace.view = 'projects'; await settle();
     expect(state()?.dataset['state']).toBe('delegating');
-    // Work is a grey mark alone: its word and how long it has run are in the tooltip.
+    // The mark describes the work. Its wait line shows the duration once.
     expect(state()?.querySelector('[data-testid=thread-state-text]')).toBeNull();
-    expect(state()?.getAttribute('title')).toMatch(/sub-agents\n1m/);
+    expect(state()?.getAttribute('title')).toContain('Waiting on 2 sub-agents');
+    const wait = state()?.closest('[data-testid=mobile-row]')?.querySelector('[data-testid=thread-wait]');
+    expect(wait?.textContent).toContain('2 subagents');
+    expect(wait?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^1m/);
     workspace.view = 'recent'; await settle();
     expect(count()).toBe('Working');
     expect(rows()).toEqual([parent.id]);

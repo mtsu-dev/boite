@@ -143,6 +143,20 @@ export interface UngroupedData {
   sig: string;
 }
 
+/** What a known member signs when a hello presents a revoked key. */
+export function deviceRevokedInput(coreId: string, nonce: string, deviceId: string): string {
+  return `boite-group-device-revoked\n${coreId}\n${nonce}\n${deviceId}`;
+}
+
+/** The Unauthorized error for a revoked key. Any grant offered stays unspent. */
+export interface DeviceRevokedData {
+  reason: 'device-revoked';
+  /** The refusing member's SPKI PEM, whose SHA-256 is its core id. */
+  publicKey: string;
+  /** Ed25519 over `deviceRevokedInput(coreId, nonce, deviceId)`, base64. */
+  sig: string;
+}
+
 /**
  * What a machine pastes to join. It names the group, the member that minted
  * it, that member's addresses and key fingerprint, and a one-time grant good

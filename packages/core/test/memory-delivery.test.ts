@@ -84,7 +84,7 @@ describe('memory events and admission', () => {
     expect(core.journal.listTurns(threadId)).toEqual([]);
     const next = core.threads.startTurn(threadId, 'next');
     await waitFor(() => core.journal.getTurn(next.id)?.status === 'done');
-    expect(textOf(next.id)).toBe(memoryNotice(notice) + '\n\nnext');
+    expect(textOf(next.id)).toBe(memoryNotice(notice) + '\n\nUser request:\nnext');
     const again = core.threads.startTurn(threadId, 'again');
     await waitFor(() => core.journal.getTurn(again.id)?.status === 'done');
     expect(textOf(again.id)).toBe('again');

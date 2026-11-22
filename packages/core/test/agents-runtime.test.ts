@@ -16,6 +16,7 @@ import { runCheck } from '../src/agents/checks.ts';
 import { botCommand } from '../src/agents/cli.ts';
 import { LIMIT_RESUME } from '../src/threads/limit-resume.ts';
 import { AUTO_CONTINUE } from '../src/threads/auto-continue.ts';
+import { COORDINATION_SENT_PREFIX } from '../src/threads/coordination-context.ts';
 import { costing, makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -78,8 +79,72 @@ test('a mochi\'s Boite guide is the thread guide less the project-bound commands
   await client.call('turns.start', { threadId, prompt: 'Still there?' });
   await waitFor(() => (driver.prompts.get(threadId) ?? []).length === 2 && settled(h, threadId));
   const second = driver.prompts.get(threadId)![1]!;
-  expect(second).toContain(BLOCK);
+  expect(second).toContain('Mochi guide:');
+  expect(second).not.toContain('Your memory,');
   expect(second.split(BOT_GUIDE).length - 1).toBe(1);
+});
+
+test('a warm mochi gets each delegation policy change once and a fresh disabled mochi skips the guide', async () => {
+  await client.call('brain.configure', { path: null, enabled: false, boiteGuide: true });
+  let fail = false;
+  const nativeSessions: (string | null)[] = [];
+  const driver = scripted(ctx => {
+    nativeSessions.push(ctx.sessionId);
+    return { text: 'Noted.', status: fail ? 'error' : 'done' };
+  });
+  restore = driver.restore;
+  const { agent, threadId } = await makeAgent(h, client);
+  const prompts = () => driver.prompts.get(threadId)!;
+  const guide = 'Boite subagents';
+  const ask = async () => {
+    const count = prompts().length;
+    await client.call('turns.start', { threadId, prompt: 'Keep working.' });
+    await waitFor(() => prompts().length === count + 1 && settled(h, threadId));
+    return prompts().at(-1)!;
+  };
+  const configure = async (enabled: boolean) => {
+    const runtime = await client.call('agents.runtime.get', { agentId: agent.id });
+    await client.call('agents.runtime.configure', {
+      agentId: agent.id,
+      expectedRevision: h.core.workforce.records.get('profile', agent.id).revision,
+      config: { ...runtime, subagents: { ...runtime.subagents, enabled } },
+    });
+  };
+  expect(prompts()[0]).not.toContain(guide);
+  const sessionId = h.core.threads.require(threadId).sessionId;
+  expect(sessionId).not.toBeNull();
+  await configure(true);
+  expect(await ask()).toContain('boite delegate spawn');
+  expect(await ask()).not.toContain(guide);
+  await configure(false);
+  expect(await ask()).toContain('the owner turned them off');
+  expect(await ask()).not.toContain(guide);
+  await configure(true);
+  expect(await ask()).toContain('boite delegate spawn');
+  expect(await ask()).not.toContain(guide);
+  expect(h.core.threads.require(threadId).sessionId).toBe(sessionId);
+
+  // Older cores recorded only the coordination guide, even after sending the delegation guide.
+  const key = `${COORDINATION_SENT_PREFIX}${threadId}`;
+  const receipt = (h.core.journal.getSetting(key) as { coordination: unknown }).coordination;
+  expect(receipt).toMatchObject({ sessionGeneration: h.core.threads.require(threadId).sessionGeneration ?? 0 });
+  h.core.journal.setSetting(key, receipt);
+  await configure(false);
+  fail = true;
+  expect(await ask()).toContain('the owner turned them off');
+  expect(nativeSessions.at(-1)).toBe(sessionId);
+  expect(h.core.journal.getSetting(key)).toEqual(receipt);
+  fail = false;
+  expect(await ask()).toContain('the owner turned them off');
+  expect(nativeSessions.at(-1)).toBe(sessionId);
+  expect(h.core.journal.getSetting(key)).toMatchObject({ coordination: receipt, delegation: { hash: expect.any(String) } });
+  expect(await ask()).not.toContain(guide);
+
+  h.core.journal.setSetting(key, receipt);
+  const thread = h.core.threads.require(threadId);
+  h.core.journal.putThread({ ...thread, sessionId: null, sessionGeneration: (thread.sessionGeneration ?? 0) + 1 });
+  expect(await ask()).not.toContain(guide);
+  expect(nativeSessions.at(-1)).toBeNull();
 });
 
 test('the context block is sent once, then again only on a fresh session or a compaction; a change to MEMORY.md alone goes as its lines', async () => {
@@ -103,6 +168,12 @@ test('the context block is sent once, then again only on a fresh session or a co
   expect(first).not.toContain(BLOCK);
   expect(first).toContain('First question?');
 
+  // Start with enough context that a short update is cheaper than rereading the file.
+  const brain = await client.call('agents.brain.get', { agentId: agent.id });
+  const memory = Array.from({ length: 10 }, (_, i) => `Check release checklist item ${i} before shipping.`).join('\n');
+  await client.call('agents.brain.save', { agentId: agent.id, expectedRevision: brain.revision, instructions: brain.instructions, memory });
+  expect(await ask('Review existing notes')).toContain('Your memory,');
+
   // Only the memory changed: the next turn hears the line added, not the block again.
   await client.call('agents.memory.note', { agentId: agent.id, text: 'The release is on Friday.' });
   const second = await ask('Second question?');
@@ -117,6 +188,25 @@ test('the context block is sent once, then again only on a fresh session or a co
   const moved = await ask('Fourth question?');
   expect(moved).toMatch(/Lines removed:\n- \d{4}-\d{2}-\d{2} The release is on Friday\.\n\nLines added at the top:\n- \d{4}-\d{2}-\d{2} The release moved to Monday\.\n/);
   expect(moved).not.toContain(BLOCK);
+
+  // Changing the persona sends its replacement without the memory or shared mochi rules.
+  const current = h.core.workforce.records.get('profile', agent.id);
+  h.core.workforce.records.update('profile', current.id, current.revision, { ...current, instructions: 'Answer about support.' });
+  const persona = await ask('Reply as updated');
+  expect(persona).toContain('Answer about support.');
+  expect(persona).not.toContain('The release moved to Monday.');
+  expect(persona).not.toContain(BOT_GUIDE);
+  expect(await ask('Anything else?')).not.toContain('Answer about support.');
+
+  const latest = await client.call('agents.brain.get', { agentId: agent.id });
+  await client.call('agents.brain.save', {
+    agentId: agent.id, expectedRevision: latest.revision, instructions: 'Answer about both.',
+    memory: latest.memory.replace('The release moved to Monday.', 'The release moved to Tuesday.'),
+  });
+  const both = await ask('Read the new instructions and notes');
+  expect(both).toContain('Answer about both.');
+  expect(both).toMatch(/Lines removed:\n- \d{4}-\d{2}-\d{2} The release moved to Monday\.\n\nLines added at the top:\n- \d{4}-\d{2}-\d{2} The release moved to Tuesday\.\n/);
+  expect(both).not.toContain('the rest of who you are is as it was');
 
   // A fresh native session (an account switch) hears the block whole, memory changed or not, with the journal's history.
   await client.call('agents.memory.note', { agentId: agent.id, text: 'Ship notes go to the wiki.' });
@@ -140,15 +230,15 @@ test('the context block is sent once, then again only on a fresh session or a co
   // Each turn that carried something is on the thread's events: block or memory, its size and hash.
   const turns = new Map(turnsOf(h, threadId).map(t => [t.id, t]));
   const kinds = traced().map(t => t.kind);
-  expect(kinds).toEqual(['block', 'memory', 'memory', 'block', 'block']);
+  expect(kinds).toEqual(['block', 'memory', 'memory', 'memory', 'block', 'block', 'block', 'block']);
   for (const trace of traced()) {
     expect(turns.has(trace.turnId)).toBe(true);
     expect(trace.hash).toMatch(/^[0-9a-f]{64}$/);
   }
-  expect(traced()[1]!.characters).toBeLessThan(traced()[0]!.characters);
+  expect(traced()[2]!.characters).toBeLessThan(traced()[1]!.characters);
 });
 
-test('a memory rewritten past what its lines would say goes as the whole block, never a longer note', async () => {
+test('a rewritten memory goes as a replacement when shorter than a note about every changed line', async () => {
   const driver = scripted(() => ({ text: 'Noted.' })); restore = driver.restore;
   const { agent, threadId } = await makeAgent(h, client);
   const sent = () => driver.prompts.get(threadId) ?? [];
@@ -164,13 +254,15 @@ test('a memory rewritten past what its lines would say goes as the whole block, 
   };
   const lines = (word: string) => Array.from({ length: 120 }, (_, i) => `- ${word} fact number ${i} with a few more words`).join('\n');
   await write(`${lines('old')}\n`);
-  expect(await ask('One')).toContain(BLOCK);
-  // Every line differs: removed and added would say the file twice, longer than the block that holds it once.
+  expect(await ask('One')).toContain('Your memory,');
+  // Every line differs: removed and added would say the file twice.
   await write(`${lines('new')}\n`);
   const rewritten = await ask('Two');
-  expect(rewritten).toContain(BLOCK);
+  expect(rewritten).not.toContain(BLOCK);
+  expect(rewritten).toContain('Boite: your memory was replaced.');
   expect(rewritten).not.toContain('your memory changed');
   expect(rewritten).toContain('- new fact number 119');
+  expect(rewritten).not.toContain('- old fact number');
 });
 
 test('a due routine wakes the agent with a routine turn and records how it ended', async () => {
@@ -987,9 +1079,10 @@ test('a single-date routine coming due sends no block again; spent, it leaves th
   const daily = await routine(agent.id, { name: 'Daily review' });
   const once = await routine(agent.id, { name: 'Post the devlog', prompt: 'Post it once', schedule: { kind: 'once', at: Date.now() + 3_600_000 } });
   await waitFor(() => settled(h, threadId));
-  await client.call('turns.start', { threadId, prompt: 'Carry the block.' });
-  await waitFor(() => settled(h, threadId) && sent().at(-1)!.includes('Carry the block.'));
-  expect(sent().at(-1)).toContain(BLOCK);
+  await client.call('turns.start', { threadId, prompt: 'Review the routines.' });
+  await waitFor(() => settled(h, threadId) && sent().at(-1)!.includes('Review the routines.'));
+  expect(sent().at(-1)).toContain('Routines:\nYour routines:');
+  expect(sent().at(-1)).not.toContain(BLOCK);
   expect(sent().at(-1)).toContain('"Post the devlog"');
 
   // Coming due flips it off and leaves the list: the routine's own turn carries no block.
@@ -997,6 +1090,7 @@ test('a single-date routine coming due sends no block again; spent, it leaves th
   await waitFor(() => read(once.id).lastOutcome === 'done' && settled(h, threadId));
   expect(sent().at(-1)).toStartWith('Post it once');
   expect(sent().at(-1)).not.toContain(BLOCK);
+  expect(sent().at(-1)).not.toContain('Your routines:');
   const block = agentContext(h.core, agent).text;
   expect(block).toContain('"Daily review"');
   expect(block).not.toContain('"Post the devlog"');
@@ -1014,6 +1108,7 @@ test('a single-date routine coming due sends no block again; spent, it leaves th
   await client.call('turns.start', { threadId, prompt: 'After the sweep.' });
   await waitFor(() => settled(h, threadId) && sent().at(-1)!.includes('After the sweep.'));
   expect(sent().at(-1)).not.toContain(BLOCK);
+  expect(sent().at(-1)).not.toContain('Your routines:');
 }, 20_000);
 
 test('three [quiet] occurrences in a row tell the bot to give the routine a check, until it speaks or takes one', async () => {

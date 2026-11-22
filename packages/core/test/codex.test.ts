@@ -46,15 +46,24 @@ test('native collaboration is journalled and appears in Team without using Boite
 
 test('Send now during Codex startup stops the old turn and starts one new native turn before output', async () => {
   const { client, threadId } = await startThread();
-  process.env['CODEX_FAKE_SLOW_START'] = '250';
+  const startupGate = join(harness!.dataDir, 'codex-startup-ready');
   const outputGate = join(harness!.dataDir, 'codex-output-ready');
+  process.env['CODEX_FAKE_STARTUP_GATE'] = startupGate;
   process.env['CODEX_FAKE_OUTPUT_GATE'] = outputGate;
   const turn = await client.call('turns.start', { threadId, prompt: '[slow] Keep working' });
-  await waitFor(() => harness!.core.threads.runner.handles.has(threadId));
+  await waitFor(() => fakeLog().includes('thread/start approvalPolicy='));
   expect(harness!.core.threads.progress.get(threadId)?.phase).toBe('starting');
-  await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, sendNow: true,
-    value: { input: { text: 'still typing', attachments: [], paused: false,
-      queued: [{ id: 'codex-startup-followup', text: 'also check the mochis', attachments: [] }] } } });
+  const stopping = spyOn(harness!.core.threads.runner.handles.get(threadId)!, 'stop');
+  try {
+    await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, sendNow: true,
+      value: { input: { text: 'still typing', attachments: [], paused: false,
+        queued: [{ id: 'codex-startup-followup', text: 'also check the mochis', attachments: [] }] } } });
+    await waitFor(() => stopping.mock.calls.length > 0);
+    expect(fakeLog()).not.toContain('turn/start ');
+  } finally {
+    stopping.mockRestore();
+    writeFileSync(startupGate, 'ready');
+  }
   await waitFor(() => harness!.core.journal.getTurn(turn.id)?.status === 'stopped');
   await waitFor(() => harness!.core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
   await waitFor(() => fakeLog().split('\n').filter(line => line.startsWith('turn/start ')).length === 1);
@@ -79,13 +88,16 @@ test('coordination steers the current Codex turn without creating a user turn', 
   expect(await harness!.core.threads.steer(threadId, 'Boite agent coordination. Wait for the VM.')).toBe(true);
   expect(fakeLog()).toContain('turn/steer codex-fake-turn-1 Boite agent coordination');
   const turn = harness!.core.journal.listTurns(threadId)[0]!;
-  expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'User correction',
+  expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'User correction [steer-delta]',
     attachments: [{ kind: 'image', mimeType: 'image/png', data: 'aGVsbG8=', name: 'sample.png' }], clientRequestId: 'codex_steer_01' })).toEqual({ accepted: true });
   expect(fakeLog()).toContain('turn/steer codex-fake-turn-1 User correction');
   expect(fakeLog()).toContain('steer-images 1 data:image/png;base64,');
   expect(harness!.core.journal.listTurns(threadId)).toHaveLength(1);
   expect(harness!.core.journal.listMessages(threadId).filter(m => m.role === 'user')).toHaveLength(2);
   expect(harness!.core.journal.listMessages(threadId).some(m => m.role === 'system')).toBe(true);
+  const replied = () => harness!.core.journal.listMessages(threadId).findIndex(m => m.parts.some(part => part.type === 'text' && part.text.includes('Steer answered')));
+  await waitFor(() => replied() >= 0);
+  expect(replied()).toBeGreaterThan(harness!.core.journal.listMessages(threadId).findLastIndex(m => m.role === 'user'));
   await client.call('turns.stop', { threadId });
 });
 
@@ -153,6 +165,8 @@ afterEach(async () => {
   const open = harness;
   harness = null;
   delete process.env['CODEX_FAKE_LOG'];
+  delete process.env['CODEX_FAKE_USAGE_GATE'];
+  delete process.env['CODEX_FAKE_STARTUP_GATE'];
   for (const name of FAKE_SWITCHES) delete process.env[name];
   if (open !== null) await open.stop();
 });
@@ -1201,23 +1215,83 @@ describe('codex driver', () => {
   });
 
   test('context reported after completion is retained, including a missing total', async () => {
-    const { client, threadId } = await startThread({warmProcessMinutes: 1});
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
     const { finished } = await startTurn(client, threadId, '[late-context]', 20000);
     await finished;
     await waitFor(() => harness?.core.journal.getThread(threadId)?.context?.tokens === 90, 1500);
     const thread = await client.call('threads.get', {threadId});
     expect(thread.context?.window).toBe(200000);
     expect(thread.context?.breakdown).toEqual({input:60,cache:20,output:10});
+    expect(thread.turns.at(-1)?.usage).toMatchObject({inputTokens:60,cacheReadTokens:20,outputTokens:10});
   });
 
-  test('late usage from a previous turn does not overwrite the current turn', async () => {
+  test('a cold Codex turn keeps a second usage snapshot after completion', async () => {
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+    const { finished } = await startTurn(client, threadId, '[partial-usage]', 20000);
+    const ended = await finished;
+    expect(ended.usage).toMatchObject({ inputTokens: 10, outputTokens: 2 });
+    await waitFor(() => harness!.core.journal.getTurn(ended.id)?.usage?.outputTokens === 12, 1500);
+    expect(harness!.core.journal.getTurn(ended.id)?.usage).toMatchObject({ inputTokens: 70, cacheReadTokens: 20, outputTokens: 12 });
+  });
+
+  test('a stopped Codex turn keeps usage sent after the interrupt completes', async () => {
     const { client, threadId } = await startThread({ warmProcessMinutes: 1 });
-    await runTurn(client, threadId, '[late-context]');
+    const { finished } = await startTurn(client, threadId, '[slow-usage]', 20000);
+    await waitFor(() => fakeLog().includes('waiting for interrupt'));
+    await client.call('turns.stop', { threadId });
+    const ended = await finished;
+    expect(ended.status).toBe('stopped');
+    await waitFor(() => harness!.core.journal.getTurn(ended.id)?.usage?.outputTokens === 10, 1500);
+    expect(harness!.core.journal.getTurn(ended.id)?.usage).toMatchObject({ inputTokens: 60, cacheReadTokens: 20, outputTokens: 10 });
+  });
+
+  test('late usage from an older turn uses the journal without changing the current turn', async () => {
+    const { client, threadId } = await startThread({ warmProcessMinutes: 1 });
+    const gate = join(harness!.dataDir, 'usage-ready');
+    process.env['CODEX_FAKE_USAGE_GATE'] = gate;
+    const { finished: firstFinished } = await startTurn(client, threadId, '[late-context]', 20000);
+    const first = await firstFinished;
+    for (let i = 0; i < 16; i += 1) {
+      const { finished } = await startTurn(client, threadId, `Intervening prompt ${i}`);
+      expect((await finished).status).toBe('done');
+    }
+    const rows = () => harness!.core.journal.db.query(`SELECT count(*) AS total FROM settings WHERE key >= 'native-late-usage:' AND key < 'native-late-usage;'`).get() as { total: number };
+    expect(rows().total).toBe(17);
     const { finished } = await startTurn(client, threadId, '[slow]', 20000);
+    await waitFor(() => fakeLog().includes('waiting for interrupt'));
+    writeFileSync(gate, 'ready');
     await waitFor(() => harness!.core.threads.get(threadId).context?.tokens === 90);
     await client.call('turns.stop', { threadId });
     expect((await finished).usage).toBeNull();
-  });
+    expect(harness!.core.journal.getTurn(first.id)?.usage).toMatchObject({ inputTokens: 60, cacheReadTokens: 20, outputTokens: 10 });
+    await waitFor(() => rows().total === 0, 1500);
+  }, 20_000);
+
+  test('late usage invalidates an already finished workflow', async () => {
+    const { client, threadId } = await startThread({ warmProcessMinutes: 1 });
+    const gate = join(harness!.dataDir, 'usage-ready');
+    process.env['CODEX_FAKE_USAGE_GATE'] = gate;
+    const run = await client.call('workflows.start', { threadId, requestId: 'late-usage', plan: {
+      name: 'Late usage', steps: [{ id: 'measure', model: 'codex-fake/fake-codex', task: '[late-context]' }],
+    } });
+    const snapshot = () => harness!.core.workflows.get(threadId, run.id);
+    const measurements: number[] = [];
+    client.on('workflows.changed', change => {
+      if (change.runId !== run.id) return;
+      const view = snapshot();
+      if (view.status === 'done') measurements.push(view.usage?.outputTokens ?? 0);
+    });
+    await waitFor(() => ['done', 'failed', 'stopped'].includes(snapshot().status), 3500);
+    expect(snapshot()).toMatchObject({ status: 'done' });
+    await waitFor(() => measurements.includes(0), 1500);
+    const childId = snapshot().nodes[0]!.instances[0]!.threadId!;
+    expect(harness!.core.journal.getThread(childId)?.archived).toBe(true);
+    writeFileSync(gate, 'ready');
+    await waitFor(() => harness!.core.journal.getThread(childId)?.context?.tokens === 90, 1500);
+    expect(harness!.core.journal.listTurns(childId).at(-1)?.usage).toMatchObject({ inputTokens: 60, cacheReadTokens: 20, outputTokens: 10, buckets: 1 });
+    await waitFor(() => measurements.includes(10), 1500);
+    expect(snapshot().nodes[0]?.instances[0]?.usage).toMatchObject({ inputTokens: 60, cacheReadTokens: 20, outputTokens: 10 });
+  }, 10000);
 
   test('the turn usage sums every model request of the turn once, with no price, and keeps its input apart from the cache', async () => {
     const { client, threadId } = await startThread();

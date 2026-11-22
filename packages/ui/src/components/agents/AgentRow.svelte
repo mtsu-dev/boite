@@ -3,6 +3,7 @@
   import { ArrowRightLeft, Pin } from '@lucide/svelte';
   import { focusOnMount } from '../../lib/actions';
   import { longPress } from '../../lib/long-press';
+  import type { ThreadWait } from '../../lib/background';
   import { fill, strings } from '../../lib/strings';
   import { ago, elapsed, exactTime } from '../../lib/format';
   import { secondClock } from '../../lib/clock.svelte';
@@ -12,6 +13,7 @@
   import MachinePlace from '../MachinePlace.svelte';
   import { hostMark } from '../../lib/machine-host';
   import StatusMark from '../StatusMark.svelte';
+  import WaitLine from '../WaitLine.svelte';
   import BuiltinBadge from './BuiltinBadge.svelte';
 
   /**
@@ -27,7 +29,7 @@
    * One signal per state: a coloured mark leads the line under the name (the
    * thread rows' shapes, StatusMark.svelte) and the words stay neutral ink.
    */
-  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
+  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wait = null, wake = null, machine, testid, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
     title: string;
     /** A bot Boite ships: a small badge after its name. */
     builtin?: boolean;
@@ -47,6 +49,7 @@
     icon?: Component<{ size?: number; strokeWidth?: number }>;
     /** When its work started, while it works: the right side counts from it. */
     since?: number | null;
+    wait?: ThreadWait | null;
     /** When it next wakes on its own, while it rests. */
     wake?: { at: number; label: string } | null;
     /** The machine it runs on, drawn before the picture once there are two, as on a thread's row. */
@@ -124,11 +127,11 @@
         {#if marked}<StatusMark tone="unread" label={strings.sidebar.unread} />{/if}
       {/if}
     </span>
-    {#if detail}
+    {#if detail || wait}
       <span class="detail-line">
         {#if mark}<span class="state-mark" data-testid="agent-row-mark"><StatusMark tone={mark} label={markLabel} /></span>
         {:else if icon}{@const Glyph = icon}<span class="glyph" data-testid="agent-row-glyph"><Glyph size={13} strokeWidth={2} /></span>{/if}
-        <span class="detail" data-testid="agent-row-detail" use:wordFit={detail}></span>
+        {#if wait}<WaitLine {wait} />{:else}<span class="detail" data-testid="agent-row-detail" use:wordFit={detail}></span>{/if}
       </span>
     {/if}
     {#if pending}<span class="pending" data-testid="agent-row-pending" title={pending}><ArrowRightLeft size={12} /><span class="ui-label">{pending}</span></span>{/if}

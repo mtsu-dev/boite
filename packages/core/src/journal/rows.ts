@@ -49,6 +49,7 @@ export interface ThreadRow {
   permission_mode: string;
   status: string;
   unread: number;
+  interruption_read_at?: number | null;
   archived: number;
   pinned: number;
   session_id: string | null;
@@ -151,6 +152,7 @@ export function toThread(row: ThreadRow): ThreadSummary {
     permissionMode: row.permission_mode as ThreadSummary['permissionMode'],
     status: row.status as ThreadSummary['status'],
     unread: row.unread !== 0,
+    ...(row.interruption_read_at != null ? { interruptionReadAt: row.interruption_read_at } : {}),
     archived: row.archived !== 0,
     ...(row.done_at != null ? { doneAt: row.done_at } : {}),
     ...(row.archived !== 0 && row.archived_at != null ? { archivedAt: row.archived_at } : {}),

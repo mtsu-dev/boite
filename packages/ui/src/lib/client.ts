@@ -109,13 +109,18 @@ export interface WsClientOptions {
    * nothing is sent then, since the hello carries this client's key for the
    * machine at the end and would hand it to a member it is no longer paired with.
    */
-  relay?: () => string | DeviceHello | null;
+  relay?: () => string | { coreId: string; hello: DeviceHello } | null;
   /**
    * This device's key, for a machine of its group: every hello carries a
    * signature made for `coreId`. With `grant`, the key is admitted to the
    * group instead, and `onDevice` hears the device id and the machine's id.
    */
-  signer?: { key: () => Promise<DeviceKey>; coreId: string | null };
+  signer?: {
+    key: () => Promise<DeviceKey>;
+    coreId: string | null;
+    /** Replaces a key only after the previously paired core signs its revocation. */
+    replaceRevokedKey?: (id: string) => Promise<DeviceKey>;
+  };
   /** A grant just admitted this device's key: its id, and the id of the machine that let it in. */
   onDevice?: (device: string, coreId: string) => unknown;
   /** Returning false refuses the key: the client closes instead of using it. */

@@ -27,6 +27,12 @@ export interface GitStatus {
   changes: GitChange[];
 }
 
+/** Error data on a Git read refused because the thread is outside a repository. */
+export interface GitOutsideRepository {
+  reason: 'not-a-repository';
+  threadId: ThreadId;
+}
+
 /** Maximum full name of a Git branch created by Boite, including prefix and collision suffix. */
 export const BRANCH_NAME_MAX = 48;
 
@@ -62,6 +68,14 @@ export interface WorktreeEntry {
   threadArchived: boolean;
 }
 
+export interface WorktreeRecovery {
+  /** The original checkout path on the core's machine. */
+  path: string;
+  /** The Git commit retired, or null for a removal recorded by an older core. */
+  commit: string | null;
+  recoveryPath: string;
+}
+
 /** Both sides of one file, the working tree against `ref` (HEAD by default). */
 export interface GitDiff {
   path: string;
@@ -94,6 +108,8 @@ export interface GitRpcMethods {
    * the thread standing in it. Owner only: it names paths.
    */
   'worktrees.list': { params: { projectId: ProjectId }; result: WorktreeEntry[] };
+  /** Owner only. Files retained after a checkout was removed, across all projects. */
+  'worktrees.recoveries': { params: Record<string, never>; result: WorktreeRecovery[] };
   /**
    * `git worktree remove`, then `git branch -d` on its branch (`-D` with
    * `force`), then `git worktree prune --expire 1.hour.ago`. Refused by name
