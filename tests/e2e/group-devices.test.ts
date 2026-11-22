@@ -249,6 +249,7 @@ test('a phone installed from one machine scans the code of another and lists and
 
 test('a phone removed from the group on one machine is refused by every machine', async () => {
   // Removed from the group on the first machine: the second refuses it too, and the phone is back on its screen with one way in.
+  await mobileAction(phone, 'mobile-conversations');
   await desk.click(`${id('group-device')}[data-device-id="${deviceId}"] ${id('group-device-remove')}`);
   await desk.waitFor(`document.querySelector('${id('confirm-ok')}')`);
   await desk.click(id('confirm-ok'));
@@ -256,6 +257,10 @@ test('a phone removed from the group on one machine is refused by every machine'
   expect((await b.call('group.get', {}))?.devices).toEqual([]);
   expect((await b.call('sessions.list', {})).filter((session) => session.role === 'device')).toEqual([]);
   await phone.waitFor(`globalThis.__boiteTest.workspace.machines.every(machine => machine.store.connection !== 'ready')`, 30_000);
+  // A disconnected socket may still be receiving the signed revocation on reconnect.
+  // Reload only once the phone has processed it and returned to pairing.
+  const scan = `document.querySelector('${id('mobile-connect')} ${id('machine-scan')}')`;
+  await phone.waitFor(scan, 30_000);
   await phone.reload();
-  await phone.waitFor(`document.querySelector('${id('mobile-connect')} ${id('machine-scan')}')`, 30_000);
+  await phone.waitFor(scan, 30_000);
 }, 180_000);

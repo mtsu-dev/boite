@@ -44,13 +44,15 @@ export const SETTLE_ANIMATIONS = `new Promise((resolve) => {
   const watched = document.getAnimations().filter((a) => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity && drawn(a));
   for (const a of watched) a.finished.then(() => ended.add(a), () => ended.add(a));
   document.fonts.ready.then(() => { fonts = true; });
+  const settled = () => fonts && watched.every((a) => ended.has(a) || !drawn(a));
   const frame = () => {
     if (!live) return;
-    if (fonts && watched.every((a) => ended.has(a) || !drawn(a))) return done(true);
+    if (settled()) return done(true);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
-  setTimeout(() => done(false), ${CALL_TIMEOUT_MS - 5_000});
+  // The last paint can be suppressed even after the fonts and animations finish.
+  setTimeout(() => done(settled()), ${CALL_TIMEOUT_MS - 5_000});
 })`;
 const POLL_MS = 100;
 /** Distinct debugging-port answers a failed wait reports. */

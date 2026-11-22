@@ -6,6 +6,15 @@ import { startUi } from './lib/ui';
 /** What the timeline ends on: its last message, or the closing line under a finished turn. */
 const LAST = `'[data-testid="message"], [data-testid="thread-closing"]'`;
 
+async function scrollToEnd(page: BrowserPage) {
+  await page.evaluate(`new Promise(resolve => {
+    const timeline = document.querySelector('[data-testid="timeline"]');
+    timeline.scrollTop = timeline.scrollHeight;
+    // Give the virtual list a rendered frame to apply its measured row heights.
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  })`);
+}
+
 test('queued prompts sit above the activity dock attached to the input', async () => {
   const port = await freePort();
   const server = await startUi(port);
@@ -28,13 +37,14 @@ test('queued prompts sit above the activity dock attached to the input', async (
     const HISTORY_FULL = 640;
     for (const width of [1300, 390]) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: HISTORY_FULL, deviceScaleFactor: 1, mobile: width === 390 });
+      await page.waitFor(`innerWidth === ${width} && innerHeight === ${HISTORY_FULL}`);
       await page.settleAnimations();
-      await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
+      await scrollToEnd(page);
+      await page.screenshot(join(import.meta.dir, '.artifacts', `queued-spacing-${process.env.BOITE_QUEUE_CAPTURE ?? 'after'}-${width}.png`));
       const gap = await page.evaluate<number>(`(() => {
         const last = [...document.querySelectorAll(${LAST})].at(-1);
         return document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - last.getBoundingClientRect().bottom;
       })()`);
-      await page.screenshot(join(import.meta.dir, '.artifacts', `queued-spacing-${process.env.BOITE_QUEUE_CAPTURE ?? 'after'}-${width}.png`));
       expect(gap).toBeGreaterThanOrEqual(16);
       expect(gap).toBeLessThanOrEqual(40);
       expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
@@ -62,9 +72,10 @@ test('queued prompts sit above the activity dock attached to the input', async (
     await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread.activity = { goal: null, loop: null, tasks: [{ id: 'work', text: 'Keep the latest answer visible', status: 'in_progress' }] }`);
     for (const width of [1300, 390]) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: HISTORY_FULL, deviceScaleFactor: 1, mobile: width === 390 });
+      await page.waitFor(`innerWidth === ${width} && innerHeight === ${HISTORY_FULL}`);
       // The dock is the composer card's top row: the queue above the card clears it without a lift of its own.
       await page.waitFor(`(() => { const dock = document.querySelector('[data-testid="thread-activity"]'); return dock?.offsetHeight > 0 && dock.closest('[data-testid="composer"]') !== null; })()`);
-      await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
+      await scrollToEnd(page);
       await page.settleAnimations();
       const gap = await page.evaluate<number>(`document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - [...document.querySelectorAll(${LAST})].at(-1).getBoundingClientRect().bottom`);
       expect(gap).toBeGreaterThanOrEqual(12);
