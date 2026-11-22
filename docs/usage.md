@@ -95,11 +95,10 @@ when the provider supplies it. Choose Resume to continue the request, or
 Resume with another model to pick one available on the same account for that
 turn. The model selected for later messages stays as it was.
 
-Resume threads after a usage limit, in Settings, Limits, is off by default.
-Turned on, a Claude or Codex thread stopped by a subscription limit resumes by
-itself a minute after the limit resets, once per window. Stop, a new message
-or a changed model cancels it, and the banner above the box has Do not
-resume.
+Resume threads after a usage limit, in Settings, Limits, is on by default.
+A Claude or Codex thread stopped by a subscription limit resumes by itself a
+minute after the limit resets, once per window. Stop, a new message or a
+changed model cancels it, and the banner above the box has Do not resume.
 
 When a model is at capacity, Claude and Codex turns try again by themselves
 after 30 seconds, 2 minutes and 5 minutes. Stop retrying ends the wait.

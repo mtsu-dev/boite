@@ -219,7 +219,7 @@ export interface Settings {
   /**
    * A turn that failed on a subscription usage limit resumes by itself once
    * that limit's window resets: one new turn per window and thread, with a
-   * short continue prompt (docs/internals/usage.md). Missing reads as off.
+   * short continue prompt (docs/internals/usage.md). Missing reads as on.
    */
   autoResumeLimitedThreads?: boolean;
   /**

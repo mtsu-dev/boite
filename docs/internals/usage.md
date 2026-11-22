@@ -592,7 +592,7 @@ and the cancellation of any automatic plan together. The continuation keeps its
 saved selection if the core stops before sending it.
 
 Settings > Limits has "Resume threads after a usage limit"
-(`autoResumeLimitedThreads`, off by default). With it on, a turn that failed
+(`autoResumeLimitedThreads`, on by default). With it on, a turn that failed
 on a usage limit plans one resume a minute after the window resets
 (`threads/limit-resume.ts`). The reset comes from the agent's rate-limit event,
 else parsed from the agent's error text (`drivers/usage-limit.ts`), else the

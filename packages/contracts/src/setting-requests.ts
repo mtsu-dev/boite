@@ -276,7 +276,7 @@ export const PLUGIN_ADD_SECTION = 'plugins-add';
 const MISSING: Partial<Record<RequestableSetting, unknown>> = {
   asyncQuestions: true,
   autoInstallUpdates: false,
-  autoResumeLimitedThreads: false,
+  autoResumeLimitedThreads: true,
   autoGoals: false,
   cacheKeepalive: null,
   backgroundCompaction: false,

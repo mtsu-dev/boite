@@ -364,7 +364,7 @@ export class ResumePlanner {
   #refusal(thread: ThreadSummary, plan: Plan): string | null {
     const threadId = thread.id;
     const limit = plan.reason === 'limit';
-    if (limit && this.#core.settings.get().autoResumeLimitedThreads !== true) return 'automatic resume was turned off';
+    if (limit && this.#core.settings.get().autoResumeLimitedThreads === false) return 'automatic resume was turned off';
     if (thread.archived) return 'the thread was archived';
     if (this.threads.isBusy(threadId)) return 'the thread is busy';
     if (this.lastTurn(threadId)?.id !== plan.turnId) return 'the thread was answered since';

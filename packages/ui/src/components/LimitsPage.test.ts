@@ -303,6 +303,21 @@ test('the automatic resume switch saves the setting and a refusal puts it back',
   expect(toggle.checked).toBe(false);
 });
 
+test('the automatic resume switch is checked by default when the setting is absent and reverts to checked on refusal', async () => {
+  const call = vi.fn(async () => [quota('Claude')]);
+  const saveSettings = vi.fn(async () => false);
+  const store = { client: { call, on: () => () => {} }, connection: 'ready', owner: true, endpointUrl: 'resume-default-core', accounts: [],
+    settings: {}, saveSettings } as unknown as Store;
+  mounted = mount(LimitsPage, { target: document.body, props: { store } });
+  await settle();
+  const toggle = document.querySelector<HTMLInputElement>('[data-testid="setting-auto-resume"]')!;
+  expect(toggle.checked).toBe(true);
+  toggle.click();
+  await settle();
+  expect(saveSettings).toHaveBeenCalledWith({ autoResumeLimitedThreads: false });
+  expect(toggle.checked).toBe(true);
+});
+
 test('the bell of a card, a gateway entry included, sets several shares left per period, presets and custom ones', async () => {
   const calls: unknown[] = [];
   const rows: AccountQuota[] = [{

@@ -12,21 +12,22 @@ export const LIMIT_RESUME = RESUME_TIMING.limit;
 const SAME_WINDOW_MS = 120_000;
 
 /**
- * The opt-in `autoResumeLimitedThreads` at work. A turn that failed on a spent
- * subscription window plans one resume for its thread, a little after that
- * window resets: the reset the agent reported, else the spent window of the
- * account's quota reading (or Douane pool when routed through Douane).
- * `ResumePlanner` journals the plan and checks everything again when it fires:
- * a thread answered, stopped, archived, switched to another account, model or
- * provider, a paused team or a pending approval cancels it. A failure that
- * reports a window already reset plans nothing, and a thread resumes once per
- * window, so a limit never turns into a retry loop.
+ * Automatic resume after a usage limit (`autoResumeLimitedThreads`, on unless
+ * set to `false`). A turn that failed on a spent subscription window plans one
+ * resume for its thread, a little after that window resets: the reset the agent
+ * reported, else the spent window of the account's quota reading (or Douane
+ * pool when routed through Douane). `ResumePlanner` journals the plan and
+ * checks everything again when it fires: a thread answered, stopped, archived,
+ * switched to another account, model or provider, a paused team or a pending
+ * approval cancels it. A failure that reports a window already reset plans
+ * nothing, and a thread resumes once per window, so a limit never turns into
+ * a retry loop.
  */
 export class LimitResumes {
   constructor(private readonly core: Core, private readonly resumes: ResumePlanner) {
     // A setting that rolls back keeps the plans.
     core.bus.onCommitted((name, payload) => {
-      if (name === 'settings.updated' && (payload as Settings).autoResumeLimitedThreads !== true) {
+      if (name === 'settings.updated' && (payload as Settings).autoResumeLimitedThreads === false) {
         resumes.cancelAll('automatic resume was turned off', plan => plan.reason === 'limit');
       }
     });
@@ -43,7 +44,7 @@ export class LimitResumes {
     const operation = turn.execution?.operation;
     if (operation !== undefined && operation !== 'resume' && operation !== 'routine' && operation !== 'event') return;
     this.resumes.offer(turn, { kind: 'usage-limit', resetsAt });
-    if (this.core.settings.get().autoResumeLimitedThreads !== true) return;
+    if (this.core.settings.get().autoResumeLimitedThreads === false) return;
     const providerId = turn.execution?.providerId ?? thread.providerId;
     const accountId = turn.execution?.accountId ?? thread.accountId;
     const model = turn.execution ? turn.execution.model : thread.model;
@@ -57,7 +58,7 @@ export class LimitResumes {
 
   private plan(threadId: string, turn: Turn, resetsAt: number | null): void {
     if (this.core.journal.isClosed()) return;
-    if (this.core.settings.get().autoResumeLimitedThreads !== true) return;
+    if (this.core.settings.get().autoResumeLimitedThreads === false) return;
     const skip = (message: string, reason: string) => {
       this.resumes.offer(turn, { kind: 'usage-limit', resetsAt, detail: message });
       this.resumes.log('info', threadId, `Turn ${turn.id}: ${message}`, 'skipped', null, { reason }, 'limit');

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Message, ThreadRetry } from '@boite/contracts';
+import { effectiveSetting, type Message, type ThreadRetry } from '@boite/contracts';
 import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext } from '../src/drivers/types.ts';
@@ -33,7 +33,7 @@ function retryOf(h: TestCore, threadId: string): ThreadRetry | null {
 }
 
 test('a usage limit exposes its reset and can resume on a model chosen by the owner', async () => {
-  const h = await startTestCore();
+  const h = await startTestCore({ settings: { autoResumeLimitedThreads: false } });
   const contexts: TurnContext[] = [];
   const resetsAt = Date.now() + 60_000;
   const restore = setDriver('echo', {
@@ -262,8 +262,23 @@ test('Stop ends a capacity wait at once and Cancel fails the turn with the refus
   } finally { await h.stop(); }
 });
 
-test('a usage limit failure plans nothing while automatic resume is off', async () => {
+test('a fresh core without autoResumeLimitedThreads set plans the resume by default', async () => {
   const h = await startTestCore();
+  try {
+    expect(h.core.settings.get().autoResumeLimitedThreads).toBeUndefined();
+    expect(effectiveSetting(h.core.settings.get(), 'autoResumeLimitedThreads')).toBe(true);
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const turn = await client.call('turns.start', { threadId, prompt: '[usage-limit:400]' });
+    await waitFor(() => retryOf(h, threadId)?.kind === 'usage-limit', 2000);
+    expect(retryOf(h, threadId)?.turnId).toBe(turn.id);
+    await waitFor(() => h.core.journal.listTurns(threadId).length === 2, 3000);
+    expect(h.core.journal.listTurns(threadId)[1]!.execution?.operation).toBe('resume');
+  } finally { await h.stop(); }
+});
+
+test('a usage limit failure plans nothing while automatic resume is explicitly off', async () => {
+  const h = await startTestCore({ settings: { autoResumeLimitedThreads: false } });
   try {
     const client = await h.connect();
     const { threadId } = await echoThread(h, client);
