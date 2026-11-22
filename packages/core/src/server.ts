@@ -817,7 +817,6 @@ export function startServer(options: ServerOptions): RunningServer {
     const revisionFrames: EventFrames | undefined = options?.composerRevision ? new Map() : undefined;
     for (const connection of connections) {
       if (!connection.authenticated || connection.id === options?.excludeConnection) continue;
-      if (name === 'thread.progress' && summaryRow && !connection.accepts.has(name)) { summaryRow(connection); continue; }
       if (!mayReceiveEvent(name, connection, payload)) continue;
       if (connection.identity.principal === 'agent' && !agentHearsEvent(name, payload, connection.identity.threadId, id => core.journal.getThread(id)?.projectId ?? null)) continue;
       const templateChange = name === 'workflows.changed' && (payload as RpcEvents['workflows.changed']).templatesProjectId !== undefined;
@@ -837,7 +836,7 @@ export function startServer(options: ServerOptions): RunningServer {
       // A shell's bytes go to the windows that attached it. Its exit still goes to every owner window: one
       // that lays the pane out without having attached it, a background tab say, drops the pane then.
       if (name === 'terminal.output' && !core.terminals.watches((payload as RpcEvents['terminal.output']).id, connection.id)) continue;
-      if (summaryRow && name === 'thread.load' && !connection.accepts.has(name)) { summaryRow(connection); continue; }
+      if ((name === 'thread.load' || name === 'thread.progress') && summaryRow && !connection.accepts.has(name)) { summaryRow(connection); continue; }
       if (options?.composerRevision && connection.accepts.has('composer.revision') && mayReceiveEvent('composer.revision', connection)) {
         connection.sendEvent('composer.revision', options.composerRevision, revisionFrames);
         continue;
