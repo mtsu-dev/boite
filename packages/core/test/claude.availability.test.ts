@@ -71,6 +71,20 @@ test('an expired rejected window does not hide a future reset in the Claude erro
   expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
 });
 
+test('an expired rejected window does not turn an unrelated Claude failure into a usage limit', async () => {
+  const client = await harness.connect();
+  const threadId = await claudeThread(client);
+  const expired = Math.floor(Date.now() / 1000) - 60;
+  scripted(() => {}, (fake) => {
+    fake.emit(init('sess-stale-refusal'));
+    fake.emit(sdk({ type: 'rate_limit_event', session_id: 'sess-stale-refusal', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: expired } }));
+    for (const message of apiError('sess-stale-refusal', 'unknown', 'API Error: connection closed')) fake.emit(message);
+  });
+  expect(await runTurn(client, threadId, 'hello')).toBe('error');
+  const { recovery } = await client.call('threads.get', { threadId });
+  expect(recovery?.kind).toBe('interrupted');
+});
+
 test('a rate limit on a gateway route names the provider of its model, not a Claude account', async () => {
   const client = await harness.connect();
   const threadId = await claudeThread(client);

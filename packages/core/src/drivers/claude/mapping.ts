@@ -463,7 +463,13 @@ export class RejectedWindows {
     if (info.status === 'allowed') this.#windows.delete(key);
   }
 
-  get hasRejected(): boolean { return this.#windows.size > 0; }
+  get hasRejected(): boolean {
+    const now = Date.now();
+    for (const at of this.#windows.values()) {
+      if (at === null || at > now) return true;
+    }
+    return false;
+  }
 
   latest(now = Date.now()): number | null {
     let latestFuture: number | null = null;
