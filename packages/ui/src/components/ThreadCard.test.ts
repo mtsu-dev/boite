@@ -1,6 +1,6 @@
 import type { ThreadSummary } from '@boite/contracts';
 import { afterEach, expect, test, vi } from 'vitest';
-import { flushSync, mount, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { hostMark } from '../lib/machine-host';
@@ -14,6 +14,7 @@ afterEach(async () => {
   if (mounted) await unmount(mounted);
   mounted = undefined;
   store?.detach(); client?.close();
+  window.dispatchEvent(new Event('pagehide'));
   vi.useRealTimers();
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
@@ -133,14 +134,21 @@ test('cards on screen share one round a minute, none while the page is hidden, a
   const call = vi.spyOn(client, 'call').mockResolvedValue(null);
   const lookups = () => call.mock.calls.filter(([method]) => method === 'threads.pullRequest').length;
   vi.useFakeTimers();
-  const cards = Array.from({ length: 10 }, (_, index) => mount(ThreadCard, { target: document.body,
-    props: { machine: { id: 'local', label: 'Local', store }, project, thread: { ...source, id: `t-card-${index}`, branch: `topic-${index}`, status: 'idle' as const }, now: Date.now(), showProject: false } }));
+  const card = (index: number) => mount(ThreadCard, { target: document.body,
+    props: { machine: { id: 'local', label: 'Local', store }, project, thread: { ...source, id: `t-card-${index}`, branch: `topic-${index}`, status: 'idle' as const }, now: Date.now(), showProject: false } });
+  const cards = Array.from({ length: 10 }, (_, index) => card(index));
   try {
     await settle();
     expect(lookups()).toBe(10);
+    await vi.advanceTimersByTimeAsync(1_000);
+    cards.push(card(10)); await settle();
+    expect(lookups()).toBe(11);
     call.mockClear();
-    await vi.advanceTimersByTimeAsync(120_000); await settle();
-    expect(lookups()).toBe(20);
+    // The later card still takes part in the next shared round.
+    await vi.advanceTimersByTimeAsync(59_000); await settle();
+    expect(lookups()).toBe(11);
+    await vi.advanceTimersByTimeAsync(60_000); await settle();
+    expect(lookups()).toBe(22);
     call.mockClear();
     const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     document.dispatchEvent(new Event('visibilitychange'));
@@ -148,13 +156,13 @@ test('cards on screen share one round a minute, none while the page is hidden, a
     expect(lookups()).toBe(0);
     visibility.mockReturnValue(false);
     document.dispatchEvent(new Event('visibilitychange')); await settle();
-    expect(lookups()).toBe(10);
+    expect(lookups()).toBe(11);
     // Back again before a round is due: nothing more until it is.
     visibility.mockReturnValue(true); document.dispatchEvent(new Event('visibilitychange'));
     visibility.mockReturnValue(false); document.dispatchEvent(new Event('visibilitychange')); await settle();
-    expect(lookups()).toBe(10);
+    expect(lookups()).toBe(11);
     await vi.advanceTimersByTimeAsync(60_000); await settle();
-    expect(lookups()).toBe(20);
+    expect(lookups()).toBe(22);
   } finally {
     for (const card of cards) await unmount(card);
   }
@@ -162,6 +170,7 @@ test('cards on screen share one round a minute, none while the page is hidden, a
 
 test('moving a thread clears its PR and ignores the previous checkout lookup', async () => {
   const { thread, project } = await connectBranched();
+  const original = { branch: thread.branch, cwd: thread.cwd };
   const previous = { number: 180, url: 'https://github.com/example/repo/pull/180', state: 'OPEN' as const };
   let answer!: (value: typeof previous) => void;
   const pending = new Promise<typeof previous>(resolve => { answer = resolve; });
@@ -174,6 +183,9 @@ test('moving a thread clears its PR and ignores the previous checkout lookup', a
   await settle();
   expect(document.querySelector('[data-testid=thread-pr]')).toBeNull();
   expect(call).toHaveBeenCalledTimes(2);
+  Object.assign(thread, original);
+  await settle();
+  expect(call).toHaveBeenCalledTimes(3);
   thread.branch = null;
   thread.cwd = project.path;
   await settle();
@@ -181,8 +193,10 @@ test('moving a thread clears its PR and ignores the previous checkout lookup', a
   expect(document.querySelector('[data-testid=thread-pr]')).toBeNull();
 });
 
-test('a reconnect keeps the PR mark on screen while the core is asked again', async () => {
+test('a reconnect reuses a fresh PR and keeps it on screen during a stale lookup', async () => {
   const { thread, project } = await connectBranched();
+  thread.status = 'idle';
+  vi.useFakeTimers();
   const held = { number: 181, url: 'https://github.com/example/repo/pull/181', state: 'OPEN' as const };
   const pending = new Promise<typeof held>(() => undefined);
   const call = vi.spyOn(client, 'call').mockResolvedValueOnce(held).mockReturnValueOnce(pending);
@@ -193,9 +207,44 @@ test('a reconnect keeps the PR mark on screen while the core is asked again', as
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#181');
   store.connection = 'ready';
   await settle();
-  // The second lookup is out and unanswered: the mark it will confirm never left.
+  expect(call).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(60_000); await settle();
   expect(call).toHaveBeenCalledTimes(2);
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#181');
+});
+
+test('remounting the sidebar reuses both PR matches and misses', async () => {
+  const { thread, project } = await connectBranched();
+  const missing = { ...thread, id: 'no-pr', branch: 'no-pr' };
+  const pr = { number: 183, url: 'https://github.com/example/repo/pull/183', state: 'OPEN' as const };
+  const call = vi.spyOn(client, 'call').mockImplementation(async (_method, params) =>
+    params && 'threadId' in params && params.threadId === thread.id ? pr : null);
+  for (let visit = 0; visit < 3; visit++) {
+    await show(project, thread);
+    expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#183');
+    await unmount(mounted!);
+    await show(project, missing);
+    expect(document.querySelector('[data-testid=thread-pr]')).toBeNull();
+    await unmount(mounted!); mounted = undefined;
+  }
+  expect(call).toHaveBeenCalledTimes(2);
+});
+
+test('incognito PR lookups and link events leave no entry on disk', async () => {
+  const { thread, project } = await connectBranched();
+  const hidden = { ...thread, id: 'private-pr', incognito: true as const };
+  const pr = { number: 184, url: 'https://github.com/example/repo/pull/184', state: 'OPEN' as const };
+  vi.spyOn(client, 'call').mockResolvedValue(pr);
+  const listeners = vi.spyOn(client, 'on');
+  await show(project, hidden);
+  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#184');
+  const receive = listeners.mock.calls.find(([event]) => event === 'threads.pullRequestsChanged')![1] as
+    (event: { threadId: string; pullRequests: NonNullable<ThreadSummary['pullRequest']>[] }) => void;
+  receive({ threadId: hidden.id, pullRequests: [{ ...pr, state: 'MERGED' }] });
+  await settle();
+  expect(document.querySelector('[data-testid=thread-pr]')?.getAttribute('data-state')).toBe('MERGED');
+  window.dispatchEvent(new Event('pagehide'));
+  expect(Object.keys(localStorage).filter(key => key.startsWith('boite.pull-requests.v1'))).toEqual([]);
 });
 
 test('a turn left running on a machine that went away loses its work mark until the machine is back', async () => {
@@ -281,6 +330,7 @@ test('empty link event must fence the lookup it replaces', async () => {
 
 test('terminal link event must allow newer OPEN discovery in same response', async () => {
   const { thread, project } = await connectBranched();
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now());
   const old = {number: 9872, url: 'https://github.com/example/repo/pull/9872', state: 'CLOSED' as const};
   const opened = {...old, number: 9873, url: 'https://github.com/example/repo/pull/9873', state: 'OPEN' as const};
   let release!: (value: typeof opened) => void;
@@ -290,11 +340,15 @@ test('terminal link event must allow newer OPEN discovery in same response', asy
   await show(project, thread, { showProject: false });
   const receive = listeners.mock.calls.find(([name]) => name === 'threads.pullRequestsChanged')![1] as (event: { threadId: string; pullRequests: typeof old[] }) => void;
   receive({threadId: thread.id, pullRequests: [old]});
+  window.dispatchEvent(new Event('pagehide'));
   release(opened); await settle();
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#9873');
   // A poll's identical linked-list event must not replace automatic discovery.
   receive({ threadId: thread.id, pullRequests: [old] }); await settle();
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#9873');
+  window.dispatchEvent(new Event('pagehide'));
+  const key = Object.keys(localStorage).find(key => key.startsWith('boite.pull-requests.v1:'))!;
+  expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({ pullRequest: opened });
 });
 
 test('removing one of two links must fence its pending answer', async () => {
@@ -374,22 +428,42 @@ test('a list row ends its title line with its mark, then its one time, the way a
   expect(headline().querySelectorAll('time')).toHaveLength(1);
 });
 
-test('a thread a mochi started shows that mochi\'s face before its title, grey at rest; one it only follows shows none', async () => {
+test('a thread a mochi started keeps its provider before the title and names the mochi below it', async () => {
   await connect();
-  const [started, followed] = store.threads.filter(row => !row.parentThreadId && row.projectId);
-  const project = store.projects.find(row => row.id === started!.projectId)!;
+  const started = store.threads.find(row => row.id === 't-trace')!;
+  const followed = store.threads.find(row => row.id === 't-descriptors')!;
+  const project = store.projects.find(row => row.id === started.projectId)!;
   const { agentDirectory } = await import('../lib/agent-directory.svelte');
   const watch = (thread: ThreadSummary, origin: 'started' | 'followed') => ({ agentId: 'a-nova', threadId: thread.id, title: thread.title, projectId: thread.projectId, origin, since: 0, state: 'idle' as const, stalledSince: null, pullRequest: null });
   agentDirectory(store).snapshot = {
-    profiles: [{ id: 'a-nova', name: 'Nova', avatar: '', status: 'active' }], sessions: [], watches: [watch(started!, 'started'), watch(followed!, 'followed')]
+    profiles: [{ id: 'a-nova', name: 'Nova', avatar: '', status: 'active' }], sessions: [], watches: [watch(started, 'started'), watch(followed, 'followed')]
   } as never;
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread: started!, now: Date.now() } });
+  const props = { machine: { id: 'local', label: 'Local', store }, project, now: Date.now(), classic: true };
+  mounted = mount(ThreadCard, { target: document.body, props: { ...props, thread: started } });
   await settle();
-  const face = document.querySelector('[data-testid=thread-bot]');
-  expect(face?.getAttribute('title')).toBe('Nova');
-  expect(face?.nextElementSibling?.classList.contains('title')).toBe(true);
+  expect(document.querySelector('.headline [data-testid=thread-provider] + .title')).not.toBeNull();
+  expect(document.querySelector('.headline [data-testid=thread-bot]')).toBeNull();
+  const bot = document.querySelector('[data-testid=thread-where] [data-testid=thread-bot]');
+  expect(bot?.getAttribute('title')).toBe('Nova');
+  expect(bot?.textContent).toContain('Nova');
   await unmount(mounted);
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread: followed!, now: Date.now() } });
+  await client.call('threads.subscribe', { threadId: started.id });
+  const detail = createRawSnippet(() => ({ render: () => '<span>Activity detail</span>' }));
+  mounted = mount(ThreadCard, { target: document.body, props: { ...props, classic: false, detail, thread: started } });
+  await settle();
+  const row = document.querySelector<HTMLButtonElement>('[data-testid=thread-row]')!;
+  row.focus();
+  const url = 'https://github.com/example/boite/pull/482';
+  await client.call('threads.linkPullRequest', { threadId: started.id, url });
+  await settle();
+  expect(document.activeElement).toBe(row);
+  const activityMeta = document.querySelector('[data-testid=thread-where]');
+  expect(activityMeta?.querySelector('[data-testid=thread-bot]')?.textContent).toContain('Nova');
+  const pr = activityMeta?.querySelector('a[data-testid=thread-pr]');
+  expect(pr?.getAttribute('href')).toBe(url);
+  expect(pr?.closest('button')).toBeNull();
+  await unmount(mounted);
+  mounted = mount(ThreadCard, { target: document.body, props: { ...props, thread: followed } });
   await settle();
   expect(document.querySelector('[data-testid=thread-bot]')).toBeNull();
   agentDirectory(store).snapshot = null;

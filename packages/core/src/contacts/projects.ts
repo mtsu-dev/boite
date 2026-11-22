@@ -8,6 +8,7 @@ import { text } from '../coordination-letter.ts';
 import { checkMatchExtras, checkRemoteContact, remoteTranscript, queryPayload, readTranscript, searchContacts, searchWords, transcriptQuery } from '../coordination-lookup.ts';
 import { PeerRefusal } from '../coordination-wire.ts';
 import { invalidParams, refused, RpcFailure } from '../errors.ts';
+import { assertSearchActive, waitForSearch } from '../journal-reads.ts';
 import { SharedProjectJournal, fingerprint } from './project-journal.ts';
 import { accessRecord, initialAccess, offeredProject, projectRef, sameProject, sourceActor, threadRef, projectAddress } from './project-policy.ts';
 import { SharedProjectSubscriptions } from './project-subscriptions.ts';
@@ -312,7 +313,7 @@ export class SharedProjects {
     if (current.access.some((a, i) => a.revision !== ctx.shared.access[i]!.revision)) throw refused('sharedProjectId: grant changed during request');
     if (ctx.source.kind === 'agent') this.core.contacts.checkAttestedTier(ctx.source.agent);
   }
-  async receive(peerId: string, value: unknown): Promise<unknown> {
+  async receive(peerId: string, value: unknown, signal?: AbortSignal): Promise<unknown> {
     if (!this.core.contacts.isContact(peerId)) throw refused('coreId: expected a contact');
     const p = value as SharedProjectPeerRequest;
     if (!p || typeof p.method !== 'string') throw invalidParams('contact.project: expected a method');
@@ -359,7 +360,7 @@ export class SharedProjects {
     let result: unknown;
     if (p.method === 'view') result = shared;
     else if (p.method === 'threads') result = this.localThreads(ctx);
-    else if (p.method === 'search') result = await this.#localSearch(ctx, p.params?.query, () => { this.assertPeer(ctx); return ctx; });
+    else if (p.method === 'search') result = await this.#localSearch(ctx, p.params?.query, () => { this.assertPeer(ctx); return ctx; }, signal);
     else if (p.method === 'read') result = this.#localRead(ctx, p.params);
     else if (p.method === 'subscribe') result = this.subscriptions.receiveSubscribe(ctx, p.params);
     else if (p.method === 'changed') result = await this.subscriptions.receiveChanged(ctx, p.params);
@@ -407,11 +408,11 @@ export class SharedProjects {
     return { threads: [...this.localThreads(current), ...remote], unavailable };
   }
   /** `current` gives the scope again once the chat is read, or refuses when the asker lost it meanwhile. */
-  async #localSearch(ctx: SharedPeerContext, query: unknown, current: () => SharedPeerContext): Promise<AgentMatch[]> {
+  async #localSearch(ctx: SharedPeerContext, query: unknown, current: () => SharedPeerContext, signal?: AbortSignal): Promise<AgentMatch[]> {
     const entries = this.localThreads(ctx);
     const words = searchWords(query);
     const found: AgentMatch[] = [];
-    for (const read of [true, false]) found.push(...await searchContacts(this.core.journal.db, entries.filter(t => t.readThreads === read).map(t => ({...t.agent, threadId: t.ref.threadId})), words, read, true));
+    for (const read of [true, false]) found.push(...await searchContacts(this.core.journal.db, entries.filter(t => t.readThreads === read).map(t => ({...t.agent, threadId: t.ref.threadId})), words, read, true, signal));
     // The chat was read off this thread: a thread closed or made unreadable meanwhile is left out.
     const now = new Map(this.localThreads(current()).map(t => [t.ref.threadId, t]));
     return found.flatMap(match => {
@@ -420,14 +421,15 @@ export class SharedProjects {
       return [{...match, ...entry.ref.address, sharedThread: entry.ref}];
     });
   }
-  async search(p: SharedProjectScope & { query: string }, connection?: Connection): Promise<{ matches: AgentMatch[]; unavailable: SharedProjectRef[] }> {
+  async search(p: SharedProjectScope & { query: string }, connection?: Connection, signal?: AbortSignal): Promise<{ matches: AgentMatch[]; unavailable: SharedProjectRef[] }> {
+    assertSearchActive(signal);
     const ctx = this.scope(p, connection);
     searchWords(p.query);
     const revisions = ctx.shared.access.map(access => access.revision);
     let remote: AgentMatch[] = [];
     const unavailable: SharedProjectRef[] = [];
     try {
-      const raw = await this.request(ctx, 'search', { query: p.query });
+      const raw = await waitForSearch(this.request(ctx, 'search', { query: p.query }), signal);
       if (!Array.isArray(raw) || raw.length > 100) throw invalidParams('matches: expected up to 100 scoped matches');
       remote = raw.map(row => {
         const ref = threadRef(row.sharedThread);
@@ -437,8 +439,13 @@ export class SharedProjects {
         if (agent.threadId !== ref.address.threadId) throw refused('matches.threadId: expected the scoped thread');
         return { ...agent, ...checkMatchExtras(row), sharedThread: ref };
       });
-    } catch (error) { if (error instanceof RpcFailure && error.code !== RpcErrorCode.Unavailable) throw error; unavailable.push(ctx.remote); }
-    const local = await this.#localSearch(this.scope(p, connection), p.query, () => this.scope(p, connection));
+    } catch (error) {
+      assertSearchActive(signal);
+      if (error instanceof RpcFailure && error.code !== RpcErrorCode.Unavailable) throw error;
+      unavailable.push(ctx.remote);
+    }
+    const local = await this.#localSearch(this.scope(p, connection), p.query, () => this.scope(p, connection), signal);
+    assertSearchActive(signal);
     // The remote matches were read under the grants of the start: a grant changed during the local scan refuses them.
     if (this.scope(p, connection).shared.access.some((access, i) => access.revision !== revisions[i])) throw refused('sharedProjectId: grant changed during request');
     return { matches: [...local, ...remote], unavailable };
@@ -483,7 +490,7 @@ export function registerSharedProjectMethods(core: Core): void {
   core.router.register('sharedProjects.revoke', p => service.revoke(p));
   core.router.register('sharedProjects.configure', p => service.configure(p));
   core.router.register('sharedProjects.threads', (p, c) => service.threads(p, c.connection));
-  core.router.register('sharedProjects.search', (p, c) => service.search(p, c.connection));
+  core.router.register('sharedProjects.search', (p, c) => service.search(p, c.connection, c.signal));
   core.router.register('sharedProjects.read', (p, c) => service.read(p, c.connection));
   core.router.register('sharedProjects.subscribe', (p, c) => service.subscriptions.subscribe(p, c.connection));
 }

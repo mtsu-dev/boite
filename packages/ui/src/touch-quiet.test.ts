@@ -56,3 +56,27 @@ test("the phone model search is a 44 px field the input fills: its hairline is d
   expect(bare(appCss())).toMatch(/--touch-target: 44px;/);
   expect(css).toMatch(/\binput \{[^}]*height: 100%;/);
 });
+
+test("the rail's Add shows only under a pointer on the rail, fading as the edge scrollbars do; a touch screen and high contrast always show it", () => {
+  const style = /<style[^>]*>([\s\S]*?)<\/style>/.exec(read('components/AppRail.svelte'))![1]!;
+  const body = (selector: string) => style.slice(style.indexOf(selector) + selector.length).match(/^\s*\{([^}]*)\}/)![1]!;
+  const tucked = rules(style, /\.rail-button\.add\.tucked/);
+  // Its own class, which app.css leaves alone: the shared `.quiet` button resized its glyph from 19 to 16 px.
+  expect(bare(appCss())).not.toMatch(/\.tucked\b/);
+  const hidden = tucked.filter((rule) => /opacity:\s*0\s*;/.test(body(rule.selector)));
+  expect(hidden.length).toBe(1);
+  // Out of sight only where a pointer can come to the rail: without hover nothing would ever bring it back.
+  // High contrast shows it too, as it keeps the native scrollbars.
+  for (const rule of tucked) expect(rule.within.some((media) => /hover:\s*hover/.test(media) && /pointer:\s*fine/.test(media) && /forced-colors:\s*none/.test(media))).toBe(true);
+  // Hidden by its opacity alone, so it keeps its place in the rail and its name for a screen reader.
+  expect(body(hidden[0]!.selector)).not.toMatch(/display:\s*none|visibility:\s*hidden/);
+  expect(style).not.toMatch(/\.add\.tucked[^{]*\{[^}]*(display:\s*none|visibility:\s*hidden)/);
+  // The pointer over the rail, the keyboard in it or the menu it opened bring it back.
+  const shown = tucked.find((rule) => /opacity:\s*1\s*;/.test(body(rule.selector)))!.selector;
+  expect(shown).toMatch(/\.app-rail:hover \.rail-button\.add\.tucked/);
+  expect(shown).toMatch(/\.app-rail:has\(:global\(:focus-visible\)\) \.rail-button\.add\.tucked/);
+  expect(shown).toMatch(/\.rail-button\.add\.tucked\[aria-expanded='true'\]/);
+  // The scrollbars' thumbs' duration and curve, which reduced motion cuts (motion.css).
+  const thumb = /\.edge-scrollbar-thumb \{[^}]*transition:[^;]*?(var\(--dur-\d\)) (var\(--ease-[\w-]+\))/.exec(bare(appCss()))!;
+  expect(body(hidden[0]!.selector)).toContain(`opacity ${thumb[1]} ${thumb[2]}`);
+});

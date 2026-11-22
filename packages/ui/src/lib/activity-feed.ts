@@ -140,11 +140,12 @@ export function activityFeed<M extends { id: string; store: Owner }>(all: readon
 /**
  * The threads "Mark all as read" clears: every row but a decision (a permission, a question), which only the user's
  * answer settles; a sub-agent's row counts as its own. Each machine's threads apart, since ids collide between them.
+ * `kinds` narrows it: the rail's middle click on Activity clears the finished rows alone (AppRail.svelte).
  */
-export function readableThreads<M>(rows: readonly Pick<FeedRow<M>, 'machine' | 'thread' | 'kind'>[]): Map<M, RpcParams<'threads.markRead'>[]> {
+export function readableThreads<M>(rows: readonly Pick<FeedRow<M>, 'machine' | 'thread' | 'kind'>[], kinds: readonly ('failed' | 'stopped' | 'done')[] = ['failed', 'stopped', 'done']): Map<M, RpcParams<'threads.markRead'>[]> {
   const byMachine = new Map<M, RpcParams<'threads.markRead'>[]>();
   for (const row of rows) {
-    if (row.kind !== 'failed' && row.kind !== 'stopped' && row.kind !== 'done') continue;
+    if (!kinds.some(kind => kind === row.kind)) continue;
     const interruptionAt = row.kind === 'stopped' && row.thread.interruptionReadAt !== undefined ? unreadInterruptionAt(row.thread) : undefined;
     const request = { threadId: row.thread.id, ...(interruptionAt === undefined ? {} : { interruptionAt }) };
     byMachine.set(row.machine, [...byMachine.get(row.machine) ?? [], request]);

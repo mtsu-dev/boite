@@ -28,7 +28,8 @@
   import { dragWindow } from '../lib/window-drag';
   import { isMac } from '../lib/keybindings';
   import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
-  import { inbox } from '../lib/inbox.svelte';
+  import { feedThread, inbox } from '../lib/inbox.svelte';
+  import { activityFeed, readableThreads } from '../lib/activity-feed';
   import { followActivityReturn } from '../lib/activity-return.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { avatarLit } from '../lib/avatar-lit';
@@ -93,7 +94,7 @@
   const waitingLabel = $derived(waiting === 1 ? strings.app.rail.waitingOne : fill(strings.app.rail.waitingMany, { count: String(waiting) }));
   /** The conversations at work on every machine, as the projects' Working counts read them: the Threads button's count. */
   const working = $derived(threadsAtWork(stores));
-  /** Their subagents at work, the lighter number beside it. */
+  /** Their subagents at work, the lighter number under it. */
   const helpers = $derived(subagentsAtWork(stores));
   const busyLabel = $derived(workCountLabel(working, helpers));
   const tally = (value: number) => value > 99 ? '99+' : count(value);
@@ -167,6 +168,19 @@
     if (store.page !== 'chat') store.showChat();
     store.sidebarCollapsed = false;
   }
+  /**
+   * A middle click on Activity takes its finished rows off on every machine without opening it, each machine's on its
+   * own core; failures, stops, questions and permissions stay. The feed is read at the click, not kept by the rail.
+   */
+  function holdMiddle(event: MouseEvent) {
+    // The middle button scrolls by default; here it clears instead, once released on the button.
+    if (event.button === 1) event.preventDefault();
+  }
+  function clearFinished(event: MouseEvent) {
+    if (event.button !== 1) return;
+    const rows = activityFeed(machines.flatMap(machine => machine.store.threads.filter(feedThread).map(thread => ({ machine, thread, project: undefined }))));
+    for (const [machine, requests] of readableThreads(rows, ['done'])) void machine.store.markRead(requests);
+  }
   /** Activity takes the main card, as the phone's tab takes the screen: the open thread steps back to a draft, its panels with it. */
   function showActivity() {
     inbox.open = true;
@@ -223,6 +237,8 @@
     else if (action === 'edit') openTeamChat(row, true);
     else void module.pickTeamAction(row.machine.store, row.team, action, store);
   }
+  /** Add, expanded while the menu it opened is up: what keeps it shown once the pointer leaves the rail. */
+  let addButton = $state<HTMLButtonElement>();
   /** What the Bots page's head offers, from anywhere: the page owns the forms (agents-view.svelte.ts). */
   function addMenu(anchor: HTMLElement) {
     const rect = anchor.getBoundingClientRect();
@@ -348,7 +364,7 @@
       aria-label={busyLabel ? `${strings.sidebar.threads}, ${busyLabel}` : strings.sidebar.threads}
       data-testid="view-threads" onclick={showThreads}>
       <MessageSquare size={19} strokeWidth={1.75} />
-      {#if working || helpers}<span class="count work" class:pair={working && helpers}
+      {#if working || helpers}<span class="count work" class:pair={working && helpers} class:wide={working > 9 || helpers > 9}
         >{#if working}<span data-testid="rail-threads-working">{tally(working)}</span>{/if}{#if helpers}<span class="helpers" data-testid="rail-threads-subagents">{tally(helpers)}</span>{/if}</span
       >{/if}
     </button>
@@ -357,11 +373,11 @@
   <div class="slot" class:selected={onActivity}>
     <button type="button" class="rail-button" class:on={onActivity} aria-current={onActivity ? 'page' : undefined}
       aria-label={waiting ? `${strings.mobile.activity}, ${waitingLabel}` : strings.mobile.activity}
-      data-testid="nav-activity" onclick={showActivity}>
+      data-testid="nav-activity" onclick={showActivity} onmousedown={holdMiddle} onauxclick={clearFinished}>
       <Inbox size={19} strokeWidth={1.75} />
       {#if waiting}<span class="count" data-testid="rail-activity-waiting">{tally(waiting)}</span>{/if}
     </button>
-    {@render railName(strings.mobile.activity, null, waiting ? waitingLabel : null)}
+    {@render railName(strings.mobile.activity, null, [waiting ? waitingLabel : null, strings.app.rail.middleClickFinished].filter(Boolean).join(' · '))}
   </div>
   <!-- Contacts, a place beside the threads and Activity, never a side of the Bots column. -->
   {#if contactsOn}
@@ -421,7 +437,8 @@
       {/each}
     </div>
     <div class="slot">
-      <button type="button" class="rail-button add" aria-label={strings.app.rail.add} aria-haspopup="menu"
+      <button type="button" class="rail-button add" class:tucked={entries.length > 0} aria-label={strings.app.rail.add} aria-haspopup="menu"
+        aria-expanded={contextMenu.current !== null && contextMenu.anchor === addButton} bind:this={addButton}
         data-testid="rail-add" onclick={(event) => addMenu(event.currentTarget)}><Plus size={19} strokeWidth={1.75} /></button>
       {@render railName(strings.app.rail.add)}
     </div>
@@ -495,6 +512,14 @@
   .rail-button.on, .rail-button.on:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   .rail-button.add { background: transparent; box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-full); }
   .rail-button.add:hover:not(:disabled) { background: var(--color-hover); }
+  /* Under a mouse, Add waits out of sight until the pointer comes to the rail and fades in and out on the edge
+     scrollbars' thumbs' duration and curve; its open menu and the keyboard in the rail keep it shown. Hidden, it keeps
+     its place and its name for a screen reader. A touch screen, high contrast and a rail with no mochi yet always
+     show it, under the edge scrollbars' own gate (lib/edge-scrollbars.ts). */
+  @media (hover: hover) and (pointer: fine) and (forced-colors: none) {
+    .rail-button.add.tucked { opacity: 0; transition: background var(--dur-2) var(--ease-out-quint), opacity var(--dur-2) var(--ease-out-quint); }
+    .app-rail:hover .rail-button.add.tucked, .app-rail:has(:global(:focus-visible)) .rail-button.add.tucked, .rail-button.add.tucked[aria-expanded='true'] { opacity: 1; }
+  }
   /* A circle, as the bots it stands under: ringed at rest, filled where you are. */
 
   .bot { background: none; border-radius: var(--radius-full); }
@@ -623,8 +648,17 @@
   .count.work { color: var(--color-accent); }
   /* Their subagents at work: a second number in the same pill, the accent lightened, so it reads as theirs, a step under. */
   .count .helpers { color: color-mix(in oklch, var(--color-accent) 60%, var(--color-foreground)); }
-  /* Both numbers: side by side, the pill's right edge held a little past the tile's so it stays on the card. */
-  .count.pair { left: auto; right: -6px; display: flex; gap: 4px; }
+  /* Both numbers: stacked in one upright pill, the threads over their subagents, its foot where the single pill's
+     stands. It sits past the tile, its ring flush with the rail's right edge (the column beside starts there), so it
+     stays clear of the glyph; nothing clips it there, the rail's overflow is visible. Its ring keeps the rail's
+     ground when the tile is hovered or open: it stands on the rail, not on the tile. */
+  .count.pair {
+    left: auto; right: calc((var(--rail-button) - var(--app-rail)) / 2 + 2px); top: auto; bottom: calc(50% - 17px);
+    height: auto; padding: 3px 5px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    --count-ring: var(--rail-ground);
+  }
+  /* Two digits or "99+" in either: a tighter pill, the text still at 11 px, the smallest a count reads at (MobileTabs.svelte). */
+  .count.pair.wide { padding: 2px 3px; gap: 1px; }
   .rail-button:hover:not(:disabled) { --count-ring: var(--color-surface-2); }
   .rail-button.on, .rail-button.on:hover:not(:disabled) { --count-ring: var(--color-surface-3); }
   /* A bot's or a team's one overlay, bottom right of its picture, cut out of the card: the amber dot for its turn,

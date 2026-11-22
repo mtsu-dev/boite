@@ -3,44 +3,55 @@ import { threadActive, type LinkedPullRequest, type ThreadSummary } from '@boite
 import type { Store } from './store.svelte';
 import { errorText } from './errors';
 import { strings } from './strings';
-import { knownPullRequest, lookupPullRequest, PULL_REQUEST_POLL_MS, rememberPullRequest, watchPullRequests, WORKING_PULL_REQUEST_POLL_MS } from './pull-request';
+import { lookupPullRequest, PULL_REQUEST_POLL_MS, watchPullRequests, WORKING_PULL_REQUEST_POLL_MS } from './pull-request';
+import { cachedPullRequest, observePullRequestLinks, rememberPullRequest } from './pull-request-cache';
 
-type PullRequest = ThreadSummary['pullRequest'];
-const summary = (pr: NonNullable<PullRequest>): NonNullable<PullRequest> => ({ number: pr.number, url: pr.url, state: pr.state });
-const selected = (links: LinkedPullRequest[]): PullRequest => {
+type PullRequest = NonNullable<ThreadSummary['pullRequest']>;
+const summary = (pr: PullRequest): PullRequest => ({ number: pr.number, url: pr.url, state: pr.state });
+const selected = (links: LinkedPullRequest[]): PullRequest | null => {
   const pr = links.findLast(pr => pr.state === 'OPEN') ?? links.at(-1);
   return pr ? summary(pr) : null;
 };
 
 /** One checkout's badge lifecycle, shared by desktop cards and phone rows. */
 export function trackThreadPullRequest(input: () => { owner: Store; thread: ThreadSummary; hidden?: boolean }) {
-  let value = $state<PullRequest>(null);
+  let value = $state<PullRequest | null>(null);
   let loading = $state(false);
   let revision = 0;
   let linkSignature: string | undefined;
   let links: LinkedPullRequest[] = [];
   let recheck = false;
 
-  async function refresh(manual = false) {
+  async function refresh(manual = false, reuseFresh = false) {
     const { owner, thread, hidden } = input();
     const client = owner.client;
     if (!client || loading || (!manual && (hidden || owner.connection !== 'ready' || document.hidden))) return;
+    const key = checkoutKey;
+    const held = reuseFresh && !thread.incognito ? cachedPullRequest(key) : undefined;
+    if (held && held.checkedAt !== null) {
+      const age = Date.now() - held.checkedAt;
+      if (age >= 0 && age < cadence) {
+        value = held.pullRequest;
+        return;
+      }
+    }
     const requestedRevision = revision;
     const checkout = JSON.stringify([thread.cwd, thread.branch]);
-    const key = owner.threadKey(thread.id) + checkout;
     recheck = false;
     loading = true;
     try {
       const result = await lookupPullRequest(client, thread.id, manual, checkout);
       if (requestedRevision !== revision || recheck) return;
-      let next = result.supported ? result.pullRequest : null;
+      if (!result.supported) {
+        if (manual) owner.error = strings.errors.pullRequestUnsupported;
+        return;
+      }
+      let next = result.pullRequest ?? null;
       // A merge cannot reopen. A watch event wins over an older cached answer,
       // including URLs whose owner/repository casing differs from GitHub's.
       const merged = next && links.find(pr => pr.state === 'MERGED' && pr.url.toLowerCase() === next?.url.toLowerCase());
       if (merged) next = summary(merged);
-      rememberPullRequest(key, next);
-      value = next;
-      if (!result.supported && manual) owner.error = strings.errors.pullRequestUnsupported;
+      value = thread.incognito ? next : rememberPullRequest(key, next, result.observation);
     } catch (error) {
       if (requestedRevision === revision && manual) owner.error = errorText(error);
     } finally {
@@ -56,32 +67,44 @@ export function trackThreadPullRequest(input: () => { owner: Store; thread: Thre
   // checkout must not reset the badge and ask the core again.
   const checkoutKey = $derived.by(() => {
     const { owner, thread } = input();
-    return owner.threadKey(thread.id) + JSON.stringify([thread.cwd, thread.branch]);
+    const core = owner.core;
+    const identity = core?.coreId ?? [owner.machineId, core?.hostname, core?.dataDir];
+    return JSON.stringify([identity, thread.id, thread.cwd, thread.branch]);
   });
+  const incognito = $derived(input().thread.incognito === true);
   const ready = $derived.by(() => {
     const { owner, hidden } = input();
     return owner.connection === 'ready' && !hidden;
   });
   const active = $derived(threadActive(input().thread.status));
+  const cadence = $derived(active ? WORKING_PULL_REQUEST_POLL_MS : PULL_REQUEST_POLL_MS);
   const client = $derived(input().owner.client);
+  let previousCheckout: string | undefined;
+  let checkoutChanged = false;
   $effect(() => {
     const key = checkoutKey;
+    const cached = incognito ? undefined : cachedPullRequest(key);
     const live = ready;
     const connected = client;
     untrack(() => {
-      value = knownPullRequest(key);
+      checkoutChanged ||= previousCheckout !== undefined && previousCheckout !== key;
+      previousCheckout = key;
+      value = cached?.pullRequest ?? null;
       loading = false;
       links = [];
       linkSignature = undefined;
       recheck = false;
-      if (live && connected) void refresh();
+      if (live && connected) {
+        void refresh(false, !checkoutChanged);
+        checkoutChanged = false;
+      }
     });
     return () => { revision++; };
   });
   $effect(() => {
     const connected = client;
     if (!connected || !ready) return;
-    return watchPullRequests(connected, () => void refresh(), active ? WORKING_PULL_REQUEST_POLL_MS : PULL_REQUEST_POLL_MS);
+    return watchPullRequests(connected, () => void refresh(), cadence);
   });
   $effect(() => {
     const { owner, thread, hidden } = input();
@@ -96,8 +119,8 @@ export function trackThreadPullRequest(input: () => { owner: Store; thread: Thre
       if (signature === linkSignature) return;
       linkSignature = signature;
       links = event.pullRequests;
-      value = selected(links);
-      rememberPullRequest(owner.threadKey(threadId) + JSON.stringify([thread.cwd, thread.branch]), value);
+      const next = selected(links);
+      value = thread.incognito ? next : rememberPullRequest(checkoutKey, next, observePullRequestLinks(event));
       // An event can remove just one of several links. Wait for the old
       // deduplicated lookup, then read the current membership once more.
       if (loading) recheck = true;

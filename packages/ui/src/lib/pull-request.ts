@@ -1,7 +1,8 @@
 import { RpcErrorCode, type ThreadId, type ThreadSummary } from '@boite/contracts';
 import { RpcFailure, type Client } from './client';
+import { observePullRequest, type PullRequestObservation } from './pull-request-cache';
 
-type Lookup = { supported: false } | { supported: true; pullRequest: ThreadSummary['pullRequest'] };
+type Lookup = { supported: false } | { supported: true; pullRequest: ThreadSummary['pullRequest']; observation: PullRequestObservation };
 // Probe once per connection, including when several sidebar rows mount together.
 const support = new WeakMap<Client, Promise<boolean>>();
 interface Lookups {
@@ -11,23 +12,6 @@ interface Lookups {
 }
 const lookups = new WeakMap<Client, Lookups>();
 const MAX_LOOKUPS = 4;
-
-/**
- * The last answer for each checkout of each thread, kept for the page's life. A
- * card that mounts again, or whose machine reconnects, draws it at once and
- * asks again behind it, rather than dropping its line until the core answers.
- */
-const known = new Map<string, ThreadSummary['pullRequest']>();
-
-export function knownPullRequest(key: string): ThreadSummary['pullRequest'] {
-  return known.get(key) ?? null;
-}
-
-export function rememberPullRequest(key: string, pullRequest: ThreadSummary['pullRequest']): void {
-  known.delete(key);
-  if (pullRequest) known.set(key, pullRequest);
-  while (known.size > 500) known.delete(known.keys().next().value!);
-}
 
 /**
  * How often the sidebar asks again about a thread at rest. Above the core's 15 s
@@ -113,8 +97,10 @@ export async function lookupPullRequest(client: Client, threadId: ThreadId, refr
   const key = JSON.stringify([threadId, refresh, checkout]);
   const pending = state.pending.get(key);
   if (pending) return pending;
+  // Track the original request time even if a newly mounted tracker joins it later.
+  const observation = observePullRequest(refresh);
   // A sidebar remount shares its lookup; metadata leaves room for interactive RPCs.
-  const request = limitedLookup(state, refresh, () => readPullRequest(client, threadId, refresh))
+  const request = limitedLookup(state, refresh, () => readPullRequest(client, threadId, refresh, observation))
     .finally(() => state.pending.delete(key));
   state.pending.set(key, request);
   return request;
@@ -135,7 +121,7 @@ async function limitedLookup(state: Lookups, refresh: boolean, read: () => Promi
   }
 }
 
-async function readPullRequest(client: Client, threadId: ThreadId, refresh: boolean): Promise<Lookup> {
+async function readPullRequest(client: Client, threadId: ThreadId, refresh: boolean, observation: PullRequestObservation): Promise<Lookup> {
   const known = support.get(client);
   if (known && !(await known)) return { supported: false };
   const request = client.call('threads.pullRequest', refresh ? { threadId, refresh } : { threadId });
@@ -147,7 +133,7 @@ async function readPullRequest(client: Client, threadId: ThreadId, refresh: bool
     }));
   }
   try {
-    return { supported: true, pullRequest: await request };
+    return { supported: true, pullRequest: await request, observation };
   } catch (error) {
     if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) {
       support.set(client, Promise.resolve(false));

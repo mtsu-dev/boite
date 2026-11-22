@@ -57,9 +57,20 @@ The conversations already loaded stay available while Boite reloads it.
 Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
 
+A thread with a pull request keeps its last badge on this device. When you
+reopen Boite, the badge can appear as soon as the thread is listed, and Boite
+updates it when it checks again.
+
 The Threads button in the app rail, and the Threads tab on a phone, show how
 many threads are at work across your machines. When subagents are at work too,
-a second, lighter number beside it counts them.
+a second, lighter number counts them: in the rail, under the first, both at
+the rail's edge so the button's icon stays readable; beside it on the phone's tab.
+
+A middle click on the Activity button in the app rail takes the finished
+threads off Activity on every machine, without opening it. Failures, stops,
+questions and permissions stay, and so does the button's number. On a phone,
+or without a middle button, Mark all as read at the top of Activity clears the
+finished threads along with failures and stops.
 
 ## Drafts without a project
 

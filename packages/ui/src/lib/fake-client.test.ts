@@ -277,8 +277,8 @@ test('fake pages keep a complete legal attachment bundle above the byte budget a
   expect(centred.messages[0]!.parts).toEqual(page.messages[0]!.parts);
   expect(centred.messagesBefore).toBe(anchor);
   expect(centred.messagesAfter).toBe(anchor);
-  // Automatic goals, on by default, would make this prompt a goal whose objective is the whole prompt: kept out here,
-  // where the message alone is measured.
+  // Automatic goals, where the owner turned them on, would make this prompt a goal whose objective is the whole prompt:
+  // kept out here, where the message alone is measured.
   await client.call('settings.set', { autoGoals: false });
   await client.call('turns.start', { threadId: thread.id, prompt: 'x'.repeat(RPC_MAX_FRAME_BYTES) });
   await client.settled();

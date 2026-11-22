@@ -893,14 +893,14 @@ the turn's other events, which no channel holds back.
   `TRACE_LIMIT` (200) rows, what `trace.get` returns. The old handler copied a
   list that only grew: 0.6 ms a start and exit after 10 minutes, 11 ms after
   an hour, past a core at that rate (plain arrays in Bun, 2026-10-17).
-- Sidebar cards ask for their pull request when they mount or change branch,
-  then on one timer per connection: every 15 seconds while the thread works,
-  every 60 seconds at rest, above the core's 15-second cache of a repository's
-  list, so a round of idle cards runs `gh` at most once per repository. A
-  hidden page skips its rounds; back in view, it runs one if a round is due.
-  The rounds skip a merged pull request; a mount, a reconnect, a status change
-  and Refresh PR still ask, so a new PR on the same branch shows when the turn
-  ends (`watchPullRequests` in `pull-request.ts`).
+- Sidebar cards display their last pull request from device storage by core,
+  thread and checkout. Fresh matches and misses skip extra reads on mount
+  and reconnect. Incognito conversations keep the badge in the open view.
+  Visible cards share a timer per connection and cadence: 15 seconds while
+  working and 60 seconds at rest. The core shares a repository list for 15
+  seconds, so an idle round generally runs one `gh` call per repository. Hidden
+  pages skip these rounds. Turn completion and Refresh PR request a new answer
+  so a new pull request on the same branch can appear immediately.
 - An open Done or Archived fold reads the archive again only when a project's
   archive count, the listed projects or a connection change, not when a prompt
   re-sorts the list, and keeps its rows on screen while it reads.
@@ -1133,6 +1133,46 @@ Sending a 68-byte PNG and a 256 KiB text file reduced the serialized
 totaled 349,916 bytes, bringing combined request bytes to 350,301. Both paths
 preserved journal bytes, the native image URL and file contents. These counts
 exclude compression, responses, release calls and other RPCs.
+
+## First word of a new thread
+
+`BOITE_BENCH_HARNESS=1 bun run bench/harness-startup.ts --runs 4 --ab-titles`
+sends one short prompt to a new thread of each logged-in agent through a real
+core on a fresh data directory, and times the agent's own process and the
+first word of the answer's text, reasoning left out. `--ab-titles` adds a row
+where the echo provider writes the title, so the two rows differ only by the
+title call. `--core <main.ts>` measures another checkout's core; `--verbose`
+prints each process and event of the turn. Rows alternate their order each
+run. Every run spends one turn per row on the agent's account.
+
+The first title used to start with the turn, so its own `codex app-server` or
+`claude` process started beside the agent's. It now starts once the agent
+writes text, reasoning or a tool call ([titles](titles.md)): in every `--verbose`
+run on 2026-11-21 the title process started within 20 ms of its first message,
+after the first word or with it.
+
+On 2026-11-21, Linux, load average 23 to 36, Codex 0.171.0 on its default
+model, the previous core (`--core`) and this one, one run each per round, four
+rounds in alternating order:
+
+| first word, median (slowest) | before | after |
+| --- | ---: | ---: |
+| codex | 6,681 ms (8,029) | 5,039 ms (6,675) |
+| claude | 4,809 ms (5,459) | 6,564 ms (7,027) |
+
+The Claude rows are noise at four runs: six more runs of the new core with
+`--ab-titles` gave 5,448 ms with the title and 4,886 ms with the echo title,
+and the slowest default run's title process started 2 ms after the first
+message, after 7.1 s of Claude's own wait.
+
+What remains is the agent itself. Without Boite, four `codex app-server` runs
+with the same arguments and thread config took 0.6 to 2.3 s to `turn/started`
+and 2.5 to 3.5 s more to the first text, 4.0 to 5.7 s in all. A heavy Codex
+home slows the first part: with 4,095 rollout files (12 GB) and a 176 MB
+`state_5.sqlite`, `initialize` and `thread/start` took up to 5 s at a load
+average near 45, and each new thread's start logs a `state db returned stale
+rollout path` line per missing rollout. Codex keeps each thread's first user
+message in that database.
 
 ## Core startup
 
@@ -2329,6 +2369,7 @@ bun bench/claude-turn-heap.ts                  # heap a scripted Claude turn lea
 bun bench/codex-live-output.ts                 # redraws and characters of one running Codex command's live output
 bun run bench/live-output-channels.ts --seconds 20   # bytes a remote phone receives for a long command, with and without liveOutput
 bun bench/provider-list.ts                     # time per providers list() and summary(); ONLY=1 under strace -c
+BOITE_BENCH_HARNESS=1 bun run bench/harness-startup.ts --ab-titles   # first word of a new thread per logged-in agent; spends turns
 bun run bench/continuation.ts 100 1024 25 1100            # history a fresh session carries: messages, tool KiB, files, file KiB
 bun run bench/queue-admission.ts 1024 16                  # one scheduler pass over held child turns: turns, teams
 bun bench/ui-heap.ts --machines --load 4 --tick 25 --switch 0 --minutes 9   # heap, DOM and private bytes of a page left open on busy agents

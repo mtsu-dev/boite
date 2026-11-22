@@ -4,17 +4,56 @@ import { type RpcMethodName } from '@boite/contracts';
 import { store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import type { FakeClient } from '../lib/fake-client';
-import { mountOnFake, openProviderDetails, query, test, waitFor } from '../test/app';
+import { AgentsView } from '../lib/agents.svelte';
+import { showTeam } from '../lib/agents-view.svelte';
+import { appCommands } from '../lib/commands.svelte';
+import { mountOnFake, openProviderDetails, press, query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
+
+async function focusQuestion(threadId: string): Promise<HTMLButtonElement> {
+  await store.client!.call('questions.ask', { threadId, text: 'Which checks?', options: ['Unit', 'Browser'] });
+  const selector = '[data-testid=question-card][data-state=pending] [data-testid=question-option]';
+  await waitFor(() => document.querySelector(selector) !== null);
+  const option = query<HTMLButtonElement>(selector);
+  option.focus();
+  expect(document.activeElement).toBe(option);
+  return option;
+}
+
+test.each(['mochi', 'team'])('Ctrl+J leaves the %s conversation open', async (kind) => {
+  await mountOnFake('/?fake=1&agents=1');
+  await waitFor(() => store.openThread !== null);
+  const previous = store.openThread!.id;
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const agent = view.snapshot!.profiles[0]!;
+  if (kind === 'mochi') store.showAgents(agent.id);
+  else showTeam(store, await store.client!.call('teams.create', { name: 'Release crew', members: [agent.id] }));
+  await waitFor(() => Boolean(kind === 'mochi' ? store.openThread?.agentSessionId : store.openThread?.teamId));
+  const current = store.openThread!.id;
+  expect(current).not.toBe(previous);
+  expect(store.page).toBe('agents');
+  const option = kind === 'mochi' ? await focusQuestion(current) : null;
+
+  press('j', { code: 'KeyJ', ctrlKey: true });
+  flushSync();
+  expect(store.page).toBe('agents');
+  expect(store.openThread?.id).toBe(current);
+  if (option) expect(document.activeElement).toBe(option);
+  expect(appCommands(store, false)).not.toContainEqual(expect.objectContaining({ id: 'terminal' }));
+});
 
 test('Ctrl+J opens the shell of the thread under the chat, hides it again, and its cross ends the shell', async ({ app: _app }) => {
   await waitFor(() => store.openThread !== null);
   const threadId = store.openThread!.id;
+  const option = await focusQuestion(threadId);
   const chord = () => new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true, cancelable: true });
 
-  expect(document.body.dispatchEvent(chord())).toBe(false);
+  expect(option.dispatchEvent(chord())).toBe(false);
   await waitFor(() => document.querySelector(`[data-testid=terminal][data-terminal-id="terminal:${threadId}"]`) !== null);
+  expect(store.openThread?.id).toBe(threadId);
+  expect(option.isConnected).toBe(true);
   // xterm draws what the fake shell printed: its prompt, in the thread's folder.
   await waitFor(() => document.querySelector('[data-testid=terminal-drawer]')?.textContent?.includes('PS ') === true);
   await store.open(threadId);

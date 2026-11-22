@@ -15,6 +15,14 @@ export const SHORT_ANSWERS = 'Answer style: brief updates. Lead with the result.
  */
 export const CHAT_VISUALS = 'Visuals need no command: chat draws a ```mermaid fence (flowchart, sequenceDiagram, xychart-beta with "quoted" labels, pie, gantt, timeline, quadrantChart, sankey-beta, mindmap), TeX in `$$` or backslash-parens, never single `$`, and a ```view fence of HTML, SVG, CSS and script for an interactive or animated piece, drawn offline in the app\'s theme: write no fixed color. Use them when asked for a visual or when a picture explains better than text.';
 
+/**
+ * A conversation's agent closes its own thread in the turn its last PR merges:
+ * waiting for Boite's question after the merge costs one more turn over the
+ * whole history (`merged-pr-ask.ts`). Top-level conversations only: `agent.done`
+ * refuses a subagent's or a mochi's thread.
+ */
+export const OWN_DONE = 'Once your last PR is merged and nothing is left, run `boite thread done` in that turn, unasked.';
+
 type ListedSkill = { name: string; description: string; path: string };
 
 /**
@@ -60,14 +68,16 @@ export const TEAM_GUIDE = [
  * `bot`: a bot's thread, which has no checkout or project of its own: the
  * project-bound commands go and the bot section comes last, with its team
  * section.
+ * `ownDone`: a top-level conversation, told to put itself in Done once its PRs merged.
  */
-export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, pluginLines: readonly string[] = []): string {
+export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, pluginLines: readonly string[] = [], ownDone = false): string {
   const report = skills.find(skill => skill.name === REPORT_ISSUE_SKILL.name);
   const others = skills.filter(skill => skill !== report);
   return [
     'You run in Boite: Markdown chat on desktop and phone, with a panel and process tracing. `boite help` lists commands.',
     ...(!bot ? ['`boite where` shows cwd/project/branch. Stay in the checkout.'] : []),
     'Link each PR with `boite pr link <url>`, then `boite pr watch` for CI, reviews and conflicts. Do not poll.',
+    ...(!bot && ownDone ? [OWN_DONE] : []),
     'Panel: `boite show <file>[:line]`, `boite diff`, `boite browse <url>`, `boite preview <file.html>`. Chat: inline `path:line` opens files; `boite attach <file>` sends files (512 MB max). `boite proof` publishes a recorded command, its deciding line, unchecked scope and an optional capture.',
     'Web and emulators: `boite browser help`, `boite device help`. Boite browser actions print the page they leave. Batch steps with `&&` or `boite browser run -`.',
     // Only Linux has a virtual desktop (docs/internals/desktop.md): elsewhere the line would point at a refusal.

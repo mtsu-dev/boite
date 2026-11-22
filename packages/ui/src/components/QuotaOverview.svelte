@@ -126,7 +126,10 @@
   .summary { flex: 1; min-width: 0; width: 100%; height: auto; min-height: 44px; padding: 2px 4px; line-height: 1.2; display: flex; align-items: start; gap: 8px; text-align: left; border-radius: var(--radius-md); white-space: normal; }
   .summary:disabled { opacity: 1; cursor: default; }
   .logo { flex: none; width: 20px; height: 20px; display: grid; place-items: center; }
-  .summary-content { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  /* Every label here is trimmed to its capitals (`ui-label`), so the gaps are all the room between two lines of letters.
+     Two window lines get a capital's height apart; the name (the 20 px headline adds about 5 px around it) and the reset
+     line get what five accounts leave in the 460 px tray popup, which shows them all without scrolling (quota_window.rs). */
+  .summary-content { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .headline { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 20px; }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: 600; color: var(--color-foreground); }
   .amount { flex: none; color: var(--color-foreground); font-size: var(--text-md); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -137,8 +140,8 @@
   .summary.reorderable .name { touch-action: none; }
   .dragging .summary { cursor: grabbing; }
   /* Two windows per line; a lone window uses the full row. */
-  .meters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
-  .mini-window { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px; align-items: center; }
+  .meters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .mini-window { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2); align-items: center; }
   .mini-window:only-child { grid-column: 1 / -1; }
   .mini-label { width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; }
   .meters.stale { opacity: 0.45; }

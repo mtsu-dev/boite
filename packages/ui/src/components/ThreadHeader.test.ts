@@ -2,9 +2,12 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
+import ThreadCard from './ThreadCard.svelte';
 import ThreadHeader from './ThreadHeader.svelte';
 import { strings } from '../lib/strings';
 import { panelSwitch } from '../lib/panel-switch.svelte';
+import { contextMenu } from '../lib/context-menu.svelte';
+import { PULL_REQUEST_POLL_MS } from '../lib/pull-request';
 import { Files } from '@lucide/svelte';
 import PanelSwitcher from './PanelSwitcher.svelte';
 
@@ -16,6 +19,7 @@ afterEach(async () => {
   if (mounted) await unmount(mounted);
   mounted = undefined;
   store?.detach(); client?.close();
+  window.dispatchEvent(new Event('pagehide'));
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
@@ -153,6 +157,108 @@ for (const phone of [true, false]) test(`the thread menu opens its pull request 
   expect(row.textContent).toContain('#214');
   row.click(); await settle();
   expect(opened).toHaveBeenCalledWith(pr.url, '_blank', 'noopener,noreferrer');
+});
+
+test.each([
+  { scenario: 'a later manual refresh', delay: 1, remount: false },
+  { scenario: 'a manual refresh in the same millisecond', delay: 0, remount: false },
+  { scenario: 'a manual refresh and header remount', delay: 1, remount: true }
+])('an automatic lookup finishing after $scenario keeps the newer PR in the header and on disk', async ({ delay, remount }) => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(thread => thread.branch && thread.branch !== 'HEAD' && thread.status === 'idle')!;
+  const project = store.projects.find(project => project.id === thread.projectId)!;
+  await store.open(thread.id);
+  const stale = { number: 214, url: 'https://github.com/example/repo/pull/214', state: 'OPEN' as const };
+  const fresh = { number: 215, url: 'https://github.com/example/repo/pull/215', state: 'OPEN' as const };
+  let finishAuto!: (pr: typeof stale) => void;
+  const auto = new Promise<typeof stale>(resolve => { finishAuto = resolve; });
+  let finishManual!: (pr: typeof fresh) => void;
+  const manual = new Promise<typeof fresh>(resolve => { finishManual = resolve; });
+  const lookup = vi.fn().mockResolvedValueOnce(stale).mockReturnValueOnce(auto).mockReturnValueOnce(manual);
+  const original = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation((method, params) =>
+    method === 'threads.pullRequest' ? lookup(params) : original(method, params));
+  const now = Date.now();
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+  const card = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now } });
+  try {
+    await settle();
+    clock.mockReturnValue(now + PULL_REQUEST_POLL_MS); // Expire the cached result before the sidebar's next timer runs.
+    mounted = mount(ThreadHeader, { target: document.body, props: { store } });
+    await settle();
+    expect(lookup).toHaveBeenCalledTimes(2);
+
+    clock.mockReturnValue(now + PULL_REQUEST_POLL_MS + delay);
+    document.querySelector('[data-testid=thread-row]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    contextMenu.current!.onpick('more');
+    contextMenu.current!.onpick('pr');
+    contextMenu.close();
+    await settle();
+    expect(lookup).toHaveBeenLastCalledWith({ threadId: thread.id, refresh: true });
+    if (remount) {
+      await unmount(mounted);
+      clock.mockReturnValue(now + PULL_REQUEST_POLL_MS + delay + 1);
+      mounted = mount(ThreadHeader, { target: document.body, props: { store } });
+      await settle();
+      expect(lookup).toHaveBeenCalledTimes(3);
+    }
+    finishManual(fresh);
+    await settle();
+    expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#215');
+
+    finishAuto(stale);
+    await settle();
+    document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
+    document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger-menu] [data-value=more]')!.click(); await settle();
+    expect.soft(document.querySelector('[data-testid=thread-menu-trigger-menu] [data-value=thread-pr]')?.textContent).toContain('#215');
+
+    window.dispatchEvent(new Event('pagehide'));
+    const key = Object.keys(localStorage).find(key => key.startsWith('boite.pull-requests.v1:'))!;
+    expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({ pullRequest: fresh });
+  } finally {
+    finishAuto(stale);
+    finishManual(fresh);
+    contextMenu.close();
+    await unmount(card);
+  }
+});
+
+test('removing a linked PR lets both views discover its replacement in the same millisecond', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(thread => thread.branch && thread.branch !== 'HEAD' && thread.status === 'idle')!;
+  const project = store.projects.find(project => project.id === thread.projectId)!;
+  await store.open(thread.id);
+  const url = 'https://github.com/example/repo/pull/410';
+  const [linked] = await client.call('threads.linkPullRequest', { threadId: thread.id, url });
+  const replacement = { number: 411, url: 'https://github.com/example/repo/pull/411', state: 'OPEN' as const };
+  const lookup = vi.fn().mockResolvedValueOnce(linked).mockResolvedValueOnce(replacement);
+  const original = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation((method, params) =>
+    method === 'threads.pullRequest' ? lookup(params) : original(method, params));
+  const now = Date.now();
+  vi.spyOn(Date, 'now').mockReturnValue(now);
+  mounted = mount(ThreadHeader, { target: document.body, props: { store } });
+  const card = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now } });
+  try {
+    await settle();
+    expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#410');
+    await client.call('threads.unlinkPullRequest', { threadId: thread.id, url });
+    await settle();
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect.soft(document.querySelector('[data-testid=thread-pr]')?.textContent ?? '').toContain('#411');
+
+    document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
+    document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger-menu] [data-value=more]')!.click(); await settle();
+    expect.soft(document.querySelector('[data-testid=thread-menu-trigger-menu] [data-value=thread-pr]')?.textContent ?? '').toContain('#411');
+
+    window.dispatchEvent(new Event('pagehide'));
+    const key = Object.keys(localStorage).find(key => key.startsWith('boite.pull-requests.v1:'))!;
+    expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({ pullRequest: replacement });
+  } finally {
+    await unmount(card);
+  }
 });
 
 test("a phone's header is back, the title, one menu of the thread's actions and the panel button; no panel in the menu, no contact requests", async () => {

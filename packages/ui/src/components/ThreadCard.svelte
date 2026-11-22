@@ -14,9 +14,11 @@
   import { strings } from '../lib/strings';
   import MachinePlace from './MachinePlace.svelte';
   import MachineIcon from './MachineIcon.svelte';
+  import PullRequestBadge from './PullRequestBadge.svelte';
   import ThreadRowDetails from './ThreadRowDetails.svelte';
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline, { pullRequestLabel } from './ThreadHeadline.svelte';
+  import ThreadBot from './ThreadBot.svelte';
   import ThreadState from './ThreadState.svelte';
   import { threadState } from '../lib/thread-state';
   import { rowAsks, stateForm } from '../lib/status-order';
@@ -25,6 +27,7 @@
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
+  import { agentDirectory } from '../lib/agent-directory.svelte';
   let {
     machine,
     project,
@@ -72,6 +75,7 @@
   const away = $derived(owner.connection !== 'ready');
   const wait = $derived(away ? null : threadWait(thread, owner));
   const kind = $derived(thread.archived ? null : threadState(thread, rowAsks(owner, thread.id)));
+  const bot = $derived(agentDirectory(owner).rowAgentOf(thread));
   /** "Offline" said once: on the place line, unless the card's head, the place's machine or the row's own state
       (work it last saw, ThreadState.svelte) already says it. */
   const chip = $derived(away && !placed && !where?.host?.away && stateForm(kind) !== 'work');
@@ -84,8 +88,9 @@
   // A move asked for while the turn runs, until the turn ends and applies it.
   let pending = $derived(pendingLine(thread));
   let doneAllowed = $derived(canMarkDone(owner, thread));
-  /** The classic card's second line: only when it names a place or a pull request, the branch then rides along. */
-  const meta = $derived(classic && (!!where || pullRequest !== null));
+  const meta = $derived(classic && (!!bot || !!where || pullRequest !== null));
+  const showPlace = $derived(!classic && (!!bot || !!where || chip || (detail !== undefined && at !== undefined)));
+  const placePr = $derived(!classic && bot ? pullRequest : null);
   /** The details the row only shows under the pointer or the keyboard, in its tooltip at rest: the pull request, the branch, the time. */
   let tip = $derived([thread.title, pullRequest && pullRequestLabel(pullRequest), thread.branch, ago(thread.lastUserMessageAt ?? thread.createdAt, now)].filter(Boolean).join('\n'));
 
@@ -98,6 +103,10 @@
     await current?.commit();
   }
   let row = $state<HTMLButtonElement | undefined>(undefined);
+  function openPlace() {
+    row?.focus({ preventScroll: true });
+    row?.click();
+  }
   /** Enter and Escape hand the keyboard back to the row, never to the page, where Escape stops the turn. */
   async function leaveRename(commit: boolean) {
     if (commit) void save();
@@ -126,6 +135,51 @@
   }
 </script>
 
+{#snippet pendingMove(label: string)}
+  <span class="pending" data-testid="thread-pending" title={label}><FolderInput size={12} /><span class="ui-label">{label}</span></span>
+{/snippet}
+
+{#snippet placeLine(link: ThreadSummary['pullRequest'] = null)}
+  <span class="where" data-testid="thread-where" title={where?.text}>
+    {#if bot}<ThreadBot {bot} {open} attention={kind === 'waiting'} />{/if}
+    {#if link}<PullRequestBadge pullRequest={link} />{/if}
+    {#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}
+    {#if where?.host}<MachinePlace host={where.host} />{/if}
+    <ThreadRowDetails offline={chip} />
+    {#if detail && at !== undefined}<time class="since ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}
+  </span>
+{/snippet}
+
+{#snippet rowButton()}
+  <button
+    type="button"
+    class="ghost row"
+    bind:this={row}
+    data-testid="thread-row"
+    data-thread-id={thread.id}
+    data-machine-id={machine.id}
+    data-preload-thread={thread.id}
+    data-status={thread.status}
+    data-pinned={thread.pinned ? 'true' : undefined}
+    title={tip}
+    onclick={() => void workspace.select(owner, thread.id)}
+    ondblclick={rename}
+  >
+    {#if lead}<span class="kind-line">{@render lead()}</span>{/if}
+    <!-- Activity uses its kind or its own mark, and puts the time on the place line. -->
+    {#if detail}
+      <span class="title-line">{#if !lead && stateForm(kind) !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} {open} pullRequest={placePr ? null : pullRequest} offline={away} /></span>
+    {:else if classic}
+      <ThreadHeadline {owner} {thread} {now} {open} fit offline={away} elapsedShownSince={wait?.since} />
+    {:else}
+      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} showProvider={bot !== null} pullRequest={placePr ? null : pullRequest} fit offline={away} elapsedShownSince={wait?.since} at={thread.lastUserMessageAt ?? thread.createdAt} />
+    {/if}
+    {#if wait}<WaitLine {wait} />{/if}
+    {#if showPlace && !placePr}{@render placeLine()}{/if}
+    {#if pending && !placePr}{@render pendingMove(pending)}{/if}
+  </button>
+{/snippet}
+
 {#if renaming}
   <input
     class="rename"
@@ -150,6 +204,7 @@
     class:compact
     class:classic
     class:meta
+    class:has-bot={bot !== null}
     class:feed={detail !== undefined}
     class:led={lead !== undefined}
     class:offline={away}
@@ -159,47 +214,28 @@
     ondragstart={(event) => event.preventDefault()}
     oncontextmenu={menu}
   >
-    <button
-      type="button"
-      class="ghost row"
-      bind:this={row}
-      data-testid="thread-row"
-      data-thread-id={thread.id}
-      data-machine-id={machine.id}
-      data-preload-thread={thread.id}
-      data-status={thread.status}
-      data-pinned={thread.pinned ? 'true' : undefined}
-      title={tip}
-      onclick={() => void workspace.select(owner, thread.id)}
-      ondblclick={rename}
-    >
-      {#if lead}<span class="kind-line">{@render lead()}</span>{/if}
-      <!-- Every list row ends its title's line the same way: the mark when there is one, then the time of the
-           last message. An Activity card's mark is its kind line's glyph, its time on another line; a card with no
-           kind (work going on under a sub-agent that asks) wears the row's mark in that glyph's place. -->
-      {#if detail}
-        <span class="title-line">{#if !lead && stateForm(kind) !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} {open} {pullRequest} offline={away} /></span>
-      {:else if classic}
-        <ThreadHeadline {owner} {thread} {now} {open} fit offline={away} elapsedShownSince={wait?.since} />
-      {:else}
-        <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} fit offline={away} at={thread.lastUserMessageAt ?? thread.createdAt} elapsedShownSince={wait?.since} />
-      {/if}
-      {#if wait}<WaitLine {wait} />{/if}
-      <!-- Where the row lives, under the title: the project, the machine among several, Offline once. -->
-      {#if !classic && (where || chip || (detail && at !== undefined))}
-        <span class="where" data-testid="thread-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}<ThreadRowDetails offline={chip} />{#if detail && at !== undefined}<time class="since ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
-      {/if}
-      {#if pending}
-        <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
-      {/if}
-    </button>
+    {#if !classic}
+      <div class="row-main">
+        {@render rowButton()}
+        {#if placePr}
+          <!-- The row button also works from this line. The link handles its own click. -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <div class="row-extra" role="presentation" onclick={openPlace} ondblclick={(event) => { if (!(event.target instanceof Element && event.target.closest('a'))) rename(); }}>
+            {@render placeLine(placePr)}
+            {#if pending}{@render pendingMove(pending)}{/if}
+          </div>
+        {/if}
+      </div>
+    {:else}
+      {@render rowButton()}
+    {/if}
     <!-- The classic card: the line under the title, over the row's bottom padding so the whole card stays one target. -->
     {#if meta}
       <div class="metadata" data-testid="thread-where" title={where?.text}>
-        <!-- The project first, at the same place on every row; its machine after it, as on the other place lines. -->
+        {#if bot}<ThreadBot {bot} {open} attention={kind === 'waiting'} />{/if}
         {#if where?.project}<span class="project-name" data-testid="thread-project" title={project?.path}><Folder size={12} /><span class="ui-label">{where.project}</span></span>{/if}
         {#if where?.host}<span class="machine" class:away={where.host.away} title={where.host.text} aria-label={where.host.text}><MachineIcon icon={machine.icon} os={owner.core?.os} size={12} /></span>{/if}
-        <ThreadRowDetails offline={chip} {pullRequest} branch={thread.branch} />
+        <ThreadRowDetails offline={chip} {pullRequest} branch={where || pullRequest ? thread.branch : undefined} />
       </div>
     {/if}
     <!-- Activity: what is asked, then the command and the sub-agents asking the same; outside the row's button, since
@@ -235,6 +271,12 @@
   .thread:hover {
     background: var(--color-hover);
   }
+  @media (hover: hover) {
+    .row-main:hover { --avatar-rest: none; }
+    .thread:has(.row:hover) .metadata { --avatar-rest: none; }
+  }
+  .row-main:has(.row:focus-visible),
+  .thread:has(.row:focus-visible) .metadata { --avatar-rest: none; }
   .thread.open {
     background: var(--color-active);
   }
@@ -268,6 +310,11 @@
     background: transparent;
     container: thread-row / inline-size;
   }
+  .row-main { min-width: 0; }
+  .row-main:has(> .row-extra) > .row { padding-bottom: 0; min-height: 0; }
+  .row-extra { padding: 4px calc(var(--pad-x) + 1px) 7px; cursor: pointer; }
+  .row-extra > .pending { margin-top: 4px; }
+  .where :global(.pr-link) { outline-offset: -1px; }
   /* The title wins. At rest a row, the open one included, carries one state at most (its mark and its word,
      ThreadState.svelte), then its time, and the pin and an unsent draft, always there as before the redraw: a mark
      that only shows under the pointer says nothing at a glance. The pull request shows under the pointer or the
@@ -284,7 +331,7 @@
   .feed.led { --feed-lead: 28px; }
   .kind-line { display: block; margin: 0 calc(var(--menu-w) + 4px) 8px 0; }
   /* No button border on the card's row: its words start on the same edge as the detail and the pair under it. */
-  .feed > .row { padding-block: var(--feed-pad) 0; border-inline-width: 0; }
+  .feed .row { padding-block: var(--feed-pad) 0; border-inline-width: 0; }
   .feed-detail { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px var(--pad-x) var(--feed-pad) calc(var(--pad-x) + var(--gutter)); }
   /* Nothing asked (an update): the row keeps its own bottom padding only. */
   .feed-detail:not(:has(*)) { padding: 0 0 var(--feed-pad); }
@@ -298,12 +345,13 @@
   /* The card's strongest line. A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it
      showed the top of the third line, so only a descender's room is kept. */
   .feed .row :global(.headline .title) { flex: 0 1 auto; font-size: var(--text-head); font-weight: var(--weight-title); white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
-  .feed .row :global(.headline > :is(.tile, .bot, .provider)) { margin-top: 2px; }
+  .feed .row :global(.headline > :is(.tile, .provider)) { margin-top: 2px; }
   /* The menu at the kind line's end, its glyph's box on the card's right edge, so the title keeps the card's width. */
   .feed .actions { top: calc(var(--feed-pad) + var(--menu-at) - var(--menu-h) / 2); right: calc(var(--pad-x) - (var(--menu-w) - 14px) / 2); width: var(--menu-w); height: var(--menu-h); min-height: 0; }
   /* The place line under the title, a descender's room and the row's 4 px clear of it, one line: the project gives
      way at a word, then the machine. Every item is trimmed to its capitals (.ui-label) and centred, so all stand on
      one baseline. */
+  .feed .row-extra { padding: 4px var(--pad-x) 0; }
   .feed .where { height: 20px; line-height: 20px; margin: 2px 0 0 var(--gutter); }
   /* The pair answers what is asked, right under it: right-aligned on the card's edge. */
   .feed-actions { padding: 0 var(--pad-x) var(--feed-pad); margin-top: -2px; }
@@ -313,7 +361,7 @@
      under them, the card's whole width, so no empty band parts the text from the pair. */
   @container activity (min-width: 640px) {
     .thread.feed { display: grid; grid-template-columns: subgrid; align-items: start; }
-    .thread.feed > .row { grid-column: 1; grid-row: 1; }
+    .thread.feed > :is(.row, .row-main) { grid-column: 1; grid-row: 1; }
     .feed-detail { grid-column: 1 / -1; grid-row: 2; }
     .feed-actions { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: 0; padding: calc(var(--feed-pad) + var(--feed-lead) + 0.36 * var(--text-head) - var(--control) / 2) var(--pad-x) 0 0; }
     .feed-actions > :global(.decision-actions) { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 0; }
@@ -340,7 +388,7 @@
      title's box to them, so the line opens 5 px down and their middle sits 0.36 em under that. */
   .thread:not(.feed) .row :global(.headline) { align-items: flex-start; padding-top: 5px; }
   .thread:not(.feed) .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
-  .thread:not(.feed) .row :global(.headline > :is(.when, .at, .bot, .provider, .draft, .pin, .pr)) { height: 20px; margin-top: calc(0.36 * var(--text-body) - 10px); }
+  .thread:not(.feed) .row :global(.headline > :is(.when, .at, .provider, .draft, .pin, .pr)) { height: 20px; margin-top: calc(0.36 * var(--text-body) - 10px); }
   /* The time on the same line whether the row's mark draws it (no state) or the row does. */
   .thread:not(.feed) .row :global(.headline > :is(.at, .when:not(.state))) { line-height: 20px; }
   .thread:not(.feed) .row :global(.headline > .tile) { margin-top: calc(0.36 * var(--text-body) - 8px); }
@@ -393,7 +441,7 @@
   .thread.feed:is(:hover, :focus-within) :global(.headline .when:not(.state)) { visibility: hidden; }
   /* The classic card, as it was before the redraw: one line for the title, its state or its time at the end, and the
      place line under it. */
-  .classic { --pad-x: 10px; }
+  .classic { --pad-x: 10px; --provider-shift: 4px; }
   .classic .row { min-height: var(--row); padding: 8px var(--pad-x); gap: 7px; }
   /* Two lines with air around them: the title carries the row, in the list's strongest weight; the place line
      sits under the title's own edge, past the mark, a size and a tier under it, so the eye runs down the titles. */
@@ -401,13 +449,15 @@
   .thread.classic.meta .row :global(.headline .title) { font-weight: 600; }
   .thread.classic .row :global(.headline) { align-items: center; padding-top: 0; }
   .thread.classic .row :global(.headline .title) { display: block; white-space: nowrap; -webkit-line-clamp: none; line-clamp: none; padding-bottom: 0.5em; margin-bottom: -0.5em; }
-  .thread.classic .row :global(.headline > :is(.when, .at, .bot, .provider, .draft, .pin, .pr, .tile)) { margin-top: 0; }
+  .thread.classic .row :global(.headline > :is(.when, .at, .provider, .draft, .pin, .pr, .tile)) { margin-top: 0; }
   /* The provider's 14 px mark centred under the project card's 18 px tile (Sidebar.svelte), the title kept under its name.
      The headline steps out with the mark: the hover fade masks the headline's own box and would cut a mark past its edge. */
-  .thread.classic .row :global(.headline:has(> .provider)) { margin-left: -4px; }
+  .thread.classic .row :global(.headline:has(> .provider)) { margin-left: calc(-1 * var(--provider-shift)); }
   .thread.classic .row :global(.headline > .provider) { margin: 0 4px 0 0; }
   .classic :is(.actions, .done) { top: calc(19px - var(--act) / 2); }
   .metadata { position: absolute; bottom: 11px; left: calc(var(--pad-x) + var(--meta-inset, 23px)); right: 10px; display: flex; align-items: center; gap: 12px; min-width: 0; height: 16px; pointer-events: none; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--color-subtle); }
+  /* Align the bot with the provider, accounting for the row button's border. */
+  .has-bot .metadata { left: calc(var(--pad-x) + 1px - var(--provider-shift)); }
   .metadata :global(a) { font-weight: 500; }
   .metadata > span { display: flex; align-items: center; gap: 4px; min-width: 0; }
   .metadata span span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -417,6 +467,8 @@
   /* Beside a branch or its machine, the project keeps its length up to half the line and the branch takes the rest. */
   .project-name:has(~ .machine), .project-name:has(~ :global(.branch)) { flex: 0 0 auto; max-width: 50%; }
   .metadata > :global(.branch) { margin-left: auto; }
+  .has-bot .metadata > :is(.project-name, :global(.branch)) { flex: 1 1 0; overflow: hidden; }
+  .has-bot .metadata > :global(.branch) { justify-content: flex-end; }
   .rename {
     width: 100%;
     height: 32px;

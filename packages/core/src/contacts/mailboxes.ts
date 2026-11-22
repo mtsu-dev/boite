@@ -12,6 +12,7 @@ import { checkRemoteContact, remoteTranscript, checkMatchExtras, PARTIAL, partia
 import { address, LETTER_TTL_MS, RESIDENT_LETTER_TTL_MS, same, text } from '../coordination-letter.ts';
 import { PeerRefusal, type Operation } from '../coordination-wire.ts';
 import { refused, unavailable, messageOf, RpcFailure } from '../errors.ts';
+import { assertSearchActive, waitForSearch } from '../journal-reads.ts';
 import { REPLY_WINDOW_MS } from './reach.ts';
 import { checkNormalizedRemote } from './git-remote.ts';
 import { contactFace } from './face.ts';
@@ -158,18 +159,19 @@ export class ContactMailboxes {
    * contact that fails, or answers without some of its machines, is named in
    * `unavailable` beside what the others found.
    */
-  async #lookup<T>(threadId: string, operation: 'directory' | 'search', payload: Record<string, unknown>, check: (entry: unknown, peer: CoordinationPeer) => T): Promise<{ entries: T[]; unavailable: string[] }> {
+  async #lookup<T>(threadId: string, operation: 'directory' | 'search', payload: Record<string, unknown>, check: (entry: unknown, peer: CoordinationPeer) => T, signal?: AbortSignal): Promise<{ entries: T[]; unavailable: string[] }> {
+    assertSearchActive(signal);
     const direct = new Set(this.#core.coordination.trusted().map(peer => peer.coreId));
-    const { contacts, unavailable: silent } = await this.#discover(threadId);
+    const { contacts, unavailable: silent } = await waitForSearch(this.#discover(threadId), signal);
     const from = this.#source(threadId);
-    const results = await Promise.all(contacts.filter(contact => !direct.has(contact.coreId) && this.route(threadId, contact.coreId)).map(async contact => {
+    const results = await waitForSearch(Promise.all(contacts.filter(contact => !direct.has(contact.coreId) && this.route(threadId, contact.coreId)).map(async contact => {
       const route = this.route(threadId, contact.coreId)!;
       try {
         const answer = partialList(await this.#request(route, { action: 'lookup', from, coreId: contact.coreId, operation, payload }));
         const peer = { coreId: contact.coreId, name: contact.name, url: '', publicKey: '' };
         return { entries: answer.entries.map(entry => check(entry, peer)), missing: answer.unavailable === 0 ? null : partialName(contact.name, answer.unavailable) };
       } catch { return { entries: [], missing: contact.name }; }
-    }));
+    })), signal);
     this.#source(threadId);
     return { entries: results.flatMap(result => result.entries), unavailable: [...silent, ...results.flatMap(result => result.missing === null ? [] : [result.missing])] };
   }
@@ -182,8 +184,8 @@ export class ContactMailboxes {
     if (contact.threadId !== (payload as { threadId: string }).threadId) throw refused('transcript of another thread');
     return remoteTranscript(contact, result, payload as { entry?: string; offset?: number });
   }
-  search(threadId: string, words: string[]): Promise<{ entries: RpcResult<'collaboration.search'>['matches']; unavailable: string[] }> {
-    return this.#lookup(threadId, 'search', { words, partial: PARTIAL }, (entry, peer) => ({ ...checkRemoteContact(entry as AgentContact, peer), ...checkMatchExtras(entry as { matched?: unknown; excerpts?: unknown }) }));
+  search(threadId: string, words: string[], signal?: AbortSignal): Promise<{ entries: RpcResult<'collaboration.search'>['matches']; unavailable: string[] }> {
+    return this.#lookup(threadId, 'search', { words, partial: PARTIAL }, (entry, peer) => ({ ...checkRemoteContact(entry as AgentContact, peer), ...checkMatchExtras(entry as { matched?: unknown; excerpts?: unknown }) }), signal);
   }
   async relay(letter: AgentLetter): Promise<AgentLetter> {
     const route = this.route(letter.from.threadId, letter.to.coreId);

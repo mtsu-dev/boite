@@ -18,6 +18,13 @@ type CommandDefinition = {
   run?: (store: Store, inShell: boolean) => void;
 };
 
+export function drawerCommandAvailable(store: Store): boolean {
+  const open = store.openThread;
+  // Mochis and teams have no drawer. Returning to Chat from one would restore another thread.
+  if (!open || store.page === 'agents' || open.agentSessionId || open.teamId) return false;
+  return store.owner || store.boardAvailable();
+}
+
 // Labels are read when requested so a language change reaches keyboard settings.
 const commandTable: readonly CommandDefinition[] = [
   { id: 'new-thread', label: () => strings.palette.newThread, run: (store) => {
@@ -56,7 +63,11 @@ const commandTable: readonly CommandDefinition[] = [
     if (projectId !== undefined) void store.openImports(projectId);
   } },
   // The drawer's: the terminal, or the project board a paired device opens too.
-  { id: 'terminal', label: () => strings.palette.terminal, run: (store) => { const open = store.openThread; if (open && (store.owner || store.boardAvailable())) { store.showChat(); store.toggleDrawer(); } } },
+  { id: 'terminal', label: () => strings.palette.terminal, run: (store) => {
+    if (!drawerCommandAvailable(store)) return;
+    if (store.page !== 'chat') store.showChat();
+    store.toggleDrawer();
+  } },
   { id: 'terminal-new', label: () => strings.keyboard.commands.terminalNew, ownerOnly: true },
   { id: 'terminal-split', label: () => strings.keyboard.commands.terminalSplit, ownerOnly: true },
   { id: 'terminal-split-vertical', label: () => strings.keyboard.commands.terminalSplitVertical, ownerOnly: true },

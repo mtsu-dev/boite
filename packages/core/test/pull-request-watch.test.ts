@@ -299,6 +299,8 @@ interface FakeGitHub {
   updatedAt: string;
   /** Who merged or closed it. */
   closedBy: string;
+  /** When, as GitHub's ISO time; null where the test does not need it. */
+  closedAt: string | null;
   /** Thrown instead of answering, once per call while set. */
   failure: string | null;
   /** Thrown by the next closer query only, then cleared. */
@@ -312,7 +314,7 @@ interface FakeGitHub {
 }
 
 function fakeGitHub(): FakeGitHub {
-  return { state: 'OPEN', mergeable: 'MERGEABLE', head: 'a'.repeat(40), queue: null, runs: [{ name: 'test', status: 'IN_PROGRESS', conclusion: '' }], comments: [], reviews: [], inline: [], updatedAt: '2026-10-15T09:00:00Z', closedBy: 'meetsu', failure: null, closerFailure: null, rules: [], protection: [], rulesFailure: null, calls: [] };
+  return { state: 'OPEN', mergeable: 'MERGEABLE', head: 'a'.repeat(40), queue: null, runs: [{ name: 'test', status: 'IN_PROGRESS', conclusion: '' }], comments: [], reviews: [], inline: [], updatedAt: '2026-10-15T09:00:00Z', closedBy: 'meetsu', closedAt: null, failure: null, closerFailure: null, rules: [], protection: [], rulesFailure: null, calls: [] };
 }
 
 /** What `gh` prints for each call a watch makes. */
@@ -327,7 +329,7 @@ async function answer(github: FakeGitHub, args: string[]): Promise<string> {
     if (failure) throw new Error(failure);
     const by = { login: github.closedBy };
     const state = github.detailState ?? github.state;
-    return JSON.stringify({ data: { viewer: { login: 'meetsu' }, repository: { pullRequest: { state, mergedBy: state === 'MERGED' ? by : null,
+    return JSON.stringify({ data: { viewer: { login: 'meetsu' }, repository: { pullRequest: { state, closedAt: github.closedAt, mergedBy: state === 'MERGED' ? by : null,
       timelineItems: { nodes: state === 'CLOSED' ? [{ actor: by }] : [] } } } } });
   }
   const mergeQueueEntry = github.queue === null ? null : { position: github.queue };
@@ -693,6 +695,60 @@ for (const others of Object.keys(hintCases) as (keyof typeof hintCases)[]) {
       expect(archiveState(core.journal, threadId).asked ?? []).toEqual(others === 'asked' ? [URL] : []);
     }
     expect(core.threads.require(threadId).archived).toBe(false);
+  });
+}
+
+const ownMergeCases = {
+  'in a turn': 'during its agent\'s turn ends the watch without a wake',
+  'after the turn': 'ten seconds after its agent\'s turn wakes it with the Done hint',
+  'read in the next turn': 'between two turns, read while the next one runs, wakes it once that turn ends',
+} as const;
+for (const when of Object.keys(ownMergeCases) as (keyof typeof ownMergeCases)[]) {
+  test(`a merge by the agent's own account ${ownMergeCases[when]}`, async () => {
+    const { owner, threadId, github, drive } = await watchedThread();
+    const core = harness!.core;
+    const cwd = join(harness!.dataDir, 'worktree');
+    mkdirSync(cwd);
+    core.journal.putThread({ ...core.threads.require(threadId), cwd, branch: 'feature' });
+    await owner.call('threads.subscribe', { threadId });
+    const holdTurn = async () => {
+      const asked = owner.next('question.asked', request => request.threadId === threadId, 3_000);
+      await owner.call('turns.start', { threadId, prompt: 'question' });
+      return (await asked).id;
+    };
+    // Put the first turn far enough in the past for a real gap, and off the second boundary.
+    const currentSecond = Math.floor(Date.now() / 1_000) * 1_000;
+    const firstTurnAt = currentSecond - 20_000 + 500;
+    const firstQuestionId = await pinned(firstTurnAt, async () => {
+      await owner.call('threads.watchPullRequest', { threadId, url: URL });
+      await drive();
+      if (when === 'in a turn') return holdTurn();
+      await owner.call('turns.start', { threadId, prompt: 'open the pull request' });
+      await settled(threadId);
+      return null;
+    });
+    const last = core.journal.lastTurn(threadId)!;
+    const mergeAt = when === 'in a turn' ? last.startedAt! : last.finishedAt! + 10_000;
+    github.closedAt = new Date(Math.floor(mergeAt / 1_000) * 1_000).toISOString().replace('.000Z', 'Z');
+    const questionId = when === 'read in the next turn' ? await holdTurn() : firstQuestionId;
+    github.state = 'MERGED';
+    github.closedBy = 'meetsu';
+    await drive();
+    if (questionId !== null) {
+      expect(core.pullRequestWatches.of(threadId)).toHaveLength(when === 'in a turn' ? 0 : 1);
+      expect(wakes(threadId)).toHaveLength(0);
+      await owner.call('questions.skip', { threadId, questionId });
+      await settled(threadId);
+      await drive();
+    }
+    await settled(threadId);
+    expect(core.pullRequestWatches.of(threadId)).toEqual([]);
+    if (when === 'in a turn') { expect(wakes(threadId)).toHaveLength(0); return; }
+    expect(wakes(threadId)).toHaveLength(1);
+    const text = wakeText(threadId, wakes(threadId)[0]!.id);
+    expect(text).toContain('meetsu merged the pull request; its watch ended.');
+    expect(text).toContain(WATCH_DONE_HINT);
+    expect(archiveState(core.journal, threadId).asked).toEqual([URL]);
   });
 }
 

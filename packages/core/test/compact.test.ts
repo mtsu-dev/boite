@@ -560,7 +560,7 @@ describe('automatic compaction', () => {
       await pause(100);
       expect(await compactions(client, botId)).toHaveLength(1);
       expect(seen.get(botId)?.at(-1)).toBeNull();
-      // A prompt this long would start an automatic goal, on by default: this one only measures compaction.
+      // A prompt this long would start an automatic goal where the owner turned them on: this one only measures compaction.
       await client.call('settings.set', { autoCompact: { tokens: 1500, moments: [] }, compactionByType: {}, autoGoals: false });
       await turn(client, botId, 'x'.repeat(1500));
       await pause(180);

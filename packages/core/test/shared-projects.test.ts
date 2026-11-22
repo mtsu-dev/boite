@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -187,6 +187,23 @@ test('both owners keep model tiers and source/target communication, archive and 
     expect(await thrown(agent.call('sharedProjects.threads', scope))).toThrow('remote coordination');
   } finally { agent.close(); }
 }, 30000);
+
+test('closing a search RPC cancels its shared project lookup', async () => {
+  const { a } = await associated();
+  const completed = Promise.withResolvers<never>();
+  const lookup = spyOn(a.h.core.sharedProjects, 'request').mockImplementation(() => completed.promise);
+  try {
+    const search = thrown(a.client.call('collaboration.search', { threadId: a.threadId, query: 'bravo' }));
+    await waitFor(() => lookup.mock.calls.length > 0);
+    expect(a.h.core.router.activeRequests).toBe(1);
+    a.client.close();
+    await search;
+    await waitFor(() => a.h.core.router.activeRequests === 0, 1000);
+  } finally {
+    completed.reject(unavailable('Fixture released'));
+    lookup.mockRestore();
+  }
+});
 
 test('revocation closes the immutable association, including bare legacy reads, and a new grant cannot revive it', async () => {
   const { a, b, scope } = await associated();

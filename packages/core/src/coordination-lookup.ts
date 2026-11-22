@@ -3,10 +3,10 @@ import type { Database } from 'bun:sqlite';
 import { address, text } from './coordination-letter.ts';
 import { invalidParams } from './errors.ts';
 import { searchChat, type ChatSearch } from './chat-search.ts';
-import { searchJournalChat } from './journal-reads.ts';
+import { assertSearchActive, searchJournalChat } from './journal-reads.ts';
 import { threadRef } from './contacts/project-policy.ts';
 
-/** At most this many words in a search; each costs one scan of the candidates' chat. */
+/** At most this many words in a search. */
 const SEARCH_WORDS = 8;
 /** Matches returned by one core. */
 const SEARCH_RESULTS = 20;
@@ -45,7 +45,8 @@ export function spoken(parts: MessagePart[]): string {
  * checks again afterwards what the asker may still reach. `redact` leaves out
  * the messages the shared file policy withholds.
  */
-export async function searchContacts(db: Database, candidates: AgentContact[], words: string[], readChat = true, redact = false): Promise<AgentMatch[]> {
+export async function searchContacts(db: Database, candidates: AgentContact[], words: string[], readChat = true, redact = false, signal?: AbortSignal): Promise<AgentMatch[]> {
+  assertSearchActive(signal);
   if (candidates.length === 0) return [];
   const matched = new Map<string, Set<Field>>();
   const search: ChatSearch = { words, redact, results: SEARCH_RESULTS, candidates: candidates.map(contact => {
@@ -58,7 +59,7 @@ export async function searchContacts(db: Database, candidates: AgentContact[], w
     matched.set(contact.threadId, hit);
     return { threadId: contact.threadId, fieldWords, fieldHits: hit.size, activeAt: contact.activeAt ?? 0 };
   }) };
-  const hits = readChat ? await searchJournalChat(db, search) : searchChat(null, search);
+  const hits = readChat ? await searchJournalChat(db, search, { signal }) : searchChat(null, search);
   const contacts = new Map(candidates.map(contact => [contact.threadId, contact]));
   return hits.map(hit => ({ ...contacts.get(hit.threadId)!, matched: [...matched.get(hit.threadId)!, ...(hit.chat ? ['chat' as const] : [])], excerpts: hit.excerpts }));
 }

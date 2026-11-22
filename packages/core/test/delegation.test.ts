@@ -10,6 +10,7 @@ import { forgetProbes, probedModelsOf, rememberExternalModels, setDriver } from 
 import { choiceRow, routeOf } from '../src/delegate-cli.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { runCli } from '../src/cli.ts';
+import { OWN_DONE } from '../src/agent-guide.ts';
 import { holdAccountTurns, echoThread, scriptedClaude, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { resumeCut } from '../src/providers/update-background.ts';
 import { thrown } from './settle.ts';
@@ -295,6 +296,8 @@ test('a fresh delegated session receives the configured brain instructions', asy
   expect(runs.get(child.thread.id)?.ctx.sessionId).toBeNull();
   expect(runs.get(child.thread.id)?.ctx.prompt).toContain('Run parser checks before reporting completion.');
   expect(runs.get(child.thread.id)?.ctx.prompt).toContain('boite where');
+  // Only a top-level conversation may put itself in Done: `agent.done` refuses a subagent.
+  expect(runs.get(child.thread.id)?.ctx.prompt).not.toContain(OWN_DONE);
 });
 
 test('the parent learns dynamic workflows and coordination within a compact prompt', async () => {
@@ -335,7 +338,9 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   // Then 119 for `boite state`, what the user sees read-only, so an agent asked about Boite stops guessing (4850 measured on Linux 2026-11-17).
   // Then 621 for the Council line, the boite-council skill and the `boite goal track` line, on in every build once the
   // Council and automatic goals stopped being experiments (5471 measured on Linux 2026-11-19).
-  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 5472 : 5438);
+  // Then 96 for the line that has a conversation put itself in Done once its last PR merged, which saves Boite's question a turn (5567 measured on Linux 2026-11-21).
+  expect(prompt).toContain(OWN_DONE);
+  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 5568 : 5534);
   runs.get(threadId)!.finish();
   await waitFor(() => h.core.threads.require(threadId).status === 'idle');
   await owner.call('turns.start', { threadId, prompt: 'Continue' });
