@@ -5,7 +5,7 @@ import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
 import { hasNul, resolveInside, threadCwd, writeLandsInside } from '../workdir.ts';
 import { gitFailed } from './errors.ts';
-import { parseStatus } from './porcelain.ts';
+import { fromPrefix, parseStatus, prefixOf } from './porcelain.ts';
 import { git, readRefSide, readTreeSide, SIDE_CEILING_BYTES } from './read.ts';
 
 function checkRef(ref: string): string {
@@ -32,12 +32,12 @@ export async function gitDiff(core: Core, params: RpcParams<'git.diff'>, histori
   const found = resolveInside(cwd, params.path, 'git.diff path');
   const ref = checkRef(params.ref === undefined || params.ref === '' ? 'HEAD' : params.ref);
   const change = await changeOf(core, params, cwd, found.relative);
-  // Status paths are root-relative; an unchanged path is relative to cwd.
-  const atRef = change?.oldPath ?? change?.path ?? `./${found.relative}`;
+  // Every path here is relative to cwd, and `<ref>:./x` is how git reads one
+  // from there: the name read and the name checked share that one base.
+  const atRef = `./${change?.oldPath ?? found.relative}`;
   // The name goes to git as one NUL-ended record: a NUL inside it would end it early.
   if (atRef.includes('\0')) throw refused(`git.diff refuses a path with a NUL in it: ${JSON.stringify(atRef)}`, { path: params.path });
-  // `<ref>:./x` is relative to cwd and `<ref>:x` to the repository's root, as git reads them.
-  if (historical) historical(atRef.startsWith('./') ? resolve(cwd, atRef) : resolve(await topLevel(core, threadId, cwd), atRef));
+  if (historical) historical(resolve(cwd, atRef));
   const oldSide = await readRefSide(core, threadId, cwd, ref, atRef);
   // Missing files remain valid inputs, but links and ancestors must stay inside cwd.
   if (!writeLandsInside(cwd, found.absolute)) {
@@ -59,12 +59,6 @@ export async function gitDiff(core: Core, params: RpcParams<'git.diff'>, histori
   return renderDiff(found.relative, change, old, current);
 }
 
-async function topLevel(core: Core, threadId: RpcParams<'git.diff'>['threadId'], cwd: string): Promise<string> {
-  const found = await git(core, threadId, cwd, ['rev-parse', '--show-toplevel']);
-  if (found.code !== 0) gitFailed(threadId, ['rev-parse', '--show-toplevel'], found);
-  return found.stdout.trim();
-}
-
 /**
  * What `git.status` says of the path. The client that read the status passes
  * the rename origin it saw, null included, and no second walk of the whole
@@ -77,10 +71,20 @@ async function changeOf(core: Core, params: RpcParams<'git.diff'>, cwd: string, 
     const origin = resolveInside(cwd, given, 'git.diff oldPath');
     return { path: relative, oldPath: origin.relative, status: 'renamed' };
   }
-  // Read the whole status so a rename retains its origin.
-  const status = await git(core, params.threadId, cwd, ['status', '--porcelain=v1', '-z']);
+  // Read the whole status so a rename retains its origin, and name it from cwd as `git.status` does.
+  const reading = git(core, params.threadId, cwd, ['status', '--porcelain=v1', '-z']);
+  const locating = git(core, params.threadId, cwd, ['rev-parse', '--show-prefix']);
+  locating.catch(() => {});
+  const status = await reading;
   if (status.code !== 0) gitFailed(params.threadId, ['status'], status);
-  return parseStatus(status.stdout).changes.find((entry) => entry.path === relative) ?? null;
+  const located = await locating;
+  if (located.code !== 0) gitFailed(params.threadId, ['rev-parse', '--show-prefix'], located);
+  const prefix = prefixOf(located.stdout);
+  for (const entry of parseStatus(status.stdout).changes) {
+    if (fromPrefix(prefix, entry.path) !== relative) continue;
+    return { ...entry, path: relative, oldPath: entry.oldPath === null ? null : fromPrefix(prefix, entry.oldPath) };
+  }
+  return null;
 }
 
 function renderDiff(path: string, change: { oldPath: string | null; status?: GitChangeStatus } | null, old: Uint8Array | null, current: Uint8Array | null): GitDiff {

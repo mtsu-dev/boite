@@ -443,6 +443,62 @@ describe('a paired device reads a thread\'s changes and files', () => {
     }
   });
 
+  test('a thread in a subfolder diffs a rename by the paths its status gives, whatever spaces end the folder names', async () => {
+    const owner = await harness.connect();
+    // Windows drops a trailing space from a folder name; elsewhere it is part of it.
+    const space = process.platform === 'win32' ? '' : ' ';
+    const root = join(harness.dataDir, `repo${space}`);
+    const cwd = join(root, `notes${space}`, 'docs');
+    mkdirSync(cwd, { recursive: true });
+    git(root, 'init', '-q');
+    writeFileSync(join(cwd, 'a.md'), 'one\n');
+    writeFileSync(join(root, 'top.md'), 'top\n');
+    git(root, 'add', '.');
+    git(root, 'commit', '-qm', 'first');
+    git(cwd, 'mv', 'a.md', 'b.md');
+    writeFileSync(join(cwd, 'b.md'), 'two\n');
+    writeFileSync(join(root, 'top.md'), 'changed\n');
+    const project = await owner.call('projects.add', { path: cwd, name: 'docs' });
+    const account = (await owner.call('accounts.list', {})).find((entry) => entry.providerId === 'echo');
+    const { id: threadId } = await owner.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account?.id ?? '', title: 'docs' });
+    const phone = await pairedDevice();
+    try {
+      for (const client of [owner, phone]) {
+        const { changes } = await client.call('git.status', { threadId });
+        expect(changes.find((change) => change.status === 'renamed')).toMatchObject({ path: 'b.md', oldPath: 'a.md' });
+        expect(changes.find((change) => change.path === '../../top.md')).toMatchObject({ status: 'modified', additions: 1, deletions: 1 });
+        expect(await client.call('git.diff', { threadId, path: 'b.md' })).toMatchObject({ status: 'renamed', oldPath: 'a.md', oldText: 'one\n', newText: 'two\n' });
+        expect(await client.call('git.diff', { threadId, path: 'b.md', oldPath: 'a.md' })).toMatchObject({ oldPath: 'a.md', oldText: 'one\n', newText: 'two\n' });
+      }
+    } finally {
+      phone.close();
+    }
+  });
+
+  test('a rename\'s origin is held to the name HEAD records, not to where a link in the tree now leads', async () => {
+    const owner = await harness.connect();
+    const { root, threadId } = await repoThread(owner);
+    mkdirSync(join(root, '.aws'));
+    writeFileSync(join(root, '.aws', 'notes.txt'), 'inert fixture, not a credential\n');
+    git(root, 'add', '.');
+    git(root, 'commit', '-qm', 'fixture');
+    git(root, 'mv', '.aws/notes.txt', 'moved.txt');
+    writeFileSync(join(root, 'moved.txt'), 'moved\n');
+    // `.aws` is now a link to an ordinary folder holding a file of the same name.
+    rmSync(join(root, '.aws'), { recursive: true, force: true });
+    mkdirSync(join(root, 'public'));
+    writeFileSync(join(root, 'public', 'notes.txt'), 'public\n');
+    symlinkSync(join(root, 'public'), join(root, '.aws'), process.platform === 'win32' ? 'junction' : 'dir');
+    const phone = await pairedDevice();
+    try {
+      expect(await thrown(phone.call('git.diff', { threadId, path: 'moved.txt' }))).toThrow('credential files');
+      expect(await thrown(phone.call('git.diff', { threadId, path: 'moved.txt', oldPath: '.aws/notes.txt' }))).toThrow('credential files');
+      expect(await owner.call('git.diff', { threadId, path: 'moved.txt' })).toMatchObject({ oldPath: '.aws/notes.txt', oldText: 'inert fixture, not a credential\n' });
+    } finally {
+      phone.close();
+    }
+  });
+
   test('a project the owner made at the home folder keeps every hidden entry of it from the device', () => {
     // The check resolves paths and reads nothing, so the real home folder is safe to name here.
     const home = homedir();

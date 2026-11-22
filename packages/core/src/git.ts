@@ -2,7 +2,7 @@ import { deviceBound, type GitStatus, type ThreadId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { gitDiff } from './git/diff.ts';
 import { gitFailed } from './git/errors.ts';
-import { parseNumstat, parseStatus } from './git/porcelain.ts';
+import { fromPrefix, parseNumstat, parseStatus, prefixOf } from './git/porcelain.ts';
 import { git } from './git/read.ts';
 import { assertDeviceFile, assertDeviceHistoryFile, assertDeviceReadable, threadCwd } from './workdir.ts';
 
@@ -18,15 +18,23 @@ export async function gitStatus(core: Core, threadId: ThreadId): Promise<GitStat
   // The plumbing `diff-index`, not `diff`: the porcelain writes a refreshed
   // index back whatever GIT_OPTIONAL_LOCKS says. `-M` keeps its renames.
   const counting = git(core, threadId, cwd, ['diff-index', '-M', '--numstat', '-z', 'HEAD']);
-  // Left unread when the status refuses: its rejection must not go unhandled.
+  // Status and numstat name paths from the root; the thread names them from its folder.
+  const locating = git(core, threadId, cwd, ['rev-parse', '--show-prefix']);
+  // Left unread when the status refuses: their rejections must not go unhandled.
   counting.catch(() => {});
+  locating.catch(() => {});
   const status = await reading;
   if (status.code !== 0) gitFailed(threadId, ['status'], status);
   const parsed = parseStatus(status.stdout);
   const numstat = await counting;
   const numbers = numstat.code === 0 ? parseNumstat(numstat.stdout) : new Map<string, { additions: number | null; deletions: number | null }>();
+  const located = await locating;
+  if (located.code !== 0) gitFailed(threadId, ['rev-parse', '--show-prefix'], located);
+  const prefix = prefixOf(located.stdout);
   for (const change of parsed.changes) {
     const counted = numbers.get(change.path);
+    change.path = fromPrefix(prefix, change.path);
+    if (change.oldPath !== null) change.oldPath = fromPrefix(prefix, change.oldPath);
     if (counted === undefined) continue;
     change.additions = counted.additions;
     change.deletions = counted.deletions;

@@ -143,6 +143,11 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
   const base = realOf(cwd);
   const target = realOf(resolve(cwd, path ?? ''));
   if (!contains(base, target)) return;
+  assertDeviceTarget(core, threadId, base, target, path);
+}
+
+/** The rules above, for `target` inside the real folder `base`. */
+function assertDeviceTarget(core: Core, threadId: ThreadId, base: string, target: string, path: string | undefined): void {
   const data = realOf(core.dataDir);
   if (contains(data, target) && !deviceRoots(core, threadId).some((root) => root !== data && contains(data, root) && contains(root, target))) {
     throw refused(`a paired device does not read boite's data folder: ${path ?? ''}`, { threadId });
@@ -162,13 +167,21 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
 /**
  * The file `git.diff` reads at HEAD for its old side, as git names it: a
  * rename's origin, which the device may not have named. It answers to the
- * rules of a file, and stays inside the thread's folder like one.
+ * rules of a file, and stays inside the thread's folder like one. Git reads
+ * the name HEAD records, not where a link in today's tree leads, so that name
+ * is checked as written as well as followed: `.aws/notes.txt` stays a
+ * credential file when `.aws` is now a link to an ordinary folder.
  */
 export function assertDeviceHistoryFile(core: Core, threadId: ThreadId, cwd: string, absolute: string): void {
-  if (!contains(realOf(cwd), realOf(absolute))) {
-    throw refused(`a paired device does not read ${absolute} at HEAD: it is outside the thread's working directory`, { threadId });
+  const base = realOf(cwd);
+  const recorded = resolve(base, relative(resolve(cwd), resolve(absolute)));
+  const followed = realOf(absolute);
+  for (const target of [recorded, followed]) {
+    if (!contains(base, target)) {
+      throw refused(`a paired device does not read ${absolute} at HEAD: it is outside the thread's working directory`, { threadId });
+    }
+    assertDeviceTarget(core, threadId, base, target, absolute);
   }
-  assertDeviceFile(core, threadId, cwd, absolute);
 }
 
 /**

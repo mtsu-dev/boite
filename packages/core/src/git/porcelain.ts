@@ -1,4 +1,26 @@
+import { posix } from 'node:path';
 import type { GitChangeStatus, GitStatus } from '@boite/contracts';
+
+/**
+ * What `git rev-parse --show-prefix` printed: the folder git ran in, from the
+ * repository's root. Only the line end goes; a space ending a folder's name is
+ * part of it.
+ */
+export function prefixOf(raw: string): string {
+  return raw.replace(/\r?\n$/, '');
+}
+
+/**
+ * A root-relative path from the status, as the folder `prefix` names it: what
+ * `git.diff` and the file routes resolve from the thread's working directory.
+ * A path outside that folder comes out with its `../`.
+ */
+export function fromPrefix(prefix: string, path: string): string {
+  if (prefix.length === 0) return path;
+  const named = posix.relative(prefix, path);
+  const form = named.length === 0 ? '.' : named;
+  return path.endsWith('/') && !form.endsWith('/') ? `${form}/` : form;
+}
 
 /** `## main...origin/main [ahead 1, behind 2]`, and the three shapes that are not that. */
 export function parseBranchHeader(header: string): Pick<GitStatus, 'branch' | 'upstream' | 'ahead' | 'behind'> {

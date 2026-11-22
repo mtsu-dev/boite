@@ -365,7 +365,9 @@ trace. The core runs git itself, refuses a device diff against any revision but
 inside its project or the core's worktree folder for it; each path is then held
 inside that directory, links included. A diff's old side is checked as the file
 git reads at `HEAD`: a rename's origin, named by the device or taken from the
-status, answers to the same rules and stays inside the thread's directory. Inside
+status, answers to the same rules and stays inside the thread's directory. Both
+the name `HEAD` records and where today's links lead are checked, so a
+`.aws/notes.txt` moved out stays refused after `.aws` becomes a link elsewhere. Inside
 it a device still cannot read
 boite's data folder, folders such as `.git`, `.ssh` and `.aws`, or files that
 hold credentials (`.env`, `.envrc`, `.netrc`, `.pgpass`, Terraform variables and
