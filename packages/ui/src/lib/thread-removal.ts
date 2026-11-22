@@ -25,7 +25,9 @@ export async function deleteThread(store: Store, thread: ThreadSummary): Promise
         return false;
       }
     }
-    if (!settings || store.clientGeneration !== generation) return false;
+    if (store.clientGeneration !== generation) return false;
+    // Offline before the settings arrived: the retention is unknown, so say why nothing was deleted.
+    if (!settings) { store.error = strings.connection.unavailable; return false; }
     const days = settings.threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS;
     const s = strings.sidebar;
     const choice = await confirm.choose({

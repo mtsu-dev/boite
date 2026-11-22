@@ -221,3 +221,14 @@ test('reopening skips a thread the core archived itself after its PR merged', as
   expect(await reopenLastArchived(store)).toBe(true);
   expect(store.openThread?.id).toBe('t-trace');
 });
+
+test('deleting offline before the settings arrived says why nothing happened', async () => {
+  const store = await ready();
+  const thread = store.threads.find(t => t.id === 't-trace')!;
+  store.settings = null;
+  store.client!.close();
+  store.detach();
+  expect(await deleteThread(store, thread)).toBe(false);
+  expect(confirm.current).toBeNull();
+  expect(store.error).toBe(strings.connection.unavailable);
+});

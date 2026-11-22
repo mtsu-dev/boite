@@ -2,10 +2,13 @@ import { pullRequestWatchWaits, type PullRequestWatch } from '@boite/contracts';
 import { dayClock } from './format';
 import { fill, strings } from './strings';
 
-/** An individual pause never hides checks or queue work another watch is still following. */
+/**
+ * An individual pause never hides checks or queue work another watch is still following,
+ * and a paused watch whose checks settled waits for nothing.
+ */
 export function pullRequestWait(watches: readonly PullRequestWatch[] | undefined) {
   const active = (watches ?? []).filter(watch => !watch.paused && pullRequestWatchWaits(watch));
-  const paused = active.length === 0 ? watches?.find(watch => watch.paused) : undefined;
+  const paused = active.length === 0 ? watches?.find(watch => watch.paused && pullRequestWatchWaits(watch)) : undefined;
   return { active, paused };
 }
 
