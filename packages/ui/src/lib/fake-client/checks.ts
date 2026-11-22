@@ -104,9 +104,18 @@ export function defaultModel(provider: ProviderSummary): string | null {
   return provider.models.find((model) => model.default === true)?.id ?? provider.models[0]?.id ?? null;
 }
 
-/** One spelling of a Windows path to compare: forward slashes, lower case, no trailing slash. */
+/** A Windows path for comparison, resolving segments without a disk. */
 export function pathKey(path: string): string {
-  return path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const normalized = path.replace(/\\/g, '/').toLowerCase();
+  const root = /^(?:[a-z]:\/|\/\/[^/]+\/[^/]+(?:\/|$)|\/)/.exec(normalized)?.[0] ?? '';
+  const parts: string[] = [];
+  for (const part of normalized.slice(root.length).split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part !== '..') parts.push(part);
+    else if (parts.length && parts.at(-1) !== '..') parts.pop();
+    else if (!root) parts.push(part);
+  }
+  return `${root}${parts.join('/')}`.replace(/\/+$/, '');
 }
 
 /** The core's `checkCwd`, without the disk: the directory must be the project or inside it. */

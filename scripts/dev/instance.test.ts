@@ -100,6 +100,38 @@ describe('bun run dev:instance', () => {
     } finally { next.close(); }
   }, TIMEOUT);
 
+  test('restart waits for a draining core when the handoff acknowledgement is truncated', async () => {
+    const box = fresh();
+    expect((await instance(box, '--echo')).code).toBe(0);
+    const path = join(box.devDir, 'core.json');
+    const record = JSON.parse(readFileSync(path, 'utf8')) as { pid: number; port: number; token: string };
+    const url = `http://127.0.0.1:${record.port}`;
+    const client = await connect(url, record.token);
+    try {
+      const project = await client.call('projects.add', { path: box.home, name: 'Dev handoff test' });
+      const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+      const { id: threadId } = await client.call('threads.create', { projectId: project.id, providerId: account.providerId, accountId: account.id });
+      await client.call('threads.subscribe', { threadId });
+      const running = client.next('message.part', event => event.threadId === threadId && event.part.type === 'tool' && event.part.status === 'running');
+      await client.call('turns.start', { threadId, prompt: '[tool:3500] Finish this tool before the restart' });
+      await running;
+    } finally { client.close(); }
+    const server = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch() {
+      const response = await fetch(`${url}/shutdown-for-update?pid=${record.pid}`, { method: 'POST', headers: { authorization: `Bearer ${record.token}` } });
+      expect(response.status).toBe(202);
+      await response.arrayBuffer();
+      expect(lockHolder(box.devDir)?.pid).toBe(record.pid);
+      return new Response('{', { status: 202 });
+    } });
+    try {
+      writeFileSync(path, JSON.stringify({ ...record, port: server.port }));
+      const restarted = await instance(box, 'restart');
+      expect(restarted.err).toBe('');
+      expect(restarted.code).toBe(0);
+      expect(JSON.parse(readFileSync(path, 'utf8')).pid).not.toBe(record.pid);
+    } finally { await server.stop(true); }
+  }, TIMEOUT);
+
   test('a first run says the Dev data starts empty, the next one reuses it', async () => {
     const box = fresh();
     const first = await instance(box);

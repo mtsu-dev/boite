@@ -115,7 +115,7 @@ test('the first answer of a started thread comes back whatever the reach, and no
   expect((back as Error).message).toContain('coordinationReach is "project"');
 });
 
-test('a first answer interrupted before coordination queues it is recovered once after restart', async () => {
+test.each([false, true])('a pending first answer is recovered once after restart, or cleared if its thread is gone: %s', async gone => {
   const dataDir = mkdtempSync(join(tmpdir(), 'boite-spawn-result-'));
   answering();
   try {
@@ -129,10 +129,22 @@ test('a first answer interrupted before coordination queues it is recovered once
     });
     expect(h.core.coordination.get(threadId).messages).toEqual([]);
     dispatch.mockRestore();
+    if (gone) {
+      // Simulate a journal left by a version that did not erase spawn settings on deletion.
+      const key = `spawn-origin:${spawned.thread.id}`;
+      const saved = h.core.journal.getSetting(key);
+      h.core.journal.deleteThreads([spawned.thread.id]);
+      h.core.journal.setSetting(key, saved);
+    }
     await h.stop();
 
     const restarted = await startTestCore({ dataDir }); cores.push(restarted);
     const letters = () => restarted.core.coordination.get(threadId).messages.filter(letter => letter.from.threadId === spawned.thread.id);
+    if (gone) {
+      expect(restarted.core.journal.getSetting(`spawn-origin:${spawned.thread.id}`)).toBeUndefined();
+      expect(letters()).toEqual([]);
+      return;
+    }
     await waitFor(() => letters().length === 1);
     expect(letters()[0]?.text).toContain('Done in notes');
     await restarted.core.threads.spawns.sendResult(spawned.thread.id);

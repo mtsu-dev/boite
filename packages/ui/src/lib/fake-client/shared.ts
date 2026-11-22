@@ -57,6 +57,17 @@ export function fakeDraftFolder(root: string, title: string, at: Date, taken: Re
   return path;
 }
 
+export function fakeWorktreeRoot(projectPath: string, storage?: WorktreeStorage, projectId?: string): string {
+  const root = storage?.mode === 'shared' ? storage.directory : projectPath;
+  const separator = root.includes('\\') ? '\\' : '/';
+  const repo = projectPath.split(/[\\/]/).filter(Boolean).pop() ?? 'repo';
+  const repoSlug = repo.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '') || 'thread';
+  const folder = storage?.mode === 'shared'
+    ? `${repoSlug}-${(projectId ?? '').replace(/[^a-z0-9_-]/gi, '-')}`
+    : `.boite${separator}worktrees`;
+  return [root.replace(/[\\/]+$/, ''), folder].join(separator);
+}
+
 /** Mirrors the core's per-project and shared storage for newly created worktrees. */
 export function fakeWorktree(projectPath: string, _title: string, branch?: string, storage?: WorktreeStorage, projectId?: string): { branch: string; path: string; namingPending: boolean } {
   if (branch !== undefined && branch.length > BRANCH_NAME_MAX) {
@@ -65,18 +76,13 @@ export function fakeWorktree(projectPath: string, _title: string, branch?: strin
     });
   }
   const slug = `wt-${secureId().slice(0, 8)}`;
-  const root = storage?.mode === 'shared' ? storage.directory : projectPath;
+  const root = fakeWorktreeRoot(projectPath, storage, projectId);
   const separator = root.includes('\\') ? '\\' : '/';
-  const repo = projectPath.split(/[\\/]/).filter(Boolean).pop() ?? 'repo';
-  const repoSlug = repo.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '') || 'thread';
-  const folder = storage?.mode === 'shared'
-    ? `${repoSlug}-${(projectId ?? '').replace(/[^a-z0-9_-]/gi, '-')}`
-    : `.boite${separator}worktrees`;
   const dir = branch === undefined ? slug : branch.replace(/^boite\//, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   return {
     branch: branch ?? `boite/${slug}`,
     namingPending: branch === undefined,
-    path: [root.replace(/[\\/]+$/, ''), folder, dir].join(separator)
+    path: [root, dir].join(separator)
   };
 }
 

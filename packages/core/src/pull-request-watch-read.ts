@@ -163,8 +163,8 @@ export function parseDetail(raw: string): WatchDetail {
   const pr = pullRequestOf(data);
   const commit = row(row(list(row(pr.commits).nodes)[0]).commit);
   const base = baseTip(pr), sha = text(base.oid, 64);
-  const first = checksOf(base).filter(check => check.status === 'failed')
-    .sort((a, b) => (a.finished || '9999').localeCompare(b.finished || '9999'))[0];
+  const first = checksOf(base).filter(({ check }) => check.status === 'failed')
+    .sort((a, b) => (a.at || '9999').localeCompare(b.at || '9999'))[0]?.check;
   const mergeable = String(pr.mergeable);
   const mergeState = typeof pr.mergeStateStatus === 'string' ? pr.mergeStateStatus : 'UNKNOWN';
   return {
@@ -178,12 +178,12 @@ export function parseDetail(raw: string): WatchDetail {
     mergeable: mergeable === 'MERGEABLE' || mergeable === 'CONFLICTING' ? mergeable : 'UNKNOWN',
     behind: mergeState === 'UNKNOWN' ? null : mergeState === 'BEHIND',
     queue: queuePosition(pr),
-    checks: checksOf(commit),
+    checks: checksOf(commit).map(({ check }) => check),
     viewer: text(row(data.viewer).login, 100),
   };
 }
 
-function checksOf(commit: Row): WatchCheck[] {
+function checksOf(commit: Row): { check: WatchCheck; at: string }[] {
   const nodes = list(contextsOf(commit).nodes).map(row);
   const runs = new Map<string, { check: WatchCheck; at: string }>();
   for (const node of nodes) {
@@ -204,8 +204,7 @@ function checksOf(commit: Row): WatchCheck[] {
       conclusion = text(node.state, 50);
       status = conclusion === 'PENDING' || conclusion === 'EXPECTED' ? 'pending' : FAILED.has(conclusion) ? 'failed' : 'passed';
       url = safeUrl(node.targetUrl);
-      finished = status === 'pending' ? '' : text(node.createdAt, 50);
-      at = finished || '9999';
+      at = status === 'pending' ? '9999' : text(node.createdAt, 50) || '9999';
     } else continue;
     if (!name) continue;
     const check: WatchCheck = { name, status, conclusion, required: node.isRequired === true, url, job, context: node.__typename === 'StatusContext', workflow, started, finished };
@@ -213,7 +212,7 @@ function checksOf(commit: Row): WatchCheck[] {
     if (!held || at > held.at) runs.set(name, { check: { ...check, required: check.required || held?.check.required === true }, at });
     else if (check.required) held.check.required = true;
   }
-  return [...runs.values()].map(entry => entry.check);
+  return [...runs.values()];
 }
 
 export type RemarkKind = 'comment' | 'review' | 'review-comment';

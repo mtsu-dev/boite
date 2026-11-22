@@ -145,6 +145,17 @@ describe.skipIf(capability !== null)('the Linux launcher', () => {
     }
   });
 
+  test('a reset guard connection that persists on retry is reported as ECONNRESET', () => {
+    // The launcher reports two 32-bit integers: the guard step (2) and errno (104).
+    const path = wrapped('reset', String.raw`case $1:$6 in launch:echo) printf '\002\000\000\000\150\000\000\000' >&"$2"; exit 1 ;; esac`);
+    const tie = new NativeTie([path]);
+    expect(tie.ready()).toBeNull();
+    const guard = tie.guardPid;
+    const error = thrown(() => tie.spawn({ cmd: ['echo'], env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore'] }));
+    expect(tie.guardPid).not.toBe(guard);
+    expect(error).toMatchObject({ code: 'ECONNRESET', errno: -104, syscall: 'posix_spawn' });
+  });
+
   test('argv, env, cwd, pipes and the session match a direct detached spawn', async () => {
     const script = `tr '\\0' '|' < /proc/$$/cmdline; echo; env | sort; pwd; for f in /proc/$$/fd/*; do n=\${f##*/}; l=$(readlink $f | sed 's/\\[[0-9]*\\]//'); echo "fd $n $l"; done; s=$(cat /proc/$$/stat); s=\${s##*) }; set -- $s; echo "pgid-is-self $([ $3 = $$ ] && echo yes) sid-is-self $([ $4 = $$ ] && echo yes)"`;
     const cmd = ['/bin/sh', '-c', script, 'arg zero', '', 'two words', '--x=*'];

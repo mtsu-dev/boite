@@ -103,7 +103,7 @@ test('a phone that cannot reach a machine of its group reaches it through the ma
     await page.waitFor(`globalThis.__boiteTest.workspace.active.openThread?.id === ${JSON.stringify(thread.id)}`);
     await page.waitFor(`document.querySelector('${id('composer-input')}')`);
     await page.type(id('composer-input'), 'Carried by the home machine');
-    await page.click(id('composer-send'));
+    await page.click(`${id('composer-send')}:enabled`);
     await page.waitFor(`document.querySelector('${id('chat')}')?.textContent.includes('Carried by the home machine')`);
     // The prompt landed on the desk, and the echo agent's answer came back through the relay.
     const landed = async () => JSON.stringify((await b.call('threads.get', { threadId: thread.id })).messages);

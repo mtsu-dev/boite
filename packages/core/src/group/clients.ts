@@ -115,8 +115,8 @@ export class GroupClients {
    * record of the device: its last visit, its push destination, its sockets.
    */
   authenticateDevice(hello: unknown, client: ClientIdentity, now = Date.now()): { sessionId: string; role: PairingRole; deviceId: string } {
-    // Unauthorized says the device is out for good, and the app drops its key on it. A device this machine has not
-    // heard of yet, its roster behind the member that admitted it, is told to come back; so is a clock that is off.
+    // The app drops its key only on a signed revocation. A device this machine has not heard of yet,
+    // its roster behind the member that admitted it, is told to come back; so is a clock that is off.
     const roster = this.#group.roster;
     const raw = (typeof hello === 'object' && hello !== null ? hello : {}) as Partial<DeviceHello>;
     // Out of every group, removed or gone, it says so under its key: its own word, which the app takes as a `group.get`
@@ -132,7 +132,10 @@ export class GroupClients {
     if (typeof raw.nonce !== 'string' || raw.nonce.length < 16 || raw.nonce.length > 64) throw refused('device.nonce: expected 16 to 64 characters');
     if (!deviceSigned(known.publicKey, deviceHelloInput(this.#group.selfId(), raw.at, raw.nonce), raw.sig)) throw unauthorized('the device hello is not signed by its key for this machine');
     const entry = liveDeviceKeys(roster).find((device) => device === known);
-    if (entry === undefined) throw unauthorized('this device was removed from the group', this.#revocation(raw.nonce, known.id));
+    if (entry === undefined) {
+      if (known.removed) throw unauthorized('this device was removed from the group', this.#revocation(raw.nonce, known.id));
+      throw unauthorized('the machine that admitted this device is no longer in the group');
+    }
     for (const [nonce, until] of this.#deviceNonces) if (until <= now) this.#deviceNonces.delete(nonce);
     const key = `${entry.id}:${raw.nonce}`;
     if (this.#deviceNonces.has(key)) throw refused('this device hello was already used');
