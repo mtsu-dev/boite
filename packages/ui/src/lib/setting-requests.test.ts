@@ -1,6 +1,7 @@
-import { expect, test } from 'vitest';
+import { expect, onTestFinished, test } from 'vitest';
 import { REQUESTABLE_SETTINGS, readSettings, settledSetting, type RequestableKey, type Settings, type SettingAsk } from '@boite/contracts';
 import { retiredHint, settingLabel, settingsReachable, settingsSectionLabel, settingValueText } from './setting-requests';
+import { followDesktopOf, heardBuild, writeExperiments } from './experiments';
 import { strings } from './strings';
 
 const open = (page: SettingAsk['page'], section: string | null): SettingAsk => ({ kind: 'open', page, section });
@@ -34,6 +35,18 @@ test('Show and Open are offered only where this client draws the target card', (
   expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: false })).toBe(true);
   expect(settingsReachable(open('general', 'quiet'), { owner: false, phone: false })).toBe(false);
   expect(settingsReachable(open('resources', 'quiet'), { owner: true, phone: true })).toBe(false);
+  // A Release has no Experiments page: there the card that points at it has nowhere to land.
+  const primary = {};
+  followDesktopOf(primary);
+  onTestFinished(() => {
+    followDesktopOf(null);
+    window.localStorage.clear();
+    // Through the writer, so the build this test named is forgotten.
+    writeExperiments([]);
+    window.localStorage.clear();
+  });
+  heardBuild(primary, '2.0.0');
+  expect(settingsReachable(open('experiments', null), { owner: true, phone: false })).toBe(false);
 });
 
 test('an automatic compaction change that only adds a moment reads differently from the current one', () => {

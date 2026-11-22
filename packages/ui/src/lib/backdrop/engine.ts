@@ -204,6 +204,8 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   let quiet: WebGLUniformLocation | null = null;
   let levels: WebGLUniformLocation | null = null;
   let width = 0, height = 0, family = '', raf = 0, last = 0, stopped = false, announced = false;
+  /** Whether the canvas is on screen: false under a cover that skips it (a phone's list, its settings). */
+  let seen = true;
   let wantX = 0, wantY = 0;
   /** The quiet oval: its middle and its two radii, in CSS pixels from the canvas's top left corner. */
   const zone = { x: 0, y: 0, across: 1, down: 1 };
@@ -212,13 +214,15 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
     const vertex = compile(context, context.VERTEX_SHADER, VERTEX);
     const fragment = compile(context, context.FRAGMENT_SHADER, FRAGMENT);
     program = context.createProgram();
-    if (!vertex || !fragment || !program) return false;
-    context.attachShader(program, vertex);
-    context.attachShader(program, fragment);
-    context.linkProgram(program);
+    if (vertex && fragment && program) {
+      context.attachShader(program, vertex);
+      context.attachShader(program, fragment);
+      context.linkProgram(program);
+    }
+    // A program keeps what it linked: the shaders go now, whether or not the other one compiled.
     context.deleteShader(vertex);
     context.deleteShader(fragment);
-    if (!context.getProgramParameter(program, context.LINK_STATUS)) return false;
+    if (!vertex || !fragment || !program || !context.getProgramParameter(program, context.LINK_STATUS)) return false;
     context.useProgram(program);
     lens = context.getUniformLocation(program, 'uLens');
     tint = context.getUniformLocation(program, 'uTint');
@@ -250,6 +254,15 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
     context.clearColor(0, 0, 0, 0);
     family = '';
     return true;
+  }
+
+  /** Gives back every object `build` made, a half-built set included. */
+  function release(): void {
+    context.deleteProgram(program);
+    context.deleteBuffer(buffer);
+    context.deleteVertexArray(vertexArray);
+    context.deleteTexture(atlas);
+    program = buffer = vertexArray = atlas = null;
   }
 
   /** The characters of the glyph scene, drawn once in the code face the device picked. */
@@ -324,6 +337,13 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
     }
   }
 
+  /** Draws one batch. An empty one is skipped: a length of zero would upload its whole array. */
+  function send(batch: Batch): void {
+    if (batch.count === 0) return;
+    context.bufferData(context.ARRAY_BUFFER, batch.data, context.DYNAMIC_DRAW, 0, batch.count * STRIDE);
+    context.drawArrays(context.TRIANGLES, 0, batch.count);
+  }
+
   function draw(): void {
     if (!program || !width || !height || context.isContextLost()) return;
     const began = performance.now();
@@ -342,12 +362,10 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
     context.clear(context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
     context.enable(context.DEPTH_TEST);
     context.disable(context.BLEND);
-    context.bufferData(context.ARRAY_BUFFER, solid.data, context.DYNAMIC_DRAW, 0, solid.count * STRIDE);
-    context.drawArrays(context.TRIANGLES, 0, solid.count);
+    send(solid);
     context.depthMask(false);
     context.enable(context.BLEND);
-    context.bufferData(context.ARRAY_BUFFER, soft.data, context.DYNAMIC_DRAW, 0, soft.count * STRIDE);
-    context.drawArrays(context.TRIANGLES, 0, soft.count);
+    send(soft);
     stats.frames++;
     stats.milliseconds = performance.now() - began;
     if (!announced) {
@@ -368,12 +386,16 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
     draw();
   }
 
-  /** Runs the loop, or draws one still frame for a device that asked for reduced motion. */
+  /**
+   * Runs the loop, or draws one still frame for a device that asked for reduced
+   * motion. Nothing runs while the canvas is off screen: `watched` calls back
+   * when it returns, and the scene resumes where it was.
+   */
   function pace(): void {
     cancelAnimationFrame(raf);
     raf = 0;
     last = 0;
-    if (stopped || context.isContextLost()) return;
+    if (stopped || !seen || context.isContextLost()) return;
     if (still.matches) draw();
     else raf = requestAnimationFrame(tick);
   }
@@ -386,10 +408,13 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   };
   const rest = () => { wantX = 0; wantY = 0; };
   const repaint = () => { restyle(); if (still.matches) draw(); };
-  const lost = (event: Event) => { event.preventDefault(); cancelAnimationFrame(raf); raf = 0; program = null; };
+  const lost = (event: Event) => { event.preventDefault(); cancelAnimationFrame(raf); raf = 0; program = buffer = vertexArray = atlas = null; };
   const restored = () => { if (build()) { restyle(); pace(); } };
 
-  if (!build()) return null;
+  if (!build()) {
+    release();
+    return null;
+  }
   resize();
   restyle();
 
@@ -398,6 +423,17 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   // The theme, the accent and the faces are all stamped on the root element.
   const themed = new MutationObserver(repaint);
   themed.observe(document.documentElement, { attributes: true });
+  // A phone keeps the draft mounted under its list and its settings, skipped by
+  // `content-visibility`: skipped content never intersects, so this stops the loop there.
+  const watched = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((entries) => {
+      const now = entries[entries.length - 1]?.isIntersecting ?? true;
+      if (now === seen) return;
+      seen = now;
+      pace();
+    })
+    : null;
+  watched?.observe(canvas);
   dark.addEventListener('change', repaint);
   still.addEventListener('change', pace);
   window.addEventListener('pointermove', point, { passive: true });
@@ -416,13 +452,16 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
       cancelAnimationFrame(raf);
       sized.disconnect();
       themed.disconnect();
+      watched?.disconnect();
       dark.removeEventListener('change', repaint);
       still.removeEventListener('change', pace);
       window.removeEventListener('pointermove', point);
       document.documentElement.removeEventListener('pointerleave', rest);
       canvas.removeEventListener('webglcontextlost', lost);
       canvas.removeEventListener('webglcontextrestored', restored);
-      // Hands the graphics memory back now rather than at the next collection.
+      // Hands the graphics memory back now rather than at the next collection,
+      // the context too where the browser can drop one.
+      release();
       context.getExtension('WEBGL_lose_context')?.loseContext();
     }
   };

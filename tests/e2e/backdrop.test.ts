@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp';
+import { newMobileThread, toMobileList } from './lib/mobile';
 import { startDevUi } from './lib/ui';
 
 const id = (name: string) => `[data-testid="${name}"]`;
@@ -29,7 +30,7 @@ async function settings(page: BrowserPage, tab: string, control: string) {
   await page.waitFor(`document.querySelector('${id('draft-empty')}')`);
 }
 
-test('the new thread background rides its experiment, follows the pick in Appearance and holds still under reduced motion', async () => {
+test('the new thread background rides its experiment, follows the pick in Appearance and holds still under reduced motion or a cover', async () => {
   const port = await freePort();
   // The page reads the renderer's own counters, by its source URL.
   const server = await startDevUi(port);
@@ -88,6 +89,22 @@ test('the new thread background rides its experiment, follows the pick in Appear
       await page.send('Emulation.setEmulatedMedia', { features: [] });
       await Bun.sleep(500);
       expect(await frames()).toBeGreaterThan(held);
+
+      // A phone keeps the draft mounted under its list: nothing is drawn there, and the scene is back with the draft.
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+      await page.waitFor(`document.querySelector('${id('mobile-back')}')`);
+      await toMobileList(page);
+      // The cover skips the chat once its own exits have ended.
+      await Bun.sleep(800);
+      const covered = await frames();
+      await Bun.sleep(500);
+      expect(await frames()).toBe(covered);
+      await newMobileThread(page);
+      await page.waitFor(`${CANVAS}?.hasAttribute('data-ready') && ${CANVAS}.checkVisibility({ visibilityProperty: true })`);
+      await Bun.sleep(500);
+      expect(await frames()).toBeGreaterThan(covered);
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
     }
 
     await settings(page, 'appearance', 'backdrop-off');

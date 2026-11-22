@@ -32,6 +32,16 @@ test('a picked scene is stored and read back; the default leaves no key', () => 
   expect(window.localStorage.getItem(BACKDROP_STORAGE_KEY)).toBeNull();
 });
 
+test('a scene picked in another window is followed with no screen mounted', () => {
+  window.localStorage.setItem(BACKDROP_STORAGE_KEY, 'tunnel');
+  window.dispatchEvent(new StorageEvent('storage', { key: BACKDROP_STORAGE_KEY }));
+  expect(backdrop.choice).toBe('tunnel');
+  // Storage cleared as a whole names no key.
+  window.localStorage.clear();
+  window.dispatchEvent(new StorageEvent('storage', { key: null }));
+  expect(backdrop.choice).toBe('random');
+});
+
 test('an unknown stored id falls back to the draw', () => {
   window.localStorage.setItem(BACKDROP_STORAGE_KEY, 'plasma');
   backdrop.load();

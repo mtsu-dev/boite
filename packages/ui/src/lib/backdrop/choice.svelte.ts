@@ -57,3 +57,10 @@ class Backdrop {
 }
 
 export const backdrop = new Backdrop();
+
+// Picked in another window of this device: the picker and the screen both follow, mounted or not.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === BACKDROP_STORAGE_KEY || event.key === null) backdrop.load();
+  });
+}

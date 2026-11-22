@@ -1,7 +1,6 @@
 <script lang="ts">
   import { markFeature } from '@boite/contracts';
-  import { onMount } from 'svelte';
-  import { BACKDROP_SCENES, BACKDROP_STORAGE_KEY, backdrop } from '../../lib/backdrop/choice.svelte';
+  import { BACKDROP_SCENES, backdrop } from '../../lib/backdrop/choice.svelte';
   import type { CalmBox, RunningBackdrop } from '../../lib/backdrop/engine';
   import type { SceneId } from '../../lib/backdrop/scenes';
 
@@ -57,13 +56,6 @@
       }
     };
   }
-
-  onMount(() => {
-    // Picked in another window of this device.
-    const follow = (event: StorageEvent) => { if (event.key === BACKDROP_STORAGE_KEY || event.key === null) backdrop.load(); };
-    window.addEventListener('storage', follow);
-    return () => window.removeEventListener('storage', follow);
-  });
 </script>
 
 {#if scene !== 'off'}

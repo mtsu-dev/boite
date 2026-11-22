@@ -321,7 +321,8 @@ checkered tunnel, the last two in the soft low resolution of an early 2000s
 console. With the switch on, Settings > Appearance offers Off, Random and the
 three scenes for this device (`lib/backdrop/choice.svelte.ts`, key
 `boite.backdrop`); nothing stored means Random, which draws one scene each
-time the screen opens.
+time the screen opens. That module follows the key's `storage` event, so a
+pick made in another window reaches the picker and the screen.
 
 The feature is cut from a Release's UI bundle. `lib/backdrop-entry.svelte.ts`
 is its one entry: `ChatView` and the Appearance page ask it once the
@@ -342,11 +343,16 @@ smoothed and stretched, with brightness cut to 63 steps through an ordered
 dither; the characters are drawn at the screen's density. The words of the
 empty screen (the pieces marked `data-backdrop-calm`) are measured, and the
 shader dims the scene in an oval around them. A device that asks for reduced
-motion gets one still frame. Without WebGL 2 the canvas stays empty and the
-screen is the one it was.
+motion gets one still frame. A phone keeps the draft mounted under its list
+and its settings, skipped by `content-visibility`: an `IntersectionObserver`
+on the canvas stops the loop there and starts it again on the way back. A
+canvas that leaves deletes its program, buffer and texture, then drops its
+context. Without WebGL 2 the canvas stays empty and the screen is the one it
+was.
 
 `bun test tests/e2e/backdrop.test.ts` turns the experiment on through
-Settings, picks each scene, checks the still frame under reduced motion and
+Settings, picks each scene, checks the still frame under reduced motion,
+that nothing is drawn under a phone's list, and
 writes desktop and phone captures under `tests/e2e/.artifacts/`. It prints
 the frame rate and the page's own time in a frame. On a machine whose default
 ANGLE backend draws no WebGL, `BOITE_E2E_ANGLE=vulkan` names one that does; a
