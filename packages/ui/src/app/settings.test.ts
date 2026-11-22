@@ -201,6 +201,10 @@ test('the gear opens Settings on its home: a tile per page under its family, the
   field.value = 'connections';
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Browser profiles')));
+  // A setting inside a card is found by its own label: the retention of done threads sits in the deleted conversations card.
+  field.value = 'delete done threads';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Delete done threads after')));
   field.value = 'font';
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);

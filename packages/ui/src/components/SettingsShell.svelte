@@ -132,6 +132,7 @@
       ...(store.owner ? [{ id: 'agents-alone', label: strings.agentsAlone.heading }] : []),
       { id: 'workspace', label: strings.settings.workspace },
       { id: 'archived', label: strings.settings.archived.heading },
+      ...(store.owner ? [{ id: 'thread-retention', label: strings.settings.deleted.heading }] : []),
       ...(store.owner ? [{ id: 'worktrees', label: strings.settings.worktrees.heading }] : []),
       { id: 'app', label: strings.settings.app },
       ...(store.owner ? [{ id: 'privacy', label: strings.telemetry.heading }] : []),
