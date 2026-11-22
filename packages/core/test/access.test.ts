@@ -443,7 +443,7 @@ describe('a paired device reads a thread\'s changes and files', () => {
     }
   });
 
-  test('a thread in a subfolder diffs a rename by the paths its status gives, whatever spaces end the folder names', async () => {
+  test('a thread in a subfolder diffs local renames and reads arrivals as additions', async () => {
     const owner = await harness.connect();
     // Windows drops a trailing space from a folder name; elsewhere it is part of it.
     const space = process.platform === 'win32' ? '' : ' ';
@@ -452,11 +452,14 @@ describe('a paired device reads a thread\'s changes and files', () => {
     mkdirSync(cwd, { recursive: true });
     git(root, 'init', '-q');
     writeFileSync(join(cwd, 'a.md'), 'one\n');
+    writeFileSync(join(root, 'incoming.md'), 'inert notes before the move\n');
     writeFileSync(join(root, 'top.md'), 'top\n');
     git(root, 'add', '.');
     git(root, 'commit', '-qm', 'first');
     git(cwd, 'mv', 'a.md', 'b.md');
     writeFileSync(join(cwd, 'b.md'), 'two\n');
+    git(root, 'mv', 'incoming.md', join(`notes${space}`, 'docs', 'arrived.md'));
+    writeFileSync(join(cwd, 'arrived.md'), 'inert notes after the move\n');
     writeFileSync(join(root, 'top.md'), 'changed\n');
     const project = await owner.call('projects.add', { path: cwd, name: 'docs' });
     const account = (await owner.call('accounts.list', {})).find((entry) => entry.providerId === 'echo');
@@ -465,10 +468,17 @@ describe('a paired device reads a thread\'s changes and files', () => {
     try {
       for (const client of [owner, phone]) {
         const { changes } = await client.call('git.status', { threadId });
-        expect(changes.find((change) => change.status === 'renamed')).toMatchObject({ path: 'b.md', oldPath: 'a.md' });
+        expect(changes.find((change) => change.path === 'b.md')).toMatchObject({ status: 'renamed', oldPath: 'a.md' });
         expect(changes.find((change) => change.path === '../../top.md')).toMatchObject({ status: 'modified', additions: 1, deletions: 1 });
         expect(await client.call('git.diff', { threadId, path: 'b.md' })).toMatchObject({ status: 'renamed', oldPath: 'a.md', oldText: 'one\n', newText: 'two\n' });
         expect(await client.call('git.diff', { threadId, path: 'b.md', oldPath: 'a.md' })).toMatchObject({ oldPath: 'a.md', oldText: 'one\n', newText: 'two\n' });
+        const arrived = changes.find((change) => change.path === 'arrived.md')!;
+        expect(arrived).toMatchObject({ status: 'added', oldPath: null });
+        const addition = { status: 'added', oldPath: null, oldText: null, newText: 'inert notes after the move\n' };
+        expect(await client.call('git.diff', { threadId, path: arrived.path, oldPath: arrived.oldPath })).toMatchObject(addition);
+        expect(await client.call('git.diff', { threadId, path: arrived.path })).toMatchObject(addition);
+        expect(await thrown(client.call('git.diff', { threadId, path: arrived.path, oldPath: '../../incoming.md' })))
+          .toThrow("git.diff oldPath leaves the thread's working directory");
       }
     } finally {
       phone.close();

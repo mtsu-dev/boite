@@ -1,5 +1,5 @@
 import { posix } from 'node:path';
-import type { GitChangeStatus, GitStatus } from '@boite/contracts';
+import type { GitChange, GitChangeStatus, GitStatus } from '@boite/contracts';
 
 /**
  * What `git rev-parse --show-prefix` printed: the folder git ran in, from the
@@ -20,6 +20,21 @@ export function fromPrefix(prefix: string, path: string): string {
   const named = posix.relative(prefix, path);
   const form = named.length === 0 ? '.' : named;
   return path.endsWith('/') && !form.endsWith('/') ? `${form}/` : form;
+}
+
+/** The part of a rename or copy that enters the thread's folder is an addition there. */
+export function changeFromPrefix(prefix: string, change: GitChange): GitChange {
+  if (prefix.length === 0) return change;
+  const path = fromPrefix(prefix, change.path);
+  const oldPath = change.oldPath === null ? null : fromPrefix(prefix, change.oldPath);
+  if (oldPath !== null && outsidePrefix(oldPath) && !outsidePrefix(path)) {
+    return { ...change, path, oldPath: null, status: 'added', additions: null, deletions: null };
+  }
+  return { ...change, path, oldPath };
+}
+
+function outsidePrefix(path: string): boolean {
+  return path === '..' || path.startsWith('../');
 }
 
 /** `## main...origin/main [ahead 1, behind 2]`, and the three shapes that are not that. */

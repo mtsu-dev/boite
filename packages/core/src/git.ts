@@ -2,7 +2,7 @@ import { deviceBound, type GitStatus, type ThreadId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { gitDiff } from './git/diff.ts';
 import { gitFailed } from './git/errors.ts';
-import { fromPrefix, parseNumstat, parseStatus, prefixOf } from './git/porcelain.ts';
+import { changeFromPrefix, parseNumstat, parseStatus, prefixOf } from './git/porcelain.ts';
 import { git } from './git/read.ts';
 import { assertDeviceFile, assertDeviceHistoryFile, assertDeviceReadable, threadCwd } from './workdir.ts';
 
@@ -33,12 +33,11 @@ export async function gitStatus(core: Core, threadId: ThreadId): Promise<GitStat
   const prefix = prefixOf(located.stdout);
   for (const change of parsed.changes) {
     const counted = numbers.get(change.path);
-    change.path = fromPrefix(prefix, change.path);
-    if (change.oldPath !== null) change.oldPath = fromPrefix(prefix, change.oldPath);
     if (counted === undefined) continue;
     change.additions = counted.additions;
     change.deletions = counted.deletions;
   }
+  if (prefix.length > 0) parsed.changes = parsed.changes.map(change => changeFromPrefix(prefix, change));
   return parsed;
 }
 

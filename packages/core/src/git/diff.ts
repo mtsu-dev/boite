@@ -5,7 +5,7 @@ import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
 import { hasNul, resolveInside, threadCwd, writeLandsInside } from '../workdir.ts';
 import { gitFailed } from './errors.ts';
-import { fromPrefix, parseStatus, prefixOf } from './porcelain.ts';
+import { changeFromPrefix, fromPrefix, parseStatus, prefixOf } from './porcelain.ts';
 import { git, readRefSide, readTreeSide, SIDE_CEILING_BYTES } from './read.ts';
 
 function checkRef(ref: string): string {
@@ -80,11 +80,8 @@ async function changeOf(core: Core, params: RpcParams<'git.diff'>, cwd: string, 
   const located = await locating;
   if (located.code !== 0) gitFailed(params.threadId, ['rev-parse', '--show-prefix'], located);
   const prefix = prefixOf(located.stdout);
-  for (const entry of parseStatus(status.stdout).changes) {
-    if (fromPrefix(prefix, entry.path) !== relative) continue;
-    return { ...entry, path: relative, oldPath: entry.oldPath === null ? null : fromPrefix(prefix, entry.oldPath) };
-  }
-  return null;
+  const entry = parseStatus(status.stdout).changes.find(change => fromPrefix(prefix, change.path) === relative);
+  return entry === undefined ? null : changeFromPrefix(prefix, entry);
 }
 
 function renderDiff(path: string, change: { oldPath: string | null; status?: GitChangeStatus } | null, old: Uint8Array | null, current: Uint8Array | null): GitDiff {
