@@ -14,7 +14,7 @@
 import { markFeature } from '@boite/contracts';
 import { Batch, STRIDE, TEX } from './batch';
 import { themeTints, type Rgb } from './math';
-import { GLYPH_SHADES, GLYPHS, SCENES, type Frame, type SceneId } from './scenes';
+import { GLYPH_SHADES, GLYPHS, RELIEF_FADE, SCENES, type Frame, type SceneId } from './scenes';
 
 const NEAR = 0.02;
 const FAR = 60;
@@ -31,6 +31,8 @@ layout(location = 0) in vec3 aPlace;
 layout(location = 1) in vec3 aSurface;
 layout(location = 2) in vec3 aMaterial;
 uniform vec2 uLens;
+uniform vec2 uHeart;
+uniform vec3 uView;
 out vec2 vAt;
 out float vShade;
 flat out vec3 vMaterial;
@@ -39,7 +41,9 @@ void main() {
   vShade = aSurface.z;
   vMaterial = aMaterial;
   float z = aPlace.z;
-  gl_Position = vec4(aPlace.xy * uLens, (z * ${(FAR + NEAR).toFixed(2)} - ${(2 * FAR * NEAR).toFixed(2)}) / ${(FAR - NEAR).toFixed(2)}, z);
+  // What lies straight ahead lands on the heart of the screen, not on the canvas's middle. A sheet over the whole canvas stays put.
+  vec2 ahead = aMaterial.x > 4.5 ? vec2(0.0) : uHeart / uView.xy * 2.0 - 1.0;
+  gl_Position = vec4(aPlace.xy * uLens + ahead * z, (z * ${(FAR + NEAR).toFixed(2)} - ${(2 * FAR * NEAR).toFixed(2)}) / ${(FAR - NEAR).toFixed(2)}, z);
 }`;
 
 const FRAGMENT = `#version 300 es
@@ -55,6 +59,8 @@ uniform vec4 uCalm;
 uniform float uQuiet;
 // The canvas in its own pixels, then how many of them make a CSS pixel.
 uniform vec3 uView;
+// Where the scene's heart is on the canvas, in device pixels from its bottom left corner.
+uniform vec2 uHeart;
 uniform ivec2 uCell;
 uniform vec4 uData[8];
 out vec4 color;
@@ -85,12 +91,16 @@ void main() {
     m = d * d;
   } else if (kind == ${TEX.contour}) {
     // The height of the ground under this pixel: a sum of round hills.
-    vec2 here = (gl_FragCoord.xy - uView.xy * 0.5) / density;
-    float height = 0.0;
-    for (int i = 0; i < 7; i++) {
+    vec2 here = (gl_FragCoord.xy - uHeart) / density;
+    vec2 top = (here - uData[0].xy) / uData[0].z;
+    float near = dot(top, top);
+    float around = 0.0;
+    for (int i = 1; i < 7; i++) {
       vec2 off = (here - uData[i].xy) / uData[i].z;
-      height += uData[i].w * exp(-dot(off, off));
+      around += uData[i].w * exp(-dot(off, off));
     }
+    // The hills around fade out toward the top of the wide rise: they shape its sides and leave its summit where it is put.
+    float height = uData[0].w * exp(-near) + around * (1.0 - exp(-near * ${RELIEF_FADE.toFixed(1)}));
     float level = height * 9.0 + uData[7].x;
     float slope = fwidth(level);
     // One CSS pixel of line where the height crosses a level; flat ground, where a line would swell, is left bare.
@@ -101,7 +111,7 @@ void main() {
     m = line * (major ? 0.38 : 0.13);
   } else if (kind == ${TEX.ascii}) {
     // The cell of the character grid this pixel is in, counted from the middle of the screen.
-    ivec2 at = ivec2(gl_FragCoord.xy) - ivec2(uView.xy * 0.5) + uCell * 2048 + uCell / 2;
+    ivec2 at = ivec2(gl_FragCoord.xy) - ivec2(uHeart) + uCell * 2048 + uCell / 2;
     ivec2 cell = at / uCell;
     ivec2 inside = at - cell * uCell;
     cell -= 2048;
@@ -153,8 +163,8 @@ void main() {
   color = vec4(tint * a, a);
 }`;
 
-/** What the last frame cost and how many were drawn, for a test or a measurement to read. */
-export const stats = { frames: 0, milliseconds: 0 };
+/** What the last frame cost, how many were drawn and where the scene's heart is on the canvas, for a test or a measurement to read. */
+export const stats = { frames: 0, milliseconds: 0, heart: [0, 0] };
 
 export interface RunningBackdrop {
   /** Reads the place of the words again, after they moved or changed size. */
@@ -177,6 +187,8 @@ export interface BackdropOptions {
   ready?: () => void;
   /** Where the words to keep readable are. The scene is dimmed in an oval around them; the middle of the canvas without it. */
   calm?: () => CalmBox | null;
+  /** What the scene is built around: its vanishing point, its summit, its hub sit on the middle of this box. The middle of the canvas without it. */
+  heart?: () => CalmBox | null;
   /** The screen starts under a cover. */
   covered?: boolean;
 }
@@ -239,6 +251,7 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   let calm: WebGLUniformLocation | null = null;
   let quiet: WebGLUniformLocation | null = null;
   let view: WebGLUniformLocation | null = null;
+  let heart: WebGLUniformLocation | null = null;
   let cell: WebGLUniformLocation | null = null;
   let data: WebGLUniformLocation | null = null;
   let width = 0, height = 0, density = 1, family = '', lettered = 0, raf = 0, last = 0, stopped = false, announced = false;
@@ -247,6 +260,8 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   let wantX = 0, wantY = 0;
   /** The quiet oval: its middle and its two radii, in CSS pixels from the canvas's top left corner. */
   const zone = { x: 0, y: 0, across: 1, down: 1 };
+  /** The scene's heart, in CSS pixels from the canvas's top left corner. */
+  const core = { x: 0, y: 0 };
 
   function build(): boolean {
     const vertex = compile(context, context.VERTEX_SHADER, VERTEX);
@@ -267,6 +282,7 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
     calm = context.getUniformLocation(program, 'uCalm');
     quiet = context.getUniformLocation(program, 'uQuiet');
     view = context.getUniformLocation(program, 'uView');
+    heart = context.getUniformLocation(program, 'uHeart');
     cell = context.getUniformLocation(program, 'uCell');
     data = context.getUniformLocation(program, 'uData');
     context.uniform1i(context.getUniformLocation(program, 'uAtlas'), 0);
@@ -369,7 +385,7 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   }
 
   /**
-   * Places the quiet oval on the words. The shader keeps the scene at its
+   * Places the quiet oval on the words and the scene's heart. The shader keeps the scene at its
    * dimmest out to 0.55 of a radius and gives it back by the full radius, so
    * the radii are the box's half sizes and a margin, over that 0.55.
    */
@@ -386,6 +402,10 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
       zone.across = Math.min(width * 0.8, 640);
       zone.down = Math.min(height * 0.32, 240);
     }
+    const around = options.heart?.() ?? null;
+    const held = around && around.width > 0 && around.height > 0;
+    core.x = held ? around.x + around.width / 2 : width / 2;
+    core.y = held ? around.y + around.height / 2 : height / 2;
   }
 
   /** Draws the batch. An empty one is skipped: a length of zero would upload its whole array. */
@@ -408,11 +428,13 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
     context.uniform4f(calm, zone.x * scale, (height - zone.y) * scale, zone.across * scale, zone.down * scale);
     context.uniform1f(quiet, scene.calm);
     context.uniform3f(view, canvas.width, canvas.height, scale);
+    context.uniform2f(heart, core.x * scale, (height - core.y) * scale);
     context.uniform2i(cell, cellWidth(), cellHeight());
     context.uniform4fv(data, frame.data);
     context.clear(context.COLOR_BUFFER_BIT);
     send(batch);
     stats.frames++;
+    stats.heart = [core.x, core.y];
     stats.milliseconds = performance.now() - began;
     if (!announced) {
       announced = true;

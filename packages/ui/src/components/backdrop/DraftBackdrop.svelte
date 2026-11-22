@@ -9,7 +9,8 @@
   /**
    * The scene behind the empty new thread screen. `area` is the column it
    * fills: the pieces there marked `data-backdrop-calm` hold the words the
-   * scene is dimmed around. `covered` says the screen is mounted but out of
+   * scene is dimmed around, and with the composer they are what it is built
+   * around. `covered` says the screen is mounted but out of
    * sight, under a phone's list or its settings: the scene waits there.
    */
   let { area = null, covered = false }: { area?: HTMLElement | null; covered?: boolean } = $props();
@@ -25,9 +26,8 @@
     return [...(area?.querySelectorAll<HTMLElement>('[data-backdrop-calm]') ?? [])].filter((piece) => piece.offsetWidth > 0 && piece.offsetHeight > 0);
   }
 
-  /** The box around the words, from the canvas's top left corner. */
-  function calmOf(node: HTMLCanvasElement): CalmBox | null {
-    const pieces = words();
+  /** The box around these pieces, from the canvas's top left corner. */
+  function around(node: HTMLCanvasElement, pieces: HTMLElement[]): CalmBox | null {
     if (pieces.length === 0) return null;
     const frame = node.getBoundingClientRect();
     let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
@@ -39,22 +39,33 @@
     return { x: left - frame.left, y: top - frame.top, width: right - left, height: bottom - top };
   }
 
+  /** The words and the composer under them: the block the eye rests on, the scene's heart. */
+  function block(): HTMLElement[] {
+    const composer = area?.querySelector<HTMLElement>('[data-testid=composer]');
+    return composer && composer.offsetHeight > 0 ? [...words(), composer] : words();
+  }
+
   /** Runs the scene on its canvas. The renderer is fetched here, the first time a scene shows. */
   function play(node: HTMLCanvasElement, id: SceneId) {
     let running: RunningBackdrop | null = null;
     let gone = false;
-    // The words move when they wrap or when the composer under them grows.
-    const moved = new ResizeObserver(() => running?.settle());
+    // The words move when they wrap, when the composer under them grows and while the screen's entrance plays.
+    const settle = () => running?.settle();
+    const moved = new ResizeObserver(settle);
+    let column: HTMLElement | null = null;
     void import('../../lib/backdrop/engine').then(({ startBackdrop }) => {
       if (gone) return;
-      running = live = startBackdrop(node, id, { ready: () => { node.dataset['ready'] = ''; }, calm: () => calmOf(node), covered });
+      running = live = startBackdrop(node, id, { ready: () => { node.dataset['ready'] = ''; }, calm: () => around(node, words()), heart: () => around(node, block()), covered });
       if (!running || !area) return;
       for (const piece of area.querySelectorAll<HTMLElement>('[data-backdrop-calm], [data-testid=composer]')) moved.observe(piece);
+      column = area;
+      column.addEventListener('animationend', settle);
     }, () => { /* the screen is whole without its scene */ });
     return {
       destroy() {
         gone = true;
         moved.disconnect();
+        column?.removeEventListener('animationend', settle);
         if (live === running) live = null;
         running?.stop();
       }

@@ -316,7 +316,8 @@ nothing for a thread on a server.
 ## New thread background
 
 The `draft-backdrop` experiment draws an animated scene behind the empty new
-thread screen, in thin dark lines built around the middle of the screen: a
+thread screen, in thin dark lines built around the middle of the block the
+heading and the composer make (the middle of the canvas without them): a
 wire tunnel, a tunnel of characters, the contour lines of a slow relief or a
 belt of wire crates. With the switch on, Settings > Appearance offers Off, Random and the
 four scenes for this device (`lib/backdrop/choice.svelte.ts`, key

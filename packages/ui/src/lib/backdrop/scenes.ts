@@ -194,23 +194,37 @@ function crates({ batch, time, leanX, leanY, focal, width, height }: Frame): voi
 }
 
 // ---------------------------------------------------------------------------
-// Relief: the contour lines of a few hills that drift around the middle of
-// the screen, one line in four in the accent. The shader draws the lines; the
-// hills are worked out here.
+// Relief: the contour lines of a few hills that drift around a summit held
+// under the middle of the screen, one line in four in the accent. The shader
+// draws the lines; the hills are worked out here.
 
 const HILLS = 7;
 
+/** How fast the hills around come back away from the summit, as the shader counts it, and how much they may weigh on it. */
+export const RELIEF_FADE = 3;
+const RELIEF_CROWD = 0.4;
+
 function relief({ batch, time, width, height, leanX, leanY, data }: Frame): void {
   const size = Math.sqrt(width * height);
-  // One wide rise that stays under the middle, so the lines ring the composer; the others wander around it.
-  data[0] = -leanX * 14; data[1] = leanY * 10; data[2] = size * 0.56; data[3] = 1.7;
+  // One wide rise the lines ring; the others wander around it.
+  data[0] = 0; data[1] = 0; data[2] = size * 0.56; data[3] = 1.7;
   for (let i = 1; i < HILLS; i++) {
     const around = hash(i, 1, 11) * TAU + time * (0.011 + hash(i, 2, 11) * 0.014) * (i % 2 ? 1 : -1);
     const reach = 0.24 + 0.3 * hash(i, 3, 11) + 0.06 * Math.sin(time * 0.05 + i);
-    data[i * 4] = Math.cos(around) * reach * width * 1.05 - leanX * 14;
-    data[i * 4 + 1] = Math.sin(around * 1.3 + i) * reach * height * 1.05 + leanY * 10;
+    data[i * 4] = Math.cos(around) * reach * width * 1.05;
+    data[i * 4 + 1] = Math.sin(around * 1.3 + i) * reach * height * 1.05;
     data[i * 4 + 2] = size * (0.17 + 0.15 * hash(i, 4, 11));
     data[i * 4 + 3] = (0.3 + 0.3 * hash(i, 5, 11) + 0.1 * Math.sin(time * 0.09 + i * 2)) * (i % 3 === 0 ? -1 : 1);
+  }
+  // The shader fades the hills around out toward the summit, which keeps it under the composer as long as they
+  // weigh less there than the wide rise bends: a crowd of them is lowered together.
+  let crowd = 0;
+  for (let i = 1; i < HILLS; i++) crowd += data[i * 4 + 3]! * Math.exp(-(data[i * 4]! ** 2 + data[i * 4 + 1]! ** 2) / data[i * 4 + 2]! ** 2);
+  const lower = crowd > RELIEF_CROWD ? RELIEF_CROWD / crowd : 1;
+  for (let i = 0; i < HILLS; i++) {
+    data[i * 4] = data[i * 4]! - leanX * 14;
+    data[i * 4 + 1] = data[i * 4 + 1]! + leanY * 10;
+    if (i > 0) data[i * 4 + 3] = data[i * 4 + 3]! * lower;
   }
   // The lines creep outward from the summits; four of them make a whole turn of the accent.
   data[28] = wrap(-time * 0.045, 4);

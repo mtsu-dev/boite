@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { Batch, STRIDE, TEX, TINT } from './batch';
 import { themeTints, wrap } from './math';
-import { SCENES, TUNNEL_AIM, type Frame, type SceneId } from './scenes';
+import { RELIEF_FADE, SCENES, TUNNEL_AIM, type Frame, type SceneId } from './scenes';
 
 const IDS: SceneId[] = ['tunnel', 'glyphs', 'relief', 'crates'];
 const WIDTH = 1400, HEIGHT = 900;
@@ -78,12 +78,27 @@ test('the tunnel does not step sideways when a ring passes the eye', () => {
 });
 
 test('the contours rise from under the middle of the screen', () => {
-  const { data } = drawn('relief', 61.7);
-  expect(Math.hypot(data[0]!, data[1]!)).toBe(0);
-  // The middle rise is the tallest and the widest, so the lines ring it.
-  for (let hill = 1; hill < 7; hill++) {
-    expect(Math.abs(data[hill * 4 + 3]!)).toBeLessThan(data[3]!);
-    expect(data[hill * 4 + 2]!).toBeLessThan(data[2]!);
+  for (const time of [0, 3, 61.7, 900, 3600]) {
+    const { data } = drawn('relief', time);
+    // The ground as the shader draws it: a wide rise, and round hills that fade out toward its top.
+    const ground = (x: number, y: number) => {
+      const rise = (hill: number) => {
+        const across = (x - data[hill * 4]!) / data[hill * 4 + 2]!, down = (y - data[hill * 4 + 1]!) / data[hill * 4 + 2]!;
+        return across * across + down * down;
+      };
+      let around = 0;
+      for (let hill = 1; hill < 7; hill++) around += data[hill * 4 + 3]! * Math.exp(-rise(hill));
+      return data[3]! * Math.exp(-rise(0)) + around * (1 - Math.exp(-rise(0) * RELIEF_FADE));
+    };
+    // The summit the lines ring is the middle itself, however the hills around crowd it.
+    for (let turn = 0; turn < 8; turn++) {
+      expect(ground(Math.cos(turn * Math.PI / 4) * 3, Math.sin(turn * Math.PI / 4) * 3), `at ${time}, turn ${turn}`).toBeLessThan(ground(0, 0));
+    }
+    // The middle rise is the tallest and the widest, so the lines ring it.
+    for (let hill = 1; hill < 7; hill++) {
+      expect(Math.abs(data[hill * 4 + 3]!)).toBeLessThan(data[3]!);
+      expect(data[hill * 4 + 2]!).toBeLessThan(data[2]!);
+    }
   }
 });
 

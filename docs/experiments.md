@@ -38,7 +38,7 @@ Dev only.
 ## New thread background
 
 An animated scene plays behind the empty new thread screen, drawn in thin
-dark lines around the middle of the screen: a wire tunnel, a tunnel of
+dark lines around the heading and the message box: a wire tunnel, a tunnel of
 characters, contour lines or a belt of wire crates. It follows your theme and
 accent colour, and stays dim around the heading so the words remain easy to
 read.

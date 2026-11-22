@@ -67,6 +67,18 @@ test('the new thread background rides its experiment, follows the pick in Appear
         continue;
       }
       await page.waitFor(`${CANVAS}.hasAttribute('data-ready')`);
+      // Built around the heading and the composer together, which sit above the middle of the column: once the
+      // screen's entrance has played, the scene's heart is the middle of that block.
+      expect(await page.evaluate(`import('/src/lib/backdrop/engine.ts').then(async ({ stats }) => {
+        await Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => null)));
+        const drawn = stats.frames;
+        while (stats.frames < drawn + 2) await new Promise((next) => setTimeout(next, 30));
+        const canvas = ${CANVAS}.getBoundingClientRect();
+        const heading = document.querySelector('${id('draft-sentence')}').getBoundingClientRect(), composer = document.querySelector('${id('composer')}').getBoundingClientRect();
+        const x = (Math.min(heading.left, composer.left) + Math.max(heading.right, composer.right)) / 2 - canvas.left;
+        const y = (Math.min(heading.top, composer.top) + Math.max(heading.bottom, composer.bottom)) / 2 - canvas.top;
+        return Math.abs(y - canvas.height / 2) > 8 && Math.hypot(stats.heart[0] - x, stats.heart[1] - y) < 1;
+      })`)).toBe(true);
       const pace = await page.evaluate<Pace>(PACE);
       console.log(`backdrop ${scene}: ${pace.rate.toFixed(0)} frames a second, ${pace.cost.toFixed(2)} ms of the page's time each, canvas ${await page.evaluate<string>(`${CANVAS}.width + 'x' + ${CANVAS}.height`)}`);
       expect(pace.rate).toBeGreaterThan(10);
