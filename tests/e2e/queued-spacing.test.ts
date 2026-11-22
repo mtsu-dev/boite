@@ -6,6 +6,26 @@ import { startUi } from './lib/ui';
 /** What the timeline ends on: its last message, or the closing line under a finished turn. */
 const LAST = `'[data-testid="message"], [data-testid="thread-closing"]'`;
 
+/**
+ * Resize to `width` can lazily mount `MobileNavigation`'s header (61 px) after
+ * `setDeviceMetricsOverride` returns, shifting `.timeline` down until its
+ * `ResizeObserver` follows before the next paint. Wait for that header's state,
+ * animations, and two animation frames after scrolling so rects are read on a
+ * settled frame.
+ */
+async function scrollToSettledBottom(page: BrowserPage, width: number): Promise<void> {
+  const headerReady = width === 390
+    ? `(document.querySelector('[data-testid="mobile-header"]')?.offsetHeight ?? 0) > 0`
+    : `(document.querySelector('[data-testid="mobile-header"]')?.offsetHeight ?? 0) === 0`;
+  await page.waitFor(headerReady);
+  await page.settleAnimations();
+  await page.evaluate(`new Promise((resolve) => {
+    const timeline = document.querySelector('[data-testid="timeline"]');
+    timeline.scrollTop = timeline.scrollHeight;
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  })`);
+}
+
 test('queued prompts sit above the activity dock attached to the input', async () => {
   const port = await freePort();
   const server = await startUi(port);
@@ -28,8 +48,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
     const HISTORY_FULL = 640;
     for (const width of [1300, 390]) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: HISTORY_FULL, deviceScaleFactor: 1, mobile: width === 390 });
-      await page.settleAnimations();
-      await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
+      await scrollToSettledBottom(page, width);
       const gap = await page.evaluate<number>(`(() => {
         const last = [...document.querySelectorAll(${LAST})].at(-1);
         return document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - last.getBoundingClientRect().bottom;
@@ -64,8 +83,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: HISTORY_FULL, deviceScaleFactor: 1, mobile: width === 390 });
       // The dock is the composer card's top row: the queue above the card clears it without a lift of its own.
       await page.waitFor(`(() => { const dock = document.querySelector('[data-testid="thread-activity"]'); return dock?.offsetHeight > 0 && dock.closest('[data-testid="composer"]') !== null; })()`);
-      await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
-      await page.settleAnimations();
+      await scrollToSettledBottom(page, width);
       const gap = await page.evaluate<number>(`document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - [...document.querySelectorAll(${LAST})].at(-1).getBoundingClientRect().bottom`);
       expect(gap).toBeGreaterThanOrEqual(12);
       expect(gap).toBeLessThanOrEqual(40);
