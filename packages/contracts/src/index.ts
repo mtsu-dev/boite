@@ -129,7 +129,7 @@ export { PREVIEW_REFERENCES_PER_TURN, previewReferencesError, previewPrompt } fr
 export { previewToolOutputs, previewToolPart, TOOL_OUTPUT_INLINE_CHARS, TOOL_OUTPUT_PREVIEW_CHARS } from './message-preview';
 export { forTransport, projectLiveMessage, projectLivePart, projectMessage, MESSAGE_SENT_MAX_BYTES, type TransportOptions } from './transport.ts';
 export { boundedMessageWindow } from './message-window.ts';
-export { StreamGate, partChannel, type StreamChannel } from './stream-channels.ts';
+export { FOLDED_CHANNELS, StreamGate, partChannel, type StreamChannel } from './stream-channels.ts';
 export { lastAgentText, notificationExcerpt, requestExcerpt, requestKind } from './notification-text';
 export { nativeAgentsOfTool, collectNativeAgents } from './native-agents.ts';
 export { collectProcessAgents, processAgentCommand } from './process-agents.ts';

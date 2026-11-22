@@ -1,9 +1,6 @@
-import type { StreamChannel, ThreadId } from '@boite/contracts';
+import { FOLDED_CHANNELS, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { onPhone } from '../onboarding';
 import type { StoreContext } from './context';
-
-/** Every channel but a running command's output: what a phone takes while its tool cards are folded. */
-const FOLDED: readonly StreamChannel[] = ['text', 'tools'];
 
 /**
  * Which stream channels this window subscribes a thread with. A desktop window
@@ -31,7 +28,7 @@ export class StreamChannels {
   params(threadId: ThreadId): { channels?: StreamChannel[] } {
     if (!this.#narrow(threadId)) { this.#narrowed.delete(threadId); return {}; }
     this.#narrowed.add(threadId);
-    return { channels: [...FOLDED] };
+    return { channels: [...FOLDED_CHANNELS] };
   }
 
   #narrow(threadId: ThreadId): boolean {

@@ -1,4 +1,4 @@
-import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, type Message, type MessageId, type Thread, type ThreadId } from '@boite/contracts';
+import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, lightPageFlags, type Message, type MessageId, type Thread, type ThreadId } from '@boite/contracts';
 import type { StoreContext } from './context';
 
 /**
@@ -28,15 +28,8 @@ export interface ReadingPosition {
  * tool outputs always; files, large pictures, long tool inputs and heavy
  * documents on a core that says it can hand them back one by one.
  */
-export function lightPage(ctx: StoreContext): { compactTools: true; compactFiles?: true; compactImages?: true; compactToolParts?: true } {
-  const features = ctx.store.core?.features;
-  return {
-    compactTools: true,
-    ...(features?.threadSnapshots ? { compactFiles: true as const } : {}),
-    ...(features?.readingPages ? { compactImages: true as const } : {}),
-    // Long tool inputs and diffs too, and no message too heavy to open.
-    ...(features?.deferredToolParts ? { compactToolParts: true as const } : {}),
-  };
+export function lightPage(ctx: StoreContext): ReturnType<typeof lightPageFlags> {
+  return lightPageFlags(ctx.store.core?.features);
 }
 
 /** Write the cursor below a window, dropping the key once the window reaches the thread's end. */

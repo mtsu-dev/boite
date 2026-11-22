@@ -109,6 +109,8 @@ export interface ProcRegistryOptions {
   /** The load tick while something works, and while everything is idle. Tests shorten them. */
   loadIntervalMs?: number;
   idleLoadIntervalMs?: number;
+  /** False takes no load samples: the transfer bench, where a sample on a timer would cut a stream at a moment the runner's speed picks. */
+  loadSampling?: boolean;
   /** Persists what the platform and the guards say, which the live log only names. */
   diagnostic?: (message: string, context: { event: string; threadId?: ThreadId; data?: Record<string, string | number | null> }) => void;
 }

@@ -1,6 +1,7 @@
 import { RPC_CHUNK_BYTES, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, RpcErrorCode, StreamGate, partChannel, projectLiveMessage, projectLivePart, type HelloAccepted, type MessagePart, type StreamChannel, type RpcError, type RpcEventName, type RpcEvents, type SentFrom, type ThreadId, type TransportOptions } from '@boite/contracts';
 import type { ServerWebSocket } from 'bun';
 import type { Core } from '../core.ts';
+import { pacing } from '../pacing.ts';
 import { newId } from '../ids.ts';
 import type { Connection } from '../router.ts';
 import type { Identity } from '../sessions.ts';
@@ -139,7 +140,7 @@ export class ServerConnection implements Connection {
   #catchUpBytes = 0;
   readonly #catchUp = new Set<string>();
   readonly #paced = new Map<string, RpcEvents['message.delta']>();
-  #paceTimer: ReturnType<typeof setTimeout> | null = null;
+  #paceTimer: unknown = null;
   /** When `#paceTimer` fires, on `performance.now()`'s clock. */
   #paceDeadline = 0;
   /** Text parts, `message|part`: true once their first sentence went out, else the state `sentenceEnd` left. */
@@ -357,10 +358,10 @@ export class ServerConnection implements Connection {
     const deadline = performance.now() + windowMs;
     if (this.#paceTimer !== null) {
       if (deadline >= this.#paceDeadline) return;
-      clearTimeout(this.#paceTimer);
+      pacing.clear(this.#paceTimer);
     }
     this.#paceDeadline = deadline;
-    this.#paceTimer = setTimeout(() => this.#flushPaced(), windowMs);
+    this.#paceTimer = pacing.set(() => this.#flushPaced(), windowMs);
   }
 
   /** Counts the merged texts held by their bound, once. */
@@ -372,7 +373,7 @@ export class ServerConnection implements Connection {
 
   #flushPaced(): void {
     if (this.#paceTimer !== null) {
-      clearTimeout(this.#paceTimer);
+      pacing.clear(this.#paceTimer);
       this.#paceTimer = null;
     }
     if (this.#paced.size === 0) return;
@@ -501,7 +502,7 @@ export class ServerConnection implements Connection {
     this.#closeListeners.clear();
     this.core.speech.cancel(this.id);
     this.#clearCongestion();
-    if (this.#paceTimer !== null) clearTimeout(this.#paceTimer);
+    if (this.#paceTimer !== null) pacing.clear(this.#paceTimer);
     this.#paceTimer = null;
     this.#paced.clear();
     this.#openings.clear();
