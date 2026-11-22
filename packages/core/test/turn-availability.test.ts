@@ -524,6 +524,8 @@ test('a usage limit bypasses the 10s fresh quota cache and ignores expired quota
     const dir = h.core.accounts.accountEnv(account, h.core.providers.require('claude'))['CLAUDE_CONFIG_DIR']!;
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'fixture-token' } }));
+    // Linux requires .credentials.json in claude.json (Windows overrides session: []), so re-check after writing it.
+    h.core.accounts.check(account.id);
     const client = await h.connect();
     const project = await client.call('projects.add', { path: h.dataDir, name: 'QuotaCache' });
     const thread = await client.call('threads.create', { projectId: project.id, providerId: 'claude', accountId: account.id });
