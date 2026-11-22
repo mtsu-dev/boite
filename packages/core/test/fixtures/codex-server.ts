@@ -332,6 +332,42 @@ async function runTurn(turnId: string, text: string): Promise<void> {
     notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
     return;
   }
+  if (instructions.includes('[douane-503]')) {
+    const error = {
+      message: 'unexpected status 503 Service Unavailable: {"error":{"type":"proxy_error","message":"no available subscription for this model; connect an account or wait for its quota reset"}}',
+      codexErrorInfo: { httpConnectionFailed: { httpStatusCode: 503 } },
+      additionalDetails: null,
+    };
+    notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
+    return;
+  }
+  if (instructions.includes('[douane-ws-exhausted]')) {
+    const error = {
+      message: 'no available subscription for this model; connect an account or wait for its quota reset',
+      codexErrorInfo: 'other',
+      additionalDetails: null,
+    };
+    notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
+    return;
+  }
+  if (instructions.includes('[douane-429]')) {
+    const error = {
+      message: 'unexpected status 429 Too Many Requests: {"error":{"type":"proxy_error","message":"all accounts for this provider are unavailable; check their quotas and connection status"}}',
+      codexErrorInfo: { httpConnectionFailed: { httpStatusCode: 429 } },
+      additionalDetails: null,
+    };
+    notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
+    return;
+  }
+  if (instructions.includes('[douane-503-outage]')) {
+    const error = {
+      message: 'unexpected status 503 Service Unavailable: {"error":{"type":"proxy_error","message":"all accounts for this provider are unavailable; check their quotas and connection status"}}',
+      codexErrorInfo: { httpConnectionFailed: { httpStatusCode: 503 } },
+      additionalDetails: null,
+    };
+    notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
+    return;
+  }
   if (planEnabled && instructions.includes('[tasks]')) notify('turn/plan/updated', { threadId, turnId, plan: [{ step: 'Inspect source', status: 'completed' }, { step: 'Run checks', status: 'inProgress' }] });
   const directives = directivesOf(instructions);
   if (instructions.includes('[silent-reasoning]')) {

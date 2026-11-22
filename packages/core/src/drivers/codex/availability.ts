@@ -2,7 +2,7 @@ import type { CodexTurnError } from './protocol.ts';
 import type { CodexTurn } from './turn.ts';
 import type { TurnRefusal } from '../types.ts';
 import { errorCodeOf, httpStatusOf } from '../driver-log.ts';
-import { parseUsageLimitReset } from '../usage-limit.ts';
+import { isGatewayUsageLimitText, parseUsageLimitReset } from '../usage-limit.ts';
 
 /*
  * What Codex says about availability: a model at capacity, a spent usage
@@ -36,7 +36,8 @@ export function codexRefusal(info: unknown, message: string | undefined, resetsA
   if (code === 'serverOverloaded' || /\bSelected model is at capacity\b/i.test(message ?? '')) return { kind: 'capacity' };
   const isLimit = code === 'usageLimitExceeded'
     || code === 'usage_limit_exceeded'
-    || /\bYou(?:'ve|\u2019ve|\s+have)\s+hit\s+your\s+usage\s+limit\b/i.test(message ?? '');
+    || /\bYou(?:'ve|\u2019ve|\s+have)\s+hit\s+your\s+usage\s+limit\b/i.test(message ?? '')
+    || isGatewayUsageLimitText(message, httpStatusOf(info));
   if (isLimit) return { kind: 'usage-limit', resetsAt: resetsAt ?? parseUsageLimitReset(message) };
   return undefined;
 }

@@ -3,7 +3,7 @@ import type { AgentCommand, AgentTotals, BackgroundTask, ToolDocument, Usage } f
 import type { PromptCacheLife, TurnRefusal } from '../types.ts';
 import { imageDocument } from '../documents.ts';
 import { stringify } from '../tool-text.ts';
-import { isClaudeUsageLimitText, parseUsageLimitReset } from '../usage-limit.ts';
+import { isClaudeUsageLimitText, isGatewayUsageLimitText, parseUsageLimitReset } from '../usage-limit.ts';
 import { isoTime } from './diagnostics.ts';
 
 /** `api_retry`: the CLI is running a request that failed and will try again. */
@@ -490,7 +490,8 @@ export function apiRefusal(
 ): TurnRefusal | undefined {
   if (error === 'overloaded') return { kind: 'capacity' };
   const isLimit = error === 'rate_limit'
-    || (error === 'server_error' && /\bAPI Error: 503 no available subscription for this model\b/i.test(reason))
+    || ((error === 'server_error' || error === 'unknown' || error === null)
+      && isGatewayUsageLimitText(reason, error === 'server_error' ? 503 : null))
     || ((error === null || error === 'unknown') && (hasRejectedWindow || isClaudeUsageLimitText(reason)));
   if (!isLimit) return;
   return { kind: 'usage-limit', resetsAt: rejectedUntil ?? parseUsageLimitReset(reason) };

@@ -308,3 +308,22 @@ export function isClaudeUsageLimitText(text: string | null | undefined): boolean
     || /\b(?:5[\s-]?hour|five[\s-]?hour|weekly|session|subscription)\s+(?:usage\s+)?limit\s+(?:reached|exceeded)\b/i.test(text)
     || /\busage\s+limit\s+(?:reached|exceeded)\b/i.test(text);
 }
+
+/**
+ * True when a subscription gateway (Douane) error reports an exhausted pool or
+ * client share cap:
+ * - `state.rs`: HTTP 503 or WebSocket `proxy_error` `"no available subscription for this model..."`
+ * - `relay.rs`: HTTP 429 `"all accounts for this provider are unavailable..."`
+ *   (only on 429, never on a 5xx upstream outage or 401/403 auth refusal)
+ * - client share cap: `"this client's share is used up until ..."`
+ */
+export function isGatewayUsageLimitText(text: string | null | undefined, httpStatus: number | null = null): boolean {
+  if (!text) return false;
+  if (/\bno available subscription for this model\b/i.test(text)) return true;
+  if (/\bclient(?:'s|\u2019s)\s+share\s+is\s+used\s+up\b/i.test(text)) return true;
+  if (/\ball accounts for this provider are unavailable\b/i.test(text)) {
+    return httpStatus === 429 || /\b429\b|\btoo many requests\b/i.test(text);
+  }
+  return false;
+}
+

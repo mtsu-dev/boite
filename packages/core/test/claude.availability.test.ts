@@ -167,3 +167,78 @@ test('a result-only or unknown-coded Claude usage limit is classified and plans 
   expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
 });
 
+test('a Douane pool exhaustion response on Claude plans a resume at gatewayPoolReset', async () => {
+  const client = await harness.connect();
+  const threadId = await claudeThread(client);
+  const earliestReset = Date.now() + 2 * 3600 * 1000;
+  const laterReset = Date.now() + 5 * 3600 * 1000;
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(request) {
+      const url = new URL(request.url);
+      if (url.pathname === '/v1/quotas') {
+        return Response.json({
+          updated_at: new Date().toISOString(),
+          providers: [{
+            provider: 'claude', name: 'Claude', display: 'accounts',
+            entries: [
+              { id: 'acct-a', label: 'Account A', status: 'cooldown', windows: [{ id: 'five-hour', label: '5 hours', remaining_percent: 0, reset_at: new Date(laterReset).toISOString() }], credits: [] },
+              { id: 'acct-b', label: 'Account B', status: 'ready', windows: [{ id: 'five-hour', label: '5 hours', remaining_percent: 0, reset_at: new Date(earliestReset).toISOString() }], credits: [] },
+            ],
+          }],
+        });
+      }
+      return new Response('not found', { status: 404 });
+    },
+  });
+  try {
+    await client.call('subscriptionProxy.configure', {
+      subscriptionProxy: { enabled: true, kind: 'douane', baseUrl: `http://127.0.0.1:${server.port}/v1`, dashboardUrl: `http://127.0.0.1:${server.port}/admin/#quotas` },
+      key: 'douane-claude-test-key',
+    });
+
+    // Exact Douane state.rs:309 + relay.rs:281 HTTP 503 JSON body surfaced as server_error.
+    const body503 = 'API Error: 503 {"error":{"type":"proxy_error","message":"no available subscription for this model; connect an account or wait for its quota reset"}}';
+    scripted(() => {}, (fake) => {
+      fake.emit(init('sess-douane-503-json'));
+      for (const message of apiError('sess-douane-503-json', 'server_error', body503)) fake.emit(message);
+    });
+    expect(await runTurn(client, threadId, 'hit 503 json')).toBe('error');
+    await waitFor(() => harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === earliestReset, 2000);
+    expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+
+    // Result-only 503 frame without an assistant error frame.
+    scripted(() => {}, (fake) => {
+      fake.emit(init('sess-douane-503-result'));
+      fake.emit(sdk({ ...(success('sess-douane-503-result') as object), is_error: true, result: 'API Error: 503 no available subscription for this model; connect an account or wait for its quota reset' }));
+    });
+    expect(await runTurn(client, threadId, 'hit 503 result')).toBe('error');
+    await waitFor(() => harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === earliestReset, 2000);
+    expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+
+    // Exact Douane relay.rs:471-474 HTTP 429 JSON body surfaced with an unknown code.
+    const body429 = 'API Error: 429 {"error":{"type":"proxy_error","message":"all accounts for this provider are unavailable; check their quotas and connection status"}}';
+    scripted(() => {}, (fake) => {
+      fake.emit(init('sess-douane-429-json'));
+      for (const message of apiError('sess-douane-429-json', 'unknown', body429)) fake.emit(message);
+    });
+    expect(await runTurn(client, threadId, 'hit 429 json')).toBe('error');
+    await waitFor(() => harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === earliestReset, 2000);
+    expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+
+    // Negative: HTTP 503 with relay.rs:473 (upstream 503 outage, not 429) stays interrupted.
+    const body503Outage = 'API Error: 503 {"error":{"type":"proxy_error","message":"all accounts for this provider are unavailable; check their quotas and connection status"}}';
+    scripted(() => {}, (fake) => {
+      fake.emit(init('sess-douane-503-outage'));
+      for (const message of apiError('sess-douane-503-outage', 'server_error', body503Outage)) fake.emit(message);
+    });
+    expect(await runTurn(client, threadId, 'hit 503 outage')).toBe('error');
+    const { recovery } = await client.call('threads.get', { threadId });
+    expect(recovery?.kind).toBe('interrupted');
+  } finally {
+    server.stop(true);
+  }
+});
+
+
