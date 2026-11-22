@@ -172,6 +172,10 @@ class HeldClock implements PacingClock {
   clear(handle: unknown): void {
     this.#timers.delete(handle as number);
   }
+  /** Time stands still between releases: a shorter hold always comes due first. */
+  now(): number {
+    return 0;
+  }
   get pending(): number {
     return this.#timers.size;
   }
@@ -207,24 +211,26 @@ export async function measureProvider(provider: ProviderName): Promise<TransferM
   Date.now = () => CLOCK;
   const pacing = new HeldClock();
   setPacingClock(pacing);
-  // A load sample comes on a timer and cuts the stream it lands in.
-  const harness = await startTestCore({ loadSampling: false });
-  const relay = startWire(harness.server.port);
+  let harness: TestCore | undefined;
+  let relay: Wire | undefined;
   const clients: CoreClient[] = [];
   let phase: Phase | null = null;
-  const phone = async (): Promise<CoreClient> => {
-    const client = await connect(relay.url, harness.token, { ...PHONE, onFrame: (raw) => phase?.frames.push(raw) });
-    clients.push(client);
-    return client;
-  };
-  const quiet = async (): Promise<void> => {
-    for (let seen = -1; seen !== phase!.frames.length || pacing.pending > 0;) {
-      pacing.release();
-      seen = phase!.frames.length;
-      await Bun.sleep(QUIET_MS);
-    }
-  };
   try {
+    // A load sample comes on a timer and cuts the stream it lands in.
+    const core = harness = await startTestCore({ loadSampling: false });
+    const wire = relay = startWire(core.server.port);
+    const phone = async (): Promise<CoreClient> => {
+      const client = await connect(wire.url, core.token, { ...PHONE, onFrame: (raw) => phase?.frames.push(raw) });
+      clients.push(client);
+      return client;
+    };
+    const quiet = async (): Promise<void> => {
+      for (let seen = -1; seen !== phase!.frames.length || pacing.pending > 0;) {
+        pacing.release();
+        seen = phase!.frames.length;
+        await Bun.sleep(QUIET_MS);
+      }
+    };
     if (provider === 'claude') {
       scriptedClaude(harness);
       const messages = claudeReplay(fixturePath('claude'));
@@ -269,8 +275,10 @@ export async function measureProvider(provider: ProviderName): Promise<TransferM
   } finally {
     phase = null;
     for (const client of clients) client.close();
-    relay.stop();
-    await harness.stop();
+    relay?.stop();
+    await harness?.stop();
+    delete process.env['CODEX_FAKE_REPLAY'];
+    delete process.env['ACP_FAKE_REPLAY'];
     setPacingClock(null);
     Date.now = realNow;
     unseed();
@@ -295,11 +303,11 @@ if (import.meta.main) {
   for (let run = 0; run < runs; run++) results.push(await measureAll());
   const first = JSON.stringify(results[0]);
   const differing = results.findIndex((result) => JSON.stringify(result) !== first);
-  const out = option('out');
-  if (out) writeFileSync(out, `${JSON.stringify(results[0], null, 2)}\n`);
   console.log(JSON.stringify({ runs, identical: differing < 0, metrics: results[0] }, null, 2));
   if (differing >= 0) {
     console.error(`run ${differing + 1} differs from run 1:\n${JSON.stringify(results[differing])}\n${first}`);
     process.exit(1);
   }
+  const out = option('out');
+  if (out) writeFileSync(out, `${JSON.stringify(results[0], null, 2)}\n`);
 }

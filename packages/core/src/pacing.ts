@@ -11,6 +11,8 @@ export interface PacingClock {
   /** `unref`: the timer does not keep the process alive. */
   set(fire: () => void, ms: number, options?: { unref?: boolean }): unknown;
   clear(handle: unknown): void;
+  /** Milliseconds on the clock the timers run on, to compare deadlines. */
+  now(): number;
 }
 
 const REAL: PacingClock = {
@@ -20,6 +22,7 @@ const REAL: PacingClock = {
     return timer;
   },
   clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  now: () => performance.now(),
 };
 
 let current = REAL;
@@ -27,6 +30,7 @@ let current = REAL;
 export const pacing: PacingClock = {
   set: (fire, ms, options) => current.set(fire, ms, options),
   clear: (handle) => current.clear(handle),
+  now: () => current.now(),
 };
 
 /** Runs pacing on `clock` until called again with null. */

@@ -141,7 +141,7 @@ export class ServerConnection implements Connection {
   readonly #catchUp = new Set<string>();
   readonly #paced = new Map<string, RpcEvents['message.delta']>();
   #paceTimer: unknown = null;
-  /** When `#paceTimer` fires, on `performance.now()`'s clock. */
+  /** When `#paceTimer` fires, on `pacing.now()`'s clock. */
   #paceDeadline = 0;
   /** Text parts, `message|part`: true once their first sentence went out, else the state `sentenceEnd` left. */
   readonly #openings = new Map<string, string | true>();
@@ -355,7 +355,7 @@ export class ServerConnection implements Connection {
     if (exact) this.#pacedBytes += bytes;
     else { this.#unmeasured.push(delta.text); this.#unmeasuredBound += bytes; }
     if (this.#pacedBytes > RPC_MAX_FRAME_BYTES) { this.#flushPaced(); return; }
-    const deadline = performance.now() + windowMs;
+    const deadline = pacing.now() + windowMs;
     if (this.#paceTimer !== null) {
       if (deadline >= this.#paceDeadline) return;
       pacing.clear(this.#paceTimer);

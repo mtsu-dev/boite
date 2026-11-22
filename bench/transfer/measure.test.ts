@@ -15,4 +15,7 @@ test.each(['codex', 'opencode'] as const)('%s measures the same when its agent p
   const steady = await measureProvider(provider);
   process.env['REPLAY_PAUSE_MS'] = '1100';
   expect(await measureProvider(provider)).toEqual(steady);
+  // A later fake agent in the same process runs its own script, on the real clock.
+  expect(process.env[provider === 'codex' ? 'CODEX_FAKE_REPLAY' : 'ACP_FAKE_REPLAY']).toBeUndefined();
+  expect(Date.now()).toBeGreaterThan(Date.UTC(2026, 0, 2));
 }, 60_000);

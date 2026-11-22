@@ -83,8 +83,9 @@ function machineSkills(): Set<string> {
 }
 
 describe('fixtures', () => {
-  // A name the fixture's own text uses ("runner" on a CI runner) is not a leak.
-  const ownWords = new Set(`${NOTES_TEXT} ${FIXTURE_PROMPT}`.toLowerCase().split(/\W+/));
+  // A name the fixture's own text uses ("runner" on a CI runner) is not a leak,
+  // nor one of the anonymizer's own placeholders (a container's user `user`).
+  const ownWords = new Set(`${NOTES_TEXT} ${FIXTURE_PROMPT} user host example`.toLowerCase().split(/\W+/));
   const names = [userInfo().username, hostname()].filter((name) => name.length >= 3 && !ownWords.has(name.toLowerCase()));
 
   for (const provider of PROVIDERS) {
