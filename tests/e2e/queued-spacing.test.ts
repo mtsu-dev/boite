@@ -6,6 +6,22 @@ import { startUi } from './lib/ui';
 /** What the timeline ends on: its last message, or the closing line under a finished turn. */
 const LAST = `'[data-testid="message"], [data-testid="thread-closing"]'`;
 
+async function resize(page: BrowserPage, width: number, height: number) {
+  await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width === 390 });
+  // The header changes the timeline height once its chunk mounts.
+  if (width === 390) await page.waitFor(`document.querySelector('[data-testid="mobile-header"]')?.offsetHeight > 0`);
+}
+
+async function gapAtTimelineEnd(page: BrowserPage): Promise<number> {
+  await page.settleAnimations();
+  return page.evaluate<number>(`(() => {
+    const timeline = document.querySelector('[data-testid="timeline"]');
+    timeline.scrollTop = timeline.scrollHeight;
+    const last = [...timeline.querySelectorAll(${LAST})].at(-1);
+    return document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - last.getBoundingClientRect().bottom;
+  })()`);
+}
+
 test('queued prompts sit above the activity dock attached to the input', async () => {
   const port = await freePort();
   const server = await startUi(port);
@@ -27,13 +43,8 @@ test('queued prompts sit above the activity dock attached to the input', async (
     // and the gap would measure the empty room under it, so the window is short enough to overflow.
     const HISTORY_FULL = 640;
     for (const width of [1300, 390]) {
-      await page.send('Emulation.setDeviceMetricsOverride', { width, height: HISTORY_FULL, deviceScaleFactor: 1, mobile: width === 390 });
-      await page.settleAnimations();
-      await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
-      const gap = await page.evaluate<number>(`(() => {
-        const last = [...document.querySelectorAll(${LAST})].at(-1);
-        return document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - last.getBoundingClientRect().bottom;
-      })()`);
+      await resize(page, width, HISTORY_FULL);
+      const gap = await gapAtTimelineEnd(page);
       await page.screenshot(join(import.meta.dir, '.artifacts', `queued-spacing-${process.env.BOITE_QUEUE_CAPTURE ?? 'after'}-${width}.png`));
       expect(gap).toBeGreaterThanOrEqual(16);
       expect(gap).toBeLessThanOrEqual(40);
@@ -49,7 +60,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
     })()`);
     await page.waitFor(`!document.querySelector('[data-testid="composer-send-now"]')`);
     for (const width of [1300, 390]) {
-      await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width === 390 });
+      await resize(page, width, 850);
       const fit = await page.evaluate<{ overflow: number; lines: number }>(`(() => {
         const queue = document.querySelector('[data-testid="composer-queued"]');
         // clientHeight is whole pixels: a tenth of a line is rounding, a sliver is more.
@@ -61,12 +72,10 @@ test('queued prompts sit above the activity dock attached to the input', async (
     await page.evaluate(`globalThis.__boiteTest.workspace.active.composerStates['t-trace'].sending = false`);
     await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread.activity = { goal: null, loop: null, tasks: [{ id: 'work', text: 'Keep the latest answer visible', status: 'in_progress' }] }`);
     for (const width of [1300, 390]) {
-      await page.send('Emulation.setDeviceMetricsOverride', { width, height: HISTORY_FULL, deviceScaleFactor: 1, mobile: width === 390 });
+      await resize(page, width, HISTORY_FULL);
       // The dock is the composer card's top row: the queue above the card clears it without a lift of its own.
       await page.waitFor(`(() => { const dock = document.querySelector('[data-testid="thread-activity"]'); return dock?.offsetHeight > 0 && dock.closest('[data-testid="composer"]') !== null; })()`);
-      await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
-      await page.settleAnimations();
-      const gap = await page.evaluate<number>(`document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - [...document.querySelectorAll(${LAST})].at(-1).getBoundingClientRect().bottom`);
+      const gap = await gapAtTimelineEnd(page);
       expect(gap).toBeGreaterThanOrEqual(12);
       expect(gap).toBeLessThanOrEqual(40);
       await page.screenshot(join(import.meta.dir, '.artifacts', `queued-spacing-dock-${process.env.BOITE_QUEUE_CAPTURE ?? 'after'}-${width}.png`));

@@ -36,21 +36,31 @@ const CALL_TIMEOUT_MS = 20_000;
 
 /** In-page wait for drawn finite animations and fonts. Returns any unfinished work at the deadline. */
 export const SETTLE_ANIMATIONS = `new Promise((resolve) => {
-  let live = true, fonts = false;
-  const done = (ok) => { if (!live) return; live = false; resolve(ok ? null : watched.filter((a) => !ended.has(a) && drawn(a))
-    .map((a) => (a.animationName ?? a.transitionProperty ?? a.id) + ' on .' + String(a.effect?.target?.className ?? '?').split(' ')[0] + ' ' + a.playState).concat(fonts ? [] : [...document.fonts].filter((f) => f.status === 'loading').map((f) => 'font ' + f.family + ' ' + f.weight + ' loading').concat(['document.fonts ' + document.fonts.status]))); };
+  let live = true, fonts = false, frame = 0;
   const drawn = (a) => !(a.effect instanceof KeyframeEffect) || a.effect.target?.checkVisibility?.({ contentVisibilityAuto: true }) !== false;
   const ended = new Set();
   const watched = document.getAnimations().filter((a) => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity && drawn(a));
-  for (const a of watched) a.finished.then(() => ended.add(a), () => ended.add(a));
-  document.fonts.ready.then(() => { fonts = true; });
-  const frame = () => {
-    if (!live) return;
-    if (fonts && watched.every((a) => ended.has(a) || !drawn(a))) return done(true);
-    requestAnimationFrame(frame);
+  const pending = (a) => !ended.has(a) && drawn(a);
+  const done = (ok) => {
+    live = false;
+    clearTimeout(deadline);
+    cancelAnimationFrame(frame);
+    resolve(ok ? null : watched.filter(pending)
+      .map((a) => (a.animationName ?? a.transitionProperty ?? a.id) + ' on .' + String(a.effect?.target?.className ?? '?').split(' ')[0] + ' ' + a.playState)
+      .concat(fonts ? [] : [...document.fonts].filter((f) => f.status === 'loading').map((f) => 'font ' + f.family + ' ' + f.weight + ' loading').concat(['document.fonts ' + document.fonts.status])));
   };
-  requestAnimationFrame(frame);
-  setTimeout(() => done(false), ${CALL_TIMEOUT_MS - 5_000});
+  const check = () => { if (live && fonts && !watched.some(pending)) done(true); };
+  const pollVisibility = () => {
+    check();
+    if (live) frame = requestAnimationFrame(pollVisibility);
+  };
+  const deadline = setTimeout(() => done(fonts && !watched.some(pending)), ${CALL_TIMEOUT_MS - 5_000});
+  for (const a of watched) {
+    const finish = () => { ended.add(a); check(); };
+    a.finished.then(finish, finish);
+  }
+  document.fonts.ready.then(() => { fonts = true; check(); });
+  frame = requestAnimationFrame(pollVisibility);
 })`;
 const POLL_MS = 100;
 /** Distinct debugging-port answers a failed wait reports. */
@@ -763,7 +773,8 @@ ${await this.#historyReport()}`);
    * gets that update: a theme change left its colour transitions finished
    * with their promises pending, and the wait hung until the call timed out.
    * Content can also stop being drawn during the wait (a phone's chat body
-   * covered by the list), so each frame looks again.
+   * covered by the list), so each frame looks again. Font and animation
+   * completions can settle the wait even if no further frame callback arrives.
    */
   async settleAnimations(): Promise<void> {
     // The page gives up first, so the frame pump never outlives the call.

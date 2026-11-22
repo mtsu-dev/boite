@@ -164,40 +164,54 @@ test('closing an image and dragging chat text or a thread link preserves the con
   } finally { await page.close(); }
 }, 30_000);
 
-test('dropping URL text keeps the app open and still inserts text in the composer', async () => {
-  const page = await BrowserPage.launch({ url, windowSize: { width: 1280, height: 900 } });
+test.each([1280, 390])('dropping URL text keeps the app open and still inserts text in the composer at %ipx', async (width) => {
+  const phone = width === 390;
+  const height = phone ? 844 : 900;
+  const dropUrl = url + '&contactNotice=0';
+  const page = await BrowserPage.launch({ url: dropUrl, windowSize: { width, height } });
   try {
-    await page.waitFor(`${state}.openThread`);
-    const text = url + '&dropped=1';
+    if (phone) {
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+      await page.waitFor(`document.querySelector('${id('mobile-header')}')?.offsetHeight > 0`);
+    }
+    await page.waitFor(`${state}.openThread && document.querySelector('${id('composer-input')}')`);
+    const text = dropUrl + '&dropped=1';
     await page.evaluate(`(async () => {
       await ${state}.open('t-trace');
-      document.addEventListener('dragover', event => { window.__textDropOver = event.defaultPrevented; });
+      document.addEventListener('dragover', event => {
+        window.__textDropOver = {
+          target: event.target.closest('[data-testid="timeline"], [data-testid="composer-input"]')?.dataset.testid ?? null,
+          defaultPrevented: event.defaultPrevented,
+        };
+      });
     })()`);
-    for (const phone of [false, true]) {
-      await page.send('Emulation.setDeviceMetricsOverride', { width: phone ? 390 : 1280, height: phone ? 844 : 900, deviceScaleFactor: 1, mobile: phone });
-      // CDP's resize reply precedes the rendered frame used by native drag hit testing.
-      await page.evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
-      for (const target of ['timeline', 'composer-input']) {
-        await page.waitFor(`(() => {
-          const element = document.querySelector('${id(target)}');
-          const r = element.getBoundingClientRect();
-          return r.width > 0 && r.height > 0 && element.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
-        })()`);
-        const point = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('${id(target)}').getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; })()`);
-        const data = { items: [{ mimeType: 'text/uri-list', data: text }, { mimeType: 'text/plain', data: text }], dragOperationsMask: 1 };
-        for (const type of ['dragEnter', 'dragOver']) await page.send('Input.dispatchDragEvent', { type, ...point, data });
-        expect(await page.evaluate('window.__textDropOver')).toBe(target === 'timeline');
-        await page.send('Input.dispatchDragEvent', { type: 'drop', ...point, data });
-        const history = await page.send('Page.getNavigationHistory', {}) as { currentIndex: number; entries: Array<{ url: string }> };
-        expect(history.entries[history.currentIndex]!.url).toBe(url);
-        expect(await page.evaluate(`${state}.openThread.id`)).toBe('t-trace');
-        if (target === 'composer-input') {
-          expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe(text);
-          await page.type(id('composer-input'), '');
-        }
+    await page.settleAnimations();
+    for (const target of ['timeline', 'composer-input']) {
+      await page.waitFor(`(() => {
+        const element = document.querySelector('${id(target)}');
+        const r = element?.getBoundingClientRect();
+        return r && r.width > 0 && r.height > 0 && element.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+      })()`);
+      const point = await page.evaluate<{ x: number; y: number }>(`(() => {
+        window.__textDropOver = null;
+        const r = document.querySelector('${id(target)}').getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      })()`);
+      const data = { items: [{ mimeType: 'text/uri-list', data: text }, { mimeType: 'text/plain', data: text }], dragOperationsMask: 1 };
+      for (const type of ['dragEnter', 'dragOver']) await page.send('Input.dispatchDragEvent', { type, ...point, data });
+      // Read the event for this gesture after the renderer dispatches it.
+      await page.waitFor('window.__textDropOver != null');
+      expect(await page.evaluate('window.__textDropOver')).toEqual({ target, defaultPrevented: target === 'timeline' });
+      await page.send('Input.dispatchDragEvent', { type: 'drop', ...point, data });
+      const history = await page.send('Page.getNavigationHistory', {}) as { currentIndex: number; entries: Array<{ url: string }> };
+      expect(history.entries[history.currentIndex]!.url).toBe(dropUrl);
+      expect(await page.evaluate(`${state}.openThread.id`)).toBe('t-trace');
+      if (target === 'composer-input') {
+        expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe(text);
+        await page.type(id('composer-input'), '');
       }
-      await capture(page, `text-drop-${phone ? 'phone' : 'desktop'}.png`);
     }
+    await capture(page, `text-drop-${phone ? 'phone' : 'desktop'}.png`);
     expect(page.errors()).toEqual([]);
   } finally { await page.close(); }
 }, 30_000);
