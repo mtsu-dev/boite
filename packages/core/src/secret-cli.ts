@@ -16,7 +16,9 @@ export const SECRET_HELP = `boite secret: ask the user for a key on a card, then
   boite secret write <ref> --env-file <path> --key <VAR> [--allow-unignored]
                                                       writes VAR=<value> into a git-ignored file of this conversation
   boite secret run <ref> --as <VAR> -- <cmd> [args...] runs cmd with the value in env var VAR, output masked
-  boite secret pipe <ref> -- <cmd> [args...]          runs cmd with the value on stdin, output masked
+  boite secret pipe <ref> [--check <arg>] -- <cmd> [args...]
+                                                      runs cmd with the value on stdin, output masked
+                                                      --check runs cmd <arg> with empty stdin first
 Never ask for a secret in chat. Refs: secret:<id>, single-use, in memory for at most 10 minutes and only during the requesting turn.
 This is not a sandbox: a value written to a file can be read back with a shell, and then it reaches the model.`;
 
@@ -91,15 +93,19 @@ export async function secretCommand(args: string[], io: CliIo, client: CoreClien
   if (action === 'run' || action === 'pipe') {
     const split = rest.indexOf('--');
     if (split < 0) throw new Usage(`boite secret ${action} needs -- before the command`);
-    const parsed = flags(rest.slice(0, split), { values: action === 'run' ? ['as'] : [], booleans: [] });
+    const parsed = flags(rest.slice(0, split), { values: action === 'run' ? ['as'] : ['check'], booleans: [] });
     const [command, ...commandArgs] = rest.slice(split + 1);
     const ref = parsed.positional[0];
     if (ref === undefined || parsed.positional.length > 1) throw new Usage(`boite secret ${action} needs one ref`);
     if (command === undefined) throw new Usage(`boite secret ${action} needs a command after --`);
     const as = parsed.values.get('as');
+    const check = parsed.values.get('check');
     if (action === 'run' && as === undefined) throw new Usage('boite secret run needs --as <VAR>');
     const env = Object.fromEntries(Object.entries(io.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
-    const result = await client.call('secrets.use', { threadId, ref, use: { action, ...(as === undefined ? {} : { as }), command, args: commandArgs, cwd: io.cwd, env } });
+    const result = await client.call('secrets.use', { threadId, ref, use: {
+      action, ...(as === undefined ? {} : { as }), ...(check === undefined ? {} : { checkArgs: [check] }),
+      command, args: commandArgs, cwd: io.cwd, env,
+    } });
     if (result.action === 'write') return { lines: useLines(result), value: result };
     const notes = [...(result.truncated ? ['boite secret: output cut at 1 MB per stream'] : []), ...(result.timedOut ? ['boite secret: the command was stopped at its deadline'] : [])];
     // A command stopped at its deadline exits 124 like timeout(1), whatever its signal gave.

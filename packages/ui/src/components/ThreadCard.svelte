@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { threadWait } from '../lib/background';
+  import WaitLine from './WaitLine.svelte';
   import { tick, type Snippet } from 'svelte';
-  import { Check, Ellipsis, Folder, FolderInput, GitBranch } from '@lucide/svelte';
+  import { Check, Ellipsis, Folder, FolderInput } from '@lucide/svelte';
   import { type Project, type ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import { workspace } from '../lib/workspace.svelte';
@@ -13,6 +15,7 @@
   import MachinePlace from './MachinePlace.svelte';
   import MachineIcon from './MachineIcon.svelte';
   import PullRequestBadge from './PullRequestBadge.svelte';
+  import ThreadRowDetails from './ThreadRowDetails.svelte';
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline, { pullRequestLabel } from './ThreadHeadline.svelte';
   import ThreadBot from './ThreadBot.svelte';
@@ -70,6 +73,7 @@
   } = $props();
   let owner = $derived(machine.store);
   const away = $derived(owner.connection !== 'ready');
+  const wait = $derived(away ? null : threadWait(thread, owner));
   const kind = $derived(thread.archived ? null : threadState(thread, rowAsks(owner, thread.id)));
   const bot = $derived(agentDirectory(owner).rowAgentOf(thread));
   /** "Offline" said once: on the place line, unless the card's head, the place's machine or the row's own state
@@ -141,7 +145,7 @@
     {#if link}<PullRequestBadge pullRequest={link} />{/if}
     {#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}
     {#if where?.host}<MachinePlace host={where.host} />{/if}
-    {#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}
+    <ThreadRowDetails offline={chip} />
     {#if detail && at !== undefined}<time class="since ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}
   </span>
 {/snippet}
@@ -166,10 +170,11 @@
     {#if detail}
       <span class="title-line">{#if !lead && stateForm(kind) !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} {open} pullRequest={placePr ? null : pullRequest} offline={away} /></span>
     {:else if classic}
-      <ThreadHeadline {owner} {thread} {now} {open} fit offline={away} />
+      <ThreadHeadline {owner} {thread} {now} {open} fit offline={away} elapsedShownSince={wait?.since} />
     {:else}
-      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} showProvider={bot !== null} pullRequest={placePr ? null : pullRequest} fit offline={away} at={thread.lastUserMessageAt ?? thread.createdAt} />
+      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} showProvider={bot !== null} pullRequest={placePr ? null : pullRequest} fit offline={away} elapsedShownSince={wait?.since} at={thread.lastUserMessageAt ?? thread.createdAt} />
     {/if}
+    {#if wait}<WaitLine {wait} />{/if}
     {#if showPlace && !placePr}{@render placeLine()}{/if}
     {#if pending && !placePr}{@render pendingMove(pending)}{/if}
   </button>
@@ -230,9 +235,7 @@
         {#if bot}<ThreadBot {bot} {open} attention={kind === 'waiting'} />{/if}
         {#if where?.project}<span class="project-name" data-testid="thread-project" title={project?.path}><Folder size={12} /><span class="ui-label">{where.project}</span></span>{/if}
         {#if where?.host}<span class="machine" class:away={where.host.away} title={where.host.text} aria-label={where.host.text}><MachineIcon icon={machine.icon} os={owner.core?.os} size={12} /></span>{/if}
-        {#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}
-        {#if pullRequest}<PullRequestBadge {pullRequest} />{/if}
-        {#if thread.branch && (where || pullRequest)}<span class="branch" data-testid="thread-branch" title={thread.branch}><GitBranch size={12} /><span class="ui-label">{thread.branch}</span></span>{/if}
+        <ThreadRowDetails offline={chip} {pullRequest} branch={where || pullRequest ? thread.branch : undefined} />
       </div>
     {/if}
     <!-- Activity: what is asked, then the command and the sub-agents asking the same; outside the row's button, since
@@ -372,7 +375,7 @@
   .where :global(.away) { padding-block: 0; line-height: 14px; }
   .where > .ui-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* "Offline" when nothing above says it: MachinePlace's state mark, alone. */
-  .where > .away { flex: none; padding-inline: 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); color: var(--color-muted-foreground); }
+  .where > :global(.offline-chip) { line-height: 14px; color: var(--color-muted-foreground); }
   /* Activity's since when, last on the place line: the title line keeps its room for the title. */
   .where > .since { flex: none; font-variant-numeric: tabular-nums; }
   /* The title's room first: its mark and time sit a step closer than the headline's own gap. */
@@ -460,13 +463,12 @@
   .metadata span span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .metadata :global(svg) { flex: none; }
   .metadata .machine.away { color: var(--color-danger); }
-  .metadata .away:not(.machine) { flex: none; padding: 0 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); }
   .project-name { flex: 1; }
   /* Beside a branch or its machine, the project keeps its length up to half the line and the branch takes the rest. */
-  .project-name:has(~ :is(.branch, .machine)) { flex: 0 0 auto; max-width: 50%; }
-  .metadata .branch { flex: 0 1 auto; margin-left: auto; }
-  .has-bot .metadata > :is(.project-name, .branch) { flex: 1 1 0; overflow: hidden; }
-  .has-bot .metadata .branch { justify-content: flex-end; }
+  .project-name:has(~ .machine), .project-name:has(~ :global(.branch)) { flex: 0 0 auto; max-width: 50%; }
+  .metadata > :global(.branch) { margin-left: auto; }
+  .has-bot .metadata > :is(.project-name, :global(.branch)) { flex: 1 1 0; overflow: hidden; }
+  .has-bot .metadata > :global(.branch) { justify-content: flex-end; }
   .rename {
     width: 100%;
     height: 32px;

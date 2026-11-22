@@ -767,8 +767,9 @@ export class Composer {
     const clientGeneration = this.ctx.clientGeneration;
     const open = this.ctx.store.openThread;
     if (!client || !open) return;
+    const turn = open.turns.findLast(turn => turn.status === 'running') ?? open.turns.find(turn => turn.status === 'queued');
     try {
-      await client.call('turns.stop', { threadId: open.id });
+      await client.call('turns.stop', { threadId: open.id, expectedTurnId: turn?.id });
     } catch (error) {
       if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
     }

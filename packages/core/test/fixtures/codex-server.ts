@@ -21,6 +21,7 @@
  * `CODEX_FAKE_SKILLS=<json>` is what `skills/list` lists for the folder, and
  * each skill item of `turn/start` is logged as `skill <name> <path> text=<text>`.
  * `CODEX_FAKE_SLOW_SKILLS=<ms>` delays that answer.
+ * `CODEX_FAKE_STARTUP_GATE=<path>` holds the `thread/start` reply until the file exists.
  * `CODEX_FAKE_OUTPUT_GATE=<path>` holds turn output until the file exists.
  * `CODEX_FAKE_REPLAY=<file>` answers every turn with a real server's recorded
  * one (`replay.ts`), under the recorded thread id.
@@ -34,11 +35,11 @@ import { join } from 'node:path';
 import { instructionsOf } from './history.ts';
 import { codexReplay, replayPause } from './replay.ts';
 
-const DIRECTIVE = /\[(agents|command|command-failed|approve|thought|summary|usage|late-context|slow|crash|input|async|stream|elicit|elicit-url|permissions|time|hook-block|limits|flood|cut)\]/g;
+const DIRECTIVE = /\[(agents|command|command-failed|approve|thought|summary|usage|late-context|partial-usage|slow|slow-usage|crash|input|async|stream|elicit|elicit-url|permissions|time|hook-block|limits|flood|cut)\]/g;
 const CHUNKS = 3;
 
 type Directive =
-  | 'command' | 'command-failed' | 'approve' | 'thought' | 'summary' | 'usage' | 'late-context' | 'slow' | 'crash' | 'input' | 'async' | 'stream'
+  | 'command' | 'command-failed' | 'approve' | 'thought' | 'summary' | 'usage' | 'late-context' | 'partial-usage' | 'slow' | 'slow-usage' | 'crash' | 'input' | 'async' | 'stream'
   | 'elicit' | 'elicit-url' | 'permissions' | 'time' | 'hook-block' | 'agents' | 'limits' | 'flood' | 'cut';
 
 let threadCounter = 0;
@@ -73,6 +74,25 @@ let afterAnswer: (() => void) | null = null;
 const waiting = new Map<string, () => void>();
 /** Admission precedes streamed output and the point where a slow turn waits for interruption. */
 const activeTurns = new Set<string>();
+/** `[latency-stream]` keeps writing until Stop and echoes a steer on its next beat. */
+const latencyInputs = new Map<string, string[]>();
+
+async function latencyStream(turnId: string, say: (text: string) => void): Promise<void> {
+  const inputs: string[] = [];
+  latencyInputs.set(turnId, inputs);
+  try {
+    await Bun.sleep(25);
+    while (!interrupted.has(turnId)) {
+      say(inputs.shift() ?? '0123456789abcdef');
+      await Bun.sleep(8);
+    }
+    await Bun.sleep(24);
+    notify('turn/completed', { threadId, turn: turnRecord(turnId, 'interrupted') });
+  } finally {
+    latencyInputs.delete(turnId);
+    interrupted.delete(turnId);
+  }
+}
 
 function awaitInterrupt(turnId: string): Promise<void> {
   if (interrupted.has(turnId)) return Promise.resolve();
@@ -271,9 +291,13 @@ function commandItem(itemId: string, status: string, output: string | null): unk
   };
 }
 
+async function waitForGate(path: string): Promise<void> {
+  while (!existsSync(path)) await Bun.sleep(10);
+}
+
 async function runTurn(turnId: string, text: string): Promise<void> {
   const outputGate = process.env['CODEX_FAKE_OUTPUT_GATE'];
-  while (outputGate && !existsSync(outputGate)) await Bun.sleep(10);
+  if (outputGate) await waitForGate(outputGate);
   const instructions = instructionsOf(text);
   notify('turn/started', { threadId, turn: turnRecord(turnId, 'inProgress') });
   if (instructions.includes('[retry-progress]')) {
@@ -323,6 +347,7 @@ async function runTurn(turnId: string, text: string): Promise<void> {
   const say = (chunk: string): void => {
     notify('item/agentMessage/delta', { threadId, turnId, itemId: 'msg-1', delta: chunk });
   };
+  if (instructions.includes('[latency-stream]')) return latencyStream(turnId, say);
 
   // A real agent reasons before it answers, so the reasoning deltas go first.
   for (const directive of directives) {
@@ -517,11 +542,19 @@ async function runTurn(turnId: string, text: string): Promise<void> {
         notify('item/completed', { item: commandItem(itemId, 'completed', 'flood done'), threadId, turnId, completedAtMs: Date.now() });
         break;
       }
-      case 'late-context':
+      case 'partial-usage':
+      case 'late-context': {
+        if (directive === 'partial-usage') {
+          const first = { inputTokens: 10, outputTokens: 2 };
+          notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { total: first, last: first } });
+        }
         notify('turn/completed', { threadId, turn: turnRecord(turnId, 'completed') });
-        await Bun.sleep(80);
-        notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { last: { inputTokens: 80, cachedInputTokens: 20, outputTokens: 10 }, modelContextWindow: 200000 } });
+        const gate = process.env['CODEX_FAKE_USAGE_GATE'];
+        if (gate) while (!existsSync(gate)) await Bun.sleep(10);
+        else await Bun.sleep(80);
+        for (let i = 0; i < 2; i++) notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { last: { inputTokens: 80, cachedInputTokens: 20, outputTokens: 10 }, modelContextWindow: 200000 } });
         return;
+      }
       case 'usage': {
         // Like a real turn: one update per model request, `last` for that
         // request alone, `total` cumulative over the thread's earlier turns
@@ -540,12 +573,17 @@ async function runTurn(turnId: string, text: string): Promise<void> {
         notify('thread/tokenUsage/updated', final);
         break;
       }
+      case 'slow-usage':
       case 'slow':
         log('waiting for interrupt');
         await awaitInterrupt(turnId);
         waiting.delete(turnId);
         interrupted.delete(turnId);
         notify('turn/completed', { threadId, turn: turnRecord(turnId, 'interrupted') });
+        if (directive === 'slow-usage') {
+          await Bun.sleep(80);
+          notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { last: { inputTokens: 80, cachedInputTokens: 20, outputTokens: 10 } } });
+        }
         return;
       case 'hook-block':
         // A userPromptSubmit hook that exits 2: the turn ends with nothing said (0.157.1).
@@ -701,6 +739,8 @@ function handle(method: string, raw: unknown): unknown {
       );
       recordProvider(threadId);
       const opened = { thread: threadRecord(), model: 'fake-codex', modelProvider: 'fake', serviceTier: null };
+      const startupGate = process.env['CODEX_FAKE_STARTUP_GATE'];
+      if (startupGate) return waitForGate(startupGate).then(() => opened);
       // `CODEX_FAKE_SLOW_START=<ms>`: an app-server slow to open its thread.
       const slow = Number(process.env['CODEX_FAKE_SLOW_START'] ?? '0');
       if (slow > 0) return Bun.sleep(slow).then(() => opened);
@@ -784,7 +824,9 @@ function handle(method: string, raw: unknown): unknown {
     case 'turn/steer': {
       const active = textOf(params['expectedTurnId']);
       if (!activeTurns.has(active) || params['threadId'] !== threadId) throw new Error('no matching active turn');
-      log(`turn/steer ${active} ${promptOf(params)}`);
+      const prompt = promptOf(params);
+      log(`turn/steer ${active} ${prompt}`);
+      latencyInputs.get(active)?.push(prompt);
       const images = Array.isArray(params['input']) ? params['input'].filter((input: Record<string, unknown>) => input['type'] === 'image') : [];
       if (images.length) log(`steer-images ${images.length} ${String(images[0]['url']).slice(0, 22)}`);
       return { turnId: active };
@@ -848,7 +890,14 @@ process.stdin.on('data', (chunk: string) => {
       void Promise.resolve()
         .then(() => handle(method, params))
         .then(
-          (result) => { send({ id, result }); const after = afterAnswer; afterAnswer = null; after?.(); },
+          (result) => {
+            if (method === 'turn/steer' && promptOf(params as Record<string, unknown>).includes('[steer-delta]')) {
+              const turnId = (result as { turnId: string }).turnId;
+              const delta = { method: 'item/agentMessage/delta', params: { threadId, turnId, itemId: 'msg-1', delta: 'Steer answered' } };
+              process.stdout.write(`${JSON.stringify({ id, result })}\n${JSON.stringify(delta)}\n`);
+            } else send({ id, result });
+            const after = afterAnswer; afterAnswer = null; after?.();
+          },
           (error: unknown) => send({ id, error: { code: (error as { code?: number }).code ?? -32601, message: (error as Error).message } }),
         );
       continue;

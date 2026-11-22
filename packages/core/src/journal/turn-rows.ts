@@ -4,6 +4,9 @@ import { parseJson, toTurn, type TurnRow } from './rows.ts';
 import { usageGroups, type UsageGroup } from './usage-sums.ts';
 import { writeTurnUsage } from './usage-slots.ts';
 
+/** The last stated selection and its partial index exclude turns that never ran and cache pings. */
+export const STATED_TURN = "started_at IS NOT NULL AND COALESCE(json_extract(execution, '$.operation'), '') <> 'keepalive'";
+
 export function writeTurn(db: Database, turn: Turn): void {
   const usage = turn.usage === null ? null : JSON.stringify(turn.usage);
   const execution = turn.execution === undefined ? null : JSON.stringify(turn.execution);
@@ -43,7 +46,7 @@ const ONE_TURN = {
   last: 'SELECT * FROM turns WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1',
   conversation: "SELECT * FROM turns WHERE thread_id = ? AND COALESCE(json_extract(execution, '$.operation'), '') <> 'keepalive' ORDER BY rowid DESC LIMIT 1",
   // The last turn that started before `?2` did, cache pings aside: what the transcript last stated (`threads/switch-notice.ts`).
-  stated: "SELECT * FROM turns WHERE thread_id = ?1 AND id <> ?2 AND started_at IS NOT NULL AND COALESCE(json_extract(execution, '$.operation'), '') <> 'keepalive' ORDER BY started_at DESC, rowid DESC LIMIT 1",
+  stated: `SELECT * FROM turns WHERE thread_id = ?1 AND id <> ?2 AND ${STATED_TURN} ORDER BY started_at DESC, rowid DESC LIMIT 1`,
   ended: "SELECT * FROM turns WHERE thread_id = ? AND status NOT IN ('queued', 'running') ORDER BY rowid DESC LIMIT 1",
   queued: "SELECT * FROM turns WHERE thread_id = ? AND status = 'queued' AND json_extract(execution, '$.operation') = ? ORDER BY rowid LIMIT 1",
 } as const;

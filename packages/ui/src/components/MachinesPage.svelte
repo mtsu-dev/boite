@@ -4,6 +4,7 @@
   import { onDestroy, tick, untrack } from 'svelte';
   import { ConnectionGroup } from '../lib/connection-group.svelte';
   import { GroupLinks } from '../lib/group-links.svelte';
+  import SettingsPageHeader from './SettingsPageHeader.svelte';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import { ArrowUpRight, Check, Ellipsis, Trash2, ScanLine } from '@lucide/svelte';
@@ -18,14 +19,14 @@
   import MainMachine from './MainMachine.svelte';
   import UpdatesCard from './UpdatesCard.svelte';
   import { appUpdater, showAppUpdateUi } from '../lib/app-update.svelte';
-  import { machineUpdateState, type MachineUpdateState } from '../lib/machine-updates';
+  import { machineUpdateFailure, machineUpdateState, type MachineUpdates, type MachineUpdateState } from '../lib/machine-updates';
   import PairMachine from './PairMachine.svelte';
   import MachineReconnect from './MachineReconnect.svelte';
   import WindowAllowlistCard from './WindowAllowlistCard.svelte';
   import WindowExclusionsCard from './WindowExclusionsCard.svelte';
   import type { Store } from '../lib/store.svelte';
   /** `store`: the machine whose windows the page's last cards change, this window's own. */
-  let { mobile = false, onopenthread, store: here }: { mobile?: boolean; onopenthread?: () => void; store?: Store } = $props();
+  let { mobile = false, showTitle = true, onopenthread, store: here }: { mobile?: boolean; showTitle?: boolean; onopenthread?: () => void; store?: Store } = $props();
   /**
    * The switches a machine of a group holds for itself: whether the agents of
    * the other machines may start threads there (`groupThreads`), and whether
@@ -93,16 +94,15 @@
 
   const thisName = $derived.by(() => { const machine = workspace.machines.find((m) => m.store === here); return machine ? machineName(machine) : strings.connection.current; });
 
-  /** Boite on that machine and its agents, as the one word its row shows. */
-  function updates(machine: Machine): MachineUpdateState | null {
+  function updates(machine: Machine): MachineUpdates | null {
     const store = machine.store;
     if (store.connection !== 'ready') return null;
-    return machineUpdateState({
+    return {
       server: store.localCore ? null : store.serverUpdater.busy ? { phase: 'checking' } : store.serverUpdater.snapshot,
       // Another machine's desktop app counts once its window reports it, where it can be updated from here.
-      app: store.localCore ? (showAppUpdateUi() ? appUpdater.snapshot : null) : store.core?.os === 'windows' ? (store.serverUpdater.desktopFailure ? { phase: 'error' } : store.serverUpdater.desktop) : null,
+      app: store.localCore ? (showAppUpdateUi() ? appUpdater.snapshot : null) : store.core?.os === 'windows' ? (store.serverUpdater.desktopFailure ? { phase: 'error', error: store.serverUpdater.desktopFailure.message } : store.serverUpdater.desktop) : null,
       agents: store.owner ? store.harnessUpdates : []
-    });
+    };
   }
   /** The version the updates card heads with: a row repeats it only where it differs. */
   const headVersion = $derived(showAppUpdateUi() && appUpdater.snapshot.supported ? appUpdater.snapshot.currentVersion : workspace.active.core?.version ?? '');
@@ -182,9 +182,7 @@
 <div class="page machines-page" data-testid="machines-page">
   <!-- The title and its button belong to the section: a link to the machines lands on them, not under them. -->
   <section class="connections-section" id="settings-machines" aria-label={strings.machines.heading}>
-  <header class="head">
-    <h1 class="ui-label-box"><span class="ui-label">{strings.settings.tabs.machines}</span><InfoTip topic={strings.settings.tabs.machines} text={strings.machines.intro} /></h1>
-  </header>
+  {#if showTitle}<SettingsPageHeader title={strings.settings.tabs.machines} page="machines" />{/if}
 
   <UpdatesCard />
 
@@ -195,7 +193,10 @@
     <ul class="machines">
       {#each machinesOf(owner) as machine (machine.id)}
         {@const coreId = GroupLinks.coreOf(machine)}
-        {@const state = updates(machine)}
+        {@const readings = updates(machine)}
+        {@const state = readings && machineUpdateState(readings)}
+        {@const failure = readings && machineUpdateFailure(readings)}
+        {@const failureLabel = failure?.source === 'agent' && failure.phase ? strings.machines.updatePhaseFailed[failure.phase] : strings.machines.updateFailed}
         {@const gone = away(machine) !== null}
         {@const carrier = GroupLinks.carrier(machine, workspace.machines)}
         {@const home = coreId !== undefined && owner.group?.settingsHome === coreId}
@@ -228,7 +229,7 @@
                 <!-- A current machine shows a quiet check, its words for a screen reader: the card above already says
                      "Up to date", and a word on every row repeated it. Other states say themselves. -->
                 {#if state === 'current'}<span class="updates" data-testid="machine-updates-state" data-state={state} title={strings.serverUpdate.current}><Check size={14} aria-hidden="true" /><span class="visually-hidden">{updateLabels[state]}</span></span>
-                {:else if state}<span class="updates ui-label" data-testid="machine-updates-state" data-state={state}>{updateLabels[state]}</span>{/if}
+                {:else if state}<span class="updates ui-label" data-testid="machine-updates-state" data-state={state}>{failure ? failureLabel : updateLabels[state]}</span>{/if}
                 {#if manual}<InfoTip topic={strings.serverUpdate.manualTitle} text={manual} />{/if}
               </span>
             </div>
@@ -267,6 +268,9 @@
               </div>
             </div>
           </div>
+          {#if failure}
+            <p class="error" data-testid="machine-update-failure">{failure.source === 'agent' ? failure.name : strings.machines.updateSource[failure.source]}{failure.reason ? ` · ${failure.reason}` : ''}</p>
+          {/if}
           {#if mobile && machine.store.pairingRequired && (machine.store.error === strings.errors.unpaired || machine.store.error === strings.errors.revoked)}
             <p class="pair-hint">{strings.mobile.pairInstalled}</p>
           <!-- A thread's failure carries the thread's title, never its cause: say it is a thread, and open it. -->
@@ -302,17 +306,6 @@
   .cards-scope { display: flex; margin: var(--space-8) 0 0; }
   .connections-section { scroll-margin-top: 24px; }
   .connections-section > :global(.card) { margin-bottom: 20px; }
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-  h1 {
-    font-size: var(--text-lg);
-    margin: 0;
-  }
 
   .machines {
     list-style: none;
@@ -482,7 +475,6 @@
     .machines-page {
       padding: 16px;
     }
-    .head { flex-wrap: wrap; gap: 8px 12px; }
     /* The name keeps the first line; what else the row offers goes under it. */
     .main {
       flex-wrap: wrap;

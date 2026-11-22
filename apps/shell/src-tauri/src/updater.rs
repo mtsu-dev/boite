@@ -1,12 +1,18 @@
 //! Signed desktop updates. These commands never update a connected remote core.
-use std::{path::PathBuf, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}, time::{Duration, Instant}};
+use std::{collections::HashMap, path::PathBuf, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}, time::{Duration, Instant}};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, Webview};
-use tauri_plugin_updater::{Update, UpdaterExt};
-use sha2::{Digest, Sha256};
+use tauri_plugin_updater::UpdaterExt;
 use crate::update_throttle::{rate_limit, Admit, Throttle};
 
+mod cache;
+mod pending;
+use pending::Pending;
+#[cfg(test)]
+mod feed_test;
+
 const RELEASES: &str = "https://api.github.com/repos/mtsu-dev/boite/releases";
+const DESKTOP_FEED: &str = "https://raw.githubusercontent.com/mtsu-dev/boite/refs/heads/desktop-feed-";
 /// Where a release's files may live. The repository moved from `beboite` to
 /// `mtsu-dev` on 2026-10-26; manifests published before the move name the old owner.
 const DOWNLOADS: [&str; 2] = ["https://github.com/mtsu-dev/boite/releases/download/", "https://github.com/beboite/boite/releases/download/"];
@@ -17,12 +23,15 @@ fn in_release(url: &str, tag: &str) -> bool {
         .is_some_and(|file| file.starts_with('/') && file.len() > 1))
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Track { Stable, Nightly }
 impl Track {
     fn of(version: &str) -> Self {
         if version.contains("-nightly.") { Self::Nightly } else { Self::Stable }
+    }
+    fn name(self) -> &'static str {
+        match self { Self::Stable => "stable", Self::Nightly => "nightly" }
     }
 }
 
@@ -42,10 +51,6 @@ pub struct Snapshot {
     supported: bool,
 }
 
-struct Pending { update: Update, path: Option<PathBuf>, digest: Option<[u8; 32]> }
-impl Drop for Pending {
-    fn drop(&mut self) { if let Some(path) = &self.path { let _ = std::fs::remove_file(path); } }
-}
 pub struct AppUpdater {
     snapshot: Mutex<Snapshot>,
     pending: Mutex<Option<Pending>>,
@@ -56,6 +61,7 @@ pub struct AppUpdater {
     install: Arc<Mutex<crate::update_stop::InstallState>>,
     /// When the release API may be asked again (`update_throttle`).
     throttle: Mutex<Throttle<Track>>,
+    feeds: Mutex<HashMap<Track, FeedEntry>>,
 }
 struct Operation<'a>(&'a AtomicBool);
 impl Drop for Operation<'_> { fn drop(&mut self) { self.0.store(false, Ordering::Release); } }
@@ -87,17 +93,21 @@ impl AppUpdater {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => current_channel,
             Err(e) => { error = Some(format!("{}: {e}", preference.display())); current_channel }
         };
-        let cache = directory.join("pending-update.bin");
-        // A process-local Update handle owns the verified payload. A crashed
-        // previous process cannot leave an installable, unverified cache behind.
-        let _ = std::fs::remove_file(&cache);
+        let _ = std::fs::remove_file(directory.join("pending-update.bin"));
+        let cache = directory.join("verified-update.bin");
+        if supported {
+            cache::remove_installed(&cache, &version);
+            #[cfg(windows)]
+            crate::platform::windows_installer::discard(&cache.with_extension("exe"));
+        }
         Self { snapshot: Mutex::new(Snapshot {
             phase: if error.is_some() { "error" } else { "idle" }.into(), current_version: version,
             current_channel, channel, version: None, notes: None, published_at: None,
             received: 0, total: None, error, supported,
         }), pending: Mutex::new(None), busy: AtomicBool::new(false), preference, cache,
             quiet_restart: directory.join(crate::autostart::QUIET_RESTART_FILE),
-            install: Arc::new(Mutex::new(crate::update_stop::InstallState::Idle)), throttle: Mutex::new(Throttle::default()) }
+            install: Arc::new(Mutex::new(crate::update_stop::InstallState::Idle)), throttle: Mutex::new(Throttle::default()),
+            feeds: Mutex::new(HashMap::new()) }
     }
     fn begin(&self) -> Result<Operation<'_>, String> {
         if !self.snapshot.lock().unwrap().supported { return Err(UNSUPPORTED.into()); }
@@ -141,14 +151,14 @@ impl AppUpdater {
 /// ready, waiting, installing.
 fn log_phase(snapshot: &Snapshot, before: &str) {
     let version = snapshot.version.as_deref().unwrap_or("");
-    let channel = match snapshot.channel { Track::Stable => "stable", Track::Nightly => "nightly" };
+    let channel = snapshot.channel.name();
     let message = match snapshot.phase.as_str() {
         "checking" => format!("checking the {channel} channel for an app update from {}", snapshot.current_version),
         "available" => format!("app update {version} is available on the {channel} channel"),
         "current" => format!("{} is the newest {channel} release", snapshot.current_version),
         "blocked" => format!("{version} on the {channel} channel cannot read this app's data yet"),
         "downloading" => format!("downloading app update {version}"),
-        "ready" if before == "downloading" => format!("app update {version} downloaded and verified, {} bytes", snapshot.received),
+        "ready" if before == "downloading" || before == "checking" => format!("app update {version} verified, {} bytes", snapshot.received),
         "ready" => format!("app update {version} is ready again; the install did not start"),
         "waiting" => format!("waiting for the core to hand over its turns before installing {version}"),
         "installing" => format!("installing app update {version}"),
@@ -213,6 +223,7 @@ fn release_client(read: Duration) -> Result<reqwest::Client, String> {
 }
 
 /// Why a check found nothing to offer.
+#[derive(Debug)]
 enum Lookup {
     Failed(String),
     /// GitHub's rate limit, with the wait it named if any.
@@ -223,25 +234,76 @@ impl From<&str> for Lookup { fn from(error: &str) -> Self { Self::Failed(error.i
 
 fn unix_now() -> u64 { crate::shell_log::unix_ms() / 1000 }
 
-async fn find_release(track: Track) -> Result<Release, Lookup> {
+fn release_response(response: reqwest::Response) -> Result<reqwest::Response, Lookup> {
+    let header = |name: &str| response.headers().get(name).and_then(|value| value.to_str().ok());
+    if let Some(wait) = rate_limit(response.status().as_u16(), header("retry-after"),
+        header("x-ratelimit-remaining"), header("x-ratelimit-reset"), unix_now()) {
+        return Err(Lookup::Limited(wait));
+    }
+    response.error_for_status().map_err(|e| format!("Release lookup failed: {e}").into())
+}
+
+#[derive(Deserialize)]
+struct Feed { tag: String }
+
+#[derive(Clone)]
+struct FeedEntry { tag: String, etag: Option<reqwest::header::HeaderValue> }
+
+fn feed_version(track: Track, tag: &str) -> Result<semver::Version, String> {
+    let version = tag.strip_prefix('v').and_then(|value| semver::Version::parse(value).ok())
+        .ok_or_else(|| format!("Invalid desktop feed tag: {tag}"))?;
+    if Track::of(tag) != track { return Err(format!("Desktop feed tag {tag} is outside the {} channel", track.name())); }
+    Ok(version)
+}
+
+async fn read_feed(client: &reqwest::Client, url: &str, track: Track, feeds: &Mutex<HashMap<Track, FeedEntry>>) -> Result<Option<FeedEntry>, Lookup> {
+    let previous = feeds.lock().unwrap().get(&track).cloned();
+    let mut request = client.get(url);
+    if let Some(etag) = previous.as_ref().and_then(|entry| entry.etag.clone()) {
+        request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+    }
+    let response = request.send().await.map_err(|e| format!("Desktop feed lookup failed: {e}"))?;
+    match response.status() {
+        reqwest::StatusCode::NOT_MODIFIED => return previous.map(Some).ok_or_else(|| "Desktop feed returned 304 without a cached tag".into()),
+        // Releases published before the feed may still be the newest on a channel.
+        reqwest::StatusCode::NOT_FOUND => return Ok(None),
+        _ => {}
+    }
+    let response = release_response(response)?;
+    let etag = response.headers().get(reqwest::header::ETAG).cloned();
+    let Feed { tag } = response.json().await.map_err(|e| format!("Invalid desktop feed: {e}"))?;
+    feed_version(track, &tag)?;
+    let entry = FeedEntry { tag, etag };
+    feeds.lock().unwrap().insert(track, entry.clone());
+    Ok(Some(entry))
+}
+
+async fn find_release(track: Track, current: &str, feeds: &Mutex<HashMap<Track, FeedEntry>>) -> Result<Option<Release>, Lookup> {
+    let client = release_client(READ_TIMEOUT)?;
+    let url = format!("{DESKTOP_FEED}{}/latest.json", track.name());
+    if let Some(FeedEntry { tag, .. }) = read_feed(&client, &url, track, feeds).await? {
+        let next = feed_version(track, &tag)?;
+        let current = semver::Version::parse(current).map_err(|e| format!("Invalid installed Boite version: {e}"))?;
+        if !offer_version(&current, &next, track) { return Ok(None); }
+        let response = client.get(format!("{RELEASES}/tags/{tag}")).send().await
+            .map_err(|e| format!("Release lookup failed: {e}"))?;
+        let release: Release = release_response(response)?.json().await.map_err(|e| format!("Invalid release {tag}: {e}"))?;
+        if release.tag_name != tag || candidate(std::slice::from_ref(&release), track).is_none() {
+            return Err(format!("Desktop feed tag {tag} must name a published release with latest.json").into());
+        }
+        return Ok(Some(release));
+    }
     // The listing arrives gzipped, a quarter of its size, and pages of release
     // notes grow with every nightly: a total deadline would fail every check
     // on a slow link once they are large enough.
-    let client = release_client(READ_TIMEOUT)?;
     for page in 1..=10 {
         let response = client.get(format!("{RELEASES}?per_page=100&page={page}"))
             .send().await.map_err(|e| format!("Release lookup failed: {e}"))?;
-        let header = |name: &str| response.headers().get(name).and_then(|value| value.to_str().ok());
-        if let Some(wait) = rate_limit(response.status().as_u16(), header("retry-after"),
-            header("x-ratelimit-remaining"), header("x-ratelimit-reset"), unix_now()) {
-            return Err(Lookup::Limited(wait));
-        }
-        let releases: Vec<Release> = response
-            .error_for_status().map_err(|e| format!("Release lookup failed: {e}"))?
+        let releases: Vec<Release> = release_response(response)?
             .json().await.map_err(|e| format!("Invalid release list: {e}"))?;
         if let Some(selected) = candidate(&releases, track) {
             let tag = selected.tag_name.clone();
-            return Ok(releases.into_iter().find(|r| r.tag_name == tag).unwrap());
+            return Ok(releases.into_iter().find(|r| r.tag_name == tag));
         }
         if releases.len() < 100 { break; }
     }
@@ -389,14 +451,16 @@ pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_,
             return Err(e);
         }
     };
-    state.pending.lock().unwrap().take();
+    let previous = state.pending.lock().unwrap().take();
     state.change(&app, |s| { s.phase = "checking".into(); s.channel = channel; s.error = None;
         s.version = None; s.notes = None; s.published_at = None; s.received = 0; s.total = None; });
     let result: Result<Snapshot, Lookup> = unwinding(async {
         let temporary = state.preference.with_extension("tmp");
         std::fs::write(&temporary, serde_json::to_vec(&channel).unwrap()).map_err(|e| format!("Cannot save update channel: {e}"))?;
         std::fs::rename(temporary, &state.preference).map_err(|e| format!("Cannot save update channel: {e}"))?;
-        let release = find_release(channel).await?;
+        let Some(release) = find_release(channel, &current.current_version, &state.feeds).await? else {
+            return Ok(state.change(&app, |s| { s.phase = "current".into(); }));
+        };
         let endpoint = release_asset_url(&release)?.parse().map_err(|e| format!("Invalid manifest URL: {e}"))?;
         let update = bounded(app.updater_builder(), READ_TIMEOUT).endpoints(vec![endpoint]).map_err(|e| e.to_string())?
             .version_comparator(move |current, release| offer_version(&current, &release.version, channel))
@@ -411,8 +475,18 @@ pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_,
                 return Ok(state.change(&app, |s| { s.phase = "blocked".into(); s.version = Some(version);
                     s.notes = release.body; s.published_at = release.published_at; }));
             }
-            *state.pending.lock().unwrap() = Some(Pending { update, path: None, digest: None });
-            Ok(state.change(&app, |s| { s.phase = "available".into(); s.version = Some(version);
+            let pending = match previous.filter(|pending| pending.update.version == update.version
+                && pending.update.signature == update.signature && pending.length().is_some()) {
+                Some(mut pending) => { pending.update = update; pending }
+                None => {
+                    let bytes = cache::load(&state.cache, &update).await?;
+                    Pending::prepare(update, bytes, &state.cache).await?
+                }
+            };
+            let length = pending.length();
+            *state.pending.lock().unwrap() = Some(pending);
+            Ok(state.change(&app, |s| { s.phase = if length.is_some() { "ready" } else { "available" }.into();
+                s.version = Some(version); s.received = length.unwrap_or(0); s.total = length;
                 s.notes = release.body; s.published_at = release.published_at; }))
         } else { Ok(state.change(&app, |s| s.phase = "current".into())) }
     }).await;
@@ -432,25 +506,24 @@ pub async fn app_update_download(webview: Webview, app: AppHandle, state: State<
     if state.snapshot.lock().unwrap().phase != "available" { return Err("Check for an available update before downloading".into()); }
     let update = state.pending.lock().unwrap().as_ref().ok_or("No update to download")?.update.clone();
     state.change(&app, |s| { s.phase = "downloading".into(); s.received = 0; s.total = None; });
-    let mut received = 0;
     let mut emitted = Instant::now();
     let result = unwinding(async {
-        update.download(|length, total| {
-            received += length as u64;
+        cache::download(&state.cache, &update, |received, total| {
             // At most ten UI events per second, regardless of network chunk size.
             if emitted.elapsed() >= Duration::from_millis(100) {
                 state.change(&app, |s| { s.received = received; s.total = total; });
                 emitted = Instant::now();
             }
-        }, || {}).await.map_err(|e| e.to_string())
+        }).await
     }).await;
     match result {
         Ok(bytes) => {
-            if let Err(e) = std::fs::write(&state.cache, &bytes) { return Ok(state.fail(&app, format!("Cannot cache update: {e}"))); }
             let size = bytes.len() as u64;
-            let digest: [u8; 32] = Sha256::digest(&bytes).into();
-            drop(bytes);
-            if let Some(pending) = state.pending.lock().unwrap().as_mut() { pending.path = Some(state.cache.clone()); pending.digest = Some(digest); }
+            let pending = match Pending::prepare(update, Some(bytes), &state.cache).await {
+                Ok(pending) => pending,
+                Err(error) => return Ok(state.fail(&app, error)),
+            };
+            *state.pending.lock().unwrap() = Some(pending);
             Ok(state.change(&app, |s| { s.phase = "ready".into(); s.received = size; s.total = Some(size); }))
         }
         Err(e) => Ok(state.fail(&app, e)),
@@ -489,15 +562,7 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
     // A window on screen may be in use, even with nothing running: its restart would take it away.
     if quiet && crate::window::main_window(&app).is_some_and(|window| window.is_visible().unwrap_or(true)) { return Ok(false); }
     let pending = state.pending.lock().unwrap().take().ok_or("No downloaded update")?;
-    let bytes = match std::fs::read(pending.path.as_ref().ok_or("Missing update payload")?) {
-        Ok(bytes) => bytes,
-        Err(e) => { let error = format!("Cannot read downloaded update: {e}"); state.fail(&app, error.clone()); return Err(error); }
-    };
-    let digest: [u8; 32] = Sha256::digest(&bytes).into();
-    if pending.digest != Some(digest) {
-        let error = "Downloaded update changed after signature verification".to_string();
-        state.fail(&app, error.clone()); return Err(error);
-    }
+    let bytes = pending.length().ok_or("Missing verified update payload")?;
     if !state.install.lock().unwrap().start() {
         *state.pending.lock().unwrap() = Some(pending);
         return Ok(false);
@@ -506,9 +571,10 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
     if !quiet { state.change(&app, |s| { s.phase = "waiting".into(); s.error = None; }); }
     let core = app.clone();
     let control = state.install.clone();
+    let locks_data = !cfg!(windows) || pending.update.raw_json.get("windows_data_lock").and_then(serde_json::Value::as_bool) == Some(true);
     let stopped = tauri::async_runtime::spawn_blocking(move || match core.try_state::<crate::local_core::CoreState>() {
         // Checked again right before the core is asked: a window restored from the tray meanwhile calls it off.
-        Some(engine) => engine.wait_for_install(&control, quiet, || {
+        Some(engine) => engine.wait_for_install(&control, quiet, locks_data, || {
             app_updates_blocked(quiet)?;
             Ok(!quiet || !crate::window::main_window(&core).is_some_and(|window| window.is_visible().unwrap_or(true)))
         }, || {
@@ -533,24 +599,22 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
         }
     }
     if quiet { let _ = std::fs::write(&state.quiet_restart, ""); }
-    // The in-memory digest ties these exact bytes to the verified download.
-    // On Windows Tauri exits once the installer launches. If it cannot
-    // launch, the hold is released and the window's next reconnect starts the
-    // engine again.
+    // If launch fails, the next reconnect restarts the core.
     let version = pending.update.version.clone();
     crate::shell_log::info("updater", "shell.update.install", format!("starting the installer for app update {version}; the shell exits or restarts next"),
-        serde_json::json!({ "version": version, "bytes": bytes.len() as u64 }));
+        serde_json::json!({ "version": version, "bytes": bytes }));
     crate::shell_log::flush(Duration::from_millis(500));
+    let installer_app = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let installed = crate::update_stop::launch_if_allowed(
             || app_updates_blocked(quiet),
-            || pending.update.install(bytes).map_err(|e| e.to_string()),
+            || pending.install(&installer_app),
         );
         (pending, installed)
     }).await;
     match result {
         Ok((_pending, Ok(()))) => {
-            // Windows never gets here: Tauri exits once the installer starts.
+            // On Windows the launch path exits once the installer starts.
             std::env::set_var(crate::RESTARTED_AFTER_UPDATE, "1");
             crate::shell_log::info("updater", "shell.update.restart", format!("app update {version} installed; restarting the shell"), serde_json::json!({ "version": version }));
             crate::shell_log::flush(Duration::from_millis(500));
@@ -691,7 +755,7 @@ mod tests {
     // Exercise the actual Tauri manifest/download/signature path against a tiny
     // local HTTP server. No installer is ever executed and no window is opened.
     #[derive(Clone, Copy, PartialEq)]
-    enum Payload { Signed, Tampered, Stalled }
+    enum Payload { Signed, Tampered, Stalled, Resumed }
 
     /// The download's outcome and how long the download alone took.
     fn download_fixture(payload: Payload) -> (Result<Vec<u8>, String>, Duration) {
@@ -713,7 +777,9 @@ mod tests {
         } } }).to_string();
         let server = std::thread::spawn(move || {
             let body: &[u8] = if payload == Payload::Tampered { b"changed payload" } else { b"boite updater fixture\n" };
-            for (index, body) in [manifest.as_bytes(), body].into_iter().enumerate() {
+            let responses = if payload == Payload::Resumed { 3 } else { 2 };
+            for index in 0..responses {
+                let body = if index == 0 { manifest.as_bytes() } else { body };
                 let deadline = Instant::now() + Duration::from_secs(10);
                 let (mut stream, _) = loop {
                     match listener.accept() {
@@ -724,8 +790,23 @@ mod tests {
                 };
                 stream.set_nonblocking(false).unwrap();
                 stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-                let mut request = [0; 4096]; stream.read(&mut request).unwrap();
-                write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\nContent-Type: application/json\r\n\r\n", body.len()).unwrap();
+                let mut request = [0; 4096];
+                let received = stream.read(&mut request).unwrap();
+                let half = body.len() / 2;
+                if index == 2 {
+                    let headers = String::from_utf8_lossy(&request[..received]).to_lowercase();
+                    assert!(headers.contains(&format!("range: bytes={half}-")));
+                    assert!(headers.contains("if-range: \"fixture\""));
+                    write!(stream, "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {half}-{}/{}\r\nETag: \"fixture\"\r\nConnection: close\r\n\r\n",
+                        body.len() - half, body.len() - 1, body.len()).unwrap();
+                    stream.write_all(&body[half..]).unwrap();
+                    continue;
+                }
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\nETag: \"fixture\"\r\nContent-Type: application/json\r\n\r\n", body.len()).unwrap();
+                if index == 1 && payload == Payload::Resumed {
+                    stream.write_all(&body[..half]).unwrap();
+                    continue;
+                }
                 if index == 1 && payload == Payload::Stalled {
                     // Half the installer, then silence on a connection that stays open.
                     stream.write_all(&body[..body.len() / 2]).unwrap();
@@ -751,11 +832,26 @@ mod tests {
             assert_eq!(reads_less_than(&update.raw_json, journal_schema()), None);
             assert_eq!(reads_less_than(&update.raw_json, journal_schema() + 1), Some(journal_schema()));
             let started = Instant::now();
-            let bytes = update.download(|_, _| {}, || {}).await.map_err(|e| e.to_string());
+            let bytes = if payload == Payload::Resumed {
+                let path = std::env::temp_dir().join(format!("boite-updater-resume-{}.bin", std::process::id()));
+                assert!(cache::download(&path, &update, |_, _| {}).await.is_err());
+                let bytes = cache::download(&path, &update, |_, _| {}).await;
+                assert_eq!(cache::load(&path, &update).await?, Some(b"boite updater fixture\n".to_vec()));
+                let mut other = update;
+                other.version = "2.0.1".into();
+                assert!(cache::load(&path, &other).await?.is_none());
+                std::fs::remove_file(&path).unwrap();
+                bytes
+            } else { update.download(|_, _| {}, || {}).await.map_err(|e| e.to_string()) };
             Ok::<_, String>((bytes, started.elapsed()))
         }).unwrap();
         server.join().unwrap();
         result
+    }
+
+    #[test]
+    fn a_cut_package_resumes_and_only_a_matching_manifest_can_reopen_it() {
+        assert_eq!(download_fixture(Payload::Resumed).0.unwrap(), b"boite updater fixture\n");
     }
 
     #[test]

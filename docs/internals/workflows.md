@@ -146,7 +146,9 @@ so an agent can plan the next phase after reading the first one.
 
 The loop is `from`, this step and every step between them. When this step
 ends and `until` does not hold, each step of the loop waits again and runs one
-more round in its own conversation, so it keeps what it did and read. Its
+more round in its own conversation, so it keeps what it did and read. A
+fan-out reuses a conversation when the same item occurs exactly once in
+each round, even if it has moved. New items and duplicates open fresh conversations. Its
 prompt says which round it is, which condition failed, and, for the steps
 before the closing one, what that step answered in the last round: `fix` reads
 the review's notes without naming `review`, which comes after it. `max` counts
@@ -155,8 +157,8 @@ the first round and goes from 2 to 10, 3 by default. Every round counts toward
 
 Once `max` rounds pass without the condition, the closing step fails with
 the condition in its error and the run fails the usual way. `boite workflow
-retry <run-id> <step>` on it runs one round more, so a parent that reads the
-last notes can push the loop on or give up.
+retry <run-id> <step>` on it runs one round more in fresh conversations and
+passes on the last review.
 
 The plan check refuses a loop whose `from` is not this step or one it depends
 on, an `until` that reads a step outside the loop (its value would not change
@@ -234,19 +236,22 @@ to another owner's host.
 
 ## Failure, stop and restart
 
-A failed step stops new launches. The parent hears of it at once, in a turn
-of its own once it is idle, with the error, the steps still running and the
-retry command: it can retry the step without waiting for the others. A step
-the owner stopped in its own conversation is told the same way, and each
-failure is told once. Steps already running finish, the executions that never
-launched read stopped ("Not started"), then the run fails and its summary goes
-back to the conversation. `boite workflow retry <run-id> <step>`
-runs the failed executions again in their own conversations, with the previous
-error in the prompt; an execution whose conversation was archived since gets a
-new one. The executions held back as "Not started" wait again with it, in any
-step. Without a step, retry runs every failed step. While another step stays
-failed, retrying one named step is refused with the names of the steps that
-still hold the run, and nothing changes.
+A failed step blocks the steps that depend on it. Independent steps and
+the other items of a fan-out keep running. The parent hears of each failure
+once, when its own conversation is idle. To read the full error, pass the
+notice's failed key to `boite workflow show <run-id> <step-or-execution>`.
+The run sends its failed summary after the independent work finishes.
+
+`boite workflow retry <run-id> <step>` starts the named step's failed
+executions in fresh conversations, with the same task and, for a local
+worktree, the previously resolved base commit when available. For a local
+retry, `boite workflow show <run-id> --json` includes the earlier conversation
+IDs under `previousAttempts[].threadId`. Read one with `boite threads read <thread-id>`.
+A message to an earlier attempt starts a follow-up whose answer goes to the parent.
+A step that succeeds on retry can unblock
+its dependents while other failures remain. Omitting the step retries every
+failure. Automatic output correction and restart continuation use the
+conversation that was already running.
 
 The summary gives each step its status, error, worktree and value. A run whose
 summary fits in 20,000 UTF-8 bytes, header and envelope included, gets each value
@@ -255,7 +260,7 @@ cut to an equal share of 10,000 characters. A larger one is held to those
 value (less only when the floors of every text together pass the budget, all of
 them shrinking alike), errors and the answers of the last steps (those no other
 step reads) then grow evenly, then the other values. Each shortened text ends in `[cut]`, and the
-summary's first line counts them. Read a result with
+summary's first line counts them and points to `boite workflow show`. Read a result with
 `boite workflow show <run-id> <step-or-execution>`, or the whole run with
 `boite workflow show <run-id> --details`. Each step's conversation keeps its
 full answer.
@@ -278,9 +283,13 @@ An update or a restart from the app hands the run over: each running step is
 cut at its next tool boundary and waits again with "Interrupted by a core
 restart", the run stays running, and the next core runs those steps again with
 that line in their prompt ([restart handoff](restart-handoff.md)). After a
-crash, or a handoff older than an hour, nothing resumes paid work by itself:
-running runs pause, marked as held by a restart, and each interrupted execution
-waits on its own thread. Resume runs it again with the same line in its prompt.
+crash or a handoff older than an hour, running runs pause, marked as held by
+a restart, and each interrupted execution waits on its own thread. Resume runs
+it again with the same line in its prompt. At startup, the core also attempts
+delivery of pending summaries for successful and failed runs. A busy parent
+receives the result after its turn finishes. Admission of the summary turn and
+the delivery record commit together. If the core stops before starting that
+turn, the next core queues the same turn with its original prompt and ID.
 
 A step sent back to work in its own conversation still counts for its run. When
 the owner stops a step, the run fails with it; a turn started later in that
@@ -376,13 +385,16 @@ delay their delivery.
 
 ## Where it lives
 
-The graph shows each step's reasoning effort and cumulative reported tokens,
-with the run's total in its header, including zero before the first report.
+The graph shows each step's resolved route, reasoning effort and cumulative reported tokens,
+with the run's total in its header. The UI marks missing usage as unknown
+and a sum across both measured and unmeasured executions as partial.
 Counts include input, output, cache reads, cache writes and previous attempts,
-including a retry that replaced an archived child. Fan-out details also show
-each execution's tokens. Usage arrives when a provider finishes a turn;
-tokens still being generated are not estimated. Older cores without execution
-usage keep the run total and omit per-step counts.
+including a retry that replaced an archived child. Step cards retain measured
+usage across loop rounds. Fan-out details show each execution's tokens.
+The UI displays reported counts, including Codex usage that arrives after a
+turn finishes. A revised group-machine report replaces the measurement for
+that turn. A stop receipt identifies the turn stopped on the member even if
+another turn starts in its conversation.
 
 The plan checks and the path rules are shared by the core and the UI in
 `packages/contracts/src/workflow-plan.ts`. The core's runner is

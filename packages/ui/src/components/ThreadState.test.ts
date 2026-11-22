@@ -9,7 +9,7 @@ import { threadTone, workflowTone } from '../lib/status-tone';
 import { workingChildren, type WorkingChildren } from '../lib/thread-rows';
 import { SIDEBAR_DEFAULT } from '../lib/prefs';
 
-type Shown = Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'lastUserMessageAt' | 'createdAt' | 'backgroundWait'> & { archived?: boolean };
+type Shown = Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'lastUserMessageAt' | 'createdAt' | 'backgroundWait' | 'pullRequestWatches'> & { archived?: boolean };
 
 const NOW = Date.UTC(2026, 8, 28, 10, 0, 0);
 let running: Record<string, unknown> | null = null;
@@ -124,8 +124,8 @@ test('a parent row shows how many sub-agents it has at work, in every state, and
 
 test('work names what it waits on: the heaviest background task, CI or the merge queue; the turn\'s clock stands for Working', () => {
   vi.useFakeTimers({ now: NOW });
-  const word = (thread: Partial<Shown> & Record<string, unknown>) => {
-    const state = draw(thread as Partial<Shown>);
+  const word = (thread: Partial<Shown>) => {
+    const state = draw(thread);
     const text = state.querySelector('.word')?.textContent;
     unmount(running!, { outro: false });
     running = null;
@@ -143,6 +143,20 @@ test('work names what it waits on: the heaviest background task, CI or the merge
   const watch = { url: 'https://github.com/example/repo/pull/7', repository: 'example/repo', number: 7, since: NOW - 300_000, seen, paused: null };
   expect(word({ requestSince: NOW - 60_000, pullRequestWatches: [watch] })).toBe('Merge queue');
   expect(word({ requestSince: NOW - 60_000, pullRequestWatches: [{ ...watch, seen: { ...seen, checks: { total: 3, running: 1, failed: 0 }, queue: undefined } }] })).toBe('CI running');
+  const paused = draw({ pullRequestWatches: [{ ...watch, paused: { reason: 'rate-limit', until: NOW + 60_000, message: 'limit' } }] });
+  expect(paused.querySelector('.word')?.textContent).toBe('Watching PR');
+  expect(paused.querySelector('[data-testid=thread-elapsed]')).toBeNull();
+  expect(paused.title).toContain('GitHub rate limit');
+  unmount(running!, { outro: false });
+  running = null;
+  const mixed = draw({ pullRequestWatches: [
+    { ...watch, paused: { reason: 'unreachable', until: NOW + 60_000, message: 'no response' } },
+    { ...watch, url: 'https://github.com/example/repo/pull/34', number: 34, since: NOW - 120_000, seen: { ...seen, checks: { total: 3, running: 1, failed: 0 }, queue: undefined } },
+  ] });
+  expect(mixed.querySelector('.word')?.textContent).toBe('CI running');
+  expect(mixed.querySelector('[data-testid=thread-elapsed]')?.textContent).toBe('2m 00s');
+  expect(mixed.title).toContain('#34');
+  expect(mixed.title).not.toContain('#7');
 });
 
 test('a delegated agent waiting on its own background work says what and since when; work that never woke it reads interrupted', () => {

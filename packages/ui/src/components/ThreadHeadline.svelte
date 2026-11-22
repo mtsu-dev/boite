@@ -52,7 +52,8 @@
     fit = false,
     ask,
     at,
-    offline = false
+    offline = false,
+    elapsedShownSince
   }: {
     owner: Store;
     thread: ThreadSummary;
@@ -70,6 +71,7 @@
     ask?: Snippet;
     at?: number;
     offline?: boolean;
+    elapsedShownSince?: number | null;
   } = $props();
   const kind = $derived(threadState(thread, rowAsks(owner, thread.id)));
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
@@ -96,8 +98,8 @@
       {#if pullRequest.state === 'MERGED'}<GitMerge size={12} aria-hidden="true" />{:else if pullRequest.state === 'CLOSED'}<GitPullRequestClosed size={12} aria-hidden="true" />{:else}<GitPullRequest size={12} aria-hidden="true" />{/if}<span class="ui-label">#{pullRequest.number}</span>
     </span>
   {/if}
-  {#if now !== undefined && (at === undefined || rowSaysState(thread.archived ? null : kind))}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} team={owner.subagents(thread.id)} away={owner.connection !== 'ready'} {fit} />{/if}
-  {#if now !== undefined && at !== undefined}<time class="at" title={exactTime(at)}>{ago(at, now)}</time>{/if}
+  {#if now !== undefined && (at === undefined || rowSaysState(thread.archived ? null : kind))}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} team={owner.subagents(thread.id)} away={owner.connection !== 'ready'} {fit} {elapsedShownSince} />{/if}
+  {#if now !== undefined && at !== undefined && elapsedShownSince == null}<time class="at" title={exactTime(at)}>{ago(at, now)}</time>{/if}
 </span>
 
 <style>

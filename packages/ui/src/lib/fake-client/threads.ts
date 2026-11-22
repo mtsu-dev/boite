@@ -1,20 +1,21 @@
-import { ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
+import { chatPreviewSizeProblem, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
-import { createFakeThread, publishFakeThread } from './create-thread';
+import { createFakeThread, publishFakeThread, writeFakeFork } from './create-thread';
 import { trustContactMail } from './contact-hold';
 import { dismissMergedPr } from './merged-pr-archive';
 import { agentDoneMethods } from './agent-done';
 import { assertIdleFamily } from './completion';
 import { isThreadTerminal, protectedThreadIdsError, threadActive } from '@boite/contracts';
 /** Threads and their messages: create, read, select, archive, and the turn entry points. */
-import { DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, attachmentError, previewReferencesError, MESSAGE_PAGE, MESSAGE_PAGE_MAX, MESSAGE_PAGE_MAX_BYTES, RPC_MAX_FRAME_BYTES, RpcErrorCode, type AgentProfile, type AgentWhere, type Attachment, type Message, type MessageId, type MoveEnd, type PreviewReference, type RpcParams, type Thread, type Turn } from '@boite/contracts';
+import { DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, attachmentError, previewReferencesError, MESSAGE_PAGE, MESSAGE_PAGE_MAX, MESSAGE_PAGE_MAX_BYTES, RPC_MAX_FRAME_BYTES, RpcErrorCode, type AgentProfile, type AgentWhere, type Attachment, type Message, type MessageId, type MoveEnd, type PreviewReference, type RpcParams, type Thread } from '@boite/contracts';
 import { steerUser } from './user-steering';
-import { recoverTurn } from './recovery';
+import { recoverTurn, resumeTurn } from './recovery';
 import { RpcFailure } from '../client';
 import { decodeBase64 } from '../attachment-save';
 import { checkEffort, checkModel, checkRunnable, defaultModel } from './checks';
 import { moveToAccount, usableAccount } from './account-fallback';
+import { rememberAccountSession, savedAccountSession } from './account-sessions';
 import { writeTitle } from './titles';
 import { DATA_DIR, fakeWorktree, refusal, toSummary } from './shared';
 import { closeThreadTerminals } from './terminals';
@@ -24,8 +25,9 @@ import { delegationConfig, stopDelegation } from './delegation';
 import { fakeCore } from './coordination';
 import type { FakeContext, FakeMethods } from './context';
 import { registerFakeWorktree, requireFakeCwd } from './worktrees';
-import { boundedMessageWindow, listCursorProblem, pageBytes, pageBytesProblem, projectMessage, resumeAnchor, snapshotOptionsProblem, type TransportOptions } from '@boite/contracts';
+import { boundedMessageWindow, pageBytes, pageBytesProblem, projectMessage, resumeAnchor, snapshotOptionsProblem, type TransportOptions } from '@boite/contracts';
 import { dropWaitingMove, fakeMoveNote, resolveProject } from './thread-move';
+import { threadListMethods } from './thread-list';
 import { cancelFamilySideQuestions, cancelSide, sideQuestionMethods } from './side-questions';
 
 /**
@@ -49,39 +51,6 @@ function setStreamChannels(ctx: FakeContext, threadId: ThreadId, channels: Strea
       ctx.emitToThread(threadId, 'message.part', { threadId, messageId: message.id, partIndex, part: structuredClone(part) });
     });
   }
-}
-
-function writeFakeFork(ctx: FakeContext, source: Thread, kept: Message[], placed: ReturnType<typeof fakeWorktree> | null = null) {
-  const title = `${source.title} (fork)`;
-  const now = ctx.now();
-  const id = `t-${++ctx.seq}`;
-  const turnIds = new Map<string, string>();
-  const messages: Message[] = kept.map((message) => {
-    if (!turnIds.has(message.turnId)) turnIds.set(message.turnId, `turn-${++ctx.seq}`);
-    return { ...structuredClone(message), id: `m-${++ctx.seq}`, threadId: id, turnId: turnIds.get(message.turnId) ?? message.turnId, state: message.state === 'streaming' ? 'complete' : message.state };
-  });
-  const turns: Turn[] = source.turns.filter((turn) => turnIds.has(turn.id)).map((turn) => ({
-    ...structuredClone(turn),
-    id: turnIds.get(turn.id) ?? turn.id,
-    threadId: id,
-    status: turn.status === 'queued' || turn.status === 'running' ? 'stopped' : turn.status,
-    queueHold: null,
-    startedAt: turn.startedAt ?? turn.queuedAt,
-    finishedAt: turn.finishedAt ?? now,
-    usage: null,
-  }));
-  const thread: Thread = {
-    id, projectId: source.projectId, title, titleSource: source.titleSource,
-    providerId: source.providerId, accountId: source.accountId, model: source.model, effort: source.effort, speed: source.speed ?? null,
-    cwd: placed?.path ?? source.cwd, branch: placed?.branch ?? source.branch, branchNamingPending: placed?.namingPending ?? false, permissionMode: source.permissionMode,
-    status: 'idle', unread: false, archived: false, doneAt: null, pinned: false,
-    forkOrigin: { threadId: source.id, messageId: kept.at(-1)?.id ?? null, turnId: kept.at(-1)?.turnId ?? null, mode: 'seeded' },
-    sessionId: null, sessionGeneration: 1, selectionVersion: 0, load: null, context: null,
-    createdAt: now, updatedAt: now, messages, turns, commands: [], messagesBefore: null,
-  };
-  ctx.threads.set(id, thread);
-  ctx.emit('thread.created', structuredClone(toSummary(thread)));
-  return structuredClone(toSummary(thread));
 }
 
 /** A persistent agent's own thread: projectless, in its workspace folder, titled with its name. */
@@ -325,28 +294,10 @@ export async function deleteExpiredDoneThreads(ctx: FakeContext, remove: (id: st
 export function threadMethods(ctx: FakeContext) {
   const creations = new Map<string, { key: string; created: Promise<string> }>();
   const promptCreations = new Map<string, { key: string; created: Promise<string> }>();
-  const removing = new Set<string>();
+  const removing = ctx.removingThreads;
   const methods = {
     ...sideQuestionMethods(ctx, (source, messages) => writeFakeFork(ctx, source, messages)),
-    'threads.list': async (params) => {
-      return [...ctx.threads.values()]
-        .filter((t) => (params.projectId ? t.projectId === params.projectId : true))
-        .filter((t) => (params.includeArchived ? true : !t.archived))
-        .map((t) => structuredClone(toSummary(t)));
-    },
-    // The core's answer (`threads/list-changes.ts`): whole, or the rows changed since plus every row with a load.
-    'threads.listChanges': async (params) => {
-      const problem = params.since === undefined ? null : listCursorProblem(params.since);
-      if (problem) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `threads.listChanges.${problem.field}: expected ${problem.expected}`, data: problem });
-      const cursor = ctx.threadChanges.cursor();
-      const changed = params.since === undefined ? null : ctx.threadChanges.since(params.since);
-      const listed = [...ctx.threads.values()].filter(t => !t.archived);
-      if (changed === null) return { kind: 'full' as const, cursor, threads: listed.map(t => structuredClone(toSummary(t))) };
-      const asked = new Set(changed);
-      const threads = listed.filter(t => asked.has(t.id) || t.load != null).map(t => structuredClone(toSummary(t)));
-      const answered = new Set(threads.map(t => t.id));
-      return { kind: 'changes' as const, cursor, threads, removed: changed.filter(id => !answered.has(id)) };
-    },
+    ...threadListMethods(ctx),
     'threads.create': async (params) => {
       // The core's creation receipts: asked again under its request id, a creation answers with the conversation it made.
       const id = params.clientRequestId;
@@ -413,30 +364,46 @@ export function threadMethods(ctx: FakeContext) {
       // the tail exceeds a page's count or bytes, and then a full page.
       const from = params.after === undefined ? -1 : thread.messages.findIndex((message) => message.id === params.after);
       const project = projection(params);
-      const tail = from === -1 ? null : tailOf(thread.messages, from, limit, project);
+      const known = params.sync && params.sync !== true ? params.sync : undefined;
+      const prefix = known?.prefix;
+      const preceding = from < 0 || !prefix ? undefined : thread.messages.slice(Math.max(0, from - prefix.count), from);
+      const verified = !prefix || (preceding && known?.from === params.after && preceding.length === prefix.count
+        && prefix.first === (preceding[0]?.id ?? params.after) && prefix.hash === snapshotHash(preceding, params));
+      const tail = from === -1 || !verified ? null : tailOf(thread.messages, from, limit, project);
       const page = tail !== null ? { messages: tail, before: null, after: null }
         : aroundOf(thread.messages, params.around, limit, project, maxBytes) ?? { ...pageOf(thread.messages, thread.messages.length, limit, project, maxBytes), after: null };
       const sent = new Set(page.messages.map(message => message.turnId));
       const turns = thread.turns.filter(turn => turn.status === 'queued' || turn.status === 'running' || sent.has(turn.id));
       const anchor = params.sync ? resumeAnchor({ messages: page.messages, turns }) : null;
-      const proof = anchor === null ? undefined : { from: anchor, hash: snapshotHash(page.messages.slice(page.messages.findIndex(message => message.id === anchor)), params) };
-      const known = params.sync && params.sync !== true ? params.sync : undefined;
+      const anchorIndex = page.messages.findIndex(message => message.id === anchor);
+      const heldPrefix = tail === null ? page.messages.slice(0, anchorIndex) : preceding && [...preceding, ...page.messages.slice(0, anchorIndex)];
+      const proof = anchor === null ? undefined : {
+        from: anchor, hash: snapshotHash(page.messages.slice(anchorIndex), params),
+        ...(heldPrefix && heldPrefix.length <= MESSAGE_PAGE_MAX ? {
+          prefix: { first: heldPrefix[0]?.id ?? anchor, count: heldPrefix.length, hash: snapshotHash(heldPrefix, params) },
+        } : {}),
+      };
       const unchanged = tail !== null && params.after !== undefined && known?.from === params.after && known.hash === (proof?.from === params.after ? proof.hash : snapshotHash(tail, params));
       // As the core: where the page's first message sits, or the resume tail's `after`.
       const first = tail !== null ? params.after : page.messages[0]?.id;
-      const snapshot = { ...thread, turns, messages: unchanged ? [] : page.messages.map(project), messagesBefore: page.before,
+      const summary = toSummary(thread);
+      const snapshot = { ...thread, backgroundWait: summary.backgroundWait, interruptionReadAt: summary.interruptionReadAt, turns, messages: unchanged ? [] : page.messages.map(project), messagesBefore: page.before,
         ...(page.after === null ? {} : { messagesAfter: page.after }), messageOffset: Math.max(0, thread.messages.findIndex(message => message.id === first)),
         ...(tail !== null ? { messagesFrom: params.after } : {}), ...(proof ? { messagesSync: proof } : {}), ...(unchanged ? { messagesUnchanged: true as const } : {}) };
       if (!params.open) return pagingReply(snapshot);
       ctx.bus.subscribed.add(thread.id);
-      ctx.bus.transport = { compactTools: params.compactTools, compactToolParts: params.compactToolParts };
+      ctx.bus.transport = { compactTools: params.compactTools, compactToolParts: params.compactToolParts, compactFiles: params.compactFiles, compactImages: params.compactImages };
       setStreamChannels(ctx, thread.id, params.channels);
       if (params.open.previous && params.open.previous !== thread.id) {
         ctx.bus.subscribed.delete(params.open.previous);
         ctx.bus.streams.forget(params.open.previous);
       }
-      if (params.open.markRead && thread.unread) { thread.unread = false; ctx.touch(thread); }
-      snapshot.unread = thread.unread;
+      const interruptionAt = unreadInterruptionAt(summary);
+      if (params.open.markRead && (thread.unread || interruptionAt !== undefined)) {
+        thread.unread = snapshot.unread = false;
+        if (interruptionAt !== undefined) thread.interruptionReadAt = snapshot.interruptionReadAt = interruptionAt;
+        ctx.touch(thread);
+      }
       const opened = params.open.requests === false ? {} : {
         permissions: [...ctx.pendingPermissions.values()].map(item => item.request).filter(item => item.threadId === thread.id).sort((a, b) => a.createdAt - b.createdAt),
         questions: [...ctx.pendingQuestions.values()].map(item => item.request).filter(item => item.threadId === thread.id).sort((a, b) => a.createdAt - b.createdAt)
@@ -479,17 +446,28 @@ export function threadMethods(ctx: FakeContext) {
     },
     'messages.toolOutput': async (params) => ({ output: toolOf(ctx.thread(params.threadId), params).output }),
     'messages.toolPart': async (params) => pagingReply({ part: toolOf(ctx.thread(params.threadId), params) }),
-    'messages.attachment': async params => {
+    'messages.attachment': async (params): Promise<RpcResult<'messages.attachment'>> => {
       const thread = ctx.thread(params.threadId);
       if (!Number.isSafeInteger(params.partIndex) || params.partIndex < 0) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'messages.attachment.partIndex: expected a nonnegative integer', data: { field: 'partIndex', expected: 'a nonnegative integer' } });
+      const problem = chatPreviewSizeProblem(params.previewMax);
+      if (problem) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `messages.attachment.previewMax: expected one of ${problem.expected}`, data: problem });
       const message = thread.messages.find(message => message.id === params.messageId);
       if (!message) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `message ${params.messageId} is not a message of thread ${params.threadId}`, data: { threadId: params.threadId, messageId: params.messageId } });
       const part = message.parts[params.partIndex];
       if (part?.type !== 'file' && part?.type !== 'image') throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `part ${params.partIndex} is not an attachment of message ${params.messageId}`, data: { messageId: params.messageId, partIndex: params.partIndex } });
-      // The fake makes no copies: `display` and `thumb` give the original, and `ticket` an address of it, as a blob the page can load.
-      if (params.ticket !== true) return { data: part.data };
-      const bytes = decodeBase64(part.data);
-      return { data: '', url: URL.createObjectURL(new Blob([bytes], { type: part.mimeType })), mimeType: part.mimeType, bytes: bytes.length };
+      if (params.previewMax === undefined) {
+        if (params.ticket !== true || typeof URL.createObjectURL !== 'function') return { data: part.data };
+        return ctx.attachmentUrls.read(JSON.stringify([thread.id, message.id, params.partIndex]), part);
+      }
+      const key = JSON.stringify([thread.id, message.id, params.partIndex, params.previewMax]);
+      const copy = await ctx.imagePreviews.read(key, params.previewMax, () => new Blob([decodeBase64(part.data)], { type: part.mimeType }));
+      return copy ?? { data: '', mimeType: 'image/webp', bytes: 0 };
+    },
+    'threads.previewAccountSwitch': async ({ threadId, accountId }) => {
+      const thread = ctx.thread(threadId);
+      const account = ctx.accounts.find(item => item.id === accountId);
+      if (!account) throw ctx.notFound('account', accountId);
+      return { session: thread.accountId === accountId ? 'unchanged' : savedAccountSession(thread, account) ? 'resume' : 'fresh' };
     },
     'threads.update': async (params) => {
       const thread = ctx.thread(params.threadId);
@@ -521,14 +499,17 @@ export function threadMethods(ctx: FakeContext) {
         if (!account || !provider?.available || account.status === 'unauthenticated') {
           throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'the selected account is unavailable' });
         }
+        const restored = savedAccountSession(thread, account);
+        if (params.requireSavedSession === true && !restored) throw refusal('the saved session can no longer resume; review the account switch again', { field: 'accountId', expected: 'an account with a resumable session' });
+        rememberAccountSession(thread);
         if (thread.background?.length) ctx.setBackground(thread, [], 'session-ended');
         thread.accountId = account.id;
         thread.providerId = account.providerId;
         thread.model = params.model === undefined ? defaultModel(provider) : params.model;
         thread.effort = null; thread.speed = null;
-        thread.sessionId = null;
+        thread.sessionId = restored?.sessionId ?? null;
         thread.sessionGeneration = (thread.sessionGeneration ?? 0) + 1;
-        thread.context = null;
+        thread.context = restored?.context ?? null;
         thread.commands = [];
         ctx.emit('thread.commands', { threadId: thread.id, commands: [] });
       }
@@ -670,9 +651,15 @@ export function threadMethods(ctx: FakeContext) {
     'threads.markRead': async (params) => {
       const thread = ctx.thread(params.threadId);
       // As the core: a thread already read is not written again, so nothing is announced.
-      if (!thread.unread) return { ok: true };
-      thread.unread = false;
-      ctx.touch(thread);
+      if (params.interruptionAt !== undefined) {
+        if (unreadInterruptionAt(toSummary(thread)) === params.interruptionAt) {
+          thread.interruptionReadAt = params.interruptionAt;
+          ctx.touch(thread);
+        }
+      } else if (thread.unread) {
+        thread.unread = false;
+        ctx.touch(thread);
+      }
       return { ok: true };
     },
     'threads.trustContactHistory': async (params) => {
@@ -738,11 +725,12 @@ export function threadMethods(ctx: FakeContext) {
         throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'the model selection changed; review the selected model and send again' });
       }
       const thread = ctx.thread(params.threadId);
+      const revive = ctx.canRevive(thread);
       const providerId = thread.providerId;
       const provider = ctx.providers.find(p => p.id === providerId);
       if (!provider) throw ctx.notFound('provider', providerId);
       // As the core, in its order: an archived or busy thread first, then whether the agent can run at all.
-      if (!thread.archived && !threadActive(thread.status) && !ctx.inFlight.has(thread.id)) {
+      if ((!thread.archived || revive) && !threadActive(thread.status) && !ctx.inFlight.has(thread.id)) {
         // A signed-out or removed account hands the thread to another of its agent first.
         const usable = thread.agentSessionId ? null : usableAccount(ctx, providerId, thread.accountId);
         if (usable && usable.id !== thread.accountId) moveToAccount(ctx, thread, usable);
@@ -763,6 +751,7 @@ export function threadMethods(ctx: FakeContext) {
         if (!config.enabled || config.paused) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'delegation is disabled or paused' });
       }
       const messageIndex = thread.messages.length;
+      if (revive) Object.assign(thread, { archived: false, doneAt: null, archivedAt: null });
       const turn = ctx.startTurn(params.threadId, params.prompt, params.attachments ?? [], rootId ? 'delegation' : undefined, undefined, undefined, params.previewReferences ?? []);
       if (rootId) ctx.delegationTurns.set(rootId, (ctx.delegationTurns.get(rootId) ?? 0) + 1);
       if (key) ctx.turnRequests.set(key, { content, turn, messageId: thread.messages[messageIndex]!.id });
@@ -843,6 +832,9 @@ export function threadMethods(ctx: FakeContext) {
     },
     'turns.stop': async (params) => {
       const thread = ctx.thread(params.threadId);
+      const target = thread.turns.findLast(turn => turn.status === 'running') ?? thread.turns.find(turn => turn.status === 'queued');
+      if (params.expectedTurnId !== undefined && target?.id !== params.expectedTurnId) return { stopped: false };
+      const targetedStop = params.expectedTurnId === undefined ? undefined : ctx.stopTurn(params.threadId);
       const root = thread.parentThreadId ?? thread.id;
       let childrenStopped = 0;
       if (thread.parentThreadId || (ctx.delegationAgents.get(root)?.length ?? 0) > 0) {
@@ -855,7 +847,7 @@ export function threadMethods(ctx: FakeContext) {
       if (plannedRetry) { thread.retry = null; ctx.touch(thread); }
       const unwatched = thread.pullRequestWatches?.length ?? 0;
       if (unwatched > 0) { thread.pullRequestWatches = []; ctx.emit('thread.updated', structuredClone(toSummary(thread))); }
-      const stopped = await ctx.stopTurn(params.threadId) || childrenStopped > 0 || plannedRetry || unwatched > 0;
+      const stopped = await (targetedStop ?? ctx.stopTurn(params.threadId)) || childrenStopped > 0 || plannedRetry || unwatched > 0;
       // As the core: Stop on an idle thread ends what it still runs in the background.
       if (!stopped && (thread.background?.length ?? 0) > 0) {
         ctx.setBackground(thread, [], 'session-ended');
@@ -864,6 +856,7 @@ export function threadMethods(ctx: FakeContext) {
       return { stopped };
     },
     'turns.recover': params => recoverTurn(ctx, params),
+    'turns.resume': async params => resumeTurn(ctx, params),
     'agent.where': async (params) => {
       const thread = ctx.thread(params.threadId);
       const project = ctx.projects.find((one) => one.id === thread.projectId);

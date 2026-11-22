@@ -3,6 +3,7 @@
   import { BROWSER_ENGINES, BROWSER_PROFILES_MAX, checkSettingsPatch, DEFAULT_BROWSER_PROFILE, type BrowserEngine, type BrowserProfile } from '@boite/contracts';
   import { tick } from 'svelte';
   import InfoTip from './InfoTip.svelte';
+  import SettingsSection from './SettingsSection.svelte';
   import CardScope from './CardScope.svelte';
   import BrowserUserAgent from './BrowserUserAgent.svelte';
   import Menu from './Menu.svelte';
@@ -137,8 +138,8 @@
   }
 </script>
 
-<section class="card" id="settings-browser-profiles" data-testid="browser-profiles-card">
-  <h2><span class="ui-label">{s.card}</span><CardScope /></h2>
+<SettingsSection id="settings-browser-profiles" testid="browser-profiles-card" title={s.card}>
+  {#snippet actions()}<CardScope />{/snippet}
   <h3 class="ui-label-box"><span class="ui-label">{s.heading}</span><InfoTip topic={s.heading} text={s.hint} /></h3>
   <ul>
     {#each rows as profile (profile.id)}
@@ -180,7 +181,7 @@
   </form>
   {#if problem}<p class="problem" role="alert" data-testid="browser-profile-error">{problem}</p>{/if}
   {#if notice}<p class="notice" role="status" data-testid="browser-profile-notice">{notice}</p>{/if}
-</section>
+</SettingsSection>
 
 <style>
   h3 { margin: 4px 0 10px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }

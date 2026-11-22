@@ -4,6 +4,7 @@ import { agentDirectory } from './agent-directory.svelte';
 import { threadState } from './thread-state';
 import { workingThread } from './recent.svelte';
 import { rowAsks } from './status-order';
+import { fill, strings } from './strings';
 
 /** How many bots are at work, for the phone's Bots tab, and whether one of them waits on the user. */
 export interface WorkCount {
@@ -85,4 +86,12 @@ export function subagentsAtWork(stores: readonly Pick<Store, 'projects' | 'threa
     }
   }
   return count;
+}
+
+export function workCountLabel(threads: number, helpers: number): string | null {
+  const t = strings.app.rail;
+  return [
+    threads ? threads === 1 ? t.workingOne : fill(t.workingMany, { count: String(threads) }) : null,
+    helpers ? helpers === 1 ? t.subagentsOne : fill(t.subagentsMany, { count: String(helpers) }) : null
+  ].filter(Boolean).join(', ') || null;
 }

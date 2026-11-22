@@ -3,7 +3,7 @@ import { test } from '../test/fake-client';
 import { editWhole } from './reading-window';
 import { rewindComposerEdit } from './composer-edit';
 
-for (const change of ['navigation', 'typing', 'overlapping edit'] as const) test(`an attachment hydration cannot overwrite ${change}`, async ({ ready }) => {
+for (const change of ['navigation', 'typing', 'archiving', 'overlapping edit'] as const) test(`an attachment hydration cannot overwrite ${change}`, async ({ ready }) => {
   const { store } = await ready();
   await store.open('t-trace');
   const message = store.openThread!.messages.find(row => row.role === 'user')!;
@@ -13,10 +13,21 @@ for (const change of ['navigation', 'typing', 'overlapping edit'] as const) test
   const loading = editWhole(store, 't-trace', message);
   if (change === 'navigation') await store.open('t-bench');
   else if (change === 'typing') store.editComposerText('t-trace', 'my new draft');
+  else if (change === 'archiving') store.openThread!.archived = true;
   else await editWhole(store, 't-trace', { ...message, id: 'newer-edit', parts: [{ type: 'text', text: 'newer prompt' }] });
   finish(true);
   expect(await loading).toBe(false);
-  expect(store.composerStates['t-trace']!.text).toBe(change === 'navigation' ? '' : change === 'typing' ? 'my new draft' : 'newer prompt');
+  expect(store.composerStates['t-trace']!.text).toBe(change === 'typing' ? 'my new draft' : change === 'overlapping edit' ? 'newer prompt' : '');
+});
+
+test('an archived prompt cannot replace the saved draft', async ({ ready }) => {
+  const { store } = await ready();
+  await store.open('t-trace');
+  store.openThread!.archived = true;
+  store.restoreDraft('t-trace', 'keep my draft', [], []);
+  const message = store.openThread!.messages.find(row => row.role === 'user')!;
+  expect(await editWhole(store, 't-trace', message)).toBe(false);
+  expect(store.composerStates['t-trace']!.text).toBe('keep my draft');
 });
 
 for (const invalid of ['attachment bytes', 'page mention'] as const) test(`invalid edited ${invalid} fail before staging or destructive rewind`, async ({ ready }) => {

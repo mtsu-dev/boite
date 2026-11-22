@@ -315,23 +315,26 @@ describe('threads.fork', () => {
     recordingEcho();
     const path = join(h.dataDir, 'repo');
     mkdirSync(path, { recursive: true });
-    const git = (...args: string[]) => {
+    const gitAt = (cwd: string, ...args: string[]) => {
       const done = Bun.spawnSync({
         cmd: ['git', ...args],
-        cwd: path,
+        cwd,
         env: { ...process.env, GIT_AUTHOR_NAME: 'boite test', GIT_AUTHOR_EMAIL: 'test@boite.invalid', GIT_COMMITTER_NAME: 'boite test', GIT_COMMITTER_EMAIL: 'test@boite.invalid' },
         stdout: 'pipe',
         stderr: 'pipe',
         windowsHide: true,
       });
       if (!done.success) throw new Error(done.stderr.toString());
+      return done.stdout.toString().trim();
     };
-    git('init', '-q');
-    git('commit', '-q', '--allow-empty', '-m', 'init');
+    gitAt(path, 'init', '-q');
+    gitAt(path, 'commit', '-q', '--allow-empty', '-m', 'init');
     const project = await client.call('projects.add', { path, name: 'repo' });
     const account = (await client.call('accounts.list', {})).find((entry) => entry.providerId === 'echo');
     if (!account) throw new Error('no echo account');
-    const source = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'source' });
+    const source = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'source', worktree: {} });
+    gitAt(source.cwd, 'commit', '-q', '--allow-empty', '-m', 'source work');
+    const tip = gitAt(source.cwd, 'rev-parse', 'HEAD');
     await run(source.id, 'alpha');
     const user = userMessages(source.id)[0];
     if (!user) throw new Error('no prompt');
@@ -340,6 +343,7 @@ describe('threads.fork', () => {
     expect(fork.cwd).not.toBe(source.cwd);
     expect(fork.branch).toBeTruthy();
     expect(existsSync(fork.cwd)).toBe(true);
+    expect(gitAt(fork.cwd, 'rev-parse', 'HEAD')).toBe(tip);
     expect(h.core.threads.get(fork.id).messages.map((message) => message.role)).toEqual(['user']);
     expect(h.core.threads.require(source.id).cwd).toBe(source.cwd);
   });

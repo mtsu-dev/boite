@@ -1,5 +1,6 @@
-import { chmod, copyFile, mkdir, readdir, readFile, rename, stat, writeFile, rm, symlink, readlink, utimes } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rename, stat, writeFile, rm, symlink, readlink, utimes } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import type { CoreClient } from '../src/client.ts';
@@ -276,13 +277,56 @@ test('a turn in a worktree nested in the project neither blocks nor spoils a rew
   expect(await overlap(h.core, threadId, nested, cwd)).toBe(false);
 });
 
-test('removing a project keeps its private file checkpoints', async () => {
-  const message = await run('save');
-  expect(message).toBeTruthy();
-  const folder = join(h.dataDir, 'checkpoints', threadId);
-  expect((await stat(folder)).isDirectory()).toBe(true);
-  await client.call('projects.remove', { projectId: h.core.threads.require(threadId).projectId! });
-  expect((await stat(folder)).isDirectory()).toBe(true);
+test('removing a project keeps its private file checkpoints for restoration', async () => {
+  await h.stop();
+  const dataDir = await mkdtemp(join(tmpdir(), 'boite-project-checkpoint-'));
+  try {
+    h = await startTestCore({ dataDir });
+    client = await h.connect();
+    cwd = join(dataDir, 'workspace');
+    await mkdir(cwd);
+    const project = await client.call('projects.add', { path: cwd });
+    const account = (await client.call('accounts.list', {})).find(account => account.providerId === 'echo')!;
+    threadId = (await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id })).id;
+    const file = join(cwd, 'tracked.txt');
+    await writeFile(file, 'before');
+    change = async () => { await writeFile(file, 'after'); };
+    const messageId = await run('save');
+    const folder = join(dataDir, 'checkpoints', threadId);
+    await client.call('projects.remove', { projectId: project.id });
+    expect((await stat(folder)).isDirectory()).toBe(true);
+    await h.stop();
+
+    const discard = spyOn(CodeCheckpoints.prototype, 'discard');
+    try {
+      h = await startTestCore({ dataDir });
+      await waitFor(() => discard.mock.calls.length > 0);
+      await discard.mock.results[0]?.value;
+    } finally { discard.mockRestore(); }
+    client = await h.connect();
+    expect(await client.call('projects.list', {})).toEqual([]);
+    expect((await client.call('projects.add', { path: cwd })).id).toBe(project.id);
+    const rewound = await client.call('threads.rewind', { threadId, messageId });
+    expect(rewound.files).toEqual({ status: 'restored', count: 1 });
+    expect(await readFile(file, 'utf8')).toBe('before');
+  } finally {
+    await h.stop();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('project removal reaches connected clients without discarding checkpoints', async () => {
+  await run('save');
+  const projectId = h.core.threads.require(threadId).projectId!;
+  const observer = await h.connect();
+  const cleanup = spyOn(h.core.threads.codeCheckpoints, 'discard').mockRejectedValue(new Error('checkpoint locked'));
+  try {
+    const removed = observer.next('project.removed', project => project.projectId === projectId);
+    await client.call('projects.remove', { projectId });
+    expect((await removed).projectId).toBe(projectId);
+    expect((await observer.call('projects.list', {})).some(project => project.id === projectId)).toBe(false);
+    expect(cleanup).not.toHaveBeenCalled();
+  } finally { cleanup.mockRestore(); observer.close(); }
 });
 
 test('an unavailable working directory warns but still rewinds the messages', async () => {

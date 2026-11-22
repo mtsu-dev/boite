@@ -157,8 +157,9 @@ its own pid there as a core does, so a core older than the OS lock, which
 reads only that record, stays out too; the record goes when the lock is
 let go, unless another core replaced the file meanwhile. It can also
 repair a failed startup if it can take the lock and confirm no core is
-starting or running. Windows still requires authenticated admission. The
-shell exits as NSIS launches, and NSIS does not hold the lock during copying.
+starting or running. On Windows, installers with `windows_data_lock` can
+also repair a failed startup. The shell exits as NSIS launches, and NSIS
+holds the startup lock while it copies the files.
 
 Otherwise the release stays downloaded and ready, offered as before,
 and the next check tries again without downloading it a second time. An
@@ -281,9 +282,8 @@ within 12 seconds. Peer bodies awaiting authentication do not block that
 admission; they are limited to 262144 bytes and five seconds, and a peer
 authenticated after admission is refused.
 
-The Windows installer run by hand, for an update or a reinstall, still requires
-idle admission: the in-app update has stopped the core before the installer
-starts. Its hooks (`windows/hooks.nsh`, `windows/stop-shell.ps1` and
+The in-app update stops the core before the Windows installer starts. For an
+installer run by hand, its hooks (`windows/hooks.nsh`, `windows/stop-shell.ps1` and
 `windows/stop-core.ps1`) first close a running shell, with the installer's own
 "Boite is running" question: an open window would start the core again within
 seconds, from the file about to be replaced. Only a shell running from that
@@ -294,12 +294,12 @@ installer, is skipped. They then find the
 `boite-core.exe` processes running that install's exact file, plus a core
 hosted by `bun.exe` when its PID matches `core.json` and its parsed arguments
 name that install's `core/main.js` and data directory. Other Bun processes
-are left alone. Accepting the interactive Kill prompt also authorizes stopping
-that resident core, including an older core without idle admission. Silent
-and passive installations still require idle admission. In those modes a busy,
-unreachable or older core without idle admission aborts installation before
-files are replaced. An admitted core that has not exited after 15 seconds also
-aborts installation. Explicit uninstall still requests ordinary shutdown and
+are left alone. Accepting the interactive prompt authorizes a restart handoff
+for the resident core. The installer verifies the expected PID in the reply and
+gives the core up to 60 seconds to exit. Silent and passive installations, and
+cores without handoff support, require idle admission with a 15-second exit
+deadline. Installation aborts before replacing files if admission or exit
+cannot be confirmed. Explicit uninstall still requests ordinary shutdown and
 ends any core of that install left after 15 seconds. Boite Dev's core runs
 another file and is left alone. The stop script opens no window. Once the core
 is stopped, the install hook removes the install's `core/` and `ui/`
@@ -315,6 +315,15 @@ packaged shell, and checks that busy and legacy cores remain running.
 The first silent upgrade from a core without idle admission needs an explicit
 stop after its work finishes, followed by a manual installer. An older in-app
 updater retains its previous interrupting behavior until it is replaced.
+Installers published with `windows_data_lock` let the shell repair an
+installation whose core cannot reach its endpoint. The shell checks the core's
+process identity and acquires the startup lock before proceeding without an
+endpoint. NSIS acquires the same lock before replacing files and aborts if a
+core obtained it during the handoff. A running core still grants authenticated
+admission.
+For signed Windows `-setup.exe` releases, the shell writes and pins the
+installer before offering to restart. It launches that prepared file after
+admission. NSIS extracts and installs the files after the old shell exits.
 An update replaces the whole application; it does not load a new core or UI
 alongside agents executing on the old version.
 
@@ -343,8 +352,13 @@ restart the application. A panic inside a check or a download ends the same
 way: an async Tauri command that panics never answers the window, so each one
 runs its work under `catch_unwind` and reports the panic as an error. Nightlies
 through 2026-09-26 predate that guard and can remain on Checking for updates
-after a release-client panic; they need one manual replacement. A restart discards a previously downloaded cache and
-checks again. Only the channel preference persists in `update-channel.json`.
+after a release-client panic; they need one manual replacement. Downloads are
+written in chunks to a bounded temporary file. If the server supplies a strong
+ETag, a retry can continue from the downloaded byte offset. The shell verifies the complete
+package before publishing the verified cache and keeps the verified bytes for
+installation retries. After a restart it checks the release again and
+reverifies the cached package against its version and signature. The channel
+preference persists in `update-channel.json`.
 
 ## Scope
 
@@ -364,9 +378,10 @@ a remote machine; another machine asks it through its core, never directly. [Age
 
 The first version containing this updater must be installed manually. It only
 offers published releases containing a signed installer and `latest.json`.
-Drafts and unsigned historical builds are excluded. The native shell reads the
-repository's release list, so nightly prereleases and regular beta releases do
-not depend on GitHub's `latest` alias. It checks at most ten pages of 100 releases
-and reports when no matching signed release can be found.
+Drafts and unsigned historical builds are excluded. The native shell checks the
+published index for its selected channel with an ETag. When the index names an
+eligible update, the shell asks GitHub for that release's notes and manifest.
+If the index has never been published and returns 404, it checks at most ten
+pages of the release list.
 
 [Releasing](releasing.md) describes signature generation and the CI artifacts.

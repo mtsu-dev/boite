@@ -77,9 +77,12 @@ test('composer records use revisions and share clearing with a paired client', a
   expect((await phone.call('composer.list', {}))[0]?.value?.input.text).toBe('Continue on the phone');
   const stale = await phone.call('composer.put', { section: 'inputs', id: 't-trace', expectedRevision: 0, value: value('Stale overwrite') });
   expect(stale).toEqual({ accepted: false, record: first.record });
+  const seen: ComposerRecord[] = [];
+  owner.on('composer.updated', row => seen.push(row));
   const cleared = await phone.call('composer.put', { section: 'inputs', id: 't-trace', expectedRevision: first.record.revision, value: null });
   expect(cleared.record.revision).toBe(first.record.revision + 1);
-  expect(events.at(-1)?.value).toBeNull();
+  expect(seen).toEqual([cleared.record]);
+  expect(events).toEqual([first.record]);
   expect((await owner.call('composer.list', {}))[0]?.value).toBeNull();
 });
 

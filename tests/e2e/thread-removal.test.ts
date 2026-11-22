@@ -15,11 +15,14 @@ async function openPhoneArchive(page: BrowserPage): Promise<void> {
   await page.click('[data-testid=mobile-settings-archived]');
 }
 
-/** Delete waits in an archived row's menu, beside the row's one action (Restore). */
+/** Delete waits in an archived row's menu. */
 async function deleteArchived(page: BrowserPage, threadId: string): Promise<void> {
   await page.click(`[data-testid=archived-list] [data-testid="archived-menu-${threadId}"]`);
   await page.waitFor(`document.querySelector('[data-testid="archived-menu-${threadId}-menu"]:not(.closing) [data-testid=archived-delete]')`);
   await page.click(`[data-testid="archived-menu-${threadId}-menu"] [data-testid=archived-delete]`);
+  await page.waitFor(`document.querySelector('[data-testid=confirm-ok]')`);
+  await page.click('[data-testid=confirm-ok]');
+  await page.waitFor(`!document.querySelector('[data-testid=confirm-dialog]')`);
 }
 let port: number;
 
@@ -71,16 +74,15 @@ for (const width of [1280, 390]) {
         const drawer = '[data-testid=archived-list]';
         await deleteArchived(page, await page.evaluate<string>(`document.querySelector('${drawer} li').dataset.threadId`));
         await page.waitFor(`document.querySelectorAll('${drawer} li').length === 6`);
-        expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]') === null`)).toBe(true);
         await page.click('[data-testid=undo-action]');
-        await page.waitFor(`globalThis.__boiteTest.workspace.active.page === 'chat'`);
+        await page.waitFor(`globalThis.__boiteTest.workspace.active.openThread?.archived`);
         await page.click('[data-testid=nav-settings]');
         await page.click('[data-testid=settings-tab-general]');
         await page.click('[data-testid=archived-show]');
         await page.waitFor(`document.querySelectorAll('${drawer} li').length === 7`);
         const restoredId = await page.evaluate<string>(`document.querySelector('${drawer} [data-testid=archived-restore]').closest('li').dataset.threadId`);
         await page.click(`${drawer} [data-testid=archived-restore]`);
-        await page.waitFor(`document.querySelector('${drawer} [data-thread-id="${restoredId}"] [data-testid=archived-open]')`);
+        await page.waitFor(`document.querySelector('${drawer} [data-thread-id="${restoredId}"] [data-testid=archived-open]') && !document.querySelector('${drawer} [data-thread-id="${restoredId}"] [data-testid=archived-restore]')`);
         expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId:${JSON.stringify(restoredId)}}).then(t => t.archived)`)).toBe(false);
       }
     } finally { await page.close(); }
@@ -100,13 +102,21 @@ for (const width of [1280, 390]) {
         const hasDelete = await page.evaluate<boolean>(`Array.from(document.querySelectorAll('[role=menu]:not(.closing) [role=menuitem]')).some(b => b.textContent.trim() === 'Delete')`);
         expect(hasDelete).toBe(true);
         await page.evaluate(`Array.from(document.querySelectorAll('[role=menu]:not(.closing) [role=menuitem]')).find(b => b.textContent.trim() === 'Delete').click()`);
+        await page.waitFor(`(() => {
+          const dialog = document.querySelector('[data-testid=confirm-dialog]:not(.closing)');
+          return dialog && Number(getComputedStyle(dialog).opacity) === 1 && !document.querySelector('[role=menu]');
+        })()`);
+        expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]').textContent.includes('30 days')`)).toBe(true);
+        expect(await page.evaluate(`document.querySelector('[data-testid=confirm-alt]').textContent.trim()`)).toBe('Archive');
+        await page.evaluate(`Promise.all(document.querySelector('[data-testid=confirm-dialog]').parentElement.getAnimations({subtree:true}).map(animation => animation.finished.catch(() => {})))`);
+        await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-confirm-${width}.png`));
+        await page.click('[data-testid=confirm-ok]');
       };
       await openMenu();
       await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-menu-${width}.png`));
       await chooseDelete();
       await page.waitFor(`!globalThis.__boiteTest.workspace.active.threads.some(t => t.id === ${JSON.stringify(id)})`);
-      expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]') === null`)).toBe(true);
       expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.list', { includeArchived: true }).then(rows => rows.some(t => t.id === ${JSON.stringify(id)}))`)).toBe(false);
       await page.waitFor(`document.querySelector('[data-testid=undo-action]')`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-undo-${width}.png`));
@@ -134,10 +144,14 @@ for (const width of [1280, 390]) {
       await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-archive-${width}.png`));
       await deleteArchived(page, archivedId);
-      expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]') === null`)).toBe(true);
       await page.waitFor(`!document.querySelector('[data-testid=archived-list] [data-thread-id="${archivedId}"]')`);
       expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.list', { includeArchived: true }).then(rows => rows.some(t => t.id === ${JSON.stringify(archivedId)}))`)).toBe(false);
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+      // On the phone, Recently deleted is below the archive on the same page.
+      if (width >= 720) {
+        await page.click('[data-testid=nav-settings]');
+        await page.click('[data-testid=settings-tab-general]');
+      }
       await page.waitFor(`document.querySelector('[data-testid=deleted-show]') || document.querySelector('[data-testid=deleted-list]')`);
       if (await page.evaluate(`document.querySelector('[data-testid=deleted-show]') !== null`)) await page.click('[data-testid=deleted-show]');
       await page.waitFor(`document.querySelectorAll('[data-testid=deleted-list] li').length === 2`);

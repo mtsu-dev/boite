@@ -13,6 +13,7 @@ export const fr: Translation = {
     binary: 'Fichier binaire, rien à montrer ligne par ligne',
     truncated: "Ce fichier a été tronqué : le diff ci-dessous n'est pas le fichier entier.",
     loading: 'Lecture de la copie de travail',
+    outsideRepository: 'Ce dossier se trouve hors d’un dépôt Git.',
     renamedFrom: 'Renommé depuis {path}',
     fileList: 'Fichiers modifiés',
     status: {

@@ -1,5 +1,8 @@
 import { expect, test, vi } from 'vitest';
-import { PROTOCOL_VERSION, RpcErrorCode } from '@boite/contracts';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { PROTOCOL_VERSION, RpcCloseCode, RpcErrorCode, deviceRevokedInput } from '@boite/contracts';
+import type { SocketLike } from '../client';
+import { dropDeviceKey, heldDeviceKey } from '../device-key';
 import { Store } from '../store.svelte';
 import { strings } from '../strings';
 
@@ -64,5 +67,70 @@ test('a remembered machine whose handshake outlasts the 12 s wait says so, keeps
     store.detach();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  }
+});
+
+test('an older tab reconnects with the replacement key after a delayed revocation close', async () => {
+  const url = 'https://paired.example';
+  const { privateKey, publicKey: key } = generateKeyPairSync('ed25519');
+  const publicKey = key.export({ type: 'spki', format: 'pem' }).toString();
+  const coreId = createHash('sha256').update(publicKey).digest('hex');
+  let revoked: string | null = null;
+  const sockets: PairingSocket[] = [];
+  class PairingSocket implements SocketLike {
+    onopen: SocketLike['onopen'] = null;
+    onmessage: SocketLike['onmessage'] = null;
+    onclose: SocketLike['onclose'] = null;
+    onerror: SocketLike['onerror'] = null;
+    helloDeviceId: string | null = null;
+    constructor() {
+      sockets.push(this);
+      queueMicrotask(() => this.onopen?.());
+    }
+    send(raw: string): void {
+      const { id, method, params } = JSON.parse(raw);
+      if (method === 'hello') this.helloDeviceId = params.device?.id ?? null;
+      if (method === 'hello' && revoked !== null && this.helloDeviceId === revoked) {
+        const sig = sign(null, Buffer.from(deviceRevokedInput(coreId, params.device.nonce, revoked)), privateKey).toString('base64');
+        queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({
+          id, error: { code: RpcErrorCode.Unauthorized, message: 'Device removed', data: { reason: 'device-revoked', publicKey, sig } },
+        }) }));
+        return;
+      }
+      const answer = method === 'hello'
+        ? { result: { core: { protocolVersion: PROTOCOL_VERSION, coreId }, principal: 'session', ...(params.grant ? { device: 'admitted' } : {}) } }
+        : { error: { code: RpcErrorCode.NotFound, message: `${method} is not in this fixture` } };
+      queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ id, ...answer }) }));
+    }
+    close(): void { this.onclose?.({ code: 1000 }); }
+  }
+  vi.stubGlobal('WebSocket', PairingSocket);
+  const first = new Store();
+  const second = new Store();
+  try {
+    await first.connectEndpoint({ url, token: '', grant: 'original' }, true);
+    await second.connectEndpoint({ url, token: '', paired: true, signs: coreId }, true);
+    const old = heldDeviceKey()!.id;
+    const late = sockets[1]!;
+    expect(late.helloDeviceId).toBe(old);
+    revoked = old;
+    sockets[0]!.onclose?.({ code: RpcCloseCode.DeviceRevoked });
+    await vi.waitFor(() => expect(first.pairingRequired).toBe(true), { timeout: 5_000 });
+    await first.connectEndpoint({ url, token: '', grant: 'replacement' }, true);
+    const replacement = heldDeviceKey()!.id;
+    expect(replacement).not.toBe(old);
+    late.onclose?.({ code: RpcCloseCode.DeviceRevoked });
+    await vi.waitFor(() => {
+      expect(second.connection).toBe('ready');
+      expect(sockets.at(-1)?.helloDeviceId).toBe(replacement);
+    }, { timeout: 5_000 });
+    expect(heldDeviceKey()?.id).toBe(replacement);
+    expect(second.pairingRequired).toBe(false);
+  } finally {
+    for (const store of [first, second]) { store.client?.close(); store.detach(); }
+    const key = heldDeviceKey();
+    if (key !== null) dropDeviceKey(key.id);
+    localStorage.clear();
+    vi.unstubAllGlobals();
   }
 });

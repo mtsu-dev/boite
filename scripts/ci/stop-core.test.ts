@@ -5,13 +5,16 @@ import { join, resolve } from 'node:path';
 
 const script = resolve(import.meta.dir, '../../apps/shell/src-tauri/windows/stop-core.ps1');
 const fixture = `
+import { appendFileSync } from 'node:fs';
 const [directory, mode] = process.argv.slice(2);
 const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
   const url = new URL(request.url);
   if (request.headers.get('authorization') !== 'Bearer fixture') return new Response('no', {status:401});
-  if (url.pathname === '/shutdown-if-idle') {
-    if (mode === 'busy') return new Response('busy', {status:409});
+  appendFileSync(directory + '/admissions', url.pathname + '\\n');
+  if (url.pathname === '/shutdown-if-idle' || url.pathname === '/shutdown-for-update') {
+    if (mode === 'busy' && url.pathname === '/shutdown-if-idle') return new Response('busy', {status:409});
     if (mode === 'legacy') return new Response('missing', {status:404});
+    if (mode === 'legacy-idle' && url.pathname === '/shutdown-for-update') return new Response('missing', {status:404});
     if (mode === 'wrong-pid') return Response.json({ok:true,pid:process.pid + 1}, {status:202});
     if (url.searchParams.get('pid') !== String(process.pid)) return new Response('wrong pid', {status:412});
   } else if (url.pathname !== '/shutdown') return new Response('missing', {status:404});
@@ -51,13 +54,29 @@ async function stop(directory: string, idleOnly: boolean, explicit = false) {
 }
 
 describe.skipIf(process.platform !== 'win32')('manual installer admission', () => {
-  test('accepting Kill also stops a busy or legacy core hosted by Bun', async () => {
-    for (const mode of ['busy', 'legacy']) {
+  test('accepting the install prompt hands a busy core hosted by Bun over to the update', async () => {
+    await withCore('busy', async (directory, child) => {
+      expect(await stop(directory, true, true)).toBe(0);
+      expect(await child.exited).toBe(0);
+      expect(readFileSync(join(directory, 'admissions'), 'utf8').trim()).toBe('/shutdown-for-update');
+    }, true);
+  }, 60_000);
+
+  test('an explicit install leaves a legacy core or an incorrect handoff acknowledgement running', async () => {
+    for (const mode of ['legacy', 'wrong-pid']) {
       await withCore(mode, async (directory, child) => {
-        expect(await stop(directory, true, true)).toBe(0);
-        expect(await child.exited).toBe(0);
+        expect(await stop(directory, true, true)).not.toBe(0);
+        expect(child.exitCode).toBeNull();
       }, true);
     }
+  }, 60_000);
+
+  test('an explicit install falls back to idle admission for an older idle core', async () => {
+    await withCore('legacy-idle', async (directory, child) => {
+      expect(await stop(directory, true, true)).toBe(0);
+      expect(await child.exited).toBe(0);
+      expect(readFileSync(join(directory, 'admissions'), 'utf8').trim().split('\n')).toEqual(['/shutdown-for-update', '/shutdown-if-idle']);
+    });
   }, 60_000);
   test('an installed bundle hosted by bun.exe must exit before installation proceeds', async () => {
     await withCore('idle', async (directory, child) => {

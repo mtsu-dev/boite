@@ -21,6 +21,7 @@ const RUN = 'bun run dev:instance';
 
 const USAGE = `${RUN} [start] [options]   start this checkout on the Dev data, in the background
 ${RUN} stop                stop what this checkout started, and remove its temporary data
+${RUN} restart [options]   start this checkout again on the same data, handing running turns over
 ${RUN} status              say what this checkout runs
 ${RUN} cli <args>          the boite CLI as the owner of this instance: ${RUN} cli projects
 ${RUN} url                 print the owner link (it carries the token: use it in a command substitution, never paste it)
@@ -119,6 +120,7 @@ interface State {
   log: string;
   root: string;
   startedAt: number;
+  echo?: boolean;
 }
 
 /** One instance per checkout and Dev data directory. The file holds no token. */
@@ -264,13 +266,8 @@ async function startShell(options: Options, devDir: string, log: string): Promis
   }
   if (options.build) {
     run(['bun', 'run', 'build:shell:dev'], 'the Boite Dev build');
-    run(['bun', 'run', 'apps/shell/scripts/stage-sidecar.ts'], 'staging the core beside the shell');
   }
-  const manifest = join(ROOT, 'apps', 'shell', 'src-tauri', 'Cargo.toml');
-  const metadata = spawnSync('cargo', ['metadata', '--no-deps', '--format-version', '1', '--manifest-path', manifest], { encoding: 'utf8', windowsHide: true });
-  if (metadata.status !== 0) throw new Refusal(`cargo metadata failed: ${metadata.stderr}`, 1);
-  const target = (JSON.parse(metadata.stdout) as { target_directory: string }).target_directory;
-  const executable = join(target, 'release', process.platform === 'win32' ? 'boite-dev-shell.exe' : 'boite-dev-shell');
+  const executable = join(ROOT, 'apps', 'shell', 'src-tauri', 'target', 'release', process.platform === 'win32' ? 'boite-dev-shell.exe' : 'boite-dev-shell');
   if (!existsSync(executable)) throw new Refusal(`no Boite Dev shell at ${executable}: run without --no-build`, 1);
   const directory = devDir;
   const launchedAt = Date.now();
@@ -355,8 +352,8 @@ async function start(options: Options): Promise<void> {
     if (dataDir !== null) removeTemporary({ mode, dataDir });
     throw error;
   }
-  const state: State = { ...started, dataDir: dataDir ?? devDir, mode, log, root: ROOT, startedAt: Date.now() };
-  writeFileSync(statePath(devDir), `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+  const state: State = { ...started, dataDir: dataDir ?? devDir, mode, log, root: ROOT, startedAt: Date.now(), echo: options.echo };
+  saveState(devDir, state);
 
   const data = { dev: 'the persistent Dev data', copy: 'a copy of the Dev data, removed at stop', scratch: 'empty temporary data, removed at stop' }[mode];
   say([
@@ -371,6 +368,51 @@ async function start(options: Options): Promise<void> {
     ...(mode === 'scratch' ? [] : [messages.quota(options.echo)]),
     ...(mode === 'copy' ? ['The copy carries the same sign-ins as the Dev data: an agent that renews a sign-in here may sign the original out.'] : []),
   ].join('\n'));
+}
+
+function saveState(devDir: string, state: State): void {
+  writeFileSync(statePath(devDir), `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+}
+
+async function restart(options: Options): Promise<void> {
+  const devDir = devDataDir();
+  const state = readState(devDir);
+  if (!state) throw new Refusal(`This checkout started no Dev instance. Start one: ${RUN}`, 1);
+  if (options.copy || options.scratch || options.shell) throw new Refusal('restart keeps the instance’s data and shell mode', 2);
+  const holder = lockHolder(state.dataDir);
+  if (holder !== null && (holder.pid !== state.pid || !ours(state.pid, state.identity))) {
+    throw new Refusal(messages.held(state.dataDir, holder), 3);
+  }
+  const schema = schemaState(state.dataDir);
+  if (schema.kind === 'newer') throw new Refusal(messages.newer(state.dataDir, schema.found, schema.branch), 4);
+  if (schema.kind === 'older' && state.mode === 'dev' && !options.migrate) throw new Refusal(messages.older(state.dataDir, schema.found, schema.branch), 4);
+
+  // Finish the build before committing to shutdown. The shell only launches
+  // after the former process exits so it cannot start over the accepted handoff.
+  const shell = state.shellPid !== undefined;
+  if (options.build && !shell) ensureProductionUi();
+  if (state.shellPid !== undefined && ours(state.shellPid, state.shellIdentity)) {
+    signal(state.shellPid);
+    if (!await waitFor(() => ours(state.shellPid!, state.shellIdentity) ? null : true, 15_000, () => false)) {
+      throw new Refusal('the old Dev shell did not exit', 1);
+    }
+  }
+  if (holder !== null) {
+    const record = coreFile(state.dataDir);
+    if (record?.pid !== state.pid || typeof record.token !== 'string' || typeof record.port !== 'number') throw new Refusal('core.json must identify the running Dev core', 1);
+    const result = await fetch(`http://127.0.0.1:${record.port}/shutdown-for-update?pid=${state.pid}`, {
+      method: 'POST', headers: { authorization: `Bearer ${record.token}` }, signal: AbortSignal.timeout(5_000),
+    });
+    const ack = result.status === 202 ? await result.json() as { ok?: boolean; pid?: number } : null;
+    if (ack?.ok !== true || ack.pid !== state.pid) throw new Refusal(`the running Dev core did not admit a restart (HTTP ${result.status})`, 1);
+    if (!await waitFor(() => ours(state.pid, state.identity) ? null : true, 60_000, () => false)) {
+      throw new Refusal('the Dev core accepted the handoff but did not exit; its data was kept', 1);
+    }
+  }
+  const launch = { ...options, echo: options.echo || state.echo === true };
+  const started = shell ? await startShell(launch, state.dataDir, state.log) : await startCore(launch, state.dataDir, false, state.log);
+  saveState(devDir, { ...state, ...started, echo: launch.echo, startedAt: Date.now() });
+  say(`boite-core ready ${started.url}\ndata    ${state.dataDir} (kept for restart)\nprocess pid ${started.pid}, output in ${state.log}`);
 }
 
 async function stop(): Promise<void> {
@@ -486,6 +528,7 @@ async function main(argv: string[]): Promise<void> {
   const options = parseArgs(argv);
   if (options.command === 'start') await start(options);
   else if (options.command === 'stop') await stop();
+  else if (options.command === 'restart') await restart(options);
   else if (options.command === 'url') say(ownerLink(runningState()));
   else if (options.command === 'capture') await capture(options);
   else if (options.command === 'status') {

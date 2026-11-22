@@ -61,6 +61,59 @@ async function echoAccount(): Promise<string> {
 }
 
 describe('a thread in its own worktree', () => {
+  test('new worktrees fetch the remote default tip and use its local branch offline', async () => {
+    const project = await repoProject();
+    const remote = await repoProject('remote');
+    git(remote.path, 'branch', '-m', 'trunk');
+    git(project.path, 'remote', 'add', 'origin', remote.path);
+    git(project.path, 'fetch', 'origin', 'trunk');
+    git(project.path, 'remote', 'set-head', 'origin', 'trunk');
+    git(project.path, 'branch', 'trunk', 'origin/trunk');
+    const local = git(project.path, 'rev-parse', 'trunk');
+    git(project.path, 'checkout', '-b', 'unrelated');
+    git(project.path, 'commit', '-q', '--allow-empty', '-m', 'unrelated work');
+    git(remote.path, 'commit', '-q', '--allow-empty', '-m', 'latest remote work');
+    const latest = git(remote.path, 'rev-parse', 'HEAD');
+    const params = { projectId: project.id, providerId: 'echo', accountId: await echoAccount(), worktree: {} };
+    const direct = await client.call('threads.create', params);
+    expect(git(direct.cwd, 'rev-parse', 'HEAD')).toBe(latest);
+
+    const preparationId = 'remote_default_base';
+    await client.call('drafts.prepare', { ...params, preparationId });
+    git(remote.path, 'commit', '-q', '--allow-empty', '-m', 'after the draft was reserved');
+    const draft = await client.call('threads.create', { ...params, preparationId });
+    expect(git(draft.cwd, 'rev-parse', 'HEAD')).toBe(latest);
+
+    git(project.path, 'remote', 'set-url', 'origin', join(harness.dataDir, 'offline'));
+    const offline = await client.call('threads.create', params);
+    expect(git(offline.cwd, 'rev-parse', 'HEAD')).toBe(local);
+  });
+
+  test('a failed checkout hook releases a clean direct worktree and its explicit branch', async () => {
+    const project = await repoProject();
+    const hooks = join(harness.dataDir, 'checkout-hooks');
+    mkdirSync(hooks);
+    git(project.path, 'config', 'core.hooksPath', hooks);
+    const hook = join(hooks, 'post-checkout');
+    writeFileSync(hook, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const branch = 'fixture/failed-checkout';
+    const params = { projectId: project.id, providerId: 'echo', accountId: await echoAccount(), worktree: { branch } };
+    expect(await thrown(client.call('threads.create', params))).toThrow('git worktree add failed');
+    expect(await client.call('threads.list', {})).toHaveLength(0);
+    expect(git(project.path, 'branch', '--list', branch)).toBe('');
+    expect(git(project.path, 'worktree', 'list', '--porcelain')).not.toContain(branch);
+    expect(existsSync(join(worktreeRoot(project.path), 'fixture-failed-checkout'))).toBe(false);
+
+    unlinkSync(hook);
+    expect((await client.call('threads.create', params)).branch).toBe(branch);
+
+    writeFileSync(hook, '#!/bin/sh\necho "hook output" > keep.txt\nexit 1\n', { mode: 0o755 });
+    const dirty = 'fixture/dirty-checkout';
+    expect(await thrown(client.call('threads.create', { ...params, worktree: { branch: dirty } }))).toThrow('git worktree add failed');
+    expect(git(project.path, 'worktree', 'list', '--porcelain')).toContain(dirty);
+    expect(readFileSync(join(worktreeRoot(project.path), 'fixture-dirty-checkout', 'keep.txt'), 'utf8').trim()).toBe('hook output');
+  });
+
   test('explicit branch names stop at 48 characters before creating a thread or worktree', async () => {
     const project = await repoProject();
     const base = { projectId: project.id, providerId: 'echo', accountId: await echoAccount() };

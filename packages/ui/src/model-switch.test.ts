@@ -30,7 +30,7 @@ test('the existing thread picker switches providers and back without losing the 
   history.replaceState(null, '', '/?fake=1&open=recent');
   reset();
   app = mount(App, { target: document.body });
-  await waitFor(() => store.booted && store.openThread !== null);
+  await waitFor(() => store.booted && store.openThread !== null && document.querySelector('[data-testid=composer-input]') !== null);
   const original = { ...store.openThread! };
   const id = original.id;
   const messages = original.messages.map((message) => message.id);

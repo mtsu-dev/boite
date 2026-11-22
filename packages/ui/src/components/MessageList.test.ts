@@ -15,6 +15,8 @@ import { workspace } from '../lib/workspace.svelte';
 import { RightPanelStore } from '../lib/right-panel.svelte';
 import AgentMessagesSurface from './AgentMessagesSurface.svelte';
 import { AgentsView, openAgent } from '../lib/agents.svelte';
+import * as messageOrder from '../lib/message-order';
+import { TimelineRows } from '../lib/timeline-rows';
 
 /**
  * jsdom has no layout, so the three numbers the window is computed from are
@@ -1012,6 +1014,61 @@ test('a saved message anchor is rendered even when the old scroll offset points 
   flushSync();
   expect(shownIds()).toContain('m-250');
   expect(document.querySelector<HTMLElement>('[data-testid=timeline]')!.scrollTop).toBe(250 * ESTIMATE);
+});
+
+test('reopening an unchanged reading window reuses its slot totals and turn order', async ({ ready }) => {
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  const { messages, messagesSync } = live.openThread!;
+  expect(messagesSync).toBeDefined();
+  stubLayout(messages.length * ESTIMATE);
+  const mountList = () => mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
+  running = mountList();
+  await settle();
+  await unmount(running);
+  const previous = windowStats.slots;
+  const reads = vi.spyOn(messageOrder, 'firstAssistantByTurn');
+  const rebuilt = vi.spyOn(messageOrder, 'readingOrder');
+  onTestFinished(() => { reads.mockRestore(); });
+  onTestFinished(() => { rebuilt.mockRestore(); });
+  running = mountList();
+  flushSync();
+  expect(windowStats.slots - previous).toBe(0);
+  expect(reads).not.toHaveBeenCalled();
+  expect(rebuilt).not.toHaveBeenCalled();
+  delete live.openThread!.messagesSync;
+  flushSync();
+  expect(reads).toHaveBeenCalledOnce();
+});
+
+test('returning to a loaded thread does not rebuild its timeline rows', async ({ ready }) => {
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  for (let page = 0; page < 3; page++) await live.loadOlder();
+  const loaded = live.openThread!.messages;
+  expect(loaded).toHaveLength(400);
+  stubLayout(loaded.length * ESTIMATE);
+  live.readingPositions.set('t-long', { top: 0, pinned: false, heights: new Map() });
+  const mountList = () => mount(MessageList, {
+    target: document.body,
+    props: { store: live, threadId: 't-long', get messages() { return live.openThread!.messages; } },
+  });
+  running = mountList();
+  await settle();
+  const first = shownIds()[0];
+  await unmount(running);
+  running = null;
+  await live.open('t-bench');
+  const slots = windowStats.slots;
+  const build = vi.spyOn(TimelineRows.prototype, 'build');
+  onTestFinished(() => { build.mockRestore(); });
+  await live.open('t-long');
+  expect(live.openThread!.messages).toBe(loaded);
+  running = mountList();
+  await settle();
+  expect(shownIds()[0]).toBe(first);
+  expect(build).not.toHaveBeenCalled();
+  expect(windowStats.slots - slots).toBe(0);
 });
 
 test('Ctrl+F counts matches in messages the window has not drawn, walks to them, and Escape closes it', async ({ ready }) => {

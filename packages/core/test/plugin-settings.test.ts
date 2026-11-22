@@ -1,10 +1,12 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accessRefusal, mayHearEvent, type RpcEvents } from '@boite/contracts';
+import { accessRefusal, mayHearEvent, RpcCloseCode, type RpcEvents } from '@boite/contracts';
 import { ManifestRefused, parseManifest } from '../src/plugins/manifest.ts';
 import { connect } from '../src/client.ts';
+import { ServerConnection } from '../src/server/connection.ts';
+import { FrameQueue } from '../src/server/frame-queue.ts';
 import { removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
 import { expandSlashPrompt } from '../src/plugins/extensions.ts';
@@ -148,11 +150,43 @@ describe('plugin settings and turning a plugin off, end to end', () => {
       plugins.apps.kill = async (id) => { killed.push(`app ${id}`); };
       plugins.gateways.kill = async (id) => { killed.push(`gateway ${id}`); };
       const token = plugins.tokens.tokenFor('hello', ['threads.read']);
-      const open = await connect(harness.url, token, asPlugin);
+
+      // Keep the real plugin transport open after the server requests its close.
+      let finishClose: (() => void) | undefined;
+      const attach = ServerConnection.prototype.attach;
+      const holdClose = spyOn(ServerConnection.prototype, 'attach').mockImplementation(function (this: ServerConnection, socket) {
+        const close = socket.close.bind(socket);
+        const held = spyOn(socket, 'close').mockImplementation((...args) => {
+          finishClose = () => { held.mockRestore(); close(...args); };
+        });
+        attach.call(this, socket);
+      });
+      const open = await connect(harness.url, token, asPlugin).finally(() => holdClose.mockRestore());
 
       const off = await owner.call('plugins.setEnabled', { id: 'hello', enabled: false });
       expect(off).toMatchObject({ id: 'hello', status: 'installed', enabled: false });
       expect(killed).toEqual(['app hello', 'gateway hello']);
+      expect(finishClose).toBeDefined();
+      expect(plugins.tokens.authenticate(token)).toBeNull();
+
+      let frameHandled = false;
+      const enqueue = FrameQueue.prototype.enqueue;
+      const frames = spyOn(FrameQueue.prototype, 'enqueue').mockImplementation(function (this: FrameQueue, connection, raw) {
+        const handled = enqueue.call(this, connection, raw);
+        if (connection.identity.principal !== 'plugin') return handled;
+        return handled.finally(() => { frameHandled = true; });
+      });
+      const dispatch = spyOn(harness.core.router, 'dispatch');
+      const call = rejection(open.call('threads.list', {}));
+      try {
+        await waitFor(() => frameHandled);
+        expect(dispatch.mock.calls.map(([method]) => method)).not.toContain('threads.list');
+      } finally {
+        dispatch.mockRestore();
+        frames.mockRestore();
+        finishClose?.();
+        expect((await call).reason).toMatchObject({ code: RpcCloseCode.Unauthorized, reason: 'plugin token revoked' });
+      }
       expect(await thrown(open.call('threads.list', {}))).toThrow('the client is closed');
       expect(await thrown(connect(harness.url, token, asPlugin))).toThrow();
       expect(plugins.installedPlugins()).toEqual([]);

@@ -8,7 +8,11 @@ import { decodeManifest, encodeManifest, StoreMigration, trimFolder } from './ch
 
 type FileResult = NonNullable<ThreadRewind['files']>;
 interface Checkpoint { root: string; messages?: string[]; before?: FileSnapshot; after?: FileSnapshot; reason?: string }
-interface Active { threadId: string; turnId: string; checkpoint: Checkpoint }
+interface Active { threadId: string; turnId: string; checkpoint: Checkpoint; beforeReady: boolean; beforeSignal?: AbortSignal; afterSignal?: AbortSignal }
+
+function saving(active: Active): boolean {
+  return (active.beforeReady || !active.beforeSignal?.aborted) && !active.afterSignal?.aborted;
+}
 
 /** About 300 bytes each: the metadata cache stays near 30 MB at worst. */
 const CACHED_FILES = 100_000;
@@ -71,7 +75,7 @@ export class CodeCheckpoints {
    * Blobs live once in the shared store, so threads on the same root reuse
    * one metadata map; a hit only links the blob into the thread's folder.
    */
-  async #cachedSnapshot(threadId: string, root: string): Promise<FileSnapshot> {
+  async #cachedSnapshot(threadId: string, root: string, signal?: AbortSignal): Promise<FileSnapshot> {
     const files = this.#previous.get(root) ?? new Map();
     this.#previous.delete(root);
     this.#previous.set(root, files);
@@ -83,7 +87,7 @@ export class CodeCheckpoints {
       this.#previous.delete(key);
     }
     this.writing += 1;
-    try { return await snapshot(this.#core, threadId, root, this.#objects(threadId), files, this.#shared()); }
+    try { return await snapshot(this.#core, threadId, root, this.#objects(threadId), files, this.#shared(), signal); }
     finally { this.writing -= 1; }
   }
 
@@ -109,36 +113,49 @@ export class CodeCheckpoints {
     }
   }
 
-  begin(thread: ThreadSummary, turnId: string): Promise<void> | undefined {
+  begin(thread: ThreadSummary, turnId: string, signal?: AbortSignal): Promise<void> | undefined {
     // Persistent sessions and a workspace containing the database cannot be
     // snapshotted. Preserve synchronous admission when there is no file work.
     if (thread.agentSessionId || contains(thread.cwd, this.#core.dataDir)) return;
-    return this.#capture(thread, turnId);
+    return this.#capture(thread, turnId, signal);
   }
 
-  async #capture(thread: ThreadSummary, turnId: string): Promise<void> {
+  async #capture(thread: ThreadSummary, turnId: string, signal?: AbortSignal): Promise<void> {
     let root: string;
     try { root = await workspaceRoot(thread.cwd); } catch { return; }
+    if (signal?.aborted) return;
     const checkpoint: Checkpoint = { root, messages: [...this.#core.journal.walkTurnMessages(thread.id, turnId, { blobs: false })].filter(message => message.role === 'user').map(message => message.id) };
     this.assertAvailable(root);
     // Registered first: a turn that starts while this one compares sees it.
     const others = [...this.#active.values()];
-    this.#active.set(turnId, { threadId: thread.id, turnId, checkpoint });
+    const active: Active = { threadId: thread.id, turnId, checkpoint, beforeReady: false, beforeSignal: signal };
+    this.#active.set(turnId, active);
     try {
       for (const other of others) {
-        if (await overlap(this.#core, thread.id, root, other.checkpoint.root)) checkpoint.reason = other.checkpoint.reason = 'turns ran concurrently in the same workspace';
+        if (!saving(other)) continue;
+        const shared = await overlap(this.#core, thread.id, root, other.checkpoint.root);
+        signal?.throwIfAborted();
+        if (shared && saving(other)) checkpoint.reason = other.checkpoint.reason = 'turns ran concurrently in the same workspace';
       }
       this.#pruned ??= this.#prune();
       await this.#pruned;
       await this.#trims.get(thread.id);
-      checkpoint.before = await this.#cachedSnapshot(thread.id, root);
+      checkpoint.before = await this.#cachedSnapshot(thread.id, root, signal);
+      signal?.throwIfAborted();
       await this.#save(thread.id, turnId, checkpoint);
+      signal?.throwIfAborted();
     } catch (error) { checkpoint.reason = messageOf(error); }
+    if (signal?.aborted) {
+      try { await this.#save(thread.id, turnId, checkpoint); }
+      catch (error) { this.#core.log('warn', `file checkpoint ${turnId} unavailable: ${messageOf(error)}`); }
+      finally { this.#active.delete(turnId); }
+    } else active.beforeReady = true;
   }
 
-  end(turnId: string): Promise<void> | undefined {
+  end(turnId: string, signal?: AbortSignal): Promise<void> | undefined {
     const active = this.#active.get(turnId);
-    if (!active) return;
+    if (!active?.beforeReady) return;
+    active.afterSignal = signal;
     return this.#finish(active);
   }
 
@@ -146,10 +163,14 @@ export class CodeCheckpoints {
     const { turnId } = active;
     try {
       const { checkpoint, threadId } = active;
-      if (!checkpoint.reason) checkpoint.after = await this.#cachedSnapshot(threadId, checkpoint.root);
+      const signal = active.afterSignal;
+      if (!checkpoint.reason) checkpoint.after = await this.#cachedSnapshot(threadId, checkpoint.root, signal);
+      signal?.throwIfAborted();
       await this.#save(threadId, turnId, checkpoint);
+      signal?.throwIfAborted();
     } catch (error) {
       active.checkpoint.reason = messageOf(error);
+      if (active.afterSignal?.aborted) delete active.checkpoint.after;
       try { await this.#save(active.threadId, turnId, active.checkpoint); }
       catch (failure) { this.#core.log('warn', `file checkpoint ${turnId} unavailable: ${messageOf(failure)}`); }
     } finally { this.#active.delete(turnId); }
@@ -179,6 +200,7 @@ export class CodeCheckpoints {
       // is not exact, and restoring would write under that agent. The edit
       // still goes through; only the files stay as they are.
       for (const active of [...this.#active.values()]) {
+        if (!saving(active)) continue;
         if (await overlap(this.#core, thread.id, root, active.checkpoint.root)) {
           return cut({ status: 'unavailable', count: 0, reason: 'another turn is working in this folder; files were left as they are', busy: true });
         }
@@ -253,7 +275,7 @@ export class CodeCheckpoints {
     let entries;
     try { entries = await readdir(this.#root(), { withFileTypes: true }); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
-    if (!this.#core.journal.isClosed()) await this.discard(entries.filter(entry => entry.isDirectory() && !this.#core.journal.getThread(entry.name)).map(entry => entry.name));
+    if (!this.#core.journal.isClosed()) await this.discard(entries.filter(entry => entry.isDirectory() && !this.#core.journal.retainsThread(entry.name)).map(entry => entry.name));
   }
 
   /**

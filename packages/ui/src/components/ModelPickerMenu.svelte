@@ -11,6 +11,7 @@
   import { floating } from '../lib/floating';
   import { focusInitial } from '../lib/focus';
   import { Closing } from '../lib/closing.svelte';
+  import type { AnchoredPopover } from '../lib/anchored-popover.svelte';
   import { fill, strings } from '../lib/strings';
   import { FIRST_MODELS, favoriteIds, firstModels, groupModels, modelSource } from '../lib/model-list';
   import { pickerKeydown } from '../lib/model-picker-keys';
@@ -39,7 +40,7 @@
     store: Store;
     choice: Choice | null;
     /** The chip's open state: this body mounts while it is shown. */
-    popover: Closing;
+    popover: AnchoredPopover;
     /** The chip's root, which holds this body: the keys and the anchor read it. */
     root: () => HTMLElement | undefined;
     /** Optional restriction for callers that intentionally keep one account. */
@@ -94,7 +95,7 @@
       if (requested !== undefined && (owner.catalogHas(instance.providerId, instance.accountId, requested)
         || (!native && owner.modelsOf(instance.providerId, instance.accountId).some((entry) => entry.id === requested)))) {
         apply({ ...instance, model: requested });
-        if (close) popover.hide();
+        if (close) popover.close();
         return;
       }
       if (native) await owner.probeModels(instance.providerId, instance.accountId);
@@ -108,7 +109,7 @@
         return;
       }
       apply({ ...instance, model });
-      if (close) popover.hide();
+      if (close) popover.close();
     } finally { if (epoch === pickEpoch) pickPending = false; }
   }
 

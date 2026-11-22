@@ -424,6 +424,27 @@ console.log(JSON.stringify({ accounts: [{ email: [env.BOITE_PLUGIN_ID, env.BOITE
   });
 });
 
+test('a manual resume records the initiating plugin on the conversation message', async () => {
+  const h = await startTestCore();
+  try {
+    const owner = await h.connect();
+    const { threadId } = await echoThread(h, owner);
+    const source = await owner.call('turns.start', { threadId, prompt: 'Interrupted work' });
+    await waitFor(() => h.core.journal.getTurn(source.id)?.status === 'done');
+    h.core.threads.resumes.offer(source, { kind: 'interrupted', detail: 'Interrupted work' });
+    const pluginId = 'resume-plugin';
+    const plugin = await connect(h.url, h.core.plugins.tokens.tokenFor(pluginId, ['threads.write']), { client: { name: 'plugin', version: '0' } });
+    try {
+      const resumed = await plugin.call('turns.resume', { threadId, turnId: source.id });
+      expect((await owner.call('turns.resume', { threadId, turnId: source.id })).id).toBe(resumed.id);
+      const messages = [...h.core.journal.walkTurnMessages(threadId, resumed.id)];
+      expect(messages.find(message => message.role === 'system')?.parts[0]).toMatchObject({
+        type: 'text', displayText: 'Resumed interrupted work', byPlugin: { pluginId, pluginName: pluginId },
+      });
+    } finally { plugin.close(); }
+  } finally { await h.stop(); }
+});
+
 describe('threads.archive through the threads.write permission', () => {
   let harness: TestCore | undefined;
 

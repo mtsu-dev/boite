@@ -182,8 +182,11 @@ by the canonical Git common directory. Linked checkouts share that queue; other
 repositories and running jobs remain independent. Queued preparation rechecks
 cancellation before spawning, and queue time counts against an explicit timeout.
 
-With `worktree: {}`, `threads.create` runs `git worktree add -b` before writing
-the thread, with `-c checkout.workers=0` (one checkout worker per core) unless
+With `worktree: {}`, `threads.create` records the reservation and reserves the
+branch ref at the project's default branch commit before running `git worktree
+add` and writing the thread. Boite checks the remote's default branch with a
+short timeout and falls back to the corresponding local branch when offline.
+Checkout runs with `-c checkout.workers=0` (one checkout worker per core) unless
 the repository's or the user's git config sets `checkout.workers`; the core
 reads that once per repository. The temporary branch is `boite/wt-<id>`, unless explicitly named;
 the directory is `<project>/.boite/worktrees/wt-<id>` by default. A missing Git
@@ -266,8 +269,33 @@ minutes per pass. A worktree qualifies when all of these hold:
 - No live, non-archived thread linked an open pull request whose head is the
   worktree's branch. A delegated worker often runs from another folder and
   makes its worktree with `git worktree add`; its `boite pr link` keeps it.
-- `git status` lists nothing, untracked files included. Ignored files such as
-  dependencies and build output leave with the folder.
+- `git status` lists nothing, including ignored and untracked files. During
+  removal Boite records the move, checks the checkout in a private sibling
+  directory and sets aside its tracked files. The directory must be empty
+  when removed, so a process with an open directory handle can still leave a
+  file that stops cleanup. Boite restores that checkout, or recovers the
+  recorded move on the next open after a crash. Once Git has removed its
+  registration, Boite moves each candidate to a private directory and
+  compares it byte for byte with the content Git checks out from the recorded
+  commit with Git's built-in conversions, including line endings. Paths with
+  a filter attribute keep their captured bytes because external filters can
+  produce different output at the original checkout path. Regular files also
+  stay when the original Git config or attribute sources cannot be established
+  in the comparison, such as with checkout-specific config, conditional
+  includes or a custom attributes file. Boite discards a regular file only
+  while the filesystem excludes writers and the comparison succeeds. A file
+  that stays open for writing can still receive edits after cleanup returns.
+  Files with differences, open writers or unverifiable contents remain in
+  the sibling directory's `saved` folder. If the original name is already
+  occupied, the captured file remains under a `.boite-compacting-*` directory
+  in `saved`, with its original relative path. On macOS, regular files stay there
+  because Boite has no file lease to check for open writers. An empty recovery
+  is removed. Each retained recovery has a `recovery.json` manifest with the
+  original checkout path and commit. Its `saved` folder has no Git pointer.
+  The owner can list the durable inventory with `boite projects recoveries`.
+  Listing publishes saved files from interrupted removals whose Git
+  registrations are already gone, without compacting those files. It also
+  removes inventory entries whose recovery paths are gone.
 - HEAD is on another local branch or remote-tracking ref, or a merged, non-fork
   GitHub pull request has that exact commit as its head. The proof is the one
   [merged pull requests](#merged-pull-requests) use, so a squash
@@ -276,9 +304,9 @@ minutes per pass. A worktree qualifies when all of these hold:
 
 `WorktreeSweep.removeSettled` reads the worktree again and applies the refusals
 of `worktrees.remove` without force, except that a proved merged head passes.
-It runs `git worktree remove` without `--force`, so git itself refuses a change
-that appeared meanwhile. The branch then goes with `git branch -d`, or after a
-merge proof with `git update-ref -d refs/heads/<branch> <sha>`, which deletes it
+After emptying the staged checkout with `rmdir`, it runs `git worktree remove`
+without `--force` to clear Git's registration. With a merge proof, it runs
+`git update-ref -d refs/heads/<branch> <sha>`, which deletes the branch
 only while it still points at the merged commit and no other worktree has it
 checked out. Remote branches are left to the forge's own "delete head branch"
 setting. A worktree kept for a reason is looked at again an hour later, or as
@@ -645,6 +673,7 @@ bun run dev:instance            # build what is stale, start, print the address
 bun run dev:instance status
 bun run dev:instance cli projects
 bun run dev:instance capture shot.png --width 1280 --height 800
+bun run dev:instance restart     # pass active work to the new core
 bun run dev:instance stop
 ```
 
@@ -678,6 +707,10 @@ It also prints how to open, drive and stop the instance:
   `boite`, `--channel dev` included, to that thread's own core, so
   `projects add` would land there. The subcommand passes none of them on and
   names the instance's data directory.
+- `restart` asks the live core holding the instance's data for
+  `POST /shutdown-for-update` with its expected PID. It waits for that process
+  to exit and starts this checkout again on the same data. Pass any `--env`
+  options needed by the next instance.
 - `stop` asks the core to shut down over `POST /shutdown`, waits for the
   process captured at spawn and removes temporary data and the output
   file. The state keeps each
@@ -896,12 +929,12 @@ See [releasing](releasing.md) for bundle configurations and installed layouts.
 The Windows suite defaults to
 `apps/shell/src-tauri/target/release/boite-shell.exe`, or
 `BOITE_E2E_SHELL_EXE` when set (a `build:shell:dev` leaves
-`boite-dev-shell.exe` instead, which the default never names). It rejects a missing or stale shell, UI, core or
-worker before running interactions. With a shared Cargo target, preserve the
-shell executable, installer, adjacent core bundle/runtime, workers and CLI
-shims from the same build before another worktree replaces them. Test that copy
-through `BOITE_E2E_SHELL_EXE`. Filenames and timestamps alone do not identify the
-branch; inspect the running UI over CDP for installation claims.
+`boite-dev-shell.exe` instead, which the default never names). It checks the
+shell's embedded build marker against this checkout's shell and UI sources,
+target and channel. The Tauri build driver captures the executable beside this
+checkout's staged core and CLI, even when Cargo uses a shared target. An
+explicit `BOITE_E2E_SHELL_EXE` still needs a matching build marker. The suite
+also checks the core and workers before running interactions.
 
 A hidden shell whose page never reaches the debugging port fails with "the
 browser never exposed a page", followed by every distinct answer the port gave

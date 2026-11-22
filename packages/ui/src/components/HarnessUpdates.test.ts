@@ -88,6 +88,13 @@ test('the Machines page lists no agent and starts no agent check of its own', as
   expect(document.querySelector('[data-testid="harness-updates-card"]')).toBeNull();
   expect(document.querySelector('[data-testid="machine-agent-update"]')).toBeNull();
   expect(load).not.toHaveBeenCalled();
+  for (const [failedPhase, label] of [['check', 'Version check failed'], ['install', 'Installation failed']] as const) {
+    local.harnessUpdates = local.harnessUpdates.map(update => update.providerId === 'claude'
+      ? { ...update, state: 'failed', failedPhase, message: 'Could not reach the registry' } : update);
+    await settle();
+    expect(document.querySelector('[data-testid="machine-updates-state"]')?.textContent).toBe(label);
+    expect(document.querySelector('[data-testid="machine-update-failure"]')?.textContent).toContain('Claude Code · Could not reach the registry');
+  }
 });
 
 test('Providers refreshes an empty reading once, disables actions after disconnection, and shows a paired device nothing', async () => {

@@ -19,6 +19,13 @@ RUN if [ -n "$BOITE_VERSION" ]; then bun -e 'const v=process.env.BOITE_VERSION; 
 # an analytics relay (docs/internals/analytics.md).
 ARG BOITE_RELEASE_TELEMETRY=
 RUN bun run build:ui && bun run build:core
+# The Linux group launcher (packages/core/native/launch.c), static, for the
+# image's own architecture. The core looks for it beside the executable that
+# runs it first (src/platform/linux-launcher.ts), so the runtime stage puts it
+# beside bun. Only this stage gets a C compiler.
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && bun packages/core/bin/build-launcher.ts --outfile=/app/boite-launch
 
 FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS agents
 COPY docker/agents/package.json docker/agents/package-lock.json /opt/agents/
@@ -40,6 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && mkdir -p /data /workspace /home/node/.local/bin \
     && chown -R node:node /data /workspace /home/node
 COPY --from=build /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=build --chmod=755 /app/boite-launch /usr/local/bin/boite-launch
 COPY --from=agents /opt/agents /opt/agents
 COPY --from=build /app/packages/core/dist /app/packages/core/dist
 COPY --from=build /app/packages/ui/dist /app/packages/ui/dist

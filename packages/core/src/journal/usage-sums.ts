@@ -232,14 +232,14 @@ export function usageOfTree(db: Database, rootId: string, since: number): UsageG
  * is the turn, `th` its thread, and `scope.join` adds tables. A turn saved
  * before execution snapshots counts under its thread's provider.
  */
-export function usageGroups(db: Database, scope: { key?: string; join?: string; where: string }, ...params: SQLQueryBindings[]): UsageGroup[] {
+export function usageGroups(db: Database, scope: { key?: string; join?: string; where: string; includeUnreported?: boolean }, ...params: SQLQueryBindings[]): UsageGroup[] {
   return db
     .query(
       `WITH x AS (
          SELECT ${scope.key ?? 'NULL'} AS key, t.usage, ${LEGACY},
            COALESCE(json_extract(t.execution, '$.providerId'), th.provider_id, '') AS provider_id
          FROM turns t LEFT JOIN threads th ON th.id = t.thread_id ${scope.join ?? ''}
-         WHERE t.usage IS NOT NULL AND (${scope.where})
+         WHERE ${scope.includeUnreported ? '' : 't.usage IS NOT NULL AND '}(${scope.where})
        )
        SELECT key, provider_id, legacy, ${USAGE_SUMS} FROM x GROUP BY key, provider_id, legacy`,
     )

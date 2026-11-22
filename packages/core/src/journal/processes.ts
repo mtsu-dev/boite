@@ -97,6 +97,11 @@ export class ProcessRows {
     else this.exits.set(record.threadId, exits);
   }
 
+  /** Every open row, through the `processes_live` index: no full scan of a long trace. */
+  closeLive(at: number): number {
+    return this.db.query('UPDATE processes SET exited_at = MAX(?, started_at) WHERE exited_at IS NULL').run(at).changes;
+  }
+
   /**
    * Keeps a thread's newest `keep` rows, every live row and the rows an agent
    * CLI card reads (the CLI and its parent), and the command lines of those.

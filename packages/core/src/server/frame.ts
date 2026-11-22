@@ -75,7 +75,10 @@ export async function handleFrame(core: Core, connection: ServerConnection, raw:
 
   const startedAt = performance.now();
   try {
-    const result = await core.router.dispatch(method, frame.params, { connection, ...(signal ? { signal } : {}) });
+    // A synchronous read must leave before the next frame in the pump can
+    // change the state and deliver its event ahead of this snapshot.
+    const reply = core.router.dispatch(method, frame.params, { connection, ...(signal ? { signal } : {}) });
+    const result = reply instanceof Promise ? await reply : reply;
     logRpcTiming(core, connection, method, String(id), performance.now() - startedAt, null);
     // A client that counts what it receives gets a long answer in slices it can count.
     connection.sendResponse({ jsonrpc: '2.0', id, result }, frame.progress === true);

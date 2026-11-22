@@ -84,7 +84,9 @@ test('a paired device adds a project through the same form, and its core checks 
   await waitFor(() => document.querySelector('[data-testid=add-project-form]') === null);
 });
 
-test('the phone list header holds the search and the new thread, its display options add a project, and nothing there manages one', async ({ app: _app }) => {
+test('the phone list header holds the search and the new thread, its display options add a project, and nothing there manages one', async ({ viewport }) => {
+  viewport.resize(true);
+  await mountOnFake();
   store.startDraft('p-boite');
   await showMobileThreads();
   expect(document.querySelector('[data-testid=mobile-header] [data-testid=mobile-new]')).not.toBeNull();

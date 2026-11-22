@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { echoThread, startTestCore, type TestCore } from './harness';
+import { echoThread, holdAccountTurns, startTestCore, startTurn, type TestCore } from './harness';
 
 let harness: TestCore;
 beforeEach(async () => { harness = await startTestCore(); });
@@ -70,4 +70,32 @@ test('opening and quiet reconnect snapshots retain durable native background his
     expect(restored.background).toEqual([]);
     expect(restored.backgroundHistory).toEqual(quiet.backgroundHistory);
   } finally { await restarted.close(); }
+});
+
+test('a reconnect refreshes an older question answered outside the retained tail', async () => {
+  const writer = await harness.connect();
+  const reader = await harness.connect();
+  const { threadId, accountId } = await echoThread(harness, writer);
+  await writer.call('threads.subscribe', { threadId });
+  await (await startTurn(writer, threadId, 'First turn')).finished;
+  const { questionId } = await writer.call('questions.ask', { threadId, text: 'Old card', options: ['Yes'] });
+  await (await startTurn(writer, threadId, 'Second turn')).finished;
+  const held = await reader.call('threads.get', { threadId, sync: true, open: {} });
+  const proof = held.messagesSync!;
+  const answer = (thread: typeof held) => thread.messages.flatMap(message => message.parts).flatMap(part =>
+    part.type === 'question' && part.questionId === questionId ? [part.answer?.text ?? null] : []);
+  expect(answer(held)).toEqual([null]);
+  expect(held.messages.findIndex(message => message.id === proof.from)).toBeGreaterThan(0);
+  reader.close();
+  const resume = { threadId, after: proof.from, sync: proof, open: {} };
+  const reconnected = await harness.connect();
+  const quiet = await reconnected.call('threads.get', resume);
+  expect(quiet.messagesUnchanged).toBe(true);
+  const release = holdAccountTurns(harness, accountId);
+  try {
+    await writer.call('questions.answer', { threadId, questionId, optionIds: [], text: 'Answered elsewhere' });
+    const refreshed = await reconnected.call('threads.get', resume);
+    expect(refreshed.messagesFrom).toBeUndefined();
+    expect(answer(refreshed)).toEqual(['Answered elsewhere']);
+  } finally { release(); }
 });

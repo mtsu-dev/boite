@@ -5,7 +5,7 @@ import {PROTECTED_DESCRIPTION, PROTECTED_TOOL, protectedTool, PROTECTED_COMMIT, 
 
 /** Native tools are removed, not entrusted to a bypassable approval callback. */
 export async function protectedClaudeOptions(head: () => {ctx: TurnContext; stopped: Promise<void>} | null, toolsAllowed = true): Promise<Partial<Options>> {
-  const {createSdkMcpServer, tool} = await import('@anthropic-ai/claude-agent-sdk');
+  const {createSdkMcpServer, tool} = await import('@anthropic-ai/claude-agent-sdk/core');
   const server = createSdkMcpServer({name: 'boite_protected', version: '1.0.0', tools: [tool(PROTECTED_TOOL, PROTECTED_DESCRIPTION, {
     command: z.string().min(1), args: z.array(z.string()), cwd: z.string().optional(),
   }, async input => {

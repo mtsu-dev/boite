@@ -108,6 +108,8 @@ its original name ([Android server](android-server.md#publishing-the-app)).
   entries that land them beside the installed sidecar. The end to end suite wants
   the same files beside `apps/shell/src-tauri/target/release/boite-shell`, with
   `.exe` on Windows, so the script copies there whenever that executable exists.
+  On Linux it also stages `boite-launch`, which `compile.ts` builds beside the
+  core, as `binaries/boite-launch-<target triple>` and beside the shell, mode 755.
   The Windows shell refuses a sidecar missing any worker and names the missing file.
 - `build:shell` runs the Tauri build with the bundle overlay and produces the
   NSIS installer on Windows, Debian and AppImage packages on Linux, or an
@@ -156,8 +158,12 @@ The AppImage bundler downloads AppRun and linuxdeploy from GitHub releases on
 every run. CI retries the bundle up to three times when that download answers a
 5xx (a 500 failed the 2026-10-14 nightly); any other bundling error fails at once.
 
-Portable CI runs `scripts/ci/desktop-smoke.ts <installed-shell>` against the
-Debian package, extracted AppImage and macOS application bundle. Signing, notarization and testing
+Portable CI runs `scripts/ci/desktop-smoke.ts` against the Debian package,
+mounted AppImage and macOS application bundle. The AppImage smoke closes the
+shell, checks the PWA, CLI and journal search, then reopens it and checks that
+the shell adopted the original core. The AppImage deploys the core, its workers,
+CLI and PWA to a versioned directory under its data directory so those files
+survive the end of the mount. Signing, notarization and testing
 on older operating systems remain release prerequisites; a local unsigned
 bundle is not a notarized download. Native notifications and Windows process
 guards are not implemented on Linux or macOS.
@@ -182,7 +188,10 @@ bun run --cwd apps/shell tauri build --no-bundle
 `apps/shell/src-tauri/tauri.conf.json` is the base config without a sidecar.
 `tauri.bundle.conf.json` adds `bundle.externalBin` and the resource map for the
 core, Windows workers, CLI shims and built UI. The base can build before core
-compilation; distributable builds use the overlay.
+compilation; distributable builds use the overlay. On Linux
+`apps/shell/scripts/tauri.ts` adds `tauri.bundle.linux.conf.json` after it, whose
+`externalBin` also lists `binaries/boite-launch`: the core looks for its launcher
+only beside its own executable, which a resource never reaches on Linux.
 
 ```json
 {
@@ -294,6 +303,11 @@ manual downloads. `SHA256SUMS.txt` covers desktop/server payloads; stable
 publication also includes tested-image provenance metadata. Stable releases
 remain drafts until reviewed; nightlies publish automatically. The desktop
 updater excludes drafts and unsigned older releases.
+After publication, `scripts/ci/desktop-feed.ts` advances the appropriate
+`desktop-feed-stable` or `desktop-feed-nightly` branch. Each branch serves a
+small `latest.json` index with the release tag. The workflow requires a
+published release with a manifest and leaves the index at the newer version
+when an earlier release job finishes later.
 
 Docker publication reuses the tested image digests. Version tags identify the
 release; the shared `sha-<full commit>` alias can change between stable and
