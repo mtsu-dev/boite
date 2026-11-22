@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { Batch, STRIDE, TEX, TINT } from './batch';
 import { themeTints, wrap } from './math';
-import { RELIEF_FADE, SCENES, TUNNEL_AIM, type Frame, type SceneId } from './scenes';
+import { RELIEF_CAP, RELIEF_FADE, SCENES, TUNNEL_AIM, type Frame, type SceneId } from './scenes';
 
 const IDS: SceneId[] = ['tunnel', 'glyphs', 'relief', 'crates'];
 const WIDTH = 1400, HEIGHT = 900;
@@ -78,9 +78,9 @@ test('the tunnel does not step sideways when a ring passes the eye', () => {
 });
 
 test('the contours rise from under the middle of the screen', () => {
-  for (const time of [0, 3, 61.7, 900, 3600]) {
+  for (const time of [0, 3, 61.7, 129, 900, 3600]) {
     const { data } = drawn('relief', time);
-    // The ground as the shader draws it: a wide rise, and round hills that fade out toward its top.
+    // The ground as the shader draws it: a wide rise, and round hills that fade out toward its top and add up to a bounded height.
     const ground = (x: number, y: number) => {
       const rise = (hill: number) => {
         const across = (x - data[hill * 4]!) / data[hill * 4 + 2]!, down = (y - data[hill * 4 + 1]!) / data[hill * 4 + 2]!;
@@ -88,12 +88,16 @@ test('the contours rise from under the middle of the screen', () => {
       };
       let around = 0;
       for (let hill = 1; hill < 7; hill++) around += data[hill * 4 + 3]! * Math.exp(-rise(hill));
-      return data[3]! * Math.exp(-rise(0)) + around * (1 - Math.exp(-rise(0) * RELIEF_FADE));
+      return data[3]! * Math.exp(-rise(0)) + RELIEF_CAP * Math.tanh(around / RELIEF_CAP) * (1 - Math.exp(-rise(0) * RELIEF_FADE));
     };
     // The summit the lines ring is the middle itself, however the hills around crowd it.
     for (let turn = 0; turn < 8; turn++) {
       expect(ground(Math.cos(turn * Math.PI / 4) * 3, Math.sin(turn * Math.PI / 4) * 3), `at ${time}, turn ${turn}`).toBeLessThan(ground(0, 0));
     }
+    // And no hill around it stands taller anywhere on the screen.
+    let tallest = -Infinity;
+    for (let x = -WIDTH / 2; x <= WIDTH / 2; x += 10) for (let y = -HEIGHT / 2; y <= HEIGHT / 2; y += 10) if (x || y) tallest = Math.max(tallest, ground(x, y));
+    expect(tallest, `at ${time}`).toBeLessThan(ground(0, 0));
     // The middle rise is the tallest and the widest, so the lines ring it.
     for (let hill = 1; hill < 7; hill++) {
       expect(Math.abs(data[hill * 4 + 3]!)).toBeLessThan(data[3]!);

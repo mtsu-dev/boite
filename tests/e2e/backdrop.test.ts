@@ -126,6 +126,22 @@ test('the new thread background rides its experiment, follows the pick in Appear
       await page.waitFor(`${CANVAS}?.hasAttribute('data-ready') && ${CANVAS}.checkVisibility({ visibilityProperty: true })`);
       await Bun.sleep(500);
       expect(await frames()).toBeGreaterThan(turned);
+      // Under a keyboard the phone's screen is short and its words scroll: the scene's heart follows them.
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 420, deviceScaleFactor: 2, mobile: true });
+      await Bun.sleep(400);
+      expect(await page.evaluate(`import('/src/lib/backdrop/engine.ts').then(async ({ stats }) => {
+        const words = [...document.querySelectorAll('[data-backdrop-calm]')].find((piece) => piece.offsetHeight > 0);
+        let scroller = words.parentElement;
+        while (scroller && scroller.scrollHeight <= scroller.clientHeight) scroller = scroller.parentElement;
+        if (!scroller) return 'nothing scrolls';
+        const before = words.getBoundingClientRect().top;
+        scroller.scrollTop = 60;
+        const drawn = stats.frames;
+        while (stats.frames < drawn + 2) await new Promise((next) => setTimeout(next, 30));
+        const canvas = ${CANVAS}.getBoundingClientRect(), text = words.getBoundingClientRect(), composer = document.querySelector('${id('composer')}').getBoundingClientRect();
+        const y = (Math.min(text.top, composer.top) + Math.max(text.bottom, composer.bottom)) / 2 - canvas.top;
+        return before - text.top > 20 && Math.abs(stats.heart[1] - y) < 1 || [before, text.top, y, stats.heart[1]].join(' ');
+      })`)).toBe(true);
       await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
     }

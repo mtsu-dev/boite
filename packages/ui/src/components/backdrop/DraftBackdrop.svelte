@@ -49,7 +49,8 @@
   function play(node: HTMLCanvasElement, id: SceneId) {
     let running: RunningBackdrop | null = null;
     let gone = false;
-    // The words move when they wrap, when the composer under them grows and while the screen's entrance plays.
+    // The words move when they wrap, when the composer under them grows, while the screen's entrance plays
+    // and when a short screen scrolls them (a phone's, under its keyboard).
     const settle = () => running?.settle();
     const moved = new ResizeObserver(settle);
     let column: HTMLElement | null = null;
@@ -60,12 +61,15 @@
       for (const piece of area.querySelectorAll<HTMLElement>('[data-backdrop-calm], [data-testid=composer]')) moved.observe(piece);
       column = area;
       column.addEventListener('animationend', settle);
+      // A scroll does not bubble: it is caught on its way down.
+      column.addEventListener('scroll', settle, { capture: true, passive: true });
     }, () => { /* the screen is whole without its scene */ });
     return {
       destroy() {
         gone = true;
         moved.disconnect();
         column?.removeEventListener('animationend', settle);
+        column?.removeEventListener('scroll', settle, { capture: true });
         if (live === running) live = null;
         running?.stop();
       }

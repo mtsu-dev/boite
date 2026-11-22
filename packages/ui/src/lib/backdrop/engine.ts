@@ -14,7 +14,7 @@
 import { markFeature } from '@boite/contracts';
 import { Batch, STRIDE, TEX } from './batch';
 import { themeTints, type Rgb } from './math';
-import { GLYPH_SHADES, GLYPHS, RELIEF_FADE, SCENES, type Frame, type SceneId } from './scenes';
+import { GLYPH_SHADES, GLYPHS, RELIEF_CAP, RELIEF_FADE, SCENES, type Frame, type SceneId } from './scenes';
 
 const NEAR = 0.02;
 const FAR = 60;
@@ -99,7 +99,9 @@ void main() {
       vec2 off = (here - uData[i].xy) / uData[i].z;
       around += uData[i].w * exp(-dot(off, off));
     }
-    // The hills around fade out toward the top of the wide rise: they shape its sides and leave its summit where it is put.
+    // The hills around fade out toward the top of the wide rise and never add up past a height it stands above:
+    // they shape its sides and leave its summit where it is put, the highest ground on the screen.
+    around = ${RELIEF_CAP.toFixed(2)} * tanh(around / ${RELIEF_CAP.toFixed(2)});
     float height = uData[0].w * exp(-near) + around * (1.0 - exp(-near * ${RELIEF_FADE.toFixed(1)}));
     float level = height * 9.0 + uData[7].x;
     float slope = fwidth(level);

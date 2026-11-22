@@ -200,9 +200,13 @@ function crates({ batch, time, leanX, leanY, focal, width, height }: Frame): voi
 
 const HILLS = 7;
 
-/** How fast the hills around come back away from the summit, as the shader counts it, and how much they may weigh on it. */
+/**
+ * How the shader keeps the summit under the composer. The hills around come back away from it at this rate,
+ * and their sum is bent to stay under this height: less than a third of the wide rise's, the most the rate
+ * leaves it to stand above all of them.
+ */
 export const RELIEF_FADE = 3;
-const RELIEF_CROWD = 0.4;
+export const RELIEF_CAP = 0.45;
 
 function relief({ batch, time, width, height, leanX, leanY, data }: Frame): void {
   const size = Math.sqrt(width * height);
@@ -216,15 +220,9 @@ function relief({ batch, time, width, height, leanX, leanY, data }: Frame): void
     data[i * 4 + 2] = size * (0.17 + 0.15 * hash(i, 4, 11));
     data[i * 4 + 3] = (0.3 + 0.3 * hash(i, 5, 11) + 0.1 * Math.sin(time * 0.09 + i * 2)) * (i % 3 === 0 ? -1 : 1);
   }
-  // The shader fades the hills around out toward the summit, which keeps it under the composer as long as they
-  // weigh less there than the wide rise bends: a crowd of them is lowered together.
-  let crowd = 0;
-  for (let i = 1; i < HILLS; i++) crowd += data[i * 4 + 3]! * Math.exp(-(data[i * 4]! ** 2 + data[i * 4 + 1]! ** 2) / data[i * 4 + 2]! ** 2);
-  const lower = crowd > RELIEF_CROWD ? RELIEF_CROWD / crowd : 1;
   for (let i = 0; i < HILLS; i++) {
     data[i * 4] = data[i * 4]! - leanX * 14;
     data[i * 4 + 1] = data[i * 4 + 1]! + leanY * 10;
-    if (i > 0) data[i * 4 + 3] = data[i * 4 + 3]! * lower;
   }
   // The lines creep outward from the summits; four of them make a whole turn of the accent.
   data[28] = wrap(-time * 0.045, 4);
