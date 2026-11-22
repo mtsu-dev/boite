@@ -44,6 +44,8 @@ void main() {
 
 const FRAGMENT = `#version 300 es
 precision highp float;
+// The character grid counts device pixels from far off the screen: past what a medium integer has to hold.
+precision highp int;
 in vec2 vAt;
 in float vShade;
 flat in vec3 vMaterial;
@@ -106,7 +108,8 @@ void main() {
     vec2 here = vec2(cell * uCell) / density;
     float unit = 0.5 * min(uView.x, uView.y) / density;
     float away = length(here) / unit;
-    float angle = atan(here.y, here.x);
+    // The column through the middle has no slope to take an angle from.
+    float angle = here.x == 0.0 ? sign(here.y) * 1.5707963 : atan(here.y, here.x);
     // The depth of a tunnel seen down its axis grows as the logarithm of the distance to its middle.
     float deep = log(max(away, 0.03));
     float spin = angle + deep * 0.5 + uData[0].w;
@@ -130,9 +133,11 @@ void main() {
     float steep = abs(sin(angle)), flat_ = abs(cos(angle));
     vec2 size = vec2(uCell) / density;
     bool on = steep * size.y > flat_ * size.x ? aside < 0.5 * size.x * steep : aside < 0.5 * size.y * flat_;
-    float pick = hash(vec2(spoke + 64.0, 7.0));
+    // The spoke pointing left is the last and the first at once, by the sign its angle came with: one name for both.
+    float strand = mod(spoke, SPOKES);
+    float pick = hash(vec2(strand + 64.0, 7.0));
     if (pick > 0.55 && on) {
-      float along = fract(deep * 0.55 + uData[1].x * (0.05 + 0.08 * hash(vec2(spoke + 64.0, 3.0))) + pick * 9.0);
+      float along = fract(deep * 0.55 + uData[1].x * (0.05 + 0.08 * hash(vec2(strand + 64.0, 3.0))) + pick * 9.0);
       float trail = max(0.0, 1.0 - along / 0.22) * smoothstep(0.2, 0.5, away);
       if (trail > 0.02) {
         glyph = ${GLYPH_SHADES} + int(hash(vec2(cell) + uData[1].y) * ${GLYPHS.length - GLYPH_SHADES}.0);
@@ -345,11 +350,14 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
     void document.fonts?.load(`500 ${GLYPH_SIZE}px ${face}`, GLYPHS).then(() => { if (family === awaited) letter(awaited); }, () => {});
   }
 
+  /** Device pixels drawn for a CSS pixel: the screen's own count, up to two. */
+  const sharp = () => Math.min(2, window.devicePixelRatio || 1);
+
   function resize(): void {
     width = canvas.clientWidth;
     height = canvas.clientHeight;
     if (!width || !height) return;
-    density = Math.min(2, window.devicePixelRatio || 1);
+    density = sharp();
     canvas.width = Math.max(8, Math.round(width * density));
     canvas.height = Math.max(8, Math.round(height * density));
     frame.width = width;
@@ -421,6 +429,7 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
     const ease = 1 - Math.exp(-elapsed * 1.9);
     frame.leanX += (wantX - frame.leanX) * ease;
     frame.leanY += (wantY - frame.leanY) * ease;
+    if (density !== sharp()) resize();
     draw();
   }
 
@@ -456,8 +465,19 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
   resize();
   restyle();
 
-  const sized = new ResizeObserver(() => { resize(); if (still.matches || raf) draw(); });
+  const fit = () => { resize(); if (still.matches || raf) draw(); };
+  const sized = new ResizeObserver(fit);
   sized.observe(canvas);
+  // A window dragged to a screen of another density keeps its size, so the observer hears nothing. A running scene
+  // sees it at its next frame; a still one waits on this query, which stops matching and is asked again.
+  let dense: MediaQueryList | undefined;
+  const rescale = () => {
+    dense?.removeEventListener('change', rescale);
+    dense = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    dense.addEventListener('change', rescale);
+    if (density !== sharp()) fit();
+  };
+  rescale();
   // The theme, the accent and the faces are all stamped on the root element.
   const themed = new MutationObserver(repaint);
   themed.observe(document.documentElement, { attributes: true });
@@ -483,6 +503,7 @@ export function startBackdrop(canvas: HTMLCanvasElement, id: SceneId, options: B
       stopped = true;
       cancelAnimationFrame(raf);
       sized.disconnect();
+      dense?.removeEventListener('change', rescale);
       themed.disconnect();
       dark.removeEventListener('change', repaint);
       still.removeEventListener('change', pace);

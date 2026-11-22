@@ -346,7 +346,9 @@ pixels wide (`Batch.stroke`, `Batch.dot` in `lib/backdrop/batch.ts`); the
 contours and the characters are one quad over the whole screen, which the
 fragment shader fills from a handful of numbers the scene sets each frame
 (`Frame.data`), the characters read from an atlas drawn at device pixel size
-and never filtered. The words of the
+and never filtered. A window that moves to a screen of another density
+keeps its size: a running scene compares the density at each frame, a still
+one listens to a `resolution` media query. The words of the
 empty screen (the pieces marked `data-backdrop-calm`) are measured, and the
 shader dims the scene in an oval around them. A device that asks for reduced
 motion gets one still frame. A phone keeps the draft mounted under its list

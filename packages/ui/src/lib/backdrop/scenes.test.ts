@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { Batch, STRIDE, TEX, TINT } from './batch';
 import { themeTints, wrap } from './math';
-import { SCENES, type Frame, type SceneId } from './scenes';
+import { SCENES, TUNNEL_AIM, type Frame, type SceneId } from './scenes';
 
 const IDS: SceneId[] = ['tunnel', 'glyphs', 'relief', 'crates'];
 const WIDTH = 1400, HEIGHT = 900;
@@ -46,17 +46,35 @@ test('a scene is a function of its time: the still frame of reduced motion is th
 test('the tunnel ends behind the middle of the screen, however it bends on the way', () => {
   for (const time of [0, 3, 21.9, 61.7, 900]) {
     const { batch, focal } = drawn('tunnel', time);
-    let farthest = 0;
-    for (let vertex = 0; vertex < batch.count; vertex++) farthest = Math.max(farthest, batch.data[vertex * STRIDE + 2]!);
+    // The rings on each side of the depth the eye looks at.
     let x = 0, y = 0, count = 0;
     for (let vertex = 0; vertex < batch.count; vertex++) {
       const z = batch.data[vertex * STRIDE + 2]!;
-      if (z < farthest - 0.01) continue;
+      if (Math.abs(z - TUNNEL_AIM) > 0.5) continue;
       x += (batch.data[vertex * STRIDE]! / z) * focal; y += (batch.data[vertex * STRIDE + 1]! / z) * focal; count++;
     }
     expect(count).toBeGreaterThan(30);
     expect(Math.hypot(x / count, y / count), `at ${time}`).toBeLessThan(4);
   }
+});
+
+// The eye aimed at a whole ring: each time the nearest ring passed, the aim took the next one and the picture stepped sideways.
+test('the tunnel does not step sideways when a ring passes the eye', () => {
+  // The run is 0.9 rings a second: the 45th ring passes at 50 seconds.
+  const middle = (time: number) => {
+    const { batch, focal } = drawn('tunnel', time);
+    let x = 0, y = 0, count = 0;
+    for (let vertex = 0; vertex < batch.count; vertex++) {
+      const at = vertex * STRIDE, z = batch.data[at + 2]!;
+      if (batch.data[at + 6] !== TEX.line || batch.data[at + 7] !== TINT.text || z < 5 || z > 10) continue;
+      x += (batch.data[at]! / z) * focal; y += (batch.data[at + 1]! / z) * focal; count++;
+    }
+    return { x: x / count, y: y / count, count };
+  };
+  const before = middle(50 - 1e-6), after = middle(50 + 1e-6);
+  expect(before.count).toBeGreaterThan(300);
+  expect(after.count).toBe(before.count);
+  expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeLessThan(0.05);
 });
 
 test('the contours rise from under the middle of the screen', () => {

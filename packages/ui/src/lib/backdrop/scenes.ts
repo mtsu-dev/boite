@@ -52,6 +52,8 @@ const TUNNEL_SIDES = 36;
 const TUNNEL_GAP = 0.5;
 const TUNNEL_RADIUS = 1.3;
 const TUNNEL_REACH = 16;
+/** How far down the tube the eye looks: the last rings bright enough to be seen. */
+export const TUNNEL_AIM = 10;
 const TUNNEL_STREAM = 46;
 const ringA = new Float32Array((TUNNEL_SIDES + 1) * 2);
 const ringB = new Float32Array((TUNNEL_SIDES + 1) * 2);
@@ -65,9 +67,10 @@ function tunnel({ batch, time, leanX, leanY }: Frame): void {
   const depth = (k: number) => 0.3 + (k - part) * TUNNEL_GAP;
   const fog = (z: number) => Math.pow(clamp(1 - z / TUNNEL_REACH), 1.7) * clamp((z - 0.3) / 0.7);
   const hereX = bendX(run), hereY = bendY(run);
-  // The eye looks at the far end, so that end stays put and the bends show on the way.
-  const endZ = depth(TUNNEL_RINGS);
-  const aimX = (bendX(TUNNEL_RINGS + base) - hereX) / endZ, aimY = (bendY(TUNNEL_RINGS + base) - hereY) / endZ;
+  // The eye looks at the last rings to be seen, so that end stays put and the bends show on the way. It aims at a depth, not at
+  // a ring: a ring would be another one each time the nearest passes, and the whole picture would step sideways.
+  const end = run + (TUNNEL_AIM - 0.3) / TUNNEL_GAP;
+  const aimX = (bendX(end) - hereX) / TUNNEL_AIM, aimY = (bendY(end) - hereY) / TUNNEL_AIM;
   const shiftX = -leanX * 0.1, shiftY = leanY * 0.06;
 
   const ring = (into: Float32Array, k: number) => {

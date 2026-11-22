@@ -118,6 +118,14 @@ test('the new thread background rides its experiment, follows the pick in Appear
       await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
     }
 
+    if (drawn) {
+      // A window dragged to a screen of another density keeps its size: the canvas follows the density alone.
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 2, mobile: false });
+      await page.waitFor(`${CANVAS}.width === ${CANVAS}.clientWidth * 2`);
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await page.waitFor(`${CANVAS}.width === ${CANVAS}.clientWidth`);
+    }
+
     await settings(page, 'appearance', 'backdrop-off');
     expect(await page.evaluate(`${CANVAS} === null`)).toBe(true);
     await settings(page, 'appearance', 'backdrop-tunnel');
