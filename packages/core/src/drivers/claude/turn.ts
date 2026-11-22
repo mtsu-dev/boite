@@ -242,7 +242,8 @@ export class ClaudeTurn extends TurnParts {
   waitsForPromptResult(result: Extract<SDKMessage, { type: 'result' }>): boolean {
     if (this.isStopped || this.failed) return false;
     const answered = resultPromptIds(result);
-    if (answered.length === 0) return false;
+    // A result naming none of this turn's prompts ends it like an unnamed one: nothing says another is coming.
+    if (!answered.some(id => this.#pendingPromptIds.has(id))) return false;
     if (result.user_message_uuids == null || answered.length >= RESULT_PROMPT_IDS_LIMIT) {
       // A legacy or capped result can cover earlier prompts it does not name.
       // The host consumes prompts in send order, including a merged batch.

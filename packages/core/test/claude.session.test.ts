@@ -875,7 +875,7 @@ test('Send now during cold Claude startup stops the old turn and sends one new p
   } finally { ready.resolve(); }
 });
 
-test.each(['separate', 'merged', 'legacy-merged', 'capped', 'unnamed'] as const)('Claude keeps steered input in the same turn (%s results)', async results => {
+test.each(['separate', 'merged', 'legacy-merged', 'capped', 'unnamed', 'foreign'] as const)('Claude keeps steered input in the same turn (%s results)', async results => {
   const { client, threadId } = await openClaudeThread();
   scripted(fake => fake.emit(init('sess-steer')));
   const turn = await client.call('turns.start', { threadId, prompt: 'Keep working' });
@@ -904,7 +904,9 @@ test.each(['separate', 'merged', 'legacy-merged', 'capped', 'unnamed'] as const)
   queries[0]!.emit(assistant('sess-steer', [{ type: 'text', text: 'Follow-up applied' }]));
   queries[0]!.emit(sdk({ ...success('sess-steer'), ...(results === 'merged' ? { user_message_uuids: [initial, followUp] }
     : results === 'capped' ? { user_message_uuid: calls[0]!.ids.at(-1), user_message_uuids: calls[0]!.ids.slice(-64) }
-    : results === 'separate' || results === 'legacy-merged' ? { user_message_uuid: followUp } : {}) }));
+    : results === 'separate' || results === 'legacy-merged' ? { user_message_uuid: followUp }
+    // A replayed or rewritten stream names ids this turn never sent: its result still ends the turn.
+    : results === 'foreign' ? { user_message_uuid: 'not-ours', user_message_uuids: ['not-ours'] } : {}) }));
   const result = await finished;
   expect(result.status).toBe('done');
   if (results === 'separate') expect(result.usage?.outputTokens).toBe(6);
