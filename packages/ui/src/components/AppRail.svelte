@@ -240,6 +240,8 @@
     else if (action === 'edit') openTeamChat(row, true);
     else void module.pickTeamAction(row.machine.store, row.team, action, store);
   }
+  /** Add, expanded while the menu it opened is up: what keeps it shown once the pointer leaves the rail. */
+  let addButton = $state<HTMLButtonElement>();
   /** What the Bots page's head offers, from anywhere: the page owns the forms (agents-view.svelte.ts). */
   function addMenu(anchor: HTMLElement) {
     const rect = anchor.getBoundingClientRect();
@@ -427,7 +429,8 @@
       {/each}
     </div>
     <div class="slot">
-      <button type="button" class="rail-button add" aria-label={strings.app.rail.add} aria-haspopup="menu"
+      <button type="button" class="rail-button add" class:tucked={entries.length > 0} aria-label={strings.app.rail.add} aria-haspopup="menu"
+        aria-expanded={contextMenu.current !== null && contextMenu.anchor === addButton} bind:this={addButton}
         data-testid="rail-add" onclick={(event) => addMenu(event.currentTarget)}><Plus size={19} strokeWidth={1.75} /></button>
       {@render railName(strings.app.rail.add)}
     </div>
@@ -501,6 +504,14 @@
   .rail-button.on, .rail-button.on:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   .rail-button.add { background: transparent; box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-full); }
   .rail-button.add:hover:not(:disabled) { background: var(--color-hover); }
+  /* Under a mouse, Add waits out of sight until the pointer comes to the rail and fades in and out on the edge
+     scrollbars' thumbs' duration and curve; its open menu and the keyboard in the rail keep it shown. Hidden, it keeps
+     its place and its name for a screen reader. A touch screen, high contrast and a rail with no mochi yet always
+     show it, under the edge scrollbars' own gate (lib/edge-scrollbars.ts). */
+  @media (hover: hover) and (pointer: fine) and (forced-colors: none) {
+    .rail-button.add.tucked { opacity: 0; transition: background var(--dur-2) var(--ease-out-quint), opacity var(--dur-2) var(--ease-out-quint); }
+    .app-rail:hover .rail-button.add.tucked, .app-rail:has(:global(:focus-visible)) .rail-button.add.tucked, .rail-button.add.tucked[aria-expanded='true'] { opacity: 1; }
+  }
   /* A circle, as the bots it stands under: ringed at rest, filled where you are. */
 
   .bot { background: none; border-radius: var(--radius-full); }

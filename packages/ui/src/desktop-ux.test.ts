@@ -304,6 +304,40 @@ test("a right click on a mochi's rail picture opens its menu, not the webview's,
   }
 });
 
+test("the rail's Add rests out of sight beside the mochis and stays while its menu is open, so the menu keeps it shown", async () => {
+  writeExperiments(['resident-agents']);
+  await mountOnFake('/?fake=1&agents=1');
+  try {
+    await waitFor(() => document.querySelector('[data-testid=rail-bot]') !== null);
+    const add = query<HTMLButtonElement>('[data-testid=rail-add]');
+    // Hidden by its style alone (AppRail.svelte, touch-quiet.test.ts): still a named button in the tree.
+    expect(add.classList.contains('tucked')).toBe(true);
+    expect(add.getAttribute('aria-hidden')).toBeNull();
+    expect(add.getAttribute('aria-label')).toBe(strings.app.rail.add);
+    expect(add.getAttribute('aria-expanded')).toBe('false');
+    add.click();
+    await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+    expect(add.getAttribute('aria-expanded')).toBe('true');
+    // Another opener's menu is not Add's.
+    const bot = query<HTMLButtonElement>('[data-testid=rail-bot]');
+    bot.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 }));
+    await waitFor(() => add.getAttribute('aria-expanded') === 'false');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
+    expect(add.getAttribute('aria-expanded')).toBe('false');
+  } finally {
+    store.showChat();
+  }
+});
+
+test("with no mochi or team in the rail yet, its Add always shows: nothing else there would bring it", async () => {
+  writeExperiments(['resident-agents']);
+  await mountOnFake('/?fake=1');
+  await waitFor(() => document.querySelector('[data-testid=rail-add]') !== null);
+  expect(document.querySelector('[data-testid=rail-bot], [data-testid=rail-team]')).toBeNull();
+  expect(query('[data-testid=rail-add]').classList.contains('tucked')).toBe(false);
+});
+
 test("a right click on a team's rail picture opens the team's menu, and its picks reach the team", async () => {
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
