@@ -402,6 +402,8 @@ export class BrowserPage {
           ? ['--disable-gpu', '--disable-software-rasterizer']
           : process.platform === 'win32' ? ['--use-gl=angle', '--use-angle=d3d11']
             : process.platform === 'linux' ? ['--enable-gpu', '--use-gl=angle', '--use-angle=gl-egl', '--disable-software-rasterizer'] : []),
+        // A machine whose default backend draws no WebGL names another one (`vulkan`): the last switch wins.
+        ...(process.env.BOITE_E2E_ANGLE ? [`--use-angle=${process.env.BOITE_E2E_ANGLE}`] : []),
         '--mute-audio',
         // The suite's assertions are written in English and its numbers read
         // with the browser's own `toLocaleString`: both follow this, not the

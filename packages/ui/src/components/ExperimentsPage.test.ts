@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, expect, onTestFinished, test } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
-import { EXPERIMENT_IDS, withFinished } from '@boite/contracts';
+import { EXPERIMENT_IDS, EXPERIMENT_STAGES, withFinished } from '@boite/contracts';
 import ExperimentsPage from './ExperimentsPage.svelte';
 import { DESKTOP_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, chosenExperiments, desktopHeard, followDesktopOf, heardBuild, heardDesktop, readExperiments, setExperiment, writeExperiments } from '../lib/experiments';
 import { experimentsShown } from '../lib/experiments.svelte';
 import { navOf, desktopPage, phonePage } from '../lib/settings-tabs';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
+import { strings } from '../lib/strings';
 
 let running: Record<string, unknown> | null = null;
 
@@ -17,8 +18,9 @@ beforeEach(() => {
 /** A core that runs experiments (a Nightly) and one that does not (a Release). */
 const NIGHTLY = '2.0.0-nightly.20261111.1';
 const RELEASE = '2.0.0';
-/** Every feature is finished: each is in force in every build. */
 const ALL = [...EXPERIMENT_IDS];
+/** The finished features: each is in force in every build. */
+const FINISHED = EXPERIMENT_IDS.filter((id) => EXPERIMENT_STAGES[id] === 'release');
 
 /** The primary machine's core says its version, as a hello does. */
 function primarySays(version: string): object {
@@ -39,48 +41,65 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-test('every feature is on in every build whatever storage holds, and with no switch to list no build has an Experiments page', async () => {
+test('a finished feature is on in every build, and the one experiment has its switch from a Nightly up', async () => {
+  expect(readExperiments()).toEqual(FINISHED);
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["goal2","whip","draft-backdrop"]');
+  primarySays(RELEASE);
+  expect(readExperiments()).toEqual(FINISHED);
+  expect(experimentsShown()).toBe(false);
+  // The tab is absent from the nav, desktop and phone, and a route to it lands on Home.
+  expect(navOf('advanced', true)).not.toContain('experiments');
+  expect(desktopPage('experiments', true)).toBe('home');
+  expect(phonePage('experiments', null, true)).toBe('home');
+  // A Release has no switch to flip: the stored choice stays as it was.
+  setExperiment('draft-backdrop', false);
+  expect(chosenExperiments()).toEqual(['draft-backdrop']);
+
+  // The same device on a Nightly finds its switch as it left it.
+  primarySays(NIGHTLY);
   expect(readExperiments()).toEqual(ALL);
-  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["goal2","whip"]');
-  for (const version of [NIGHTLY, RELEASE]) {
-    primarySays(version);
-    expect(readExperiments(), version).toEqual(ALL);
-    expect(experimentsShown(), version).toBe(false);
-    // The tab is absent from the nav, desktop and phone, and a route to it lands on Home.
-    expect(navOf('advanced', true), version).not.toContain('experiments');
-    expect(desktopPage('experiments', true), version).toBe('home');
-    expect(phonePage('experiments', null, true), version).toBe('home');
-  }
-  // A flip from an old path changes nothing in force.
+  expect(experimentsShown()).toBe(true);
+  expect(navOf('advanced', true)).toContain('experiments');
+  expect(desktopPage('experiments', true)).toBe('experiments');
+  // A finished feature has no switch, on any build.
   setExperiment('resident-agents', false);
   expect(readExperiments()).toEqual(ALL);
-  // The page, were it drawn, lists nothing.
+
   running = mount(ExperimentsPage, { target: document.body });
   flushSync();
   await tick();
-  expect(document.querySelectorAll('[data-testid^=experiment-]').length).toBe(0);
+  const switches = () => [...document.querySelectorAll<HTMLInputElement>('input[data-testid^=experiment-]')];
+  expect(switches().map((node) => node.dataset['testid'])).toEqual(['experiment-draft-backdrop']);
+  expect(switches()[0]!.checked).toBe(true);
+  expect(switches()[0]!.closest('label')?.textContent).toContain(strings.experiments['draft-backdrop'].title);
+  switches()[0]!.click();
+  flushSync();
+  await tick();
+  expect(switches()[0]!.checked).toBe(false);
+  expect(readExperiments()).toEqual(FINISHED);
 });
 
-test('a phone keeps the list its desktop app chose and has every feature, before and after a new report', async () => {
+test('a phone keeps the list its desktop app chose, and has the experiment of it once its core runs experiments', async () => {
   const client = new FakeClient({ delayMs: 0, version: RELEASE });
   const store = new Store();
   followDesktopOf(store);
   onTestFinished(() => { followDesktopOf(null); store.detach(); client.close(); });
   // The core says both: the list in force, as an app from before the stages reads it, and the list as chosen beside it.
-  client.reportDesktopExperiments(['resident-agents']);
+  client.reportDesktopExperiments(ALL);
   store.attach(client);
   await store.connect();
   for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); }
-  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['resident-agents']);
-  expect(readExperiments()).toEqual(ALL);
-  expect(await client.call('client.preferences', { app: 'app-old-0001', language: 'en', experiments: [], labels: {} })).toEqual({ ok: true, desktop: withFinished(ALL), desktopChosen: withFinished(['resident-agents']) });
+  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(ALL);
+  // A Release core cuts the experiment from what is in force, never from what was chosen.
+  expect(readExperiments()).toEqual(FINISHED);
+  expect(await client.call('client.preferences', { app: 'app-old-0001', language: 'en', experiments: [], labels: {} })).toEqual({ ok: true, desktop: withFinished(FINISHED), desktopChosen: withFinished(ALL) });
   const said: unknown[] = [];
   client.on('client.desktopExperiments', (payload) => said.push(payload));
-  client.reportDesktopExperiments(['resident-agents']);
+  client.reportDesktopExperiments(ALL);
   for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); }
   // Both lists also name the finished ids, for a phone older than the core; this app keeps only the ones it knows.
-  expect(said).toEqual([{ experiments: withFinished(ALL), chosen: withFinished(['resident-agents']) }]);
-  expect(chosenExperiments()).toEqual(['resident-agents']);
+  expect(said).toEqual([{ experiments: withFinished(FINISHED), chosen: withFinished(ALL) }]);
+  expect(chosenExperiments()).toEqual(ALL);
   heardBuild(store, NIGHTLY);
   expect(readExperiments()).toEqual(ALL);
 });

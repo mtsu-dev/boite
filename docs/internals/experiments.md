@@ -4,9 +4,9 @@ An experiment is unfinished work behind a switch in Settings > Experiments.
 Every feature has a tag, `release`, `nightly` or `dev`, and exists only in the
 builds at or above it: a Release has none of the unfinished ones.
 
-There is no experiment today: every feature is tagged `release`, so no build
-lists a switch and Settings has no Experiments page. The machinery below
-stays for the next one.
+One experiment exists today, the [new thread background](#new-thread-background)
+(`draft-backdrop`, tagged `nightly`): a Nightly and a Dev build list its
+switch, a Release has no Experiments page.
 
 ## Tags
 
@@ -16,7 +16,7 @@ Every feature has one tag, in `EXPERIMENT_STAGES`
 | Tag | Meaning | Ids |
 | --- | --- | --- |
 | `release` | Finished. On in every build, with no switch on the Experiments page. | `resident-agents` (Mochis) |
-| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | none today |
+| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `draft-backdrop` (New thread background) |
 | `dev` | Being built. A switch in a Dev build only, absent from a Nightly and from a Release. | none today |
 
 The ten finished ids `theme-grain`, `session-import`, `prompt-cache`,
@@ -111,7 +111,7 @@ run": the version in the hello (`info.version`) is enough.
   lists at least one switch (`experimentsAvailable`, read by `pageAvailable`
   in `lib/settings-tabs.ts`, the desktop nav, search and the phone list): a
   route or a card that points there lands on Home, the page Settings opens
-  on. Today no build lists one, so the page is gone everywhere. A card about
+  on. A Release lists none, so the page is gone there. A card about
   an experiment without a switch in this build can only be refused, and says
   why; a card about a finished one says it is no longer an experiment.
 - The in-memory client (`lib/fake-client`) has a core version like the real
@@ -154,15 +154,15 @@ page it belongs to, as [chat files and previews](chat-files.md),
 ## Out of the build
 
 A build below a feature's tag does not ship the feature's code. Refusing at
-run time is not enough: the bundler has to drop the modules. No feature is
-cut today (`FEATURE_CUTS` is empty): the Whip, the Council, Contacts, Teams
-and Automatic goals were, and are finished, so every build holds them. What
-follows is how the next one is cut.
+run time is not enough: the bundler has to drop the modules. One feature is
+cut today (`FEATURE_CUTS`): the new thread background, from the UI bundle of
+a Release. The Whip, the Council, Contacts, Teams and Automatic goals were,
+and are finished, so every build holds them.
 
 A packaged build knows its kind when it is compiled. `featureDefines(version)`
 turns the stamped version into `__BOITE_BUILD_KIND__`, the one constant, and
 one boolean per feature not tagged `release`, derived from it and from
-`EXPERIMENT_STAGES` (`__BOITE_HAS_<ID>__`; today none). Three builds receive
+`EXPERIMENT_STAGES` (`__BOITE_HAS_<ID>__`; today `__BOITE_HAS_DRAFT_BACKDROP__`). Three builds receive
 them:
 
 - the UI, through Vite's `define` (`packages/ui/vite.config.ts`), from the
@@ -206,7 +206,7 @@ same way. The journal's tables are created in every build.
 
 `FEATURE_CUTS`, beside the tags, says which features are cut from which
 bundle, and `scripts/ci/feature-modules.ts` lists the modules of each: all
-that its lazy entry loads and nothing else imports. Both are empty today.
+that its lazy entry loads and nothing else imports.
 Every listed module calls `markFeature('boite-feature:<id>')` at its top
 level (a component in its script). A call with an effect is one thing no
 bundler drops, where an unused constant goes as soon as a module is imported
@@ -223,8 +223,7 @@ bun scripts/ci/feature-cut.ts --build   # builds the UI and the core for the thr
 
 The desktop jobs of `desktop.yml` run the first form on what they just
 packaged, the compiled core included, so a Nightly and a Release are each
-checked as what they are; the Linux x64 job also runs the second. With
-nothing cut, both pass on any bundle that builds.
+checked as what they are; the Linux x64 job also runs the second.
 `scripts/ci/feature-cut.test.ts` plants a leak and a lost marker, checks the
 marker call in every listed module and that no other module calls
 `markFeature`, fails on a file of a feature's directory that is in neither
@@ -290,8 +289,8 @@ the phone's page follows the desktop app again. The desktop app follows no one.
 ## Other client switches
 
 `EXPERIMENT_IDS` in `packages/contracts/src/experiments.ts` lists the ids;
-`lib/experiment-copy.ts` supplies the labels of those with a switch. None
-has one today.
+`lib/experiment-copy.ts` supplies the labels of those with a switch: the
+[new thread background](#new-thread-background) today.
 
 Finished, with no switch: the Grain theme (a choice in Appearance), Claude
 Code [session import](imports.md), the [prompt cache](prompt-cache.md)
@@ -313,6 +312,45 @@ off by default. They change execution on the machine picked in the bar above
 them and affect its clients. A thread takes the setting of the machine it
 runs on: turned on for the desktop's own core, background compaction does
 nothing for a thread on a server.
+
+## New thread background
+
+The `draft-backdrop` experiment draws an animated scene behind the empty new
+thread screen: a tunnel of characters, crates tumbling through dust or a
+checkered tunnel, the last two in the soft low resolution of an early 2000s
+console. With the switch on, Settings > Appearance offers Off, Random and the
+three scenes for this device (`lib/backdrop/choice.svelte.ts`, key
+`boite.backdrop`); nothing stored means Random, which draws one scene each
+time the screen opens.
+
+The feature is cut from a Release's UI bundle. `lib/backdrop-entry.svelte.ts`
+is its one entry: `ChatView` and the Appearance page ask it once the
+experiment is found on, and draw nothing until `lib/backdrop/feature.ts` has
+landed with the canvas (`components/backdrop/DraftBackdrop.svelte`) and the
+picker's row (`components/backdrop/BackdropPicker.svelte`). The renderer,
+`lib/backdrop/engine.ts`, is a second chunk the canvas fetches when it first
+shows, so picking a scene in Settings does not load it.
+
+The canvas is the first child of the chat column and takes no layer of its
+own: the heading, the composer and the tail are positioned after it and
+paint over it, and their menus keep their own layers. It never takes a
+click. `lib/backdrop/scenes.ts` turns a time into triangles and the engine
+draws them with WebGL 2, in the theme's text colour and accent over a
+transparent ground, so a scene follows the theme, the accent and the code
+face. The two console scenes are drawn at a fraction of the resolution,
+smoothed and stretched, with brightness cut to 63 steps through an ordered
+dither; the characters are drawn at the screen's density. The words of the
+empty screen (the pieces marked `data-backdrop-calm`) are measured, and the
+shader dims the scene in an oval around them. A device that asks for reduced
+motion gets one still frame. Without WebGL 2 the canvas stays empty and the
+screen is the one it was.
+
+`bun test tests/e2e/backdrop.test.ts` turns the experiment on through
+Settings, picks each scene, checks the still frame under reduced motion and
+writes desktop and phone captures under `tests/e2e/.artifacts/`. It prints
+the frame rate and the page's own time in a frame. On a machine whose default
+ANGLE backend draws no WebGL, `BOITE_E2E_ANGLE=vulkan` names one that does; a
+runner without WebGL 2 checks the canvas and skips the frames.
 
 ## Whip
 

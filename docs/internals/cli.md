@@ -895,7 +895,7 @@ that app shows (`agentCpuCapPercent 75 resources#limits "Plafond CPU de tous
 les agents"`). The list is `REQUESTABLE_SETTINGS` in
 `packages/contracts/src/setting-requests.ts`, then that app's experiments as
 `experiment.<id>` (`experiment.<id> true experiments#<id> "<name>"`), the
-experiments its build still has a switch for, none today; credentials, account ids and browser profiles are not in it.
+experiments its build still has a switch for (`experiment.draft-backdrop` in a Nightly or a Dev build); credentials, account ids and browser profiles are not in it.
 
 Language, experiments and names come from the apps: each says them after every
 hello and on every change (`client.preferences`, a paired phone included), with

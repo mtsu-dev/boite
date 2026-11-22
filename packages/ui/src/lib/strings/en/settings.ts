@@ -234,6 +234,13 @@ export const strings = {
     chatWidthComfortable: 'Comfortable',
     chatWidthWide: 'Wide',
     chatWidthFull: 'Full',
+    backdrop: 'New thread background',
+    backdropHint: 'An animated scene behind the empty new thread screen on this device. A device that asks for reduced motion gets a still picture.',
+    backdropOff: 'Off',
+    backdropRandom: 'Random',
+    backdropGlyphs: 'Glyphs',
+    backdropCrates: 'Crates',
+    backdropTunnel: 'Tunnel',
     /** One plain line under the chat width row: what the chosen width does. */
     /** A paragraph in a small window under the chat width row, set at the width picked or pointed at. */
     /** The width preview's small conversation: a question, then a reply set at the width picked. */
