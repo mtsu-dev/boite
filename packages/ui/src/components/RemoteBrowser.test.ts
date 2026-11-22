@@ -45,8 +45,8 @@ afterEach(async () => {
 
 /** jsdom decodes and paints nothing: the frames handed to the decoder and those drawn are counted instead. */
 function canvasStub() {
-  const decodes: { blob: Blob; done: () => void }[] = [], drawn: unknown[] = [];
-  vi.stubGlobal('createImageBitmap', (blob: Blob) => new Promise(resolve => { const bitmap = { width: 380, height: 450, close() {} }; decodes.push({ blob, done: () => resolve(bitmap) }); }));
+  const decodes: { blob: Blob; done: (width?: number, height?: number) => void }[] = [], drawn: unknown[] = [];
+  vi.stubGlobal('createImageBitmap', (blob: Blob) => new Promise(resolve => { decodes.push({ blob, done: (width = 380, height = 450) => resolve({ width, height, close() {} }) }); }));
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: (bitmap: unknown) => { drawn.push(bitmap); } } as never);
   return { decodes, drawn };
 }
@@ -560,6 +560,86 @@ test('a core that pushes frames is asked for a stream once: its frames are ackno
     expect(calls.mock.calls.some(([method]) => method === 'browser.remoteStream' || method === 'browser.remoteFrame')).toBe(false);
     expect(document.querySelector('.error')).toBeNull();
   } finally { vi.unstubAllGlobals(); }
+});
+
+test('the picture is never stretched: the box takes the proportions of the picture painted, and a new screen density asks for a sharper one', async () => {
+  for (const [name, value] of [['clientWidth', 700], ['clientHeight', 500]] as const) {
+    vi.spyOn(HTMLElement.prototype, name, 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('screen-area') ? value : 0; });
+  }
+  const density: (() => void)[] = [];
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener: (_: string, listener: () => void) => density.push(listener), removeEventListener() {} }));
+  const ratio = (value: number) => Object.defineProperty(window, 'devicePixelRatio', { configurable: true, writable: true, value });
+  ratio(1);
+  const tabId = await streamed();
+  const calls = vi.spyOn(client, 'call');
+  const sent: string[] = [], open = client.frames.bind(client);
+  vi.spyOn(client, 'frames').mockImplementation((path) => { const socket = open(path), send = socket.send.bind(socket); socket.send = (text) => { sent.push(text); send(text); }; return socket; });
+  // The page says 1280 × 800; the picture that comes is 380 × 450, as a picture taken before a resize is.
+  const { decodes } = canvasStub();
+  vi.useFakeTimers();
+  try {
+    app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace', tabId } }); await settle();
+    await vi.advanceTimersByTimeAsync(60); await settle();
+    const box = () => { const screen = document.querySelector<HTMLElement>('.screen')!; return [parseFloat(screen.style.width), parseFloat(screen.style.height)]; };
+    // Nothing painted yet: the page's own proportions.
+    expect(box()).toEqual([700, 437.5]);
+    expect(calls).toHaveBeenCalledWith('browser.remoteStream', { threadId: 't-trace', tabId, maxWidth: 700 });
+    decodes[0]!.done(); await settle();
+    const [width, height] = box();
+    expect(width! / height!).toBeCloseTo(380 / 450, 3);
+    expect(height).toBe(500);
+    await vi.advanceTimersByTimeAsync(250); await settle();
+    const sizes = () => sent.map(text => JSON.parse(text) as { type: string; maxWidth?: number }).filter(message => message.type === 'size').map(message => message.maxWidth);
+    expect(sizes()).toEqual([]);
+    ratio(2);
+    for (const listener of density.splice(0)) listener();
+    await vi.advanceTimersByTimeAsync(250); await settle();
+    expect(sizes()).toEqual([1400]);
+  } finally { vi.unstubAllGlobals(); ratio(1); }
+});
+
+test.each([false, true])('rounded pictures keep their proportions without changing the requested width at fractional density (pull: %s)', async pull => {
+  for (const [name, value] of [['clientWidth', 393], ['clientHeight', 700]] as const) {
+    vi.spyOn(HTMLElement.prototype, name, 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('screen-area') ? value : 0; });
+  }
+  const pixelRatio = window.devicePixelRatio;
+  Object.defineProperty(window, 'devicePixelRatio', { configurable: true, writable: true, value: 1.5 });
+  const tabId = await streamed();
+  await client.call('browser.command', { threadId: 't-trace', tabId, action: { kind: 'resize', width: 393, height: 700 } });
+  const original = client.call.bind(client), widths: (number | undefined)[] = [];
+  let pulled = 0;
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
+    if (method === 'browser.remoteStream' || method === 'browser.remoteFrame') widths.push((params as { maxWidth?: number }).maxWidth);
+    if (pull && method === 'browser.remoteStream') return Promise.resolve({ pull: true });
+    if (pull && method === 'browser.remoteFrame') {
+      pulled++;
+      return Promise.resolve({ id: `fractional-${pulled}`, tabId, title: 'Page', width: 393, height: 700, at: Date.now(), base64: pulled % 2 ? 'AAAA' : 'BBBB' });
+    }
+    return original(method as never, params as never);
+  }) as typeof client.call);
+  const sockets: ReturnType<FakeClient['frames']>[] = [], sent: string[] = [], open = client.frames.bind(client);
+  vi.spyOn(client, 'frames').mockImplementation(path => {
+    const socket = open(path), send = socket.send.bind(socket);
+    socket.send = text => { sent.push(text); send(text); }; sockets.push(socket);
+    return socket;
+  });
+  const { decodes } = canvasStub();
+  vi.useFakeTimers();
+  try {
+    app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace', tabId } }); await settle();
+    await vi.advanceTimersByTimeAsync(60); await settle();
+    expect(widths).toEqual(pull ? [590, 590] : [590]);
+    for (let index = 0; index < 4; index++) {
+      const [width, height] = index % 2 ? [589, 1049] : [590, 1051];
+      decodes[index]!.done(width, height); await settle();
+      const screen = document.querySelector<HTMLElement>('.screen')!;
+      expect(parseFloat(screen.style.width) / parseFloat(screen.style.height)).toBeCloseTo(width! / height!, 6);
+      await vi.advanceTimersByTimeAsync(250); await settle();
+      expect(new Set(widths)).toEqual(new Set([590]));
+      expect(sent.map(text => JSON.parse(text) as { type: string }).filter(message => message.type === 'size')).toEqual([]);
+      if (!pull && index < 3) { sockets[0]!.onmessage!(new ArrayBuffer(1)); await settle(); }
+    }
+  } finally { vi.unstubAllGlobals(); Object.defineProperty(window, 'devicePixelRatio', { configurable: true, writable: true, value: pixelRatio }); }
 });
 
 test('a stream that closes is opened again with a growing pause, a hidden page closes it, and a closed tab says so', async () => {
