@@ -6,6 +6,7 @@
   import Elapsed from './Elapsed.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import Spinner from './Spinner.svelte';
+  import { effortName } from '../lib/format';
   import { machineAway } from '../lib/machine-away';
   import { inStrip } from '../lib/one-status';
   import { openAgent } from '../lib/open-agent';
@@ -26,7 +27,7 @@
    * subagent (their names in its tooltip), "Waiting on 4 subagents", how long
    * the oldest has run, a shortcut to the Subagents tab and a Stop that names
    * what it stops. The same on a desktop and a phone. A tap unfolds one row per run,
-   * with its mark, title, model and time. A persistent agent's
+   * with its mark, title, model, effort and time. A persistent agent's
    * memory pass is the core's upkeep, not work it sent.
    */
   // The team and the runs are the root conversation's: a subagent's own line counts only the ones it sent, never itself, its siblings or the root's runs.
@@ -63,15 +64,18 @@
     ...active.map(agent => {
       const { thread, lastTurn } = agent;
       const choice = lastTurn?.execution ?? thread;
+      const model = store.modelOf(choice);
+      const effort = choice.effort ?? model?.effort?.default;
       return {
         id: thread.id, name: thread.title, provider: choice.providerId,
-        model: store.modelOf(choice)?.name ?? choice.model,
+        model: model?.name ?? choice.model,
+        effort: effort ? effortName(model, effort) : null,
         since: lastTurn?.startedAt ?? lastTurn?.queuedAt ?? thread.createdAt,
         open: () => openAgent(store, agent)
       };
     }),
-    ...native.map(agent => ({ id: agent.id, name: agent.name ?? agent.task ?? agent.id, provider: own, model: agent.model, since: agent.startedAt, open: null })),
-    ...runs.map(run => ({ id: run.id, name: run.name, provider: null, model: null, since: run.createdAt, open: () => { store.panel.openWorkflow(run.id); } }))
+    ...native.map(agent => ({ id: agent.id, name: agent.name ?? agent.task ?? agent.id, provider: own, model: agent.model, effort: agent.effort, since: agent.startedAt, open: null })),
+    ...runs.map(run => ({ id: run.id, name: run.name, provider: null, model: null, effort: null, since: run.createdAt, open: () => { store.panel.openWorkflow(run.id); } }))
   ]);
   let names = $derived(items.map(item => item.name).join(', '));
   /** The marks the pill holds before "+N". */
@@ -118,8 +122,11 @@
 
 {#snippet runRow(item: (typeof items)[number])}
   <span class="logo" aria-hidden="true">{#if item.provider}<ProviderLogo providerId={item.provider} size={13} />{:else}<Workflow size={12} strokeWidth={1.75} />{/if}</span>
-  <span class="words" use:wordFit={item.name}></span>
-  {#if item.model}<span class="model ui-label" data-testid="agent-dock-model" title={item.model}>{item.model}</span>{/if}
+  <span class="details">
+    <span class="words" data-text={item.name} use:wordFit={item.name}></span>
+    {#if item.model}<span class="model ui-label" data-testid="agent-dock-model">{item.model}</span>{/if}
+    {#if item.effort}<span class="effort ui-label" data-testid="agent-dock-effort">{item.effort}</span>{/if}
+  </span>
   <span class="since"><Elapsed startedAt={item.since} finishedAt={null} active={!away} /></span>
 {/snippet}
 
@@ -189,15 +196,20 @@
   /* A media stop, the square in a ring, drawn here: a bare square reads as a checkbox, and an icon would weigh on the first load. */
   .stop-mark { position: relative; flex: none; width: 14px; height: 14px; border: 1.5px solid currentColor; border-radius: var(--radius-full); }
   .stop-mark::after { content: ''; position: absolute; inset: 3px; background: currentColor; }
-  /* One row per run under the pill: its mark, name, model and elapsed time. */
+  /* One row per run under the pill. */
   .runs { display: flex; flex-direction: column; margin: 0; padding: 0 0 4px; list-style: none; }
   li.foot-row.run { height: auto; padding-left: 4px; }
   .open { display: flex; flex: 1 1 auto; gap: 8px; min-width: 0; height: var(--control); padding: 0 8px; align-items: center; justify-content: flex-start; border: none; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font: inherit; }
   .open .logo { box-shadow: none; }
   @media (hover: hover) { button.open:hover { background: var(--color-surface-2); color: var(--color-foreground); } }
-  /* The name takes the row's width, so word-fit cuts it to the row, not to its own cut. */
-  .words { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; }
-  .model { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; color: var(--color-subtle); }
+  /* Only the first flex line is visible. The mark and time stay alongside it
+     while effort, then model, wrap out of view. */
+  .details { display: flex; flex: 1; flex-wrap: wrap; align-items: center; align-content: flex-start; gap: 8px; min-width: 0; height: var(--control); overflow: hidden; }
+  .words { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; line-height: var(--control); }
+  /* Keep the width of the full name in the wrap calculation after word-fit cuts it. */
+  .words::before { display: block; content: attr(data-text); height: 0; padding-inline-end: 2px; overflow: hidden; visibility: hidden; }
+  .model { flex: none; color: var(--color-subtle); }
+  .effort { flex: none; margin-block: 0; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); }
   @media (max-width: 720px) {
     .pill:not(.bare) { height: 36px; padding-inline: 6px; gap: 4px; }
     /* A phone keeps the words whole: Stop takes a line of its own under a pill too long to share one, and the time is on each row once unfolded. */

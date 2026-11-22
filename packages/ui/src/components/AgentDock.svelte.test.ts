@@ -100,11 +100,14 @@ test('the work a thread waits on reads "Waiting on N" with its names, and Stop s
   expect([...document.querySelectorAll<HTMLButtonElement>('[data-testid=agent-dock] button')].map(button => button.dataset.testid)).toEqual(['agent-dock-panel', 'agent-dock-stop']);
 
   const running = store.delegation!.agents.find(agent => agent.thread.id === 't-team-running')!;
-  running.lastTurn!.execution = { ...running.thread, model: 'claude-opus-5-5', sessionGeneration: 0, selectionVersion: 0 };
-  store.delegation!.agents.find(agent => agent.thread.id === 't-team-waiting')!.thread.model = null;
+  running.lastTurn!.execution = { ...running.thread, model: 'claude-opus-5-5', effort: null, sessionGeneration: 0, selectionVersion: 0 };
+  const waiting = store.delegation!.agents.find(agent => agent.thread.id === 't-team-waiting')!;
+  waiting.thread.model = null;
+  waiting.thread.effort = null;
   props.open = true;
   await tick();
   expect([...document.querySelectorAll('[data-testid=agent-dock-model]')].map(node => node.textContent)).toEqual(['Opus 5.5']);
+  expect([...document.querySelectorAll('[data-testid=agent-dock-effort]')].map(node => node.textContent)).toEqual(['High']);
 
   // At the root, one call stops every subagent of the team.
   const stopAll = vi.spyOn(store, 'stopDelegatedAgent').mockResolvedValue();

@@ -31,7 +31,9 @@ usage. It starts in the parent's project, folder and permission mode.
   "View subagents" beside Stop, from the side panel, the title's menu or
   the palette's "Show the subagents".
 - Click the count above the message box to unfold the active subagents and
-  running workflows. The list shows elapsed times and known model names.
+  running workflows. Each row shows its elapsed time, with the known model and
+  reasoning level when they fit. Narrow rows hide the reasoning level first,
+  then the model.
 - Click a child to open its conversation. Its header reads "parent title /
   child title"; the parent's title takes you back.
 - In the sidebar, the parent's row carries a chip such as "2 sub-agents at
