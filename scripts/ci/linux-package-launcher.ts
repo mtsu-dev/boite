@@ -51,11 +51,16 @@ export function staticProblems(facts: ElfFacts, machine: string): string[] {
   return problems;
 }
 
-/** The mode and size `dpkg-deb -c` lists for `path`, or null when the package has no such entry. */
-export function debEntry(listing: string, path: string): { mode: string; size: number } | null {
+/**
+ * The mode, size and member name `dpkg-deb -c` lists for `path`, or null when
+ * the package has no such entry. dpkg-deb --build stores `./usr/...`; the
+ * Tauri bundler stores `usr/...`.
+ */
+export function debEntry(listing: string, path: string): { mode: string; size: number; name: string } | null {
   for (const line of listing.split('\n')) {
     const fields = line.trim().split(/\s+/);
-    if (fields.length >= 6 && fields.at(-1) === `./${path}`) return { mode: fields[0]!, size: Number(fields[2]) };
+    const name = fields.at(-1);
+    if (fields.length >= 6 && (name === `./${path}` || name === path)) return { mode: fields[0]!, size: Number(fields[2]), name: name! };
   }
   return null;
 }
@@ -147,12 +152,15 @@ if (import.meta.main) {
   lines.push(`built ${builtPath}: ${built.length} bytes, ${reference.type} ${reference.machine}, entry 0x${reference.entry.toString(16)}, sha256 ${sha256(built)}`);
   const file = args[1]!;
   if (kind === 'deb') {
-    const entry = debEntry(run(['dpkg-deb', '-c', file]), LAUNCHER);
-    if (entry === null) problems.push(`${file}: no ./${LAUNCHER}`);
-    else {
-      const bytes = new Uint8Array(Bun.spawnSync(['sh', '-c', 'dpkg-deb --fsys-tarfile "$1" | tar -xOf - "./$2"', 'sh', file, LAUNCHER], { stdout: 'pipe' }).stdout);
+    const listing = run(['dpkg-deb', '-c', file]);
+    const entry = debEntry(listing, LAUNCHER);
+    if (entry === null) {
+      const near = listing.split('\n').filter(line => line.includes('boite')).map(line => line.trim());
+      problems.push(`${file}: no ${LAUNCHER} (its boite entries: ${near.length > 0 ? near.join(' | ') : 'none'})`);
+    } else {
+      const bytes = new Uint8Array(Bun.spawnSync(['sh', '-c', 'dpkg-deb --fsys-tarfile "$1" | tar -xOf - "$2"', 'sh', file, entry.name], { stdout: 'pipe' }).stdout);
       if (bytes.length !== entry.size) problems.push(`${file}: extracted ${bytes.length} bytes, listed ${entry.size}`);
-      lines.push(check(`${file} ./${LAUNCHER}`, entry.mode, bytes, built, problems));
+      lines.push(check(`${file} ${entry.name}`, entry.mode, bytes, built, problems));
     }
   } else if (kind === 'appimage') {
     // The squashfs entry itself, then the tree the AppImage extracted.

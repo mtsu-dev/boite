@@ -6,7 +6,7 @@ import { debEntry, expectedMachine, modeString, parseReadelf, squashEntry, stati
 
 const script = resolve(import.meta.dir, 'linux-package-launcher.ts');
 const own = expectedMachine('', process.arch);
-const tools = process.platform === 'linux' && ['cc', 'readelf', 'dpkg-deb'].every(tool => Bun.which(tool) !== null);
+const tools = process.platform === 'linux' && ['cc', 'readelf', 'dpkg-deb', 'ar', 'tar'].every(tool => Bun.which(tool) !== null);
 const squashTools = tools && Bun.which('mksquashfs') !== null && Bun.which('unsquashfs') !== null;
 
 /** A minimal 64-bit little-endian ELF header for `machine`, type and entry left at zero, one program header of `type`. */
@@ -60,8 +60,12 @@ test('the listings give the launcher entry, and only it', () => {
     '-rwxr-xr-x root/root    905672 2026-11-21 10:00 ./usr/bin/boite-launch',
     '-rw-r--r-- root/root        12 2026-11-21 10:00 ./usr/bin/boite-launch.txt',
   ].join('\n');
-  expect(debEntry(deb, 'usr/bin/boite-launch')).toEqual({ mode: '-rwxr-xr-x', size: 905672 });
+  expect(debEntry(deb, 'usr/bin/boite-launch')).toEqual({ mode: '-rwxr-xr-x', size: 905672, name: './usr/bin/boite-launch' });
   expect(debEntry(deb, 'usr/bin/boite-core')).toBeNull();
+  // The Tauri bundler's members have no ./ prefix.
+  const tauri = '-rwxr-xr-x root/root    905672 2026-11-21 10:00 usr/bin/boite-launch';
+  expect(debEntry(tauri, 'usr/bin/boite-launch')).toEqual({ mode: '-rwxr-xr-x', size: 905672, name: 'usr/bin/boite-launch' });
+  expect(debEntry('-rwxr-xr-x root/root 905672 2026-11-21 10:00 usr/bin/boite-launch.old', 'usr/bin/boite-launch')).toBeNull();
   const squash = '-rwxr-xr-x root/root            657160 2026-11-21 10:00 squashfs-root/usr/bin/boite-launch';
   expect(squashEntry(squash, 'usr/bin/boite-launch')).toBe('-rwxr-xr-x');
   expect(squashEntry(squash, 'usr/bin/boite-shell')).toBeNull();
@@ -107,6 +111,31 @@ test.skipIf(!tools)('a package passes with the built launcher at 0755, and fails
     if (built.exitCode !== 0) throw new Error(built.stderr.toString());
     return out;
   };
+  /** The same package as the Tauri bundler writes it: an ar archive whose tar members have no ./ prefix. */
+  const bare = (name: string, file: string, mode: number) => {
+    const root = join(dir, `bare-${name}`);
+    mkdirSync(join(root, 'data', 'usr', 'bin'), { recursive: true });
+    mkdirSync(join(root, 'control'), { recursive: true });
+    writeFileSync(join(root, 'control', 'control'), `Package: b${name}\nVersion: 1\nArchitecture: all\nMaintainer: t <t@example.invalid>\nDescription: t\n`);
+    writeFileSync(join(root, 'debian-binary'), '2.0\n');
+    copyFileSync(file, join(root, 'data', 'usr', 'bin', 'boite-launch'));
+    chmodSync(join(root, 'data', 'usr', 'bin', 'boite-launch'), mode);
+    const out = join(dir, `bare-${name}.deb`);
+    const sh = 'cd "$1" && tar -C control --owner=0 --group=0 -czf control.tar.gz control && tar -C data --owner=0 --group=0 -czf data.tar.gz usr && ar rc "$2" debian-binary control.tar.gz data.tar.gz';
+    const built = Bun.spawnSync(['sh', '-c', sh, 'sh', root, out], { stdout: 'pipe', stderr: 'pipe' });
+    if (built.exitCode !== 0) throw new Error(built.stderr.toString());
+    return out;
+  };
+  const tauri = cli(['deb', bare('good', files.launcher, 0o755), files.launcher]);
+  expect(tauri.stderr.toString()).toBe('');
+  expect(tauri.exitCode).toBe(0);
+  expect(tauri.stdout.toString()).toContain(' usr/bin/boite-launch: -rwxr-xr-x');
+  const tauriSetuid = cli(['deb', bare('setuid', files.launcher, 0o4755), files.launcher]);
+  expect(tauriSetuid.exitCode).toBe(1);
+  expect(tauriSetuid.stderr.toString()).toContain('mode -rwsr-xr-x, not -rwxr-xr-x (755)');
+  const tauriOther = cli(['deb', bare('other', files.other, 0o755), files.launcher]);
+  expect(tauriOther.exitCode).toBe(1);
+  expect(tauriOther.stderr.toString()).toContain("not the built launcher's");
   const good = cli(['deb', deb('good', files.launcher, 0o755), files.launcher]);
   expect(good.stderr.toString()).toBe('');
   expect(good.exitCode).toBe(0);
@@ -126,7 +155,7 @@ test.skipIf(!tools)('a package passes with the built launcher at 0755, and fails
     expect({ name, exit: result.exitCode }).toEqual({ name, exit: 1 });
     expect(result.stderr.toString()).toContain(reason);
   }
-});
+}, 60_000);
 
 test.skipIf(!tools)('an installed or extracted tree refuses any mode but 0755, special bits included', () => {
   const tree = (mode: number, file = files.launcher) => {
