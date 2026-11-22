@@ -45,12 +45,17 @@ function gatewayModelLimits(context: unknown, output: unknown): GatewayModel['li
   return { ...(contextLimit === undefined ? {} : { context: contextLimit }), ...(outputLimit === undefined ? {} : { output: outputLimit }) };
 }
 
-/** The gateway models last offered to OpenCode, read back from the journal: a bad row is dropped, not trusted. */
+/**
+ * The gateway models last offered to OpenCode, read back from the journal: a
+ * bad row is dropped, not trusted, and so is one a catalog stored before
+ * Antigravity's models were kept to their harness still holds.
+ */
 function openCodeGatewayModels(core: Core): GatewayModel[] {
   const stored = core.journal.getSetting(OPENCODE_MODELS_SETTING);
   if (!Array.isArray(stored)) return [];
   return stored.filter((row): row is GatewayModel =>
-    row !== null && typeof row === 'object' && typeof (row as GatewayModel).id === 'string' && typeof (row as GatewayModel).name === 'string')
+    row !== null && typeof row === 'object' && typeof (row as GatewayModel).id === 'string' && typeof (row as GatewayModel).name === 'string'
+    && !antigravityOnly((row as GatewayModel).id))
     .map(row => {
       const limit = gatewayModelLimits(row.limit?.context, row.limit?.output);
       return { id: row.id, name: row.name, ...(row.reasoning === true ? { reasoning: true as const } : {}), ...(limit ? { limit } : {}) };
@@ -255,8 +260,7 @@ export async function subscriptionProxyCodexArgs(args: string[], env: Record<str
  * A gateway can name a model after the subscription that serves it
  * (`codex/gpt-5.4`): behind a vendor's route that is the agent's own model
  * again, already listed with its speeds, so it is not offered twice. Another
- * route to the same name (`antigravity/claude-sonnet-5`) is another pool and
- * stays.
+ * route to the same name (`<pool>/claude-sonnet-5`) is another pool and stays.
  */
 export function mergeProxyModels(native: ModelInfo[], proxy: ModelInfo[]): ModelInfo[] {
   if (!native.length) return proxy;
@@ -306,6 +310,19 @@ function proprietaryFamily(id: string): ModelFamily | null {
   return Object.hasOwn(MODEL_ROUTE_FAMILIES, route) ? MODEL_ROUTE_FAMILIES[route]! : null;
 }
 
+/**
+ * A model only the Antigravity harness is offered: one the gateway routes
+ * through Antigravity (`antigravity/claude-opus-5-5`, `antigravity/gpt-oss-120b`),
+ * whatever its family, and any Gemini model. Google bans an account used
+ * outside Antigravity, so these run there alone, through the gateway's Gemini
+ * API or the native sign-in, as Claude's models run in Claude Code.
+ */
+function antigravityOnly(id: string): boolean {
+  const slash = id.lastIndexOf('/');
+  const routes = slash > 0 ? id.slice(0, slash).toLowerCase().split('/') : [];
+  return routes.includes(ANTIGRAVITY) || proprietaryFamily(id) === 'google';
+}
+
 /** Discovery is a bounded HTTP read on the core, so a phone uses its host's gateway. */
 export async function readSubscriptionProxyModels(core: Core, provider: ProviderDescriptor): Promise<ModelInfo[] | null> {
   if (!activeSubscriptionProxy(core, provider)) return null;
@@ -344,9 +361,8 @@ export async function readSubscriptionProxyModels(core: Core, provider: Provider
     const endpoints = row.supported_endpoint_types;
     const own = provider.protocol === 'claude-sdk' ? 'anthropic' : 'openai';
     const family = proprietaryFamily(row.id);
-    // A gateway can translate any model to any API; a proprietary model still stays in its own harness.
-    // Gemini's models stay usable in both: Antigravity, their harness, goes through Douane alone and by its own API.
-    if (family !== null && family !== 'google' && family !== own) continue;
+    // A gateway can translate any model to any API; a proprietary model still stays in its own harness, and Antigravity's in Antigravity.
+    if (antigravityOnly(row.id) || (family !== null && family !== own)) continue;
     if (Array.isArray(endpoints) && !endpoints.includes(provider.protocol === 'claude-sdk' ? 'anthropic' : 'openai-response')) continue;
     // Older gateways omit endpoint metadata; their known native model families remain selectable.
     if (!Array.isArray(endpoints) && (provider.protocol === 'claude-sdk' ? !/claude|opus|sonnet|haiku|fable/i.test(row.id) : !/gpt|codex|\bo[134](?:-|$)/i.test(row.id))) continue;
@@ -360,14 +376,14 @@ export async function readSubscriptionProxyModels(core: Core, provider: Provider
   return models;
 }
 
-/** The families whose models stay in the harness their vendor ships: Claude Code, Codex and Grok. */
-const OWN_HARNESS: ReadonlySet<ModelFamily> = new Set(['anthropic', 'openai', 'xai']);
+/** The families whose models stay in the harness their vendor ships: Claude Code, Codex, Grok and Antigravity. */
+const OWN_HARNESS: ReadonlySet<ModelFamily> = new Set(['anthropic', 'openai', 'xai', 'google']);
 /** A model id becomes a key of OpenCode's configuration and part of a `provider/model` name. */
 const OPENCODE_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$/;
 
 /**
- * What OpenCode is offered from the gateway: Gemini, Muse and open-weight
- * families, plus Antigravity Claude routes with explicit Chat Completions support. Each is
+ * What OpenCode is offered from the gateway: Muse and open-weight families,
+ * none routed through Antigravity, with Chat Completions support. Each is
  * named `<kind>/<gateway id>`, the way OpenCode names a model of a provider.
  * The catalog is stored for the next spawn, and an empty one is an answer: the
  * agent's own models stand, where the other harnesses would have nothing left.
@@ -379,9 +395,7 @@ function openCodeModels(core: Core, proxy: SubscriptionProxy, rows: Record<strin
     if (!row || typeof row !== 'object' || typeof row.id !== 'string' || !OPENCODE_MODEL_ID.test(row.id) || seen.has(row.id)) continue;
     const family = proprietaryFamily(row.id);
     const endpoints = row.supported_endpoint_types;
-    const antigravityClaude = family === 'anthropic' && /^antigravity\//i.test(row.id)
-      && Array.isArray(endpoints) && endpoints.includes('openai');
-    if (family !== null && OWN_HARNESS.has(family) && !antigravityClaude) continue;
+    if (antigravityOnly(row.id) || (family !== null && OWN_HARNESS.has(family))) continue;
     // A gateway that says which APIs a model answers must name Chat Completions; one that says nothing is taken at its word.
     if (Array.isArray(endpoints) && !endpoints.includes('openai')) continue;
     seen.add(row.id);
