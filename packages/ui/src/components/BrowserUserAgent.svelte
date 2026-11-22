@@ -5,9 +5,9 @@
   import InfoTip from './InfoTip.svelte';
   import Menu from './Menu.svelte';
 
-  let { profile, disabled = false }: { profile: BrowserProfile; disabled?: boolean } = $props();
+  /** `open` while the form shows: the row keeps the engine from changing under an edit. */
+  let { profile, disabled = false, open = $bindable(false) }: { profile: BrowserProfile; disabled?: boolean; open?: boolean } = $props();
   const s = $derived(strings.browserProfiles);
-  let open = $state(false);
   let mode = $state<UserAgent['mode']>('suffix');
   let value = $state('');
   let busy = $state(false);
