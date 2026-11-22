@@ -885,14 +885,14 @@ the turn's other events, which no channel holds back.
   `TRACE_LIMIT` (200) rows, what `trace.get` returns. The old handler copied a
   list that only grew: 0.6 ms a start and exit after 10 minutes, 11 ms after
   an hour, past a core at that rate (plain arrays in Bun, 2026-10-17).
-- Sidebar cards ask for their pull request when they mount or change branch,
-  then on one timer per connection: every 15 seconds while the thread works,
-  every 60 seconds at rest, above the core's 15-second cache of a repository's
-  list, so a round of idle cards runs `gh` at most once per repository. A
-  hidden page skips its rounds; back in view, it runs one if a round is due.
-  The rounds skip a merged pull request; a mount, a reconnect, a status change
-  and Refresh PR still ask, so a new PR on the same branch shows when the turn
-  ends (`watchPullRequests` in `pull-request.ts`).
+- Sidebar cards display their last pull request from device storage by core,
+  thread and checkout. Fresh matches and misses skip extra reads on mount
+  and reconnect. Incognito conversations keep the badge in the open view.
+  Visible cards share a timer per connection and cadence: 15 seconds while
+  working and 60 seconds at rest. The core shares a repository list for 15
+  seconds, so an idle round generally runs one `gh` call per repository. Hidden
+  pages skip these rounds. Turn completion and Refresh PR request a new answer
+  so a new pull request on the same branch can appear immediately.
 - An open Done or Archived fold reads the archive again only when a project's
   archive count, the listed projects or a connection change, not when a prompt
   re-sorts the list, and keeps its rows on screen while it reads.
