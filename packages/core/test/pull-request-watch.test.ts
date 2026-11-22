@@ -41,6 +41,19 @@ test('a check still running keeps its name pending over a finished run of it, in
   expect(detail([{ name: 'test', conclusion: 'FAILURE', completedAt: '2026-10-15T10:01:00Z' }, { name: 'test', completedAt: '2026-10-15T10:02:00Z' }]).checks[0]!.status).toBe('passed');
 });
 
+test('commit status timestamps order base failures and stay out of CI job timing fields', () => {
+  const status: Run = { name: 'external', context: true, status: 'FAILURE', completedAt: '2026-10-15T10:01:00Z' };
+  const job: Run = { name: 'build', conclusion: 'FAILURE', completedAt: '2026-10-15T10:02:00Z' };
+  const parsed = parseDetail(detailJson([status, job], {
+    baseRef: { target: { oid: 'b'.repeat(40), statusCheckRollup: { contexts: { nodes: [job, status].map(checkRun) } } } },
+  }));
+  expect(parsed.baseFailure?.name).toBe('external');
+  expect(parsed.checks).toEqual([
+    expect.objectContaining({ name: 'external', context: true, workflow: '', started: '', finished: '' }),
+    expect.objectContaining({ name: 'CI / build', context: false, finished: job.completedAt }),
+  ]);
+});
+
 test('a failure is told once, a rerun failing again is told again, and passing waits for every required check', () => {
   let memory = initialMemory(since);
   let result = evaluate(memory, detail([{ name: 'lint', required: true }, { name: 'test', required: true, status: 'IN_PROGRESS' }, { name: 'docs', conclusion: 'FAILURE' }]), null);

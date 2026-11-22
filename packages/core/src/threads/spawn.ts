@@ -482,7 +482,13 @@ export class ThreadSpawns {
   async sendResult(threadId: ThreadId): Promise<void> {
     const key = `${ORIGIN}${threadId}`;
     const saved = this.#core.journal.getSetting(key) as Origin | undefined;
-    if (!saved || saved.reported || !saved.pending || !saved.answer || !this.#core.journal.getThread(threadId)) return;
+    if (!saved || saved.reported || !saved.pending) return;
+    if (this.#core.journal.getThread(threadId) === null) {
+      // A recoverable thread or project removal hides the row without erasing it.
+      this.#core.journal.db.query('DELETE FROM settings WHERE key = ? AND NOT EXISTS (SELECT 1 FROM threads WHERE id = ?)').run(key, threadId);
+      return;
+    }
+    if (!saved.answer) return;
     try {
       await this.#core.coordination.send({
         threadId,
