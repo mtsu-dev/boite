@@ -709,8 +709,9 @@ It also prints how to open, drive and stop the instance:
   names the instance's data directory.
 - `restart` asks the live core holding the instance's data for
   `POST /shutdown-for-update` with its expected PID. It waits for that process
-  to exit and starts this checkout again on the same data. Pass any `--env`
-  options needed by the next instance.
+  to exit and starts this checkout again on the same data. If the recorded
+  core already exited, restart goes ahead without an acknowledgment. Pass
+  any `--env` options needed by the next instance.
 - `stop` asks the core to shut down over `POST /shutdown`, waits for the
   process captured at spawn and removes temporary data and the output
   file. The state keeps each

@@ -100,6 +100,26 @@ describe('bun run dev:instance', () => {
     } finally { next.close(); }
   }, TIMEOUT);
 
+  test('restart proceeds if the old core exits without a complete handoff acknowledgement', async () => {
+    const box = fresh();
+    expect((await instance(box, '--echo')).code).toBe(0);
+    const path = join(box.devDir, 'core.json');
+    const record = JSON.parse(readFileSync(path, 'utf8')) as { pid: number; port: number; token: string };
+    const server = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch() {
+      await fetch(`http://127.0.0.1:${record.port}/shutdown`, { method: 'POST', headers: { authorization: `Bearer ${record.token}` } });
+      const deadline = Date.now() + 2_000;
+      while (lockHolder(box.devDir) !== null && Date.now() < deadline) await Bun.sleep(25);
+      return new Response('{', { status: 202 });
+    } });
+    try {
+      writeFileSync(path, JSON.stringify({ ...record, port: server.port }));
+      const restarted = await instance(box, 'restart');
+      expect(restarted.err).toBe('');
+      expect(restarted.code).toBe(0);
+      expect(JSON.parse(readFileSync(path, 'utf8')).pid).not.toBe(record.pid);
+    } finally { await server.stop(true); }
+  }, TIMEOUT);
+
   test('a first run says the Dev data starts empty, the next one reuses it', async () => {
     const box = fresh();
     const first = await instance(box);

@@ -100,11 +100,12 @@ const ERRORS: Record<number, [string, string]> = {
   20: ['ENOTDIR', 'not a directory'],
   21: ['EISDIR', 'is a directory'],
   26: ['ETXTBSY', 'text file is busy'],
-  32: ['EPIPE', 'broken pipe'],
+  [EPIPE]: ['EPIPE', 'broken pipe'],
   40: ['ELOOP', 'too many symbolic links encountered'],
   36: ['ENAMETOOLONG', 'name too long'],
   23: ['ENFILE', 'file table overflow'],
   24: ['EMFILE', 'too many open files'],
+  [ECONNRESET]: ['ECONNRESET', 'connection reset by peer'],
 };
 
 /** The error Bun.spawn throws for `errno`, as the launcher reported it. */
