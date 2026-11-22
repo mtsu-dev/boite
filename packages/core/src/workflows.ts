@@ -672,8 +672,7 @@ export class Workflows {
 
   /** Hands the result to the root as one turn once it is idle; its next finished turn retries. */
   #deliver(runId: string): void {
-    if (this.#closed) return;
-    const run = this.#load(runId);
+    const run = this.#closed ? null : this.#load(runId);
     if (!run || run.delivered || (run.status !== 'done' && run.status !== 'failed')) return;
     const root = this.#core.journal.getThread(run.rootThreadId);
     if (!root || root.archived) {
@@ -697,8 +696,7 @@ export class Workflows {
 
   /** The steps that failed while others run, told to the root once it is idle (its next finished turn retries). */
   #noticeFailures(runId: string): void {
-    if (this.#closed) return;
-    const run = this.#load(runId), failed = run ? unnoticed(run) : [];
+    const run = this.#closed ? null : this.#load(runId), failed = run ? unnoticed(run) : [];
     const root = run && failed.length > 0 ? this.#core.journal.getThread(run.rootThreadId) : null;
     if (!run || !root || root.archived || threadActive(root.status)) return;
     const notice = failureNotice(run, failed);

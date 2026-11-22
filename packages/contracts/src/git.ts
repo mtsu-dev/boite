@@ -4,7 +4,11 @@ export type GitChangeStatus = 'added' | 'modified' | 'deleted' | 'renamed' | 'co
 
 /** One path `git status` reports, staged or not, with the numbers `git diff --numstat` gives it. */
 export interface GitChange {
-  /** Relative to the thread's working directory, as `git.diff` takes it; `../` for a change outside a subfolder. */
+  /**
+   * Relative to the thread's working directory, as `git.diff` takes it. A change
+   * outside a subfolder thread is listed with its `../` (`../top.md`), and
+   * `git.diff` refuses that path as outside the directory.
+   */
   path: string;
   status: GitChangeStatus;
   /** The previous path of a rename or copy, named the same way. */
