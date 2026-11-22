@@ -433,7 +433,7 @@ in-memory client stores the setting but makes no copy.
 ## Turns a provider refused
 
 A turn refused because the model was at capacity tries again by itself, and a
-thread stopped by a usage limit can resume once the window resets (opt-in).
+thread stopped by a usage limit resumes once the window resets (on by default).
 Both, their prompts and their guards are in
 [usage](usage.md#when-a-provider-refuses-a-turn).
 

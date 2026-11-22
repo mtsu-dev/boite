@@ -100,7 +100,7 @@
   /** A switch saves when it flips; a refusal puts it back. */
   async function toggleAutoResume(input: HTMLInputElement) {
     const ok = await store.saveSettings({ autoResumeLimitedThreads: input.checked });
-    if (!ok) input.checked = store.settings?.autoResumeLimitedThreads === true;
+    if (!ok) input.checked = store.settings?.autoResumeLimitedThreads !== false;
   }
 
   /** A device may set alerts too: they decide when a window it already reads notifies. */
@@ -193,7 +193,7 @@
       <SettingsSection class="resume" id="settings-limit-resume">
         <SettingField title={strings.quotas.autoResume} help={strings.quotas.autoResumeHint} hint={strings.settings.effects.autoResume}>
           {#snippet control(attributes)}
-            <SettingSwitch {...attributes} data-testid="setting-auto-resume" checked={store.settings?.autoResumeLimitedThreads === true}
+            <SettingSwitch {...attributes} data-testid="setting-auto-resume" checked={store.settings?.autoResumeLimitedThreads !== false}
               onchange={(event) => void toggleAutoResume(event.currentTarget)} />
           {/snippet}
         </SettingField>

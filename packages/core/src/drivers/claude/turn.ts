@@ -3,7 +3,7 @@ import type { AgentTotals, MessagePart, ToolDocument, ToolStatus, Usage } from '
 import type { PromptCacheLife, StepBoundary, StepDecision, ToolPatch, TurnContext, TurnRefusal, TurnResult } from '../types.ts';
 import { TurnParts } from '../turn-parts.ts';
 import { sumUsage } from '../../usage.ts';
-import { isoTime } from './diagnostics.ts';
+import { parseUsageLimitReset } from '../usage-limit.ts';
 import {
   agentTotalsOf,
   accountVendor,
@@ -20,6 +20,7 @@ import {
   forbiddenReason,
   mapUsage,
   NOTHING_HELD,
+  RejectedWindows,
   requestTokens,
   subagentOf,
   toolResultOf,
@@ -174,8 +175,8 @@ export class ClaudeTurn extends TurnParts {
   #refusal: TurnRefusal | undefined;
   /** The CLI gave up compacting: what every request carries fills the limit (`TurnResult.contextFull`). */
   #contextFull = false;
-  /** When the window the CLI reported rejected resets (`rate_limit_event`), in milliseconds. */
-  #rejectedUntil: number | null = null;
+  /** Rejected rate-limit windows reported by `rate_limit_event`, tracked per window type. */
+  readonly #rejected = new RejectedWindows();
   /** The CLI refused to resume: the transcript this turn asked for is gone. */
   sessionLost = false;
   /** The session holding it right now: a stranded turn moves to another one. */
@@ -299,6 +300,10 @@ export class ClaudeTurn extends TurnParts {
     this.settled = true;
     this.wake();
     if (this.isStopped) this.#status = 'stopped';
+    if (this.#status === 'error' && this.#refusal?.kind === 'usage-limit') {
+      const resetsAt = this.#rejected.latest() ?? this.#refusal.resetsAt ?? parseUsageLimitReset(this.#error);
+      if (resetsAt !== this.#refusal.resetsAt) this.#refusal = { kind: 'usage-limit', resetsAt };
+    }
     this.resolve(this.#status, () => ({
       status: this.#status,
       sessionId: this.#sessionId,
@@ -542,13 +547,9 @@ export class ClaudeTurn extends TurnParts {
     this.ctx.log('warn', `claude: the subagent of ${parentToolId} hit an error: ${errorSentence(message.error)}`);
   }
 
-  /** A rejected window's reset, kept for a usage limit failure that follows; an allowed one clears it. */
-  #noteRateLimit(info: { status?: unknown; resetsAt?: unknown } | null | undefined): void {
-    if (info === null || info === undefined) return;
-    if (info.status === 'allowed') { this.#rejectedUntil = null; return; }
-    if (info.status !== 'rejected') return;
-    const at = isoTime(info.resetsAt);
-    if (at !== null) this.#rejectedUntil = Date.parse(at);
+  /** A rejected window's reset, tracked per window type for a usage limit failure that follows. */
+  #noteRateLimit(info: { status?: unknown; resetsAt?: unknown; rateLimitType?: unknown; overageStatus?: unknown; overageResetsAt?: unknown } | null | undefined): void {
+    this.#rejected.note(info);
   }
 
   #handleAssistant(message: SDKAssistantMessage): void {
@@ -561,7 +562,7 @@ export class ClaudeTurn extends TurnParts {
         return;
       }
       const reason = apiErrorReason(message.error, content, accountVendor(this.ctx.thread.model));
-      if (this.#status !== 'error') this.#refusal = apiRefusal(message.error, reason, this.#rejectedUntil);
+      if (this.#status !== 'error') this.#refusal = apiRefusal(message.error, reason, this.#rejected.latest(), this.#rejected.hasRejected);
       this.fail(reason);
       return;
     }
@@ -650,10 +651,14 @@ export class ClaudeTurn extends TurnParts {
         ? forbiddenReason(message.subtype === 'success' && message.result.length > 0 ? message.result : apiErrorReason('unknown', auth.content))
         : apiErrorReason('authentication_failed', auth.content));
     }
-    if (message.subtype !== 'success') {
-      this.fail(message.errors.length > 0 ? message.errors.join('; ') : message.subtype);
-    } else if (message.is_error) {
-      this.fail(message.result.length > 0 ? message.result : 'the turn ended on an API error');
+    const failure = message.subtype !== 'success'
+      ? (message.errors.length > 0 ? message.errors.join('; ') : message.subtype)
+      : (message.is_error ? (message.result.length > 0 ? message.result : 'the turn ended on an API error') : null);
+    if (failure !== null) {
+      if (this.#status !== 'error' && this.#refusal === undefined) {
+        this.#refusal = apiRefusal(null, failure, this.#rejected.latest(), this.#rejected.hasRejected);
+      }
+      this.fail(failure);
     }
   }
 

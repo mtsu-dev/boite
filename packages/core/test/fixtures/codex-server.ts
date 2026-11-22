@@ -320,6 +320,54 @@ async function runTurn(turnId: string, text: string): Promise<void> {
     notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
     return;
   }
+  if (instructions.includes('[usage-limited-text]')) {
+    const error = { message: 'You have hit your usage limit. Try again in 2 hours 15 minutes.', codexErrorInfo: 'usage_limit_exceeded', additionalDetails: null };
+    notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
+    return;
+  }
+  if (instructions.includes('[usage-limited-stale-window]')) {
+    const expiredSec = Math.floor(Date.now() / 1000) - 3600;
+    notify('account/rateLimits/updated', { rateLimits: { limitId: 'codex', primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: expiredSec } } });
+    const error = { message: "You've hit your usage limit. Try again in 3 hours.", codexErrorInfo: 'usageLimitExceeded', additionalDetails: null };
+    notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
+    return;
+  }
+  if (instructions.includes('[douane-503]')) {
+    const error = {
+      message: 'unexpected status 503 Service Unavailable: {"error":{"type":"proxy_error","message":"no available subscription for this model; connect an account or wait for its quota reset"}}',
+      codexErrorInfo: { httpConnectionFailed: { httpStatusCode: 503 } },
+      additionalDetails: null,
+    };
+    notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
+    return;
+  }
+  if (instructions.includes('[douane-ws-exhausted]')) {
+    const error = {
+      message: 'no available subscription for this model; connect an account or wait for its quota reset',
+      codexErrorInfo: 'other',
+      additionalDetails: null,
+    };
+    notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
+    return;
+  }
+  if (instructions.includes('[douane-429]')) {
+    const error = {
+      message: 'unexpected status 429 Too Many Requests: {"error":{"type":"proxy_error","message":"all accounts for this provider are unavailable; check their quotas and connection status"}}',
+      codexErrorInfo: { httpConnectionFailed: { httpStatusCode: 429 } },
+      additionalDetails: null,
+    };
+    notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
+    return;
+  }
+  if (instructions.includes('[douane-503-outage]')) {
+    const error = {
+      message: 'unexpected status 503 Service Unavailable: {"error":{"type":"proxy_error","message":"all accounts for this provider are unavailable; check their quotas and connection status"}}',
+      codexErrorInfo: { httpConnectionFailed: { httpStatusCode: 503 } },
+      additionalDetails: null,
+    };
+    notify('turn/completed', { threadId, turn: { ...(turnRecord(turnId, 'failed') as object), error } });
+    return;
+  }
   if (planEnabled && instructions.includes('[tasks]')) notify('turn/plan/updated', { threadId, turnId, plan: [{ step: 'Inspect source', status: 'completed' }, { step: 'Run checks', status: 'inProgress' }] });
   const directives = directivesOf(instructions);
   if (instructions.includes('[silent-reasoning]')) {
@@ -813,6 +861,9 @@ function handle(method: string, raw: unknown): unknown {
       if (replay && !ephemeral) {
         setTimeout(async () => { for (const [index, notification] of replay.notifications.entries()) { await replayPause(index); send(notification); } }, 0);
         return { turn: replay.turn };
+      }
+      if (instructionsOf(promptOf(params)).includes('[usage-limited-rpc]')) {
+        throw new Error('You have hit your usage limit. Try again at 2030-05-01T15:00:00Z');
       }
       // After the response is written, never before: a real server answers the
       // request and streams the turn afterwards.

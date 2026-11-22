@@ -865,6 +865,81 @@ describe('codex driver', () => {
     } finally { CAPACITY_RETRY.delaysMs = delays; }
   });
 
+  test('a Codex usage limit parses reset text, ignores expired rate-limit snapshots and handles turn/start RPC rejections', async () => {
+    const { client, threadId } = await startThread({ autoResumeLimitedThreads: true });
+    const before = Date.now();
+    const { finished: textDone } = await startTurn(client, threadId, 'Go on [usage-limited-text]', 20000);
+    expect((await textDone).status).toBe('error');
+    const expectedMin = before + (2 * 3600 + 14 * 60) * 1000;
+    const expectedMax = before + (2 * 3600 + 16 * 60) * 1000;
+    await waitFor(() => {
+      const at = harness!.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt;
+      return typeof at === 'number' && at >= expectedMin && at <= expectedMax;
+    }, 3000);
+    expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+
+    const beforeStale = Date.now();
+    const { finished: staleDone } = await startTurn(client, threadId, 'Go on [usage-limited-stale-window]', 20000);
+    expect((await staleDone).status).toBe('error');
+    await waitFor(() => {
+      const at = harness!.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt;
+      return typeof at === 'number' && at >= beforeStale + (2 * 3600 + 55 * 60) * 1000;
+    }, 3000);
+    expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+
+    const { finished: rpcDone } = await startTurn(client, threadId, 'Go on [usage-limited-rpc]', 20000);
+    expect((await rpcDone).status).toBe('error');
+    const expectedRpc = Date.parse('2030-05-01T15:00:00Z');
+    await waitFor(() => harness!.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === expectedRpc, 3000);
+    expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+  });
+
+  test('a Douane pool exhaustion usage limit on Codex plans a resume at gatewayPoolReset', async () => {
+    const earliestReset = Date.now() + 2 * 3600 * 1000;
+    const laterReset = Date.now() + 6 * 3600 * 1000;
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch(request) {
+        const url = new URL(request.url);
+        if (url.pathname === '/v1/quotas') {
+          return Response.json({
+            updated_at: new Date().toISOString(),
+            providers: [{
+              provider: 'codex', name: 'Codex', display: 'accounts',
+              entries: [
+                { id: 'codex-a', label: 'Codex A', status: 'cooldown', windows: [{ id: 'five-hour', label: '5 hours', remaining_percent: 0, reset_at: new Date(laterReset).toISOString() }], credits: [] },
+                { id: 'codex-b', label: 'Codex B', status: 'ready', windows: [{ id: 'five-hour', label: '5 hours', remaining_percent: 0, reset_at: new Date(earliestReset).toISOString() }], credits: [] },
+              ],
+            }],
+          });
+        }
+        return new Response('not found', { status: 404 });
+      },
+    });
+    try {
+      const { client, threadId } = await startThread();
+      await client.call('subscriptionProxy.configure', {
+        subscriptionProxy: { enabled: true, kind: 'douane', baseUrl: `http://127.0.0.1:${server.port}/v1`, dashboardUrl: `http://127.0.0.1:${server.port}/admin/#quotas` },
+        key: 'douane-codex-test-key',
+      });
+
+      for (const directive of ['[douane-503]', '[douane-ws-exhausted]', '[douane-429]']) {
+        const { finished } = await startTurn(client, threadId, `Go on ${directive}`, 20000);
+        expect((await finished).status).toBe('error');
+        await waitFor(() => harness!.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === earliestReset, 3000);
+        expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
+      }
+
+      const { finished: outageDone } = await startTurn(client, threadId, 'Go on [douane-503-outage]', 20000);
+      expect((await outageDone).status).toBe('error');
+      const { recovery } = await client.call('threads.get', { threadId });
+      expect(recovery?.kind).toBe('interrupted');
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test('service tiers are model-specific, persisted and sent on the frozen turn', async () => {
     const client = await startCore();
     const { projectId, accountId } = await codexAccount(client);
