@@ -24,7 +24,7 @@ import { PUSH_ENABLED_KEY } from '../pwa';
 import type { Client } from '../client';
 import { experimentOn } from '../experiments.svelte';
 import type { DropKind } from '../native-drop';
-import { clampSidebar, SIDEBAR_DEFAULT, writeLayout } from '../prefs';
+import { AGENTS_SIDEBAR_MAX, clampSidebar, SIDEBAR_DEFAULT, writeLayout } from '../prefs';
 import { rightPanel, type BoundPanel } from '../right-panel.svelte';
 import { strings } from '../strings';
 import type { Page, SettingsTab, Store } from '../store.svelte';
@@ -72,6 +72,8 @@ export class Layout {
   /** The desktop sidebar's remembered folded state. */
   sidebarCollapsed = $state(false);
   sidebarWidth = $state(SIDEBAR_DEFAULT);
+  /** Optional width chosen specifically on the Mochis page, kept separate so it never alters the thread list. */
+  agentsSidebarWidth = $state<number | null>(null);
   /** What a drag from the system over the window would do: add a project or attach files. */
   dropping = $state<DropKind | false>(false);
   search = $state('');
@@ -88,14 +90,27 @@ export class Layout {
   // Layout
   // -------------------------------------------------------------------------
 
+  #saveLayout(): void {
+    writeLayout({
+      sidebarWidth: this.sidebarWidth,
+      sidebarCollapsed: this.sidebarCollapsed,
+      ...(this.agentsSidebarWidth !== null ? { agentsSidebarWidth: this.agentsSidebarWidth } : {})
+    });
+  }
+
   setSidebarWidth(width: number): void {
     this.sidebarWidth = clampSidebar(width);
-    writeLayout({ sidebarWidth: this.sidebarWidth, sidebarCollapsed: this.sidebarCollapsed });
+    this.#saveLayout();
+  }
+
+  setAgentsSidebarWidth(width: number | null): void {
+    this.agentsSidebarWidth = width === null ? null : clampSidebar(width, AGENTS_SIDEBAR_MAX);
+    this.#saveLayout();
   }
 
   toggleSidebar(): void {
     this.sidebarCollapsed = !this.sidebarCollapsed;
-    writeLayout({ sidebarWidth: this.sidebarWidth, sidebarCollapsed: this.sidebarCollapsed });
+    this.#saveLayout();
   }
 
   async copy(text: string): Promise<void> {

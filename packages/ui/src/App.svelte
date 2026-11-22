@@ -47,6 +47,7 @@
   import type { Page } from './lib/store.svelte';
   import { workspace } from './lib/workspace.svelte';
   import { listAbsent } from './lib/list-absent';
+  import { visibleSidebarWidth } from './lib/prefs';
   import { hostLocalAgentBrowser } from './lib/agent-browser-host.svelte';
   import { tourRequested, tourSeen } from './lib/onboarding.svelte';
   import { needsAnAI } from './lib/first-run';
@@ -494,11 +495,13 @@
    * window's top, so the main column's bar starts right of them.
    */
   let railShown = $derived(booted && !wideRecovery);
+  let agentsRailShown = $derived(store.page === 'agents' && experimentOn('resident-agents') && !(store.connection === 'closed' && !store.core));
   // Before the first project the desktop draws no list column (lib/list-absent.ts): it counts as folded, with no toggle.
   let listGone = $derived(store.page !== 'settings' && !(store.page === 'agents' && experimentOn('resident-agents'))
     && listAbsent(workspace.machinesOr(store).map((machine) => machine.store), narrow.current));
   let listFolded = $derived((store.sidebarCollapsed || listGone) && store.page !== 'settings');
-  let barLeft = $derived(!railShown ? '0px' : listFolded ? 'var(--frame-gap)' : `calc(${store.sidebarWidth}px + var(--frame-gap))`);
+  let barLeft = $derived(!railShown ? '0px' : listFolded ? 'var(--frame-gap)'
+    : `calc(${visibleSidebarWidth({ sidebarWidth: store.sidebarWidth, agentsSidebarWidth: store.agentsSidebarWidth, page: agentsRailShown ? 'agents' : 'chat' })}px + var(--frame-gap))`);
   let sidebarFolded = $derived(listFolded && store.booted);
   // A machine with no AI shows its one action first: the tour waits for something to show.
   let tour = $derived(store.booted && store.connection === 'ready' && (tourRequested() || (!tourSeen() && !needsAnAI(store))));

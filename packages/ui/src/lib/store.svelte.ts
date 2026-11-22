@@ -169,6 +169,7 @@ export class Store {
     this.modelDefaults = readModelDefaults();
     const layout = readLayout();
     this.sidebarWidth = layout.sidebarWidth;
+    this.agentsSidebarWidth = layout.agentsSidebarWidth ?? null;
     this.sidebarCollapsed = layout.sidebarCollapsed;
     listen(ctx, client);
     ctx.off.push(modelFavorites.register(ctx.models.favoritesTarget));
@@ -332,6 +333,8 @@ export class Store {
   set sidebarCollapsed(value) { this.#ctx.layout.sidebarCollapsed = value; }
   get sidebarWidth() { return this.#ctx.layout.sidebarWidth; }
   set sidebarWidth(value) { this.#ctx.layout.sidebarWidth = value; }
+  get agentsSidebarWidth() { return this.#ctx.layout.agentsSidebarWidth; }
+  set agentsSidebarWidth(value) { this.#ctx.layout.agentsSidebarWidth = value; }
   get dropping() { return this.#ctx.layout.dropping; }
   set dropping(value) { this.#ctx.layout.dropping = value; }
   get search() { return this.#ctx.layout.search; }
@@ -340,6 +343,7 @@ export class Store {
   get panelOpen(): boolean { return this.#ctx.layout.panelOpen; }
 
   setSidebarWidth(...args: Parameters<Layout['setSidebarWidth']>) { return this.#ctx.layout.setSidebarWidth(...args); }
+  setAgentsSidebarWidth(...args: Parameters<Layout['setAgentsSidebarWidth']>) { return this.#ctx.layout.setAgentsSidebarWidth(...args); }
   toggleSidebar(...args: Parameters<Layout['toggleSidebar']>) { return this.#ctx.layout.toggleSidebar(...args); }
   copy(...args: Parameters<Layout['copy']>) { return this.#ctx.layout.copy(...args); }
   showSettings(...args: Parameters<Layout['showSettings']>) { return this.#ctx.layout.showSettings(...args); }
