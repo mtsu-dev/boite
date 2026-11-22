@@ -58,6 +58,9 @@ test('opening a conversation asks the core once for each thing the panel and the
   await waitFor(() => store.openThread?.id === first);
   // The shared rows of each expanded project read once when their chunk arrives: that is not the open measured below.
   await sharedProjectThreads.load();
+  // The app can still be loading the sidebar and chat after the store has booted.
+  await waitFor(() => target.querySelector('[data-testid="project-row"]') !== null
+    && target.querySelector('[data-testid="thread-header"]') !== null);
   await settle();
 
   const client = store.client!;
