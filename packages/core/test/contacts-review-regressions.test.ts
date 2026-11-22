@@ -10,11 +10,12 @@ import {setDriver,getDriver} from '../src/drivers/index.ts';
 import {memberThreadId} from '../src/contacts/member-address.ts';
 import type {AgentLetter} from '@boite/contracts';
 import {letterPrompt} from '../src/coordination-letter.ts';
+import {removeDir} from '../src/fs-retry.ts';
 
 const scratch=tmpdir();
 const cores:TestCore[]=[],dirs:string[]=[],clients:CoreClient[]=[];
 const observers=new Set<ReturnType<typeof setTimeout>>();
-afterEach(async()=>{for(const timer of observers)clearTimeout(timer);observers.clear();for(const c of clients.splice(0))c.close();for(const c of cores.splice(0).reverse())await c.stop();for(const d of dirs.splice(0))rmSync(d,{recursive:true,force:true});});
+afterEach(async()=>{for(const timer of observers)clearTimeout(timer);observers.clear();for(const c of clients.splice(0))c.close();for(const c of cores.splice(0).reverse())await c.stop();for(const d of dirs.splice(0))await removeDir(d);});
 async function side(name:string){
   const dataDir=mkdtempSync(join(scratch,'security-fixture-'));dirs.push(dataDir);
   const h=await startTestCore({dataDir});cores.push(h);
