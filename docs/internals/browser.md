@@ -116,8 +116,9 @@ flag's size by the forced scale of 2 twice.
 A browser whose identity cannot be read starts as it is, with a warning in the
 log. A page check of `boite view` skips the read.
 
-Settings > Browser has a User-Agent editor on each custom
-profile. Leave it empty for the unchanged browser identity, append a suffix
+Settings > Browser has a User-Agent editor on each custom profile whose engine
+is Chrome ([Engine of a profile](#engine-of-a-profile)). Leave it empty for the
+unchanged browser identity, append a suffix
 such as a bug bounty program marker, or replace the complete value. The
 setting is stored as `browserProfiles[].userAgent` (`mode: suffix | replace`,
 `value`) and applies when that profile's agent browser next starts. Close its
@@ -126,7 +127,7 @@ a change to an already running profile. Default and private profiles keep the
 browser identity; create a named profile to customize it.
 
 A profile keeps its current engine until it closes, including when the desktop
-app attaches or the User-Agent setting changes. Its next engine starts after
+app attaches or its engine or User-Agent setting changes. Its next engine starts after
 the previous engine finishes saving cookies, so two engines never overwrite
 the same profile's saved cookie snapshot. An engine that ended, closed by
 the core or lost when its connection dropped, holds its profile until its
@@ -575,6 +576,40 @@ the connection ends the relay, and the next tab opens in the core's own
 browser again. Other clients of the conversation, a phone or another machine,
 still watch a hosted tab as frames, taken through the app. The Linux and
 macOS apps do not host; their webviews have no DevTools channel to relay.
+
+### Engine of a profile
+
+Each profile runs its agent tabs in one of two engines, which the owner picks
+in Settings > Browser with the **Engine** button of the profile: **App window**
+(`app`, the hosted WebView2 above) or **Chrome** (`chrome`, the browser the
+core starts itself, [Which browser](#which-browser)). A custom profile stores
+it as `browserProfiles[].engine`. The built-in `default` profile is not in that
+list, so its engine has a key of its own, `browserBuiltinProfiles.default.engine`;
+the object leaves room for another built-in setting without a second flat key.
+`private` has no setting and runs in the app.
+
+`BrowserEngines.get` hosts a profile only when an app is attached, its engine
+is not `chrome` and it has no User-Agent: a webview cannot carry a per-profile
+User-Agent into its workers and popups, so a profile with one runs in Chrome
+whatever its engine says, and the Settings card shows the User-Agent editor on
+Chrome profiles only. A missing engine reads as before the setting existed:
+`chrome` for a profile with a User-Agent, `app` otherwise (`browserEngineOf` in
+`packages/contracts/src/browser.ts`). Without an attached app, on Linux, macOS,
+a phone-only core or a server, every profile runs in Chrome. A change applies
+when the profile's browser next starts, like the User-Agent.
+
+The engine is the owner's alone. `settings.set` is owner-only, and neither
+`browserProfiles` nor `browserBuiltinProfiles` is among the settings an agent may
+ask about (`REQUESTABLE_SETTINGS`); no CLI option or browser action picks or
+overrides an engine, and a site that blocks one engine does not switch the
+profile to the other. An agent may still open a tab in another profile by name,
+which then runs in that profile's engine.
+
+A sign-in follows the profile across engines through `boite-cookies.json`: the
+hosted engine saves the app's cookies there and hands the app the ones it
+lacks, and Chrome sets the whole saved copy when it starts. A cookie the app
+already holds wins over the saved copy, so a sign-in renewed in Chrome reaches
+the app only once the app's own cookie of the same name is gone.
 
 ## Network calls
 

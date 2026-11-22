@@ -1,12 +1,14 @@
 import { expect, spyOn, test } from 'bun:test';
-import { checkSettingsPatch } from '@boite/contracts';
+import { browserEngineOf, checkSettingsPatch } from '@boite/contracts';
+import { assertAllowed } from '../src/access.ts';
 import { profileIdentity } from '../src/browser/chromium.ts';
 import { BrowserEngines } from '../src/browser/engines.ts';
 import { BrowserHost } from '../src/browser/host.ts';
 import { Cdp } from '../src/browser/cdp.ts';
 import type { Engine } from '../src/browser/types.ts';
 import type { Connection } from '../src/router.ts';
-import { startTestCore } from './harness.ts';
+import { echoThread, startTestCore } from './harness.ts';
+import { thrown } from './settle.ts';
 
 test('profile User-Agent preserves the default, appends a suffix or replaces the whole value', () => {
   const native = { userAgent: 'Mozilla/5.0 Chrome/154.0.0.0', metadata: { platform: 'Windows', brands: [{ brand: 'Chromium', version: '154' }] } };
@@ -30,6 +32,79 @@ test('profile settings keep User-Agent modes, normalize empty to absent and refu
   for (const userAgent of [null, 'Bounty/1', {}, { mode: 'other', value: 'ok' }, { mode: 'suffix', value: 1 },
     ...['x\r\nX-Injected: yes', '\t', '\x00', '\x7f', 'é', 'x'.repeat(8193)].map(value => ({ mode: 'suffix', value }))]) {
     expect(checkSettingsPatch({ browserProfiles: [{ ...profile, userAgent } as never] })).toMatchObject({ ok: false, field: 'browserProfiles' });
+  }
+});
+
+test('the engine is chosen per profile, the built-in default included, and refuses anything else', () => {
+  expect(checkSettingsPatch({ browserProfiles: [{ id: 'p-a', name: 'A', engine: 'chrome' }, { id: 'p-b', name: 'B', engine: 'app' }] }))
+    .toEqual({ ok: true, patch: { browserProfiles: [{ id: 'p-a', name: 'A', engine: 'chrome' }, { id: 'p-b', name: 'B', engine: 'app' }] } });
+  expect(checkSettingsPatch({ browserBuiltinProfiles: { default: { engine: 'chrome' } } }))
+    .toEqual({ ok: true, patch: { browserBuiltinProfiles: { default: { engine: 'chrome' } } } });
+  expect(checkSettingsPatch({ browserBuiltinProfiles: { default: {} } })).toEqual({ ok: true, patch: { browserBuiltinProfiles: {} } });
+  expect(checkSettingsPatch({ browserProfiles: [{ id: 'p-a', name: 'A', engine: 'firefox' } as never] })).toMatchObject({ ok: false, field: 'browserProfiles' });
+  for (const builtins of [null, [], { default: { engine: 'edge' } }, { private: { engine: 'chrome' } }, { default: 'chrome' }, { default: { engine: 'app', userAgent: {} } }]) {
+    expect(checkSettingsPatch({ browserBuiltinProfiles: builtins as never })).toMatchObject({ ok: false, field: 'browserBuiltinProfiles' });
+  }
+  // An absent engine reads as before it existed: a User-Agent ran the profile in Chromium.
+  const settings = { browserProfiles: [{ id: 'p-ua', name: 'UA', userAgent: { mode: 'suffix' as const, value: 'Bounty/1' } }, { id: 'p-plain', name: 'Plain' }, { id: 'p-chrome', name: 'Chrome', engine: 'chrome' as const }] };
+  expect(['p-ua', 'p-plain', 'p-chrome', 'default', 'private', 'p-gone'].map(id => browserEngineOf(settings, id))).toEqual(['chrome', 'app', 'chrome', 'app', 'app', 'app']);
+  expect(browserEngineOf({ browserBuiltinProfiles: { default: { engine: 'chrome' } } }, 'default')).toBe('chrome');
+});
+
+test('an agent can neither set nor ask for a browser profile or its engine', async () => {
+  const harness = await startTestCore();
+  try {
+    const owner = await harness.connect();
+    const { threadId } = await echoThread(harness, owner);
+    const agent = { id: 'con_agent', subscriptions: new Set(), identity: { principal: 'agent', sessionId: null, threadId }, sendEvent() {}, close() {} } as unknown as Connection;
+    expect(() => assertAllowed('settings.set', agent, { threadId, browserBuiltinProfiles: { default: { engine: 'chrome' } } })).toThrow("not one of the agent's methods");
+    for (const [key, value] of [['browserBuiltinProfiles', { default: { engine: 'chrome' } }], ['browserProfiles', [{ id: 'p-a', name: 'A', engine: 'chrome' }]], ['browserDefaultProfile', 'p-a']] as const) {
+      expect(() => assertAllowed('settings.request', agent, { threadId, key, value })).not.toThrow();
+      expect(await thrown(owner.call('settings.request', { threadId, key: key as never, value, reason: 'Run in Chrome' }))).toThrow(`${key} is not a setting an agent may ask about`);
+    }
+    expect(harness.core.settings.get().browserBuiltinProfiles).toBeUndefined();
+    owner.close();
+  } finally { await harness.stop(); }
+});
+
+test('a profile set to Chrome starts Chromium while the app hosts, and the other engine only from its next start', async () => {
+  const harness = await startTestCore();
+  const host = new BrowserHost();
+  host.attach({ identity: { principal: 'owner' }, sentFrom: { client: 'shell' }, remote: false } as Connection);
+  const engines = new BrowserEngines(harness.core, host, () => ({ path: null, reason: 'unused' }), 'fixture', 'system:browser', () => {}, () => {},
+    { prepare: () => harness.dataDir, lost: () => {} });
+  const created: Engine[] = [];
+  const launching = spyOn(engines, 'launch').mockImplementation(async (profile, _identify, hosted) => {
+    const relay = Cdp.relay(() => {}, () => { relay.end(); });
+    const engine: Engine = { key: hosted ? `host:${profile}` : profile, profile, hosted: !!hosted, dir: '', cdp: relay.cdp,
+      kill: () => relay.cdp.close(), exited: relay.cdp.closed, tabs: new Set(['open-tab']), throwaway: false, identity: null };
+    created.push(engine);
+    return engine;
+  });
+  const restart = async (engine: Engine) => { engine.cdp.close(); await engines.shut(engine); };
+  try {
+    expect((await engines.get('default')).hosted).toBe(true);
+    harness.core.settings.set({ browserBuiltinProfiles: { default: { engine: 'chrome' } }, browserProfiles: [{ id: 'p-a', name: 'A', engine: 'chrome' }, { id: 'p-b', name: 'B', engine: 'app' }] });
+    const before = await engines.get('default');
+    expect(before.hosted).toBe(true);
+    await restart(before);
+    expect((await engines.get('default')).hosted).toBe(false);
+    expect((await engines.get('p-a')).hosted).toBe(false);
+    expect((await engines.get('p-b')).hosted).toBe(true);
+    // A User-Agent needs Chromium whatever the engine says: a webview has no per-profile identity.
+    harness.core.settings.set({ browserProfiles: [{ id: 'p-a', name: 'A', engine: 'chrome' }, { id: 'p-b', name: 'B', engine: 'app', userAgent: { mode: 'suffix', value: 'Bounty/1' } }] });
+    await restart(await engines.get('p-b'));
+    expect((await engines.get('p-b')).hosted).toBe(false);
+    // Without a hosting app every profile runs in Chromium.
+    host.detach();
+    await restart(await engines.get('default'));
+    harness.core.settings.set({ browserBuiltinProfiles: {} });
+    expect((await engines.get('default')).hosted).toBe(false);
+  } finally {
+    for (const engine of created) { engine.cdp.close(); engines.lost(engine); }
+    launching.mockRestore();
+    host.detach();
+    await harness.stop();
   }
 });
 

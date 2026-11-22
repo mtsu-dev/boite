@@ -564,7 +564,22 @@ export const PRIVATE_BROWSER_PROFILE = 'private';
 export const BROWSER_PROFILES_MAX = 32;
 export const BROWSER_PROFILE_NAME_MAX = 40;
 export interface BrowserUserAgent { mode: 'suffix' | 'replace'; value: string }
-export interface BrowserProfile { id: string; name: string; userAgent?: BrowserUserAgent }
+/**
+ * What runs a profile's agent tabs. `app` is the desktop app's own webviews
+ * (WebView2) while the app hosts on this machine, `chrome` a Chromium-based
+ * browser the core starts itself (`BOITE_BROWSER`, else Chrome, Edge,
+ * Chromium or Brave). Without a hosting app every profile runs in `chrome`.
+ * Only the owner chooses it, in Settings: no agent method writes it.
+ */
+export type BrowserEngine = 'app' | 'chrome';
+export const BROWSER_ENGINES: readonly BrowserEngine[] = ['app', 'chrome'];
+/** `engine` absent reads as before it existed: `chrome` with a User-Agent, `app` otherwise. */
+export interface BrowserProfile { id: string; name: string; engine?: BrowserEngine; userAgent?: BrowserUserAgent }
+/**
+ * What the built-in profiles store, which `browserProfiles` does not list:
+ * only `default` has a setting, its engine. `private` keeps no setting.
+ */
+export interface BrowserBuiltinProfiles { default?: { engine?: BrowserEngine } }
 
 /** User-Agent is one printable ASCII HTTP field value, never an injected header. */
 export function browserUserAgentError(value: unknown): string | null {
@@ -573,6 +588,14 @@ export function browserUserAgentError(value: unknown): string | null {
   return !setting || !['suffix', 'replace'].includes(setting.mode as string)
     || typeof setting.value !== 'string' || setting.value.length > 8192 || /[^\x20-\x7e]/.test(setting.value)
     ? 'User-Agent needs suffix or replace mode and at most 8192 printable ASCII characters' : null;
+}
+
+/** A profile's engine as `get` in the core reads it; `default` and `private` included. */
+export function browserEngineOf(settings: { browserProfiles?: BrowserProfile[]; browserBuiltinProfiles?: BrowserBuiltinProfiles } | null | undefined, profile: string): BrowserEngine {
+  if (profile === DEFAULT_BROWSER_PROFILE) return settings?.browserBuiltinProfiles?.default?.engine ?? 'app';
+  if (profile === PRIVATE_BROWSER_PROFILE) return 'app';
+  const found = settings?.browserProfiles?.find(one => one.id === profile);
+  return found?.engine ?? (found?.userAgent ? 'chrome' : 'app');
 }
 
 /** The shell checks the same rule before it opens a profile folder. */
