@@ -31,6 +31,8 @@ export interface ConnectOptions {
   headers?: Record<string, string>;
   /** The newer events this client takes in place of their older form (`hello` `accepts`). */
   accepts?: HelloAccepted[];
+  /** Every frame the core sends, as received, before it is parsed. The transfer bench counts them. */
+  onFrame?: (raw: string) => void;
 }
 
 export interface CoreClient {
@@ -120,6 +122,7 @@ export async function connect(url: string, token: string, options: ConnectOption
   };
 
   socket.onMessage((raw) => {
+    options.onFrame?.(raw);
     let frame: { id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: RpcError };
     try {
       frame = JSON.parse(raw) as typeof frame;

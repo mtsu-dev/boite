@@ -1,4 +1,5 @@
 import type { ToolStatus, Usage } from '@boite/contracts';
+import { pacing } from '../../pacing.ts';
 import { DecidedTurnParts } from '../turn-parts.ts';
 import type { PromptCacheLife, TurnContext, TurnRefusal, TurnResult } from '../types.ts';
 import { codexRefusal } from './availability.ts';
@@ -50,7 +51,7 @@ export class CodexTurn extends DecidedTurnParts {
   readonly #textItems = new Map<string, { index: number; text: string; complete: boolean }>();
   /** Tools whose streamed output waits for the next flush, so a chatty command costs one write per beat. */
   readonly #dirty = new Set<string>();
-  #flushTimer: ReturnType<typeof setTimeout> | null = null;
+  #flushTimer: unknown = null;
 
   #completedTurnId: string | null = null;
   nativeFinished = false;
@@ -234,12 +235,11 @@ export class CodexTurn extends DecidedTurnParts {
     if (pending.length > LIVE_OUTPUT_MAX * 4) foldOutput(entry);
     this.#dirty.add(itemId);
     if (this.#flushTimer !== null) return;
-    this.#flushTimer = setTimeout(() => this.#flushOutput(), LIVE_OUTPUT_BEAT_MS);
-    this.#flushTimer.unref?.();
+    this.#flushTimer = pacing.set(() => this.#flushOutput(), LIVE_OUTPUT_BEAT_MS, { unref: true });
   }
 
   #flushOutput(): void {
-    if (this.#flushTimer !== null) clearTimeout(this.#flushTimer);
+    if (this.#flushTimer !== null) pacing.clear(this.#flushTimer);
     this.#flushTimer = null;
     for (const itemId of this.#dirty) {
       const entry = this.#tools.get(itemId);

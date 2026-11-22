@@ -137,7 +137,7 @@ export class ProcRegistry {
     // Fast while a turn runs, a task-manager view leases the numbers, memory is under pressure, a startup is boosted or a process was busy.
     this.#loadPace = new LoadPace(() => this.sampleLoad(), () => this.#running.size > 0 || this.#resources.active
       || this.memory.state !== 'ok' || this.#startups.size > 0 || this.#loadBusy,
-    options.loadIntervalMs ?? LOAD_INTERVAL_MS, options.idleLoadIntervalMs ?? IDLE_LOAD_INTERVAL_MS);
+    options.loadIntervalMs ?? LOAD_INTERVAL_MS, options.idleLoadIntervalMs ?? IDLE_LOAD_INTERVAL_MS, options.loadSampling !== false);
   }
 
   capability(): TraceCapability {

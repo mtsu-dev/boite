@@ -1,0 +1,47 @@
+name: pr comment
+
+# The "Thread transfer impact" comment on a pull request
+# (docs/internals/ci.md#pull-request-comment), once ci.yml finished on it.
+# workflow_run runs this file and its scripts from the default branch, never
+# the pull request's: the pull request's jobs hold no write access and leave
+# their numbers as JSON artifacts, which scripts/ci/pr-comment.ts validates
+# field by field and never executes.
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions: {}
+
+# One writer per pull request branch at a time, so two runs never both create the comment.
+concurrency:
+  group: pr-comment-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  comment:
+    name: Thread transfer impact
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      # The default branch's scripts.
+      contents: read
+      # The finished run's report artifacts.
+      actions: read
+      # The one comment it creates or edits.
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      # The script uses Bun's built-ins alone: no dependency is installed.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: package.json
+      - name: Create or update the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/ci/pr-comment.ts

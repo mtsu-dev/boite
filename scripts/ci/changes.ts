@@ -8,7 +8,7 @@ export const CI_WORKFLOWS = ['.github/workflows/ci.yml', '.github/workflows/desk
  * CI_WORKFLOWS runs, or only their tests import. `changes.test.ts` fails when
  * a job of CI_WORKFLOWS or a package starts using one.
  */
-export const REPOSITORY_SCRIPTS = ['changelog.ts', 'commit-ci.ts', 'feature-modules.ts', 'nightly-retry.ts', 'nightly.ts', 'pr-title.ts', 'server-provenance.ts'].map((name) => `scripts/ci/${name}`);
+export const REPOSITORY_SCRIPTS = ['changelog.ts', 'commit-ci.ts', 'feature-modules.ts', 'nightly-retry.ts', 'nightly.ts', 'pr-comment.ts', 'pr-title.ts', 'server-provenance.ts'].map((name) => `scripts/ci/${name}`);
 
 /** The script tests the Windows installer job runs (desktop.yml), and the helper they share. */
 export const INSTALLER_SCRIPTS = ['installer-hooks.test.ts', 'installer-shortcuts.test.ts', 'installed-cli-windows.test.ts', 'stop-core.test.ts', 'installer-prerequisites.ts', 'installer-prerequisites.test.ts'].map((name) => `scripts/ci/${name}`);

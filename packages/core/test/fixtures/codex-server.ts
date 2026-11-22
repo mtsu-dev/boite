@@ -23,6 +23,8 @@
  * `CODEX_FAKE_SLOW_SKILLS=<ms>` delays that answer.
  * `CODEX_FAKE_STARTUP_GATE=<path>` holds the `thread/start` reply until the file exists.
  * `CODEX_FAKE_OUTPUT_GATE=<path>` holds turn output until the file exists.
+ * `CODEX_FAKE_REPLAY=<file>` answers every turn with a real server's recorded
+ * one (`replay.ts`), under the recorded thread id.
  *
  * The wire is copied from the real server on purpose: responses and
  * notifications carry no `jsonrpc` member, which is what the driver has to
@@ -31,6 +33,7 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { instructionsOf } from './history.ts';
+import { codexReplay, replayPause } from './replay.ts';
 
 const DIRECTIVE = /\[(agents|command|command-failed|approve|thought|summary|usage|late-context|partial-usage|slow|slow-usage|crash|input|async|stream|elicit|elicit-url|permissions|time|hook-block|limits|flood|cut)\]/g;
 const CHUNKS = 3;
@@ -50,6 +53,7 @@ let experimentalApi = false;
 let ephemeral = false;
 /** `CODEX_FAKE_ARCHIVED=1`: every thread is archived outside Boite until this process unarchives it. */
 const unarchived = new Set<string>();
+const replay = process.env['CODEX_FAKE_REPLAY'] ? codexReplay(process.env['CODEX_FAKE_REPLAY']) : null;
 
 /** The config overrides of a thread open, on a line of its own so the counts of the open lines stay. */
 function logConfig(method: string, params: Record<string, unknown>): void {
@@ -728,8 +732,8 @@ function handle(method: string, raw: unknown): unknown {
       logConfig(method, params);
       planEnabled = (params['config'] as Record<string, unknown> | undefined)?.['tools.update_plan.enabled'] === true;
       threadCounter += 1;
-      threadId = `codex-fake-${crypto.randomUUID().slice(0, 8)}-${threadCounter}`;
       ephemeral = params['ephemeral'] === true;
+      threadId = replay && !ephemeral ? replay.threadId : `codex-fake-${crypto.randomUUID().slice(0, 8)}-${threadCounter}`;
       log(
         `thread/start approvalPolicy=${textOf(params['approvalPolicy'])} sandbox=${textOf(params['sandbox'])} model=${textOf(params['model'])}${ephemeral ? ' ephemeral' : ''}`,
       );
@@ -806,6 +810,10 @@ function handle(method: string, raw: unknown): unknown {
       log(JSON.stringify({ serviceTier: params['serviceTier'] }));
       for (const url of imageUrlsOf(params)) log(`image ${url}`);
       for (const skill of Array.isArray(params['input']) ? params['input'] : []) if (skill['type'] === 'skill') log(`skill ${skill['name']} ${skill['path']} text=${promptOf(params)}`);
+      if (replay && !ephemeral) {
+        setTimeout(async () => { for (const [index, notification] of replay.notifications.entries()) { await replayPause(index); send(notification); } }, 0);
+        return { turn: replay.turn };
+      }
       // After the response is written, never before: a real server answers the
       // request and streams the turn afterwards.
       setTimeout(() => {

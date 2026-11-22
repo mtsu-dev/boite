@@ -1,4 +1,5 @@
 import { eventThreadId, type ComposerRevision, type RpcEventName, type RpcEvents } from '@boite/contracts';
+import { pacing } from './pacing.ts';
 
 export type EventPayload = RpcEvents[RpcEventName];
 export interface BroadcastOptions { excludeConnection?: string; composerRevision?: ComposerRevision }
@@ -27,7 +28,7 @@ export class Bus {
   readonly #committedListeners = new Set<BusListener>();
   #staged: Staged[] | null = null;
   readonly #pending = new Map<string, Map<string, PendingDelta>>();
-  #timer: ReturnType<typeof setTimeout> | null = null;
+  #timer: unknown = null;
   #reporting = false;
   /**
    * Where a throwing listener is reported. One listener's error must neither
@@ -68,7 +69,7 @@ export class Bus {
       this.flush();
     } catch (error) {
       this.#pending.clear();
-      if (this.#timer !== null) clearTimeout(this.#timer);
+      if (this.#timer !== null) pacing.clear(this.#timer);
       this.#timer = null;
       throw error;
     } finally {
@@ -132,7 +133,7 @@ export class Bus {
 
   #cancelTimer(): void {
     if (this.#timer === null) return;
-    clearTimeout(this.#timer);
+    pacing.clear(this.#timer);
     this.#timer = null;
   }
 
@@ -150,7 +151,7 @@ export class Bus {
     if (current) current.text += delta.text;
     else thread.set(key, { ...delta });
     if (this.#timer === null) {
-      this.#timer = setTimeout(() => {
+      this.#timer = pacing.set(() => {
         this.#timer = null;
         this.flush();
       }, DELTA_WINDOW_MS);
