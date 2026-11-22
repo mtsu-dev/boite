@@ -11,6 +11,8 @@ import type { MessagePart, RpcEventName, RpcEvents, ThreadId } from './index';
  */
 export const STREAM_CHANNELS = ['text', 'tools', 'liveOutput'] as const;
 export type StreamChannel = (typeof STREAM_CHANNELS)[number];
+/** Every channel but a running command's output: what a phone takes while its tool cards are folded. */
+export const FOLDED_CHANNELS: readonly StreamChannel[] = ['text', 'tools'];
 
 type ToolPart = Extract<MessagePart, { type: 'tool' }>;
 

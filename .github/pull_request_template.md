@@ -20,6 +20,8 @@ Include desktop and phone captures for visual changes.
 <!--
 When CI's Bundle size job reports a measure growing more than 0.1 %, add a
 "## Bundle size" section saying what grows and why, then rerun that job.
+When its Thread transfer job reports bytes growing more than 1 % or one message
+more, do the same under "## Thread transfer".
 -->
 
 ## Affected paths

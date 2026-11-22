@@ -120,6 +120,8 @@ export interface CoreOptions {
   dataDirKind?: 'default' | 'custom';
   /** How often a resident core runs its retention passes; a test shortens the minute. */
   retentionPassMs?: number;
+  /** False takes no load samples (`ProcRegistryOptions.loadSampling`). */
+  loadSampling?: boolean;
   /** The sleep inhibitor this core holds while agents work, instead of the platform's; tests count the holds. */
   keepAwake?: KeepAwakeHold;
   /** Legacy vault cleanup only; tests substitute it so no system store is touched. */
@@ -429,6 +431,7 @@ export class Core {
     this.accounts = new AccountStore(this);
     this.projects = new ProjectStore(this);
     this.procs = new ProcRegistry(this.journal, this.bus, undefined, {
+      loadSampling: options.loadSampling,
       diagnostic: (message, context) => this.logs.warn(message, { source: 'guards', ...context }),
     });
     attachResourceLog(this);

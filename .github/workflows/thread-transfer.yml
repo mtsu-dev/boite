@@ -1,0 +1,37 @@
+name: thread transfer
+
+# Measures every main commit for pull requests to compare with
+# (docs/internals/ci.md#thread-transfer): what one recorded agent turn costs a
+# phone, in bytes, for each agent. Never cancelled by the next push, so a pull
+# request's base almost always has its `thread-transfer` artifact and no pull
+# request measures its base again.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: thread-transfer-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: Measure main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Measure
+        run: bun scripts/ci/transfer.ts measure .artifacts/thread-transfer/thread-transfer.json
+      - uses: ./.github/actions/upload-artifact
+        with:
+          name: thread-transfer
+          path: .artifacts/thread-transfer/thread-transfer.json
+          if-no-files-found: error
+          retention-days: 90

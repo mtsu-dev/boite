@@ -622,8 +622,54 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: bun scripts/ci/budgets.ts check .artifacts/bundle-sizes/bundle-sizes.json
+        run: bun scripts/ci/budgets.ts check .artifacts/bundle-sizes/bundle-sizes.json .artifacts/bundle-sizes/bundle-report.json
+      # Read by pr-comment.yml, which validates it and never runs it. One per
+      # attempt: a rerun's report never stands in for the job it replaced.
+      - if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: bundle-report-${{ github.run_attempt }}
+          path: .artifacts/bundle-sizes/bundle-report.json
+          if-no-files-found: ignore
+
+  # What one recorded agent turn costs a phone, against the main commit the
+  # pull request sits on (docs/internals/ci.md#thread-transfer).
+  transfer:
+    name: Thread transfer
+    needs: changes
+    if: github.event_name == 'pull_request' && (needs.changes.outputs.core == 'true' || needs.changes.outputs.web == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # The base's measurement from main's thread-transfer run.
+      actions: read
+      # The pull request body, read at run time so a rerun sees an edit.
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Measure
+        run: bun scripts/ci/transfer.ts measure .artifacts/thread-transfer/thread-transfer.json
+      - name: Compare with the base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bun scripts/ci/transfer.ts check .artifacts/thread-transfer/thread-transfer.json .artifacts/thread-transfer/transfer-report.json
+      # Read by pr-comment.yml, which validates it and never runs it. One per
+      # attempt: a rerun's report never stands in for the job it replaced.
+      - if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: thread-transfer-report-${{ github.run_attempt }}
+          path: .artifacts/thread-transfer/transfer-report.json
+          if-no-files-found: ignore
 
   # The callers of reusable workflows always run and pass `enabled`: a skipped
   # caller reports one check named after itself, a running one each inner

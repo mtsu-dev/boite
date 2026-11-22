@@ -1,5 +1,6 @@
 import type { ThreadLink } from './agent-door';
 import type { AgentSettingAsk } from './agent-setting-requests.ts';
+import type { CoreInfo } from './core';
 import type { ImageMimeType } from './attachment-limits.ts';
 import type { NativeAgentUpdate } from './delegation';
 import type { PluginActor } from './plugins';
@@ -359,6 +360,21 @@ export const MESSAGE_PAGE_MAX_BYTES = 12 * 1024 * 1024;
  * weighed 9.5 MB on 2026-10-13, for one screen of answers and folded runs.
  */
 export const INITIAL_PAGE_BYTES = 128 * 1024;
+/**
+ * What a client strips from a page it asks for, for the features its core
+ * announced: tool outputs, file contents, pictures and long tool parts stay
+ * on the core until a card opens. The app's pages and the transfer bench
+ * (`bench/transfer/measure.ts`) ask with the same.
+ */
+export function lightPageFlags(features: CoreInfo['features']): { compactTools: true; compactFiles?: true; compactImages?: true; compactToolParts?: true } {
+  return {
+    compactTools: true,
+    ...(features?.threadSnapshots ? { compactFiles: true as const } : {}),
+    ...(features?.readingPages ? { compactImages: true as const } : {}),
+    // Long tool inputs and diffs too, and no message too heavy to open.
+    ...(features?.deferredToolParts ? { compactToolParts: true as const } : {}),
+  };
+}
 /** The `maxBytes` of each page a reader scrolls into, above or below the window. */
 export const READING_PAGE_BYTES = 256 * 1024;
 /** Why a `maxBytes` is refused, or null: a positive whole count of bytes. */

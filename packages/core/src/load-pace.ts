@@ -28,8 +28,11 @@ export class LoadPace {
     private readonly fast: () => boolean,
     private readonly fastMs: number,
     private readonly idleMs: number,
+    /** False never ticks (`ProcRegistryOptions.loadSampling`). */
+    sampling = true,
   ) {
-    this.arm(fastMs);
+    if (sampling) this.arm(fastMs);
+    else this.closed = true;
   }
 
   /** Something started working: the next tick comes at the fast pace, not after an idle wait. */

@@ -16,12 +16,14 @@
  *   run (`ceiling`, bundle-size.yml) fails on it.
  *
  * Run: bun scripts/ci/budgets.ts measure <out.json> (after build:ui and build:core)
- *      bun scripts/ci/budgets.ts check <head.json> (in a pull request's CI)
+ *      bun scripts/ci/budgets.ts check <head.json> [report.json] (in a pull request's CI;
+ *        the report is what pr-comment.yml shows, docs/internals/ci.md#pull-request-comment)
  *      bun scripts/ci/budgets.ts ceiling <main.json> (on a push to main)
  */
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { writeReport } from './pr-report.ts';
 
 export interface Sizes {
   /** bytes */
@@ -100,10 +102,10 @@ function withoutCommentsOnce(text: string): string {
   return kept + text.slice(at);
 }
 
-/** The text under a `## Bundle size` heading, comments removed; undefined when absent or empty. */
-export function bodyReason(body: string | null | undefined): string | undefined {
+/** The text under a `## Bundle size` heading, or one titled `title`, comments removed; undefined when absent or empty. */
+export function bodyReason(body: string | null | undefined, title = 'Bundle size'): string | undefined {
   const text = withoutComments((body ?? '').replace(/\r\n/g, '\n'));
-  const heading = /^#{2,3}[ \t]+bundle size[ \t]*$/im.exec(text);
+  const heading = new RegExp(`^#{2,3}[ \\t]+${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[ \\t]*$`, 'im').exec(text);
   if (!heading) return undefined;
   const rest = text.slice(heading.index + heading[0].length);
   const next = /^#{1,3}[ \t]/m.exec(rest);
@@ -168,8 +170,8 @@ export function judge(head: Sizes, base: Reference | undefined, limit: Reference
 
 interface Run { id: number; path: string; head_sha: string; head_branch: string | null; event: string; repository: { id: number }; head_repository: { id: number } | null }
 
-export function mainRun(runs: Run[], sha: string): Run | undefined {
-  return runs.find((run) => run.path === '.github/workflows/bundle-size.yml' && run.event === 'push' && run.head_branch === 'main'
+export function mainRun(runs: Run[], sha: string, workflow = '.github/workflows/bundle-size.yml'): Run | undefined {
+  return runs.find((run) => run.path === workflow && run.event === 'push' && run.head_branch === 'main'
     && run.head_sha === sha && run.head_repository?.id === run.repository.id);
 }
 
@@ -181,28 +183,45 @@ export function publishedCommits(releases: { draft: boolean; tag_name: string; t
     .map((release) => ({ tag: release.tag_name, sha: release.target_commitish }));
 }
 
-async function api<T>(path: string): Promise<T> {
-  const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/${path}`, {
-    headers: { authorization: `Bearer ${process.env.GH_TOKEN}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
-  });
-  if (!response.ok) throw new Error(`GET ${path}: HTTP ${response.status} ${await response.text()}`);
-  return response.json() as Promise<T>;
+/**
+ * `gh api` on this repository, `GITHUB_REPOSITORY`: in CI with the job's
+ * `GH_TOKEN`, by hand with the `gh auth login` session.
+ */
+export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  const method = init.method ?? 'GET';
+  const repository = process.env.GITHUB_REPOSITORY ?? '';
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error(`GITHUB_REPOSITORY: "${repository}", expected owner/name`);
+  const command = ['gh', 'api', '--method', method, `repos/${repository}${path ? `/${path}` : ''}`, ...(init.body === undefined ? [] : ['--input', '-'])];
+  const result = Bun.spawnSync(command, { stdin: init.body === undefined ? 'ignore' : Buffer.from(JSON.stringify(init.body)), stderr: 'pipe' });
+  if (result.exitCode !== 0) throw new Error(`${method} ${path}: ${result.stderr.toString().trim()}`);
+  return JSON.parse(result.stdout.toString()) as T;
 }
 
-function run(command: string[], cwd?: string) {
+export function run(command: string[], cwd?: string) {
   const result = Bun.spawnSync(command, { cwd, stdout: 'inherit', stderr: 'inherit' });
   if (result.exitCode !== 0) throw new Error(`${command.join(' ')}: exit ${result.exitCode}`);
 }
 
-/** The sizes bundle-size.yml measured at `sha`, or undefined when it has none (cancelled, skipped, expired). */
-async function mainMeasurement(sha: string): Promise<Sizes | undefined> {
+/**
+ * The folder holding artifact `name` of `workflow`'s push run on main at
+ * `sha`, downloaded; undefined when that run is missing (cancelled, skipped)
+ * or its artifact expired.
+ */
+export async function mainArtifact(sha: string, workflow: string, name: string): Promise<string | undefined> {
   const { workflow_runs } = await api<{ workflow_runs: Run[] }>(`actions/runs?head_sha=${sha}&branch=main&event=push&per_page=20`);
-  const found = mainRun(workflow_runs, sha);
+  const found = mainRun(workflow_runs, sha, workflow);
   if (!found) return undefined;
-  const { artifacts } = await api<{ artifacts: { name: string; expired: boolean }[] }>(`actions/runs/${found.id}/artifacts?name=${ARTIFACT}`);
+  const { artifacts } = await api<{ artifacts: { name: string; expired: boolean }[] }>(`actions/runs/${found.id}/artifacts?name=${name}`);
   if (!artifacts.some((artifact) => !artifact.expired)) return undefined;
-  const dir = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), 'bundle-sizes-'));
-  run(['gh', 'run', 'download', String(found.id), '--name', ARTIFACT, '--dir', dir, '--repo', process.env.GITHUB_REPOSITORY!]);
+  const dir = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), `${name}-`));
+  run(['gh', 'run', 'download', String(found.id), '--name', name, '--dir', dir, '--repo', process.env.GITHUB_REPOSITORY!]);
+  return dir;
+}
+
+/** The sizes bundle-size.yml measured at `sha`, or undefined when it has none (cancelled, skipped, expired). */
+export async function mainMeasurement(sha: string): Promise<Sizes | undefined> {
+  const dir = await mainArtifact(sha, '.github/workflows/bundle-size.yml', ARTIFACT);
+  if (!dir) return undefined;
   const measured = JSON.parse(readFileSync(join(dir, 'bundle-sizes.json'), 'utf8')) as Measurement;
   return measured.commit === sha ? measured.sizes : undefined;
 }
@@ -230,7 +249,7 @@ export function comparisonBase(headCommit: string, pullBase: string): string {
   return parents.length === 2 ? parents[0]! : pullBase;
 }
 
-async function check(headFile: string) {
+async function check(headFile: string, reportFile?: string) {
   const head = (JSON.parse(readFileSync(headFile, 'utf8')) as Measurement).sizes;
   const pullBase = process.env.BASE_SHA ?? '';
   if (!/^[0-9a-f]{40}$/.test(pullBase)) throw new Error(`BASE_SHA: "${pullBase}", expected the pull request's 40-character base commit`);
@@ -246,11 +265,14 @@ async function check(headFile: string) {
 
   const number = process.env.PR_NUMBER;
   const pull = number ? await api<{ body: string | null }>(`pulls/${number}`) : undefined;
-  publish(judge(head, base, await publishedLimit(), bodyReason(pull?.body)));
+  const limit = await publishedLimit();
+  const reason = bodyReason(pull?.body);
+  if (reportFile) writeReport(reportFile, { kind: 'bundle', version: 1, pr: Number(number), head: process.env.HEAD_SHA ?? '', base: baseSha, sizes: head });
+  publish(judge(head, base, limit, reason));
 }
 
 /** The ceiling: the newest of the last ten published builds main measured, plus the headroom. */
-async function publishedLimit(): Promise<Reference | undefined> {
+export async function publishedLimit(): Promise<Reference | undefined> {
   const releases = publishedCommits(await api<Parameters<typeof publishedCommits>[0]>('releases?per_page=20'));
   for (const release of releases.slice(0, 10)) {
     const sizes = await mainMeasurement(release.sha);
@@ -273,11 +295,11 @@ if (import.meta.main) {
     mkdirSync(join(path, '..'), { recursive: true });
     writeFileSync(path, `${JSON.stringify({ commit: process.env.GITHUB_SHA ?? '', sizes } satisfies Measurement, null, 2)}\n`);
   } else if (command === 'check' && path) {
-    await check(path);
+    await check(path, process.argv[4]);
   } else if (command === 'ceiling' && path) {
     // Main against the published ceiling alone: the debt pull requests are not charged for.
     publish(judge((JSON.parse(readFileSync(path, 'utf8')) as Measurement).sizes, undefined, await publishedLimit(), undefined));
   } else {
-    throw new Error('usage: bun scripts/ci/budgets.ts measure <out.json> | check <head.json> | ceiling <main.json>');
+    throw new Error('usage: bun scripts/ci/budgets.ts measure <out.json> | check <head.json> [report.json] | ceiling <main.json>');
   }
 }
