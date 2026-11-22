@@ -99,10 +99,21 @@ test('the new thread background rides its experiment, follows the pick in Appear
       const covered = await frames();
       await Bun.sleep(500);
       expect(await frames()).toBe(covered);
+      // Turned wide from the list, the phone shows the draft beside it again: the scene moves, and stops once turned back.
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 2, mobile: true });
+      await page.waitFor(`${CANVAS}.checkVisibility({ visibilityProperty: true })`);
+      await Bun.sleep(500);
+      expect(await frames()).toBeGreaterThan(covered);
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+      await page.waitFor(`document.querySelector('${id('mobile-tabs')}')`);
+      await Bun.sleep(800);
+      const turned = await frames();
+      await Bun.sleep(500);
+      expect(await frames()).toBe(turned);
       await newMobileThread(page);
       await page.waitFor(`${CANVAS}?.hasAttribute('data-ready') && ${CANVAS}.checkVisibility({ visibilityProperty: true })`);
       await Bun.sleep(500);
-      expect(await frames()).toBeGreaterThan(covered);
+      expect(await frames()).toBeGreaterThan(turned);
       await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
     }
