@@ -605,13 +605,13 @@ core starts itself, [Which browser](#which-browser)). A custom profile stores
 it as `browserProfiles[].engine`. The built-in `default` profile is not in that
 list, so its engine has a key of its own, `browserBuiltinProfiles.default.engine`;
 the object leaves room for another built-in setting without a second flat key.
-`private` has no setting and runs in the app.
+`private` has no setting and runs in the app while hosted.
 
-`BrowserEngines.get` hosts a profile only when an app is attached, its engine
-is not `chrome` and it has no User-Agent: a webview cannot carry a per-profile
-User-Agent into its workers and popups, so a profile with one runs in Chrome
-whatever its engine says, and the Settings card shows the User-Agent editor on
-Chrome profiles only. A missing engine reads as before the setting existed:
+`BrowserEngines.get` hosts a profile only when an app is attached and its engine
+is not `chrome`. An explicit engine wins over a stored User-Agent: the app keeps
+the value without applying it, and Chrome applies it when the profile starts
+there again. The Settings card shows the User-Agent editor on Chrome profiles
+only. A missing engine reads as before the setting existed:
 `chrome` for a profile with a User-Agent, `app` otherwise (`browserEngineOf` in
 `packages/contracts/src/browser.ts`). Without an attached app, on Linux, macOS,
 a phone-only core or a server, every profile runs in Chrome. A change applies

@@ -132,10 +132,16 @@ test('a profile set to Chrome starts Chromium while the app hosts, and the other
     expect((await engines.get('default')).hosted).toBe(false);
     expect((await engines.get('p-a')).hosted).toBe(false);
     expect((await engines.get('p-b')).hosted).toBe(true);
-    // A User-Agent needs Chromium whatever the engine says: a webview has no per-profile identity.
-    harness.core.settings.set({ browserProfiles: [{ id: 'p-a', name: 'A', engine: 'chrome' }, { id: 'p-b', name: 'B', engine: 'app', userAgent: { mode: 'suffix', value: 'Bounty/1' } }] });
+    const userAgent = { mode: 'suffix' as const, value: 'Bounty/1' };
+    harness.core.settings.set({ browserProfiles: [{ id: 'p-a', name: 'A', userAgent }, { id: 'p-b', name: 'B', engine: 'app', userAgent }] });
+    await restart(await engines.get('p-a'));
+    expect((await engines.get('p-a')).hosted).toBe(false);
+    await restart(await engines.get('p-b'));
+    expect((await engines.get('p-b')).hosted).toBe(true);
+    harness.core.settings.set({ browserProfiles: [{ id: 'p-a', name: 'A', userAgent }, { id: 'p-b', name: 'B', engine: 'chrome', userAgent }] });
     await restart(await engines.get('p-b'));
     expect((await engines.get('p-b')).hosted).toBe(false);
+    expect(harness.core.settings.get().browserProfiles?.find(profile => profile.id === 'p-b')?.userAgent).toEqual(userAgent);
     // Without a hosting app every profile runs in Chromium.
     host.detach();
     await restart(await engines.get('default'));

@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { Cdp } from '../src/browser/cdp.ts';
 import { findChromium } from '../src/browser/chromium.ts';
 import { pageRuntime, readsConsole } from '../src/browser/page-runtime.ts';
-import { createBrowserFixture } from './browser/fixture.ts';
+import { createBrowserFixture, picture } from './browser/fixture.ts';
+import { thrown } from './settle.ts';
 
 // Sites and captchas test whether DevTools reads the page: with the runtime
 // domain on, Chromium describes each console argument for the client, which
@@ -206,6 +207,34 @@ browserFixture.real('on the desktop app too, a public page cannot tell DevTools 
     await command({ kind: 'wait', load: 'load' });
     expect(await evaluate("console.info('local console ready'); probe()")).toBe(true);
     expect(await consoleSaid()).toContain('local console ready');
+
+    const { owner, threadId } = browserFixture;
+    await owner.call('threads.subscribe', { threadId });
+    for (const driver of ['agent', 'panel']) {
+      const navigate = async (url: string) => {
+        if (driver === 'agent') return command({ kind: 'open', url, reuse: true });
+        const frame = await picture(owner.call('browser.remoteFrame', { threadId }));
+        return owner.call('browser.remoteInput', { threadId, frameId: frame.id, input: { kind: 'navigate', url } });
+      };
+      await navigate(`http://shop.example:${site.port}/report.txt`);
+      expect(await evaluate('location.hostname')).toBe('127.0.0.1');
+      const downloaded = `${driver} console after download`;
+      expect(await evaluate(`console.info('${downloaded}'); probe()`)).toBe(true);
+      expect(await consoleSaid()).toContain(downloaded);
+
+      const failed = `http://shop.example:${site.port}/failed`;
+      const send = Cdp.prototype.send;
+      Cdp.prototype.send = async function (this: Cdp, ...args: Parameters<Cdp['send']>) {
+        if (args[0] === 'Page.navigate' && args[1]?.url === failed) return { errorText: 'net::ERR_ABORTED' };
+        return send.apply(this, args);
+      } as Cdp['send'];
+      try { expect(await thrown(navigate(failed))).toThrow('net::ERR_ABORTED'); }
+      finally { Cdp.prototype.send = send; }
+      expect(await evaluate('location.hostname')).toBe('127.0.0.1');
+      const aborted = `${driver} console after failed navigation`;
+      expect(await evaluate(`console.info('${aborted}'); probe()`)).toBe(true);
+      expect(await consoleSaid()).toContain(aborted);
+    }
 
     // From the page of this machine to a public one: off before its first script.
     await command({ kind: 'open', url: `http://shop.example:${site.port}/`, reuse: true });

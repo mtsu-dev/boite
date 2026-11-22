@@ -397,8 +397,8 @@ export class AgentBrowser {
     // Off before the navigation starts: the new process of an app webview keeps the runtime it began with (`followHostedPage`).
     if (!readsConsole(url)) await tab.page.frames?.runtime?.follow(url);
     const reply = await tab.engine.cdp.send<{ errorText?: string; loaderId?: string; isDownload?: boolean }>('Page.navigate', { url }, tab.sessionId);
+    if (reply.isDownload || reply.errorText) await tab.page.frames?.runtime?.follow(tab.url || 'about:blank');
     if (reply.isDownload) {
-      // The address is a file: the page stays where it was and the file goes to the quarantine.
       await this.#downloads.began(tab.threadId, seq, DOWNLOAD_BEGIN_MS);
       const at = tab.url || 'about:blank';
       return { tabId: tab.id, url: at, title: tab.title, value: { ok: true, url: at, title: tab.title, note: `${url} is a download; the page did not change` } };

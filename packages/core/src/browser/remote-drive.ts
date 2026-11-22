@@ -414,12 +414,15 @@ export class RemoteDrive {
       for (const viewer of this.#pushes.values()) if (viewer.tab.id === tab.id) viewer.frames = [];
     };
     switch (input.kind) {
-      case 'navigate':
+      case 'navigate': {
         retire();
         // Off before the navigation starts, as for the agent's (`#navigate` in browser.ts).
         if (!readsConsole(input.url)) await tab.page.frames?.runtime?.follow(input.url);
-        await this.#context.send(tab, 'Page.navigate', { url: input.url });
+        const reply = await this.#context.send(tab, 'Page.navigate', { url: input.url }) as { errorText?: string; isDownload?: boolean };
+        if (reply.isDownload || reply.errorText) await tab.page.frames?.runtime?.follow(tab.url || 'about:blank');
+        if (reply.errorText && !reply.isDownload) throw refused(`${input.url} could not be opened: ${reply.errorText}`);
         return { ok: true };
+      }
       case 'reload': retire(); await this.#context.send(tab, 'Page.reload'); return { ok: true };
       case 'history': {
         retire();

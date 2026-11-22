@@ -100,7 +100,7 @@ Settings, Browser, Browser profiles lists the profiles:
 - User-Agent, on a profile you created that runs in Chrome, appends a marker
   to the browser's identity or replaces it. It applies the next time that
   profile's browser starts. Default and Private keep the browser's own
-  identity.
+  identity. App window keeps a saved User-Agent but does not apply it.
 - Copy sign-ins to agents, in the Windows desktop app, sends a profile's
   cookies to the agent browser of a machine you pick. It is a copy at that
   moment: a later sign-in needs a new copy, and a site may still ask again.

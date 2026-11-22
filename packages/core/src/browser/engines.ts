@@ -51,10 +51,9 @@ export class BrowserEngines {
     const current = this.pending.get(profile) ?? this.pending.get(`host:${profile}`);
     if (current) return current.then(engine => this.#closing.has(engine) || this.#ended.has(engine) ? engine.exited.then(() => this.get(profile)) : engine);
     // The owner picks a profile's engine in Settings; it takes effect when the
-    // profile's browser next starts. A webview has no per-profile process flags,
-    // so a custom identity runs in Chromium, whose workers and popups inherit
-    // the same User-Agent as its pages, whatever the engine says.
-    const hosted = this.host.attached && browserEngineOf(this.core.settings.get(), profile) !== 'chrome' && !this.#userAgent(profile);
+    // profile's browser next starts. A stored User-Agent applies only when
+    // Chromium starts, never to a profile the app hosts.
+    const hosted = this.host.attached && browserEngineOf(this.core.settings.get(), profile) !== 'chrome';
     const key = hosted ? `host:${profile}` : profile;
     let engine = this.pending.get(key);
     if (!engine) {
