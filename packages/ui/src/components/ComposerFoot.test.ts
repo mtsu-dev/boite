@@ -121,7 +121,7 @@ for (const phone of [false, true]) {
     expect(document.querySelector('[data-testid=agent-dock-names]')?.textContent).toContain(run!.name);
     const { compile } = await import('svelte/compiler');
     const { readFileSync } = await import('node:fs');
-    const dock = readFileSync(`${import.meta.dirname}/AgentDock.svelte`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script></script>');
+    const dock = readFileSync(`${import.meta.dirname}/AgentDock.svelte`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script lang="ts"></script>');
     expect(compile(dock, { filename: 'AgentDock.svelte', cssHash: () => 'd' }).css?.code).not.toMatch(/\.marks\.d \{[^}]*display: none/);
     const stop = document.querySelector<HTMLElement>('[data-testid=agent-dock-stop]')!;
     expect(stop.textContent?.trim()).toBe('Stop workflows');
