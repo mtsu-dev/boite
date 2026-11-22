@@ -76,10 +76,9 @@ function doneItem(store: Store, thread: ThreadSummary): MenuItem {
 /**
  * One menu for a thread wherever it opens (a row, its header, the phone's
  * long press, the header's menu): a short first level of what is done most
- * (the view's own Find, Rename and its made-again title, Pin, Mark done,
+ * (the view's own Find, Rename and its made-again title, Pin, Copy thread ID, Mark done,
  * Archive), one named group for where it goes (`threadToolItems`), then Delete
- * apart. A row adds Open first. Eight rows at most. The panels have one door
- * of their own, beside the title.
+ * apart. A row adds Open first. The panels have one door of their own, beside the title.
  */
 export function threadMenuItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
   // An incognito conversation lives on its own screen only: nothing pins, files
@@ -98,6 +97,7 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
     // The title made again sits with the one typed: both name the thread.
     { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
     ...(kept ? [{ id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin }] : []),
+    { id: 'copy-thread-id', label: strings.sidebar.copyThreadId, glyph: Copy },
     ...(kept ? [
       separator('sep-archive'),
       // A ringed check: the bare one is every menu's selection mark, and Done is an action, not a chosen row.
@@ -134,6 +134,7 @@ export function pickThreadAction(store: Store, thread: ThreadSummary, action: st
     case 'archive': void archiveThread(store, thread.id); return true;
     case 'rename': view.rename(); return true;
     case 'retitle': void store.retitle(thread.id); return true;
+    case 'copy-thread-id': void store.copy(thread.id); return true;
     case 'copy': void store.copy(thread.cwd); return true;
     case 'pr': view.refreshPr?.(); return true;
     case 'delete': void deleteThread(store, thread); return true;

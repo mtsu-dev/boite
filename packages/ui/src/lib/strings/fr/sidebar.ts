@@ -94,6 +94,7 @@ export const fr: Translation = {
     settings: 'Réglages',
     projectMenu: 'Actions du projet',
     copyPath: 'Copier le chemin',
+    copyThreadId: 'Copier l’identifiant du fil',
     manageProject: 'Gérer le projet',
     renameProject: 'Renommer le projet',
     projectName: 'Nom du projet',

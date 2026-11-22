@@ -1,5 +1,6 @@
 import { PLUGIN_ADD_SECTION, parseGroupRelayUrl, type QuotaAlert, type ThreadId } from '@boite/contracts';
 import { appPage } from '../app-origin';
+import { copyByCommand } from '../clipboard';
 import { servesThisPage } from '../endpoint';
 import {
   notificationCore,
@@ -103,11 +104,17 @@ export class Layout {
     const clientGeneration = this.ctx.clientGeneration;
     const navigation = this.ctx.threads.openGeneration;
     try {
-      await navigator.clipboard.writeText(text);
+      const clipboard = navigator.clipboard;
+      if (clipboard) {
+        await clipboard.writeText(text);
+        return;
+      }
+      if (copyByCommand(text)) return;
     } catch {
-      if (this.ctx.client === client && this.ctx.clientGeneration === clientGeneration && this.ctx.threads.openGeneration === navigation)
-        this.ctx.store.reportError(strings.errors.clipboard, 'minor');
+      // Report the failure below if the view still owns the action.
     }
+    if (this.ctx.client === client && this.ctx.clientGeneration === clientGeneration && this.ctx.threads.openGeneration === navigation)
+      this.ctx.store.reportError(strings.errors.clipboard, 'minor');
   }
 
   // -------------------------------------------------------------------------
