@@ -1,4 +1,6 @@
 import type { Closing } from './closing.svelte';
+import type { AnchoredPopover } from './anchored-popover.svelte';
+import { menuRows, moveMenuFocus } from './menu';
 
 /**
  * What the model picker's keyboard reads and moves. The arrows cross the whole
@@ -6,7 +8,7 @@ import type { Closing } from './closing.svelte';
  * query starts from the picker's root or its open menu.
  */
 export interface PickerKeyState {
-  popover: Closing;
+  popover: AnchoredPopover;
   legacy: Closing;
   root(): HTMLElement | undefined;
   menu(): HTMLElement | undefined;
@@ -19,10 +21,6 @@ export interface PickerKeyState {
 
 /** The picker's keydown handler, shared by its trigger, its popover and its legacy submenu. */
 export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) => void {
-  function focusable(): HTMLElement[] {
-    return Array.from(activeMenu()?.querySelectorAll<HTMLElement>('[data-row]:not(:disabled)') ?? []);
-  }
-
   function activeMenu(): HTMLElement | null {
     return picker.legacyOpen() ? picker.root()?.querySelector<HTMLElement>('[data-testid=picker-legacy-menu]') ?? null : picker.menu() ?? null;
   }
@@ -45,7 +43,7 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
       picker.searchBox()?.focus();
       return;
     }
-    picker.popover.hide();
+    picker.popover.close();
   }
 
   function handleLegacyNavigation(event: KeyboardEvent, active: HTMLElement | null): boolean {
@@ -96,12 +94,7 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
       searchBox.focus();
       return;
     }
-    const list = focusable();
-    if (list.length === 0) return;
-    event.preventDefault();
-    const index = active ? list.indexOf(active) : -1;
-    const next = event.key === 'ArrowDown' ? (index + 1) % list.length : (index - 1 + list.length) % list.length;
-    list[next]?.focus();
+    moveMenuFocus(event, menuRows(activeMenu()), false);
   }
 
   /**

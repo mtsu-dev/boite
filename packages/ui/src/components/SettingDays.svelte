@@ -3,7 +3,7 @@
   import { Autosave } from '../lib/autosave.svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import InfoTip from './InfoTip.svelte';
+  import SettingField from './SettingField.svelte';
   import SaveStatus from './SaveStatus.svelte';
   import SyncMark from './SyncMark.svelte';
 
@@ -22,7 +22,6 @@
     testid: string;
     onsaved?: () => Promise<void> | void;
   } = $props();
-  const uid = $props.id();
 
   let saved = $derived(store.settings?.[key] ?? fallback);
   let days = $state<number | null | undefined>(untrack(() => saved));
@@ -49,27 +48,23 @@
   }
 </script>
 
-<div class="switch-row days">
-  <!-- The label element holds only the words: a label's span child would take the muted caption style (app.css). -->
-  <span class="text ui-label-box">
-    <label class="ui-label" for="{uid}-days">{label}</label><InfoTip topic={label} text={hint} /><SyncMark {store} {key} />
-  </span>
-  <span class="field">
-    <SaveStatus {save} />
-    <input id="{uid}-days" type="number" inputmode="numeric" min="0" max="3650" step="1" bind:value={days}
-      disabled={!store.settings || store.connection !== 'ready'}
-      oninput={() => { dirty = true; }} onchange={commit} onkeydown={(event) => { if (event.key === 'Enter') commit(); }}
-      aria-invalid={!valid} aria-describedby={valid ? undefined : `${uid}-error`} data-testid={testid} />
-    <span class="unit ui-label">{strings.units.days}</span>
-  </span>
-  {#if !valid}<p id="{uid}-error" class="field-error" role="alert">{strings.settings.deleted.retentionError}</p>{/if}
-</div>
+<SettingField title={label} help={hint} error={valid ? undefined : strings.settings.deleted.retentionError}>
+  {#snippet actions()}<SyncMark {store} {key} />{/snippet}
+  {#snippet control(attributes)}
+    <span class="field">
+      <SaveStatus {save} />
+      <input {...attributes} type="number" inputmode="numeric" min="0" max="3650" step="1" bind:value={days}
+        disabled={!store.settings || store.connection !== 'ready'}
+        oninput={() => { dirty = true; }} onchange={commit} onkeydown={(event) => { if (event.key === 'Enter') commit(); }}
+        data-testid={testid} />
+      <span class="unit ui-label">{strings.units.days}</span>
+    </span>
+  {/snippet}
+</SettingField>
 
 <style>
   .field { display: inline-flex; flex: none; align-items: center; gap: var(--space-2); }
   input { width: 72px; text-align: right; }
   input[aria-invalid='true'] { border-color: var(--color-danger); }
   .unit { color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .field-error { flex-basis: 100%; margin: 0; color: var(--color-danger); font-size: var(--text-sm); }
-  .days { flex-wrap: wrap; }
 </style>

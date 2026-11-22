@@ -6,11 +6,11 @@ import { toMobileList } from './lib/mobile.ts';
 import { startDevUi } from './lib/ui.ts';
 
 /*
- * The stages of `EXPERIMENT_STAGES` as a person meets them: with every
- * feature finished, no build has an Experiments page, the five features that
- * were experiments have no gate left, and Bots are there on a
- * profile that stored nothing. The in-memory core says its version
- * (`?fake=1&version=`), the way a real hello does.
+ * The stages of `EXPERIMENT_STAGES` as a person meets them: a Dev build has
+ * an Experiments page with the one experiment, off until chosen, a Release
+ * has no such page, the five features that were experiments have no gate
+ * left, and Bots are there on a profile that stored nothing. The in-memory
+ * core says its version (`?fake=1&version=`), the way a real hello does.
  */
 const ARTIFACTS = join(import.meta.dir, '.artifacts', 'stages');
 const DESKTOP = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
@@ -48,7 +48,17 @@ async function capture(name: string) {
 }
 
 for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
-  for (const [build, query] of [['Dev', ''], ['Release', '&version=2.0.0']] as const) {
+  test(`${name}: a Dev build lists the one experiment, off with nothing stored`, async () => {
+    await open('', size);
+    expect(await page.evaluate(`localStorage.getItem('boite.experiments')`)).toBeNull();
+    await page.evaluate(`window.__boiteTest.workspace.active.showSettings('experiments')`);
+    await page.waitFor(`document.querySelector('[data-testid="experiments-page"] [data-testid="experiment-draft-backdrop"]')?.getBoundingClientRect().width > 0`);
+    expect(await page.evaluate(`[...document.querySelectorAll('[data-testid="experiments-page"] input[data-testid^="experiment-"]')].map((node) => [node.dataset.testid, node.checked])`)).toEqual([['experiment-draft-backdrop', false]]);
+    await capture(`dev-settings-${name}.png`);
+    await page.evaluate(`localStorage.removeItem('boite.experiments.build')`);
+  }, 60000);
+
+  for (const [build, query] of [['Release', '&version=2.0.0']] as const) {
     test(`${name}: a ${build} has no Experiments page, with nothing stored`, async () => {
       await open(query, size);
       expect(await page.evaluate(`localStorage.getItem('boite.experiments')`)).toBeNull();

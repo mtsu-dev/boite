@@ -34,7 +34,7 @@ async function team() {
 
 test('a light child starts with its brief, its hooks and a few tools; a plain one keeps the whole setup', async () => {
   accountFlags(false);
-  const { spawn } = await team();
+  const { threadId, spawn } = await team();
 
   const { child, call } = await spawn('light', 'light');
   expect(child.contextMode).toMatchObject({ label: 'light', instructions: false, guides: false, mcp: false, hooks: true });
@@ -45,8 +45,10 @@ test('a light child starts with its brief, its hooks and a few tools; a plain on
   expect(call.options.settings).not.toHaveProperty('disableAllHooks');
   // Claude Code's model-tuned prompt stays (Haiku's own autonomy section rides on it); Boite's guide does not.
   expect(call.options.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', excludeDynamicSections: true });
-  expect(call.prompts[0]).toContain('Count the lines of README.md');
-  expect(call.prompts[0]).not.toContain('You are a Boite subagent of');
+  // The generated brief carries the child role once even when guides are off.
+  expect(call.prompts[0]).toStartWith(`You are a Boite subagent of ${threadId}.`);
+  expect(call.prompts[0]).toEndWith('Task from the parent agent, supplied as JSON data:\n"Count the lines of README.md"');
+  expect(call.prompts[0]!.split('You are a Boite subagent of')).toHaveLength(2);
 
   const plain = await spawn('plain');
   expect(plain.child.contextMode).toBeUndefined();

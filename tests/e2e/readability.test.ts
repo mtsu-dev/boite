@@ -126,7 +126,7 @@ test('live paragraphs stay visible and preserve completed nodes; reasoning steps
   await update(`const turn = thread.turns[0]; turn.status = 'running'; turn.usage = null; turn.finishedAt = null; turn.startedAt = Date.now(); thread.status = 'running'; thread.memoryEvents = []; const m = thread.messages.at(-1); m.state = 'streaming'; m.parts = [{type:'thinking',text:'**Inspecting files**',startedAt:Date.now()-7000,finishedAt:Date.now()-3000}, {type:'text',text:'First complete paragraph.\\n\\nAn unfinished'}];`);
   await page.waitFor(`document.querySelector('${id('paragraph')}')?.textContent.includes('First complete paragraph.')`);
   expect(await page.text(id('paragraph-pending'))).toBe('An unfinished');
-  await page.evaluate(`window.__firstParagraph = document.querySelector('${id('paragraph')}')`);
+  await page.evaluate(`void (window.__firstParagraph = document.querySelector('${id('paragraph')}'))`);
   await update(`thread.messages.at(-1).parts[1].text += ' paragraph.\\n\\n'; thread.messages.at(-1).parts.push({type:'thinking',text:'**Checking results**',startedAt:Date.now()-2000,finishedAt:null});`);
   await page.waitFor(`document.querySelectorAll('${id('paragraph')}').length === 2`);
   expect(await page.evaluate(`document.querySelector('${id('paragraph')}') === window.__firstParagraph`)).toBe(true);

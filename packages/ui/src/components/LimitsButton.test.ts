@@ -36,7 +36,7 @@ test('quiet, the gauge alone; low, an amber ring of what is left; it keeps the l
   expect(ring.dataset.left).toBe('12');
   expect(ring.dataset.limit).toBe('low');
   expect(ring.dataset.share).toBe('0.12');
-  expect(button.classList.contains('low')).toBe(true);
+  expect(button.closest('.limits.low')).not.toBeNull();
   // One Claude account: the sentence names whose limit it is; the account follows.
   expect(button.getAttribute('aria-label')).toBe('12% of Claude\'s weekly limit left · Home');
   expect(document.querySelector('[data-testid=limits-countdown]')).toBeNull();

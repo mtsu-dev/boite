@@ -6,6 +6,30 @@ import { strings } from '../../lib/strings';
 import AgentHeader from './AgentHeader.svelte';
 import BotColumnHead from './BotColumnHead.svelte';
 
+test('a pause from the conversation menu reaches the mochi while its view is busy', async ({ ready }) => {
+  const { store } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const nova = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
+  const head = mount(AgentHeader, {
+    target: document.body,
+    props: { store, view, agent: nova, status: null, thread: null, onpane: () => {} },
+  });
+  try {
+    view.pending = true;
+    flushSync();
+    document.querySelector<HTMLButtonElement>('button[data-testid=agent-menu]')!.click();
+    flushSync();
+    document.querySelector<HTMLButtonElement>('[data-value=pause]')!.click();
+    await vi.waitFor(() => {
+      expect(view.snapshot?.profiles.find(profile => profile.id === nova.id)?.status).toBe('paused');
+    });
+  } finally {
+    view.pending = false;
+    await unmount(head);
+  }
+});
+
 // A bot whose account was removed read "Its last turn failed" under its name, a cause the banner
 // beside it contradicted: the line now says what it needs.
 test('a mochi whose account is gone says it needs an account, not that its last turn failed', async ({ ready }) => {
@@ -26,6 +50,24 @@ test('a mochi whose account is gone says it needs an account, not that its last 
     flushSync();
     expect(document.querySelector('[data-testid=bot-column-live] .bot-head-line')?.textContent).toBe(strings.agents.needsAccount);
     unmount(column);
+  } finally {
+    if (head) unmount(head);
+  }
+});
+
+test('a failed mochi says so even while a shell it left behind still runs', async ({ ready }) => {
+  let head: ReturnType<typeof mount> | null = null;
+  try {
+    const { store } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const nova = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
+    const status = { ...statusOf(view.snapshot, nova.id)!, state: 'error' as const };
+    const thread = { ...store.threads[0]!, status: 'idle' as const, backgroundWork: { kinds: ['shell' as const], since: Date.now() - 5000 } };
+    head = mount(AgentHeader, { target: document.body, props: { store, view, agent: nova, status, thread, onpane: () => {}, onback: () => {} } });
+    flushSync();
+    expect(document.querySelector('[data-testid=agent-live]')?.getAttribute('data-state')).toBe('error');
+    expect(document.querySelector('[data-testid=agent-live-error]')?.textContent).toBe(strings.agents.state.error);
   } finally {
     if (head) unmount(head);
   }

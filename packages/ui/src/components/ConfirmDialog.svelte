@@ -1,39 +1,25 @@
 <script lang="ts">
+  import ModalScrim from './ModalScrim.svelte';
   import PrivateText from './PrivateText.svelte';
-  import { tick, untrack } from 'svelte';
+  import { tick } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
   import { mobileOverlay } from '../lib/mobile-history';
   import { confirm, type ConfirmRequest } from '../lib/confirm.svelte';
-  import { focusInitial, focusedElement, restoreFocus } from '../lib/focus';
+  import { focusInitial, trapModalTab } from '../lib/focus';
   import { count } from '../lib/format';
   import { fill } from '../lib/strings';
-
-  const FOCUSABLE = 'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
   const overlay = new Closing();
   /** The request is nulled the moment it is answered, so the exit plays on a copy. */
   let held = $state<ConfirmRequest | null>(null);
   let card = $state<HTMLDivElement | undefined>(undefined);
-  /** Whether a request is on the screen, and what had the keyboard before it came. */
-  let asking = false;
-  let previous: HTMLElement | null = null;
-
-  /**
-   * A dangerous action opens with the keyboard on Cancel, a plain one on Confirm.
-   * Answered either way, the keyboard goes back to what had it, else the
-   * composer: left on the page, the next Escape would stop the running turn.
-   * A caller that moved the focus itself after the answer keeps it there.
-   */
+  // A dangerous action opens on Cancel; a plain one opens on Confirm.
   $effect(() => {
     const current = confirm.current;
     if (!current) {
       overlay.hide();
-      if (asking) untrack(giveBack);
-      asking = false;
       return;
     }
-    if (!asking) previous = untrack(focusedElement);
-    asking = true;
     held = current;
     overlay.show();
     void tick().then(() => {
@@ -43,11 +29,6 @@
     });
   });
 
-  function giveBack() {
-    const active = document.activeElement;
-    if (!active || active === document.body || card?.contains(active)) restoreFocus(previous);
-    previous = null;
-  }
   $effect(() => { if (overlay.open) return mobileOverlay(() => confirm.answer(false)); });
 
   function onkeydown(event: KeyboardEvent) {
@@ -58,7 +39,7 @@
       confirm.answer(false);
       return;
     }
-    if (event.key === 'Tab') trap(event);
+    trapModalTab(event, card);
     if (event.key === 'Enter' && !event.isComposing && event.target instanceof HTMLInputElement && card?.contains(event.target)) {
       event.preventDefault();
       event.stopPropagation();
@@ -66,36 +47,13 @@
     }
   }
 
-  /** While the dialog is up the keyboard cannot leave it. */
-  function trap(event: KeyboardEvent) {
-    const el = card;
-    if (!el) return;
-    const stops = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const first = stops[0];
-    const last = stops[stops.length - 1];
-    if (!first || !last) return;
-    const active = document.activeElement;
-    const inside = active instanceof Node && el.contains(active);
-    if (active !== el && (event.shiftKey ? inside && active !== first : inside && active !== last)) return;
-    event.preventDefault();
-    (event.shiftKey ? last : first).focus({ preventScroll: true });
-  }
 </script>
 
 <svelte:window onkeydowncapture={onkeydown} />
 
 {#if overlay.shown && held}
   {@const request = held}
-  <div
-    class="scrim"
-    class:closing={overlay.closing}
-    role="presentation"
-    use:overlay.attach
-    onanimationend={overlay.end}
-    onclick={(event) => {
-      if (event.target === event.currentTarget) confirm.answer(false);
-    }}
-  >
+  <ModalScrim {overlay} onclose={() => confirm.answer(false)}>
     <div
       class="dialog"
       class:closing={overlay.closing}
@@ -148,27 +106,10 @@
         </button>
       </div>
     </div>
-  </div>
+  </ModalScrim>
 {/if}
 
 <style>
-  .scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 60;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--color-scrim);
-    animation: fade var(--motion-duration) var(--motion-curve);
-  }
-
-  /* The one motion set (app.css): one duration and curve in and out, a cut under reduced motion. */
-  .scrim.closing {
-    animation: fade-out var(--motion-duration) var(--motion-curve);
-    pointer-events: none;
-  }
-
   .dialog {
     width: min(380px, calc(100vw - 32px));
     padding: var(--space-5) var(--space-5) var(--space-4);

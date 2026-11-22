@@ -10,6 +10,11 @@ Reuse can reduce input charges, but current rates depend on the provider and mod
 [model switching](model-switching.md#context-transfer) owns transfer and cache
 warnings when changing execution settings.
 
+In a fresh session the shared Boite guide leads the composed user prompt on
+drivers that take it there. Session-specific rules, the shared brain, mochi
+identity and turn details follow it. Sessions with the same guide can therefore
+share that input prefix. Claude keeps the guide in its system prompt.
+
 ## What the core records
 
 `ThreadSummary.promptCache` is `{ at, ttlSeconds, maxSeconds?, source,

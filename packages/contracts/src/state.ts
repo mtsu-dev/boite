@@ -1,5 +1,5 @@
 import type { AccountQuota, SubscriptionProxyQuotas } from './accounts';
-import { activityEvents, activityKind, NEEDS_RANK, rowAsks, threadState, workingChildren } from './activity';
+import { activityEvents, activityKind, activityThreadState, NEEDS_RANK, rowAsks, workingChildren } from './activity';
 import type { Group } from './group';
 import { harnessOffered } from './harness-updates';
 import type { ThreadId, Timestamp } from './ids';
@@ -220,7 +220,7 @@ export function stateInbox(
 ): StateInboxRow[] {
   const children = workingChildren(threads);
   const machine = { id: '', store: { subagents: (threadId: ThreadId) => children.get(threadId) ?? null, pendingQuestions, pendingPermissions } };
-  const kindOf = (thread: ThreadSummary) => activityKind(machine.store, thread.id, threadState(thread, rowAsks(machine.store, thread.id)));
+  const kindOf = (thread: ThreadSummary) => activityKind(machine.store, thread.id, activityThreadState(thread, rowAsks(machine.store, thread.id)));
   // A parent listed only for its sub-agents' event (at work, say) is named by their event.
   const row = (thread: ThreadSummary, rank: number, nested: boolean, event: StateInboxRow['kind']): StateInboxRow => {
     const kind = kindOf(thread) ?? event;

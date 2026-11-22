@@ -347,8 +347,10 @@ start of a step:
   session's first message (`stepTail` in `continuation.ts`): user and
   assistant text, each tool call with its input and its result, every tool
   output cut at 1 250 characters, in a `<recent-history>` block that ends
-  with `Continue the current task.`. It is never sent again with the next
-  prompt;
+  with `Continue the current task.`. Providers that accept images receive the
+  newest images after the fork point within the turn's attachment limits.
+  Other images in the included history stay as references. The tail is sent
+  once, with the swap;
 - `null` instead, whenever the copy failed, ran out of time or no longer
   matches: the driver goes on, and its own blocking compaction handles the
   limit.
@@ -379,7 +381,8 @@ instead, under the same conditions as the timer above and after the same 2 s:
 a new session generation, no model call, its process released, and the same
 divider. The thread's next prompt then carries what was said after the fork
 point in a `<recent-history>` block before the request (`tailInput` in
-`continuation.ts`); the `compaction-tail:<thread>` marker clears once a turn
+`continuation.ts`). Images after the fork point share that prompt's attachment
+count and byte limits. The `compaction-tail:<thread>` marker clears once a turn
 that carried it ends `done`. The `autoCompact` moments govern these idle
 pauses only.
 
@@ -576,13 +579,15 @@ text is retained as a separate draft instead of overwritten.
 
 Typing sends only the changed record, coalesced over 400 ms. Attachments upload
 once as content-addressed assets; records and broadcasts carry their IDs and
-metadata. Other devices fetch bytes when that composer opens. The core validates
-metadata and byte limits without reading attachment bodies on each text edit.
+metadata. Other devices fetch bytes when that composer opens. The client drops
+cached bodies once the records and in-flight operations release them. The core
+validates metadata and byte limits without reading attachment bodies on each
+text edit.
 
 IndexedDB remains the device's offline cache and migration source, with strict
 transaction durability and a synchronous text backup in `localStorage` on each
-keystroke. The journal writes 800 ms after
-typing pauses and at least every five seconds while it continues. Attachments,
+keystroke. The client builds the full journal when the write is due, 800 ms
+after typing pauses and at least every five seconds while it continues. Attachments,
 failed backups, explicit flush, page hiding and navigation flush immediately.
 A local core changing port retains the same drafts. When attachment bytes push
 the backup past the `localStorage` quota, the backup keeps the text and
@@ -637,9 +642,10 @@ holds the prompt at the head of the queue.
 
 Asynchronous creation and send retain the original core, thread and draft
 identity. Accepted work does not select a thread after newer navigation or
-consume the newer draft. A merged-PR archive from an older core preserves local
-input and pauses retained queues; manual archive and deletion clear input as
-requested, and `boite thread done` is refused while a device reports input. See
+consume the newer draft. An archived conversation keeps its composer draft for
+restoration. When the client closes the archived view, it pauses any retained
+queue. Deletion clears the input, and `boite thread done` is refused while a
+device reports input. See
 [merged pull requests](development.md#merged-pull-requests).
 
 ## Editing a message and forking

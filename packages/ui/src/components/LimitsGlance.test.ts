@@ -4,7 +4,7 @@ import { SvelteMap } from 'svelte/reactivity';
 import type { AccountQuota } from '@boite/contracts';
 import type { Store } from '../lib/store.svelte';
 import { RpcFailure } from '../lib/client';
-import LimitsGlance from './LimitsGlance.svelte';
+import LimitsButton from './LimitsButton.svelte';
 import { phoneWidth } from '../test/phone-width';
 
 let mounted: ReturnType<typeof mount> | undefined;
@@ -12,12 +12,9 @@ afterEach(async () => { if (mounted) await unmount(mounted); mounted = undefined
 
 /** The rail menu's Limits row stands in for the anchor: pressing it opens the glance beside it. */
 function glance(store: Store): HTMLButtonElement {
-  const anchor = document.body.appendChild(Object.assign(document.createElement('button'), { type: 'button' }));
-  anchor.dataset.testid = 'nav-limits';
-  const component = mount(LimitsGlance, { target: document.body, props: { store, side: 'right', anchor: () => anchor } }) as unknown as { open(): Promise<void> };
-  anchor.onclick = () => void component.open();
-  mounted = component;
-  return anchor;
+  mounted = mount(LimitsButton, { target: document.body, props: { store } });
+  flushSync();
+  return document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!;
 }
 const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };
 const quota: AccountQuota = {
@@ -245,6 +242,33 @@ test('a gateway that hangs does not hold the press: the glance opens within a fe
   await settle();
   expect(hanging.showSettings).not.toHaveBeenCalled();
   expect(document.querySelector('[data-testid="limits-glance"]')).not.toBeNull();
+});
+
+test.each(['pending', 'closing'] as const)('Escape cancels a late dashboard redirect while %s', async (phase) => {
+  vi.useFakeTimers();
+  try {
+    let resolveReply!: (value: unknown) => void;
+    const reply = new Promise<unknown>(resolve => { resolveReply = resolve; });
+    const { showSettings } = proxied(true, () => reply, `glance-proxy-escape-${phase}`);
+    const trigger = document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!;
+    trigger.focus();
+    press();
+    if (phase === 'closing') {
+      await vi.advanceTimersByTimeAsync(300);
+      await settle();
+      const surface = document.querySelector<HTMLElement>('[data-testid="limits-glance"]')!;
+      surface.getAnimations = () => [{} as Animation];
+    }
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await settle();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger);
+    resolveReply({ status: 'unsupported', providers: [], updatedAt: null, checkedAt: null, error: null });
+    await settle();
+    expect(showSettings).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test('a replacement core at the same URL never shows the previous core quotas after a failed read', async () => {

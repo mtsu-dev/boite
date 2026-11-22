@@ -14,6 +14,7 @@ export interface Entry {
   latest: string | null;
   state: HarnessUpdate['state'];
   message: string | null;
+  failedPhase?: HarnessUpdate['failedPhase'];
   checkedAt: number | null;
   /** The program this reading came from. Null in a reading kept by an older build. */
   program: string | null;
@@ -59,6 +60,7 @@ export function readReadings(dataDir: string, entries: Map<ProviderId, Entry>, l
         // A check or an update the last run left half done is only its last reading now.
         state: failed ? 'failed' : 'idle',
         message: failed ? text(raw['message']) : null,
+        ...(failed && (raw['failedPhase'] === 'check' || raw['failedPhase'] === 'install') ? { failedPhase: raw['failedPhase'] } : {}),
         checkedAt: typeof raw['checkedAt'] === 'number' ? raw['checkedAt'] : null,
         program: text(raw['program']),
       });

@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-    <meta name="theme-color" content="#111114" />
+    <meta name="theme-color" content="__PALETTE_dark-default-background__" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
@@ -18,22 +18,36 @@
       body {
         margin: 0;
         height: 100%;
-        background: var(--color-background, #111114);
-        color: var(--color-foreground, #ededef);
+        background: var(--color-background, __PALETTE_dark-default-background__);
+        color: var(--color-foreground, __PALETTE_dark-default-foreground__);
         overflow: hidden;
       }
 
       html[data-theme='light'],
       html[data-theme='light'] body {
-        background: var(--color-background, #f3f3f6);
-        color: var(--color-foreground, #0b0b0e);
+        background: var(--color-background, __PALETTE_light-default-background__);
+        color: var(--color-foreground, __PALETTE_light-default-foreground__);
       }
 
       /* Grain paints its fade from the stylesheet; the mid tone stands in until then. */
       html[data-theme='grain'],
       html[data-theme='grain'] body {
-        background: #2a2a31;
-        color: #ececf1;
+        background: var(--color-background, __PALETTE_grain-background__);
+        color: var(--color-foreground, __PALETTE_dark-default-foreground__);
+      }
+
+      #boot-status {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        margin: 0;
+        font: 15px system-ui, sans-serif;
+      }
+
+      html:not([lang='fr']) #boot-status [lang='fr'],
+      html[lang='fr'] #boot-status [lang='en'] {
+        display: none;
       }
     </style>
     <!-- The same rule as lib/theme.ts, run before the first paint: dark stamps nothing. -->
@@ -66,7 +80,7 @@
         var theme = stored === 'dark' || stored === 'light' || stored === 'grain' ? stored : 'system';
         if (theme === 'grain') {
           document.documentElement.dataset.theme = 'grain';
-          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#1a1a1e');
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '__PALETTE_grain-theme-color__');
         } else {
           var light =
             theme === 'light' ||
@@ -75,7 +89,7 @@
               window.matchMedia('(prefers-color-scheme: light)').matches);
           if (light) {
             document.documentElement.dataset.theme = 'light';
-            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#f3f3f6');
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', '__PALETTE_light-default-background__');
           }
         }
       } catch (e) {}
@@ -89,9 +103,22 @@
          so each sentence is here once per language of LOCALES;
          src/lib/boot-notice.test.ts checks that. -->
     <script>
+      var bootLanguage = (function () {
+        var languages = [].concat(navigator.languages || [], navigator.language);
+        var setting;
+        try { setting = localStorage.getItem('boite.locale'); } catch (e) {}
+        if (setting === 'fr' || setting === 'en') return setting;
+        for (var i = 0; i < languages.length; i++) {
+          if (typeof languages[i] !== 'string') continue;
+          var code = languages[i].trim().toLowerCase().split('-')[0];
+          if (code === 'en' || code === 'fr') return code;
+        }
+        return 'en';
+      })();
+      document.documentElement.lang = bootLanguage;
       window.addEventListener('load', function () {
         var app = document.getElementById('app');
-        if (window.__boiteBooted || !app || app.childElementCount > 0) return;
+        if (window.__boiteBooted || !app) return;
         // Safari 15.4 and Chrome 111 are the first to have all four.
         var floor = false;
         try {
@@ -113,8 +140,7 @@
             retry: 'Réessayer'
           }
         };
-        var language = (navigator.language || '').toLowerCase().split('-')[0];
-        var text = Object.prototype.hasOwnProperty.call(notices, language) ? notices[language] : notices.en;
+        var text = notices[bootLanguage];
         var note = document.createElement('div');
         note.setAttribute('role', 'alert');
         note.style.cssText = 'margin:0;padding:32px 24px;max-width:520px;font:15px/1.5 system-ui,-apple-system,sans-serif';
@@ -131,12 +157,13 @@
           note.appendChild(again);
           window.addEventListener('online', function () { location.reload(); });
         }
+        app.textContent = '';
         app.appendChild(note);
       });
     </script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app"><p id="boot-status" role="status" data-testid="boot-status"><span lang="en">Starting</span><span lang="fr">Démarrage</span></p></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

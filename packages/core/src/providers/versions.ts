@@ -210,6 +210,25 @@ export async function versionsSettled(): Promise<void> {
   while (pending.size > 0) await Promise.allSettled(pending.values());
 }
 
+/** The version read that can unblock resolution of this program. */
+export function pendingVersion(program: string): Promise<void> | undefined {
+  return pending.get(program);
+}
+
+/** Report a pending read and retry once when it settles, even if many turns wait for it. */
+export function waitForVersion(read: Promise<void> | undefined, watched: Set<Promise<void>>, retry: () => void): boolean {
+  if (read === undefined) return false;
+  if (!watched.has(read)) {
+    watched.add(read);
+    const settled = () => {
+      watched.delete(read);
+      retry();
+    };
+    void read.then(settled, settled);
+  }
+  return true;
+}
+
 /** Every reading and every pending question dropped: a test starts from nothing. */
 export function forgetVersions(): void {
   readings.clear();

@@ -106,6 +106,32 @@ test.each([
   expect(answer).toMatchObject({ origin: 'contact', text: expected, status: 'delivered' });
 });
 
+test('a delivered contact answer still restricts tools after the next turn', async () => {
+  const { client } = await fake();
+  const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
+  const updated: unknown[] = [];
+  client.on('thread.updated', thread => { if (thread.id === threadId) updated.push(thread); });
+  const { coreId } = await client.call('collaboration.identity', {});
+  const seeded = (await client.call('contacts.get', {})).requests.find(request => request.direction === 'out')!;
+  deliverContactAnswer(fakeCore(coreId)!, {
+    ...seeded, from: { ...seeded.from, threadId }, status: 'refused', reason: 'Unavailable.',
+  });
+  expect((await client.call('collaboration.get', { threadId })).messages.at(-1)?.status).toBe('delivered');
+  expect(await client.call('threads.get', { threadId })).toMatchObject({ contactToolsHeld: true });
+  expect(updated).toContainEqual(expect.objectContaining({ contactToolsHeld: true }));
+  await client.call('turns.start', { threadId, prompt: 'Continue working' });
+  await client.settled();
+  client.becomes('agent', threadId);
+  await expect(client.call('windows.list', { threadId })).rejects.toMatchObject({
+    code: RpcErrorCode.Refused, data: { threadId },
+  });
+  client.becomes('owner');
+  await client.call('threads.trustContactHistory', { threadId });
+  expect(updated).toContainEqual(expect.objectContaining({ contactToolsHeld: false }));
+  client.becomes('agent', threadId);
+  await expect(client.call('windows.list', { threadId })).resolves.toBeDefined();
+});
+
 test('a direct contact preserves mutual-trust sends, search and transcript grants', async () => {
   const source = new FakeClient({ delayMs: 0, coreId: 'core-source', coreName: 'source' });
   const target = new FakeClient({ delayMs: 0, coreId: 'core-target', coreName: 'target' });

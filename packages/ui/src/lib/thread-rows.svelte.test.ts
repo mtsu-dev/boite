@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { flushSync } from 'svelte';
 import { FakeClient } from './fake-client';
 import { Store } from './store.svelte';
-import { threadsByProject, unlistedPanels } from './thread-rows';
+import { patchProgress, threadsByProject, unlistedPanels } from './thread-rows';
 import { moveBlocked } from './thread-move.svelte';
 
 async function ready(): Promise<{ store: Store; client: FakeClient }> {
@@ -168,4 +168,14 @@ test('a load tick that changes nothing leaves the open thread and its fields unt
     store.detach();
     client.close();
   }
+});
+
+test('a busy row takes the first progress of its turn, then only newer progress of that turn', () => {
+  const row = { status: 'running', progress: null } as never as Parameters<typeof patchProgress>[0];
+  const first = { turnId: 't1', phase: 'starting', detail: null, at: 10, since: 10 } as never as Parameters<typeof patchProgress>[1];
+  expect(patchProgress(row, first)).toBe(true);
+  expect(row.progress).toEqual(first);
+  expect(patchProgress(row, { ...first, turnId: 't0', at: 20 } as never)).toBe(false);
+  expect(patchProgress(row, { ...first, at: 5 } as never)).toBe(false);
+  expect(patchProgress({ status: 'idle', progress: null } as never, first)).toBe(false);
 });

@@ -90,6 +90,8 @@ export interface SecretExecUse {
   env?: Record<string, string>;
   /** Stop the command after this long; 10 minutes when omitted, an hour at most. */
   timeoutMs?: number;
+  /** For pipe, run the same program with these arguments and empty stdin before claiming the ref. */
+  checkArgs?: string[];
 }
 
 export type SecretUse = SecretWriteUse | SecretExecUse;

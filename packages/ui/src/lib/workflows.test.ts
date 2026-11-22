@@ -16,6 +16,21 @@ const plan: WorkflowPlan = {
   ]
 };
 
+test('the simulated run reports the value that could not be used for a fan-out', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, coreId: 'workflow-non-list' });
+  const { workflows } = fakeCore('workflow-non-list')!;
+  let run!: WorkflowRun;
+  workflows.hold(() => {
+    run = workflows.start('t-trace', { name: 'Fan-out', steps: [
+      { id: 'scan', task: 'Read the count', output: { count: 'number' } },
+      { id: 'each', task: 'Read {{item}}', forEach: 'scan.count' },
+    ] }, 'non-list', undefined, 'user');
+    workflows.finish(run.id, 'scan');
+  });
+  const settled = await client.call('workflows.get', { threadId: 't-trace', runId: run.id });
+  expect(settled.nodes[1]).toMatchObject({ status: 'failed', error: 'forEach: scan.count is the number 1, not a list', instances: [] });
+});
+
 test('fake local and remote workflow questions update the parent summary without delegated-agent rows', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0, coreId: 'workflow-question' });
   const pc = await createClient({ delayMs: 0, coreId: 'workflow-question-pc', coreName: 'PC' });
@@ -165,32 +180,32 @@ test('retry past an archived fake child retains its reported tokens without acce
   } finally { workflows.close(); ctx.agents.close(); ctx.plugins.close(); }
 });
 
-test('retrying one of two failed steps names the other and leaves the run as it was', async ({ createClient }) => {
+test('retrying one of two failed steps opens only that step in a new conversation', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0, delegationDemo: true });
   const pair: WorkflowPlan = { name: 'Pair', limits: { maxConcurrent: 2 }, steps: [{ id: 'left', profile: 'implementer', task: 'Please fail now.' }, { id: 'right', profile: 'implementer', task: 'Please fail now.' }] };
   const run = await client.call('workflows.start', { threadId: 't-trace', plan: pair, requestId: 'pair' });
   const failed = await until(() => client.call('workflows.get', { threadId: 't-trace', runId: run.id }), value => value.status !== 'running');
   expect(failed.nodes.map(node => node.status)).toEqual(['failed', 'failed']);
-  await expect(client.call('workflows.control', { threadId: 't-trace', runId: run.id, action: 'retry', stepId: 'left' }))
-    .rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'the run stays stopped while right has failed; retry that step too, or retry the whole run without naming a step' });
-  const unchanged = await client.call('workflows.get', { threadId: 't-trace', runId: run.id });
-  expect([unchanged.status, ...unchanged.nodes.map(node => node.status)]).toEqual(['failed', 'failed', 'failed']);
-  const retried = await client.call('workflows.control', { threadId: 't-trace', runId: run.id, action: 'retry' });
+  const old = failed.nodes[0]!.instances[0]!.threadId!;
+  const retried = await client.call('workflows.control', { threadId: 't-trace', runId: run.id, action: 'retry', stepId: 'left' });
   expect(retried.status).toBe('running');
+  expect(retried.nodes.map(node => node.status)).toEqual(['running', 'failed']);
+  expect(retried.nodes[0]!.instances[0]!.threadId).not.toBe(old);
+  expect(retried.nodes[0]!.instances[0]!.previousAttempts).toEqual([expect.objectContaining({ threadId: old })]);
 });
 
-test('a failed step stops what never launched, and a paused run still ends its running steps', async ({ createClient }) => {
+test('a failed step lets an independent step launch, and a paused run still ends its running steps', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0, delegationDemo: true });
   const narrow: WorkflowPlan = { name: 'Narrow', limits: { maxConcurrent: 1 }, steps: [{ id: 'try', profile: 'implementer', task: 'Please fail now.' }, { id: 'side', profile: 'reviewer', task: 'Waits its turn.' }] };
   const run = await client.call('workflows.start', { threadId: 't-trace', plan: narrow, requestId: 'narrow' });
   const failed = await until(() => client.call('workflows.get', { threadId: 't-trace', runId: run.id }), value => value.status !== 'running');
   expect([failed.status, failed.error]).toEqual(['failed', 'try: The turn failed']);
-  expect(failed.nodes.map(node => node.status)).toEqual(['failed', 'stopped']);
-  expect(failed.nodes[1]!.instances.map(inst => [inst.status, inst.threadId, inst.error])).toEqual([['stopped', null, 'Not started: another step of the run failed']]);
-  // Retrying the failed step reopens the one it held back.
+  expect(failed.nodes.map(node => node.status)).toEqual(['failed', 'done']);
+  const side = failed.nodes[1]!.instances[0]!.threadId;
   const retried = await client.call('workflows.control', { threadId: 't-trace', runId: run.id, action: 'retry', stepId: 'try' });
   expect(retried.status).toBe('running');
-  expect(retried.nodes[1]!.instances[0]!.error).toBeNull();
+  expect(retried.nodes[1]!.instances[0]!.threadId).toBe(side);
+  expect(retried.nodes[1]!.status).toBe('done');
   await until(() => client.call('workflows.get', { threadId: 't-trace', runId: run.id }), value => value.status === 'failed');
 
   const one = await client.call('workflows.start', { threadId: 't-trace', plan: { name: 'One', steps: [{ id: 'a', task: 'Quick.' }] }, requestId: 'one' });

@@ -4,27 +4,28 @@ import { APP_ORIGIN, FILE_ROUTE, RPC_MAX_FRAME_BYTES, RPC_PATH, RpcCloseCode, VI
 import { timingSafeEqual } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, normalize, resolve, sep } from 'node:path';
-import { eventThreadId, type EventPayload } from './bus.ts';
+import { eventThreadId, type BroadcastOptions, type EventPayload } from './bus.ts';
 import { mayReceiveEvent } from './access.ts';
 import type { Core } from './core.ts';
-import { messageOf } from './errors.ts';
+import { messageOf, RpcFailure } from './errors.ts';
 import { JOIN_ROUTE } from './group.ts';
 import { CONTACT_JOIN_ROUTE, CONTACT_LINK_ROUTE } from './contacts/store.ts';
 import type { ContactSocketData } from './contacts/link-hello.ts';
 import { LAZY_MCP_ROUTE } from './mcp/lazy.ts';
 import { tailnetAddress } from './group/addresses.ts';
-import { encryptedLink, hostName, isLoopbackAddress, isLoopbackHost, RELAYED_LINK_HEADER } from './server/peer.ts';
+import { encryptedLink, hostName, isLoopbackAddress, isLoopbackHost, localHealthProbe, RELAYED_LINK_HEADER } from './server/peer.ts';
 import { parseRelayPath, RelayHub, type RelaySocketData } from './group/relay.ts';
 import { browserStreamMessage, browserStreamOpened, browserStreamRequest, type StreamSocketData } from './server/browser-stream.ts';
 import { isAllowedOrigin, SHELL_ORIGINS } from './server/origin.ts';
 import type { Connection } from './router.ts';
 import type { EventFrames, SocketData } from './server/connection.ts';
 import { OUTBOUND_MAX_BUFFERED_BYTES, ServerConnection } from './server/connection.ts';
-import { loadRowSender } from './server/load-rows.ts';
+import { summaryRowSender } from './server/load-rows.ts';
 import { clientField, logConnectionClosed } from './server/connection-log.ts';
 import { handleFrame, isLivenessHello, refuseFrame } from './server/frame.ts';
 import { authenticateToken } from './server/hello.ts';
 import { FrameQueue } from './server/frame-queue.ts';
+import { requiresThreadSubscription } from './server/event-scope.ts';
 import { NetworkWatch, ownerPresent } from './network-watch.ts';
 import { extraNetwork } from './server/extra-listeners.ts';
 import { Refusals } from './server/refusals.ts';
@@ -460,7 +461,12 @@ export function startServer(options: ServerOptions): RunningServer {
   const relays = new RelayHub(core, (credential) => {
     if (typeof credential !== 'string') {
       // A device of the group carried to another member: its signature for this machine, never one made for another.
-      try { return { sessionId: core.group.clients.authenticateDevice(credential, { name: 'pwa', version: '' }).sessionId }; } catch { return null; }
+      try {
+        return { sessionId: core.group.clients.authenticateDevice(credential, { name: 'pwa', version: '' }).sessionId };
+      } catch (error) {
+        if (error instanceof RpcFailure && (error.data as { reason?: string } | undefined)?.reason === 'device-revoked') return { revocation: error.toError() };
+        return null;
+      }
     }
     const identity = authenticateToken(core, credential);
     return identity === null || identity.principal === 'agent' || identity.principal === 'plugin' ? null : { sessionId: identity.sessionId };
@@ -520,7 +526,9 @@ export function startServer(options: ServerOptions): RunningServer {
       }
 
       if (url.pathname === '/health') {
-        return Response.json({ ok: true, version: core.version, pid: process.pid, bundleHash: core.bundleHash });
+        const details = localHealthProbe(self.requestIP(request)?.address ?? null, request.headers) ?
+          { version: core.version, pid: process.pid, bundleHash: core.bundleHash } : {};
+        return Response.json({ ok: true, ...details }, { headers: { 'cache-control': 'no-store' } });
       }
 
       if (url.pathname === SHUTDOWN_PATH) return shutdownResponse(core, request);
@@ -651,6 +659,7 @@ export function startServer(options: ServerOptions): RunningServer {
         if ('stream' in socket.data) { browserStreamOpened(core, socket as ServerWebSocket<StreamSocketData>); return; }
         const connection = socket.data.connection;
         connection.attach(socket as ServerWebSocket<SocketData>);
+        connection.onClose(() => incoming.drop(connection));
         connections.add(connection);
         network.wake();
         if (socket.data.peer !== null) peers.set(connection, socket.data.peer);
@@ -713,7 +722,6 @@ export function startServer(options: ServerOptions): RunningServer {
         core.threads.focus.disconnect(socket.data.connection.id);
         void core.drafts.disconnect(socket.data.connection.id).catch(error => core.log('warn', `draft cleanup failed: ${String(error)}`));
         void core.attachmentUploads.disconnect(socket.data.connection.id).catch(error => core.log('warn', `attachment cleanup failed: ${String(error)}`));
-        incoming.drop(socket.data.connection);
         socket.data.connection.close(1000);
         clearTimeout(helloTimers.get(socket.data.connection));
         helloTimers.delete(socket.data.connection);
@@ -735,13 +743,12 @@ export function startServer(options: ServerOptions): RunningServer {
   // the caller's own setup: `main` writes `core.json` right behind this call.
   setTimeout(() => {
     if (stopping) return;
-    // A provider told from another by its program's version is not installed,
-    // as far as a turn is concerned, until that program has answered: on the
-    // first start after an update there is no kept reading, and a turn resumed
-    // before it would be refused for good.
+    core.scheduler.startupReady();
+    core.threads.handoff.resume();
+    // Give the installed provider list time to settle before resuming teams,
+    // workflows and councils, each of which may use several providers.
     void core.providers.settle().finally(() => {
       if (stopping) return;
-      core.threads.handoff.resume();
       // The children and steps the handoff cut go on with their conversations.
       core.delegation.resumeAfterRestart();
       core.workflows.resumeAfterRestart();
@@ -763,10 +770,11 @@ export function startServer(options: ServerOptions): RunningServer {
       return false;
     },
     closeSession(sessionId: string): void {
+      const code = core.group.clients.deviceSessionWasRevoked(sessionId) ? RpcCloseCode.DeviceRevoked : RpcCloseCode.Unauthorized;
       for (const connection of connections) {
-        if (connection.identity.sessionId === sessionId) connection.close(RpcCloseCode.Unauthorized, 'session revoked');
+        if (connection.identity.sessionId === sessionId) connection.close(code, 'session revoked');
       }
-      relays.closeSession(sessionId);
+      relays.closeSession(sessionId, code === RpcCloseCode.DeviceRevoked);
     },
     sessionConnected: (sessionId: string): boolean => [...connections].some(c => c.authenticated && c.identity.sessionId === sessionId) || relays.hasSession(sessionId),
     closeAgents(threadId: ThreadId): void {
@@ -790,26 +798,10 @@ export function startServer(options: ServerOptions): RunningServer {
     },
   };
 
-  const broadcast = (name: RpcEventName, payload: EventPayload): void => {
+  const broadcast = (name: RpcEventName, payload: EventPayload, options?: BroadcastOptions): void => {
     // These invalidations belong to explicit association watches, never the global bus.
     if (name === 'sharedProjects.changed') return;
-    const scoped =
-      name === 'threads.pullRequestsChanged' ||
-      name.startsWith('message.') ||
-      name.startsWith('permission.') ||
-      name.startsWith('question.') ||
-      // A panel request is for the clients watching that thread: a second
-      // window on another thread must not have its panel taken over.
-      name.startsWith('panel.') ||
-      // Whether that thread's shared browser tab exists.
-      name === 'browser.remoteChanged' ||
-      // That thread's Device panel sessions.
-      name === 'devices.changed' ||
-      // That thread's Window panel.
-      name === 'windows.changed' ||
-      // Every grandchild's record, command line included: only that thread's
-      // trace panel reads it.
-      name.startsWith('process.');
+    const scoped = requiresThreadSubscription(name);
     const threadId = eventThreadId(payload);
     // A child's question or permission is also for the windows that have its parent open:
     // children are no sidebar rows, so the parent is where the user meets them.
@@ -819,11 +811,13 @@ export function startServer(options: ServerOptions): RunningServer {
     // Agent conversations draw their hidden session's cards without opening
     // its transcript. They need both new questions and their resolution.
     const agentQuestion = threadId !== null && name.startsWith('question.') && !!core.journal.getThread(threadId)?.agentSessionId;
-    const loadRow = name === 'thread.load' ? loadRowSender(core, payload as RpcEvents['thread.load']) : null;
+    const summaryRow = name === 'thread.load' || name === 'thread.progress' ? summaryRowSender(core, payload as RpcEvents[typeof name]) : null;
     // Serialized once per projection, not once per socket.
     const frames: EventFrames = new Map();
+    const revisionFrames: EventFrames | undefined = options?.composerRevision ? new Map() : undefined;
     for (const connection of connections) {
-      if (!connection.authenticated) continue;
+      if (!connection.authenticated || connection.id === options?.excludeConnection) continue;
+      if (name === 'thread.progress' && summaryRow && !connection.accepts.has(name)) { summaryRow(connection); continue; }
       if (!mayReceiveEvent(name, connection, payload)) continue;
       if (connection.identity.principal === 'agent' && !agentHearsEvent(name, payload, connection.identity.threadId, id => core.journal.getThread(id)?.projectId ?? null)) continue;
       const templateChange = name === 'workflows.changed' && (payload as RpcEvents['workflows.changed']).templatesProjectId !== undefined;
@@ -843,16 +837,20 @@ export function startServer(options: ServerOptions): RunningServer {
       // A shell's bytes go to the windows that attached it. Its exit still goes to every owner window: one
       // that lays the pane out without having attached it, a background tab say, drops the pane then.
       if (name === 'terminal.output' && !core.terminals.watches((payload as RpcEvents['terminal.output']).id, connection.id)) continue;
-      if (loadRow && !connection.accepts.has('thread.load')) { loadRow(connection); continue; }
+      if (summaryRow && name === 'thread.load' && !connection.accepts.has(name)) { summaryRow(connection); continue; }
+      if (options?.composerRevision && connection.accepts.has('composer.revision') && mayReceiveEvent('composer.revision', connection)) {
+        connection.sendEvent('composer.revision', options.composerRevision, revisionFrames);
+        continue;
+      }
       connection.sendEvent(name, payload, frames);
     }
     if (name === 'terminal.exited') core.terminals.exitSent((payload as RpcEvents['terminal.exited']).id);
   };
   let pendingScheduler: RpcEvents['scheduler.updated'] | null = null;
   let schedulerTimer: ReturnType<typeof setTimeout> | null = null;
-  const off = core.bus.onCommitted((name, payload) => {
+  const off = core.bus.onCommitted((name, payload, options) => {
     if (name !== 'scheduler.updated') {
-      broadcast(name, payload);
+      broadcast(name, payload, options);
       return;
     }
     // A thousand queued turns used to serialize and compress every intermediate

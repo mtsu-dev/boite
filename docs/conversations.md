@@ -16,6 +16,12 @@ draft folder when you have no project yet.
 
 The chat shows Starting agent while the agent launches, then Working for once
 it starts working. The startup timer counts the current turn.
+Your message stays near the top while the reply fits below it. When the reply
+outgrows that space, the chat follows the latest text until you scroll up.
+The conversation header and list show what it is waiting on and how long the
+wait has lasted when the start time is available. They show how many sub-agents
+are still working after the conversation's turn ends. When a pull request watch
+pauses, the header gives the reason and the next check time.
 
 An agent can warn that something went wrong beside its work while it carries
 on: the disk was full and part of the conversation was not saved, attached
@@ -44,6 +50,9 @@ the conversation, to keep your text as typed, with no red underline.
 Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: switch between Projects and
 Recent in Display options.
+
+If a machine's conversation list is incomplete, press Try again in the list.
+The conversations already loaded stay available while Boite reloads it.
 
 Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
@@ -90,10 +99,11 @@ folder, stay.
 
 ## Worktrees
 
-A worktree conversation starts on a temporary branch, then Boite renames the
-branch after the conversation's title while the first turn runs. A branch you
-named yourself, or one with a remote, keeps its name. The header shows the
-branch.
+A new worktree conversation starts from the project's default branch. Boite
+checks the remote for its latest commit and uses the local default branch when
+offline. Boite renames the temporary branch after the conversation's title
+while the first turn runs. A branch you named yourself, or one with a remote,
+keeps its name. The header shows the branch.
 
 - Worktree by default, in a project's Manage project menu, turns the switch on
   for every new thread there.
@@ -107,10 +117,14 @@ branch.
   checks the branch out there again with all its commits. Changes that were never committed are gone with
   the folder. When the branch is gone too, the conversation says which folder
   is missing.
-- Remove settled worktrees, in Manage project, deletes a worktree an hour
+- Remove settled worktrees, in Manage project, retires a worktree an hour
   after all its conversations are done or archived, only when its last commit
-  is on another branch or in a merged pull request. Uncommitted changes always
-  stay.
+  is on another branch or in a merged pull request. It keeps worktrees with
+  uncommitted changes, including files Git ignores. Boite logs where it saved
+  files that changed during removal or that Boite could not verify. Run
+  `boite projects recoveries` from your terminal to find those files and
+  check them before deleting them by hand. Deleted copies drop out of the list
+  the next time you run the command.
 - Ask to finish after merge: once every pull request of a worktree conversation
   is merged or closed, Boite asks its agent whether the conversation is done.
   The agent moves it to Done or keeps it open when it still has something to
@@ -142,21 +156,27 @@ above the message box or the bottom tabs.
 
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up
   later; the toast offers Undo, or press Ctrl+Z.
-- The agent of an archived thread stops. Restore it from Archived threads in
-  the Filter menu or in a project's menu, which list them in place of the
-  thread list, or from Settings, General, Archived threads. Its agent starts
-  again with your first message.
+- Open Archived threads from Filter, a project's menu or Settings > General.
+  Select a conversation to read it. Restore it from the row or from the open
+  conversation before sending a message. Restoring brings back your message
+  draft. Its agent starts again with your first message.
 - A project's Done list shows ten rows at a time; scroll it for the rest.
+  The row shows when each conversation was put away. To reveal Restore on
+  desktop, point to the row or focus it with the keyboard. Restore is visible
+  on touch screens.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
+- Delete shows how long the conversation's machine keeps its history. Choose
+  Archive in the same dialog to put a current conversation aside.
 - The owner can restore a deleted conversation from Show deleted conversations
-  in Settings, General, Archived threads, for the number of days set in Keep
-  deleted conversations for. On a paired phone, use Undo in the confirmation
-  toast immediately after deleting a conversation.
+  for the number of days set in Keep deleted conversations for. Find both under
+  Settings > General on desktop and Settings > General > Archived threads on
+  a phone. Pick a machine in Archived threads to change its retention settings.
+  On a paired phone, use Undo in the confirmation toast immediately after
+  deleting a conversation.
 - Archive project takes a project out of the list. Its threads keep running,
-  and a new thread brings it back. Remove from Boite takes the project and its
-  threads out of the app but keeps them saved, with their history and usage:
-  add the same folder again and they come back, the open ones reopened. The
-  files on disk stay.
+  and a new thread brings it back. Remove from Boite stops its conversations
+  and hides the project. Add the same folder again to recover its history and
+  reopen the conversations that were open. Files on disk stay in place.
 
 ## Import a Claude Code or Codex session
 
@@ -184,7 +204,7 @@ logo, pick Refresh icon in Manage project.
 - [First steps](first-steps.md): your first project and conversation.
 - [Models](models.md): change the agent or model in a conversation.
 - [Secrets](secrets.md): give an agent a key without pasting it in the chat.
-- [Experiments](experiments.md): unfinished features, in Nightly builds; none today.
+- [Experiments](experiments.md): unfinished features, in Nightly builds, such as the animated background of a new thread.
 - Technical reference: [drafts](internals/drafts.md),
   [titles](internals/titles.md), [imports](internals/imports.md),
   [project icons](internals/project-icons.md).

@@ -181,14 +181,14 @@ test.each([
   }
 });
 
-test('the app tells its core its language, and no experiment is a setting while every feature is finished', async () => {
+test('the app tells its core its language, and only an experiment with a switch is a setting', async () => {
   localStorage.setItem('boite.experiments', JSON.stringify(['resident-agents', 'whip']));
   const { client, store } = await setup();
   try {
     await vi.waitFor(async () => expect((await client.call('agent.settings', { threadId: 't-trace' })).app).toEqual({ language: 'en', device: null, client: null }));
     const read = await client.call('agent.settings', { threadId: 't-trace' });
     // A finished feature is not a setting any more: it has no reading and no card, an old switch left in storage too.
-    expect(read.settings.filter((reading) => reading.key.startsWith('experiment.'))).toEqual([]);
+    expect(read.settings.filter((reading) => reading.key.startsWith('experiment.')).map((reading) => [reading.key, reading.value])).toEqual([['experiment.draft-backdrop', false]]);
     await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.resident-agents', value: true })).rejects.toThrow('no longer an experiment');
     // An id that left the registry is no setting at all.
     for (const key of ['experiment.whip', 'experiment.teams'] as const) {

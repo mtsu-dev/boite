@@ -142,6 +142,12 @@ test('the checklist model sits with how agents answer on General, with no experi
   expect(query('#settings-notifications [data-testid=setting-notifications]')).toBeTruthy();
   expect(document.querySelector('#settings-conversations [data-testid=setting-notifications]')).toBeNull();
   expect(query('[data-testid=goal-tracker-model]').textContent).toContain('Automatic');
+  for (const id of ['setting-group-working-threads', 'setting-async-questions']) {
+    const control = query<HTMLInputElement>(`[data-testid=${id}]`);
+    const checked = control.checked;
+    document.getElementById(control.getAttribute('aria-describedby')!)!.click();
+    expect(control.checked).toBe(!checked);
+  }
   query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
@@ -159,7 +165,7 @@ test('the gear opens Settings on its home: a tile per page under its family, the
   expect(tiles('app')).toEqual(['general', 'keyboard', 'voice', 'appearance']);
   expect(tiles('agents')).toEqual(['accounts', 'plugins', 'brain', 'limits', 'usage']);
   expect(tiles('connections')).toEqual(['browser', 'machines']);
-  expect(tiles('advanced')).toEqual(['advanced', 'diagnostics', 'resources', 'task-manager']);
+  expect(tiles('advanced')).toEqual(['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']);
   // A tile says its page's state where there is one to read.
   expect(query('[data-testid=settings-home-appearance-status]').textContent).toBe('System · English');
   expect(query('[data-testid=settings-home-accounts-status]').textContent).toMatch(/connected|Connect a provider/);
@@ -195,6 +201,10 @@ test('the gear opens Settings on its home: a tile per page under its family, the
   field.value = 'connections';
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Browser profiles')));
+  // A setting inside a card is found by its own label: the retention of done threads sits in the deleted conversations card.
+  field.value = 'delete done threads';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Delete done threads after')));
   field.value = 'font';
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);

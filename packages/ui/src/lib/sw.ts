@@ -28,3 +28,23 @@ export function registerServiceWorker(): void {
   if (document.readyState === 'complete') start();
   else window.addEventListener('load', start, { once: true });
 }
+
+/** Called after an authenticated connection, including the first pairing. */
+export function warmOfflineConversations(): (() => void) | undefined {
+  const workers = navigator.serviceWorker;
+  if (!workers) return;
+  let live = true;
+  let notified: ServiceWorker | null = null;
+  const notify = (worker: ServiceWorker | null) => {
+    if (!live || !worker || worker === notified) return;
+    worker.postMessage({ type: 'boite.cache-conversations' });
+    notified = worker;
+  };
+  const changed = () => notify(workers.controller);
+  workers.addEventListener('controllerchange', changed);
+  void workers.ready.then(registration => notify(workers.controller ?? registration.active)).catch(() => undefined);
+  return () => {
+    live = false;
+    workers.removeEventListener('controllerchange', changed);
+  };
+}

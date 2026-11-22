@@ -24,7 +24,7 @@
  * feature leaves this list once nothing reads its id: an app or a core that
  * hears an id it does not know drops it.
  */
-export const EXPERIMENT_IDS = ['resident-agents'] as const;
+export const EXPERIMENT_IDS = ['resident-agents', 'draft-backdrop'] as const;
 export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
 
 /**
@@ -53,6 +53,7 @@ export type FeatureStage = BuildKind;
 
 export const EXPERIMENT_STAGES: Record<ExperimentId, FeatureStage> = {
   'resident-agents': 'release',
+  'draft-backdrop': 'nightly',
 };
 
 /**
@@ -107,10 +108,11 @@ function refusalTail(stage: FeatureStage, version: string | null | undefined): s
  *
  * With the flag defined as `false` the branch and its dynamic import go, and
  * the feature's modules are in no chunk. A feature with a cut declares its
- * flag below; none has one today.
+ * flag below.
  */
 declare global {
   const __BOITE_BUILD_KIND__: BuildKind | undefined;
+  const __BOITE_HAS_DRAFT_BACKDROP__: boolean | undefined;
 }
 
 /** The kind this bundle was compiled as, or null when it runs from source. */
@@ -140,9 +142,12 @@ export function featureDefines(version: string | null | undefined, stages: Recor
  * bundle. Each of them writes its marker, the literal `featureMarker(id)`
  * gives, in the module its lazy entry loads; `scripts/ci/feature-cut.ts`
  * fails a build whose bundle holds the marker of a feature above its kind,
- * and one that lost the marker of a feature it must hold. None today.
+ * and one that lost the marker of a feature it must hold. The new thread
+ * background is drawn by the app alone, so the core has nothing of it to cut.
  */
-export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boolean }>> = {};
+export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boolean }>> = {
+  'draft-backdrop': { ui: true, core: false },
+};
 
 const MARKED: string[] = [];
 

@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { desktopShell } from './lib/shell-platform';
+  import { desktopShell, MOBILE_BUILD } from './lib/shell-platform';
   import { errorText } from './lib/errors';
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { shellStarting, takeNotificationTarget } from './lib/endpoint';
+  import { opensFromLink, readStoredEndpoint, shellStarting, takeNotificationTarget } from './lib/endpoint';
   import { watchAgentBrowser } from './lib/agent-browser-watch';
   import { watchDevices } from './lib/device-watch';
   import { watchWindows } from './lib/window-watch';
@@ -13,7 +13,6 @@
   import Notice from './components/Notice.svelte';
   import { CircleAlert } from '@lucide/svelte';
   import { toastSlot } from './lib/notify-corner';
-  import ChatView from './components/ChatView.svelte';
   import Deferred from './components/Deferred.svelte';
   import { inbox } from './lib/inbox.svelte';
   import { activityPage } from './lib/activity-page';
@@ -23,7 +22,6 @@
   import DragGhost from './components/DragGhost.svelte';
   import DropOverlay from './components/DropOverlay.svelte';
 
-  import Sidebar from './components/Sidebar.svelte';
   import TitleBar from './components/TitleBar.svelte';
   import AppRail from './components/AppRail.svelte';
   import { Closing } from './lib/closing.svelte';
@@ -33,12 +31,13 @@
   import { startGlass } from './lib/glass';
   import { installExternalLinks } from './lib/links';
   import { installDropNavigationGuard } from './lib/drop-navigation';
-  import { QUIT_HOLD_MS } from './lib/quit-hold';
+  import QuitHint from './components/QuitHint.svelte';
   import { closingStores, confirmedQuitHold, desktopQuit, installQuitGuard } from './lib/shell-quit';
   import { notificationWords, onNotificationOpen, storeNotificationWords, storeWorkerLocale } from './lib/notify';
   import { strings } from './lib/strings';
   import { activeLocale } from './lib/i18n.svelte';
   import { retryOrReload } from './lib/retry-load';
+  import { warmOfflineConversations } from './lib/sw';
   import { experimentOn } from './lib/experiments.svelte';
   import { featureOn } from './lib/features.svelte';
   import { contactsShown, contactsViews } from './lib/contacts-views.svelte';
@@ -53,6 +52,7 @@
   import { whenIdle } from './lib/idle';
   import { prefetchAllowed, prefetchNames, warmPages } from './lib/prefetch';
   import { parts, prefetchParts } from './lib/deferred-parts';
+  import { LazyComponent } from './lib/lazy-component.svelte';
   import { mobileNavigation } from './lib/mobile-navigation';
   import { voice } from './lib/voice-prefs.svelte';
   import { startTheme } from './lib/theme';
@@ -60,6 +60,7 @@
   import { reportDesktopUpdates } from './lib/desktop-update.svelte';
   import { watchUpdates } from './lib/update-watch';
   import MobileConnect from './components/MobileConnect.svelte';
+  import MobilePairing from './components/MobilePairing.svelte';
   import { attentionCount, syncAppBadge } from './lib/badge';
   import { startViewport } from './lib/viewport';
   import { watchRest } from './lib/at-rest';
@@ -73,7 +74,6 @@
   import { startViewHistory } from './lib/view-history.svelte';
   import { agentAutoLink } from './lib/agent-links.svelte';
   import ThreadPreparation from './components/ThreadPreparation.svelte';
-  import AgentsLayout from './components/agents/AgentsLayout.svelte';
 
   let store = $derived(workspace.active);
   const inShell = desktopShell();
@@ -83,25 +83,8 @@
   function loadMobileNavigation(): void {
     if (!inShell) void mobileNavigation.load().catch(() => undefined);
   }
-  loadMobileNavigation();
-  $effect(() => {
-    if (store.connection === 'ready') untrack(loadMobileNavigation);
-  });
   // The microphone sits in the composer's first frame: its chunk starts with the app too.
   if (voice.current.enabled) void parts.Dictation.load().catch(() => undefined);
-  // The machine the window opened on may still give way to one that answers: until then nothing of it is drawn.
-  const booted = $derived(store.booted && !(workspace.waiting && store === workspace.primary)
-    && (inShell || mobileNavigation.current !== undefined || mobileNavigation.failed));
-  // A core compacting its journal once before it serves: the start says so rather than only "Starting".
-  let compacting = $state(false);
-  $effect(() => {
-    if (!inShell || booted) { compacting = false; return; }
-    let live = true;
-    const look = () => void shellStarting().then(starting => { if (live) compacting = starting?.phase === 'compacting'; });
-    look();
-    const timer = setInterval(look, 1000);
-    return () => { live = false; clearInterval(timer); };
-  });
   // The id alone: the full conversation replacing the row a click drew must not start the watchers again.
   const watchedThreadId = $derived(store.openThread?.id);
   // New agent pages bring the panel forward on wider clients; phones stay on the user's chosen view.
@@ -118,22 +101,79 @@
     return () => stops.forEach((stop) => stop());
   });
   const narrow = new MediaQuery('(max-width: 720px)');
+  const desktopStartup = !MOBILE_BUILD && (inShell || !narrow.current);
+  const sidebar = new LazyComponent(() => import('./components/Sidebar.svelte'));
+  const chatView = new LazyComponent(() => import('./components/ChatView.svelte'));
+  const agentsLayout = new LazyComponent(() => import('./components/agents/AgentsLayout.svelte'));
+  let desktopViewsSettled = $state(!desktopStartup);
   let appRoot = $state<HTMLDivElement | undefined>(undefined);
   let mobileScreen = $state<'chat' | 'threads' | 'activity'>('chat'), mobileTabs = $state(false);
+  let waitForMobileNavigation = $state(!inShell && narrow.current);
   const mobileRecovery = $derived(!inShell && (store.pairingRequired || (!store.core && store.connection !== 'ready'))
     && !workspace.machines.some(machine => machine.store.connection === 'ready'));
+  // A fresh phone uses the pairing controls before fetching the conversations navigation.
+  // An already paired page or one opened from a link can fetch navigation while it connects.
+  const earlyPairing = $derived(narrow.current && mobileRecovery && store.pairingRequired
+    && store.page === 'chat' && !mobileNavigation.current);
+  // The machine the window opened on may still give way to one that answers.
+  const booted = $derived(store.booted && desktopViewsSettled && !(workspace.waiting && store === workspace.primary)
+    && (!waitForMobileNavigation || !narrow.current || earlyPairing || mobileNavigation.current !== undefined || mobileNavigation.failed));
+  // A resize can load the phone's header without tearing down the already open page.
+  $effect(() => {
+    if (!narrow.current && booted) waitForMobileNavigation = false;
+  });
+  $effect(() => {
+    if (!inShell && !MOBILE_BUILD && booted && workspace.machinesOr(store).some(({ store: machine }) => machine.client instanceof WsClient && machine.connection === 'ready')) {
+      return warmOfflineConversations();
+    }
+  });
+  // A core compacting its journal once before it serves: the start says so rather than only "Starting".
+  let compacting = $state(false);
+  $effect(() => {
+    if (!inShell || booted) { compacting = false; return; }
+    let live = true;
+    const look = () => void shellStarting().then(starting => { if (live) compacting = starting?.phase === 'compacting'; });
+    look();
+    const timer = setInterval(look, 1000);
+    return () => { live = false; clearInterval(timer); };
+  });
+  if (desktopStartup || !narrow.current || readStoredEndpoint() || opensFromLink()) {
+    if (!inShell && narrow.current) loadMobileNavigation();
+    if (desktopStartup) void activityPage.load().catch(() => undefined);
+    const views = desktopStartup ? [sidebar, chatView, agentsLayout] : [sidebar, chatView];
+    // Connect the core while the desktop's views load, then draw them together.
+    void Promise.allSettled(views.map(view => view.load())).then(() => { desktopViewsSettled = true; });
+  }
+  $effect(() => {
+    if (!inShell && narrow.current && store.booted && !earlyPairing) untrack(loadMobileNavigation);
+  });
   // Wider than a phone (an iPhone on its side, a tablet, a desktop browser)
   // a lost or revoked pairing gets the same screen rather than a stale page.
   const wideRecovery = $derived(!narrow.current && mobileRecovery && store.pairingRequired && store.page !== 'settings');
   /** The page Settings was opened from, or the one on screen. */
   let settingsFrom = $state<Page>('chat');
-  $effect.pre(() => { if (store.page !== 'settings') settingsFrom = store.page; });
+  function leaveSettings() {
+    if (settingsFrom === 'agents') store.showAgents();
+    else if (settingsFrom === 'home') store.showHome();
+    else store.showChat();
+  }
+  $effect.pre(() => {
+    const page = store.page;
+    if (page !== 'settings') settingsFrom = page;
+    // Register the home before a settings detail mounts, including while the phone header loads.
+    else if (!inShell && narrow.current && booted && !mobileRecovery) return mobileOverlay(leaveSettings);
+  });
   /**
    * A phone's Settings opened from the chat is a layer over it, which stays built under it, hidden: leaving Settings
    * shows the list and the conversation as they were instead of building them again. From another page, Settings
    * replaces it as on a desktop, so no chat is built for nothing.
    */
   const phoneSettings = $derived(!inShell && narrow.current && store.page === 'settings' && settingsFrom === 'chat');
+  /**
+   * The chat is mounted but out of sight, under a phone's list, its recovery screen or its settings: the two
+   * covers of `.body` below, which only a narrow window applies. A phone turned wide shows the chat again.
+   */
+  const chatCovered = $derived(phoneSettings || (!inShell && narrow.current && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)));
   let documentVisible = $state(!document.hidden);
   // What the first screen does not draw stays out of the first chunk: the right
   // panel and its six surfaces, the palette and the two dialogs were a third of
@@ -190,7 +230,7 @@
   // Once the first load has landed rather than against it, and the rest only on a
   // link that can spare the bytes (lib/prefetch.ts). The plugin update notice reads its own list, so it loads on any link.
   $effect(() => {
-    if (!store.booted) return;
+    if (!booted || earlyPairing) return;
     return whenIdle(() => { need('PluginUiHost'); if (!prefetchAllowed()) return need('PluginUpdateNotice'); needAll(); prefetchParts(); warmPages(store, experimentOn('resident-agents')); });
   });
   // With the first open thread, so the corner is there before a stop lands in it; a stop elsewhere asks for it too.
@@ -529,10 +569,12 @@
 <div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:railed={railShown} class:quitting style:--bar-left={barLeft} bind:this={appRoot}>
   {#if railShown}<AppRail {store} />{/if}
   {#if !inShell && booted}
-    {#if mobileNavigation.current}
+    {#if earlyPairing}
+      <MobilePairing {store} screen={mobileScreen} navigate={(screen) => { mobileScreen = screen; }} onpaired={() => { mobileScreen = 'threads'; }} />
+    {:else if mobileNavigation.current}
       {@const MobileNavigation = mobileNavigation.current}
-      <MobileNavigation {store} recover={mobileRecovery} bind:screen={mobileScreen} bind:tabbed={mobileTabs} />
-    {:else}
+      <MobileNavigation {store} recover={mobileRecovery} onleavesettings={leaveSettings} bind:screen={mobileScreen} bind:tabbed={mobileTabs} />
+    {:else if narrow.current && mobileNavigation.failed}
       <p class="mobile-navigation-failed" role="alert" data-testid="mobile-navigation-failed">
         <span>{strings.parts.navigationFailed}</span>
         <button type="button" data-testid="mobile-navigation-retry" onclick={() => void retryOrReload(() => mobileNavigation.load())}>{strings.common.retry}</button>
@@ -544,12 +586,14 @@
   <div class="body" class:under-settings={phoneSettings} class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
     {#if !booted}
       <p class="empty boot" class:long={compacting}>{compacting ? strings.app.compacting : strings.app.loading}</p>
+    {:else if earlyPairing}
+      <!-- Pairing uses the phone's header and list slots above. -->
     {:else if wideRecovery}
       <div class="wide-recovery" data-testid="wide-recovery"><MobileConnect {store} onpaired={() => {}} /></div>
     {:else if store.page === 'settings' && !phoneSettings}
       <!-- Settings alone: its layer below takes the page. -->
     {:else if store.connection === 'closed' && !store.core}
-      <Sidebar {store} />
+      <Deferred part={sidebar}>{#snippet children(Sidebar)}<Sidebar {store} />{/snippet}</Deferred>
       <div class="notice framed">
         <h1>{strings.app.noEndpointTitle}</h1>
         <p class="muted">{strings.app.noEndpointBody}</p>
@@ -558,9 +602,9 @@
         </button>
       </div>
     {:else if store.page === 'agents' && experimentOn('resident-agents')}
-      <AgentsLayout {store} panel={panelSlot} showPanel={panelSlot.shown && panelThread !== null} RightPanel={deferred.RightPanel} />
+      <Deferred part={agentsLayout}>{#snippet children(AgentsLayout)}<AgentsLayout {store} panel={panelSlot} showPanel={panelSlot.shown && panelThread !== null} RightPanel={deferred.RightPanel} />{/snippet}</Deferred>
     {:else}
-      <Sidebar {store} />
+      <Deferred part={sidebar}>{#snippet children(Sidebar)}<Sidebar {store} />{/snippet}</Deferred>
       {#if scrim.shown}
         <button
           type="button"
@@ -585,7 +629,7 @@
             <Deferred part={activityPage}>{#snippet children(ActivityPage)}<ActivityPage {store} />{/snippet}</Deferred>
           {:else}
             {#key store}
-              <ChatView {store} />
+              <Deferred part={chatView}>{#snippet children(ChatView)}<ChatView {store} covered={chatCovered} />{/snippet}</Deferred>
             {/key}
           {/if}
         </div>
@@ -639,21 +683,7 @@
     <DropOverlay kind={store.dropping} />
   {/if}
 
-  {#if quitHint.shown}
-    <div
-      class="quit-hint"
-      class:closing={quitHint.closing}
-      role="status"
-      style="--quit-hold: {QUIT_HOLD_MS}ms"
-      use:quitHint.attach
-      onanimationend={quitHint.end}
-      data-testid="quit-hint"
-    >
-      <span class="text">{strings.titlebar.quitHold}</span>
-      <span class="sub">{strings.titlebar.quitHoldHint}</span>
-      <span class="bar" class:filling={quitHint.open}></span>
-    </div>
-  {/if}
+  <QuitHint {quitHint} />
 
   <!-- A missing or revoked phone pairing has its own recovery screen; Chrome refuses every socket until "Local network" is allowed, which that screen says too. -->
   <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired}
@@ -775,60 +805,6 @@
 
   .scrim {
     display: none;
-  }
-
-  /* The quit hint: a card at the top centre with a bar that fills over the
-     hold, so the eye reads how long is left before the window goes. */
-  .quit-hint {
-    position: absolute;
-    top: calc(var(--titlebar, 0px) + 12px);
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 90;
-    display: grid;
-    grid-template-columns: auto auto;
-    align-items: baseline;
-    gap: 6px 8px;
-    padding: 8px 12px 10px;
-    background: var(--overlay-surface);
-    border: 1px solid var(--overlay-edge);
-    border-radius: var(--radius-overlay);
-    box-shadow: var(--shadow-overlay);
-    animation: pop var(--dur-2) var(--ease-out-quint);
-    pointer-events: none;
-  }
-
-  .quit-hint.closing {
-    animation: pop-out var(--dur-2) var(--ease-out-quint);
-  }
-
-  .quit-hint .text {
-    font-size: var(--text-sm);
-    font-weight: 600;
-  }
-
-  .quit-hint .sub {
-    font-size: var(--text-xs);
-    color: var(--color-muted-foreground);
-  }
-
-  .quit-hint .bar {
-    grid-column: 1 / -1;
-    height: 2px;
-    border-radius: 1px;
-    background: var(--color-foreground);
-    transform: scaleX(0);
-    transform-origin: left;
-  }
-
-  .quit-hint .bar.filling {
-    animation: quit-fill var(--quit-hold) linear forwards;
-  }
-
-  @keyframes quit-fill {
-    to {
-      transform: scaleX(1);
-    }
   }
 
   /* The last frame before the process goes: nothing under the pointer answers. */

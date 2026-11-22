@@ -128,6 +128,18 @@ test('real and fake capability RPCs agree on echo facts and idle steering for ev
       const fake = await capabilityMethods({ ...ctx, providers: ctx.providers.map(item => ({ ...item, protocol })) })['threads.capabilities']({ threadId });
       expect(fake.steering).toEqual(threadCapabilities(h.core, threadId).steering);
     }
+    for (const id of ['grok', 'opencode-v2', 'opencode']) {
+      const descriptor = h.core.providers.list().loaded.find(item => item.id === id);
+      expect(descriptor?.protocol).toBe('acp');
+      get.mockRestore();
+      h.core.journal.putThread({ ...full, providerId: id });
+      const thread = { ...full, providerId: id };
+      const accounts = ctx.accounts.map(account => ({ ...account, providerId: id }));
+      const fake = await capabilityMethods({ ...ctx, thread: () => thread, accounts })['threads.capabilities']({ threadId });
+      expect(fake.steering.supported).toBe(id !== 'opencode');
+      expect(fake.steering.available).toBe(false);
+      expect(threadCapabilities(h.core, threadId).steering.supported).toBe(id !== 'opencode');
+    }
   } finally { get.mockRestore(); }
   owner.close();
 });

@@ -527,7 +527,7 @@ test('removed assets leave the index only after a pending durable journal settle
 
 test('legacy migration keeps inline files and unknown assets recoverable when durable storage is unavailable', async () => {
   const first = await ready('legacy'); first.editComposerText('t-trace', 'Bootstrap');
-  const key = Object.keys(localStorage).find(key => key.startsWith('boite.unsent'))!.split(':entry:')[0]!;
+  const key = vi.mocked(readDraftJournal).mock.lastCall![0];
   first.detach();
   const updatedAt = Date.now() + 1000;
   const reference = { id: 'save', url: 'https://fixture.test', selector: '#save', text: 'Save', bounds: { x: 0, y: 0, width: 20, height: 20 } };

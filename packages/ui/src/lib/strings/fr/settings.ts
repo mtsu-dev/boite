@@ -128,6 +128,7 @@ export const fr: Translation = {
     theme: 'Thème',
     /** Under the title of a page with a machine's settings; the name is the picker when there are several. */
     scopeMachine: 'Les réglages des agents s\'appliquent sur {machine}',
+    scopeArchives: 'Fils archivés sur {machine}',
     scopeDevice: 'Réglages enregistrés sur cet appareil',
     cardDevice: 'Pour cet appareil uniquement',
     cardMachine: 'Pour les agents sur {machine}',
@@ -223,6 +224,14 @@ export const fr: Translation = {
     chatWidthComfortable: 'Confortable',
     chatWidthWide: 'Large',
     chatWidthFull: 'Pleine',
+    backdrop: 'Fond des nouvelles conversations',
+    backdropHint: 'Une scène animée derrière l’écran vide d’une nouvelle conversation, sur cet appareil. Un appareil qui demande moins d’animations reçoit une image fixe.',
+    backdropOff: 'Aucun',
+    backdropRandom: 'Au hasard',
+    backdropGlyphs: 'Glyphes',
+    backdropCrates: 'Caisses',
+    backdropTunnel: 'Tunnel',
+    backdropRelief: 'Relief',
     /** The width preview's small conversation: a question, then a reply set at the width picked. */
     chatWidthAsk: 'Pourquoi le build échoue sur Windows ?',
     chatWidthSample: 'L\'éditeur de liens ne trouve pas le SDK Windows, alors la dernière étape s\'arrête. Ouvrez une invite développeur, ou ajoutez le dossier lib du SDK à LIB, puis relancez : le code lui-même compile.',

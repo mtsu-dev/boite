@@ -4,6 +4,7 @@ export const fr: Translation = {
 
   keyboard: {
     heading: 'Raccourcis',
+    escapeKey: 'Échap',
     intro: 'Cliquez sur un raccourci, puis appuyez sur les touches voulues. Le changement s\'applique aussitôt sur cette machine.',
     search: 'Filtrer les commandes',
     groups: { general: 'Général', surfaces: 'Panneau latéral', thread: 'Fil et message', jump: 'Aller à un fil', theme: 'Thème', terminal: 'Terminal' },

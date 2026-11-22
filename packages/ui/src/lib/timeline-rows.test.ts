@@ -6,6 +6,7 @@ import { partRuns } from './tool-groups';
 import { CUT_FROM, ROW_CHARS, ROW_PARTS, SPLIT_FROM, TimelineRows, rowCuts, rowEstimate, rowIndexOf, seam, textCuts, type TimelineRow } from './timeline-rows';
 import { markdownAnswer } from './fake-client/markdown-thread';
 import { findHits } from './find';
+import { appendText } from './text-revisions';
 
 const tool = (id: string): MessagePart => ({ type: 'tool', toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' });
 const text = (value: string): MessagePart => ({ type: 'text', text: value });
@@ -333,8 +334,12 @@ test('each slice carries the pages placed at its cuts, and a long system message
   // The text replaced in place with another page at the same cut: the rows name the new page, not the cached one.
   const other = '.boite/views/orbat.html';
   const list = new TimelineRows();
+  const part = answer.parts[0]!;
+  if (part.type !== 'text') throw new Error('Expected text');
   list.build([answer]);
-  answer.parts[0] = text(words.replace(path, other));
+  appendText(part, 'More streamed text');
+  expect(list.build([answer])[at]!.text!.pages).toEqual({ above: [path] });
+  part.text = words.replace(path, other);
   expect(list.build([answer])[at]!.text!.pages).toEqual({ above: [other] });
   // A wake-up's note draws its mark beside its whole text.
   expect(new TimelineRows().build([message('m-wake', [text(words)], 'system')])).toHaveLength(1);

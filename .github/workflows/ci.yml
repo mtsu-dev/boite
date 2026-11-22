@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   # A pull request, draft or ready, runs Linux, plus native Windows for
-  # protection inputs; the merge queue runs the full matrix on top of main
+  # protection inputs and focused browser E2E for client inputs. The merge queue runs the full matrix on top of main
   # (docs/internals/ci.md#pull-request-runs).
   pull_request:
   merge_group:
@@ -74,6 +74,7 @@ jobs:
       size: ${{ steps.filter.outputs.size }}
       androidServer: ${{ steps.filter.outputs.androidServer }}
       e2e: ${{ steps.filter.outputs.e2e }}
+      e2ePr: ${{ steps.filter.outputs.e2ePr }}
       telemetry: ${{ steps.filter.outputs.telemetry }}
       e2eTypes: ${{ steps.filter.outputs.e2eTypes }}
       stress: ${{ steps.filter.outputs.stress }}
@@ -538,7 +539,7 @@ jobs:
   ui:
     name: Build UI
     needs: changes
-    if: needs.changes.outputs.stress == 'true' || (needs.changes.outputs.desktop == 'true' && needs.changes.outputs.e2e == 'true')
+    if: needs.changes.outputs.stress == 'true' || needs.changes.outputs.e2e == 'true' || needs.changes.outputs.e2ePr == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -622,8 +623,54 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: bun scripts/ci/budgets.ts check .artifacts/bundle-sizes/bundle-sizes.json
+        run: bun scripts/ci/budgets.ts check .artifacts/bundle-sizes/bundle-sizes.json .artifacts/bundle-sizes/bundle-report.json
+      # Read by pr-comment.yml, which validates it and never runs it. One per
+      # attempt: a rerun's report never stands in for the job it replaced.
+      - if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: bundle-report-${{ github.run_attempt }}
+          path: .artifacts/bundle-sizes/bundle-report.json
+          if-no-files-found: ignore
+
+  # What one recorded agent turn costs a phone, against the main commit the
+  # pull request sits on (docs/internals/ci.md#thread-transfer).
+  transfer:
+    name: Thread transfer
+    needs: changes
+    if: github.event_name == 'pull_request' && (needs.changes.outputs.core == 'true' || needs.changes.outputs.web == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # The base's measurement from main's thread-transfer run.
+      actions: read
+      # The pull request body, read at run time so a rerun sees an edit.
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Measure
+        run: bun scripts/ci/transfer.ts measure .artifacts/thread-transfer/thread-transfer.json
+      - name: Compare with the base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bun scripts/ci/transfer.ts check .artifacts/thread-transfer/thread-transfer.json .artifacts/thread-transfer/transfer-report.json
+      # Read by pr-comment.yml, which validates it and never runs it. One per
+      # attempt: a rerun's report never stands in for the job it replaced.
+      - if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: thread-transfer-report-${{ github.run_attempt }}
+          path: .artifacts/thread-transfer/transfer-report.json
+          if-no-files-found: ignore
 
   # The callers of reusable workflows always run and pass `enabled`: a skipped
   # caller reports one check named after itself, a running one each inner
@@ -655,7 +702,7 @@ jobs:
   e2e-1:
     name: E2E 1/5
     needs: [changes, ui]
-    if: needs.changes.outputs.desktop == 'true' && needs.changes.outputs.e2e == 'true'
+    if: needs.changes.outputs.e2e == 'true' || needs.changes.outputs.e2ePr == 'true'
     runs-on: windows-2025
     timeout-minutes: 25
     env:
@@ -696,12 +743,31 @@ jobs:
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
+          BOITE_E2E_PR: ${{ needs.changes.outputs.e2ePr }}
         run: |
-          $files = @(bun scripts/ci/e2e-shards.ts $env:E2E_SHARD 5)
-          if ($LASTEXITCODE -ne 0 -or $files.Count -eq 0) { throw 'No browser or core E2E files for this shard' }
+          $artifacts = 'tests/e2e/.artifacts'
+          if ($env:BOITE_E2E_PR -eq 'true') {
+            $files = @('tests/e2e/phone-changes.test.ts', 'tests/e2e/mobile-focus.test.ts', 'tests/e2e/phone-stop.test.ts')
+            $env:BOITE_E2E_CAPTURES = $artifacts
+          } else {
+            $files = @(bun scripts/ci/e2e-shards.ts $env:E2E_SHARD 5)
+            if ($LASTEXITCODE -ne 0 -or $files.Count -eq 0) { throw 'No browser or core E2E files for this shard' }
+          }
           # A quarantined test that fails runs once more (scripts/ci/quarantine.json).
           # --job-minutes is the job's timeout-minutes (e2e-harness.test.ts).
-          bun scripts/ci/flaky.ts --job-started $env:BOITE_JOB_STARTED_MS --job-minutes 25 @files
+          bun scripts/ci/flaky.ts --job-started $env:BOITE_JOB_STARTED_MS --job-minutes 25 @files 2>&1 | Tee-Object -FilePath "$artifacts/results.log"
+          exit $LASTEXITCODE
+      - uses: ./.github/actions/upload-artifact
+        if: always()
+        with:
+          name: e2e-${{ env.E2E_SHARD }}-results
+          path: |
+            tests/e2e/.artifacts/results.log
+            tests/e2e/.artifacts/changes-*.png
+            tests/e2e/.artifacts/keyboard-choices-*.png
+            tests/e2e/.artifacts/phone-stop-*.png
+          include-hidden-files: true
+          retention-days: 7
       - uses: ./.github/actions/upload-artifact
         if: failure() || cancelled()
         with:

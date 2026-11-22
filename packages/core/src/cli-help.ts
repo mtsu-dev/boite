@@ -12,31 +12,25 @@ export const USAGE = `usage: boite <command> [args] [--json]
   where                          this thread, project, cwd, branch
   thread move <project>          move this thread to another project (name,
                                  id or folder) when this turn ends
-  thread new <project> <brief>   start a thread in a project; its first answer
-                                 comes back to you (--worktree, --title <title>,
-                                 --machine <name> from an agent thread: on
-                                 another machine of the group, in a project
-                                 there, once its owner allows it. From a
-                                 terminal use --core <url>; --model
-                                 <provider/model>, --effort <level>, --speed
-                                 <tier> from boite delegate models, with the
-                                 same --machine for that machine's; refused
-                                 when it lacks them, never another model);
-                                 a mochi names an entrusted remote project
-                                 as <machine>/<project>
+  thread new <project> <brief>   start a thread and receive its first answer
+                                 (--worktree, --title <title>, --core <url> in a terminal).
+                                 Agents use --machine <name> with owner permission.
+                                 Mochis use <machine>/<project> for entrusted projects.
+                                 Get --model <provider/model>, --effort <level> and
+                                 --speed <tier> from delegate models for that machine.
+                                 Unsupported routes fail.
   projects                       the projects added to Boite
-  projects add <folder>          add an existing folder as a project, so thread
-                                 new and thread move can name it (--name <name>;
-                                 --machine <name> from an agent thread: a folder
-                                 of another machine of the group, its absolute
-                                 path there, once its owner allows it; a mochi
-                                 adds a folder of its own machine while its
-                                 addProjects setting is on, and holds it at
-                                 once)
+  projects add <folder>          add an existing folder (--name <name>).
+                                 Agents can use --machine <name> and an absolute
+                                 path there with that owner's permission. Mochis
+                                 with addProjects can add and hold a local folder.
   projects archive|unarchive|remove <p>
                                  the owner's; removing leaves the folder on disk
+  projects recoveries            list files kept after worktree removal, owner only
 ${CONTROL_HELP}
   attach <file>                  publish a file in chat, up to 512 MB
+  proof <message-id> <output-line> <unchecked> [capture]
+                                 publish verification from a recorded command
   show <file>[:line]             open a file in the panel, at a line
   diff [file]                    open the changes, or one file's diff
   browse <url>                   open a url in a new tab of this conversation's browser
@@ -49,10 +43,8 @@ ${CONTROL_HELP}
                                  and drive them through agent-desktop
   pr list|refresh                this conversation's linked pull requests
   pr link|unlink <url>           attach or remove a PR link; does not change GitHub
-  pr watch [<url|number>]        wake this thread when the PR's checks fail or
-                                 pass, a review or comment lands, it starts
-                                 to conflict or leaves the merge queue
-                                 unmerged; end your turn instead of polling
+  pr watch [<url|number>]        wake on checks, reviews, comments, conflicts
+                                 or queue removal without merge. End the turn.
   pr unwatch [<url|number>]      stop one watch, or all of this thread's
   view <file.html>               draw an HTML page in your answer, where a
                                  line ![title](file.html) places it
@@ -69,17 +61,15 @@ ${CONTROL_HELP}
                                  pending update; no thread needed as owner
   journal-check [table rowid]     bounded read-only journal diagnostics, owner only
   logs [--min-level warn] [--since 2h]
-                                 Boite's own diagnostics: did the app, its shell
-                                 or a client fail? logs help has the filters,
-                                 logs problems groups them, logs export writes
-                                 the anonymized file a developer reads
+                                 Boite diagnostics. Use logs help for filters,
+                                 logs problems for groups, logs export for a
+                                 sanitized report.
   issue draft|submit --title <t> --description <text>
                                  report a Boite bug on GitHub with that export;
                                  show the user the draft before submit
-  ask <question> [option ...]    ask the user without stopping; the answer
-                                 arrives later as a message (--multiple);
-                                 --open <url> adds an Open button for a page
-                                 the user must sign in to, in your browser
+  ask <question> [option ...]    ask while you work (--multiple). The answer
+                                 arrives as a message. --open <url> adds a
+                                 button for sign-in in your browser.
   ask list                      read this thread's pending questions
   secret list                    compatibility: reports that no keys are stored
   secret ask <NAME> --why <text> ask the user for a key on a card; prints
@@ -160,28 +150,21 @@ ${BOT_HELP}
   delegate models                models, reasoning levels and speeds a subagent can use
                                  (--refresh: read again; --machine <name>: another
                                  machine's, for thread new or spawn --machine --model)
-  delegate spawn <brief>         start a subagent on one bounded job; its result
-                                 comes back as a message (--model <provider/model>,
-                                 --effort <level>, --speed <tier>, --title <title>,
-                                 --profile <id>, --worktree for a git worktree of
-                                 its own from your checkout's HEAD (the project's
-                                 for a mochi), and a context mode: --context
-                                 light|neutral, --keep|--drop <parts>, --tools
-                                 <Tool,...>, --rules <text>|--rules-file <path>;
-                                 --drop guides for a self-contained brief)
-                                 --project <p> places a mochi's child in an entrusted project
-                                 --machine <name> runs it on another machine of the
-                                 group, in its project named like yours or --project
+  delegate spawn <brief>         give a subagent a bounded job and get its result
+                                 (--model <provider/model>, --effort <level>,
+                                 --speed <tier>, --title <title>, --profile <id>,
+                                 --worktree from your HEAD or the mochi's project).
+                                 Use --context light|neutral, --keep|--drop <parts>,
+                                 --tools <Tool,...>, --rules <text>|--rules-file <path>.
+                                 Use --drop guides for self-contained briefs. Mochis use
+                                 --project <p> for entrusted projects. --machine <name>
+                                 runs in the matching or named project on a group machine.
   delegate list [--details]      every subagent, workflow and council: state, model, time
-  delegate council <request>     several models answer it
-                                 alone, read-only, each with a score out of 10, on code
-                                 or anything else, with or without git; the answers
-                                 come back as one message (--models <a>[:<effort>],
-                                 <b>[:<effort>][,...] from delegate models, --effort
-                                 <level> (xhigh) for members without one,
-                                 --request-file <path> instead of the text,
-                                 --role <member>=<text> for one member, repeatable,
-                                 --timeout <minutes per round> (30))
+  delegate council <request>     independent read-only answers with scores /10 in one message
+                                 (--models <model>[:<effort>],... from delegate models,
+                                 --effort <level> (xhigh) for other members,
+                                 --request-file <path>, repeat --role <member>=<text>,
+                                 --timeout <minutes> per round (30)).
   delegate council again <id> [<what changed>]
                                  one more round: the same members, efforts and roles,
                                  from zero (--send-changes sends them what changed,

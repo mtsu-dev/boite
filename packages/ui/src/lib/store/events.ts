@@ -9,7 +9,7 @@ import { revealRequested } from '../reveal';
 import { appUpdateRequested } from '../desktop-update.svelte';
 import { rightPanel } from '../right-panel.svelte';
 import { undo } from '../undo.svelte';
-import { lastIndexById, patchFields, patchLoad, placePart } from '../thread-rows';
+import { lastIndexById, patchFields, patchLoad, patchProgress, placePart } from '../thread-rows';
 import { strings } from '../strings';
 import { needsUser } from '../thread-state';
 import { installStatesOf } from './accounts.svelte';
@@ -101,6 +101,7 @@ export function listen(ctx: StoreContext, client: Client): void {
   on('network.changed', () => networkChanged());
   on('core.updateChanged', snapshot => ctx.serverUpdater.apply(snapshot));
   on('composer.updated', record => ctx.sync.receive(record));
+  on('composer.revision', revision => ctx.sync.receiveRevision(revision));
   on('core.desktopUpdateChanged', ({ status }) => { if (!s.localCore) ctx.serverUpdater.applyDesktop(status); });
   on('ui.appUpdate', ({ version }) => appUpdateRequested(s, version));
 
@@ -117,8 +118,8 @@ export function listen(ctx: StoreContext, client: Client): void {
     ctx.delegation.patchThread(summary);
     const open = s.openThread;
     if (open && open.id === summary.id) patchFields(open, summary);
-    // Archived from another client: nothing here can show it again.
-    else if (summary.archived) threads.forgetThread(summary.id, summary.archiveReason?.type === 'pr-merged');
+    // Archived from another client: release the inactive view.
+    else if (summary.archived) threads.forgetThread(summary.id, summary);
     if (s.delegationThread?.id === summary.id) patchFields(s.delegationThread, summary);
     // A sub-agent of the open thread now asks: its parent's dock reads what it asks.
     if (turnedToUser && open && summary.parentThreadId === open.id) requests.readChildren(client, open.id, summary.id);
@@ -133,6 +134,12 @@ export function listen(ctx: StoreContext, client: Client): void {
     ctx.delegation.patchLoad(threadId, load);
     if (s.openThread?.id === threadId) patchLoad(s.openThread, load);
     if (s.delegationThread?.id === threadId) patchLoad(s.delegationThread, load);
+  });
+  on('thread.progress', ({ threadId, progress }) => {
+    const row = threads.rowOf(threadId);
+    if (!row || patchProgress(row, progress)) ctx.threadReads.patch(threadId, { progress });
+    ctx.delegation.patchProgress(threadId, progress);
+    for (const thread of threads.threadSnapshots(threadId)) patchProgress(thread, progress);
   });
   // The agent's `/name` list is the whole list each time, and it lives on the
   // open thread only: a summary in the sidebar carries none.

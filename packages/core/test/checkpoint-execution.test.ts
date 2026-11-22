@@ -1,4 +1,4 @@
-import {expect, test} from 'bun:test';
+import {expect, spyOn, test} from 'bun:test';
 import {mkdirSync, realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {Bus} from '../src/bus.ts';
@@ -6,7 +6,34 @@ import type {Core} from '../src/core.ts';
 import {ProcRegistry} from '../src/procs.ts';
 import {createPosixPlatform} from '../src/platform/posix.ts';
 import {overlap, snapshot} from '../src/threads/checkpoint-files.ts';
-import {startTestCore} from './harness.ts';
+import {STOP_DEADLINE} from '../src/threads/turn-attempts.ts';
+import {echoThread, startTestCore, waitFor} from './harness.ts';
+
+test.each(['begin', 'end'] as const)('Stop frees the scheduler even while checkpoint %s is blocked', async phase => {
+  const h = await startTestCore();
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const held = spyOn(h.core.threads.codeCheckpoints, phase).mockImplementation(() => {
+    entered.resolve();
+    return release.promise;
+  });
+  const grace = STOP_DEADLINE.forceMs;
+  STOP_DEADLINE.forceMs = 40;
+  try {
+    const owner = await h.connect();
+    const { threadId } = await echoThread(h, owner);
+    const turn = await owner.call('turns.start', { threadId, prompt: '[sleep:60000]' });
+    await (phase === 'begin' ? entered.promise : waitFor(() => h.core.threads.runner.handles.has(threadId)));
+    expect(await owner.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    await entered.promise;
+    await waitFor(() => h.core.scheduler.stopTarget(threadId) === undefined, 800);
+    expect(h.core.journal.getTurn(turn.id)?.status).toBe('stopped');
+  } finally {
+    STOP_DEADLINE.forceMs = grace;
+    release.resolve();
+    held.mockRestore();
+    await h.stop();
+  }
+});
 
 test.each(['snapshot', 'overlap'] as const)('protected checkpoint %s keeps provider control alive and honors Git exclusions', async operation => {
   const h = await startTestCore();

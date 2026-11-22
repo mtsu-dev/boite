@@ -120,6 +120,8 @@ export interface CoreOptions {
   dataDirKind?: 'default' | 'custom';
   /** How often a resident core runs its retention passes; a test shortens the minute. */
   retentionPassMs?: number;
+  /** False takes no load samples (`ProcRegistryOptions.loadSampling`). */
+  loadSampling?: boolean;
   /** The sleep inhibitor this core holds while agents work, instead of the platform's; tests count the holds. */
   keepAwake?: KeepAwakeHold;
   /** Legacy vault cleanup only; tests substitute it so no system store is touched. */
@@ -428,7 +430,10 @@ export class Core {
     };
     this.accounts = new AccountStore(this);
     this.projects = new ProjectStore(this);
+    // What a previous core left open would read as running forever: its groups ended with it (platform/posix-group-watch.ts, the job on Windows).
+    this.journal.closeLiveProcesses(Date.now());
     this.procs = new ProcRegistry(this.journal, this.bus, undefined, {
+      loadSampling: options.loadSampling,
       diagnostic: (message, context) => this.logs.warn(message, { source: 'guards', ...context }),
     });
     attachResourceLog(this);
@@ -531,6 +536,11 @@ export class Core {
     });
     queueMicrotask(() => this.threads.titles.recover());
     this.agentRuntime = new AgentRuntime(this);
+    queueMicrotask(() => {
+      try { this.threads.deferred.recoverAnswers(); }
+      catch (error) { this.log('warn', `async answer recovery failed: ${String(error)}`); }
+      void this.threads.spawns.recoverResults().catch(error => this.log('warn', `thread result recovery failed: ${String(error)}`));
+    });
     queueMicrotask(() => this.composer.start());
     this.brain.start();
     this.mergedPrAsk = new MergedPrAsk(this, this.pullRequests);
@@ -583,7 +593,7 @@ export class Core {
       version: this.version,
       ...(this.bundleHash ? { bundleHash: this.bundleHash } : {}),
       protocolVersion: PROTOCOL_VERSION,
-      features: { threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, streamChannels: true, browserStream: true },
+      features: { threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, composerPages: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, threadListPages: true, streamChannels: true, browserStream: true },
       coreId: this.coordination.card().coreId,
       hostname: machineName(),
       os: currentOs(),

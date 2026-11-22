@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { secretMask } from '@boite/contracts';
+import { SECRET_TRANSIT_TTL_MS, secretMask } from '@boite/contracts';
 import { parse } from '../src/cli-args.ts';
 import { runCli } from '../src/cli.ts';
 import type { CoreClient } from '../src/client.ts';
@@ -41,6 +41,93 @@ async function repoThread(): Promise<{ owner: Awaited<ReturnType<TestCore['conne
 }
 
 const bun = process.execPath;
+
+test.skipIf(process.platform !== 'linux').each(['os', 'osd'] as const)('a BoiteOS %s version refusal preserves the ref with or without a recipient check', async component => {
+  h = await startTestCore();
+  const { owner, root, threadId } = await repoThread();
+  const realRoute = h.core.procs.platform.secretPipeRecipient;
+  let compatible = false;
+  let routed = 0;
+  const legacyUsage = 'error: os agent exec: usage: os agent exec -- <program> <args...>; next: os agent exec -- <program> <args...>';
+  const legacyDaemon = 'error: agent exec: bad request: unknown field `secretCheckout`; next: os agent exec -- <program> <args...>';
+  const recipient = ['-e', `require('node:fs').writeFileSync('recipient-ran', String((await Bun.stdin.text()).length))`];
+  h.core.procs.platform.secretPipeRecipient = (command, args, env, cwd) => {
+    routed++;
+    const route = realRoute!(command, args, env, cwd);
+    if (compatible) return { command, args, env };
+    const signal = component === 'osd' ? `require('node:fs').writeSync(3, 'OD');` : '';
+    const stderr = component === 'osd' ? legacyDaemon : legacyUsage;
+    return { ...route, command: bun, args: ['-e', `${signal} console.error(${JSON.stringify(stderr)}); process.exit(125)`] };
+  };
+  const socket = process.env.BOITEOS_AGENTS_SOCKET;
+  const sandbox = process.env.BOITEOS_THREAD;
+  process.env.BOITEOS_AGENTS_SOCKET = '/fixture/agents.sock';
+  delete process.env.BOITEOS_THREAD;
+  try {
+    const since = h.core.secrets.now();
+    h.core.secrets.now = () => since;
+    const ref = await saveSecret(h, owner, threadId, 'API_KEY', secretValue());
+    const use = { action: 'pipe' as const, command: bun, args: recipient, cwd: root };
+    for (const check of [component === 'os', component !== 'os']) {
+      const replay = { ...use, cwd: check ? root : '.', checkArgs: check ? [] : undefined };
+      const error = await thrown(owner.call('secrets.use', { threadId, ref, use: replay }));
+      expect(error).toThrow(`BoiteOS version mismatch: update ${component} `);
+      expect(error).toThrow(component === 'osd' ? 'unknown field `secretCheckout`' : 'usage: os agent exec');
+      expect(existsSync(join(root, 'recipient-ran'))).toBe(false);
+    }
+    mkdirSync(join(root, 'other'));
+    for (const change of [
+      { ...use, command: 'other-program', checkArgs: [] },
+      { ...use, args: ['-e', 'process.exit(0)'] },
+      { ...use, cwd: 'other' },
+      { ...use, action: 'run' as const, as: 'TOKEN' },
+      { action: 'write' as const, key: 'TOKEN', path: '.env' },
+    ]) {
+      expect(await thrown(owner.call('secrets.use', { threadId, ref, use: change }))).toThrow('retry the same recipient');
+      expect(routed).toBe(2);
+    }
+    expect(existsSync(join(root, '.env'))).toBe(false);
+
+    const expiring = await saveSecret(h, owner, threadId, 'EXPIRING', secretValue());
+    h.core.secrets.now = () => since + SECRET_TRANSIT_TTL_MS - 10_000;
+    expect(await thrown(owner.call('secrets.use', { threadId, ref: expiring, use }))).toThrow('BoiteOS version mismatch');
+    h.core.secrets.now = () => since + SECRET_TRANSIT_TTL_MS;
+    expect(await thrown(owner.call('secrets.use', { threadId, ref: expiring, use }))).toThrow('expired');
+    expect(routed).toBe(3);
+    h.core.secrets.now = () => since;
+    compatible = true;
+    expect(await owner.call('secrets.use', { threadId, ref, use })).toMatchObject({ exitCode: 0 });
+    expect(Number(readFileSync(join(root, 'recipient-ran'), 'utf8'))).toBeGreaterThan(0);
+    expect(await thrown(owner.call('secrets.use', { threadId, ref, use }))).toThrow('erased or never existed');
+  } finally {
+    for (const [name, value] of Object.entries({ BOITEOS_AGENTS_SOCKET: socket, BOITEOS_THREAD: sandbox })) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
+test('a pipe recipient checks its configuration in the same cwd and environment before the ref is used', async () => {
+  h = await startTestCore();
+  const { owner, root, threadId } = await repoThread();
+  writeFileSync(join(root, 'recipient.ts'), `
+    import { existsSync } from 'node:fs';
+    const input = await Bun.stdin.text();
+    if (process.argv[2] === 'check' && input !== '') process.exit(4);
+    const configured = process.env.RECIPIENT_CONFIG && existsSync(process.env.RECIPIENT_CONFIG);
+    if (!configured) process.exit(3);
+    if (process.argv[2] === 'put' && input.length > 0) console.log('stored');
+  `);
+  const ref = await saveSecret(h, owner, threadId, 'API_KEY', secretValue());
+  const use = {
+    action: 'pipe' as const, command: bun, args: ['recipient.ts', 'put'], cwd: root,
+    env: { RECIPIENT_CONFIG: 'recipient.json' }, checkArgs: ['recipient.ts', 'check'],
+  };
+  expect(await thrown(owner.call('secrets.use', { threadId, ref, use }))).toThrow('recipient check exited with code 3');
+  writeFileSync(join(root, 'recipient.json'), '{}');
+  expect(await owner.call('secrets.use', { threadId, ref, use })).toMatchObject({ action: 'pipe', exitCode: 0, stdout: 'stored\n' });
+  expect(await thrown(owner.call('secrets.use', { threadId, ref, use }))).toThrow('erased or never existed');
+});
 
 test('write puts the value in an ignored env file, keeps its other lines, and refuses a path outside, a tracked file and a file git does not ignore', async () => {
   h = await startTestCore();

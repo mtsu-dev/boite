@@ -21,6 +21,7 @@ const stores: Store[] = [];
 const clients: FakeClient[] = [];
 
 type Device = Awaited<ReturnType<typeof device>>;
+const isComposerList = (method: RpcMethodName) => method === 'composer.list' || method === 'composer.listPage';
 
 /**
  * A device on `machineId` whose client records its calls. `hold` keeps the
@@ -33,7 +34,7 @@ async function device(machineId: string, client: FakeClient, options: { hold?: P
   const pushes: ((record: ComposerRecord) => void)[] = [];
   let held = options.hold;
   const calls = vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
-    if (method === 'composer.list' && held) {
+    if (isComposerList(method) && held) {
       const gate = held;
       held = undefined;
       const snapshot = await original(method, params);
@@ -64,7 +65,7 @@ async function device(machineId: string, client: FakeClient, options: { hold?: P
 }
 
 function called(device: Device, method: RpcMethodName, where: (params: Record<string, unknown>) => boolean = () => true) {
-  return device.calls.mock.calls.filter(([name, params]) => name === method && where(params as Record<string, unknown>));
+  return device.calls.mock.calls.filter(([name, params]) => (name === method || method === 'composer.list' && name === 'composer.listPage') && where(params as Record<string, unknown>));
 }
 const putsOf = (device: Device, id?: string) => called(device, 'composer.put', params => id === undefined || params.id === id);
 
@@ -172,6 +173,40 @@ test('an attachment is uploaded once however often its box is saved, and fetched
   back.store.editComposerText('t-trace', 'See the notes file again');
   await vi.waitFor(async () => expect((await recordOf(desk.client, 'inputs', 't-trace'))?.value?.input).toMatchObject({ text: 'See the notes file again', attachments: [{ name: 'notes.txt' }] }));
   expect(called(back, 'composer.asset.put')).toHaveLength(0);
+});
+
+test('a local pause does not bring back a file removed by another device', async () => {
+  const desk = await device('desk', new FakeClient({ delayMs: 0 }));
+  const phone = await device('phone', desk.client.composerPeer({ delayMs: 0, principal: 'session' }));
+  const id = 't-trace';
+  const file = { kind: 'file' as const, mimeType: 'text/plain', name: 'notes.txt', data: btoa('original file') };
+  desk.store.editComposerText(id, 'Original box');
+  desk.store.composerStates[id]!.attachments.push(file);
+  await phone.store.open(id);
+  await vi.waitFor(() => expect(phone.store.composerStates[id]?.attachments[0]?.data).toBe(file.data));
+  const original = (await recordOf(desk.client, 'inputs', id))!;
+  phone.store.composerStates[id]!.paused = true;
+  await desk.client.call('composer.put', { section: 'inputs', id, expectedRevision: original.revision,
+    value: { input: { ...original.value!.input, text: 'Updated box', attachments: [] } } });
+  await vi.waitFor(() => expect(phone.store.composerStates[id]).toMatchObject({ text: 'Updated box', attachments: [], paused: true }));
+  await quiet();
+  expect((await phone.client.call('composer.list', {})).filter(record => record.section === 'drafts' && record.value)).toEqual([]);
+});
+
+test('a revised large box is read by a peer when it opens the conversation', async () => {
+  const desk = await device('desk', new FakeClient({ delayMs: 0 }));
+  const phone = await device('phone', desk.client.composerPeer({ delayMs: 0, principal: 'session' }));
+  const id = 't-trace';
+  const value = { input: { text: 'x'.repeat(70_000), attachments: [], queued: [], paused: false } };
+  const original = await desk.client.call('composer.put', { section: 'inputs', id, expectedRevision: 0, value });
+  await vi.waitFor(() => expect(phone.store.composerStates[id]?.text).toBe(value.input.text));
+  const next = { input: { ...value.input, text: value.input.text + ' revised' } };
+  await desk.client.call('composer.put', { section: 'inputs', id, expectedRevision: original.record.revision, value: next });
+  expect(called(phone, 'composer.get')).toHaveLength(0);
+  expect(phone.store.composerStates[id]?.text.slice(-7)).toBe('xxxxxxx');
+  await phone.store.open(id);
+  await vi.waitFor(() => expect(phone.store.composerStates[id]?.text.slice(-7)).toBe('revised'));
+  expect(called(phone, 'composer.get', params => params.id === id)).toHaveLength(1);
 });
 
 test('a shared queue is delivered once by the core, never by either frontend, and Send now tells the core', async () => {
@@ -745,7 +780,7 @@ test('a list that fails on a live link is asked again later, and what was typed 
   const desk = await device('desk', new FakeClient({ delayMs: 0 }), { connect: false });
   let lists = 0;
   desk.calls.mockImplementation(async (method, params) => {
-    if (method === 'composer.list' && lists++ === 0) throw new RpcFailure({ code: RpcErrorCode.Internal, message: 'list timed out' });
+    if (isComposerList(method) && lists++ === 0) throw new RpcFailure({ code: RpcErrorCode.Internal, message: 'list timed out' });
     return desk.original(method, params);
   });
   await desk.store.connect();
@@ -983,8 +1018,9 @@ test('retrying a private failed queue explicitly sends its resumed state to the 
   const choice = desk.store.defaultChoice()!;
   const { model, ...selection } = choice;
   const secret = await desk.client.call('threads.create', { ...selection, projectId: project.id, ...(model ? { model } : {}), incognito: true });
-  await desk.client.call('composer.put', { section: 'inputs', id: secret.id, expectedRevision: 0, value: { input: { text: '', attachments: [], paused: true,
+  const seeded = await desk.client.call('composer.put', { section: 'inputs', id: secret.id, expectedRevision: 0, value: { input: { text: '', attachments: [], paused: true,
     queued: [{ id: 'private-retry-entry', text: 'Private retry once', attachments: [], request: { id: 'private-retry-request', choice, queuedAt: 1, failed: 'Refused once' } }] } } });
+  desk.push(seeded.record);
   await vi.waitFor(() => expect(desk.store.composerStates[secret.id]?.queued[0]?.request?.failed).toBe('Refused once'));
   desk.store.retryQueued(secret.id, 0);
   await vi.waitFor(async () => expect(await userTexts(desk.client, secret.id)).toEqual(['Private retry once']));

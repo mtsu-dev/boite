@@ -3,11 +3,13 @@ import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
 import { ModelProbes } from '../src/drivers/model-probes.ts';
+import { connect } from '../src/client.ts';
 import type { ModelInfo } from '@boite/contracts';
 import { continuationInput } from '../src/continuation.ts';
 import { sessionReferenced } from '../src/threads/native-sessions.ts';
 import { Journal } from '../src/journal.ts';
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { holdAccountTurns, echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
@@ -37,19 +39,31 @@ test('account switching keeps the thread and a switch back resumes the session i
       return { stop() {}, done: Promise.resolve<TurnResult>({ status: 'done', sessionId: ctx.sessionId ?? `native-${seen.length}`, usage: null, agentTotals: totals }) };
     },
   });
-  const run = async (prompt: string) => {
-    const turn = await client.call('turns.start', { threadId, prompt });
+  const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const original = Buffer.from(await new Bun.Image(pixel).resize(2000, 1125, { fit: 'fill' }).png().bytes());
+  const portrait = Buffer.from(await new Bun.Image(pixel).resize(1080, 2400, { fit: 'fill' }).png().bytes());
+  const run = async (prompt: string, name?: string, image?: Buffer) => {
+    const attachments = image && [{ kind: 'image' as const, mimeType: 'image/png' as const, data: image.toString('base64'), name: name ?? null }];
+    const turn = await client.call('turns.start', { threadId, prompt, attachments });
     await waitFor(() => h.core.journal.getTurn(turn.id)?.finishedAt != null);
     expect(h.core.journal.getTurn(turn.id)?.error).toBeNull();
     expect(h.core.journal.getTurn(turn.id)?.status).toBe('done');
   };
-  await run('the passwordless project uses blue widgets');
+  const checkImage = async (context: TurnContext, name: string, source: Buffer, width: number, height: number) => {
+    const preview = context.attachments.find(image => image.name === name)!;
+    expect(await new Bun.Image(Buffer.from(preview.data, 'base64')).metadata()).toMatchObject({ width, height });
+    const line = context.prompt.split('\n').find(line => line.startsWith(`{"name":"${name}","path":`))!;
+    expect(readFileSync(JSON.parse(line).path).equals(source)).toBe(true);
+  };
+  await run('the passwordless project uses blue widgets', 'opening.png', original);
   const switched = await client.call('threads.update', { threadId, accountId: 'second-account', model: 'echo' });
   expect(switched.accountId).toBe('second-account');
   expect(switched.sessionId).toBeNull();
-  await run('continue');
+  await run('continue', 'portrait.png', portrait);
   expect(seen[1]?.prompt).toContain('blue widgets');
   expect(seen[1]?.sessionId).toBeNull();
+  await checkImage(seen[1]!, 'opening.png', original, 1280, 720);
+  expect(seen[1]?.attachments.at(-1)?.data).toBe(portrait.toString('base64'));
   // The session left stays on disk for the switch back: transcript purge sees it referenced.
   expect(sessionReferenced(h.core.journal.db, 'native-1')).toBe(true);
   const back = await client.call('threads.update', { threadId, accountId, model: 'echo' });
@@ -60,6 +74,7 @@ test('account switching keeps the thread and a switch back resumes the session i
   expect(seen[2]?.prompt).toContain('It then went on with another agent');
   expect(seen[2]?.prompt).toContain('continue');
   expect(seen[2]?.prompt).toContain('remember turn 2');
+  await checkImage(seen[2]!, 'portrait.png', portrait, 324, 720);
   expect(seen[2]?.prompt).not.toContain('blue widgets');
   expect(seen[2]?.prompt).not.toContain('remember turn 1');
   // Its running totals go on from where that session left them.
@@ -72,7 +87,10 @@ test('account switching keeps the thread and a switch back resumes the session i
   expect(h.core.threads.accountSessions.saved(threadId, 'second-account')).toMatchObject({ sessionId: 'native-2', generations: [1] });
   expect(h.core.threads.list({})).toHaveLength(1);
   const messages = h.core.threads.get(threadId).messages.filter((m) => m.role === 'user');
-  expect(messages[1]?.parts).toEqual([{ type: 'text', text: 'continue' }]);
+  expect(messages[1]?.parts).toEqual([
+    { type: 'text', text: 'continue' },
+    { type: 'image', mimeType: 'image/png', data: portrait.toString('base64'), alt: 'portrait.png' },
+  ]);
 });
 
 test('a switch back starts fresh with the whole history when what came since is past the bound', async () => {
@@ -94,7 +112,16 @@ test('a switch back starts fresh with the whole history when what came since is 
   };
   await run('opening request');
   await client.call('threads.update', { threadId, accountId: 'second-account', model: 'echo' });
-  for (let index = 0; index < 7; index++) await run(`work ${index}`);
+  const { grant } = await client.call('pairing.grant', {});
+  const phone = await connect(h.url, '', { grant, client: { name: 'pwa', version: 'test' } });
+  try {
+    const preview = () => phone.call('threads.previewAccountSwitch', { threadId, accountId });
+    expect(await preview()).toEqual({ session: 'resume' });
+    for (let index = 0; index < 7; index++) await run(`work ${index}`);
+    expect(await preview()).toEqual({ session: 'fresh' });
+    expect(await thrown(phone.call('threads.update', { threadId, accountId, model: 'echo', requireSavedSession: true }))).toThrow('saved session can no longer resume');
+  } finally { phone.close(); }
+  expect(h.core.threads.require(threadId).accountId).toBe('second-account');
   expect(await client.call('threads.update', { threadId, accountId, model: 'echo' })).toMatchObject({ sessionId: null });
   await run('back');
   expect(seen.at(-1)?.sessionId).toBeNull();
@@ -402,7 +429,7 @@ test('migration preserves legacy native sessions and persists new selections and
   legacy.putThread({ ...h.core.threads.require(threadId), sessionId: 'legacy-session' });
   legacy.db.exec('DROP TABLE agent_entities; DROP TABLE agent_requests; ALTER TABLE threads DROP COLUMN agent_session_id;');
   legacy.db.exec('DROP TABLE delegated_agents; DROP TABLE delegation_messages; DROP INDEX threads_parent; ALTER TABLE threads DROP COLUMN parent_thread_id;');
-  legacy.db.exec('DROP TABLE coordination_letters; DROP TABLE coordination_wakes; DROP TABLE turn_requests; ALTER TABLE threads DROP COLUMN prompt_cache; ALTER TABLE threads DROP COLUMN speed; ALTER TABLE threads DROP COLUMN session_generation; ALTER TABLE threads DROP COLUMN selection_version; ALTER TABLE turns DROP COLUMN execution; PRAGMA user_version = 8;');
+  legacy.db.exec('DROP TABLE coordination_letters; DROP TABLE coordination_wakes; DROP TABLE turn_requests; ALTER TABLE threads DROP COLUMN prompt_cache; ALTER TABLE threads DROP COLUMN speed; ALTER TABLE threads DROP COLUMN session_generation; ALTER TABLE threads DROP COLUMN selection_version; DROP INDEX turns_stated_by_thread; ALTER TABLE turns DROP COLUMN execution; PRAGMA user_version = 8;');
   legacy.close();
   const migrated = new Journal(path);
   try {

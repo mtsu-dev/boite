@@ -1,5 +1,5 @@
-import type { Project, ProjectId } from '@boite/contracts';
-import { wasDropped } from '../client';
+import { RpcErrorCode, type Project, type ProjectId } from '@boite/contracts';
+import { RpcFailure, wasDropped } from '../client';
 import { strings } from '../strings';
 import { work } from '../work-prefs.svelte';
 import type { Draft } from '../store.svelte';
@@ -24,6 +24,9 @@ export class Projects {
    */
   bootListAt = 0;
   #landing = false;
+  #byId = $derived(new Map(this.projects.map(project => [project.id, project])));
+  readonly #gitReads = new Map<ProjectId, { generation: number }>();
+  #gitUnsupportedAt: number | null = null;
 
   constructor(private readonly ctx: StoreContext) {}
 
@@ -219,6 +222,35 @@ export class Projects {
     } finally { read.cancel(); }
   }
 
+  async #refreshDraftProject(id: ProjectId | null): Promise<void> {
+    const { client, clientGeneration } = this.ctx;
+    if (!client || this.ctx.store.connection !== 'ready' || (this.#landing && Date.now() - this.bootListAt < 5_000)) return;
+    const project = id === null ? undefined : this.#byId.get(id);
+    if (!project || this.#gitUnsupportedAt === clientGeneration) return this.refreshProjects();
+    if (this.#gitReads.get(project.id)?.generation === clientGeneration) return;
+    const pending = { generation: clientGeneration };
+    this.#gitReads.set(project.id, pending);
+    const read = this.ctx.projectReads.begin(project.id, false);
+    try {
+      const { repository, missing } = await client.call('projects.git', { projectId: project.id });
+      if (!this.ctx.currentClient(client, clientGeneration) || !read.active || read.changes.has(project.id) || read.protected.has('all')) return;
+      const current = this.#byId.get(project.id);
+      if (!current) return;
+      // Preserve the fields the composer just refreshed when an earlier list lands.
+      this.ctx.projectReads.patch(project.id, { repository, missing });
+      current.repository = repository;
+      current.missing = missing;
+    } catch (error) {
+      if (this.ctx.currentClient(client, clientGeneration) && error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) {
+        this.#gitUnsupportedAt = clientGeneration;
+        await this.refreshProjects();
+      }
+    } finally {
+      read.cancel();
+      if (this.#gitReads.get(project.id) === pending) this.#gitReads.delete(project.id);
+    }
+  }
+
   /**
    * The drafts project, asked of the core on the first send into it. The core
    * makes the folder then, and the thread the send creates goes in it.
@@ -242,17 +274,8 @@ export class Projects {
     }
   }
 
-  async removeProject(projectId: ProjectId): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return;
-    try {
-      await client.call('projects.remove', { projectId });
-      if (!this.ctx.currentClient(client, clientGeneration)) return;
-      await this.dropProject(projectId);
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+  removeProject(projectId: ProjectId): Promise<void> {
+    return this.ctx.command('projects.remove', { projectId }, () => this.dropProject(projectId));
   }
 
   /**
@@ -405,41 +428,19 @@ export class Projects {
   }
 
   /** Asks the core to read the project's folder for its icon again. */
-  async refreshProjectIcon(projectId: ProjectId): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return;
-    try {
-      const project = await client.call('projects.refreshIcon', { projectId });
-      if (this.ctx.currentClient(client, clientGeneration)) this.upsertProject(project);
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+  refreshProjectIcon(projectId: ProjectId): Promise<void> {
+    return this.ctx.command('projects.refreshIcon', { projectId }, this.#applyProject);
   }
 
-  async renameProject(projectId: ProjectId, name: string): Promise<void> {
-    const client = this.ctx.client;
-    const generation = this.ctx.clientGeneration;
-    if (!client) return;
-    try {
-      const project = await client.call('projects.rename', { projectId, name });
-      if (this.ctx.currentClient(client, generation)) this.upsertProject(project);
-    } catch (error) {
-      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
-    }
+  renameProject(projectId: ProjectId, name: string): Promise<void> {
+    return this.ctx.command('projects.rename', { projectId, name }, this.#applyProject);
   }
 
-  async setProjectWorktreeDefault(projectId: ProjectId, enabled: boolean): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return;
-    try {
-      const project = await client.call('projects.setWorktreeDefault', { projectId, enabled });
-      if (this.ctx.currentClient(client, clientGeneration)) this.upsertProject(project);
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+  setProjectWorktreeDefault(projectId: ProjectId, enabled: boolean): Promise<void> {
+    return this.ctx.command('projects.setWorktreeDefault', { projectId, enabled }, this.#applyProject);
   }
+
+  #applyProject = (project: Project): void => this.upsertProject(project);
 
   /** Project policy writes under way, by policy, client generation and project. */
   #policyWrites = $state<string[]>([]);
@@ -546,7 +547,7 @@ export class Projects {
     this.ctx.drafts.persist();
     if (target !== null) this.unfold(target);
     if (target !== null) this.rememberProject(target);
-    if (options.refresh !== false) void this.refreshProjects();
+    if (options.refresh !== false) void this.#refreshDraftProject(target);
     s.page = 'chat';
     s.sidebarOpen = false;
   }

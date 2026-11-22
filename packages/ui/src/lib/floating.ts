@@ -16,11 +16,12 @@ function usedHeight(node: HTMLElement): number {
 }
 
 /** Position desktop popovers at their anchor and phone menus above the keyboard. */
-export function floating(node: HTMLElement, options: { anchor: () => HTMLElement | null; side?: 'right'; placement?: 'top' | 'bottom'; align?: 'start' | 'end'; sheet?: boolean; matchWidth?: boolean; cap?: number; fit?: (anchor: DOMRect, height: number, topInset: number, cap: number) => MenuFit; dismiss?: () => void }) {
+export function floating(node: HTMLElement, options: { anchor: () => HTMLElement | null; side?: 'right'; sideAnchor?: () => HTMLElement | null; placement?: 'top' | 'bottom'; align?: 'start' | 'end'; sheet?: boolean; matchWidth?: boolean; cap?: number; fit?: (anchor: DOMRect, height: number, topInset: number, cap: number) => MenuFit; dismiss?: () => void }) {
   let backdrop: HTMLButtonElement | null = null;
   let backdropMotion: MutationObserver | null = null;
   let closeHistory = () => {};
   let sheet = false;
+  let placed = false;
   let desktopWidth = '';
   let desktopOrigin = '';
   function setSheet(next: boolean) {
@@ -54,7 +55,13 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
         else if (!closing && !held) { held = true; closeHistory = mobileOverlay(dismiss); }
       });
       backdropMotion.observe(node, { attributes: true, attributeFilter: ['class'] });
-      closeHistory = mobileOverlay(dismiss);
+      if (placed) {
+        // On a resize the sheet can react before the phone's screen. Wait for
+        // its media query to update so Back reaches the sheet first.
+        let release = () => {};
+        const frame = requestAnimationFrame(() => { release = mobileOverlay(dismiss); });
+        closeHistory = () => { cancelAnimationFrame(frame); release(); };
+      } else closeHistory = mobileOverlay(dismiss);
     } else {
       closeHistory();
       closeHistory = () => {};
@@ -82,6 +89,7 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
   const margin = 12;
   function place() {
     setSheet(window.matchMedia('(max-width: 720px)').matches && options.sheet !== false);
+    placed = true;
     const anchor = options.anchor();
     if (!anchor) return;
     const box = anchor.getBoundingClientRect();
@@ -104,9 +112,10 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
     let left: number;
     if (options.matchWidth) node.style.width = `${Math.min(options.cap ?? 420, box.width, width - margin * 2)}px`;
     if (options.side === 'right') {
-      node.style.maxHeight = `${height - margin * 2}px`;
-      left = box.right + gap;
-      if (left + node.offsetWidth > width - margin) left = box.left - node.offsetWidth - gap;
+      node.style.maxHeight = `${Math.max(0, Math.min(height - margin * 2, options.cap ?? Infinity))}px`;
+      const edge = options.sideAnchor?.()?.getBoundingClientRect() ?? box;
+      left = edge.right + gap;
+      if (left + node.offsetWidth > width - margin) left = edge.left - node.offsetWidth - gap;
       // `end`: the card's foot on its anchor's, growing upward, as a button low on a rail wants.
       top = options.align === 'end' ? Math.max(margin, box.bottom - node.offsetHeight) : Math.min(box.top, height - node.offsetHeight - margin);
     } else {
@@ -136,6 +145,8 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
   content.observe(node, { childList: true, subtree: true, characterData: true });
   const anchor = options.anchor();
   if (anchor) observer.observe(anchor);
+  const sideAnchor = options.sideAnchor?.();
+  if (sideAnchor) observer.observe(sideAnchor);
   anchor?.addEventListener('animationend', place);
   place();
   window.addEventListener('resize', place);

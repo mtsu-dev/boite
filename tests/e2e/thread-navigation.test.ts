@@ -113,7 +113,7 @@ test('closing an image and dragging chat text or a thread link preserves the con
       context.fillStyle = style.color; context.font = '16px sans-serif'; context.fillText('Selection reference', 12, 52);
       const parts = [
         { type: 'text', text: 'Select these words after closing the reference image. The conversation should stay open. [Launch game](build/game.exe)' },
-        { type: 'file', name: 'reference.png', mimeType: 'image/png', bytes: 100, data: canvas.toDataURL().split(',')[1] }
+        { type: 'file', name: 'reference.png', mimeType: 'image/png', data: canvas.toDataURL().split(',')[1] }
       ];
       s.openThread.messages = [
         { id:'selection-message', threadId:'t-trace', turnId:'selection-turn', role:'assistant', state:'complete', createdAt:Date.now(), parts },
@@ -216,6 +216,11 @@ test('archive and delete leave a project draft on desktop and phone', async () =
         await page.waitFor(`document.querySelector('${id('thread-menu-trigger')}')`);
         await page.click(id('thread-menu-trigger'));
         await page.click(`${id('thread-menu-trigger-menu')} [data-value=${action}]`);
+        if (action === 'delete') {
+          await page.waitFor(`document.querySelector('${id('confirm-dialog')}')`);
+          expect(await page.evaluate(`${state}.openThread?.title`)).toBe('Navigation check');
+          await page.click(id('confirm-ok'));
+        }
         await page.waitFor(`${state}.openThread === null && ${state}.draft?.projectId === 'p-boite'`);
         expect(await page.evaluate(`!!document.querySelector('${id('composer-input')}')`)).toBe(true);
         expect(await page.evaluate(`${state}.openThread`)).toBeNull();

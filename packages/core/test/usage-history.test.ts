@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { RpcErrorCode } from '@boite/contracts';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ThreadSummary, Turn, Usage, WorkflowRun } from '@boite/contracts';
 import { echoThread, startTestCore } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { MAX_USAGE_EDGES, sessionUsage } from '../src/usage.ts';
+import { connect } from '../src/client.ts';
 import { priceOf } from '../src/pricing/index.ts';
 import { workflowUsage } from '../src/workflows/usage.ts';
-import { thrown } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 
 const DAY = 86_400_000;
 const D0 = Date.UTC(2026, 8, 1);
@@ -314,11 +318,14 @@ function kept(): { finished_at: number; provider_id: string; model: string | nul
   return harness.core.journal.db.query('SELECT * FROM removed_turn_usage ORDER BY finished_at, rowid').all() as ReturnType<typeof kept>;
 }
 
-test('removing a project leaves usage.history as it was, to the turn and the token, its ranking included', async () => {
+test('removing a project preserves usage totals and marks its rankings until restoration', async () => {
   const { echo, codex } = await threads();
   const journal = harness.core.journal;
-  journal.putProject({ id: 'prj_staying', name: 'Staying', path: harness.dataDir, createdAt: D0 });
-  const staying: ThreadSummary = { ...echo, id: 'thr_staying', title: 'Staying work', projectId: 'prj_staying' };
+  const project = harness.core.projects.require(echo.projectId);
+  const cwd = join(harness.dataDir, 'staying');
+  mkdirSync(cwd);
+  journal.putProject({ id: 'prj_staying', name: 'Staying', path: cwd, createdAt: D0 });
+  const staying: ThreadSummary = { ...echo, id: 'thr_staying', title: 'Staying work', projectId: 'prj_staying', cwd };
   journal.putThread(staying);
   const opus = { providerId: 'claude', model: 'claude-opus-5-5' };
   journal.putTurn(turn(echo, D0 + 1, usage(10, 5, 0, 0.25), opus));
@@ -350,15 +357,13 @@ test('removing a project leaves usage.history as it was, to the turn and the tok
   await client.call('projects.remove', { projectId: echo.projectId! });
   expect(journal.getThread(echo.id)).toBeNull();
   expect(journal.getThread(codex.id)).toBeNull();
-  // Only two flags move: removal archives the threads it stops, and its project is now marked removed.
-  const unarchived = (histories: typeof before) => histories.map((history) => ({
+  expect(await read()).toEqual(before.map(history => ({
     ...history,
-    threads: history.threads.map((thread) => ({ ...thread, archived: false })),
-    projects: history.projects?.map((project) => ({ ...project, removed: false })),
-  }));
-  const after = await read();
-  expect(after[0]!.projects?.find((project) => project.projectId === echo.projectId)?.removed).toBe(true);
-  expect(unarchived(after)).toEqual(unarchived(before));
+    threads: history.threads.map(thread => thread.projectId === project.id ? { ...thread, archived: true } : thread),
+    projects: history.projects?.map(entry => entry.projectId === project.id ? { ...entry, removed: true } : entry),
+  })));
+  expect((await client.call('projects.add', { path: project.path })).id).toBe(project.id);
+  expect(await read()).toEqual(before);
 });
 
 test('purging a deleted conversation leaves usage.history as it was', async () => {
@@ -381,6 +386,71 @@ test('purging a deleted conversation leaves usage.history as it was', async () =
   const after = await read();
   expect(after.rows).toEqual(before.rows);
   expect(after.threads.map((thread) => thread.threadId)).toEqual([codex.id]);
+});
+
+test('a removed project keeps its history and usage attribution', async () => {
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client, 'Secret plans');
+  const thread = harness.core.threads.require(threadId);
+  const finished = client.next('turn.finished', (finishedTurn) => finishedTurn.threadId === threadId, 10000);
+  await client.call('turns.start', { threadId, prompt: 'whisper the launch codes' });
+  await finished;
+  expect(harness.core.journal.listMessages(threadId).length).toBeGreaterThan(0);
+  const now = Date.now();
+  const query = { edges: [now - DAY, now + DAY] };
+  const before = await client.call('usage.history', query);
+
+  await client.call('projects.remove', { projectId: thread.projectId! });
+  expect(kept()).toEqual([]);
+  expect(await client.call('usage.history', { ...query, projectId: thread.projectId })).toEqual({
+    ...before,
+    threads: before.threads.map(thread => ({ ...thread, archived: true })),
+    projects: before.projects?.map(project => ({ ...project, removed: true })),
+  });
+  const detail = await client.call('usage.thread', { ...query, threadId });
+  expect(detail.thread).toEqual({ ...before.threads[0]!, archived: true });
+  expect(detail.turns).toHaveLength(1);
+  await client.call('projects.add', { path: thread.cwd });
+  expect(await client.call('usage.history', query)).toEqual(before);
+  expect(harness.core.journal.listMessages(threadId).find(message => message.role === 'user')?.parts[0])
+    .toMatchObject({ type: 'text', text: 'whisper the launch codes' });
+});
+
+test('paired usage keeps totals and hides conversations and projects no longer visible', async () => {
+  const owner = await harness.connect();
+  const { echo } = await threads();
+  harness.core.journal.putTurn(turn(echo, D0, usage(10, 5)));
+  const deleted = { ...echo, id: 'thr_deleted_usage', title: 'Deleted usage' };
+  harness.core.journal.putThread(deleted);
+  harness.core.journal.putTurn(turn(deleted, D0, usage(20, 5)));
+  const query = { edges: EDGES };
+  const { grant } = await owner.call('pairing.grant', {});
+  const phone = await connect(harness.url, '', { grant, client: { name: 'pwa', version: 'test' } });
+  try {
+    expect(phone.principal).toBe('session');
+    const before = await phone.call('usage.history', query);
+    expect(before.threads.map(thread => thread.threadId).sort()).toEqual([echo.id, deleted.id].sort());
+    expect((await phone.call('usage.thread', { ...query, threadId: echo.id })).thread.title).toBe(echo.title);
+    await owner.call('projects.remove', { projectId: echo.projectId! });
+    expect((await rejection(phone.call('threads.get', { threadId: echo.id }))).reason).toMatchObject({ rpc: { code: RpcErrorCode.NotFound } });
+    const history = await phone.call('usage.history', query);
+    expect(history.rows).toEqual(before.rows);
+    expect(history.threads).toEqual([]);
+    expect(history.projects).toEqual([]);
+    expect((await phone.call('usage.history', { ...query, projectId: echo.projectId })).rows).toEqual([]);
+    expect((await rejection(phone.call('usage.thread', { ...query, threadId: echo.id }))).reason).toMatchObject({ rpc: { code: RpcErrorCode.NotFound } });
+    expect(await phone.call('usage.get', {})).toEqual({ byThread: {}, total: (await owner.call('usage.get', {})).total });
+    expect((await rejection(phone.call('usage.get', { threadId: echo.id }))).reason).toMatchObject({ rpc: { code: RpcErrorCode.NotFound } });
+    await owner.call('projects.add', { path: echo.cwd });
+    expect(await phone.call('usage.history', query)).toEqual(before);
+    await owner.call('threads.remove', { threadId: deleted.id });
+    const afterDelete = await phone.call('usage.history', query);
+    expect(afterDelete.rows).toEqual(before.rows);
+    expect(afterDelete.threads.map(thread => thread.threadId)).toEqual([echo.id]);
+    expect((await rejection(phone.call('usage.thread', { ...query, threadId: deleted.id }))).reason).toMatchObject({ rpc: { code: RpcErrorCode.NotFound } });
+  } finally {
+    phone.close();
+  }
 });
 
 test('an incognito conversation leaves no usage behind, whether erased, purged at startup or swept with a project', async () => {

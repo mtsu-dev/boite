@@ -152,10 +152,26 @@ export interface HeldFileLock {
 /** Locks `file`, created if missing, or answers null while another holder has it, one in this process included. */
 export type FileLocker = (file: string) => HeldFileLock | null;
 
+/**
+ * What the registry recorded under a root: the root's incarnation, and the
+ * `pid:incarnation` of each process whose captured parent chain reaches it,
+ * through intermediates that may have exited since.
+ */
+export interface SubtreeLineage {
+  root: string | null;
+  descendants: ReadonlySet<string>;
+}
+
 /** OS services used by the shared process registry. No native imports here. */
 export interface ProcessPlatform {
   /** Model tool execution only. Trusted account/control processes never gain authority from this descriptor. */
   protectedExecution?: NativeExecutionBoundary;
+  /** Resolve a stdin-only recipient into the OS route of the core-owned thread checkout. */
+  secretPipeRecipient?(command: string, args: string[], env: Record<string, string | undefined>, threadCwd: string): {
+    command: string; args: string[]; env: Record<string, string | undefined>;
+    /** Interpret the launcher's private report on fd 3, which the recipient cannot inherit. */
+    versionRefusal?: (reportFd: number, exitCode: number, stderr: string) => 'os' | 'osd' | null;
+  };
   serverUpdates?: ServerUpdatePlatform;
   androidServerUpdates?: AndroidServerUpdatePlatform;
   /** Absolute path of the tailscale CLI, or null when it is not installed. */
@@ -183,6 +199,12 @@ export interface ProcessPlatform {
   capability(): TraceCapability;
   applySettings(settings: Settings): void;
   attach(threadId: string, pid: number): boolean;
+  /** True when spawned children should lead a separate POSIX session. */
+  readonly detachedChildren: boolean;
+  /** Stop the child itself, and its process group when this platform uses them. */
+  stopChild(pid: number, running: () => boolean, signal: () => void): Promise<void> | undefined;
+  /** Native membership reports descendants before the memory governor can stop them. */
+  readonly memoryVictimsMustBeRegistered?: boolean;
   /** Reconcile captured exits when the native job is empty; true if occupied or unreadable. */
   hasProcesses?(threadId: string): boolean;
   /** Normal priority during agent initialization; platform CPU and memory caps still apply. */
@@ -190,6 +212,10 @@ export interface ProcessPlatform {
   terminate(threadId: string): boolean;
   /** A held Windows handle, or a matching registered/sampled POSIX birth. */
   terminateProcess(threadId: string, pid: number, startedAt?: number | null): boolean;
+  /** Stop this assigned root and its live descendants using handles in the same job. */
+  terminateSubtree?(threadId: string, pid: number, lineage?: SubtreeLineage): void;
+  /** Stop descendants that may have left a POSIX process group, while their root can still identify them. */
+  stopDescendants?(threadId: string, pid: number): Promise<void> | undefined;
   /**
    * Windows' fallback tree kill, for a pid outside the job: `killAll` waits for a returned promise.
    * Call it in the tick that saw the root running: it holds the root by a handle of its own from
@@ -225,6 +251,29 @@ export interface ProcessPlatform {
    */
   pidAdded(threadId: string, pid: number, guarded: boolean): void;
   pidRemoved(threadId: string, pid: number, guarded: boolean): void;
+  /**
+   * Linux and macOS; on Windows the thread's job does it. `readyGroups` runs
+   * before a spawn and says, once, why groups cannot be tied. `tieGroup`: the
+   * registry spawned `pid` as the leader of a process group of its own, which
+   * then ends with the core, even a core that dies without stopping it.
+   * `untieGroup` after the leader's exit (`leaderExited`: the group stays tied
+   * until it is empty) or when the keeper takes it over; false when the group
+   * could not be let go of and still ends with the core.
+   */
+  readyGroups?(): string | null;
+  tieGroup?(pid: number): void;
+  untieGroup?(pid: number, leaderExited: boolean): boolean;
+  /**
+   * Linux: why `spawnTied` cannot tie groups before the agent runs, or null
+   * (linux-launcher.ts). `spawnTied` is then `Bun.spawn` through the launcher,
+   * and null when it cannot, for a plain `Bun.spawn` that `tieGroup` ties after.
+   */
+  readyLaunch?(): string | null;
+  /** Each time agent groups stay held by the core alone or cannot be let go of, why; unsubscribes. */
+  onLaunchTrouble?(listener: (message: string) => void): () => void;
+  spawnTied?(options: { cmd: string[]; cwd?: string; env: Record<string, string | undefined>; stdio: Array<'ignore' | 'pipe' | 'inherit' | number> }): import('bun').Subprocess | null;
+  /** SIGKILL to every tied group at once, for a shutdown out of time. */
+  killTiedGroups?(): void;
   /** A turn is starting: have the process drain and the protections ready before its first process. */
   warm(): void;
   /** The registry forgot an idle thread: drop what the platform keeps for it. */

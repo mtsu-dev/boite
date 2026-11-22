@@ -25,6 +25,16 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
+test('the install splash and prepaint page share the light palette background', async () => {
+  const palette = await page.evaluate<string>(`getComputedStyle(document.documentElement).getPropertyValue('--palette-light-default-background').trim()`);
+  expect(palette).toMatch(/^#[0-9a-f]{6}$/i);
+  const manifest = await fetch(`${uiUrl}/manifest.webmanifest`).then((response) => response.json());
+  expect(manifest.background_color).toBe(palette);
+  expect(manifest.theme_color).toBe(palette);
+  const html = await fetch(uiUrl).then((response) => response.text());
+  expect(html).toContain(`var(--color-background, ${palette})`);
+});
+
 test('model picker account tooltips keep emails private on desktop and phone', async () => {
   await page.navigate(`${uiUrl}/?fake=1&open=recent`);
   await page.waitFor(`document.querySelector('${id('composer-picker')}')`);
@@ -45,6 +55,30 @@ test('model picker account tooltips keep emails private on desktop and phone', a
   }
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 }, 30_000);
+
+test('owner phone opens Plugins from the chat card and Providers from the composer', async () => {
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  try {
+    await page.navigate(`${uiUrl}/?fake=1&open=recent`);
+    await page.waitFor(`document.querySelector('${id('composer-input')}')`);
+    await page.evaluate(`import('/src/lib/workspace.svelte.ts').then(async ({workspace}) => {
+      const store = workspace.active;
+      await store.client.call('settings.request', { threadId: store.openThread.id, reason: 'Review installed plugins', page: 'plugins' });
+      await store.setProviderEnabled(store.openThread.providerId, false);
+    })`);
+    await page.waitFor(`document.querySelector('${id('setting-card')}') && document.querySelector('${id('composer-provider-off')}')`);
+    expect(await page.evaluate(`!!document.querySelector('button${id('setting-open')}')`)).toBe(true);
+    await page.click(id('setting-open'));
+    await page.waitFor(`document.querySelector('.mobile-settings ${id('plugins-page')}')`);
+    await page.evaluate(`import('/src/lib/workspace.svelte.ts').then(({workspace}) => workspace.select(workspace.active, workspace.active.openThread.id))`);
+    await page.click(`button${id('composer-provider-off')}`);
+    await page.waitFor(`document.querySelector('.mobile-settings ${id('accounts-page')}')`);
+  } finally {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await page.navigate(`${uiUrl}/?fake=1&open=recent`);
+    await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
+  }
+}, 60_000);
 
 test('provider settings show login controls, and quota monitoring lives on the Limits page', async () => {
   await page.click(id('nav-settings')); await page.click(id('settings-tab-accounts'));
@@ -182,10 +216,12 @@ test('the mochis are in the app rail on the desktop and in the phone bar, with n
   // The agents fixture, so the rail has bots to draw.
   await page.navigate(`${uiUrl}/?fake=1&open=recent&agents=1`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
-  // Bots are on in every build, with no switch: Settings has no Experiments page at all.
+  // Bots are on in every build, with no switch: the Experiments page lists none for them.
   await page.click(id('nav-settings'));
-  await page.waitFor(`document.querySelector('${id('settings-tab-general')}')`);
-  expect(await page.evaluate(`document.querySelector('${id('settings-tab-experiments')}')`)).toBeNull();
+  await page.waitFor(`document.querySelector('${id('settings-tab-experiments')}')`);
+  await page.click(id('settings-tab-experiments'));
+  await page.waitFor(`document.querySelector('${id('experiments-page')} input[data-testid^="experiment-"]')`);
+  expect(await page.evaluate(`document.querySelector('${id('experiment-resident-agents')}')`)).toBeNull();
   await page.click(id('settings-back'));
   await page.waitFor(`document.querySelector('${id('app-rail')} ${id('rail-bot')}') && document.querySelector('${id('app-rail')} ${id('rail-add')}')`);
   expect(await page.evaluate(`document.querySelector('${id('app-rail')} ${id('view-threads')}').getAttribute('aria-current')`)).toBe('page');

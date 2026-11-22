@@ -297,15 +297,18 @@ At most 20 PRs can be linked to one conversation.
 ### Watching a pull request
 
 `boite pr watch [<url|number>]` asks Boite to babysit a PR for the agent, so
-the agent ends its turn instead of polling CI. With nothing named it watches
+the agent ends its turn while CI and reviews run. With nothing named it watches
 the conversation's only linked PR, or its only open one; a number names a
 linked PR; a URL not linked yet is linked first. It prints what the first
-read saw (head, checks running and failed, a conflict) and wakes nothing for
-it. `boite pr unwatch [<url|number>]` stops one watch, or all of them.
+read saw (head, checks running and failed, the base tip's first failure and a
+conflict if present). `boite pr unwatch [<url|number>]` stops one watch, or all of
+them.
 
 The core (`packages/core/src/pull-request-watch.ts`) wakes the conversation
 with one message, a `pull-request` turn, when:
 
+- the base branch's current commit has a failed check. It names the branch,
+  commit, first failure and check link apart from the pull request's checks;
 - the first check of a head fails; failures after it on that head wait until
   no CI job runs and go out together as its verdict, unless only an aggregate
   gate is new (a required job such as `CI required` that started once every
@@ -341,7 +344,8 @@ with one message, a `pull-request` turn, when:
 
 The message names each change with its link. A change waits 20 seconds for
 the rest of its burst and for a running turn to end, then everything waiting
-goes out together; the same state never wakes twice.
+goes out together. The core records the wake and clears its pending changes
+in the same database transaction, so a restart cannot deliver the batch twice.
 
 Each watched PR costs one GraphQL query a minute, a fingerprint of its state,
 mergeability, merge state, head, place in the merge queue, check counts by state, comment and review counts, edits
@@ -431,6 +435,9 @@ or `sent` once delivered. Repeat the same `--request-id` to check or retry an
 accepted submission. Incognito prompts wait in the core's memory and survive
 the terminal closing. Retired conversations use direct submission. A prompt
 whose conversation folder cannot be recovered stays held with the reason.
+On an older core that has no outbox method, the CLI submits directly with the
+same request ID. Task edits use the older read and write methods if the core
+has no task-edit method.
 The owner can list and restore recoverable conversations with `thread deleted`
 and `thread restore <id>`.
 
@@ -502,6 +509,7 @@ boite answer <id> <question-id> <option|text ...> [--text <note>] [--skip]
 boite permissions [<id>]         pending tool permissions
 boite allow|deny <id> <request-id>
 boite attach <file>               publish a file snapshot in chat, at most 512 MB
+boite proof <message-id> <output-line> <unchecked> [capture]
 boite view <file.html>            draw the page where a line ![title](file.html) of the answer places it, else at its end (--title <text>)
 boite view check <file.html>      check without publishing; save PNGs at desktop/phone widths (--script checks.js, --scheme dark|light)
 boite view help                   the rules of a page: layout, the app's look, theme, motion, checks
@@ -520,7 +528,7 @@ boite secret list
 boite secret ask <NAME> --why <reason> [--placeholder <example>] [--timeout <minutes>]
 boite secret write <ref> --env-file <path> --key <VAR> [--allow-unignored]
 boite secret run <ref> --as <VAR> -- <cmd> [args ...]
-boite secret pipe <ref> -- <cmd> [args ...]
+boite secret pipe <ref> [--check <arg>] -- <cmd> [args ...]
 boite task list|add <text>|start <id>|done <id>|remove <id>|clear
 boite todo list|add <text>|claim <id>
 boite goal track
@@ -895,7 +903,7 @@ that app shows (`agentCpuCapPercent 75 resources#limits "Plafond CPU de tous
 les agents"`). The list is `REQUESTABLE_SETTINGS` in
 `packages/contracts/src/setting-requests.ts`, then that app's experiments as
 `experiment.<id>` (`experiment.<id> true experiments#<id> "<name>"`), the
-experiments its build still has a switch for, none today; credentials, account ids and browser profiles are not in it.
+experiments its build still has a switch for (`experiment.draft-backdrop` in a Nightly or a Dev build); credentials, account ids and browser profiles are not in it.
 
 Language, experiments and names come from the apps: each says them after every
 hello and on every change (`client.preferences`, a paired phone included), with

@@ -38,6 +38,7 @@ export interface TestCoreOptions {
   boiteGuide?: boolean;
   onShutdown?: () => void;
   retentionPassMs?: number;
+  loadSampling?: CoreOptions['loadSampling'];
   pullRequestWatches?: CoreOptions['pullRequestWatches'];
   /** A data directory an earlier test core used: the restart a test wants to see. The test removes it. */
   dataDir?: string;
@@ -100,7 +101,7 @@ export async function startTestCore(options: TestCoreOptions = {}): Promise<Test
 
   const token = newToken();
   const journalExisted = existsSync(join(dataDir, 'journal.db'));
-  const core = new Core({ dataDir, token, version: options.version ?? TEST_VERSION, onShutdown: options.onShutdown, bundleHash: options.bundleHash, serverUpdates: options.serverUpdates, retentionPassMs: options.retentionPassMs, pullRequestWatches: options.pullRequestWatches, secretVault: options.secretVault ?? (() => Promise.resolve(new MemoryVault())), policyFile: options.policyFile ?? join(dataDir, 'no-policy.json') });
+  const core = new Core({ dataDir, token, version: options.version ?? TEST_VERSION, onShutdown: options.onShutdown, bundleHash: options.bundleHash, serverUpdates: options.serverUpdates, retentionPassMs: options.retentionPassMs, loadSampling: options.loadSampling, pullRequestWatches: options.pullRequestWatches, secretVault: options.secretVault ?? (() => Promise.resolve(new MemoryVault())), policyFile: options.policyFile ?? join(dataDir, 'no-policy.json') });
   // The scripted agents echo their prompt, and the line that teaches `boite ask`
   // would ride along in every reply: a test that wants it turns it back on.
   // A new data directory starts closed (`agentBotCreation`, `coordinationReach`); the suites written before

@@ -49,9 +49,10 @@ test('a phone reads the changes as one document, against HEAD only', async () =>
   const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-row]'));
   expect(rows.length).toBe(7);
   // Every file's header in the one scroll, a finger's rows on a phone.
-  const panel = query('[data-testid=changes-panel]')!;
-  expect(panel.classList.contains('narrow')).toBe(true);
-  for (const row of rows) expect(row.closest('.detail')).not.toBeNull();
+  for (const row of rows) {
+    expect(row.closest('.detail')).not.toBeNull();
+    expect(row.classList.contains('touch')).toBe(true);
+  }
   // The chip's menu holds every changed file; a pick marks it and reads its diff under its header.
   const outline = async () => {
     if (!query('[data-testid=changes-pager-menu]')) { button('changes-pager').click(); await settle(); }
@@ -128,7 +129,7 @@ for (const width of [1000, 700]) {
     const section = rows[0]!.closest('[data-file]')!;
     expect(section.firstElementChild).toBe(rows[0]);
     expect(section.querySelector('[data-testid=diff-view]')?.getAttribute('data-path')).toBe(rows[0]!.dataset.path);
-    expect(panel.classList.contains('narrow')).toBe(false);
+    for (const row of rows) expect(row.classList.contains('touch')).toBe(false);
   });
 }
 

@@ -10,6 +10,7 @@ import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY } from '../src/threads/turn-at
 import { LIMIT_RESUME } from '../src/threads/limit-resume.ts';
 import { RESUME_TEXT } from '../src/threads/resume-text.ts';
 import { echoThread, removeDir, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
+import { thrown } from './settle.ts';
 
 const delays = [...CAPACITY_RETRY.delaysMs];
 const limits = { ...LIMIT_RESUME };
@@ -30,6 +31,41 @@ function text(messages: Message[]): string {
 function retryOf(h: TestCore, threadId: string): ThreadRetry | null {
   return h.core.threads.list({ includeArchived: true }).find(thread => thread.id === threadId)?.retry ?? null;
 }
+
+test('a usage limit exposes its reset and can resume on a model chosen by the owner', async () => {
+  const h = await startTestCore();
+  const contexts: TurnContext[] = [];
+  const resetsAt = Date.now() + 60_000;
+  const restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx) {
+      contexts.push(ctx);
+      return { stop() {}, done: Promise.resolve(contexts.length === 1
+        ? { status: 'error', sessionId: 'native', usage: null, error: 'usage limit', refusal: { kind: 'usage-limit', resetsAt } }
+        : { status: 'done', sessionId: 'native', usage: null }) };
+    },
+  });
+  try {
+    const client = await h.connect();
+    const { threadId, accountId } = await echoThread(h, client);
+    const first = await client.call('turns.start', { threadId, prompt: 'Finish the report with all attachments' });
+    await waitFor(() => h.core.journal.getTurn(first.id)?.status === 'error');
+    const thread = await client.call('threads.get', { threadId });
+    expect(thread.retry).toBeNull();
+    expect(thread.recovery).toMatchObject({ kind: 'usage-limit', turnId: first.id, resetsAt });
+    const selection = { threadId, turnId: first.id, expectedSelectionVersion: thread.selectionVersion ?? 0 };
+    const model = 'echo-alternate';
+    h.core.providers.require('echo').models.push({ id: model, name: 'Alternate Echo' });
+    expect(await thrown(client.call('turns.resume', { ...selection, model: 'unavailable-model' }))).toThrow('the provider does not offer this model');
+    const resumed = await client.call('turns.resume', { ...selection, model });
+    expect((await client.call('turns.resume', { ...selection, model })).id).toBe(resumed.id);
+    await waitFor(() => h.core.journal.getTurn(resumed.id)?.status === 'done');
+    expect(contexts).toHaveLength(2);
+    expect(contexts[1]!.thread).toMatchObject({ accountId, model, sessionId: 'native' });
+    expect(contexts[1]!.prompt).toContain('Finish the report with all attachments');
+    expect(await client.call('threads.get', { threadId })).toMatchObject({ recovery: null, model: thread.model });
+  } finally { restore(); await h.stop(); }
+});
 
 test.each(['preparation', 'attempt', 'retry'] as const)('an account signed out during %s cannot prepare or start another attempt', async phase => {
   const h = await startTestCore();
@@ -78,6 +114,58 @@ test.each(['preparation', 'attempt', 'retry'] as const)('an account signed out d
     restore();
     await removeDir(workspace);
   }
+});
+
+test.each([1, 2])('Stop during protection preparation %i frees the scheduler slot without starting the provider', async preparation => {
+  const h = await startTestCore();
+  const entered = Promise.withResolvers<void>(), ready = Promise.withResolvers<void>();
+  const started: TurnContext[] = [];
+  const restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx) {
+      started.push(ctx);
+      return { stop() {}, done: Promise.resolve({ status: 'done', sessionId: null, usage: null }) };
+    },
+  });
+  let calls = 0;
+  const held = spyOn(h.core.sharedAccess.execution, 'prepare').mockImplementation(() => {
+    if (++calls === preparation) { entered.resolve(); return ready.promise; }
+  });
+  try {
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const turn = await client.call('turns.start', { threadId, prompt: 'Stop before native startup' });
+    await entered.promise;
+    expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    await waitFor(() => h.core.scheduler.stopTarget(threadId) === undefined, 1200);
+    expect(h.core.journal.getTurn(turn.id)?.status).toBe('stopped');
+    expect(started).toHaveLength(0);
+  } finally {
+    ready.resolve();
+    held.mockRestore();
+    await h.stop();
+    restore();
+  }
+});
+
+test('Stop for a previous turn leaves its successor and the thread activity alone', async () => {
+  const h = await startTestCore();
+  const pause = spyOn(h.core.activity, 'pauseAll');
+  const unwatch = spyOn(h.core.pullRequestWatches, 'endThread');
+  try {
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const previous = await client.call('turns.start', { threadId, prompt: 'first' });
+    await waitFor(() => h.core.journal.getTurn(previous.id)?.status === 'done');
+    const active = await client.call('turns.start', { threadId, prompt: '[sleep:60000]' });
+    await waitFor(() => h.core.threads.runner.handles.has(threadId));
+    expect(await client.call('turns.stop', { threadId, expectedTurnId: previous.id })).toEqual({ stopped: false });
+    expect(pause).not.toHaveBeenCalled();
+    expect(unwatch).not.toHaveBeenCalled();
+    expect(h.core.journal.getTurn(active.id)?.status).toBe('running');
+    expect(await client.call('turns.stop', { threadId, expectedTurnId: active.id })).toEqual({ stopped: true });
+    await waitFor(() => h.core.journal.getTurn(active.id)?.status === 'stopped');
+  } finally { pause.mockRestore(); unwatch.mockRestore(); await h.stop(); }
 });
 
 test('a turn refused at capacity before writing anything tries again with the same input until it answers', async () => {
@@ -312,12 +400,14 @@ test('an archived thread keeps the usage window it resumed after across a restar
   }
 });
 
-test('a planned resume survives a core restart and fires on the next core', async () => {
+test('a planned quota resume from an older core offers recovery and still fires', async () => {
   const h = await startTestCore({ settings: { autoResumeLimitedThreads: true } });
   const client = await h.connect();
   const { threadId } = await echoThread(h, client);
   const turn = await client.call('turns.start', { threadId, prompt: '[usage-limit:1500]' });
   await waitFor(() => retryOf(h, threadId)?.turnId === turn.id);
+  const { recovery: _, ...oldEntry } = h.core.threads.resumes.entry(threadId)!;
+  h.core.journal.setSetting('resumes', { [threadId]: oldEntry });
   client.close();
   await h.server.stop();
   await h.core.close();
@@ -325,6 +415,7 @@ test('a planned resume survives a core restart and fires on the next core', asyn
   const next = new Core({ dataDir: h.dataDir, token: h.token });
   try {
     expect(next.threads.list({}).find(thread => thread.id === threadId)?.retry?.kind).toBe('usage-limit');
+    expect(next.threads.get(threadId).recovery).toEqual({ kind: 'usage-limit', turnId: turn.id, resetsAt: oldEntry.plan!.resetsAt });
     await waitFor(() => next.journal.listTurns(threadId).length === 2, 5000);
     const resumed = next.journal.listTurns(threadId)[1]!;
     await waitFor(() => next.journal.getTurn(resumed.id)?.status === 'done');
