@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { ChevronDown, Workflow } from '@lucide/svelte';
+  import { ChevronDown, UsersRound, Workflow } from '@lucide/svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import Elapsed from './Elapsed.svelte';
@@ -24,9 +24,9 @@
    * The strip's line above the composer while this thread waits on work it
    * sent (`ComposerFoot`): one framed pill, a spinner, the model mark of each
    * subagent (their names in its tooltip), "Waiting on 4 subagents", how long
-   * the oldest has run, and a Stop at the line's right that names what it
-   * stops. The same on a desktop and a phone. A tap unfolds one row per run,
-   * its mark, its name and its time, each opening it. A persistent agent's
+   * the oldest has run, a shortcut to the Subagents tab and a Stop that names
+   * what it stops. The same on a desktop and a phone. A tap unfolds one row per run,
+   * with its mark, title, model and time. A persistent agent's
    * memory pass is the core's upkeep, not work it sent.
    */
   // The team and the runs are the root conversation's: a subagent's own line counts only the ones it sent, never itself, its siblings or the root's runs.
@@ -60,9 +60,18 @@
   // A provider's own subagent runs on the thread's provider; a workflow has no model of its own (`provider: null`, its glyph).
   let own = $derived(store.threads.find(row => row.id === threadId)?.providerId ?? store.openThread?.providerId ?? null);
   let items = $derived([
-    ...active.map(agent => ({ id: agent.thread.id, name: agent.thread.title, provider: agent.thread.providerId as string | null, since: agent.lastTurn?.startedAt ?? agent.lastTurn?.queuedAt ?? agent.thread.createdAt, open: (() => openAgent(store, agent)) as (() => void) | null })),
-    ...native.map(agent => ({ id: agent.id, name: agent.name ?? agent.task ?? agent.id, provider: own as string | null, since: agent.startedAt, open: null })),
-    ...runs.map(run => ({ id: run.id, name: run.name, provider: null, since: run.createdAt, open: () => { store.panel.openWorkflow(run.id); } }))
+    ...active.map(agent => {
+      const { thread, lastTurn } = agent;
+      const choice = lastTurn?.execution ?? thread;
+      return {
+        id: thread.id, name: thread.title, provider: choice.providerId,
+        model: store.modelOf(choice)?.name ?? choice.model,
+        since: lastTurn?.startedAt ?? lastTurn?.queuedAt ?? thread.createdAt,
+        open: () => openAgent(store, agent)
+      };
+    }),
+    ...native.map(agent => ({ id: agent.id, name: agent.name ?? agent.task ?? agent.id, provider: own, model: agent.model, since: agent.startedAt, open: null })),
+    ...runs.map(run => ({ id: run.id, name: run.name, provider: null, model: null, since: run.createdAt, open: () => { store.panel.openWorkflow(run.id); } }))
   ]);
   let names = $derived(items.map(item => item.name).join(', '));
   /** The marks the pill holds before "+N". */
@@ -107,6 +116,13 @@
   {#if since !== null && !away}<span class="since" aria-hidden="true">·</span><span class="since"><Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
 {/snippet}
 
+{#snippet runRow(item: (typeof items)[number])}
+  <span class="logo" aria-hidden="true">{#if item.provider}<ProviderLogo providerId={item.provider} size={13} />{:else}<Workflow size={12} strokeWidth={1.75} />{/if}</span>
+  <span class="words" use:wordFit={item.name}></span>
+  {#if item.model}<span class="model ui-label" data-testid="agent-dock-model" title={item.model}>{item.model}</span>{/if}
+  <span class="since"><Elapsed startedAt={item.since} finishedAt={null} active={!away} /></span>
+{/snippet}
+
 {#if drawn}
   <div class="foot-row waiting" data-testid="agent-dock" data-count={agents} data-runs={runs.length} role="status">
     {#if foldable}
@@ -117,19 +133,26 @@
     {:else}
       <span class="pill" class:bare={count === 0}>{@render words()}</span>
     {/if}
-    {#if stoppable}
-      <button type="button" class="small ghost stop" data-testid="agent-dock-stop" title={strings.composer[`${stopKey}Hint`]} disabled={stopping} onclick={() => void stop()}>
-        <span class="stop-mark" aria-hidden="true"></span><span class="ui-label">{strings.composer[stopKey]}</span>
-      </button>
-    {/if}
+    <div class="actions">
+      {#if count > 0}
+        <button type="button" class="icon-button" data-testid="agent-dock-panel" aria-label={strings.delegation.showTeam} title={strings.delegation.showTeam} onclick={() => store.showTeam()}>
+          <UsersRound size={16} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      {/if}
+      {#if stoppable}
+        <button type="button" class="small ghost stop" data-testid="agent-dock-stop" title={strings.composer[`${stopKey}Hint`]} disabled={stopping} onclick={() => void stop()}>
+          <span class="stop-mark" aria-hidden="true"></span><span class="ui-label">{strings.composer[stopKey]}</span>
+        </button>
+      {/if}
+    </div>
   </div>
   {#if open && items.length}
     <ul class="runs" data-testid="agent-dock-rows">
       {#each items as item (item.id)}
         <li class="foot-row run">
           {#if item.open}
-            <button type="button" class="ghost open" data-testid="agent-dock-row" title={item.name} onclick={item.open}><span class="logo" aria-hidden="true">{#if item.provider}<ProviderLogo providerId={item.provider} size={13} />{:else}<Workflow size={12} strokeWidth={1.75} />{/if}</span><span class="words" use:wordFit={item.name}></span><span class="since"><Elapsed startedAt={item.since} finishedAt={null} active={!away} /></span></button>
-          {:else}<span class="open" data-testid="agent-dock-row" title={item.name}><span class="logo" aria-hidden="true">{#if item.provider}<ProviderLogo providerId={item.provider} size={13} />{:else}<Workflow size={12} strokeWidth={1.75} />{/if}</span><span class="words" use:wordFit={item.name}></span><span class="since"><Elapsed startedAt={item.since} finishedAt={null} active={!away} /></span></span>{/if}
+            <button type="button" class="ghost open" data-testid="agent-dock-row" title={item.name} onclick={item.open}>{@render runRow(item)}</button>
+          {:else}<span class="open" data-testid="agent-dock-row" title={item.name}>{@render runRow(item)}</span>{/if}
         </li>
       {/each}
     </ul>
@@ -158,14 +181,15 @@
   .label { display: flex; flex-direction: column; flex: 0 1 auto; min-width: 0; overflow: hidden; font-weight: 500; }
   .label::before { content: attr(data-text); height: 0; padding-right: 2px; overflow: hidden; visibility: hidden; }
   .since { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
-  .stop { flex: none; margin-left: auto; gap: 5px; }
+  .actions { display: flex; flex: none; align-items: center; gap: 4px; margin-inline-start: auto; }
+  .stop { flex: none; gap: 5px; }
   .pill > :global(svg.chevron) { flex: none; color: var(--color-subtle); transition: transform var(--motion-duration) var(--motion-curve); }
   .pill > :global(svg.turned) { transform: rotate(180deg); }
   @media (prefers-reduced-motion: reduce) { button.pill, .pill > :global(svg.chevron) { transition: none; } }
   /* A media stop, the square in a ring, drawn here: a bare square reads as a checkbox, and an icon would weigh on the first load. */
   .stop-mark { position: relative; flex: none; width: 14px; height: 14px; border: 1.5px solid currentColor; border-radius: var(--radius-full); }
   .stop-mark::after { content: ''; position: absolute; inset: 3px; background: currentColor; }
-  /* One row per run under the pill: its model mark, its name, its time; a press opens it. */
+  /* One row per run under the pill: its mark, name, model and elapsed time. */
   .runs { display: flex; flex-direction: column; margin: 0; padding: 0 0 4px; list-style: none; }
   li.foot-row.run { height: auto; padding-left: 4px; }
   .open { display: flex; flex: 1 1 auto; gap: 8px; min-width: 0; height: var(--control); padding: 0 8px; align-items: center; justify-content: flex-start; border: none; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font: inherit; }
@@ -173,8 +197,9 @@
   @media (hover: hover) { button.open:hover { background: var(--color-surface-2); color: var(--color-foreground); } }
   /* The name takes the row's width, so word-fit cuts it to the row, not to its own cut. */
   .words { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; }
+  .model { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; color: var(--color-subtle); }
   @media (max-width: 720px) {
-    .pill:not(.bare) { height: 36px; }
+    .pill:not(.bare) { height: 36px; padding-inline: 6px; gap: 4px; }
     /* A phone keeps the words whole: Stop takes a line of its own under a pill too long to share one, and the time is on each row once unfolded. */
     div.foot-row.waiting { flex-wrap: wrap; row-gap: 2px; }
     .pill:has(.marks) > .spin { display: none; }
@@ -182,6 +207,7 @@
     .pill.bare { padding-left: 12px; }
     .open { height: 40px; }
     .stop { position: relative; }
+    .stop:not(:first-child) { padding-inline: 4px; }
     .stop::after { content: ''; position: absolute; inset: -8px -2px; }
   }
 </style>

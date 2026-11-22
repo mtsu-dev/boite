@@ -27,10 +27,11 @@ usage. It starts in the parent's project, folder and permission mode.
 ## Follow the children
 
 - The Subagents tab lists the conversation's workflow runs, then its
-  subagents, then the agents the provider started itself. Open it from the
-  side panel, the title's menu or the palette's "Show the subagents".
-- The button above the message box counts the active subagents and running
-  workflows. Click it to open the overview.
+  subagents, then the agents the provider started itself. Open it with
+  "View subagents" beside Stop, from the side panel, the title's menu or
+  the palette's "Show the subagents".
+- Click the count above the message box to unfold the active subagents and
+  running workflows. The list shows elapsed times and known model names.
 - Click a child to open its conversation. Its header reads "parent title /
   child title"; the parent's title takes you back.
 - In the sidebar, the parent's row carries a chip such as "2 sub-agents at
