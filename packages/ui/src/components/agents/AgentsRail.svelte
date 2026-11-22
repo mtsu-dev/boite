@@ -257,7 +257,7 @@
         {@const tone = toneOf(row, thread, !!waitingOn(machine.store, row.status?.threadId))}
         {@const line = lineOf(machine, row, thread, tone)}
         {@const unread = row.status?.unread ?? 0}
-        {@const wait = machine.store.connection === 'ready' && row.profile.status === 'active' ? threadWait(thread, machine.store) : null}
+        {@const wait = machine.store.connection === 'ready' && row.profile.status === 'active' && tone !== 'error' ? threadWait(thread, machine.store) : null}
         <AgentRow title={row.profile.name} builtin={!!row.profile.builtin} open={owner === view && active === row.profile.id} {unread} away={machine.store.connection !== 'ready'}
           at={row.status?.last?.at ?? 0} {now} tone={wait && tone === 'idle' ? 'working' : tone === 'queued' ? 'idle' : tone} detail={line.text} icon={line.icon} {wait}
           since={tone === 'working' ? earliest(thread?.requestSince, thread?.runningSince) : null}

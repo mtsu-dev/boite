@@ -51,7 +51,8 @@
   /** What it waits on: the question it asked, else the permission it needs. */
   const pending = $derived(waitingOn(store, thread?.id));
   const state = $derived(liveState(agent, status, thread, !!pending));
-  const wait = $derived(store.connection === 'ready' && agent.status === 'active' ? threadWait(thread, store) : null);
+  /** A failure outranks what the thread still waits on: its line says the error, never the shell or the checks left running. */
+  const wait = $derived(store.connection === 'ready' && agent.status === 'active' && state !== 'error' ? threadWait(thread, store) : null);
   const step = $derived(liveStep(status, thread));
   const since = $derived(thread?.status === 'running' ? thread.runningSince ?? thread.progress?.since ?? null : null);
   /** The panel button, as on a thread's header: it opens the panel on the desk, whose selector holds every other panel. */

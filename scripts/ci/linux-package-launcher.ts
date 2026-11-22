@@ -89,11 +89,14 @@ export function modeString(mode: number): string {
   return ((mode & 0o170000) === 0o100000 ? '-' : '?') + bits.join('');
 }
 
-function run(cmd: string[]): string {
-  const done = Bun.spawnSync(cmd, { stdout: 'pipe', stderr: 'pipe' });
+/** A command's output as bytes; a failure carries the tool's own words instead of an empty or cut read. */
+function bytesOf(cmd: string[], stdin?: Uint8Array): Uint8Array {
+  const done = Bun.spawnSync(cmd, { stdout: 'pipe', stderr: 'pipe', ...(stdin ? { stdin } : {}) });
   if (done.exitCode !== 0) throw new Error(`${cmd.join(' ')}: exit ${done.exitCode}: ${done.stderr.toString().trim()}`);
-  return done.stdout.toString();
+  return new Uint8Array(done.stdout);
 }
+
+const run = (cmd: string[]): string => Buffer.from(bytesOf(cmd)).toString();
 
 const sha256 = (bytes: Uint8Array) => new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
 
@@ -158,7 +161,7 @@ if (import.meta.main) {
       const near = listing.split('\n').filter(line => line.includes('boite')).map(line => line.trim());
       problems.push(`${file}: no ${LAUNCHER} (its boite entries: ${near.length > 0 ? near.join(' | ') : 'none'})`);
     } else {
-      const bytes = new Uint8Array(Bun.spawnSync(['sh', '-c', 'dpkg-deb --fsys-tarfile "$1" | tar -xOf - "$2"', 'sh', file, entry.name], { stdout: 'pipe' }).stdout);
+      const bytes = bytesOf(['tar', '-xOf', '-', entry.name], bytesOf(['dpkg-deb', '--fsys-tarfile', file]));
       if (bytes.length !== entry.size) problems.push(`${file}: extracted ${bytes.length} bytes, listed ${entry.size}`);
       lines.push(check(`${file} ${entry.name}`, entry.mode, bytes, built, problems));
     }
@@ -169,7 +172,7 @@ if (import.meta.main) {
       const offset = run([file, '--appimage-offset']).trim();
       const mode = squashEntry(run(['unsquashfs', '-ll', '-o', offset, file, LAUNCHER]), LAUNCHER);
       if (mode === null) problems.push(`${file}: squashfs has no ${LAUNCHER}`);
-      else lines.push(check(`${file} squashfs ${LAUNCHER}`, mode, new Uint8Array(Bun.spawnSync(['unsquashfs', '-o', offset, '-cat', file, LAUNCHER], { stdout: 'pipe' }).stdout), built, problems));
+      else lines.push(check(`${file} squashfs ${LAUNCHER}`, mode, bytesOf(['unsquashfs', '-o', offset, '-cat', file, LAUNCHER]), built, problems));
     }
     lines.push(fromTree(args[2]!, `${args[2]}/${LAUNCHER}`, built, problems));
   } else {

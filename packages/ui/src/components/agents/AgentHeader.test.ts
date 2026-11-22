@@ -55,6 +55,24 @@ test('a mochi whose account is gone says it needs an account, not that its last 
   }
 });
 
+test('a failed mochi says so even while a shell it left behind still runs', async ({ ready }) => {
+  let head: ReturnType<typeof mount> | null = null;
+  try {
+    const { store } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const nova = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
+    const status = { ...statusOf(view.snapshot, nova.id)!, state: 'error' as const };
+    const thread = { ...store.threads[0]!, status: 'idle' as const, backgroundWork: { kinds: ['shell' as const], since: Date.now() - 5000 } };
+    head = mount(AgentHeader, { target: document.body, props: { store, view, agent: nova, status, thread, onpane: () => {}, onback: () => {} } });
+    flushSync();
+    expect(document.querySelector('[data-testid=agent-live]')?.getAttribute('data-state')).toBe('error');
+    expect(document.querySelector('[data-testid=agent-live-error]')?.textContent).toBe(strings.agents.state.error);
+  } finally {
+    if (head) unmount(head);
+  }
+});
+
 // At rest the column's head read only the bot's role: when it would wake next and what its day cost were nowhere in the column.
 test('a bot at rest says its next wake in the column head, and its day sits behind the "i"', async ({ ready }) => {
   let column: ReturnType<typeof mount> | null = null;

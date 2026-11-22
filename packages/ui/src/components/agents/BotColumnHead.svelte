@@ -53,7 +53,7 @@
   const store = $derived(view.store);
   const pending = $derived(waitingOn(store, thread?.id));
   const standing = $derived(agent ? liveState(agent, status, thread, !!pending) : 'idle');
-  const wait = $derived(store.connection === 'ready' && agent?.status === 'active' ? threadWait(thread, store) : null);
+  const wait = $derived(store.connection === 'ready' && agent?.status === 'active' && standing !== 'error' ? threadWait(thread, store) : null);
   const step = $derived(liveStep(status, thread));
   const since = $derived(thread?.status === 'running' ? thread.runningSince ?? thread.progress?.since ?? null : null);
   /** A removed account is a need, not a failed turn: the banner over the chat says how to meet it. */
