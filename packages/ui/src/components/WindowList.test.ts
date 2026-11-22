@@ -94,6 +94,9 @@ test('the drawn rows share one size observer, and a burst of placement changes r
   expect(observers).toBe(2);
 
   const reads = vi.mocked(HTMLElement.prototype.getBoundingClientRect);
+  // The browser delivers the first row sizes together. Mounting rows must not
+  // force a layout between each insertion while opening the list.
+  expect(reads.mock.contexts.filter(node => (node as HTMLElement).dataset.windowKey !== undefined)).toHaveLength(0);
   reads.mockClear();
   for (let burst = 0; burst < 5; burst++) moved!([], {} as IntersectionObserver);
   expect(reads).not.toHaveBeenCalled();

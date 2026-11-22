@@ -129,8 +129,10 @@
     };
     placed.set(element, read);
     placement?.observe(element);
-    read();
-    sizes?.observe(element);
+    // ResizeObserver delivers the initial size with the other rows. Reading it
+    // here would lay out the list after each insertion.
+    if (sizes) sizes.observe(element);
+    else read();
     return { destroy: () => { sizes?.unobserve(element); placed.delete(element); placement?.unobserve(element); } };
   }
   function focusables(element: Element): HTMLElement[] {
