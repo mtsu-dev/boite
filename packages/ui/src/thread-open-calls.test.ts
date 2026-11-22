@@ -59,10 +59,13 @@ test('opening a conversation asks the core once for each thing the panel and the
   const [first, second] = ids.filter((id) => id !== store.openThread?.id);
   const client = store.client!;
   const asked: string[] = [];
+  // Who asked and for what: a repeat on a slow runner is only readable with its caller.
+  const askers: string[] = [];
   const calls = { last: Date.now(), pending: 0 };
   const call = client.call.bind(client);
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
     asked.push(method);
+    askers.push(`${method} ${JSON.stringify(params)} from ${new Error().stack?.split('\n').slice(3, 9).map((line) => line.trim().replace(/^.*\/packages\/ui\//, '')).join(' < ')}`);
     calls.last = Date.now();
     calls.pending++;
     const settled = () => { calls.pending--; calls.last = Date.now(); };
@@ -77,11 +80,12 @@ test('opening a conversation asks the core once for each thing the panel and the
   await quiet(calls);
 
   asked.length = 0;
+  askers.length = 0;
   await workspace.select(store, second!);
   await waitFor(() => store.openThread?.id === second && store.openThread?.messages !== undefined);
   await quiet(calls);
 
   const counts = Object.fromEntries([...new Set(asked)].map((method) => [method, asked.filter((name) => name === method).length]));
-  const twice = Object.entries(counts).filter(([, count]) => count > 1);
+  const twice = Object.entries(counts).filter(([, count]) => count > 1).map(([method]) => askers.filter((asker) => asker.startsWith(`${method} `)));
   expect({ counts, twice }).toMatchObject({ twice: [] });
 });
