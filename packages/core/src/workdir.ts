@@ -94,7 +94,8 @@ function homeCredentialEntry(home: string, real: string): string | null {
 const HOME_LOGIN_FOLDERS = [
   '.codex', '.claude', '.gemini', '.grok', '.pi', '.hermes', '.vibe', '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker',
   '.password-store', '.cargo', '.config/gh', '.config/gcloud', '.config/opencode', '.local/share/opencode', '.local/share/keyrings',
-  'appdata', 'library',
+  '.config/muse', '.local/share/muse', '.local/state/muse', '.config/opencode-v2', '.local/share/opencode-v2', '.local/state/opencode-v2',
+  '.cache/opencode-v2', 'appdata', 'library',
 ].map((folder) => folder.split('/'));
 
 /**
@@ -156,6 +157,18 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
   if (entry !== null || parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
     throw refused(`a paired device does not read credential files${entry === null ? '' : ` (the home folder's ${entry} holds logins)`}; open ${path ?? ''} on the owner's machine`, { threadId });
   }
+}
+
+/**
+ * The file `git.diff` reads at HEAD for its old side, as git names it: a
+ * rename's origin, which the device may not have named. It answers to the
+ * rules of a file, and stays inside the thread's folder like one.
+ */
+export function assertDeviceHistoryFile(core: Core, threadId: ThreadId, cwd: string, absolute: string): void {
+  if (!contains(realOf(cwd), realOf(absolute))) {
+    throw refused(`a paired device does not read ${absolute} at HEAD: it is outside the thread's working directory`, { threadId });
+  }
+  assertDeviceFile(core, threadId, cwd, absolute);
 }
 
 /**

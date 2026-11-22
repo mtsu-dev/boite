@@ -4,7 +4,7 @@ import { gitDiff } from './git/diff.ts';
 import { gitFailed } from './git/errors.ts';
 import { parseNumstat, parseStatus } from './git/porcelain.ts';
 import { git } from './git/read.ts';
-import { assertDeviceFile, assertDeviceReadable, threadCwd } from './workdir.ts';
+import { assertDeviceFile, assertDeviceHistoryFile, assertDeviceReadable, threadCwd } from './workdir.ts';
 
 export async function gitStatus(core: Core, threadId: ThreadId): Promise<GitStatus> {
   core.sharedAccess.denyTool(threadId);
@@ -47,6 +47,8 @@ export function registerGitMethods(core: Core): void {
       assertDeviceFile(core, params.threadId, cwd, params.path);
       // The origin is read too, at HEAD: it answers to the same rules as the path.
       if (typeof params.oldPath === 'string') assertDeviceFile(core, params.threadId, cwd, params.oldPath);
+      // And the origin git actually reads, which the status may give when the device names none.
+      return gitDiff(core, params, (absolute) => assertDeviceHistoryFile(core, params.threadId, cwd, absolute));
     }
     return gitDiff(core, params);
   });

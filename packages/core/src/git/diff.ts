@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import type { GitChangeStatus, GitDiff, RpcParams } from '@boite/contracts';
 import { DIFF_MAX_BYTES } from '@boite/contracts';
 import type { Core } from '../core.ts';
@@ -18,7 +19,12 @@ function cut(data: Uint8Array): { text: string; truncated: boolean } {
   return { text: new TextDecoder().decode(truncated ? data.subarray(0, DIFF_MAX_BYTES) : data), truncated };
 }
 
-export async function gitDiff(core: Core, params: RpcParams<'git.diff'>): Promise<GitDiff> {
+/**
+ * `historical`, when given, sees the file the old side is read from before any
+ * of its content is: a rename's origin from the status, not only the paths the
+ * caller named.
+ */
+export async function gitDiff(core: Core, params: RpcParams<'git.diff'>, historical?: (absolute: string) => void): Promise<GitDiff> {
   // A path filter cannot protect historical blobs or Git's configurable external helpers.
   core.sharedAccess.denyTool(params.threadId);
   const threadId = params.threadId;
@@ -30,6 +36,8 @@ export async function gitDiff(core: Core, params: RpcParams<'git.diff'>): Promis
   const atRef = change?.oldPath ?? change?.path ?? `./${found.relative}`;
   // The name goes to git as one NUL-ended record: a NUL inside it would end it early.
   if (atRef.includes('\0')) throw refused(`git.diff refuses a path with a NUL in it: ${JSON.stringify(atRef)}`, { path: params.path });
+  // `<ref>:./x` is relative to cwd and `<ref>:x` to the repository's root, as git reads them.
+  if (historical) historical(atRef.startsWith('./') ? resolve(cwd, atRef) : resolve(await topLevel(core, threadId, cwd), atRef));
   const oldSide = await readRefSide(core, threadId, cwd, ref, atRef);
   // Missing files remain valid inputs, but links and ancestors must stay inside cwd.
   if (!writeLandsInside(cwd, found.absolute)) {
@@ -49,6 +57,12 @@ export async function gitDiff(core: Core, params: RpcParams<'git.diff'>): Promis
   }
 
   return renderDiff(found.relative, change, old, current);
+}
+
+async function topLevel(core: Core, threadId: RpcParams<'git.diff'>['threadId'], cwd: string): Promise<string> {
+  const found = await git(core, threadId, cwd, ['rev-parse', '--show-toplevel']);
+  if (found.code !== 0) gitFailed(threadId, ['rev-parse', '--show-toplevel'], found);
+  return found.stdout.trim();
 }
 
 /**

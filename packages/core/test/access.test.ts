@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, parse } from 'node:path';
 import type { RpcMethodName } from '@boite/contracts';
@@ -425,6 +425,16 @@ describe('a paired device reads a thread\'s changes and files', () => {
       }
       expect(await thrown(phone.call('files.list', { threadId, path: '.git' }))).toThrow('credential files');
       expect(await thrown(phone.call('git.diff', { threadId, path: '.env' }))).toThrow('credential files');
+      // A credential renamed and rewritten since HEAD: the origin git reads for the old side is checked
+      // too, when the device names it and when the core takes it from the status.
+      writeFileSync(join(root, 'deploy.pem'), 'inert fixture, not a key\n');
+      git(root, 'add', 'deploy.pem');
+      git(root, 'commit', '-qm', 'fixture');
+      git(root, 'mv', 'deploy.pem', 'notes.txt');
+      writeFileSync(join(root, 'notes.txt'), 'notes\n');
+      expect(await thrown(phone.call('git.diff', { threadId, path: 'notes.txt' }))).toThrow('credential files');
+      expect(await thrown(phone.call('git.diff', { threadId, path: 'notes.txt', oldPath: 'deploy.pem' }))).toThrow('credential files');
+      expect(await owner.call('git.diff', { threadId, path: 'notes.txt' })).toMatchObject({ oldPath: 'deploy.pem', oldText: 'inert fixture, not a key\n' });
       expect(await phone.call('files.read', { threadId, path: '.env.example' })).toMatchObject({ kind: 'text' });
       expect(await phone.call('files.read', { threadId, path: 'terraform.tfvars.example' })).toMatchObject({ kind: 'text' });
       expect(await owner.call('files.read', { threadId, path: '.env' })).toMatchObject({ kind: 'text', text: 'token\n' });
@@ -460,6 +470,23 @@ describe('a paired device reads a thread\'s changes and files', () => {
       expect(() => assertDeviceProjectFolder(core, project)).not.toThrow();
       // Credential files stay out inside them.
       expect(() => assertDeviceFile(core, 't', project, '.env')).toThrow('credential files');
+    }
+  });
+
+  test('every shipped agent\'s default folder in the home folder is a login folder to a device', () => {
+    // The descriptors' own roots, so a new agent's folder cannot be missed; only names are resolved.
+    const home = homedir();
+    const shipped = join(import.meta.dir, '..', 'src', 'providers', 'shipped');
+    const roots = readdirSync(shipped).filter((name) => name.endsWith('.json'))
+      .flatMap((name) => (JSON.parse(readFileSync(join(shipped, name), 'utf8')) as { roots?: string[] }).roots ?? [])
+      .filter((root) => root.startsWith('{home}/'));
+    expect(roots).toContain('{home}/.config/muse');
+    expect(roots).toContain('{home}/.local/share/opencode-v2');
+    for (const root of roots) {
+      const folder = join(home, ...root.slice('{home}/'.length).split('/'));
+      const core = { dataDir: harness.dataDir, threads: { require: () => ({ cwd: folder, projectId: 'p' }) }, projects: { require: () => ({ id: 'p', path: folder }) }, settings: { get: () => ({}) } } as unknown as Parameters<typeof assertDeviceFile>[0];
+      expect(() => assertDeviceProjectFolder(core, folder), root).toThrow('holds logins');
+      expect(() => assertDeviceFile(core, 't', folder, 'auth.json'), root).toThrow('holds logins');
     }
   });
 
