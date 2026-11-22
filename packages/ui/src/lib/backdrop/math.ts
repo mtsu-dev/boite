@@ -8,11 +8,11 @@ export type Rgb = [number, number, number];
 
 export const TAU = Math.PI * 2;
 
-/** A number from 0 to 1 that depends only on its three whole arguments. */
+/** A number in [0, 1) that depends only on its three whole arguments. */
 export function hash(x: number, y: number, z: number): number {
   let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1442695041);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
 export function clamp(value: number, low = 0, high = 1): number {

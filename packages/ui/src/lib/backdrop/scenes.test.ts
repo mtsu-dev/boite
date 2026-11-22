@@ -40,8 +40,9 @@ test('a scene is a function of its time: the still frame of reduced motion is th
   }
 });
 
-test('the glyph scene names only characters the atlas holds', () => {
-  const { soft } = drawn('glyphs', 12.3);
+// The second frame also samples the maximum unsigned 32-bit hash.
+test.each([12.3, 515720.9])('the glyph scene names only characters the atlas holds at %s seconds', (time) => {
+  const { soft } = drawn('glyphs', time);
   for (let vertex = 0; vertex < soft.count; vertex++) {
     if (soft.data[vertex * STRIDE + 6] !== TEX.glyph) continue;
     const cell = soft.data[vertex * STRIDE + 8]!;

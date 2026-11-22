@@ -299,7 +299,7 @@ typed text or password input), pinned model quotas (see
 [placement and behavior](development.md#ui-spacing-and-motion)),
 [Contacts](#contacts), [Teams](#teams) and the [Council](#council): their
 code reads no experiment any more. Mochis are finished too, but their UI still
-reads `resident-agents`, the one id left in the list. Finished, with a switch
+reads `resident-agents`. Finished, with a switch
 of their own elsewhere: the [Whip](#whip)
 (Settings > Appearance, on by default, `whip` in `lib/features.ts`) and
 [automatic goals](goals.md#automatic-goals) (the owner setting `autoGoals` in
