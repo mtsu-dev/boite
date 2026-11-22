@@ -139,9 +139,15 @@ test('closing an image and dragging chat text or a thread link preserves the con
     await drag(page, 'a[data-file-path="build/game.exe"]');
     expect(await page.evaluate('window.__fileOpens.length')).toBe(0);
     expect(await page.evaluate(`${state}.openThread.id`)).toBe('t-trace');
+    // The click shows the program's preview; only its Open launches it.
     await page.click('a[data-file-path="build/game.exe"]');
+    await page.waitFor('document.querySelector("[data-testid=chat-file] [data-testid=artifact-open]")');
+    expect(await page.evaluate('window.__fileOpens.length')).toBe(0);
+    await page.click('[data-testid=artifact-open]');
     await page.waitFor('window.__fileOpens.length === 1');
     expect(await page.evaluate('window.__fileOpens[0].path')).toBe('build/game.exe');
+    await page.click('[data-testid=chat-file]:has([data-testid=artifact-open]) button[aria-label="Close preview"]');
+    await page.waitFor('!document.querySelector("[data-testid=artifact-open]")');
     await page.evaluate(`delete window.__TAURI_INTERNALS__; ${state}.localCore = false;`);
     await page.evaluate('window.getSelection().removeAllRanges()');
     await drag(page, id('spawn-marker-open'));

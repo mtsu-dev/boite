@@ -17,21 +17,35 @@ test('local launch links and file actions use the owning desktop, with browser a
       const thread = store.openThread;
       await store.client.call('files.write', { threadId: thread.id, path: 'game.exe', text: 'Inert game fixture' });
       thread.messages.at(-1).parts = [{ type: 'text', text: 'The game is ready.\\n\\n[Launch game](game.exe) · [Instructions](README.md) · [Manual](missing.pdf)' }];
-      window.__fileOpens = [];
-      window.__TAURI_INTERNALS__ = { invoke: async (command, args) => { if (command === 'open_local_file') window.__fileOpens.push(args); } };
+      window.__fileOpens = []; window.__chatOpens = [];
+      window.__TAURI_INTERNALS__ = { invoke: async (command, args) => { if (command === 'open_local_file') window.__fileOpens.push(args); if (command === 'open_chat_file') window.__chatOpens.push(args); } };
       store.localCore = true;
     })()`);
     await page.waitFor('document.querySelector("a[data-file-path=\\"game.exe\\"]")');
     expect(await page.evaluate('window.__fileOpens.length')).toBe(0);
+    // A program link shows its preview first; only the preview's Open hands it to the opener.
     await page.click('a[data-file-path="game.exe"]');
+    await page.waitFor('document.querySelector("[data-testid=chat-file] [data-testid=artifact-open]")');
+    await page.settleAnimations();
+    expect(await page.evaluate('window.__fileOpens.length')).toBe(0);
+    await page.screenshot(join(import.meta.dir, '.artifacts', 'local-file-program-preview-desktop.png'));
+    // The program's name beside Open is not a launcher.
+    await page.click('[data-testid=chat-file] [data-testid=artifact-launch]');
+    await Bun.sleep(300);
+    expect(await page.evaluate('window.__fileOpens.length')).toBe(0);
+    await page.click('[data-testid=artifact-open]');
     await page.waitFor('window.__fileOpens.length === 1');
-    expect(await page.evaluate('document.querySelector("[data-testid=chat-file]")')).toBeNull();
     expect(await page.evaluate('window.__fileOpens[0].path')).toBe('game.exe');
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'local-file-launch-desktop.png'));
 
     await page.click('a[data-file-path="README.md"]');
     await page.waitFor('document.querySelector("[data-testid=artifact-open]")');
+    // A document's name opens it as a direct click would, through the shell's own document check.
+    await page.click('[data-testid=chat-file] [data-testid=artifact-launch]');
+    await page.waitFor('window.__chatOpens.length === 1');
+    expect(await page.evaluate('window.__chatOpens[0].path')).toBe('README.md');
+    expect(await page.evaluate('window.__fileOpens.length')).toBe(1);
     await page.click('[data-testid=artifact-open]');
     await page.waitFor('window.__fileOpens.length === 2');
     expect(await page.evaluate('window.__fileOpens[1].path')).toBe('README.md');
