@@ -118,10 +118,10 @@ test('removing a project drains questions left on archived threads, as projects.
   expect((await requests['questions.list']({})).map(question => question.id)).not.toContain(result.questionId);
 });
 
-test('a paired device cannot read credential paths or the data folder, as workdir.ts', async () => {
+test.each(['C:/Users/you/AppData/Local/boite2', 'C:/Users/you/AppData/Local/./boite2'])('a paired device cannot read credential paths or the data folder (%s), as workdir.ts', async dataPath => {
   const client = await fake();
   const project = await client.call('projects.add', { path: 'D:/workspace/safe' });
-  const data = await client.call('projects.add', { path: 'C:/Users/you/AppData/Local/boite2' });
+  const data = await client.call('projects.add', { path: dataPath });
   const thread = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: 'a-echo' });
   const dataThread = await client.call('threads.create', { projectId: data.id, providerId: 'echo', accountId: 'a-echo' });
   await client.call('settings.set', { worktreeStorage: { mode: 'shared', directory: `${data.path}/worktrees` } });

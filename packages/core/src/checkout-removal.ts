@@ -158,12 +158,13 @@ async function restoreFile(from: string, to: string): Promise<void> {
 }
 
 async function restoreSymlink(from: string, to: string): Promise<void> {
-  const target = await readlink(from);
+  const target = await readlink(from, { encoding: 'buffer' });
   try { await symlink(target, to); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     // A previous recovery can stop after publishing the link. Keep any different entry in place.
-    if (await readlink(to).catch(() => null) !== target) throw error;
+    const existing = await readlink(to, { encoding: 'buffer' }).catch(() => null);
+    if (!existing?.equals(target)) throw error;
   }
   await unlink(from);
 }

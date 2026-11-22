@@ -375,6 +375,7 @@ function saveState(devDir: string, state: State): void {
 }
 
 async function handoffDevCore(state: State): Promise<void> {
+  let incomplete: Refusal | undefined;
   try {
     const record = coreFile(state.dataDir);
     if (record?.pid !== state.pid || typeof record.token !== 'string' || typeof record.port !== 'number') throw new Refusal('core.json must identify the running Dev core', 1);
@@ -386,10 +387,11 @@ async function handoffDevCore(state: State): Promise<void> {
   } catch (error) {
     if (!ours(state.pid, state.identity)) return;
     if (error instanceof Refusal) throw error;
-    throw new Refusal('could not complete the restart handoff with the running Dev core', 1);
+    // A lost reply can follow admission. Give the old core the same time to drain.
+    incomplete = new Refusal('could not complete the restart handoff with the running Dev core', 1);
   }
   if (!await waitFor(() => ours(state.pid, state.identity) ? null : true, 60_000, () => false)) {
-    throw new Refusal('the Dev core accepted the handoff but did not exit; its data was kept', 1);
+    throw incomplete ?? new Refusal('the Dev core accepted the handoff but did not exit; its data was kept', 1);
   }
 }
 
