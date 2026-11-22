@@ -49,16 +49,18 @@ Douane's default dashboard path is `/admin/#quotas`; CLIProxyAPI uses
 proprietary model stays in its own harness: Claude lists Claude models and
 Codex lists OpenAI models, whatever routing prefix the gateway gives them, while
 Grok and Muse models are listed by neither. Grok's models are listed by Grok
-alone, behind Douane. Gemini models are offered to both:
-Antigravity, their own harness, runs through Douane alone and lists them itself
-from the Gemini API (`/v1beta/models`), so behind CLIProxyAPI Claude and Codex
-are the only way to reach them. Open
+alone, behind Douane. Antigravity's models run only in the Antigravity
+harness, through Douane's Gemini API (`/v1beta`) or the native sign-in: Google
+bans an account used anywhere else. No other harness (Claude Code, Codex, both
+OpenCode versions, pi, Grok) is offered a Gemini model, under any routing
+prefix, nor any model the gateway routes through Antigravity
+(`antigravity/claude-opus-5-5-high`, `antigravity/gpt-oss-120b-medium`), even
+when its row advertises that harness's API. Behind CLIProxyAPI, which does not
+serve Antigravity, they are not reachable at all. Open
 models (`gpt-oss`, Kimi, Qwen, Llama, DeepSeek, Mistral, GLM) are offered to
-each harness whose API the gateway advertises for them, under any routing
+each harness whose API the gateway advertises for them, under any other routing
 prefix. A name the rules do not recognize takes its vendor from the routing
-prefix (`codex/`, `claude/`, ...). OpenCode also accepts Antigravity Claude
-routes when the catalog explicitly advertises Chat Completions (`openai`);
-other proprietary routes keep their native-harness restriction. A catalog without endpoint metadata keeps
+prefix (`codex/`, `claude/`, ...). A catalog without endpoint metadata keeps
 the older rule, which matches the whole id against the harness's native model
 names. With Douane, the core reads `GET /v1/quotas` with the proxy key and
 Limits shows native bars, described in [usage](usage.md#gateway-quotas). With
@@ -178,7 +180,7 @@ Antigravity are served by their ids too, and by Douane alone
 (`SUBSCRIPTION_PROXY_KIND_PROVIDERS`): behind CLIProxyAPI they keep their own
 sign-in.
 
-Antigravity (agy 1.4.5) has a gateway mode of its own. The core points
+Antigravity (agy 1.4.5 and 1.5.2) has a gateway mode of its own. The core points
 `GEMINI_HOME` at `<dataDir>/subscription-proxy/antigravity/<id>`, where `<id>`
 is the first 24 hex digits of the SHA-256 of the gateway's origin, and keeps
 `{"auth":{"type":"gateway"}}` in its `antigravity-acp/settings.json`.
@@ -186,8 +188,9 @@ is the first 24 hex digits of the SHA-256 of the gateway's origin, and keeps
 `AGY_LLM_GATEWAY_API_KEY` the proxy key, sent as a bearer token. The agent then
 lists the gateway's models itself from `GET /v1beta/models?pageSize=1000` and
 runs turns on `POST /v1beta/models/<model>:streamGenerateContent?alt=sse`,
-which Douane serves from its pooled Google accounts. The core reads no OpenAI
-catalog for it. The account's own directory, with its `oauth-personal`
+which Douane serves from its pooled Google accounts; an image in a prompt
+reaches it as an `inlineData` part with its MIME type (1.5.2, 2026-11-22). The
+core reads no OpenAI catalog for it. The account's own directory, with its `oauth-personal`
 settings and its sign-in, is not touched, so turning the proxy off gives the
 native sign-in back. The profile's shared skills are mirrored into the gateway
 home as into an account's. A conversation started under one home is not found
@@ -260,14 +263,14 @@ execution's terminal event cannot discard a late follow-up. Yolo mode approves
 native permissions without opening a permission card, including child sessions.
 
 The picker lists OpenCode's own models first, then the gateway's as
-`douane/<gateway id>`: Gemini, Muse, the open families, and Antigravity Claude
-models whose catalog row explicitly includes `openai` in
-`supported_endpoint_types`. A Claude route with no endpoint metadata or only
-Messages support is not added; GPT, Grok and other Claude routes remain in
-their native harnesses. Older catalogs without endpoint metadata still offer
-Gemini, Muse and open models. Gateway model IDs retain their routing prefix in
-the provider configuration, so selecting `douane/antigravity/claude-opus-4-6-thinking`
-calls the gateway with `antigravity/claude-opus-4-6-thinking`.
+`douane/<gateway id>`: Muse and the open families whose catalog row includes
+`openai` in `supported_endpoint_types`, or says nothing of its APIs. Claude,
+GPT, Grok and Gemini models remain in their native harnesses, and nothing the
+gateway routes through Antigravity is added. A catalog stored for the next
+spawn before this rule is filtered the same way when it is read back. Gateway
+model IDs retain their routing prefix in the provider configuration, so
+selecting `douane/opencode_go/kimi-k3` calls the gateway with
+`opencode_go/kimi-k3`.
 The picker groups gateway models by their upstream provider, even in short
 catalogs and search results. For example, `douane/opencode` and
 `douane/openrouter` distinguish two MiniMax entries. Favorites show the same
@@ -1057,8 +1060,8 @@ a Job Object and in the trace like any other, then asks the protocol's own quest
 - Under the `antigravity` quirk a probe waits 90 seconds instead of 20. The
   agent is a PyInstaller one-file program that unpacks itself before its
   server reads a line: 45 to 54 seconds on an 8 GB laptop with 600 MB free
-  under 1.1.1, whose Windows build unpacked about 1.2 GB. The 1.4.5 builds are
-  smaller (Linux 826 MB plus a 134 MB harness, Windows 56 MB plus a 148 MB
+  under 1.1.1, whose Windows build unpacked about 1.2 GB. The 1.5.2 builds are
+  smaller (Linux 714 MB plus a 139 MB harness, Windows 58 MB plus a 155 MB
   harness).
   Each launch, probe, sign-in or session, unpacks into its own folder under
   `<isolationDir>/tmp`, set as `TEMP`, `TMP` and `TMPDIR`, and the folder goes

@@ -696,7 +696,9 @@ Before writing, the job checks again that the pull request is open, targets
 the default branch and still has the run's head, and skips when a newer run
 or attempt of `ci` exists for the same pull request and commit. A job that
 ran and left no report shows as such, never as a pull request that changes
-nothing.
+nothing. A job that passed without a report ran a workflow from before the
+reports, on a branch that has not merged main since: it counts as absent, and
+a run with neither report writes no comment.
 
 A `pull_request_target` job would also hold write access, but it starts before
 the measurements exist; `workflow_run` starts once they do. A change to
