@@ -5,7 +5,7 @@ import { invalidParams, messageOf, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
 import { ensureThreadCwd } from './cwd.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
-import { defaultModel, needsModelDiscovery } from './selection.ts';
+import { defaultModel, needsModelDiscovery, selectionFor } from './selection.ts';
 import { LinkedPullRequests } from '../linked-pull-requests.ts';
 import { threadCapabilities } from './capabilities.ts';
 import { agentShape } from './agent-shape.ts';
@@ -74,7 +74,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     const account = core.accounts.require(accountId);
     if (account.providerId !== provider.id) throw refused('the account belongs to another provider', { accountId, providerId, accountProviderId: account.providerId });
     if (needsModelDiscovery(provider, accountId, model, effort, speed)) {
-      await probe({ providerId, accountId, ...(provider.protocol === 'acp' && model !== null && effort !== null ? { model } : {}) });
+      await probe({ providerId, accountId, ...(provider.protocol === 'acp' && model !== null && effort !== null ? { model: selectionFor(provider, accountId, model)?.model.id ?? model } : {}) });
     }
   }
   core.router.register('threads.btw', async params => {

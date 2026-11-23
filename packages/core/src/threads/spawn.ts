@@ -120,7 +120,7 @@ export class ThreadSpawns {
       // A bot starts threads whatever its communication settings say.
       if (bot === null) this.#gate(threadId, target.id !== caller.projectId);
       else this.#firstGeneration(threadId, 'start another');
-      const picked = choice === null ? null : await this.#here(caller, choice);
+      const picked = await this.#here(caller, choice);
       const now = Date.now();
       // A persistent agent has no project of its own: its link names it and the project it works on.
       const from = bot ? target : this.#core.projects.require(caller.projectId!);
@@ -212,10 +212,11 @@ export class ThreadSpawns {
     this.#core.journal.setSetting(`${prefix}${threadId}`, [...completed.filter((entry) => entry.at > started.at - 24 * HOUR), started]);
   }
 
-  /** `--model`, `--effort` and `--speed` against this machine's models, read first when the named one is not listed yet. */
-  async #here(caller: ThreadSummary, choice: Choice): Promise<ReturnType<typeof chooseModel>> {
-    if (this.#probe !== null && choice.model !== undefined) await readNamed(this.#core, this.#probe, caller, [choice.model]);
-    return chooseModel(catalog(this.#core, caller, true).choices, caller, choice, 'boite delegate models');
+  /** Read an explicit or inherited model before resolving it against this machine's catalog. */
+  async #here(caller: ThreadSummary, choice: Choice | null): Promise<ReturnType<typeof chooseModel> | null> {
+    const wanted = choice?.model ?? (caller.model === null ? undefined : `${caller.providerId}/${caller.model}`);
+    if (this.#probe !== null && wanted !== undefined) await readNamed(this.#core, this.#probe, caller, [wanted]);
+    return choice === null ? null : chooseModel(catalog(this.#core, caller, true).choices, caller, choice, 'boite delegate models');
   }
 
   /** A chosen model must match the destination's catalog on both remote start paths. */

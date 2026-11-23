@@ -183,17 +183,18 @@
   // An agent keeps no speed of its own: its chips offer none.
   let speedOptions = $derived(speedControl(choice && !bot ? store.modelsOf(choice.providerId, choice.accountId) : [], choice));
   let speeds = $derived(speedOptions.speeds);
-  let activeEffort = $derived(choice?.effort ?? store.modelOf(choice)?.effort?.default ?? null);
+  let activeEffort = $derived((choice ? store.resolvedChoice(choice).effort : null) ?? store.modelOf(choice)?.effort?.default ?? null);
   /** The model has a scale but no default: its agent picks the level until the user does. */
   let agentDefault = $derived(effortLevels.length > 0 && store.modelOf(choice)?.effort?.default === undefined);
 
   /** A null effort runs at the model's own default, not at a preset the client configured. */
   function cacheKey(selection: Choice): CacheKey {
+    const resolved = store.resolvedChoice(selection);
     return {
       accountId: selection.accountId,
       protocol: store.providers.find(entry => entry.id === selection.providerId)?.protocol ?? null,
-      model: selection.model ?? null,
-      effort: selection.effort ?? store.modelOf(selection)?.effort?.default ?? null,
+      model: resolved.model ?? null,
+      effort: resolved.effort ?? store.modelOf(selection)?.effort?.default ?? null,
       speed: selection.speed ?? null,
     };
   }
@@ -252,18 +253,16 @@
       return;
     }
 
-    if (patch.speed !== undefined) { choice = { ...choice, ...patch }; store.remember(choice); return; }
-    // An effort alone: the model stays, so nothing else moves.
-    if (patch.effort !== undefined) {
-      if (patch.effort === choice.effort) return;
-      choice = { ...choice, effort: patch.effort };
+    if (patch.providerId === undefined && patch.accountId === undefined && patch.model === undefined) {
+      if (patch.speed === undefined && (patch.effort === undefined || patch.effort === choice.effort)) return;
+      choice = { ...choice, ...patch };
       store.remember(choice);
       return;
     }
 
-    // Another model runs on its own scale, so the effort goes back to that model's default.
     const picked = { ...choice, ...patch };
-    choice = { ...picked, effort: store.defaultEffortOf(picked.providerId, picked.accountId, picked.model), speed: null };
+    const changed = picked.providerId !== choice.providerId || picked.accountId !== choice.accountId || picked.model !== choice.model;
+    choice = { ...picked, effort: patch.effort ?? store.defaultEffortOf(picked.providerId, picked.accountId, picked.model), speed: changed ? null : picked.speed };
     store.remember(choice);
   }
 

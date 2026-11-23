@@ -33,7 +33,7 @@ import { invalidParams, messageOf, refused, requiredText as text, unavailable } 
 import { newId } from '../ids.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
 import { GROUP_THREADS_OFF, machineArg, memberModels, memberNamed, peerRefusal } from '../threads/group-spawn.ts';
-import { modelsFor } from '../threads/selection.ts';
+import { selectionFor } from '../threads/selection.ts';
 import { catalog, checkModelAllowed, chooseModel, discover, loggedInAccount } from './routes.ts';
 import { Outbox, risingClock } from './outbox.ts';
 import { restartContinues } from './restart.ts';
@@ -296,7 +296,7 @@ export class RemoteDelegation {
     if (request.model !== undefined || request.effort !== undefined || request.speed !== undefined) {
       const models = await memberModels(this.#core, parent, peer, 'run subagents on a model chosen from another machine');
       const picked = chooseModel(models.choices, { providerId: base.providerId, model: base.model, effort: base.effort ?? null, speed: null }, request, `boite delegate models --machine ${machineArg(this.#core, peer)}`);
-      if (request.model !== undefined) checkModelAllowed(config, parent, picked);
+      if (request.model !== undefined || request.effort !== undefined) checkModelAllowed(config, parent, picked, models.choices, request.model === undefined ? base : undefined);
       route = { providerId: picked.providerId, model: picked.model, effort: picked.effort, speed: picked.speed, strict: true };
       if (request.model !== undefined) profileId = `${picked.providerId}/${picked.model}`;
     } else {
@@ -782,7 +782,7 @@ export class RemoteDelegation {
     const { providerId, model, effort, speed, strict } = wire;
     const provider = this.#core.providers.available().some(summary => summary.id === providerId) ? this.#core.providers.require(providerId) : null;
     const account = provider === null ? undefined : loggedInAccount(this.#core.accounts.list().filter(entry => entry.providerId === providerId));
-    if (this.#probe !== null && provider !== null && account !== undefined && model !== null && !modelsFor(provider, account.id).some(entry => entry.id === model)) {
+    if (this.#probe !== null && provider !== null && account !== undefined && model !== null && !selectionFor(provider, account.id, model)) {
       await discover(this.#core, this.#probe, { providerId, accountId: account.id, model }, [providerId], READ_MS).catch(() => []);
     }
     const labels = () => catalog(this.#core, { providerId, accountId: account?.id ?? '', model }).choices.map(choice => `${choice.providerId}/${choice.model}`);
@@ -791,7 +791,7 @@ export class RemoteDelegation {
       throw refused(`${providerId} is not signed in on ${here}; name a model of ${here} with --model: ${expected.join(', ') || 'none'}`, { field: 'model', expected });
     }
     if (model === null) return { providerId, accountId: account.id, model: null, effort: null, speed: null };
-    const listed = modelsFor(provider, account.id).find(entry => entry.id === model);
+    const selection = selectionFor(provider, account.id, model, effort); const listed = selection?.model;
     const name = `${providerId}/${model}`;
     if (listed === undefined) {
       const expected = labels();
@@ -801,7 +801,7 @@ export class RemoteDelegation {
     if (strict && effort !== null && !levels.includes(effort)) throw refused(`${name} has no "${effort}" level on ${here}; expected ${levels.join(', ') || 'none'}`, { field: 'effort', expected: levels });
     const tiers = listed.speeds?.map(tier => tier.id) ?? [];
     if (strict && speed !== null && !tiers.includes(speed)) throw refused(`${name} has no "${speed}" tier on ${here}; expected ${tiers.join(', ') || 'none'}`, { field: 'speed', expected: tiers });
-    return { providerId, accountId: account.id, model: listed.id, effort: effort !== null && levels.includes(effort) ? effort : listed.effort?.default ?? null, speed: strict ? speed : null };
+    return { providerId, accountId: account.id, model: listed.id, effort: selection?.effort && levels.includes(selection.effort) ? selection.effort : listed.effort?.default ?? null, speed: strict ? speed : null };
   }
 
   /** `delegation.letter`: the parent on another machine steers its child here or answers its question. */

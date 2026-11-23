@@ -53,7 +53,7 @@
     {@const windows = shown.primary ? [shown.primary, ...shown.others] : []}
     {@const used = shown.primary?.usedPercent ?? null}
     {@const drained = row.windows.some((limit) => quotaTone(limit.usedPercent) === 'out')}
-    {@const stale = row.status === 'unavailable'}
+    {@const stale = windows.length > 0 && (row.status === 'unavailable' || row.error !== null)}
     {@const reset = shown.primary?.resetsAt ?? null}
     {@const credits = quotaCredits(row)}
     {@const paid = credits !== null && drained}
@@ -104,7 +104,7 @@
       {#if expanded === row.accountId}
         <div class="details" id={`usage-${row.accountId}`}>
           {#each windows as limit (limit.id)}
-            <QuotaWindow {limit} owner={name} busy={loading && !completed.includes(row.accountId)} />
+            <QuotaWindow {limit} owner={name} busy={loading && !completed.includes(row.accountId)} {stale} />
             {#if outside(limit)}{@render outsideLine(limit)}{/if}
           {/each}
         </div>

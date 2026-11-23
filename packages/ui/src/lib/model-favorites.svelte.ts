@@ -1,4 +1,4 @@
-import { checkSettingsPatch, compareModelFavorites, MODEL_FAVORITES_MAX, type Account, type ModelFavorite, type ModelFavorites, type ProviderId, type Settings } from '@boite/contracts';
+import { checkSettingsPatch, compareModelFavorites, resolveModelSelection, MODEL_FAVORITES_MAX, type Account, type ModelFavorite, type ModelFavorites, type ModelInfo, type ProviderId, type Settings } from '@boite/contracts';
 import { FAVORITES_KEY, readFavorites, type FavoriteModel } from './model-order';
 
 /**
@@ -183,6 +183,7 @@ export const modelFavorites = new SharedFavorites();
 export interface ResolvedFavorite extends FavoriteModel {
   /** Every shared item shown as this row: unstarring it removes them all. */
   items: ModelFavorite[];
+  effort?: string;
 }
 
 /** What resolving a favorite reads of one machine. */
@@ -190,6 +191,7 @@ export interface FavoriteMachine {
   providerOn(id: ProviderId): boolean;
   accountsOf(providerId: ProviderId): Account[];
   usableAccountOf(providerId: ProviderId): Account | null;
+  modelsOf?(providerId: ProviderId, accountId: string): ModelInfo[];
 }
 
 /**
@@ -210,10 +212,13 @@ export function resolveFavorites(items: ModelFavorite[], machine: FavoriteMachin
   for (const pass of [true, false]) {
     for (const { item, accountId, exact } of placed) {
       if (exact !== pass) continue;
-      const key = JSON.stringify([item.providerId, accountId, item.model.id]);
+      const selection = resolveModelSelection(machine.modelsOf?.(item.providerId, accountId) ?? [], item.model.id);
+      const model = selection?.model ?? item.model;
+      const effort = selection?.effort ?? undefined;
+      const key = JSON.stringify([item.providerId, accountId, model.id, effort ?? selection?.model.effort?.default ?? null]);
       const row = rows.get(key);
       if (row) row.items.push(item);
-      else rows.set(key, { providerId: item.providerId, accountId, model: item.model, items: [item] });
+      else rows.set(key, { providerId: item.providerId, accountId, model, ...(effort ? { effort } : {}), items: [item] });
     }
   }
   // The shared order, not the passes' order.

@@ -1,5 +1,5 @@
 /** The provider list, its reload and dry run, and the model catalog a probe reads. */
-import { RpcErrorCode, checkLocalAcpCommand, providerEnabled, threadActive, type Account, type ModelInfo, type RpcResult } from '@boite/contracts';
+import { RpcErrorCode, checkLocalAcpCommand, providerEnabled, resolveModelSelection, threadActive, type Account, type ModelInfo, type RpcResult } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { CLAUDE_MODELS } from './accounts-seed';
 import { MUSE_EFFORT, PI_EFFORT, PROBE_MS, PROBED_MODELS, UPDATABLE_ID } from './providers';
@@ -23,7 +23,7 @@ export function modelsOf(ctx: FakeContext, providerId: string, accountId: string
 export function checkSpeed(ctx: FakeContext, providerId: string, accountId: string, model: string | null, speed: string | null): void {
   if (speed === null) return;
   const models = modelsOf(ctx, providerId, accountId);
-  if (!models.find(m => m.id === model)?.speeds?.some(option => option.id === speed)) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'the model does not offer this speed' });
+  if (!resolveModelSelection(models, model)?.model.speeds?.some(option => option.id === speed)) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'the model does not offer this speed' });
 }
 
 /** The protocols whose models and speed tiers come from the agent, as in the core. */
@@ -33,7 +33,7 @@ export const PROBED_PROTOCOLS = ['claude-sdk', 'acp', 'codex-appserver', 'muse',
 export async function discoverSelection(ctx: FakeContext, providerId: string, accountId: string, model: string | null, effort: string | null, speed: string | null): Promise<void> {
   const provider = ctx.providers.find(p => p.id === providerId);
   if (model === null || !provider || !PROBED_PROTOCOLS.includes(provider.protocol)) return;
-  const listed = modelsOf(ctx, providerId, accountId).find(entry => entry.id === model);
+  const listed = resolveModelSelection(modelsOf(ctx, providerId, accountId), model)?.model;
   const missingEffort = effort !== null && listed?.effort === undefined;
   if ((provider.protocol === 'acp' && missingEffort) || (!ctx.modelCatalogs.has(providerId + '::' + accountId) &&
     (listed === undefined || missingEffort || (speed !== null && listed.speeds === undefined)))) {

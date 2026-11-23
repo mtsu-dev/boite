@@ -9,6 +9,7 @@ import { readNativeList, saveCatalog } from '../src/providers/saved-catalogs.ts'
 import { childEnv } from '../src/drivers/claude/query.ts';
 import { agentEnv } from '../src/providers/resolve.ts';
 import { mergeProxyModels, readSubscriptionProxyModels, subscriptionProxyCodexArgs, subscriptionProxyEnv } from '../src/subscription-proxy.ts';
+import { modelCapabilities } from '../src/drivers/model-capabilities.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 import { countEvents } from './event-count.ts';
@@ -245,7 +246,7 @@ test('a gateway that translates every model keeps proprietary models in their ow
   const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
   const ids = async (providerId: 'claude' | 'codex', accountId: string) =>
     (await owner.call('providers.probe', { providerId, accountId })).models.map(model => model.id);
-  expect(await ids('claude', claude.id)).toEqual(['claude/claude-opus-5-5', 'kimi/kimi-k2', 'qwen/qwen3-gptq', 'claude/default',
+  expect(await ids('claude', claude.id)).toEqual(['claude-opus-5-5', 'kimi/kimi-k2', 'qwen/qwen3-gptq', 'claude/default',
     'claude/kimi-k2', 'codex/qwen3-coder', 'meta/llama-4-maverick']);
   expect(await ids('codex', codex.id)).toEqual(['codex/gpt-6-sol', 'codex/codex-auto-review', 'kimi/kimi-k2', 'qwen/qwen3-gptq', 'codex/o5',
     'codex/computer-use-preview', 'claude/kimi-k2', 'codex/qwen3-coder', 'meta/llama-4-maverick']);
@@ -269,7 +270,7 @@ test("Antigravity's models, Claude's routed there included, and Gemini are offer
     const account = await owner.call('accounts.add', { providerId, label: `Gateway ${providerId}` });
     return (await owner.call('providers.probe', { providerId, accountId: account.id })).models.map(model => model.id);
   };
-  expect(await offered('claude')).toEqual(['claude/claude-opus-5-5', 'kimi/kimi-k2']);
+  expect(await offered('claude')).toEqual(['claude-opus-5-5', 'kimi/kimi-k2']);
   expect(await offered('codex')).toEqual(['codex/gpt-6-sol', 'kimi/kimi-k2']);
   for (const providerId of ['opencode', 'opencode-v2'] as const) {
     expect(await offered(providerId)).toEqual(['douane/kimi/kimi-k2']);
@@ -697,4 +698,54 @@ test('an agent list read under a gateway that changed meanwhile is never kept fo
     const models = (await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models.map(model => model.id);
     expect(models).not.toContain('stale-native');
   } finally { restore(); other.stop(true); agent.resolve(); }
+});
+
+test('Claude gateway models retain Fable capabilities and only fold the Claude route', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => Response.json({ data: [
+    { id: 'claude/claude-fable-5-2',
+      reasoning_efforts: [{ id: 'high', default: true }], capabilities: {
+        adaptive_thinking: true,
+        speed: { default: 'standard', options: ['standard', { id: 'fast', label: 'Fast', description: 'Claude Fast mode' }] },
+        effort: { levels: ['low', 'high'], default: 'high' },
+      },
+      service_tiers: [{ id: 'with spaces' }, { name: 'Missing ID' }, null] },
+    { id: 'claude-fable-5-2', service_tiers: ['default'], additional_speed_tiers: ['standard', { id: 'fast', name: 'Fast' }] },
+    { id: 'openrouter/claude-fable-5-2' },
+  ] }) });
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}`) } });
+  const provider = harness.core.providers.require('claude');
+  const rows = await readSubscriptionProxyModels(harness.core, provider);
+  expect(rows?.map(row => row.id)).toEqual(['claude-fable-5-2', 'openrouter/claude-fable-5-2']);
+  expect(rows?.[0]).toMatchObject({
+    aliases: [{ id: 'claude/claude-fable-5-2' }],
+    effort: { default: 'high', levels: [{ id: 'low' }, { id: 'high' }, { id: 'ultrathink' }] },
+    speeds: [{ id: 'fast', label: 'Fast', description: 'Claude Fast mode' }],
+  });
+  expect(subscriptionProxyEnv(harness.core, provider).ANTHROPIC_CUSTOM_HEADERS).toContain('x-douane-model-catalog: claude');
+  const native = { id: 'claude-fable-5-2', name: 'Fable 5.2', ...modelCapabilities({
+    capabilities: { speed: false, adaptive_thinking: false },
+  }, { claude: true }) };
+  const [merged] = mergeProxyModels([native], rows ?? [], 'claude-sdk');
+  expect(merged?.speeds).toBeUndefined();
+  expect(merged?.effort?.levels.map(level => level.id)).toEqual(['low', 'high']);
+  expect(merged?.aliases).toEqual([{ id: 'claude/claude-fable-5-2' }]);
+});
+
+test('malformed speed metadata leaves the field unknown while an empty tier list refuses proxy fallback', () => {
+  const model = { id: 'claude-fable-5-2', name: 'Fable 5.2' };
+  const proxy = [{ ...model, speeds: [{ id: 'fast', label: 'Fast' }] }];
+  const merge = (service_tiers: unknown[]) => mergeProxyModels([{ ...model, ...modelCapabilities({ service_tiers }) }], proxy, 'claude-sdk')[0]?.speeds;
+  expect(merge([null, {}, { id: 'invalid tier' }])).toEqual(proxy[0]?.speeds);
+  expect(merge([])).toBeUndefined();
+});
+
+test('model discovery refuses an oversized gateway response before parsing', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return new Response('x'.repeat((4 << 20) + 64), { headers: { 'content-type': 'application/json' } });
+  } });
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}`) } });
+  const provider = harness.core.providers.require('claude');
+  const failed = await readSubscriptionProxyModels(harness.core, provider).catch((error: unknown) => error);
+  expect(failed).toBeInstanceOf(Error);
+  expect((failed as Error).message).toContain('bounded response');
 });

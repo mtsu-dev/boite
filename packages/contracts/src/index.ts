@@ -275,3 +275,5 @@ export { effectiveCompaction, type CompactionTarget, type CompactionPolicy } fro
 export { composerBatch } from './composer-batch';
 export { composerActivity, isComposerActivity, stableComposerValue } from './composer-activity';
 export { permissionAutoDecision } from './permissions';
+
+export * from './model-selection.ts';

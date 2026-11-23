@@ -48,3 +48,9 @@ export function firstModels(models: ModelInfo[], current: (model: ModelInfo) => 
 export function favoriteIds(favorites: FavoriteModel[], providerId: string | undefined, accountId: string | null | undefined): Set<string> {
   return new Set(favorites.filter((f) => f.providerId === providerId && f.accountId === accountId).map((f) => f.model.id));
 }
+
+/** Search the displayed family and every historical ID it replaced. */
+export function modelMatches(model: ModelInfo, words: readonly string[]): boolean {
+  const searchable = [model.id, model.name, ...(model.aliases ?? []).map(alias => alias.id)].join(' ').toLowerCase();
+  return words.every(word => searchable.includes(word));
+}

@@ -5,7 +5,8 @@ import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { SessionContext } from '../types.ts';
 import type { ToolGate } from './permissions.ts';
-import { cliEnv, liveSetup, ONE_SHOT_TITLE, THINKING_DISPLAY_FLAG } from './query.ts';
+import { liveSetup } from './config.ts';
+import { cliEnv, ONE_SHOT_TITLE, THINKING_DISPLAY_FLAG } from './query.ts';
 import { stepHooks, type StepHost } from './step.ts';
 
 /** Claude Code's own subagent and workflow tools; `Task` is the older name of `Agent`. */

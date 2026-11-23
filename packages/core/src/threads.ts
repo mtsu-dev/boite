@@ -52,7 +52,7 @@ import { ResumePlanner } from './threads/resume.ts';
 import { ThreadTitles } from './threads/retitle.ts';
 import { SideQuestions } from './threads/side-questions.ts';
 import { messagePage, threadSnapshot, type MessagePage } from './threads/snapshot.ts';
-import { checkEffort, checkModel, checkSpeed, checkStoredEffort, checkStoredSpeed, defaultModel } from './threads/selection.ts';
+import { checkEffort, checkModel, checkSelection, checkSpeed, checkStoredEffort, checkStoredSpeed, defaultModel, selectionFor } from './threads/selection.ts';
 import { TurnContexts } from './threads/turn-context.ts';
 import { TurnRunner } from './threads/turn-runner.ts';
 import { markQueuedStopped, userStopKey } from './threads/turn-settlement.ts';
@@ -360,11 +360,11 @@ export class ThreadStore {
     if (params.model !== undefined && (params.model !== thread.model || switched)) {
       // A new model starts on its own default unless the call says otherwise.
       next.model = checkModel(provider, account.id, params.model);
-      next.effort = null;
+      next.effort = selectionFor(provider, account.id, params.model)?.effort ?? null;
       next.speed = null;
     }
     if (params.permissionMode !== undefined) next.permissionMode = params.permissionMode;
-    if (params.effort !== undefined) next.effort = params.effort;
+    if (params.effort !== undefined) next.effort = params.effort ?? selectionFor(provider, account.id, params.model ?? next.model)?.effort ?? null;
     if (params.speed !== undefined) next.speed = params.speed;
     const changedModel = switched || next.model !== thread.model;
     if (changedModel || next.speed !== thread.speed) next.speed = checkSpeed(provider, account.id, next.model, next.speed ?? null);
@@ -619,10 +619,9 @@ export class ThreadStore {
     if (executionChoice) {
       const provider = this.#core.providers.require(executionChoice.providerId);
       const account = this.#core.accounts.require(executionChoice.accountId);
-      const model = checkModel(provider, account.id, executionChoice.model);
+      const selection = checkSelection(provider, account.id, executionChoice.model, executionChoice.effort, executionChoice.speed ?? null);
       const sameAccount = thread.providerId === provider.id && thread.accountId === account.id;
-      thread = { ...thread, providerId: provider.id, accountId: account.id, model,
-        effort: checkEffort(provider, account.id, model, executionChoice.effort), speed: checkSpeed(provider, account.id, model, executionChoice.speed ?? null),
+      thread = { ...thread, providerId: provider.id, accountId: account.id, ...selection,
         ...(!sameAccount ? { sessionId: null, sessionResumeAt: null } : {}) };
     } else [thread, accountLeft] = followedAgent(this.#core, thread);
     this.#core.sharedCompute?.assertTurn(threadId);

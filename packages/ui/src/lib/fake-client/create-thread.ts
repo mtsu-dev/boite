@@ -1,5 +1,5 @@
 import type { Message, RpcParams, Thread, Turn } from '@boite/contracts';
-import { RpcErrorCode } from '@boite/contracts';
+import { RpcErrorCode, resolveModelSelection } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import type { FakeContext } from './context';
 import { fakeContextMode } from './context-mode';
@@ -24,7 +24,8 @@ export async function createFakeThread(ctx: FakeContext, params: RpcParams<'thre
   await discoverSelection(ctx, provider.id, account.id, params.model ?? defaultModel(provider), params.effort ?? null, params.speed ?? null);
   const models = modelsOf(ctx, provider.id, account.id);
   const model = checkModel(provider, account.id, models, params.model ?? defaultModel(provider), ctx.modelCatalogs.has(provider.id + '::' + account.id));
-  const effort = checkEffort(provider, models, model, params.effort ?? null);
+  const selected = resolveModelSelection(models, params.model, params.effort);
+  const effort = checkEffort(provider, models, model, selected?.effort ?? params.effort ?? null);
   checkSpeed(ctx, params.providerId, params.accountId, model, params.speed ?? null);
   const contextMode = fakeContextMode(provider, params.context);
   if (params.incognito === true) {

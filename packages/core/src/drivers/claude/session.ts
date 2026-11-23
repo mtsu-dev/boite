@@ -8,8 +8,8 @@ import { noticePart } from './notices.ts';
 import { authenticationFailureOf, authenticationSuspectOf, commandsOf, isApiRetry, isAuthenticationFailure, subagentOf } from './mapping.ts';
 import { RunningTotals } from './totals.ts';
 import { toolGate } from './permissions.ts';
-import { liveSetup, PROMPT_EFFORT, PromptQueue } from './query.ts';
-import type { ClaudeDeps, LiveSetup } from './query.ts';
+import { claudeModelId, liveSetup, PROMPT_EFFORT, type LiveSetup } from './config.ts';
+import { PromptQueue, type ClaudeDeps } from './query.ts';
 import type { ClaudeTurn } from './turn.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { noteClaudeMessage } from './diagnostics.ts';
@@ -20,13 +20,12 @@ import { SessionTasks } from './tasks.ts';
 import { SessionCrons } from './crons.ts';
 import { CliStderr } from './cli-stderr.ts';
 import { START_DEADLINE_MS, StartDeadline, stopCli } from './start-deadline.ts';
+import { FastMode } from './fast-mode.ts';
 
 /** How long `stop()` lets the CLI end its turn before the abort signal takes it. */
 const STOP_GRACE_MS = 3_000;
 /** How long the CLI has to exit on its own once the prompt stream is over. */
 const FINISH_GRACE_MS = 5_000;
-/** The CLI re-emits its `init` frame right after a flag change (under 200 ms, CLI 2.1.291). */
-const FAST_REPORT_MS = 2_000;
 
 /**
  * How long a session with nothing left in the background waits for the CLI to
@@ -131,8 +130,7 @@ export class ClaudeSession {
   #pending: Promise<void> = Promise.resolve();
   /** An unanswered live control makes the query unsafe to retain for another turn. */
   #permissionTurn: ClaudeTurn | null = null;
-  /** Callers waiting for the fast mode state of the next `init` frame. */
-  #fastReports: ((state: string | undefined) => void)[] = [];
+  readonly #fastMode = new FastMode();
   readonly #ready: Promise<void>;
   #markReady: () => void = () => undefined;
   /** The permission callback and the tool hooks, reading the turn the CLI is on. */
@@ -340,23 +338,6 @@ export class ClaudeSession {
     return taken;
   }
 
-  /** The fast mode state of the next `init` frame, or undefined when none comes in time. */
-  #nextFastState(): Promise<string | undefined> {
-    return new Promise((resolve) => {
-      const report = (state: string | undefined): void => {
-        clearTimeout(timer);
-        resolve(state);
-      };
-      const timer = setTimeout(() => {
-        const at = this.#fastReports.indexOf(report);
-        if (at >= 0) this.#fastReports.splice(at, 1);
-        resolve(undefined);
-      }, FAST_REPORT_MS);
-      timer.unref?.();
-      this.#fastReports.push(report);
-    });
-  }
-
   /** Apply the next turn's settings before its prompt enters the warm stream. */
   async #follow(turn: ClaudeTurn): Promise<void> {
     if (turn.isStopped || this.#closing || this.#ended) return;
@@ -365,7 +346,7 @@ export class ClaudeSession {
     await this.#ready;
     if (turn.isStopped || this.#closing || this.#ended) return;
     const tokens = turn.ctx.autoCompactTokens?.() ?? null;
-    if (tokens !== this.#compactionTokens || (tokens !== null && turn.ctx.thread.model !== this.#compactionModel)) {
+    if (tokens !== this.#compactionTokens || (tokens !== null && claudeModelId(turn.ctx.thread.model) !== this.#compactionModel)) {
       if (this.#head() === turn && !this.holding()) {
         this.#strand(turn, 'native compaction launch settings changed');
         return;
@@ -405,7 +386,8 @@ export class ClaudeSession {
     const wanted = liveSetup(turn.ctx.thread, !!turn.ctx.protectedExecution);
     const live = { ...applied };
     try {
-      if (wanted.model !== live.model) {
+      const modelChanged = wanted.model !== live.model;
+      if (modelChanged) {
         // `undefined` is the SDK's "back to the default model".
         await query.setModel(wanted.model ?? undefined);
         live.model = wanted.model;
@@ -416,17 +398,8 @@ export class ClaudeSession {
         await query.applyFlagSettings({ effortLevel: wanted.effortLevel });
         live.effortLevel = wanted.effortLevel;
       }
-      if (wanted.fastMode !== live.fastMode) {
-        // Switching fast mode on is accepted by the setter and reported back
-        // as `fastMode: true` by `getSettings`, yet a running CLI may keep
-        // answering at standard speed: on a Max account without extra usage
-        // (CLI 2.1.291, probed on 2026-10-07) the re-emitted `init` says
-        // `off` with `extra_usage_disabled`, while the same account gets fast
-        // answers from a process launched with the setting. Only that frame
-        // tells, so anything but `on` moves the turn to a new process.
-        const reported = wanted.fastMode ? this.#nextFastState() : null;
-        await query.applyFlagSettings({ fastMode: wanted.fastMode });
-        if (reported !== null && (await reported) !== 'on') throw new Error('fast mode stays off on the running process');
+      if (wanted.fastMode !== live.fastMode || (modelChanged && wanted.fastMode)) {
+        await this.#fastMode.apply(query, wanted.fastMode);
         live.fastMode = wanted.fastMode;
       }
       if (wanted.permissionMode !== live.permissionMode) {
@@ -533,7 +506,7 @@ export class ClaudeSession {
         Object.assign(options, protectedOptions, {settings: {...options.settings as object, ...protectedOptions.settings as object}});
       }
       this.#compactionTokens = this.#ctx.autoCompactTokens?.() ?? null;
-      this.#compactionModel = this.#ctx.thread.model;
+      this.#compactionModel = claudeModelId(this.#ctx.thread.model);
       const queryFn = await this.#deps.loadQuery();
       // Loading the SDK is the first await of the session, so a stop can land here.
       if (!first?.isStopped && !this.#closing) {
@@ -570,50 +543,53 @@ export class ClaudeSession {
     // A CLI that missed its start is being stopped: nothing it still writes may settle the turn before it exited.
     if (this.#startMissed) return;
     if (message.type === 'prompt_suggestion') { this.#suggest(message); return; }
-    if (authenticationSuspectOf(message)) this.#authSuspect = true;
-    const authFailure = authenticationFailureOf(message, this.#authSuspect);
-    if (message.type === 'result' && subagentOf(message) === null) this.#authSuspect = false;
-    if (authFailure !== null) {
-      this.#loginRejected = true;
-      (this.#head()?.ctx ?? this.#ctx).authenticationFailed?.();
-      if (this.#head() === null) { this.#finish(authFailure); return; }
-    }
+    if (this.#handleAuthentication(message)) return;
     const sessionId = (message as { session_id?: string }).session_id;
     if (typeof sessionId === 'string' && sessionId.length > 0) this.#sessionId = sessionId;
     if (message.type === 'system') this.#noteTasks(message); else if (!replayed) this.#crons.noted(message);
     if (this.#loopLifecycle(message)) return;
-    if (this.#native === 'drop') {
-      // Deltas only stream what the run's assistant messages hold: a folded replay needs none of them.
-      if (message.type !== 'result') { if (message.type !== 'stream_event' && this.#dropped.length < ORPHANS_MAX) this.#dropped.push(message); return; }
-      const run = this.#dropped.splice(0);
-      this.#native = null;
-      const head = this.#head();
-      // The CLI folded the attached turn's prompt into the run: its result answers that turn, so the run is the turn's.
-      if (head?.answersPrompt(message)) {
-        for (const frame of [...run, message]) this.#deliver(frame, false);
-        return;
-      }
-      this.#totals.counted(message);
-      if (head === null) this.#afterTurns();
+    if (this.#native === 'drop') this.#receiveDroppedRun(message);
+    else this.#deliver(message, replayed);
+  }
+
+  #handleAuthentication(message: SDKMessage): boolean {
+    if (authenticationSuspectOf(message)) this.#authSuspect = true;
+    const failure = authenticationFailureOf(message, this.#authSuspect);
+    if (message.type === 'result' && subagentOf(message) === null) this.#authSuspect = false;
+    if (failure === null) return false;
+    this.#loginRejected = true;
+    const turn = this.#head();
+    (turn?.ctx ?? this.#ctx).authenticationFailed?.();
+    if (turn !== null) return false;
+    this.#finish(failure);
+    return true;
+  }
+
+  #receiveDroppedRun(message: SDKMessage): void {
+    if (message.type !== 'result') {
+      if (message.type !== 'stream_event' && this.#dropped.length < ORPHANS_MAX) this.#dropped.push(message);
       return;
     }
-    this.#deliver(message, replayed);
+    const run = this.#dropped.splice(0);
+    this.#native = null;
+    const head = this.#head();
+    // A result that names the attached prompt makes the buffered run part of that turn.
+    if (head?.answersPrompt(message)) {
+      for (const frame of [...run, message]) this.#deliver(frame, false);
+      return;
+    }
+    this.#totals.counted(message);
+    if (head === null) this.#afterTurns();
   }
 
   /** What `#receive` does with a frame that belongs to a turn, or opens one. */
   #deliver(message: SDKMessage, replayed: boolean): void {
-    // A stop makes the CLI write an error result for the interrupt: that is the stop, not a failure.
-    if (!replayed && !(message.type === 'result' && (this.#closing || this.#head()?.isStopped === true || this.#head()?.swapping === true))) noteClaudeMessage(this.#head()?.ctx ?? this.#ctx, message, this.#spawnedAt);
-    if (message.type === 'system' && message.subtype === 'init') { this.#spawnedAt = null; this.#startDeadline.clear(); this.#totals.started(message.claude_code_version); }
-    if (message.type === 'system' && message.subtype === 'init') {
-      for (const report of this.#fastReports.splice(0)) report(message.fast_mode_state);
-    }
-    if (message.type === 'system' && (message.subtype === 'init' || message.subtype === 'status')) this.#noteMode(message.permissionMode);
-    if (this.#replayed(message)) return;
-    // Counted once here, with or without a turn: an adopted message is handed
-    // to the turn that opens for it later.
-    if (message.type === 'system' && message.subtype === 'hook_response') (this.#head()?.ctx ?? this.#ctx).hook?.(hookReport(message));
     const turn = this.#head();
+    // The error result for a local interrupt is expected.
+    const interrupted = message.type === 'result' && (this.#closing || turn?.isStopped || turn?.swapping);
+    if (!replayed && !interrupted) noteClaudeMessage(turn?.ctx ?? this.#ctx, message, this.#spawnedAt);
+    if (message.type === 'system') this.#noteSystem(message);
+    if (this.#replayed(message)) return;
     if (turn === null) {
       // A notice such as `session_writes_lost`, written as the CLI exits after its last result, opens no turn.
       const notice = noticePart(message);
@@ -621,38 +597,51 @@ export class ClaudeSession {
       return;
     }
     if (this.#sessionId !== null) turn.noteSession(this.#sessionId);
-    if (message.type === 'result' && this.#native === 'beside') {
-      this.#native = null;
-      // A prompt folded into the wake's run is answered by its result, as below.
-      if (!turn.answersPrompt(message)) { this.#totals.counted(message); return; }
-    }
-    if (message.type === 'result' && this.#foreignResults > 0) {
-      // A prompt that reaches the CLI while its own run is still between tool
-      // rounds is folded into that run (CLI 2.1.300): one result answers both,
-      // and it names the prompt. Without that name it is the CLI's own result.
-      if (turn.answersPrompt(message)) {
-        this.#foreignResults = 0;
-      } else {
-        this.#foreignResults -= 1;
-        this.#totals.counted(message);
-        return;
-      }
-    }
+    if (message.type === 'result' && this.#ownResult(turn, message)) return;
     // The turn is told what earlier turns account for before it reads the result.
     if (message.type === 'result') turn.noteCostBefore(...this.#totals.before(message));
     if (!replayed && this.#native === null && this.#foreignResults === 0 && this.#sessionId !== null
       && message.type === 'assistant' && !message.error && subagentOf(message) === null) turn.ctx.sessionAccepted?.(this.#sessionId);
     turn.handle(message);
-    // A result can answer several prompts. The query stays open after the turn.
-    if (message.type === 'result') {
-      this.#totals.counted(message);
-      if (turn.swapping && !turn.isStopped && !this.#closing) { this.#handOver(turn); return; }
-      if (!this.#closing && !this.#loginRejected && turn.waitsForPromptResult(message)) return;
-      // A CLI that could not resume holds no session worth keeping warm: the
-      // retry the core sends next must get a query of its own, with no resume.
-      if (turn.sessionLost || this.#loginRejected) this.close(null);
-      this.#endTurn(turn);
+    if (message.type === 'result') this.#settleResult(turn, message);
+  }
+
+  #noteSystem(message: Extract<SDKMessage, { type: 'system' }>): void {
+    if (message.subtype === 'init') {
+      this.#spawnedAt = null;
+      this.#startDeadline.clear();
+      this.#totals.started(message.claude_code_version);
+      this.#fastMode.note(message.fast_mode_state);
     }
+    if (message.subtype === 'init' || message.subtype === 'status') this.#noteMode(message.permissionMode);
+    if (message.subtype === 'hook_response') (this.#head()?.ctx ?? this.#ctx).hook?.(hookReport(message));
+  }
+
+  /** A wake's result counts toward the session total without settling the reader's prompt. */
+  #ownResult(turn: ClaudeTurn, message: Extract<SDKMessage, { type: 'result' }>): boolean {
+    if (this.#native === 'beside') {
+      this.#native = null;
+      if (!turn.answersPrompt(message)) {
+        this.#totals.counted(message);
+        return true;
+      }
+    }
+    if (this.#foreignResults === 0) return false;
+    if (turn.answersPrompt(message)) {
+      this.#foreignResults = 0;
+      return false;
+    }
+    this.#foreignResults -= 1;
+    this.#totals.counted(message);
+    return true;
+  }
+
+  #settleResult(turn: ClaudeTurn, message: Extract<SDKMessage, { type: 'result' }>): void {
+    this.#totals.counted(message);
+    if (turn.swapping && !turn.isStopped && !this.#closing) { this.#handOver(turn); return; }
+    if (!this.#closing && !this.#loginRejected && turn.waitsForPromptResult(message)) return;
+    if (turn.sessionLost || this.#loginRejected) this.close(null);
+    this.#endTurn(turn);
   }
 
   /**

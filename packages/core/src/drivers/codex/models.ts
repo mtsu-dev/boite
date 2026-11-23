@@ -1,4 +1,5 @@
-import type { EffortLevel, ModelInfo, ProviderDescriptor, QuotaResetOutcome } from '@boite/contracts';
+import type { ModelInfo, ProviderDescriptor, QuotaResetOutcome } from '@boite/contracts';
+import { modelCapabilities } from '../model-capabilities.ts';
 import pkg from '../../../package.json';
 import { messageOf, unavailable } from '../../errors.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
@@ -14,47 +15,6 @@ import { codexNextResetCredit } from '../../quota-details.ts';
 // ---------------------------------------------------------------------------
 // The probe: the models the server itself lists
 // ---------------------------------------------------------------------------
-
-/** The words the picker shows for the effort ids Codex uses, its own spelling kept otherwise. */
-const EFFORT_LABELS: Record<string, string> = {
-  minimal: 'Minimal',
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  xhigh: 'Extra high',
-  max: 'Max',
-  ultra: 'Ultra',
-};
-
-function effortLabel(id: string): string {
-  return EFFORT_LABELS[id] ?? `${id.slice(0, 1).toUpperCase()}${id.slice(1)}`;
-}
-
-/**
- * `supportedReasoningEfforts` as a `ModelInfo.effort` block. Unlike ACP's
- * `thought_level`, which is one scale for the whole session, Codex gives each
- * model its own scale and its own default, so this is read per model.
- */
-function effortOf(model: CodexModel): ModelInfo['effort'] | null {
-  const options = model.supportedReasoningEfforts ?? [];
-  const levels: EffortLevel[] = [];
-  const seen = new Set<string>();
-  for (const option of options) {
-    const id = option.reasoningEffort;
-    if (typeof id !== 'string' || id.length === 0 || seen.has(id)) continue;
-    seen.add(id);
-    levels.push({
-      id,
-      label: effortLabel(id),
-      ...(typeof option.description === 'string' && option.description.length > 0
-        ? { description: option.description }
-        : {}),
-    });
-  }
-  if (levels.length === 0) return null;
-  const wanted = model.defaultReasoningEffort ?? '';
-  return { levels, default: seen.has(wanted) ? wanted : (levels[0]?.id ?? '') };
-}
 
 /**
  * A `model/list` answer as a model list. The descriptor's `default` stays first
@@ -74,15 +34,11 @@ function modelsFrom(provider: ProviderDescriptor, data: CodexModel[]): ModelInfo
     const id = entry.id;
     if (typeof id !== 'string' || id.length === 0 || seen.has(id)) continue;
     seen.add(id);
-    const effort = effortOf(entry);
-    const tiers = entry.serviceTiers ?? entry.additionalSpeedTiers?.map(id => ({ id, name: effortLabel(id), description: undefined }));
-    const speeds = tiers?.filter(tier => tier.id !== 'default').map(tier => ({ id: tier.id, label: tier.name, ...(tier.description ? { description: tier.description } : {}) }));
     models.push({
       id,
       name: entry.displayName ?? id,
       default: entry.isDefault === true,
-      ...(effort === null ? {} : { effort }),
-      ...(speeds?.length ? { speeds } : {}),
+      ...modelCapabilities({ ...entry }),
     });
   }
   // Only the descriptor's own entry came back: the server said nothing useful.

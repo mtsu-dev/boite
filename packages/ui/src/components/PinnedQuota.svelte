@@ -118,7 +118,7 @@
       busy={!connected || reader.busy} retry={() => refresh(true)} testPrefix="pinned-quota" size="pinned">
       {#if rows.length === 0 && !reader.error}<p>{strings.quotas.pinnedEmpty}</p>{/if}
       {#each ordered as row (row.accountId)}
-        <article data-testid="pinned-quota-account" data-account-id={row.accountId} data-provider={row.providerId} class:stale={row.status === 'unavailable'}>
+        <article data-testid="pinned-quota-account" data-account-id={row.accountId} data-provider={row.providerId} class:stale={row.status === 'unavailable' || row.error !== null}>
           <div class="account"><span class="ui-label" title={quotaAccountName(row)}><PrivateText text={quotaAccountName(row)} /></span></div>
           {#each row.windows as window (window.id)}
             {@const left = remainingPercent(window.usedPercent)}

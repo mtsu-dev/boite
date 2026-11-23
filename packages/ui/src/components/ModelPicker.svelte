@@ -57,12 +57,12 @@
   let body = $state<ModelPickerMenu | undefined>(undefined);
 
   let provider = $derived(choice ? store.providerOf(choice.providerId) : null);
+  let selectedModel = $derived(store.modelOf(choice));
   // The model's name, or its agent's while the agent picks the model itself;
   // the login only when the agent has several to tell apart.
   let label = $derived.by(() => {
     if (!choice || !provider) return strings.composer.noProvider;
-    const model = store.modelOf(choice);
-    return model && isNamedModel(model) ? model.name : provider.name;
+    return selectedModel && isNamedModel(selectedModel) ? selectedModel.name : provider.name;
   });
   /** The chip names the model; the account only when it is another seat than the provider's own login. */
   let accountLabel = $derived.by(() => {

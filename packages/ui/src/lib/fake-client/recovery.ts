@@ -1,6 +1,6 @@
-import { threadActive, type Attachment, type RpcParams, type ThreadRecovery, type Turn } from '@boite/contracts';
+import { resumeModelSelection, resumeReceiptConflict, threadActive, type Attachment, type RpcParams, type ThreadRecovery, type Turn } from '@boite/contracts';
 import type { FakeContext } from './context';
-import { checkModel, checkRunnable } from './checks';
+import { checkEffort, checkModel, checkRunnable } from './checks';
 import { modelsOf } from './provider-catalog';
 import { refusal } from './shared';
 import { requireFakeCwd } from './worktrees';
@@ -58,12 +58,15 @@ export function offerRecovery(ctx: FakeContext, threadId: string, recovery: Thre
   ctx.touch(thread);
 }
 
-export function resumeTurn(ctx: FakeContext, { threadId, turnId, model, expectedSelectionVersion }: RpcParams<'turns.resume'>): Turn {
+export function resumeTurn(ctx: FakeContext, { threadId, turnId, model, effort, expectedSelectionVersion }: RpcParams<'turns.resume'>): Turn {
   const thread = ctx.thread(threadId);
   const key = `${threadId}:manual-resume_${turnId}`;
   const receipt = ctx.turnRequests.get(key);
   if (receipt) {
-    if (model !== undefined && model !== receipt.turn.execution?.model) throw refusal('this turn already resumed on another model');
+    const execution = receipt.turn.execution;
+    const conflict = resumeReceiptConflict(execution ? modelsOf(ctx, execution.providerId, execution.accountId) : [], execution, { model, effort }, receipt.requested);
+    if (conflict === 'model') throw refusal('this turn already resumed on another model');
+    if (conflict === 'effort') throw refusal('this turn already resumed with another reasoning effort');
     return structuredClone(receipt.turn);
   }
   const recovery = thread.recovery;
@@ -72,13 +75,15 @@ export function resumeTurn(ctx: FakeContext, { threadId, turnId, model, expected
   }
   if (expectedSelectionVersion !== undefined && expectedSelectionVersion !== (thread.selectionVersion ?? 0)) throw refusal('the agent selection changed');
   requireFakeCwd(ctx, thread);
-  const changed = model !== undefined && model !== thread.model;
-  if (changed && (recovery.kind !== 'usage-limit' || thread.agentSessionId)) throw refusal('the model can only change after a usage limit');
+  const models = modelsOf(ctx, thread.providerId, thread.accountId);
+  const { model: requestedModel, effort: nextEffort, aliasEffort, changedModel, changed } = resumeModelSelection(models, thread, { model, effort });
+  if (changed && (recovery.kind !== 'usage-limit' || thread.agentSessionId)) throw refusal('the model or reasoning effort can only change when resuming an ordinary conversation after a usage limit');
   const provider = ctx.providers.find(entry => entry.id === thread.providerId);
   const account = ctx.accounts.find(entry => entry.id === thread.accountId);
   if (!provider || !account) throw refusal('the saved provider and account must be available');
   checkRunnable(provider, account);
-  if (changed) checkModel(provider, account.id, modelsOf(ctx, provider.id, account.id), model, ctx.modelCatalogs.has(`${provider.id}::${account.id}`));
+  const selected = changed ? checkModel(provider, account.id, models, requestedModel, ctx.modelCatalogs.has(`${provider.id}::${account.id}`)) : null;
+  if (changed) checkEffort(provider, models, selected, nextEffort);
   const messages = thread.messages.filter(message => message.turnId === turnId && (message.role === 'user' || message.role === 'system'));
   const parts = messages.flatMap(message => message.parts);
   const text = parts.flatMap(part => part.type === 'text' ? [part.text] : []).join('\n\n');
@@ -86,7 +91,12 @@ export function resumeTurn(ctx: FakeContext, { threadId, turnId, model, expected
     ? [{ kind: 'image', mimeType: part.mimeType, data: part.data, name: part.alt }]
     : part.type === 'file' ? [{ kind: 'file', mimeType: part.mimeType, data: part.data, name: part.name }] : []);
   const turn = ctx.startTurn(threadId, `Continue the interrupted task.\n\n${text}`, attachments, 'resume', undefined, undefined, [], false, 'Resumed interrupted work',
-    changed ? { model, effort: null, speed: null } : undefined);
-  ctx.turnRequests.set(key, { content: text, turn: thread.turns.find(entry => entry.id === turn.id)!, messageId: thread.messages.find(message => message.turnId === turn.id)!.id });
+    changed ? { model: selected, effort: nextEffort, speed: changedModel ? null : thread.speed } : undefined);
+  ctx.turnRequests.set(key, {
+    content: text,
+    turn: thread.turns.find(entry => entry.id === turn.id)!,
+    messageId: thread.messages.find(message => message.turnId === turn.id)!.id,
+    requested: { model, effort, aliasEffort },
+  });
   return turn;
 }

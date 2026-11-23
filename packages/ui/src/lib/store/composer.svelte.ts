@@ -667,7 +667,9 @@ export class Composer {
     if (thread.agentSessionId) return { target: current, revision: thread.selectionVersion ?? 0, needsUpdate: false };
     const written = request?.choice && request.choice.providerId === current.providerId && request.choice.accountId === current.accountId ? request.choice : null;
     const target = written ? { ...current, model: written.model, effort: written.effort, speed: written.speed ?? null } : s.composerChoice(current);
-    const needsUpdate = target.model !== current.model || !!(written && (target.effort !== current.effort || target.speed !== current.speed));
+    const resolved = s.resolvedChoice(current);
+    const effective = written ? s.resolvedChoice(target) : target;
+    const needsUpdate = effective.model !== resolved.model || !!(written && (effective.effort !== resolved.effort || effective.speed !== resolved.speed));
     return { target, revision: thread.selectionVersion ?? 0, needsUpdate };
   }
 

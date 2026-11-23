@@ -2,14 +2,15 @@ import { unavailable } from '../../errors.ts';
 import type { Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { SideQuestionContext } from '../types.ts';
-import { childEnv, liveSetup, ONE_SHOT_TITLE, type ClaudeDeps } from './query.ts';
+import { liveSetup } from './config.ts';
+import { childEnv, ONE_SHOT_TITLE, type ClaudeDeps } from './query.ts';
 
 /** A fresh, unpersisted query leaves the running session and its prompt queue alone. */
 export async function sideQuestion(deps: ClaudeDeps, ctx: SideQuestionContext): Promise<string> {
   const profile = profileFor(ctx.provider);
   const executable = profile === undefined ? null : resolveExecutable(profile);
   if (executable === null) throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
-  const { effortLevel } = liveSetup(ctx.thread);
+  const { model, effortLevel, fastMode } = liveSetup(ctx.thread);
   let query: Query | undefined;
   const abortController = new AbortController();
   const abort = () => { abortController.abort(); query?.close(); };
@@ -23,7 +24,8 @@ export async function sideQuestion(deps: ClaudeDeps, ctx: SideQuestionContext): 
     };
     query = queryFn({ prompt: prompt(), options: {
       cwd: ctx.thread.cwd,
-      ...(ctx.thread.model === null ? {} : { model: ctx.thread.model }),
+      ...(model === null ? {} : { model }),
+      ...(fastMode ? { settings: { fastMode } } : {}),
       ...(effortLevel === null ? {} : { effort: effortLevel }),
       maxTurns: 1,
       tools: [], allowedTools: [], mcpServers: {}, strictMcpConfig: true, settingSources: [],

@@ -2,9 +2,39 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { MODEL_CACHE_WRITE_MS, Models, sameJson } from './models.svelte';
 import type { StoreContext } from './context';
 import { retainRows } from './snapshot-reads';
+import { speedControl } from '../model-speeds';
+import { modelFavorites, resolveFavorites } from '../model-favorites.svelte';
 
 const providers = [{ id: 'claude', name: 'Claude', protocol: 'claude-sdk', models: [], note: undefined }];
 const accounts = [{ id: 'acc-1', providerId: 'claude', label: 'Main', status: 'ok' }];
+
+test('legacy catalog aliases share model controls and keep distinct favorite efforts', () => {
+  const fable = { id: 'claude-fable-5-2', name: 'Fable 5.2', aliases: [{ id: 'claude/claude-fable-5-2' }],
+    speeds: [{ id: 'fast', label: 'Fast' }] };
+  const neon = { id: 'gemini-4-neon', name: 'Gemini 4 Neon',
+    aliases: [{ id: 'gemini-4-neon-high', effort: 'high' }, { id: 'gemini-4-neon-low', effort: 'low' }],
+    effort: { default: 'high', levels: [{ id: 'high', label: 'High' }, { id: 'low', label: 'Low' }] } };
+  const cache = models({ modelsOf: () => [fable, neon], owner: true });
+  cache.probedModels = { 'claude::acc-1': [fable, neon] };
+  const choice = { providerId: 'claude', accountId: 'acc-1', model: 'claude/claude-fable-5-2', effort: null, speed: 'fast', permissionMode: 'default' as const };
+  expect(cache.modelOf(choice)).toBe(fable);
+  expect(speedControl([fable], choice)).toMatchObject({ speed: 'fast', speeds: fable.speeds });
+  expect(cache.resolvedChoice({ ...choice, model: 'gemini-4-neon-low', effort: 'high' })).toMatchObject({ model: neon.id, effort: 'high' });
+  const favorites = [neon.id, 'gemini-4-neon-high', 'gemini-4-neon-low'].map(id => ({ providerId: 'claude', model: { id, name: neon.name } }));
+  const account = { ...accounts[0]!, identity: null, isolationDir: null, createdAt: 0, status: 'ok' as const };
+  const rows = resolveFavorites(favorites, { providerOn: () => true, accountsOf: () => [account], usableAccountOf: () => account, modelsOf: () => [neon] });
+  expect(rows.map(row => [row.accountId, row.model.id, row.effort ?? neon.effort.default, row.items.length])).toEqual([
+    ['acc-1', neon.id, 'high', 2], ['acc-1', neon.id, 'low', 1],
+  ]);
+  const earlier = modelFavorites.current;
+  try {
+    modelFavorites.current = { at: 1, items: favorites };
+    cache.removeFavorite(rows[1]!);
+    expect(modelFavorites.current.items.map(item => item.model.id)).toEqual([neon.id, 'gemini-4-neon-high']);
+  } finally {
+    modelFavorites.current = earlier;
+  }
+});
 
 function models(store: Record<string, unknown> = {}): Models {
   return new Models({ store: { providers, accounts, endpointUrl: 'ws://127.0.0.1:1', core: { dataDir: 'D:/data' }, ...store } } as unknown as StoreContext);

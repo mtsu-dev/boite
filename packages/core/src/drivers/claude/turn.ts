@@ -29,7 +29,7 @@ import type { HeldUsage, StreamEvent } from './mapping.ts';
 import { CONTEXT_FULL, contextFullReason } from './context-full.ts';
 import { hookEndPart } from './hooks.ts';
 import { noticePart } from './notices.ts';
-import { PROMPT_EFFORT } from './query.ts';
+import { PROMPT_EFFORT } from './config.ts';
 import type { ClaudeSession } from './session.ts';
 import { claudeProgress } from './progress.ts';
 
