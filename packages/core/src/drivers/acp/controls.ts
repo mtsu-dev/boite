@@ -572,7 +572,7 @@ export class SessionControls {
   async #requestOption(agent: ClientContext, sessionId: string, option: SessionConfigOption, category: SessionConfigOptionCategory, value: string, confirm: boolean): Promise<void> {
     const answer = await agent.request('session/set_config_option', { sessionId, configId: option.id, value });
     const options = answer.configOptions ?? [];
-    if (confirm && categoryValue(options, category) !== value) throw new Error(`native agent did not confirm ${category} ${value}`);
+    if (confirm && categoryValue(options, category) !== value) throw new Error(`native agent did not confirm ${value}`);
     if (options.length > 0) {
       this.#configOptions = options;
       this.#ownOptions = true;

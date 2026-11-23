@@ -1,6 +1,8 @@
 import { resolveModelSelection } from '@boite/contracts';
 import type { AccountId, AgentProfile, AgentSelection, ModelInfo, Protocol, ProviderDescriptor } from '@boite/contracts';
 import type { Core } from '../core.ts';
+import { antigravityVariant } from '../drivers/acp/antigravity-catalog.ts';
+import { isAntigravity } from '../drivers/antigravity.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
 
@@ -38,6 +40,19 @@ export function selectionFor(provider: ProviderDescriptor, accountId: AccountId,
   return resolveModelSelection(modelsFor(provider, accountId), model, effort);
 }
 
+/**
+ * Whether `models` offers `model`: listed, aliased, or for Antigravity a pre-1.4
+ * leveled id of a listed base family when its catalog carries no explicit alias yet.
+ */
+export function listsModel(provider: ProviderDescriptor, models: readonly ModelInfo[], model: string): boolean {
+  if (resolveModelSelection(models, model) !== undefined) return true;
+  if (!isAntigravity(provider)) return false;
+  const variant = antigravityVariant(model);
+  if (variant === undefined) return false;
+  const family = models.find(entry => entry.id === variant.family);
+  return family !== undefined && (family.effort === undefined || family.effort.levels.some(level => level.id === variant.effort));
+}
+
 /** Read missing native metadata before validating a new choice, including ACP's per-model scale. */
 export function needsModelDiscovery(
   provider: ProviderDescriptor, accountId: AccountId, model: string | null, effort: string | null, speed: string | null,
@@ -59,6 +74,7 @@ export function checkModel(provider: ProviderDescriptor, accountId: AccountId, m
   const models = modelsFor(provider, accountId);
   const resolved = resolveModelSelection(models, model);
   if (resolved) return resolved.model.id;
+  if (listsModel(provider, models, model)) return model;
   throw refused(
     PROBED_PROTOCOLS.includes(provider.protocol) && probedModelsOf(provider.protocol, provider.id, accountId) === null
       ? 'the agent has not listed this model: open the model picker so Boite reads its models first'

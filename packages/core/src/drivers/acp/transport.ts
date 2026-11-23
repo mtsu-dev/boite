@@ -49,6 +49,7 @@ export function spawnTransport(
     });
   } catch (error) {
     void temp?.dispose();
+    try { protection?.close(Promise.resolve()); } catch { /* preserve spawn error */ }
     throw error;
   }
   // The directory the agent unpacked into goes with its last process.
