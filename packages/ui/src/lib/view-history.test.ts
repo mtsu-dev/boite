@@ -28,9 +28,12 @@ describe('Trail', () => {
     const trail = new Trail();
     for (const view of [thread('a'), thread('b'), thread('b'), thread('c')]) trail.visit(view);
     expect(trail.length).toBe(3);
+    expect([trail.can(-1), trail.can(1)]).toEqual([true, false]);
     trail.step(-1, all);
     trail.step(-1, all);
+    expect([trail.can(-1), trail.can(1)]).toEqual([false, true]);
     trail.visit(thread('d'));
+    expect(trail.can(1)).toBe(false);
     expect(trail.step(1, all)).toBeNull();
     expect(trail.step(-1, all)).toEqual(thread('a'));
   });
