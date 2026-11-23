@@ -234,6 +234,8 @@ export class ContactsBotMethods {
 
   forward(params: RpcParams<'contacts.bot.forward'>): ContactRequest {
     requireBot(this.#core, params.threadId, 'contacts.bot.forward');
+    // Forwarding asks another contact: refused while contacts are off, like collaboration.ask.
+    assertContacts(this.#core);
     const request = this.#core.contacts.requests.forward(params);
     // Stamped here, after the forward itself: the bot's thread shows it at this time.
     return this.#core.contacts.requests.forwarded(request.id) ?? request;

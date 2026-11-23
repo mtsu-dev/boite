@@ -319,8 +319,13 @@ test('the first start that knows contacts keeps them on where a contact is kept,
     expect(h.core.settings.get().contacts).toBe(true);
     h.core.journal.setSetting(key, []);
   }
+  // A stored choice never moves, either way: off with a contact kept, on with none.
+  h.core.journal.setSetting('contacts', [{ coreId: 'c'.repeat(64), name: 'Ada', role: 'guest' }]);
   h.core.journal.setSetting('settings', { ...without(), contacts: false });
   h.core.settings.seedContacts();
   expect(h.core.settings.get().contacts).toBe(false);
   h.core.journal.setSetting('contacts', []);
+  h.core.journal.setSetting('settings', { ...without(), contacts: true });
+  h.core.settings.seedContacts();
+  expect(h.core.settings.get().contacts).toBe(true);
 });

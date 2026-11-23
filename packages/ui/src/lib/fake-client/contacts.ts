@@ -625,10 +625,13 @@ export function contactMethods(ctx: FakeContext) {
       return { ok: true as const };
     },
     'contacts.decideMail': async (params) => {
+      if (params?.accept === true) switchedOn();
       return decideFakeMail(ctx, params?.id, params?.accept);
     },
     'contacts.decide': async (params) => {
       if (typeof params?.accept !== 'boolean') throw invalid('accept: expected a boolean', 'accept');
+      // As the core: accepting opens something to the contact, so the switch must allow it; a refusal always may.
+      if (params.accept) switchedOn();
       const state = contactState(ctx);
       const request = state.requests.find(entry => entry.id === params.id && entry.direction === 'in');
       if (!request || request.status !== 'pending') throw invalid('id: expected a pending request from a contact', 'id');
@@ -760,6 +763,7 @@ export function contactMethods(ctx: FakeContext) {
     },
     'contacts.bot.forward': async (params) => {
       botCall(params?.threadId);
+      switchedOn();
       const state = contactState(ctx);
       const request = state.requests.find(entry => entry.id === params.id && entry.direction === 'out' && entry.status === 'pending' && entry.stage === 'bot');
       if (!request) throw invalid('id: expected an outgoing request waiting for the mochi', 'id');
@@ -788,6 +792,7 @@ export function contactMethods(ctx: FakeContext) {
     },
     'contacts.bot.connect': async (params) => {
       botCall(params?.threadId);
+      switchedOn();
       const request = incoming(params.id, true);
       // As the core: the mochi alone connects only to a thread of a project opened to the contact.
       const target = connectable(params.target);
@@ -799,6 +804,7 @@ export function contactMethods(ctx: FakeContext) {
     },
     'contacts.bot.start': async (params) => {
       botCall(params?.threadId);
+      switchedOn();
       const request = incoming(params.id, true);
       const thread = await startFor(request, params, 'bot');
       changed();
