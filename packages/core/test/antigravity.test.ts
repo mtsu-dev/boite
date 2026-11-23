@@ -578,6 +578,19 @@ describe('antigravity', () => {
     expect(parts.filter((part) => part.type === 'text').map((part) => part.text).join('')).toContain('synthesis: the disk filled up');
   }, 30000);
 
+  test('a permission the woken reply asks keeps the turn open past the answer', async () => {
+    const client = await startCore({ warmProcessMinutes: 0 });
+    const { threadId } = await agyThread(client);
+    // Answered after the quiet that ends a held turn; the reply follows 2 s later.
+    client.on('permission.requested', (request) => {
+      setTimeout(() => void client.call('permissions.answer', { requestId: request.id, decision: 'allow' }), 4_000);
+    });
+    await runTurn(client, threadId, 'investigate scenario:swarm-ask');
+    expect(fakeLog().split('\n')).toEqual(expect.arrayContaining(['permission answered', 'synthesized']));
+    const parts = (await client.call('threads.get', { threadId })).messages.at(-1)?.parts ?? [];
+    expect(parts.filter((part) => part.type === 'text').map((part) => part.text).join('')).toContain('synthesis: the disk filled up');
+  }, 30000);
+
   test('Stop ends a turn held for a swarm worker, and the process with it', async () => {
     const client = await startCore();
     const { threadId } = await agyThread(client);

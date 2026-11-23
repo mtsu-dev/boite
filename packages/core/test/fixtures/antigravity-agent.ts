@@ -22,7 +22,9 @@
  * after its answer. `scenario:swarm` adds a swarm worker and answers while it
  * works, as 1.5 does: the worker reports in the session's inbox a moment
  * later (`worker reported`), then the agent, woken by the report, runs a
- * slow tool and answers again with no prompt open (`synthesized`). `scenario:swarm-stuck` adds one
+ * slow tool and answers again with no prompt open (`synthesized`);
+ * `scenario:swarm-ask` asks a permission there instead and answers 2 s after
+ * the user (`permission answered`). `scenario:swarm-stuck` adds one
  * that never reports.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -291,12 +293,23 @@ const app = agent({ name: 'agy-fake' })
           // tool works longer than the quiet that ends a held turn.
           setTimeout(() => {
             writeRecord(params.sessionId, ['messages', 'read.json'], { report: true });
+            const synthesize = () => update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ' synthesis: the disk filled up' } }).then(() => log('synthesized'));
+            if (text.includes('scenario:swarm-ask')) {
+              // A permission the user answers late, then a reply that takes its time.
+              void client.request('session/request_permission', {
+                sessionId: params.sessionId,
+                toolCall: { toolCallId: `${params.sessionId}:clean`, title: 'Clean the disk', rawInput: { path: '/tmp' } },
+                options: [{ optionId: 'yes', name: 'Allow once', kind: 'allow_once' }, { optionId: 'no', name: 'Reject once', kind: 'reject_once' }],
+              }).then(() => {
+                log('permission answered');
+                setTimeout(() => void synthesize(), 2_000);
+              });
+              return;
+            }
             const check = `${params.sessionId}:check`;
             void update({ sessionUpdate: 'tool_call', toolCallId: check, title: 'Checking the disk', kind: 'execute', status: 'in_progress' });
             setTimeout(() => {
-              void update({ sessionUpdate: 'tool_call_update', toolCallId: check, status: 'completed', rawOutput: '100%' })
-                .then(() => update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ' synthesis: the disk filled up' } }))
-                .then(() => log('synthesized'));
+              void update({ sessionUpdate: 'tool_call_update', toolCallId: check, status: 'completed', rawOutput: '100%' }).then(synthesize);
             }, 4_500);
           }, 1_500);
         }, 1_500);

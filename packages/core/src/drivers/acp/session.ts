@@ -538,22 +538,30 @@ export class AcpSession {
   async #holdForDetached(turn: AcpTurn, sessionId: string): Promise<void> {
     const home = this.#geminiHome;
     if (home === null) return;
-    const first = await readDetachedWork(home, sessionId, turn.toolCallIds()).catch(() => null);
+    // Before any await: a tool the reply starts while the records are read is the reply's.
+    const prompted = turn.toolCallIds();
+    const first = await readDetachedWork(home, sessionId, prompted).catch(() => null);
     if (first === null || first.launched === 0) return;
     turn.ctx.log('info', `acp: the prompt ended with ${first.atWork} of the ${first.launched} children it launched at work; the turn waits for their reports and the agent's reply`);
-    const prompted = turn.toolCallIds();
     this.#holding = turn;
+    // The quiet counts from the last update or the last poll that found work.
+    let busyAt = Date.now();
     try {
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, DETACHED_POLL_MS));
         if (this.#ended || turn.settled || turn.isStopped) return;
         const work = await readDetachedWork(home, sessionId, turn.toolCallIds()).catch(() => null);
         if (this.#ended || turn.settled || turn.isStopped) return;
-        if (work !== null && work.atWork > 0) continue;
-        if (await readPendingReply(home, sessionId).catch(() => false)) continue;
         // A tool or a question goes quiet while it works: it is no end of the reply.
-        if (turn.awaitingUser || turn.hasRunningTool(prompted)) continue;
-        if (Date.now() - this.#lastUpdateAt >= DETACHED_QUIET_MS) return;
+        const busy = (work !== null && work.atWork > 0)
+          || turn.awaitingUser
+          || turn.hasRunningTool(prompted)
+          || await readPendingReply(home, sessionId).catch(() => false);
+        if (busy) {
+          busyAt = Date.now();
+          continue;
+        }
+        if (Date.now() - Math.max(this.#lastUpdateAt, busyAt) >= DETACHED_QUIET_MS) return;
       }
     } finally {
       this.#holding = null;

@@ -797,10 +797,11 @@ ends this way the driver reads the agent's records under `GEMINI_HOME`
 conversation's `messages/` inbox, `swarm/members.json` and
 `logs/transcript.jsonl`, in `drivers/acp/detached.ts`). The turn stays open
 while a child launched by one of its calls has not reported in the session's
-inbox and is neither killed nor parked, and while the agent owes the session a
-reply; it ends once no tool that reply started still runs, no question or
-permission waits for the user and the session has been quiet for 3 s. The reply the agent
-starts on its own is drawn into that turn. Stop on a held turn closes the
+inbox and is neither killed nor parked, while the agent owes the session a
+reply, while a tool that reply started runs and while a question or a
+permission waits for the user. It ends 3 s after the last of these, with no
+update from the session since. The reply the agent starts on its own is drawn
+into that turn. Stop on a held turn closes the
 process, and its children with it. An unreadable record holds nothing open.
 The same quirk changes three things in how Boite talks to it, found on the 1.4.5
 agent on 2026-11-04:

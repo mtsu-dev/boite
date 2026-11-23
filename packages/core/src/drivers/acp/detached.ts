@@ -27,7 +27,7 @@ import { join } from 'node:path';
 const NATIVE_ID = /^[A-Za-z0-9-]{1,64}$/;
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_MESSAGE_FILES = 256;
-/** Records listed at most, and of those the most recently written ones read. */
+/** Records or messages listed at most in one directory; of those, the bounds below are read. */
 const MAX_RECORDS = 4096;
 const MAX_CHILDREN = 64;
 const TRANSCRIPT_TAIL_BYTES = 64 * 1024;
@@ -89,13 +89,27 @@ interface InboxMessage {
   body: Json;
 }
 
-/** A conversation's inbox, `read.json` aside. Null past a bound or on a message it cannot read. */
-async function readInbox(root: string, conversation: string): Promise<InboxMessage[] | null> {
+/**
+ * `names` in `directory`, the `count` newest by modification time, or the
+ * oldest when `newest` is false.
+ */
+async function byAge(directory: string, names: string[], count: number, newest: boolean): Promise<string[]> {
+  if (names.length <= count) return names;
+  const dated = await Promise.all(names.map(async (name) => ({ name, at: (await lstat(join(directory, name)).catch(() => undefined))?.mtimeMs ?? 0 })));
+  return dated.sort((a, b) => newest ? b.at - a.at : a.at - b.at).slice(0, count).map((entry) => entry.name);
+}
+
+/**
+ * A conversation's inbox, `read.json` aside: the newest messages within the
+ * bound, or the oldest for `newest` false. Null on a message it cannot read.
+ */
+async function readInbox(root: string, conversation: string, newest = true): Promise<InboxMessage[] | null> {
   const directory = generated(conversation, 'messages');
   const inbox = await managed(root, directory, 'directory');
   if (inbox === undefined) return [];
-  const names = (await readdir(inbox.path).catch(() => null))?.filter((name) => name.endsWith('.json') && name !== 'read.json');
-  if (names === undefined || names.length > MAX_MESSAGE_FILES) return null;
+  const listed = (await readdir(inbox.path).catch(() => null))?.filter((name) => name.endsWith('.json') && name !== 'read.json');
+  if (listed === undefined || listed.length > MAX_RECORDS) return null;
+  const names = await byAge(inbox.path, listed, MAX_MESSAGE_FILES, newest);
   const messages: InboxMessage[] = [];
   for (const name of names) {
     const body = object(await readJson(root, [...directory, name]));
@@ -141,9 +155,9 @@ export async function readDetachedWork(home: string, session: string, launches: 
   if (records === undefined) return none;
   const names = (await readdir(records.path).catch(() => [])).filter((name) => name.endsWith('.json') && NATIVE_ID.test(name.slice(0, -5)));
   if (names.length === 0 || names.length > MAX_RECORDS) return none;
-  // The session's older children stay on disk; the turn's own are the newest.
-  const dated = await Promise.all(names.map(async (name) => ({ child: name.slice(0, -5), at: (await lstat(join(records.path, name)).catch(() => undefined))?.mtimeMs ?? 0 })));
-  const children = dated.sort((a, b) => b.at - a.at).slice(0, MAX_CHILDREN).map((entry) => entry.child);
+  // The session's older children stay on disk; the turn's own are the newest,
+  // and so are their reports in the session's inbox.
+  const children = (await byAge(records.path, names, MAX_CHILDREN, true)).map((name) => name.slice(0, -5));
   const parentInbox = await readInbox(root, session);
   if (parentInbox === null) return none;
   const reported = new Set(parentInbox.map((message) => message.body['sender']));
@@ -151,7 +165,8 @@ export async function readDetachedWork(home: string, session: string, launches: 
   let launched = 0;
   let atWork = 0;
   for (const child of children) {
-    const inbox = await readInbox(root, child);
+    // The launching call is the first message a child receives.
+    const inbox = await readInbox(root, child, false);
     if (inbox === null || !inbox.some((message) => launches.has(launchOf(message.body, session) ?? ''))) continue;
     launched += 1;
     if (reported.has(child) || silent.has(child)) continue;
