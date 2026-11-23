@@ -19,9 +19,12 @@ export const CHAT_VISUALS = 'Visuals need no command: chat draws a ```mermaid fe
  * A conversation's agent closes its own thread in the turn its last PR merges:
  * waiting for Boite's question after the merge costs one more turn over the
  * whole history (`merged-pr-ask.ts`). Top-level conversations only: `agent.done`
- * refuses a subagent's or a mochi's thread.
+ * refuses a subagent's or a mochi's thread. A final reply that waits on the user
+ * (a build to try, something asked, an offer) keeps it open: their answer belongs
+ * there, and a thread in Done hides the reply they have not read yet.
  */
-export const OWN_DONE = 'Once your last PR is merged and nothing is left, run `boite thread done` in that turn, unasked.';
+export const OWN_DONE = 'Once your last PR is merged and nothing is left, run `boite thread done` in that turn, unasked. '
+  + 'Something is left when your reply waits on the user: a build or change for them to try, something you ask them, a choice or an offer. Then keep the thread open.';
 
 type ListedSkill = { name: string; description: string; path: string };
 
