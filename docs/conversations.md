@@ -131,7 +131,7 @@ keeps its name. The header shows the branch.
   is merged or closed, Boite asks its agent whether the conversation is done.
   The agent moves it to Done or keeps it open when it still has something to
   say, or when its last answer waits on you: a build to try, a question or a
-  choice. Nothing goes to Done by itself.
+  choice or an offer. Nothing goes to Done by itself.
 
 ## Titles
 
