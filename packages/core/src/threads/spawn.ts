@@ -9,6 +9,7 @@ import { folderToAdd } from '../projects.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
 import type { ThreadStore } from '../threads.ts';
 import { agentHere, catalogFor, checkGroupStart, GROUP_THREADS_OFF, machineArg, memberModels, memberNamed, peerRefusal, remoteOrigin, type GroupStart, type StartFields } from './group-spawn.ts';
+import { assertContacts } from '../contacts/switch.ts';
 import { saveThread, withLoad } from './records.ts';
 
 const HOUR = 3_600_000;
@@ -138,8 +139,11 @@ export class ThreadSpawns {
           ? { providerId: caller.providerId, accountId: caller.accountId, ...(caller.model === null ? {} : { model: caller.model }), effort: caller.effort, speed: caller.speed ?? null, permissionMode: caller.permissionMode }
           : { ...picked, permissionMode: caller.permissionMode },
         origin: { origin, reported: false, ...(fromContact ? { fromContact } : {}) },
-      // Worktree preparation can outlive the caller's agent socket and its archive.
-      }, () => { if (this.#threads.require(threadId).archived) throw refused('an archived thread cannot start threads', { threadId, field: 'threadId', expected: 'a thread that is not archived' }); });
+      // Worktree preparation can outlive the caller's agent socket and its archive, and the owner's contacts switch.
+      }, () => {
+        if (this.#threads.require(threadId).archived) throw refused('an archived thread cannot start threads', { threadId, field: 'threadId', expected: 'a thread that is not archived' });
+        if (fromContact) assertContacts(this.#core);
+      });
       this.#record(threadId, { at: now, requestId, fingerprint, threadId: created.id, turnId: turn.id });
       // Its turns report back to the agent that started it.
       if (bot) this.#core.workforce.projects.follow(bot.id, created.id, 'started');

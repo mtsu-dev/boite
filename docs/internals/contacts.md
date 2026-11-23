@@ -1,7 +1,27 @@
 # Contacts
 
-On in every build, with no switch ([experiments](experiments.md#contacts)).
-A full security pass and a network pass are still to come.
+In every build, with no experiment switch ([experiments](experiments.md#contacts)),
+behind the owner's own switch below. A full security pass and a network pass
+are still to come.
+
+## The owner's switch
+
+The machine setting `contacts` is off unless `true`. A first start writes
+`false`, or `true` where the journal already keeps a contact: its own, or a
+copy another member relays or holds for the group under an admission still
+current, read once the group is restored. An install that linked someone
+before the setting existed keeps its links; a stored choice never moves. Off, contacts stop where the policy's `network.contacts:
+false` stops them (`contacts/switch.ts`): no invitation, join, grant, accepted
+request, human reply or `collaboration.ask`, refused with the reason
+`contacts-off` and the `boite settings request contacts true` way to ask;
+kept links close and are not dialed, the agents' guide leaves the contacts
+section out, and `collaboration.contacts` answers an empty list. What is kept
+(contacts, opened projects, letters) waits: a request, letter or answer queued
+for a member or a contact whose own switch is off is tried again, never
+refused, and a join the inviter already answered is kept on both sides. Turned
+on, the links are dialed again at once, past any wait earned before. Unlike the policy, the switch leaves Funnel routes mounted: they
+answer only a contact's signed hello, which the switch refuses. The app shows
+the Contacts button and column only while it is on.
 
 A contact is another owner's Boite. Your agents and theirs work together on the
 projects each side opens to the other, and on nothing else. A contact never

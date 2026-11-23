@@ -92,7 +92,9 @@ run": the version in the hello (`info.version`) is enough.
   with the reason `auto-goals-off`. `settings.get` returns the settings as
   stored, with the policy overlay; `{ stored: true }` is still accepted, and
   `settings-sync.ts` still asks for it, for a core from before this change.
-  Contacts have no gate left in the core.
+  Contacts have no experiment gate left in the core; the owner setting
+  `contacts` (off unless `true`, [contacts](contacts.md#the-owners-switch))
+  holds them off on a machine.
 - The app (`packages/ui/src/lib/experiments.ts`) follows the version of its
   primary machine's core: the Store `followDesktopOf` names says it on every
   hello (`heardBuild`, from `store/events.ts` and `store/connection.svelte.ts`).

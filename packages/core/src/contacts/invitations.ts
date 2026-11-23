@@ -14,6 +14,7 @@ import { invalidParams, refused, unavailable } from '../errors.ts';
 import { tailnetAddress } from '../group/addresses.ts';
 import { newToken } from '../ids.ts';
 import { encodeInvite, INVITE_TTL_MS, tokenHash } from './invite.ts';
+import { assertContacts } from './switch.ts';
 import type { ContactStore } from './store.ts';
 
 export const INVITES = 'contacts:invites';
@@ -35,6 +36,8 @@ export async function createInvite(store: ContactStore, core: Core, share: unkno
   if (typeof share !== 'boolean') throw invalidParams('share: expected true or false', { field: 'share' });
   if (typeof internet !== 'boolean') throw invalidParams('internet: expected true or false', { field: 'internet' });
   const room = (): void => {
+    // Read again after the awaits too: contacts switched off meanwhile save no invitation.
+    assertContacts(core);
     if (store.list().length >= store.maxContacts) throw refused(`at most ${store.maxContacts} contacts; remove one first`);
     if (liveInvites(core).length >= MAX_INVITES) throw refused(`at most ${MAX_INVITES} open invitations; cancel them or wait for one to be used or to expire`);
   };

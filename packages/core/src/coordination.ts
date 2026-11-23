@@ -28,6 +28,7 @@ import { forwardCoordination } from './coordination-rpc.ts';
 import { datedByPeer, PeerClocks } from './peer-clock.ts';
 import { trustCoordination, trustedCoordinationPeers } from './coordination-trust.ts';
 import { TeamLetters } from './coordination-team.ts';
+import { contactsOff } from './contacts/switch.ts';
 
 const HOUR = 3_600_000;
 /** How long a delivered, expired, rejected or uncertain letter stays in the journal. */
@@ -548,7 +549,8 @@ export class Coordination {
     const bot = contactsBot(this.#core);
     // A member whose bot lives on the group's Bots host asks through it, like the host's own threads.
     const role = bot !== null ? (bot.threadId === threadId ? 'self' : 'other') : this.#core.contacts.hostAsks.relays() ? 'other' : 'none';
-    return coordinationGuide(config.paused, config.remote && (this.#core.contacts.list().length > 0 || this.#core.contacts.members.relayed().length > 0 || this.#core.group.peers().length > 0), role);
+    // Contacts held off (`contacts/switch.ts`) leave the guide without them.
+    return coordinationGuide(config.paused, config.remote && !contactsOff(this.#core) && (this.#core.contacts.list().length > 0 || this.#core.contacts.members.relayed().length > 0 || this.#core.group.peers().length > 0), role);
   }
 
   /** Hook delivery: one batch at a provider's next safe tool boundary. */

@@ -16,6 +16,7 @@ import { checkCard, checkTailnetName, decodeInvite, tokenHash, type ContactCard,
 import { funnelFetch, nameNotFound } from './public-dns.ts';
 import { clockGap } from '../peer-clock.ts';
 import type { ContactStore } from './store.ts';
+import { assertContacts, contactsOff, contactsRefusal } from './switch.ts';
 
 export const CONTACT_JOIN_ROUTE = '/contacts/join';
 export const JOIN_INPUT = 'boite-contact-join\n';
@@ -46,7 +47,7 @@ function funnelFailure(error: unknown, invite: Invitation): { message: string; r
 
 /** The guest's side: spends the link's token on its host, then keeps the host as a contact and dials it. */
 export async function joinContact(store: ContactStore, core: Core, link: string): Promise<Contact> {
-  core.policy.assert(core.policy.networkOff('contacts'), 'network.contacts');
+  assertContacts(core);
   const invite = decodeInvite(link);
   const self = store.card();
   if (invite.coreId === self.coreId) throw invalidParams('link: this invitation is this core\'s own', { field: 'link' });
@@ -68,8 +69,12 @@ async function spendInvite(store: ContactStore, core: Core, invite: Invitation, 
     }
   }
   await checkTailnetName(invite.url, 'link.url');
-  core.policy.assert(core.policy.networkOff('contacts'), 'network.contacts');
   type Reply = { nonce?: unknown; card?: unknown; error?: unknown; now?: unknown };
+  // The clock retry and Funnel's DNS fallback can both send after contacts were switched off.
+  const send = ((url, init) => {
+    assertContacts(core);
+    return fetch(url, init);
+  }) as typeof fetch;
   /** One signed join, dated by what is known of the inviter's clock, and its signed answer. */
   const ask = async (): Promise<Reply> => {
     const nonce = randomUUID();
@@ -83,16 +88,18 @@ async function spendInvite(store: ContactStore, core: Core, invite: Invitation, 
         method: 'POST', redirect: 'error',
         headers: { 'content-type': 'application/json', 'x-boite-peer': self.coreId, 'x-boite-signature': SEALED },
         body: sealed.body,
-      }, JOIN_TIMEOUT_MS);
+      }, JOIN_TIMEOUT_MS, send);
     } catch (error) {
+      if (contactsRefusal(error)) throw error;
       // An https origin is the inviter's Funnel: no share to accept. The token is unspent: the same join works later.
       if (!invite.url.startsWith('https:')) throw unavailable(`could not reach ${invite.machine} at ${invite.url}: accept its Tailscale share, or ask for an invitation for another network, then join again`);
       const failure = funnelFailure(error, invite);
       core.log('warn', `contacts: join of ${invite.machine} did not reach its Funnel (${messageOf(error).slice(0, 200)})`, { source: 'contacts' });
       throw unavailable(failure.message, failure.retry ? { retryAfterMs: JOIN_RETRY_MS } : undefined);
     }
+    // The inviter answered, so it may have spent the token and kept this core: its card is kept here too, even if contacts
+    // were switched off meanwhile, and the link waits for the switch (`link.ts`).
     const raw = await boundedBody(response.body, JOIN_BODY_MAX).catch(() => '');
-    core.policy.assert(core.policy.networkOff('contacts'), 'network.contacts');
     if (response.headers.get('x-boite-signature') !== SEALED) throw refused(`${invite.machine} refused the join (${response.status}: ${raw.slice(0, 200)})`);
     let reply: Reply;
     try {
@@ -130,7 +137,7 @@ async function spendInvite(store: ContactStore, core: Core, invite: Invitation, 
 
 /** `POST /contacts/join`: a guest spends an invitation token and leaves its card. Every refusal is a 403 the server counts. */
 export async function joinRequest(store: ContactStore, core: Core, request: Request): Promise<Response> {
-  if (store.isClosed || core.policy.networkOff('contacts') || request.method !== 'POST' || request.headers.has('origin')) return new Response('forbidden', { status: 403 });
+  if (store.isClosed || contactsOff(core) || request.method !== 'POST' || request.headers.has('origin')) return new Response('forbidden', { status: 403 });
   const guest = request.headers.get('x-boite-peer') ?? '';
   if (!/^[0-9a-f]{64}$/.test(guest)) return new Response('x-boite-peer: expected a core id', { status: 403 });
   if (request.headers.get('x-boite-signature') !== SEALED) return new Response('contacts exchange sealed requests only', { status: 400 });
@@ -154,7 +161,7 @@ export async function joinRequest(store: ContactStore, core: Core, request: Requ
     });
   };
   try {
-    core.policy.assert(core.policy.networkOff('contacts'), 'network.contacts');
+    assertContacts(core);
     const card = checkCard(body.card, 'card');
     if (card.coreId !== guest) throw invalidParams('card.coreId: expected the core named by x-boite-peer');
     // A live invitation first: a caller without one leaves no nonce behind.
