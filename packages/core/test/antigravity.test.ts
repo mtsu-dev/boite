@@ -603,6 +603,7 @@ describe('antigravity', () => {
     expect((await finished).status).toBe('stopped');
     // The worker ran inside the agent's process: Stop closed it.
     const pid = Number(fakeLog().split('\n').find((line) => line.startsWith('pid:'))?.slice('pid:'.length));
+    expect(Number.isInteger(pid) && pid > 0).toBe(true);
     await waitFor(() => !alive(pid), 10_000);
   }, 30000);
 
