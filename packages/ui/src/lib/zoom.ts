@@ -1,7 +1,10 @@
+import type { Chord } from '@boite/contracts';
+import { holdsModifiers, isMac } from './keybindings';
 import { desktopShell } from './shell-platform';
 /*
- * The interface zoom: `Ctrl+=`, `Ctrl+-`, `Ctrl+0` and Ctrl with the wheel
- * anywhere in the desktop shell, and the Zoom row of Settings, Appearance. It is the webview's own
+ * The interface zoom: `Ctrl+=`, `Ctrl+-`, `Ctrl+0` and, once the user binds it
+ * on the Keyboard page, the `zoom-wheel` chord anywhere in the desktop shell,
+ * and the Zoom row of Settings, Appearance. It is the webview's own
  * zoom, the one a browser applies, so the layout recomputes at the new size
  * (the media queries included) rather than scaling a picture of it. For the
  * same reason the page of a browser surface keeps its own ladder.
@@ -38,9 +41,18 @@ export function zoomKey(event: KeyboardEvent): -1 | 0 | 1 | null {
   }
 }
 
-/** A wheel turned with the zoom's modifiers: Ctrl, or Cmd as for the keys, and no Alt. */
+/** The wheel chord the zoom listens for now: null with no chord bound, outside the shell, or while the Keyboard page records one. */
+let listening: { chord: Chord; mac: boolean } | null = null;
+let recording = false;
+
+/** A wheel turned with exactly the bound chord's modifiers: one the zoom takes, so nothing else scrolls with it. */
 export function zoomWheel(event: WheelEvent): boolean {
-  return (event.ctrlKey || event.metaKey) && !event.altKey;
+  return listening !== null && !recording && holdsModifiers(event, listening.chord, listening.mac);
+}
+
+/** While the Keyboard page records a wheel chord, the wheel is the page's: the old chord zooms nothing. */
+export function recordingWheel(on: boolean): void {
+  recording = on;
 }
 
 /** How long the wheel rests before its next notch starts a new turn. A pinch sends its deltas far closer. */
@@ -75,20 +87,30 @@ export function wheelSteps(): (event: Pick<WheelEvent, 'deltaY' | 'deltaMode' | 
 }
 
 /**
- * Ctrl with the wheel walks the same ladder as the keys, from anywhere in the
- * shell, before the terminal or a list can scroll with it. A view that zooms
- * its own content with the wheel, a picture, says so with `data-wheel-zoom`
- * and keeps it. The listener can cancel a scroll only once Ctrl or Cmd is
- * down: a cancellable wheel listener makes every scroll wait for the main
- * thread first. A pinch on a trackpad is a Ctrl wheel with no key down: its
- * first delta zooms without being cancelled, the rest of it is.
+ * The `zoom-wheel` chord (`mod+wheel`, `alt+wheel`...) walks the same ladder
+ * as the keys, from anywhere in the shell, before the terminal or a list can
+ * scroll with it. With no chord, the default, nothing is listened to at all.
+ * The modifiers must be the chord's exactly: `mod+wheel` leaves Ctrl+Alt with
+ * the wheel alone.
+ *
+ * A view that zooms its own content with the wheel, a picture, says so with
+ * `data-wheel-zoom` and keeps every wheel, whatever the chord: the image
+ * viewer zooms on Ctrl and pans on the rest, a file's picture zooms on any.
+ *
+ * The listener can cancel a scroll only once the chord's modifiers are down:
+ * a cancellable wheel listener makes every scroll wait for the main thread
+ * first. A pinch on a trackpad is a Ctrl wheel with no key down, so it zooms
+ * only on a `ctrl+wheel` chord, or `mod+wheel` off a Mac: its first delta
+ * zooms without being cancelled, the rest of it is.
  */
-export function watchZoomWheel(failed: (error: unknown) => void): () => void {
-  if (!inShell()) return () => {};
+export function watchZoomWheel(chord: Chord | null, failed: (error: unknown) => void, mac: boolean = isMac()): () => void {
+  if (!inShell() || chord === null || chord.key !== 'wheel') return () => {};
+  const mine = { chord, mac };
+  listening = mine;
   const step = wheelSteps();
   let held = false;
   const wheel = (event: WheelEvent): void => {
-    if (!zoomWheel(event)) {
+    if (recording || !holdsModifiers(event, chord, mac)) {
       // A pinch is over, or the key came up where this window could not hear it.
       hold(false);
       return;
@@ -106,13 +128,14 @@ export function watchZoomWheel(failed: (error: unknown) => void): () => void {
     window.removeEventListener('wheel', wheel, true);
     window.addEventListener('wheel', wheel, { capture: true, passive: !on });
   };
-  const keys = (event: KeyboardEvent): void => hold(event.ctrlKey || event.metaKey);
+  const keys = (event: KeyboardEvent): void => hold(holdsModifiers(event, chord, mac));
   const release = (): void => hold(false);
   window.addEventListener('wheel', wheel, { capture: true, passive: true });
   window.addEventListener('keydown', keys, true);
   window.addEventListener('keyup', keys, true);
   window.addEventListener('blur', release);
   return () => {
+    if (listening === mine) listening = null;
     window.removeEventListener('wheel', wheel, true);
     window.removeEventListener('keydown', keys, true);
     window.removeEventListener('keyup', keys, true);

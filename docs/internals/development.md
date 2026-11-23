@@ -1335,14 +1335,19 @@ service worker precaches default faces. `lib/fonts.ts` and the boot script apply
 both preferences before the first paint and preload the selected text face; the
 code face loads when mono text first draws. System choices use installed
 fonts. In the shell, `Ctrl+=`, `Ctrl+-` and `Ctrl+0` control WebView zoom from
-50% to 200%, restored before the window appears. Ctrl with the wheel walks the
-same steps: the first delta of a turn steps at once, then one step per 100 px
+50% to 200%, restored before the window appears. The wheel is the bindable
+`zoom-wheel` command, off by default ([keybindings.md](keybindings.md)): with
+no chord no listener is installed. Bound, say to `mod+wheel`, it walks the same
+steps: the first delta of a turn steps at once, then one step per 100 px
 or 3 lines, so a pinch's small deltas cannot run away. A window listener takes
-the wheel before the terminal or a list scrolls, cancellable only while Ctrl
-or Cmd is down so that plain scrolling never waits on the main thread. A view
-marked `data-wheel-zoom` (the image viewer, a picture in the file panel) keeps
-its own Ctrl wheel. The panel browser has separate zoom; plain browsers keep
-their native shortcut behavior.
+the wheel before the terminal or a list scrolls, on the chord's exact
+modifiers, cancellable only while they are down so that plain scrolling never
+waits on the main thread; `App.svelte` reinstalls it whenever the chord
+changes. A pinch is a Ctrl wheel with no key down, so it zooms only on a Ctrl
+chord. A view marked `data-wheel-zoom` (the image viewer, a picture in the
+file panel) keeps every wheel whatever the chord, and the edge scrollbars
+leave alone a wheel the zoom takes. The panel browser has separate zoom; plain
+browsers keep their native shortcut behavior.
 
 ### File attachments
 

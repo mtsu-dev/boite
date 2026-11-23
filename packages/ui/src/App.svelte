@@ -347,8 +347,12 @@
   let quitting = $state(false);
   const requestQuit = desktopQuit(() => closingStores(workspace.machines), () => { quitting = true; });
   onMount(() => { if (inShell) return installQuitGuard(requestQuit, error => { store.error = String(error); }); });
-  // Ctrl with the wheel zooms the interface as `Ctrl+=` does (`lib/zoom.ts`); a browser tab keeps its own.
-  onMount(() => watchZoomWheel(error => { store.error = errorText(error); }));
+  // The `zoom-wheel` chord, unbound by default, zooms the interface as `Ctrl+=` does (`lib/zoom.ts`), and
+  // follows the Keyboard page and the file as the keys do; a browser tab keeps its own wheel.
+  $effect(() => {
+    const chord = store.bindings['zoom-wheel'].chord;
+    return untrack(() => watchZoomWheel(chord, error => { store.error = errorText(error); }));
+  });
   const quitHold = inShell
     ? confirmedQuitHold(requestQuit, {
         onHolding: (holding) => {
