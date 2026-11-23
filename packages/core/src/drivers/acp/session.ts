@@ -16,6 +16,7 @@ import { IdleTimer } from '../idle-timer.ts';
 import { SessionTurns } from '../session-turns.ts';
 import type { LiveTurnSettings, ProbeContext, ProbeFilter, SessionContext } from '../types.ts';
 import { OpenCommands } from './commands.ts';
+import { readDetachedWork, readPendingReply } from './detached.ts';
 import { ModelRefused, SessionControls } from './controls.ts';
 import { failureText, LoadRefused, rpcReason, rpcRefusal } from './load.ts';
 import { AGENT_OWN_MODEL, agentModelsOf } from './models.ts';
@@ -38,6 +39,13 @@ import { isAntigravity } from '../antigravity.ts';
 const GLOG_INFO = /^I\d{4} \d{2}:\d{2}:\d{2}\.\d+\s/;
 /** How long an agent gets to answer `session/cancel` before its process is closed. */
 const STOP_GRACE_MS = 3_000;
+/**
+ * A turn held for Antigravity's detached children reads the agent's records
+ * this often, and ends once they all reported, no reply is owed and the
+ * session said nothing for `DETACHED_QUIET_MS`.
+ */
+const DETACHED_POLL_MS = 1_000;
+const DETACHED_QUIET_MS = 3_000;
 
 /**
  * What the driver learns about agents across their processes, for the life of
@@ -120,6 +128,12 @@ export class AcpSession {
   });
   /** Antigravity's shell commands, the ones that outlived their turn included. */
   readonly #commands = new OpenCommands();
+  /** Antigravity's `GEMINI_HOME` for this process, where it records its children. */
+  #geminiHome: string | null = null;
+  /** The turn kept open after its prompt for the children it launched. */
+  #holding: AcpTurn | null = null;
+  /** When this session last sent an update, to tell a reply that ended from one still streaming. */
+  #lastUpdateAt = 0;
   /** Grok answered `_x.ai/interject` with an error once: this process has no mid-turn input. */
   #interjectRefused = false;
   #closing = false;
@@ -276,7 +290,8 @@ export class AcpSession {
     turn.markStopped();
     // Not begun: `runTurn` settles it the moment the queue reaches it.
     if (this.#active !== turn) return;
-    if (this.#current !== turn) {
+    // No prompt to cancel: the children it waits for end with the process.
+    if (this.#current !== turn || this.#holding === turn) {
       this.#drop();
       return;
     }
@@ -424,6 +439,7 @@ export class AcpSession {
       else turn.ctx.reportProgress?.('waiting');
       response = await pending;
       if (this.#canLoad) turn.ctx.sessionAccepted?.(sessionId);
+      if (turn.antigravity && response.stopReason === 'end_turn' && !turn.isStopped) await this.#holdForDetached(turn, sessionId);
     } catch (error) {
       this.#current = null;
       if (turn.isStopped) {
@@ -436,6 +452,11 @@ export class AcpSession {
       return;
     }
     this.#current = null;
+    // A stop or the process's end settled the turn while it waited for its children.
+    if (turn.settled) {
+      this.#endTurn(turn, true);
+      return;
+    }
     // The turn may have moved the thread to another model.
     this.#noteCompactionWindow(turn.ctx);
     turn.finish(response);
@@ -505,6 +526,36 @@ export class AcpSession {
     return turn.costBefore > 0;
   }
 
+  /**
+   * Antigravity ended the prompt while children it launched still work
+   * (`detached.ts`). The turn stays open, so Stop is there and the idle window
+   * does not close the process under them, and stays the current one, so the
+   * reply the agent starts on its own once they report is drawn into it. It
+   * ends once every child reported, the agent owes no reply and the session
+   * went quiet; a stop or the process's end settles it instead.
+   */
+  async #holdForDetached(turn: AcpTurn, sessionId: string): Promise<void> {
+    const home = this.#geminiHome;
+    if (home === null) return;
+    const first = await readDetachedWork(home, sessionId, turn.toolCallIds()).catch(() => null);
+    if (first === null || first.launched === 0) return;
+    turn.ctx.log('info', `acp: the prompt ended with ${first.atWork} of the ${first.launched} children it launched at work; the turn waits for their reports and the agent's reply`);
+    this.#holding = turn;
+    try {
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, DETACHED_POLL_MS));
+        if (this.#ended || turn.settled || turn.isStopped) return;
+        const work = await readDetachedWork(home, sessionId, turn.toolCallIds()).catch(() => null);
+        if (this.#ended || turn.settled || turn.isStopped) return;
+        if (work !== null && work.atWork > 0) continue;
+        if (await readPendingReply(home, sessionId).catch(() => false)) continue;
+        if (Date.now() - this.#lastUpdateAt >= DETACHED_QUIET_MS) return;
+      }
+    } finally {
+      this.#holding = null;
+    }
+  }
+
   #endTurn(turn: AcpTurn, drop: boolean): void {
     if (this.#stopTimer !== null) {
       clearTimeout(this.#stopTimer);
@@ -549,6 +600,7 @@ export class AcpSession {
     const current = () => this.#current;
     const transport = spawnTransport(ctx, this.#deps, this.#memory, current);
     const child = transport.child;
+    this.#geminiHome = isAntigravity(ctx.provider) ? transport.env['GEMINI_HOME'] ?? null : null;
     this.#child = child;
     this.#killTree = ctx.killTree ?? null;
     this.#protection = transport.protection;
@@ -689,6 +741,7 @@ export class AcpSession {
 
   #onUpdate(params: SessionNotification): void {
     const update = params.update;
+    if (this.#sessionId !== null && params.sessionId === this.#sessionId) this.#lastUpdateAt = Date.now();
     // Not gated on `current`: this one arrives between turns as often as
     // during one, right after `session/new` or `session/load`.
     if (update.sessionUpdate === 'available_commands_update') {

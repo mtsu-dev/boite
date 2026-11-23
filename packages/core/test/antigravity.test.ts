@@ -84,6 +84,15 @@ async function startCore(settings?: Partial<Settings>): Promise<CoreClient> {
   return started.connect();
 }
 
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function fakeLog(): string {
   return existsSync(logFile) ? readFileSync(logFile, 'utf8') : '';
 }
@@ -558,6 +567,31 @@ describe('antigravity', () => {
     await runTurn(client, threadId, 'again');
     expect(fakeLog().split('\n').filter((line) => line === 'initialize').length).toBeGreaterThan(1);
   }, 40000);
+
+  test('a swarm worker that outlives the prompt keeps the turn open until the agent answers its report', async () => {
+    // No warm process: before, the turn ended with the prompt and its process went with the worker.
+    const client = await startCore({ warmProcessMinutes: 0 });
+    const { threadId } = await agyThread(client);
+    await runTurn(client, threadId, 'investigate scenario:swarm');
+    expect(fakeLog().split('\n')).toEqual(expect.arrayContaining(['worker reported', 'synthesized']));
+    const parts = (await client.call('threads.get', { threadId })).messages.at(-1)?.parts ?? [];
+    expect(parts.filter((part) => part.type === 'text').map((part) => part.text).join('')).toContain('synthesis: the disk filled up');
+  }, 30000);
+
+  test('Stop ends a turn held for a swarm worker, and the process with it', async () => {
+    const client = await startCore();
+    const { threadId } = await agyThread(client);
+    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20_000);
+    await client.call('turns.start', { threadId, prompt: 'investigate scenario:swarm-stuck' });
+    await waitFor(() => fakeLog().includes('prompt:'), 10_000);
+    // Past the prompt's answer, the turn still runs: its worker never reports.
+    await Bun.sleep(1_500);
+    expect((await client.call('turns.stop', { threadId })).stopped).toBe(true);
+    expect((await finished).status).toBe('stopped');
+    // The worker ran inside the agent's process: Stop closed it.
+    const pid = Number(fakeLog().split('\n').find((line) => line.startsWith('pid:'))?.slice('pid:'.length));
+    await waitFor(() => !alive(pid), 10_000);
+  }, 30000);
 
   test('a command that ends after its turn leaves the background list on its own', async () => {
     const client = await startCore();

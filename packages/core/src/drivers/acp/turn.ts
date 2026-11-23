@@ -151,6 +151,11 @@ export class AcpTurn extends TurnParts {
     this.sessionId = sessionId;
   }
 
+  /** The id of every tool call this turn drew. */
+  toolCallIds(): Set<string> {
+    return new Set(this.#tools.keys());
+  }
+
   /**
    * A stop that ended the turn before the agent answered it: the process was
    * closed under a pending request. The turn is stopped, not failed, so no
