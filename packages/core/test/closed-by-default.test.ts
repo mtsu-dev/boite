@@ -253,6 +253,8 @@ test('contacts start off on a new install and refuse until the owner turns them 
   expect(() => h.core.contacts.requests.settle('creq-none', true, 'p', undefined, 'owner')).toThrow(off);
   expect(() => h.core.contacts.requests.approve('creq-none')).toThrow(off);
   expect((await thrown(runPlan(h.core, 'creq-none'))).message).toContain(off);
+  // Trusting a contact lets its held mail in: refused too.
+  expect((await thrown(owner.call('contacts.update', { coreId: 'c'.repeat(64), trusted: true }))).message).toContain(off);
   await owner.call('settings.set', { contacts: true });
   // On, the join reaches the link itself.
   expect((await thrown(owner.call('contacts.join', { link: 'boite-contact:x' }))).message).not.toContain(off);

@@ -22,7 +22,8 @@ export function registerContactMethods(core: Core): void {
   core.router.register('contacts.cancelInvites', () => core.contacts.cancelInvites());
   core.router.register('contacts.join', p => { assertContacts(core); return core.contacts.join(p.link); });
   core.router.register('contacts.update', p => {
-    // Renaming or withdrawing trust is upkeep; granting it lets a contact's mail in.
+    // Renaming or withdrawing trust is upkeep; granting it lets a contact's mail in, so the switch must allow it.
+    if (p.trusted === true) assertContacts(core);
     const contact = core.contacts.update(p);
     // Trusted now: the mail waiting from it goes to its threads.
     if (p.trusted === true) releaseMail(core, contact.coreId);

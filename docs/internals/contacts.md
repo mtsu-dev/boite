@@ -11,7 +11,7 @@ The machine setting `contacts` is off unless `true`. A first start writes
 copy another member relays or holds for the group under an admission still
 current, read once the group is restored. An install that linked someone
 before the setting existed keeps its links; a stored choice never moves. Off, contacts stop where the policy's `network.contacts:
-false` stops them (`contacts/switch.ts`): no invitation, join, grant, accepted
+false` stops them (`contacts/switch.ts`): no invitation, join, grant, trust given, accepted
 request, human reply or `collaboration.ask`, refused with the reason
 `contacts-off` and the `boite settings request contacts true` way to ask;
 kept links close and are not dialed, the agents' guide leaves the contacts
