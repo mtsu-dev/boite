@@ -3,7 +3,7 @@
   import { untrack, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import type { Store } from '../lib/store.svelte';
-  import { clampSidebar, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN } from '../lib/prefs';
+  import { clampSidebar, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarMax, visibleSidebarWidth } from '../lib/prefs';
   import { strings } from '../lib/strings';
   import { pinnedQuotas } from '../lib/pinned-quotas.svelte';
   import Deferred from './Deferred.svelte';
@@ -48,6 +48,10 @@
   let rail = $state<HTMLElement | undefined>(undefined);
   const phone = new MediaQuery('(max-width: 720px)');
   let dockVisible = $derived(phone.current ? kind === 'sidebar' && store.sidebarOpen : !store.sidebarCollapsed);
+  const railPage = $derived(kind === 'agents-rail' ? 'agents' : 'chat');
+  const agentsColumn = $derived(kind === 'agents-rail' && !drawer);
+  const maxWidth = $derived(sidebarMax(railPage, drawer));
+  const width = $derived(visibleSidebarWidth({ sidebarWidth: store.sidebarWidth, agentsSidebarWidth: store.agentsSidebarWidth, page: railPage }, drawer));
   let folded: boolean | undefined;
   /**
    * Whether this list was folded since it was drawn. Only then does its
@@ -91,6 +95,7 @@
   $effect(() => unmark);
 
   let resizeFrom = 0;
+  let resizeAgentsBefore: number | null = null;
   /** Rows scrolled under the head: it takes a hairline and the fade deepens, so no sliced row shows below it. */
   let scrolled = $state(false);
 
@@ -134,7 +139,7 @@
   class:more
   aria-hidden={absent ? 'true' : undefined}
   class:was-folded={wasFolded}
-  style:--sidebar-width={`${store.sidebarWidth}px`}
+  style:--sidebar-width={`${width}px`}
   aria-label={label}
   data-testid={testid}
   data-quota-dock-target=""
@@ -158,14 +163,34 @@
       edge="right"
       label={strings.sidebar.resize}
       testid={kind === 'sidebar' ? 'sidebar-resize' : 'agents-resize'}
-      value={store.sidebarWidth}
+      value={width}
       min={SIDEBAR_MIN}
-      max={SIDEBAR_MAX}
-      onstart={() => { resizeFrom = store.sidebarWidth; }}
-      onmove={(delta) => (store.sidebarWidth = clampSidebar(resizeFrom + delta))}
-      onend={() => store.setSidebarWidth(store.sidebarWidth)}
-      onstep={(delta) => store.setSidebarWidth(store.sidebarWidth + delta)}
-      onreset={() => store.setSidebarWidth(SIDEBAR_DEFAULT)}
+      max={maxWidth}
+      onstart={() => { resizeFrom = width; resizeAgentsBefore = store.agentsSidebarWidth; }}
+      onmove={(delta) => {
+        const next = clampSidebar(resizeFrom + delta, maxWidth);
+        if (agentsColumn) store.agentsSidebarWidth = next === resizeFrom && resizeAgentsBefore === null ? null : next;
+        else store.sidebarWidth = next;
+      }}
+      onend={() => {
+        if (agentsColumn) {
+          if (store.agentsSidebarWidth !== resizeAgentsBefore) store.setAgentsSidebarWidth(store.agentsSidebarWidth);
+        } else {
+          store.setSidebarWidth(store.sidebarWidth);
+        }
+      }}
+      onstep={(delta) => {
+        const next = clampSidebar(width + delta, maxWidth);
+        if (agentsColumn) {
+          if (next !== width) store.setAgentsSidebarWidth(next);
+        } else {
+          store.setSidebarWidth(next);
+        }
+      }}
+      onreset={() => {
+        if (agentsColumn) store.setAgentsSidebarWidth(store.sidebarWidth >= maxWidth ? null : clampSidebar(SIDEBAR_DEFAULT, maxWidth));
+        else store.setSidebarWidth(SIDEBAR_DEFAULT);
+      }}
     />
   </div>
 </aside>

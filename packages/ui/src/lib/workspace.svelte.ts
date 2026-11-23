@@ -551,7 +551,7 @@ export class Workspace {
     const previous = this.active;
     if (previous === target) return;
     void previous.suspend();
-    target.sidebarWidth = previous.sidebarWidth;
+    target.sidebarWidth = previous.sidebarWidth; target.agentsSidebarWidth = previous.agentsSidebarWidth;
     target.sidebarCollapsed = previous.sidebarCollapsed;
     target.search = previous.search;
     this.active = target;
