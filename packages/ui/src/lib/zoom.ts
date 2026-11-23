@@ -1,12 +1,12 @@
 import { desktopShell } from './shell-platform';
 /*
- * The interface zoom: `Ctrl+=`, `Ctrl+-` and `Ctrl+0` anywhere in the desktop
- * shell, and the Zoom row of Settings, Appearance. It is the webview's own
+ * The interface zoom: `Ctrl+=`, `Ctrl+-`, `Ctrl+0` and Ctrl with the wheel
+ * anywhere in the desktop shell, and the Zoom row of Settings, Appearance. It is the webview's own
  * zoom, the one a browser applies, so the layout recomputes at the new size
  * (the media queries included) rather than scaling a picture of it. For the
  * same reason the page of a browser surface keeps its own ladder.
  *
- * A browser tab reading the UI has its own `Ctrl+=` already, so nothing here
+ * A browser tab reading the UI has its own `Ctrl+=` and Ctrl + wheel already, so nothing here
  * runs outside the shell. The factor is kept on this device under `boite.zoom`
  * and applied before the shell shows its window, which waits for the first
  * painted frame (`main.ts`).
@@ -36,6 +36,88 @@ export function zoomKey(event: KeyboardEvent): -1 | 0 | 1 | null {
     case '0': return 0;
     default: return null;
   }
+}
+
+/** A wheel turned with the zoom's modifiers: Ctrl, or Cmd as for the keys, and no Alt. */
+export function zoomWheel(event: WheelEvent): boolean {
+  return (event.ctrlKey || event.metaKey) && !event.altKey;
+}
+
+/** How long the wheel rests before its next notch starts a new turn. A pinch sends its deltas far closer. */
+const WHEEL_REST = 250;
+
+/**
+ * Wheel deltas made rungs. The first delta of a turn steps at once, however
+ * small: one notch is one rung on every wheel. Within the turn, the next rung
+ * waits for a whole notch more (100 pixels or 3 lines, as the device screen
+ * counts them), so a pinch or a trackpad, which send a stream of small
+ * deltas, walk one rung per notch's worth rather than one per event.
+ */
+export function wheelSteps(): (event: Pick<WheelEvent, 'deltaY' | 'deltaMode' | 'timeStamp'>) => -1 | 1 | null {
+  let way = 0, turned = 0, last = -Infinity;
+  return (event) => {
+    const notches = event.deltaY * (event.deltaMode === 1 ? 1 / 3 : event.deltaMode === 2 ? 3 : 1 / 100);
+    if (!notches) return null;
+    // Turned up, away from the reader, the wheel enlarges, as in a browser.
+    const next = notches < 0 ? 1 : -1;
+    const rested = event.timeStamp - last > WHEEL_REST;
+    last = event.timeStamp;
+    if (rested || next !== way) {
+      way = next;
+      turned = 0;
+      return next;
+    }
+    turned += Math.abs(notches);
+    if (turned < 1) return null;
+    turned = 0;
+    return next;
+  };
+}
+
+/**
+ * Ctrl with the wheel walks the same ladder as the keys, from anywhere in the
+ * shell, before the terminal or a list can scroll with it. A view that zooms
+ * its own content with the wheel, a picture, says so with `data-wheel-zoom`
+ * and keeps it. The listener can cancel a scroll only once Ctrl or Cmd is
+ * down: a cancellable wheel listener makes every scroll wait for the main
+ * thread first. A pinch on a trackpad is a Ctrl wheel with no key down: its
+ * first delta zooms without being cancelled, the rest of it is.
+ */
+export function watchZoomWheel(failed: (error: unknown) => void): () => void {
+  if (!inShell()) return () => {};
+  const step = wheelSteps();
+  let held = false;
+  const wheel = (event: WheelEvent): void => {
+    if (!zoomWheel(event)) {
+      // A pinch is over, or the key came up where this window could not hear it.
+      hold(false);
+      return;
+    }
+    if (event.target instanceof Element && event.target.closest('[data-wheel-zoom]')) return;
+    hold(true);
+    event.preventDefault();
+    event.stopPropagation();
+    const way = step(event);
+    if (way) void setZoom(stepZoom(wantedZoom(), way)).catch(failed);
+  };
+  const hold = (on: boolean): void => {
+    if (on === held) return;
+    held = on;
+    window.removeEventListener('wheel', wheel, true);
+    window.addEventListener('wheel', wheel, { capture: true, passive: !on });
+  };
+  const keys = (event: KeyboardEvent): void => hold(event.ctrlKey || event.metaKey);
+  const release = (): void => hold(false);
+  window.addEventListener('wheel', wheel, { capture: true, passive: true });
+  window.addEventListener('keydown', keys, true);
+  window.addEventListener('keyup', keys, true);
+  window.addEventListener('blur', release);
+  return () => {
+    window.removeEventListener('wheel', wheel, true);
+    window.removeEventListener('keydown', keys, true);
+    window.removeEventListener('keyup', keys, true);
+    window.removeEventListener('blur', release);
+  };
 }
 
 export function inShell(): boolean {

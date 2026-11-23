@@ -79,7 +79,9 @@ apply. A file that is not valid JSON applies nothing until you fix it.
 ## What you cannot change
 
 - Ctrl+Q, which quits the desktop app when held.
-- The zoom of the desktop app: Ctrl+=, Ctrl+- and Ctrl+0.
+- The zoom of the desktop app: Ctrl+=, Ctrl+- and Ctrl+0, and Ctrl with the
+  mouse wheel or a trackpad pinch, one step per notch. A picture you are
+  viewing zooms itself with Ctrl and the wheel instead.
 - A full-screen program in the terminal still receives its Ctrl-letter keys.
 
 ## Pointer behaviours worth knowing

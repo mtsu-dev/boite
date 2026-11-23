@@ -176,7 +176,7 @@ export const fr: Translation = {
     monoFont: 'Police du code',
     monoSystem: 'Système',
     zoom: "Taille de l'interface",
-    zoomHint: 'Ctrl+= et Ctrl+- partout dans l\'appli, Ctrl+0 pour revenir à 100 %.',
+    zoomHint: 'Ctrl+= et Ctrl+- ou Ctrl et la molette partout dans l\'appli, Ctrl+0 pour revenir à 100 %.',
     zoomOut: 'Plus petit',
     zoomIn: 'Plus grand',
     zoomReset: 'Revenir à 100 %',

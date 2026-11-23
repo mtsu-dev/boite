@@ -186,7 +186,7 @@ export const strings = {
     monoFont: 'Code font',
     monoSystem: 'System',
     zoom: 'Interface size',
-    zoomHint: 'Ctrl+= and Ctrl+- anywhere in the app, Ctrl+0 back to 100%.',
+    zoomHint: 'Ctrl+= and Ctrl+- or Ctrl and the wheel anywhere in the app, Ctrl+0 back to 100%.',
     zoomOut: 'Smaller',
     zoomIn: 'Larger',
     zoomReset: 'Back to 100%',

@@ -123,8 +123,8 @@ tooltip shows its current chord, including any custom binding.
 
 `Ctrl+Q` in the shell, the quit hold, is not in the table and cannot move.
 Neither can the shell's zoom, `Ctrl+=`, `Ctrl+-` and `Ctrl+0` (`+` and `-` of
-the keypad and of any layout included), which follow the browser's own keys
-([development.md](development.md#faces-and-zoom)).
+the keypad and of any layout included) and Ctrl with the wheel, which follow the
+browser's own keys ([development.md](development.md#faces-and-zoom)).
 
 ## What is refused
 

@@ -1299,8 +1299,14 @@ service worker precaches default faces. `lib/fonts.ts` and the boot script apply
 both preferences before the first paint and preload the selected text face; the
 code face loads when mono text first draws. System choices use installed
 fonts. In the shell, `Ctrl+=`, `Ctrl+-` and `Ctrl+0` control WebView zoom from
-50% to 200%, restored before the window appears. The panel browser has separate
-zoom; plain browsers keep their native shortcut behavior.
+50% to 200%, restored before the window appears. Ctrl with the wheel walks the
+same steps: the first delta of a turn steps at once, then one step per 100 px
+or 3 lines, so a pinch's small deltas cannot run away. A window listener takes
+the wheel before the terminal or a list scrolls, cancellable only while Ctrl
+or Cmd is down so that plain scrolling never waits on the main thread. A view
+marked `data-wheel-zoom` (the image viewer, a picture in the file panel) keeps
+its own Ctrl wheel. The panel browser has separate zoom; plain browsers keep
+their native shortcut behavior.
 
 ### File attachments
 

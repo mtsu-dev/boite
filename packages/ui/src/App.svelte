@@ -1,6 +1,7 @@
 <script lang="ts">
   import { desktopShell } from './lib/shell-platform';
   import { errorText } from './lib/errors';
+  import { watchZoomWheel } from './lib/zoom';
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { shellStarting, takeNotificationTarget } from './lib/endpoint';
@@ -310,6 +311,8 @@
   let quitting = $state(false);
   const requestQuit = desktopQuit(() => closingStores(workspace.machines), () => { quitting = true; });
   onMount(() => { if (inShell) return installQuitGuard(requestQuit, error => { store.error = String(error); }); });
+  // Ctrl with the wheel zooms the interface as `Ctrl+=` does (`lib/zoom.ts`); a browser tab keeps its own.
+  onMount(() => watchZoomWheel(error => { store.error = errorText(error); }));
   const quitHold = inShell
     ? confirmedQuitHold(requestQuit, {
         onHolding: (holding) => {
