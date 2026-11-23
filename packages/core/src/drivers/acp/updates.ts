@@ -222,7 +222,7 @@ export async function answerPermission(turn: AcpTurn | null, params: RequestPerm
     const ticket = turn.ctx.askQuestion(ask);
     const index = turn.takeIndex();
     turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer: null });
-    const answer = await Promise.race([ticket, turn.stopped.then(() => null)]);
+    const answer = await turn.awaitUser(Promise.race([ticket, turn.stopped.then(() => null)]));
     if (answer === null) return { outcome: { outcome: 'cancelled' } };
     turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer });
     const optionId = answer.optionIds[0];
@@ -237,7 +237,7 @@ export async function answerPermission(turn: AcpTurn | null, params: RequestPerm
   const ticket = turn.ctx.requestPermission(toolName, call.rawInput ?? null, call.title ?? null);
   const index = turn.takeIndex();
   turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: null });
-  const answer = await Promise.race([ticket, turn.stopped.then(() => 'cancelled' as const)]);
+  const answer = await turn.awaitUser(Promise.race([ticket, turn.stopped.then(() => 'cancelled' as const)]));
   if (answer === 'cancelled') return { outcome: { outcome: 'cancelled' } };
   turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: answer });
   const optionId = pickOption(params.options, answer);

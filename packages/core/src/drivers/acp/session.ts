@@ -531,7 +531,8 @@ export class AcpSession {
    * (`detached.ts`). The turn stays open, so Stop is there and the idle window
    * does not close the process under them, and stays the current one, so the
    * reply the agent starts on its own once they report is drawn into it. It
-   * ends once every child reported, the agent owes no reply and the session
+   * ends once every child reported, the agent owes no reply, no tool that
+   * reply started still runs, nothing waits for the user and the session
    * went quiet; a stop or the process's end settles it instead.
    */
   async #holdForDetached(turn: AcpTurn, sessionId: string): Promise<void> {
@@ -540,6 +541,7 @@ export class AcpSession {
     const first = await readDetachedWork(home, sessionId, turn.toolCallIds()).catch(() => null);
     if (first === null || first.launched === 0) return;
     turn.ctx.log('info', `acp: the prompt ended with ${first.atWork} of the ${first.launched} children it launched at work; the turn waits for their reports and the agent's reply`);
+    const prompted = turn.toolCallIds();
     this.#holding = turn;
     try {
       for (;;) {
@@ -549,6 +551,8 @@ export class AcpSession {
         if (this.#ended || turn.settled || turn.isStopped) return;
         if (work !== null && work.atWork > 0) continue;
         if (await readPendingReply(home, sessionId).catch(() => false)) continue;
+        // A tool or a question goes quiet while it works: it is no end of the reply.
+        if (turn.awaitingUser || turn.hasRunningTool(prompted)) continue;
         if (Date.now() - this.#lastUpdateAt >= DETACHED_QUIET_MS) return;
       }
     } finally {

@@ -114,6 +114,7 @@ export function commandsOf(list: AvailableCommand[]): AgentCommand[] {
  */
 export class AcpTurn extends TurnParts {
   readonly #tools = new Map<string, ToolEntry>();
+  #awaitingUser = 0;
 
   #status: TurnResult['status'] = 'done';
   #error: string | null = null;
@@ -154,6 +155,33 @@ export class AcpTurn extends TurnParts {
   /** The id of every tool call this turn drew. */
   toolCallIds(): Set<string> {
     return new Set(this.#tools.keys());
+  }
+
+  /**
+   * A tool call of this turn, not one in `before`, still running. A subagent
+   * launch is left out: Antigravity never closes it, and its children are
+   * counted from their records.
+   */
+  hasRunningTool(before: ReadonlySet<string>): boolean {
+    for (const [id, entry] of this.#tools) {
+      if (!before.has(id) && entry.status === 'running' && entry.subagent !== 'subagent') return true;
+    }
+    return false;
+  }
+
+  /** True while a permission request or a question of this turn waits for the user. */
+  get awaitingUser(): boolean {
+    return this.#awaitingUser > 0;
+  }
+
+  /** `answer`, counted in `awaitingUser` until it settles. */
+  async awaitUser<T>(answer: Promise<T>): Promise<T> {
+    this.#awaitingUser += 1;
+    try {
+      return await answer;
+    } finally {
+      this.#awaitingUser -= 1;
+    }
   }
 
   /**

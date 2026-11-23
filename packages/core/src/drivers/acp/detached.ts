@@ -27,6 +27,8 @@ import { join } from 'node:path';
 const NATIVE_ID = /^[A-Za-z0-9-]{1,64}$/;
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_MESSAGE_FILES = 256;
+/** Records listed at most, and of those the most recently written ones read. */
+const MAX_RECORDS = 4096;
 const MAX_CHILDREN = 64;
 const TRANSCRIPT_TAIL_BYTES = 64 * 1024;
 const HIGH_PRIORITY = 'MESSAGE_PRIORITY_HIGH';
@@ -137,10 +139,11 @@ export async function readDetachedWork(home: string, session: string, launches: 
   if (root === undefined) return none;
   const records = await managed(root, generated(session, 'subagents'), 'directory');
   if (records === undefined) return none;
-  const children = (await readdir(records.path).catch(() => []))
-    .filter((name) => name.endsWith('.json') && NATIVE_ID.test(name.slice(0, -5)))
-    .map((name) => name.slice(0, -5));
-  if (children.length === 0 || children.length > MAX_CHILDREN) return none;
+  const names = (await readdir(records.path).catch(() => [])).filter((name) => name.endsWith('.json') && NATIVE_ID.test(name.slice(0, -5)));
+  if (names.length === 0 || names.length > MAX_RECORDS) return none;
+  // The session's older children stay on disk; the turn's own are the newest.
+  const dated = await Promise.all(names.map(async (name) => ({ child: name.slice(0, -5), at: (await lstat(join(records.path, name)).catch(() => undefined))?.mtimeMs ?? 0 })));
+  const children = dated.sort((a, b) => b.at - a.at).slice(0, MAX_CHILDREN).map((entry) => entry.child);
   const parentInbox = await readInbox(root, session);
   if (parentInbox === null) return none;
   const reported = new Set(parentInbox.map((message) => message.body['sender']));
@@ -171,8 +174,8 @@ export async function readPendingReply(home: string, session: string): Promise<b
   if (root === undefined) return false;
   const inbox = await readInbox(root, session);
   if (inbox !== null && inbox.length > 0) {
-    const receipts = object(await readJson(root, generated(session, 'messages', 'read.json'))) ?? {};
-    const unread = inbox.some(({ name, body }) => {
+    const receipts = await readReceipts(root, session);
+    const unread = receipts !== null && inbox.some(({ name, body }) => {
       const id = text(body['id']);
       return receipts[name.slice(0, -5)] !== true && (id === undefined || receipts[id] !== true) && body['priority'] === HIGH_PRIORITY;
     });
@@ -182,6 +185,14 @@ export async function readPendingReply(home: string, session: string): Promise<b
   if (last === null || last['type'] !== 'SYSTEM_MESSAGE') return false;
   const content = text(last['content']);
   return content === undefined || content.includes(`priority=${HIGH_PRIORITY}`) || !content.includes(`priority=${LOW_PRIORITY}`);
+}
+
+/** The inbox's read receipts: none while `read.json` is absent, null when it cannot be read. */
+async function readReceipts(root: string, session: string): Promise<Json | null> {
+  const path = generated(session, 'messages', 'read.json');
+  const receipts = await readJson(root, path);
+  if (receipts !== undefined) return object(receipts);
+  return (await lstat(join(root, ...path)).catch(() => undefined)) === undefined ? {} : null;
 }
 
 async function lastTranscriptStep(root: string, session: string): Promise<Json | null> {

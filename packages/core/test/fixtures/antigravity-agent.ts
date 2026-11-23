@@ -21,8 +21,8 @@
  * still runs, and `scenario:short-command` finishes that command a moment
  * after its answer. `scenario:swarm` adds a swarm worker and answers while it
  * works, as 1.5 does: the worker reports in the session's inbox a moment
- * later (`worker reported`), then the agent, woken by the report, answers
- * again with no prompt open (`synthesized`). `scenario:swarm-stuck` adds one
+ * later (`worker reported`), then the agent, woken by the report, runs a
+ * slow tool and answers again with no prompt open (`synthesized`). `scenario:swarm-stuck` adds one
  * that never reports.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -287,10 +287,17 @@ const app = agent({ name: 'agy-fake' })
         setTimeout(() => {
           writeRecord(params.sessionId, ['messages', 'report.json'], { id: 'report', sender: worker, priority: 'MESSAGE_PRIORITY_HIGH', content: 'The logs say the disk filled up.' });
           log('worker reported');
-          // The wake: the report read, then a reply with no prompt open.
+          // The wake: the report read, then a reply with no prompt open whose
+          // tool works longer than the quiet that ends a held turn.
           setTimeout(() => {
             writeRecord(params.sessionId, ['messages', 'read.json'], { report: true });
-            void update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ' synthesis: the disk filled up' } }).then(() => log('synthesized'));
+            const check = `${params.sessionId}:check`;
+            void update({ sessionUpdate: 'tool_call', toolCallId: check, title: 'Checking the disk', kind: 'execute', status: 'in_progress' });
+            setTimeout(() => {
+              void update({ sessionUpdate: 'tool_call_update', toolCallId: check, status: 'completed', rawOutput: '100%' })
+                .then(() => update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ' synthesis: the disk filled up' } }))
+                .then(() => log('synthesized'));
+            }, 4_500);
           }, 1_500);
         }, 1_500);
       }
