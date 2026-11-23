@@ -270,6 +270,29 @@ test("a mouse's back and forward buttons walk the threads, settings tabs and mac
   await workspace.select(store, first);
 });
 
+test('the list head walks the views with its arrows, and Projects and Recent sit in the Filter menu', async () => {
+  await mountOnFake('/?fake=1');
+  const back = () => query('[data-testid=history-back]') as HTMLButtonElement;
+  const forward = () => query('[data-testid=history-forward]') as HTMLButtonElement;
+  const first = store.openThread!.id;
+  await store.open('t-scheduler');
+  flushSync();
+  await waitFor(() => !back().disabled && forward().disabled);
+  back().click();
+  await waitFor(() => store.openThread?.id === first && !forward().disabled);
+  forward().click();
+  await waitFor(() => store.openThread?.id === 't-scheduler' && forward().disabled);
+
+  expect(document.querySelector('.list-head [role=radio]')).toBeNull();
+  query('[data-testid=grouping-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=view-switch] [data-value="view:recent"]') !== null);
+  query('[data-testid=view-switch] [data-value="view:recent"]').click();
+  await waitFor(() => workspace.view === 'recent');
+  query('[data-testid=view-switch] [data-value="view:projects"]').click();
+  await waitFor(() => workspace.view === 'projects');
+  await workspace.select(store, first);
+});
+
 test("on a phone a mouse's back button stays the browser's, which closes the open sheet", async () => {
   const original = window.matchMedia;
   window.matchMedia = ((media: string) => ({ ...original(media), media, matches: media.includes('max-width: 720px') })) as typeof window.matchMedia;
