@@ -31,7 +31,8 @@ export function antigravityPlan(catalog: ModelInfo[], values: string[], model: s
     const native = nativeModel === family;
     const nativeLevel = native && resolved?.model.effort?.levels.some(choice => choice.id === level);
     const bakedLevel = level !== null && variants.has(level);
-    if (nativeLevel || (!bakedLevel && (native || variants.size < 2))) return { model: family, effort: level, integrated: false };
+    // Selecting the base can expose native levels absent from the model control.
+    if (nativeLevel || (!bakedLevel && (level !== null || native || variants.size < 2))) return { model: family, effort: level, integrated: false };
   }
   const fallback = !hasBase && variants.size === 1 ? variants.keys().next().value : resolved?.model.effort?.default;
   return takeVariant(family, level, variants, fallback);

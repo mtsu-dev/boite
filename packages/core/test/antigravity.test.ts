@@ -811,6 +811,17 @@ test('cold Antigravity discovery resolves old IDs for a model other than the cur
   })).thread).toMatchObject({ model: 'gemini-4-neon', effort: 'xhigh' });
 });
 
+test('Antigravity selects the base to check a historical effort missing from the wire variants', async () => {
+  const client = await startCore();
+  process.env['AGY_FAKE_CATALOG'] = 'mixed';
+  const { accountId, threadId } = await agyThread(client);
+  await client.call('providers.probe', { providerId: 'agy-fake', accountId });
+  const selected = await client.call('threads.update', { threadId, model: 'gemini-4-neon-xhigh' });
+  expect(selected).toMatchObject({ model: 'gemini-4-neon', effort: 'xhigh' });
+  await runTurn(client, threadId, 'use the native effort');
+  expect(fakeLog()).toMatch(/set:model=gemini-4-neon\nset:thinking_level=xhigh\nprompt:/);
+});
+
 test('local delegation keeps the effort encoded in an allowed legacy model', async () => {
   const client = await startCore();
   process.env['AGY_FAKE_CATALOG'] = 'option';

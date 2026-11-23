@@ -1,4 +1,4 @@
-import { resumeModelSelection, resumeReceiptConflict, type PluginActor, type ResumeSelectionRequest, type RpcEvents, type RpcParams, type ThreadId, type ThreadRecovery, type ThreadRetry, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
+import { resumeModelSelection, resumeReceiptConflict, type PluginActor, type ResumeSelectionReceipt, type RpcEvents, type RpcParams, type ThreadId, type ThreadRecovery, type ThreadRetry, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf, refused } from '../errors.ts';
 import type { ThreadStore } from '../threads.ts';
@@ -202,7 +202,7 @@ export class ResumePlanner {
     const source = this.lastTurn(threadId);
     if (recovery?.turnId !== turnId || source?.id !== turnId) throw refused('turnId must name the latest interrupted turn of this thread', { field: 'turnId', threadId, turnId });
     const provider = this.#core.providers.get(thread.providerId);
-    const { model: requestedModel, effort: nextEffort, changedModel, changed } =
+    const { model: requestedModel, effort: nextEffort, aliasEffort, changedModel, changed } =
       resumeModelSelection(provider ? modelsFor(provider, thread.accountId) : [], thread, { model, effort });
     if (changed && (recovery.kind !== 'usage-limit' || thread.agentSessionId)) throw refused('the model or reasoning effort can only change when resuming an ordinary conversation after a usage limit');
     const lead = recovery.kind === 'usage-limit' ? `A usage limit interrupted the previous turn. ${CARRY_ON}` : CARRY_ON;
@@ -213,7 +213,7 @@ export class ResumePlanner {
         persistAdmission: () => {
           this.#core.journal.db
             .query('UPDATE turn_requests SET fingerprint = ? WHERE thread_id = ? AND request_id = ?')
-            .run(formatResumeReceipt({ model, effort }), threadId, id);
+            .run(formatResumeReceipt({ model, effort, aliasEffort }), threadId, id);
           const record = this.#load();
           record[threadId] = { handled: turnId, resumedWindow: record[threadId]?.resumedWindow };
           this.#core.journal.setSetting(KEY, record);
@@ -489,22 +489,22 @@ function manualRequestId(turnId: TurnId): string { return `manual-resume_${turnI
 
 const RESUME_RECEIPT_PREFIX = 'resume:';
 
-function formatResumeReceipt({ model, effort }: ResumeSelectionRequest): string {
-  const payload: ResumeSelectionRequest = {
-    ...(model !== undefined ? { model } : {}),
-    ...(effort !== undefined ? { effort } : {}),
-  };
-  return `${RESUME_RECEIPT_PREFIX}${JSON.stringify(payload)}`;
+function formatResumeReceipt(selection: ResumeSelectionReceipt): string {
+  return `${RESUME_RECEIPT_PREFIX}${JSON.stringify(selection)}`;
 }
 
-function parseResumeReceipt(fingerprint: string): ResumeSelectionRequest | undefined {
+function parseResumeReceipt(fingerprint: string): ResumeSelectionReceipt | undefined {
   if (!fingerprint.startsWith(RESUME_RECEIPT_PREFIX)) return undefined;
   try {
     const parsed: unknown = JSON.parse(fingerprint.slice(RESUME_RECEIPT_PREFIX.length));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
-    const { model, effort } = parsed as Record<string, unknown>;
+    const { model, effort, aliasEffort } = parsed as Record<string, unknown>;
     const valid = (value: unknown): value is string | null => value === null || typeof value === 'string';
-    return { ...(valid(model) ? { model } : {}), ...(valid(effort) ? { effort } : {}) };
+    return {
+      ...(valid(model) ? { model } : {}),
+      ...(valid(effort) ? { effort } : {}),
+      ...(typeof aliasEffort === 'string' ? { aliasEffort } : {}),
+    };
   } catch { return undefined; }
 }
 

@@ -32,7 +32,7 @@ function retryOf(h: TestCore, threadId: string): ThreadRetry | null {
   return h.core.threads.list({ includeArchived: true }).find(thread => thread.id === threadId)?.retry ?? null;
 }
 
-test.each(['explicit effort', 'legacy alias'])('a usage limit resumes on a model chosen by the owner with %s and reuses its receipt', async mode => {
+test.each(['explicit effort', 'legacy alias', 'overridden alias effort'])('a usage limit resumes on a model chosen by the owner with %s and reuses its receipt', async mode => {
   const h = await startTestCore({ settings: { autoResumeLimitedThreads: false } });
   const contexts: TurnContext[] = [];
   const resetsAt = Date.now() + 60_000;
@@ -61,23 +61,32 @@ test.each(['explicit effort', 'legacy alias'])('a usage limit resumes on a model
       effort: { default: 'low', levels: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }] },
     });
     expect(await thrown(client.call('turns.resume', { ...selection, model: 'unavailable-model' }))).toThrow('the provider does not offer this model');
-    const requested = mode === 'legacy alias' ? { model: alias } : { model, effort: 'high' };
+    const expectedEffort = mode === 'overridden alias effort' ? 'low' : 'high';
+    const requested = mode === 'legacy alias' ? { model: alias } : { model: mode === 'explicit effort' ? model : alias, effort: expectedEffort };
     const resumed = await client.call('turns.resume', { ...selection, ...requested });
-    if (mode === 'explicit effort') expect(resumed.execution?.effort).toBe('high');
+    expect(resumed.execution).toMatchObject({ model, effort: expectedEffort });
     expect((await client.call('turns.resume', { ...selection, ...requested })).id).toBe(resumed.id);
-    expect((await client.call('turns.resume', { ...selection, model: alias })).id).toBe(resumed.id);
-    expect(await thrown(client.call('turns.resume', { ...selection, model: alias, effort: 'low' }))).toThrow('already resumed');
+    if (mode === 'overridden alias effort') {
+      expect(await thrown(client.call('turns.resume', { ...selection, model: alias }))).toThrow('already resumed with another reasoning effort');
+    } else {
+      expect((await client.call('turns.resume', { ...selection, model: alias })).id).toBe(resumed.id);
+    }
+    const otherEffort = expectedEffort === 'high' ? 'low' : 'high';
+    expect(await thrown(client.call('turns.resume', { ...selection, model: alias, effort: otherEffort }))).toThrow('already resumed');
     const catalog = h.core.providers.require('echo').models;
     catalog.splice(catalog.findIndex(entry => entry.id === model), 1, {
       id: model, name: 'Alternate Echo',
       effort: { default: 'low', levels: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }] },
     });
     expect((await client.call('turns.resume', { ...selection, ...requested })).id).toBe(resumed.id);
+    if (mode === 'overridden alias effort') {
+      expect(await thrown(client.call('turns.resume', { ...selection, model: alias }))).toThrow('already resumed with another reasoning effort');
+    }
     expect(await thrown(client.call('turns.resume', { ...selection, model: 'echo-alternate-low' }))).toThrow('already resumed');
-    expect(await thrown(client.call('turns.resume', { ...selection, ...requested, effort: 'low' }))).toThrow('already resumed');
+    expect(await thrown(client.call('turns.resume', { ...selection, ...requested, effort: otherEffort }))).toThrow('already resumed');
     await waitFor(() => h.core.journal.getTurn(resumed.id)?.status === 'done');
     expect(contexts).toHaveLength(2);
-    expect(contexts[1]!.thread).toMatchObject({ accountId, model, effort: 'high', sessionId: 'native' });
+    expect(contexts[1]!.thread).toMatchObject({ accountId, model, effort: expectedEffort, sessionId: 'native' });
     expect(contexts[1]!.prompt).toContain('Finish the report with all attachments');
     expect(await client.call('threads.get', { threadId })).toMatchObject({ recovery: null, model: thread.model });
   } finally { restore(); await h.stop(); }

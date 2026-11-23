@@ -76,7 +76,7 @@ export function resumeTurn(ctx: FakeContext, { threadId, turnId, model, effort, 
   if (expectedSelectionVersion !== undefined && expectedSelectionVersion !== (thread.selectionVersion ?? 0)) throw refusal('the agent selection changed');
   requireFakeCwd(ctx, thread);
   const models = modelsOf(ctx, thread.providerId, thread.accountId);
-  const { model: requestedModel, effort: nextEffort, changedModel, changed } = resumeModelSelection(models, thread, { model, effort });
+  const { model: requestedModel, effort: nextEffort, aliasEffort, changedModel, changed } = resumeModelSelection(models, thread, { model, effort });
   if (changed && (recovery.kind !== 'usage-limit' || thread.agentSessionId)) throw refusal('the model or reasoning effort can only change when resuming an ordinary conversation after a usage limit');
   const provider = ctx.providers.find(entry => entry.id === thread.providerId);
   const account = ctx.accounts.find(entry => entry.id === thread.accountId);
@@ -92,6 +92,11 @@ export function resumeTurn(ctx: FakeContext, { threadId, turnId, model, effort, 
     : part.type === 'file' ? [{ kind: 'file', mimeType: part.mimeType, data: part.data, name: part.name }] : []);
   const turn = ctx.startTurn(threadId, `Continue the interrupted task.\n\n${text}`, attachments, 'resume', undefined, undefined, [], false, 'Resumed interrupted work',
     changed ? { model: selected, effort: nextEffort, speed: changedModel ? null : thread.speed } : undefined);
-  ctx.turnRequests.set(key, { content: text, turn: thread.turns.find(entry => entry.id === turn.id)!, messageId: thread.messages.find(message => message.turnId === turn.id)!.id, requested: { ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}) } });
+  ctx.turnRequests.set(key, {
+    content: text,
+    turn: thread.turns.find(entry => entry.id === turn.id)!,
+    messageId: thread.messages.find(message => message.turnId === turn.id)!.id,
+    requested: { model, effort, aliasEffort },
+  });
   return turn;
 }

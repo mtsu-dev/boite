@@ -1,5 +1,8 @@
 import { afterEach, expect, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
+import { FakeContext } from '../lib/fake-client/context';
+import { offerRecovery, resumeTurn } from '../lib/fake-client/recovery';
+import { seed } from '../lib/fake-client/seed';
 import { test } from '../test/fake-client';
 import ThreadRecovery from './ThreadRecovery.svelte';
 
@@ -80,6 +83,29 @@ test('a paired client can resume a usage-limited turn on a different offered mod
   expect((await client.call('turns.resume', { threadId, turnId, model: model.id, effort })).id).toBe(resumedId);
   await expect(client.call('turns.resume', { threadId, turnId, model: model.id, effort: model.effort!.default })).rejects.toThrow('already resumed');
   expect(store.openThread?.recovery).toBeNull();
+});
+
+test('the fake client remembers the overridden effort of a removed resume alias', async () => {
+  const ctx = new FakeContext({ delayMs: 0 });
+  seed(ctx);
+  const thread = ctx.thread('t-trace');
+  const turnId = thread.turns.at(-1)!.id;
+  const model = {
+    id: 'alternate', name: 'Alternate',
+    effort: { default: 'low', levels: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }] },
+  };
+  const alias = 'alternate-high';
+  const key = `${thread.providerId}::${thread.accountId}`;
+  ctx.modelCatalogs.set(key, [{ ...model, aliases: [{ id: alias, effort: 'high' }] }]);
+  offerRecovery(ctx, thread.id, { kind: 'usage-limit', turnId, resetsAt: Date.now() + 60_000 });
+  const request = { threadId: thread.id, turnId, model: alias };
+  const resumed = resumeTurn(ctx, { ...request, effort: 'low' });
+  await ctx.inFlight.get(thread.id)?.done;
+  expect(resumed.execution).toMatchObject({ model: model.id, effort: 'low' });
+
+  ctx.modelCatalogs.set(key, [model]);
+  expect(resumeTurn(ctx, { ...request, effort: 'low' }).id).toBe(resumed.id);
+  expect(() => resumeTurn(ctx, request)).toThrow('already resumed with another reasoning effort');
 });
 
 test('offline controls stay disabled and a response from a detached machine cannot replace the current thread', async ({ ready }) => {

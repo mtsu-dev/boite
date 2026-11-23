@@ -46,16 +46,17 @@ const GATEWAY_ONLY = { value: 'gemini-4-neon', name: 'Gemini 4 Neon' };
 const LEVELS = ['low', 'medium', 'high'];
 let clientName = '';
 const [catalogMode, loadMode] = (process.env['AGY_FAKE_CATALOG'] ?? '').split(':');
+const mixed = catalogMode === 'mixed';
 const BAKED = [
   { value: 'gemini-4-neon-low', name: 'Gemini 4 Neon (Low)' },
-  ...(['base', 'last-variant'].includes(loadMode ?? '') ? [{ value: 'gemini-4-neon', name: 'Gemini 4 Neon Preview' }] : []),
+  ...(mixed || ['base', 'last-variant'].includes(loadMode ?? '') ? [{ value: 'gemini-4-neon', name: 'Gemini 4 Neon Preview' }] : []),
   { value: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)' },
   { value: 'gemini-4-neon-xhigh', name: 'Gemini 4 Neon', ...(loadMode === 'base' ? { _meta: { default: true } } : {}) },
   { value: 'gemini-4-neon-medium', name: 'Gemini 4 Neon (Medium)' },
   { value: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash (Low)' },
   { value: 'gemini-3.5-flash-extra-low', name: 'Gemini 3.5 Flash (Extra Low)' },
 ].filter(row => {
-  if (loadMode === 'removed') return row.value !== 'gemini-4-neon-xhigh';
+  if (mixed || loadMode === 'removed') return row.value !== 'gemini-4-neon-xhigh';
   if (loadMode === 'last-variant' || loadMode === 'only-variant') return !['gemini-4-neon-low', 'gemini-4-neon-medium'].includes(row.value);
   return true;
 });
@@ -66,7 +67,8 @@ const families = (): { value: string; name: string }[] => [
   ...(catalogMode === 'family-history' || process.env['AGY_LLM_GATEWAY_URL'] ? [GATEWAY_ONLY] : []),
 ];
 
-const neonLevels = ['low', 'xhigh'];
+const neonLevels = mixed ? ['low', 'medium', 'xhigh'] : ['low', 'xhigh'];
+const nativeNeon = mixed || catalogMode === 'family-history';
 
 /** One session's model and level, as `configOptions` and as the `models` list. */
 function controls(state: { model: string; level: string }): Record<string, unknown> {
@@ -74,14 +76,17 @@ function controls(state: { model: string; level: string }): Record<string, unkno
   if (catalogMode === 'list') return { models: { currentModelId: state.model, availableModels: BAKED.map(row => ({ modelId: row.value, name: row.name })) } };
   if (catalogMode === 'option') return { configOptions: [{ type: 'select', id: 'model', category: 'model', name: 'Model', currentValue: state.model, options: BAKED }] };
   const configOptions: Record<string, unknown>[] = [
-    { type: 'select', id: 'model', category: 'model', name: 'Model', currentValue: state.model, options: families() },
+    { type: 'select', id: 'model', category: 'model', name: 'Model', currentValue: state.model, options: mixed ? BAKED : families() },
   ];
-  const levels = state.model === GEMINI.value ? LEVELS : catalogMode === 'family-history' && state.model === GATEWAY_ONLY.value ? neonLevels : [];
+  const levels = state.model === GEMINI.value ? LEVELS : nativeNeon && state.model === GATEWAY_ONLY.value ? neonLevels : [];
   if (levels.length) {
     configOptions.push({
       type: 'select', id: 'thinking_level', category: 'thought_level', name: 'Thinking', currentValue: state.level,
       options: levels.map((level) => ({ value: level, name: level[0]!.toUpperCase() + level.slice(1) })),
     });
+  }
+  if (mixed) {
+    return { configOptions, models: { availableModels: [{ modelId: 'gemini-4-neon-xhigh', name: 'Gemini 4 Neon (XHigh)' }] } };
   }
   const legacy = ['high', 'medium', 'low'].map((level) => ({ modelId: `${GEMINI.value}-${level}`, name: `Gemini 3.8 Flash (${level})` }));
   const others = families().slice(1).flatMap(entry => catalogMode === 'family-history' && entry === GATEWAY_ONLY
@@ -195,14 +200,17 @@ const app = agent({ name: 'agy-fake' })
     log(`set:${params.configId}=${value}`);
     if (state === undefined) throw new Error(`no session ${params.sessionId}`);
     const legacy = LEVELS.find((level) => value === `${GEMINI.value}-${level}`);
-    if (catalogMode === 'option' && params.configId === 'model' && BAKED.some(row => row.value === value)) state.model = value;
+    if ((catalogMode === 'option' || mixed) && params.configId === 'model' && BAKED.some(row => row.value === value)) {
+      state.model = value;
+      if (mixed && value === GATEWAY_ONLY.value) state.level = 'low';
+    }
     else if (params.configId === 'model' && legacy !== undefined) Object.assign(state, { model: GEMINI.value, level: legacy });
     else if (params.configId === 'model' && families().some((entry) => entry.value === value)) {
       state.model = value;
       if (catalogMode === 'family-history' && value === GATEWAY_ONLY.value) state.level = 'low';
     }
     else if (params.configId === 'thinking_level' && state.model === GEMINI.value && LEVELS.includes(value)) state.level = value;
-    else if (params.configId === 'thinking_level' && catalogMode === 'family-history' && state.model === GATEWAY_ONLY.value && neonLevels.includes(value)) state.level = value;
+    else if (params.configId === 'thinking_level' && nativeNeon && state.model === GATEWAY_ONLY.value && neonLevels.includes(value)) state.level = value;
     else throw new Error(`invalid ${params.configId} ${value}`);
     return { configOptions: controls(state)['configOptions'] as never };
   })
