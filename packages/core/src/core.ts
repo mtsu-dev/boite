@@ -468,6 +468,7 @@ export class Core {
     this.coordination = new Coordination(this, true);
     this.group = new GroupStore(this);
     this.group.restore();
+    this.settings.seedContacts();
     this.contacts = new ContactStore(this);
     this.sharedProjects = new SharedProjects(this);
     this.sharedBoard = new SharedBoard(this);

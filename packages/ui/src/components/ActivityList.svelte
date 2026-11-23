@@ -2,7 +2,7 @@
   import type { Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { activityFeed, feedGroups } from '../lib/activity-feed';
-  import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsShownAnywhere } from '../lib/contacts-anywhere';
   import { contactsParts } from '../lib/contacts-entry';
   import { feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { minuteClock } from '../lib/clock.svelte';
@@ -35,7 +35,7 @@
 
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
-    if (!contactsShown(store) || ContactInboxRows) return;
+    if (!contactsShownAnywhere(store) || ContactInboxRows) return;
     void contactsParts.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
 
@@ -72,7 +72,7 @@
       {:else}<p class="all-done" data-testid="activity-all-done">{strings.mobile.nothingNeedsYou}</p>{/if}
       <MarkAllRead {rows} />
     </div>{/if}
-    {#if ContactInboxRows && contactsShown(store)}<ContactInboxRows {store} />{/if}
+    {#if ContactInboxRows && contactsShownAnywhere(store)}<ContactInboxRows {store} />{/if}
     {#each needs as { row, helpers } (`${row.machine.id}:${row.thread.id}`)}<ActivityRow {row} {helpers} {now} />{/each}
     {#if updates.length > 0}<h2 class="section-label" data-testid="activity-updates">{strings.mobile.feed.updates}</h2>{/if}
     {#each updates as { row, helpers } (`${row.machine.id}:${row.thread.id}`)}<ActivityRow {row} {helpers} {now} />{/each}

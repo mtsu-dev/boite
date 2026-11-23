@@ -19,6 +19,7 @@ import type { ContactStore } from './store.ts';
 import { contactFace } from './face.ts';
 import { memberThreadId } from './member-address.ts';
 import { contactAnswer } from './answers.ts';
+import { assertContacts, contactsOffWord } from './switch.ts';
 import { throughHolder, type Reachable } from './held.ts';
 
 const REQUESTS = 'contacts:requests';
@@ -304,6 +305,8 @@ export class ContactRequests {
    * opened, or refused with the reason the asking agent reads.
    */
   settle(id: unknown, accept: boolean, projectId: unknown, reason: unknown, decidedBy: NonNullable<ContactRequest['decidedBy']>, relation?: ContactRelation): ContactRequest {
+    // Accepting opens something to a contact: the switch (and the policy) must allow it. A refusal always may.
+    if (accept) assertContacts(this.#core);
     const { requests, request } = this.pending(id, 'in');
     const now = Date.now();
     if (accept && relation) Object.assign(request, { status: 'accepted', relation, decidedBy, decidedAt: now, pendingSend: true });
@@ -332,6 +335,7 @@ export class ContactRequests {
    * touch, since opening a project would answer it with no thread to write to.
    */
   approve(id: string): ContactRequest {
+    assertContacts(this.#core);
     const { requests, request } = this.pending(id, 'in');
     Object.assign(request, { stage: 'bot', approved: true });
     this.save(requests);
@@ -456,7 +460,8 @@ export class ContactRequests {
     try { await this.#core.coordination.request(member, 'contact.hand', { action: 'answer', request, name, threads: threads.slice(0, 20) }); }
     catch (error) {
       this.#core.log('warn', `contacts: ${member.name} did not take the answer to ${request.id} (${messageOf(error)})`, { source: 'contacts' });
-      if (!(error instanceof PeerRefusal)) return false;
+      // A member whose contacts are off hears the answer once they are on again.
+      if (!(error instanceof PeerRefusal) || contactsOffWord(error.message)) return false;
     }
     this.#mark(request.id, false);
     return true;
@@ -530,6 +535,8 @@ export class ContactRequests {
         }
       } catch (error) {
         if (!(error instanceof PeerRefusal)) throw error;
+        // The contact's own contacts are off: the ask or answer stays queued for when they are on again.
+        if (contactsOffWord(error.message)) return;
         refusal = error.message;
       }
       const requests = this.list();

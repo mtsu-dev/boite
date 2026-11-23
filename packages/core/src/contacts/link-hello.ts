@@ -6,6 +6,7 @@ import type { ContactStore } from './store.ts';
 import { TextSocket, UpgradeError } from '../ws-client.ts';
 import { checkTailnetName } from './invite.ts';
 import { nameNotFound, publishedAddress } from './public-dns.ts';
+import { assertContacts, contactsOff } from './switch.ts';
 
 /** What the server keeps on a contact's link socket; `proof`: the host's signature over the hello, its first frame. */
 export interface ContactSocketData { contact: { coreId: string; routeId: string; proof?: string } }
@@ -56,14 +57,14 @@ const LINK_DIAL_MS = 8000;
 /** DNS can yield while an administrator disables contacts; admit the dial afterwards. */
 export async function dialContact(core: Core, url: string, headers: Record<string, string>): Promise<TextSocket> {
   await checkTailnetName(url, 'contact.url');
-  core.policy.assert(core.policy.networkOff('contacts'), 'network.contacts');
+  assertContacts(core);
   const target = `${url.replace(/^http/, 'ws')}${CONTACT_LINK_ROUTE}`;
   try { return await TextSocket.connect(target, LINK_DIAL_MS, { headers }); }
   catch (error) {
     // A resolver that still holds "no such name" from before Tailscale published the host's Funnel name.
     const address = nameNotFound(error) ? await publishedAddress(target) : null;
     if (address === null) throw error;
-    core.policy.assert(core.policy.networkOff('contacts'), 'network.contacts');
+    assertContacts(core);
     return TextSocket.connect(target, LINK_DIAL_MS, { headers, address });
   }
 }
@@ -117,7 +118,7 @@ function unknown(core: Core, request: Request, guest: string, stranger: boolean)
 }
 
 export function contactHello(core: Core, store: ContactStore, request: Request): ContactSocketData['contact'] | Response {
-    if (store.isClosed || core.policy.networkOff('contacts') || request.headers.has('origin')) return new Response('forbidden', { status: 403 });
+    if (store.isClosed || contactsOff(core) || request.headers.has('origin')) return new Response('forbidden', { status: 403 });
     const guest = request.headers.get('x-boite-peer') ?? '';
     // A contact another machine of the group handed to this one is checked against the handed record, then kept, and a
     // Bots host a move gave this core's guest seat against the key that signed the move (`group-link.ts`).

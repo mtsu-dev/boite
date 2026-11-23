@@ -72,7 +72,7 @@ import {
 import { effectiveExperiments } from '@boite/contracts';
 import { CLOSED_AGENT_DEFAULTS, OPEN_AGENT_DEFAULTS } from '@boite/contracts';
 
-/** `?agents=closed`: the two agent settings as a new install holds them. */
+/** `?agents=closed`: the two agent settings and contacts as a new install holds them. */
 function closedAgents(): boolean {
   return typeof location !== 'undefined' && new URLSearchParams(location.search).get('agents') === 'closed';
 }
@@ -601,9 +601,9 @@ export class FakeContext {
     };
     this.settings = {
       ...defaultSettings(),
-      // The demo machine reads as an install older than these two settings, as the core leaves one: open.
-      // `?agents=closed` shows a new install.
-      ...(closedAgents() ? CLOSED_AGENT_DEFAULTS : OPEN_AGENT_DEFAULTS)
+      // The demo machine reads as an install older than these two settings, as the core leaves one: open,
+      // and with contacts on, as the core leaves an install that kept a contact. `?agents=closed` shows a new install.
+      ...(closedAgents() ? { ...CLOSED_AGENT_DEFAULTS, contacts: false } : { ...OPEN_AGENT_DEFAULTS, contacts: true })
     };
     // `?gateway=douane` or `cliproxyapi`: a gateway the owner saved and turned off, for a paired phone to switch on.
     // `&gatewayOn=1` starts it on, its accounts in the limits (one used outside Douane lights the rail's limits).

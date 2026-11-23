@@ -288,6 +288,7 @@
     ['general', 'quiet', strings.settings.muteAgents],
     ['general', 'agents-alone', strings.agentsAlone.reach],
     ['general', 'agents-alone', strings.agentsAlone.bots],
+    ['general', 'agents-alone', strings.agentsAlone.contacts],
     ['resources', 'limits', strings.settings.memoryProtection],
     ['resources', 'tasks', strings.settings.reapOrphans],
     ['resources', 'tasks', strings.settings.keepAwake],

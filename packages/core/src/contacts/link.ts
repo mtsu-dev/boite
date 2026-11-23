@@ -18,6 +18,7 @@ import { SyncBackoff } from '../group/backoff.ts';
 import { clockGap } from '../peer-clock.ts';
 import { UpgradeError, type TextSocket } from '../ws-client.ts';
 import { dialContact, helloClock, type ContactSocketData } from './link-hello.ts';
+import { assertContacts, contactsOff } from './switch.ts';
 
 /**
  * What crosses a link, each way: a signed request and its answer. `caps` is
@@ -75,7 +76,7 @@ export class ContactLinks {
   /** The guest's socket is open: it becomes the bridge route for that contact, replacing an older one. */
   attach(data: ContactSocketData['contact'], socket: LinkSocket): void {
     const contact = this.#store.find(data.coreId);
-    if (this.#store.isClosed || this.#core.policy.networkOff('contacts') || !contact || contact.role !== 'host') { socket.close(1008, 'not a contact'); return; }
+    if (this.#store.isClosed || contactsOff(this.#core) || !contact || contact.role !== 'host') { socket.close(1008, 'not a contact'); return; }
     // A probe's only frame proves this core's key (`dialProven`), which hangs up on any other; a link is told it carries both ways.
     if (data.proof) socket.send(JSON.stringify({ t: 'proof', signature: data.proof }));
     else socket.send(JSON.stringify({ t: 'caps', duplex: 1 } satisfies Frame));
@@ -88,7 +89,7 @@ export class ContactLinks {
     const route: BridgeRoute = {
       id: data.routeId,
       sendEvent: (_name, payload: RpcEvents['collaboration.bridge.request']) => {
-        this.#core.policy.assert(this.#core.policy.networkOff('contacts'), 'network.contacts');
+        assertContacts(this.#core);
         socket.send(JSON.stringify({ t: 'req', id: payload.requestId, body: payload.body, signature: payload.signature } satisfies Frame));
       },
     };
@@ -103,7 +104,7 @@ export class ContactLinks {
     let frame: Partial<Extract<Frame, { t: 'res' }>> | Partial<Extract<Frame, { t: 'req' }>>;
     try { frame = JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8')) as typeof frame; } catch { return; }
     this.heard(data);
-    if (this.#core.policy.networkOff('contacts') || typeof frame?.id !== 'string' || typeof frame.body !== 'string' || typeof frame.signature !== 'string') return;
+    if (contactsOff(this.#core) || typeof frame?.id !== 'string' || typeof frame.body !== 'string' || typeof frame.signature !== 'string') return;
     if (frame.t === 'req') { this.#store.background(this.#answer(data, { id: frame.id, body: frame.body, signature: frame.signature })); return; }
     if (frame.t !== 'res' || typeof frame.status !== 'number') return;
     try { this.#core.coordination.bridge.reply(frame.id, { status: frame.status, body: frame.body, signature: frame.signature }, { id: data.routeId }); } catch { /* A late or unknown answer. */ }
@@ -137,7 +138,7 @@ export class ContactLinks {
   // -- The link: the guest's side.
 
   dial(contact: NonNullable<ReturnType<LinkOwner['find']>>): void {
-    if (this.#store.isClosed || !this.#store.started || contact.role !== 'guest' || contact.url === undefined || this.#dialed.has(contact.coreId) || this.#core.policy.networkOff('contacts')) return;
+    if (this.#store.isClosed || !this.#store.started || contact.role !== 'guest' || contact.url === undefined || this.#dialed.has(contact.coreId) || contactsOff(this.#core)) return;
     const headers = this.#store.helloHeaders(contact.coreId);
     const coreId = contact.coreId;
     const link: DialedLink = { socket: null, state: 'connecting', routeId: `link:${randomUUID()}`, since: 0, pingedAt: 0 };
@@ -167,7 +168,7 @@ export class ContactLinks {
     // the tailnet since the join), and the policy once the link opens: contacts turned off drop it, to be dialed later.
     const url = contact.url;
     dialContact(this.#core, url, headers).then(socket => {
-      if (this.#store.isClosed || this.#dialed.get(coreId) !== link || (this.#core.policy.networkOff('contacts') && this.#dialed.delete(coreId))) { socket.close(1000); return; }
+      if (this.#store.isClosed || this.#dialed.get(coreId) !== link || (contactsOff(this.#core) && this.#dialed.delete(coreId))) { socket.close(1000); return; }
       link.socket = socket;
       link.state = 'connected';
       link.since = link.pingedAt = Date.now();
@@ -192,7 +193,7 @@ export class ContactLinks {
       this.#core.coordination.bridge.register(hostId, true, {
         id: link.routeId,
         sendEvent: (_name, payload: RpcEvents['collaboration.bridge.request']) => {
-          this.#core.policy.assert(this.#core.policy.networkOff('contacts'), 'network.contacts');
+          assertContacts(this.#core);
           if (!socket.open) throw unavailable('the link to this contact closed');
           socket.send(JSON.stringify({ t: 'req', id: payload.requestId, body: payload.body, signature: payload.signature } satisfies Frame));
         },
@@ -252,6 +253,9 @@ export class ContactLinks {
   dialing(coreId: string): 'connecting' | 'connected' | undefined { return this.#dialed.get(coreId)?.state; }
   /** Whether a guest link to `coreId` may be dialed now: none is, and its last failure's wait is over. */
   due(coreId: string): boolean { return !this.#dialed.has(coreId) && !this.#backoff.waiting(coreId, 'link'); }
+
+  /** Contacts turned on again: the waits earned by failures before the switch do not delay the first dial. */
+  rested(): void { this.#backoff.clear(); this.#redialed.clear(); }
 
   close(): void {
     for (const { socket, routeId } of this.#dialed.values()) { this.#core.coordination.bridge.disconnect(routeId); socket?.close(1001, 'core stopping'); }
