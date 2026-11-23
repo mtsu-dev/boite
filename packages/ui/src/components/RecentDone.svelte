@@ -50,8 +50,8 @@
       capHeight = height > 0 ? Math.ceil(height) : undefined;
     };
     const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
-    for (const child of node.children) resized?.observe(child);
-    measure();
+    if (resized) for (const child of node.children) resized.observe(child);
+    else measure();
     return () => resized?.disconnect();
   });
   const count = $derived(entries.reduce((total, { project }) => total + archiveCount(project, kind), 0));

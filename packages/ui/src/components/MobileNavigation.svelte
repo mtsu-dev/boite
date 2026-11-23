@@ -182,6 +182,19 @@
       // Recent is a flat history, newest first under the pins, as on the desktop; the cards rank by status.
       .sort(listScreen === 'threads' && workspace.view === 'recent' ? compareRecent : compareEntries));
   const inRecent = $derived(listScreen === 'threads' && workspace.view === 'recent');
+  const rowsByProject = $derived.by(() => {
+    const machines = new Map<string, Map<string, typeof rows>>();
+    for (const row of rows) {
+      const projectId = row.thread.projectId;
+      if (projectId === null) continue;
+      let projects = machines.get(row.machine.id);
+      if (!projects) machines.set(row.machine.id, projects = new Map());
+      const group = projects.get(projectId);
+      if (group) group.push(row);
+      else projects.set(projectId, [row]);
+    }
+    return machines;
+  });
   /** Recent's line under the title starts with where the row lives, once the tiles alone may not tell rows apart. */
   /** This app's own machine goes unsaid on Recent's place line and on the cards: the other machines are named. */
   const home = $derived(machines.find(m => m.store === workspace.primary));
@@ -396,7 +409,7 @@
     {#if listScreen === 'threads' && workspace.view === 'projects'}
       {#snippet projectRows(projects: ProjectEntry[], later = false)}
       {#each projects as group (projectKey(group))}
-        {@const groupRows = rows.filter(row => row.machine.id === group.machine.id && row.thread.projectId === group.project.id)}
+        {@const groupRows = rowsByProject.get(group.machine.id)?.get(group.project.id) ?? []}
         {@const workingOpen = projectThreadView.isOpen(group, 'working')}
         {@const doneOpen = archiveCount(group.project, 'done') > 0 && doneFilter.shown}
         {@const archivedOpen = later && archiveCount(group.project, 'archived') > 0}
