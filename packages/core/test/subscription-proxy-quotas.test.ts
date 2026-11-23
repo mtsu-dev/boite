@@ -334,3 +334,22 @@ test('a new key is asked again at once, whether saved alone or with the configur
   expect((await owner.call('subscriptionProxy.quotas', {})).status).toBe('unavailable');
   expect(seen).toEqual(['Bearer wrong-key', 'Bearer good-key', 'Bearer wrong-key']);
 });
+
+test('a user refresh requested during an in-flight read still asks Douane with ?refresh=1', async () => {
+  const seen: string[] = [];
+  let releaseFirst!: () => void;
+  const firstGate = new Promise<void>(resolve => { releaseFirst = resolve; });
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    const url = new URL(request.url);
+    seen.push(`${url.pathname}${url.search}`);
+    if (seen.length === 1) await firstGate;
+    return Response.json(DOUANE);
+  } });
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+  const owner = await harness.connect();
+  const initial = owner.call('subscriptionProxy.quotas', {});
+  const refreshed = owner.call('subscriptionProxy.quotas', { refresh: true });
+  releaseFirst();
+  await Promise.all([initial, refreshed]);
+  expect(seen).toEqual(['/v1/quotas', '/v1/quotas?refresh=1']);
+});

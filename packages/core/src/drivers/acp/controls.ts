@@ -289,6 +289,7 @@ export class SessionControls {
     if (plan.model !== current) {
       if (option) {
         const failure = await this.#setOption(ctx, 'model', plan.model, true);
+        if (failure?.kind === 'gone') throw new Error('the acp session went away before the prompt');
         if (failure) throw new ModelRefused(`thread.model: ${ctx.provider.name} ${failure.detail}`);
       } else {
         const { agent, sessionId } = this.#target();
@@ -305,6 +306,7 @@ export class SessionControls {
     this.#appliedModel = plan.model;
     if (plan.integrated || plan.effort === null) return;
     const failure = await this.#setOption(ctx, this.#effortCategory(), plan.effort, true);
+    if (failure?.kind === 'gone') throw new Error('the acp session went away before the prompt');
     if (failure) throw new ModelRefused(`thread.effort: ${ctx.provider.name} ${failure.detail}`);
     this.#appliedEffort = plan.effort;
   }

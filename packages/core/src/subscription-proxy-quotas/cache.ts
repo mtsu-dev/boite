@@ -44,6 +44,7 @@ export class GatewayQuotas {
   private last: SubscriptionProxyQuotas = { ...OFF, status: 'unavailable' };
   private readAt = 0;
   private pending: Promise<SubscriptionProxyQuotas> | null = null;
+  private pendingRefresh = false;
   /** The proxy configuration `last` belongs to; another one starts over. */
   private config: string;
   private epoch = 0;
@@ -73,6 +74,7 @@ export class GatewayQuotas {
   reset(): void {
     this.epoch++;
     this.pending = null;
+    this.pendingRefresh = false;
     this.readAt = 0;
     this.last = { ...OFF, status: 'unavailable' };
     this.core.bus.emit('subscriptionProxy.quotasUpdated', this.state());
@@ -99,7 +101,13 @@ export class GatewayQuotas {
   async read(refresh = false): Promise<SubscriptionProxyQuotas> {
     const proxy = this.proxy();
     if (!proxy || proxy.kind !== 'douane') return this.state();
-    if (this.pending) return this.pending;
+    if (this.pending) {
+      if (!refresh || this.pendingRefresh) return this.pending;
+      const epoch = this.epoch;
+      await this.pending;
+      if (epoch !== this.epoch) return this.state();
+      return this.read(true);
+    }
     if (!refresh && this.readAt && Date.now() - this.readAt < FRESH_MS) return this.last;
     const epoch = this.epoch;
     const running = (async () => {
@@ -125,7 +133,10 @@ export class GatewayQuotas {
       return next;
     })();
     this.pending = running;
-    try { return await running; } finally { if (this.pending === running) this.pending = null; }
+    this.pendingRefresh = refresh;
+    try { return await running; } finally {
+      if (this.pending === running) { this.pending = null; this.pendingRefresh = false; }
+    }
   }
 
   /** The entries as limit rows, beside every account's own. */

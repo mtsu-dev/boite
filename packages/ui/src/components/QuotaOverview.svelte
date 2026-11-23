@@ -53,7 +53,7 @@
     {@const windows = shown.primary ? [shown.primary, ...shown.others] : []}
     {@const used = shown.primary?.usedPercent ?? null}
     {@const drained = row.windows.some((limit) => quotaTone(limit.usedPercent) === 'out')}
-    {@const stale = row.status === 'unavailable' || row.error !== null}
+    {@const stale = windows.length > 0 && (row.status === 'unavailable' || row.error !== null)}
     {@const reset = shown.primary?.resetsAt ?? null}
     {@const credits = quotaCredits(row)}
     {@const paid = credits !== null && drained}

@@ -8,7 +8,10 @@ import { canonicalClaudeModel } from '../drivers/claude/config.ts';
 import { fillModelCapabilities, modelCapabilities, publicModel, type DiscoveredModel } from '../drivers/model-capabilities.ts';
 import { activeSubscriptionProxy, proxyApiUrl } from './config.ts';
 import { antigravityOnly, proprietaryFamily, ANTIGRAVITY } from './routes.ts';
+import { boundedJson, MAX_BYTES } from '../subscription-proxy-quotas/decode.ts';
 import { openCodeModels } from './opencode.ts';
+
+const MAX_MODEL_BYTES = 4 * MAX_BYTES;
 
 export interface CatalogRow {
   id: string;
@@ -88,8 +91,11 @@ export async function readSubscriptionProxyModels(core: Core, provider: Provider
   }
   // Do not propagate a gateway's raw body: it can echo a credential.
   let body: { data?: unknown };
-  try { body = await response.json() as { data?: unknown }; }
-  catch { throw unavailable('Subscription proxy model discovery expected an OpenAI models response'); }
+  try { body = await boundedJson(response, MAX_MODEL_BYTES) as { data?: unknown }; }
+  catch (error) {
+    if (error instanceof Error && error.message.includes('exceeded')) throw unavailable('Subscription proxy model discovery expected a bounded response');
+    throw unavailable('Subscription proxy model discovery expected an OpenAI models response');
+  }
   if (!body || typeof body !== 'object' || !Array.isArray(body.data) || body.data.length > 10_000) throw unavailable('Subscription proxy model discovery expected a bounded data array');
   const rows = catalogRows(body.data);
   if (isOpenCode(provider.id)) return openCodeModels(core, proxy, rows);

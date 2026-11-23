@@ -738,3 +738,14 @@ test('malformed speed metadata leaves the field unknown while an empty tier list
   expect(merge([null, {}, { id: 'invalid tier' }])).toEqual(proxy[0]?.speeds);
   expect(merge([])).toBeUndefined();
 });
+
+test('model discovery refuses an oversized gateway response before parsing', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return new Response('x'.repeat((4 << 20) + 64), { headers: { 'content-type': 'application/json' } });
+  } });
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}`) } });
+  const provider = harness.core.providers.require('claude');
+  const failed = await readSubscriptionProxyModels(harness.core, provider).catch((error: unknown) => error);
+  expect(failed).toBeInstanceOf(Error);
+  expect((failed as Error).message).toContain('bounded response');
+});

@@ -40,7 +40,7 @@ async function nativeMuseRoutes(proxy: SubscriptionProxy, key: string, max: numb
       const muse = object(metadata?.['muse-code']);
       return typeof row?.['id'] === 'string' && row['id'].length > 0 && typeof muse?.['name'] === 'string';
     })) return false;
-    const responses = await fetch(`${base}/responses`, { ...options, method: 'OPTIONS' });
+    const responses = await fetch(`${base}/responses`, { ...options, method: 'OPTIONS', signal: AbortSignal.timeout(15_000) });
     await responses.body?.cancel().catch(() => {});
     return (responses.ok || responses.status === 405) && (responses.headers.get('allow') ?? '').split(',').some(method => method.trim().toUpperCase() === 'POST');
   } catch { return false; }
