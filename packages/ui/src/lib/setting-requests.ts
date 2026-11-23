@@ -127,6 +127,7 @@ export function settingHelp(key: RequestableKey): string | null {
     groupThreads: [strings.machines.groupThreadsHint],
     groupBots: [strings.machines.groupBotsHint],
     agentBotCreation: [`${alone.bots}: ${alone.botsEffect}`],
+    contacts: [alone.contactsEffect],
     coordinationReach: COORDINATION_REACH.map(step => `${alone.steps[step]}: ${alone.effects[step]}`),
   };
   const text = parts[key as RequestableSetting];

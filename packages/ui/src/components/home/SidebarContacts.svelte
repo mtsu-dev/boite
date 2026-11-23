@@ -5,6 +5,7 @@
   import { fill, strings } from '../../lib/strings';
   import type { Store } from '../../lib/store.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
+  import { contactsShown } from '../../lib/contacts-rail.svelte';
 
   /**
    * The contacts in a phone's list, under the projects: a section like a
@@ -26,7 +27,8 @@
     try { localStorage.setItem(FOLDED, open ? '0' : '1'); } catch { /* A private window keeps it for the session. */ }
   }
 
-  const watched = watchContacts(() => machines);
+  // A machine whose owner turned contacts off lists none: its rows would open a page it no longer shows.
+  const watched = watchContacts(() => machines.filter(machine => contactsShown(machine.store)));
   const rows = $derived(contactRows(watched()));
   const waiting = $derived(rows.reduce((sum, row) => sum + row.waiting, 0));
   const show = (owner: Store, coreId: string | null) => void openContact(owner, coreId);

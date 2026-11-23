@@ -9,6 +9,7 @@
   import type { Store } from '../../lib/store.svelte';
   import { fill, strings } from '../../lib/strings';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
+  import { contactsShown } from '../../lib/contacts-rail.svelte';
   import InfoTip from '../InfoTip.svelte';
   import MachineIcon from '../MachineIcon.svelte';
   import ProjectChoice from '../ProjectChoice.svelte';
@@ -30,7 +31,7 @@
 
   const pending = $derived(splitRequests(view.state?.requests.filter(request => request.coreId === contact.coreId) ?? []).pending);
   const mail = $derived(view.state?.mail?.filter(letter => letter.coreId === contact.coreId) ?? []);
-  const machines = $derived(workspace.machinesOr(view.store).filter(machine => machine.store.owner));
+  const machines = $derived(workspace.machinesOr(view.store).filter(machine => contactsShown(machine.store)));
   const watched = watchContacts(() => machines);
   // A contact's core identity, never its local nickname, links its copies on our machines.
   const links = $derived(watched().flatMap(entry => {
