@@ -385,7 +385,7 @@
 
   {#if botsOn}
     <span class="separator" aria-hidden="true"></span>
-    <div class="bots" class:reordering={reorder.dragging !== null} role="list" aria-label={strings.app.rail.bots} use:reorder.track onpointerover={(event) => placeName(slotOf(event))} onfocusin={(event) => placeName(slotOf(event))} onscroll={placeShownNames}>
+    <div class="bots" class:scroll-edges={entries.length > 0} class:reordering={reorder.dragging !== null} role="list" aria-label={strings.app.rail.bots} use:reorder.track onpointerover={(event) => placeName(slotOf(event))} onfocusin={(event) => placeName(slotOf(event))} onscroll={placeShownNames}>
       {#each entries as entry (entry.key)}
         {#if entry.kind === 'bot'}
           {@const bot = entry.bot}
@@ -428,7 +428,7 @@
         {/if}
       {/each}
     </div>
-    <div class="slot">
+    <div class="slot" class:tucked={entries.length > 0}>
       <button type="button" class="rail-button add" class:tucked={entries.length > 0} aria-label={strings.app.rail.add} aria-haspopup="menu"
         aria-expanded={contextMenu.current !== null && contextMenu.anchor === addButton} bind:this={addButton}
         data-testid="rail-add" onclick={(event) => addMenu(event.currentTarget)}><Plus size={19} strokeWidth={1.75} /></button>
@@ -506,11 +506,16 @@
   .rail-button.add:hover:not(:disabled) { background: var(--color-hover); }
   /* Under a mouse, Add waits out of sight until the pointer comes to the rail and fades in and out on the edge
      scrollbars' thumbs' duration and curve; its open menu and the keyboard in the rail keep it shown. Hidden, it keeps
-     its place and its name for a screen reader. A touch screen, high contrast and a rail with no mochi yet always
-     show it, under the edge scrollbars' own gate (lib/edge-scrollbars.ts). */
+     its name for a screen reader and leaves its room to the mochis: its slot's margin takes back its height and the
+     rail's gap under it, so a rail too short for them is not cut above an empty place. Shown, it takes its room
+     again on the same duration and curve. Where the rail has room nothing moves, Add fades where it stands. A touch
+     screen, high contrast and a rail with no mochi yet always show it, under the edge scrollbars' own gate
+     (lib/edge-scrollbars.ts). */
   @media (hover: hover) and (pointer: fine) and (forced-colors: none) {
     .rail-button.add.tucked { opacity: 0; transition: background var(--dur-2) var(--ease-out-quint), opacity var(--dur-2) var(--ease-out-quint); }
     .app-rail:hover .rail-button.add.tucked, .app-rail:has(:global(:focus-visible)) .rail-button.add.tucked, .rail-button.add.tucked[aria-expanded='true'] { opacity: 1; }
+    .slot.tucked { margin-bottom: calc(-1 * var(--rail-button) - 8px); transition: margin-bottom var(--dur-2) var(--ease-out-quint); }
+    .app-rail:hover .slot.tucked, .app-rail:has(:global(:focus-visible)) .slot.tucked, .slot.tucked:has(.rail-button.add[aria-expanded='true']) { margin-bottom: 0; }
   }
   /* A circle, as the bots it stands under: ringed at rest, filled where you are. */
 
@@ -611,6 +616,15 @@
   /* 4 px of its own above and below, taken back from the rail's gaps: the scroller clips what passes its edge, and
      the first and last pictures' rings and arcs pass theirs by that much. */
   .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; padding: 4px 0; margin: -4px 0; overflow-y: auto; scrollbar-width: none; }
+  /* More pictures than the rail holds: the one that passes an edge fades into the rail's ground instead of being cut
+     across (frame.css `.scroll-edges`, outranked here by the rail's name in front). The fade stays inside the card's
+     edge, the frame around it is another ground, and a picture brought into view by the keyboard stops clear of it.
+     The two edges are flex children of the list: each takes back the gap it would add, and an empty list has none,
+     they would be all it holds and make it scroll. */
+  .app-rail .bots.scroll-edges { --scroll-edge: 16px; --scroll-edge-top: 4px; --scroll-edge-bottom: 4px; --scroll-edge-ground: var(--rail-ground); scroll-padding-block: var(--scroll-edge); }
+  .app-rail .bots.scroll-edges::before, .app-rail .bots.scroll-edges::after { margin-inline: calc(var(--frame-gap) + 1px); }
+  .app-rail .bots.scroll-edges::before { margin-bottom: calc(-1 * var(--scroll-edge) - 8px); }
+  .app-rail .bots.scroll-edges::after { margin-top: calc(-1 * var(--scroll-edge) - 8px); }
   /* A picture held to move: it dims where it will land; the name cards stay away while it moves. */
   .slot.dragging > .bot { opacity: 0.55; }
   .bots.reordering { cursor: grabbing; }

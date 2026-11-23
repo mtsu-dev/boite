@@ -67,7 +67,7 @@ test("the rail's Add shows only under a pointer on the rail, fading as the edge 
   // Out of sight only where a pointer can come to the rail: without hover nothing would ever bring it back.
   // High contrast shows it too, as it keeps the native scrollbars.
   for (const rule of tucked) expect(rule.within.some((media) => /hover:\s*hover/.test(media) && /pointer:\s*fine/.test(media) && /forced-colors:\s*none/.test(media))).toBe(true);
-  // Hidden by its opacity alone, so it keeps its place in the rail and its name for a screen reader.
+  // Hidden by its opacity, never taken out of the tree: it keeps its name for a screen reader.
   expect(body(hidden[0]!.selector)).not.toMatch(/display:\s*none|visibility:\s*hidden/);
   expect(style).not.toMatch(/\.add\.tucked[^{]*\{[^}]*(display:\s*none|visibility:\s*hidden)/);
   // The pointer over the rail, the keyboard in it or the menu it opened bring it back.
@@ -78,4 +78,30 @@ test("the rail's Add shows only under a pointer on the rail, fading as the edge 
   // The scrollbars' thumbs' duration and curve, which reduced motion cuts (motion.css).
   const thumb = /\.edge-scrollbar-thumb \{[^}]*transition:[^;]*?(var\(--dur-\d\)) (var\(--ease-[\w-]+\))/.exec(bare(appCss()))!;
   expect(body(hidden[0]!.selector)).toContain(`opacity ${thumb[1]} ${thumb[2]}`);
+});
+
+test("hidden, the rail's Add gives its room to the mochis: its slot takes back its height and the rail's gap, where and while Add is hidden", () => {
+  const style = /<style[^>]*>([\s\S]*?)<\/style>/.exec(read('components/AppRail.svelte'))![1]!;
+  const body = (selector: string) => style.slice(style.indexOf(selector) + selector.length).match(/^\s*\{([^}]*)\}/)![1]!;
+  const slot = rules(style, /\.slot\.tucked/);
+  expect(slot.length).toBe(2);
+  // Under Add's own gate: a touch screen and high contrast always show Add, which keeps its room there.
+  for (const rule of slot) expect(rule.within.some((media) => /hover:\s*hover/.test(media) && /pointer:\s*fine/.test(media) && /forced-colors:\s*none/.test(media))).toBe(true);
+  // What Add holds in the rail's column: a button's height and the gap the rail lays under it. A rail too short
+  // for its mochis shows them there instead of cutting them above an empty place.
+  const folded = slot.find((rule) => /margin-bottom:\s*calc\(/.test(body(rule.selector)))!.selector;
+  expect(folded).toBe('.slot.tucked');
+  expect(body(folded)).toContain('margin-bottom: calc(-1 * var(--rail-button) - 8px);');
+  expect(style).toMatch(/\.app-rail \{[^}]*flex-direction: column;[^}]*gap: 8px;/);
+  expect(style).toMatch(/\.rail-button, \.bot \{[^}]*height: var\(--rail-button\);/);
+  // By its margin alone: the slot keeps its size, so Add fades where it stands when the rail has room, and stays in the tree.
+  expect(body(folded)).not.toMatch(/(^|[\s;])height:|display:\s*none|visibility:\s*hidden/);
+  // Given back by what shows Add: the pointer over the rail, the keyboard in it or the menu Add opened.
+  const open = slot.find((rule) => /margin-bottom:\s*0\s*;/.test(body(rule.selector)))!.selector;
+  expect(open).toMatch(/\.app-rail:hover \.slot\.tucked/);
+  expect(open).toMatch(/\.app-rail:has\(:global\(:focus-visible\)\) \.slot\.tucked/);
+  expect(open).toMatch(/\.slot\.tucked:has\(\.rail-button\.add\[aria-expanded='true'\]\)/);
+  // On Add's own duration and curve, which reduced motion cuts (motion.css).
+  const thumb = /\.edge-scrollbar-thumb \{[^}]*transition:[^;]*?(var\(--dur-\d\)) (var\(--ease-[\w-]+\))/.exec(bare(appCss()))!;
+  expect(body(folded)).toContain(`transition: margin-bottom ${thumb[1]} ${thumb[2]};`);
 });
