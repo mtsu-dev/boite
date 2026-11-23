@@ -203,7 +203,7 @@ function parse(raw: string): Record<string, PanelState> {
  * whole screen.
  */
 export function panelSibling(
-  layout: { sidebarCollapsed: boolean; sidebarWidth: number; agentsSidebarWidth?: number | null; page?: SidebarPage; owner: boolean },
+  layout: { sidebarCollapsed: boolean; sidebarWidth: number; agentsSidebarWidth?: number | null; page?: SidebarPage } & Parameters<typeof contactsRail.shown>[0],
   viewport: number
 ): number {
   if (viewport <= 720) return 0;

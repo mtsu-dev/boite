@@ -1,14 +1,15 @@
 /** A thread's working directory: files, git, the panel and published artifacts. */
-import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, PANEL_SURFACE_KINDS, ProofInputError, RpcErrorCode, VIEW_BLOCK_MAX_BYTES, VIEW_DEFAULT_HEIGHT,
+import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, DEVICE_SECRET_DIRS, DEVICE_SECRET_FILE, PANEL_SURFACE_KINDS, ProofInputError, RpcErrorCode, VIEW_BLOCK_MAX_BYTES, VIEW_DEFAULT_HEIGHT,
   VIEW_MAX_BYTES, VIEW_TITLE_MAX, chatPreviewSizeProblem, deviceBound, proofPart, viewDocument, viewTitleOf,
-  type FileContent, type FileEntry, type GitDiff, type GitStatus, type Message, type MessagePart, type PanelSurface } from '@boite/contracts';
+  type FileContent, type FileEntry, type GitDiff, type GitStatus, type Message, type MessagePart, type PanelSurface, type Thread } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { FAKE_CHANGES, FAKE_DIFFS, FAKE_MEDIA, FAKE_MEDIA_PATHS, fakeBytes, fakeLanguage } from './files';
 import { seededArtifact } from './agents-demo';
-import { refusal, T0 } from './shared';
+import { DATA_DIR, fakeWorktreeRoot, refusal, T0 } from './shared';
 import type { FakeContext, FakeMethods } from './context';
 import { fakeSharedFile } from './shared-access';
-import { inFakeCredentialStore } from './projects';
+import { inFakeCredentialStore, inFakeDataFolder } from './projects';
+import { pathKey } from './checks';
 
 /** A stable time per path, so two runs of a capture read the same tree. */
 function fileTime(ctx: FakeContext, path: string): number {
@@ -58,9 +59,9 @@ function isDirPath(ctx: FakeContext, path: string): boolean {
  * inside it, never out of it, answered in the relative form with forward
  * slashes the core answers with.
  */
-function inside(ctx: FakeContext, cwd: string, path: unknown, what: string, expect?: 'file' | 'dir'): string {
+function inside(ctx: FakeContext, thread: Thread, path: unknown, what: string, expect?: 'file' | 'dir'): string {
   if (typeof path !== 'string') throw refusal(`${what} must be a path, got ${typeof path}`);
-  const root = cwd.replace(/[\\/]+$/, '').replace(/\\/g, '/');
+  const root = thread.cwd.replace(/[\\/]+$/, '').replace(/\\/g, '/');
   let rest = path.replace(/\\/g, '/');
   if (/^([a-z]:)?\//i.test(rest)) {
     if (rest.toLowerCase() !== root.toLowerCase() && !rest.toLowerCase().startsWith(`${root.toLowerCase()}/`)) {
@@ -75,8 +76,20 @@ function inside(ctx: FakeContext, cwd: string, path: unknown, what: string, expe
     else if (parts.pop() === undefined) throw refusal(`${what} leaves the thread's working directory: ${path}`);
   }
   const relative = parts.join('/');
-  if (deviceBound(ctx.bus.principal) && inFakeCredentialStore(`${root}/${relative}`)) {
-    throw refusal(`a paired device does not read credential files; open ${path} on the owner's machine`);
+  if (deviceBound(ctx.bus.principal)) {
+    const target = relative ? `${root}/${relative}` : root;
+    if (inFakeDataFolder(target)) {
+      const project = ctx.projects.find(project => project.id === thread.projectId);
+      const roots = project ? [project.path, fakeWorktreeRoot(project.path, ctx.settings.worktreeStorage, project.id)] : [];
+      const key = pathKey(target), data = pathKey(DATA_DIR);
+      if (!roots.map(pathKey).some(root => root.startsWith(`${data}/`) && (key === root || key.startsWith(`${root}/`)))) {
+        throw refusal(`a paired device does not read boite's data folder: ${path}`);
+      }
+    }
+    if (inFakeCredentialStore(target) || parts.some(part => DEVICE_SECRET_DIRS.has(part.toLowerCase()))
+      || DEVICE_SECRET_FILE.test(target.split('/').at(-1) ?? '')) {
+      throw refusal(`a paired device does not read credential files; open ${path} on the owner's machine`);
+    }
   }
   if (expect === undefined) return relative;
   const isFile = ctx.files.has(relative) || FAKE_MEDIA[relative] !== undefined;
@@ -92,7 +105,7 @@ function inside(ctx: FakeContext, cwd: string, path: unknown, what: string, expe
  * that is, a diff path inside the directory, an http or https url, and the
  * relative path every client compares tabs by.
  */
-function checkSurface(ctx: FakeContext, cwd: string, surface: PanelSurface): PanelSurface {
+function checkSurface(ctx: FakeContext, thread: Thread, surface: PanelSurface): PanelSurface {
   const kind = (surface as { kind?: unknown } | null | undefined)?.kind;
   if (typeof kind !== 'string' || !(PANEL_SURFACE_KINDS as readonly string[]).includes(kind)) {
     throw refusal(`panel.open does not know the surface ${String(kind)}`);
@@ -100,7 +113,7 @@ function checkSurface(ctx: FakeContext, cwd: string, surface: PanelSurface): Pan
   const path = (surface as { path?: unknown }).path;
   if (kind === 'file') {
     if (typeof path !== 'string' || path.length === 0) throw refusal('panel.open file needs a path');
-    const found = inside(ctx, cwd, path, 'panel.open file path', 'file');
+    const found = inside(ctx, thread, path, 'panel.open file path', 'file');
     const line = (surface as { line?: unknown }).line;
     if (line === undefined || line === null) return { kind, path: found };
     if (typeof line !== 'number' || !Number.isInteger(line) || line < 1) {
@@ -110,12 +123,12 @@ function checkSurface(ctx: FakeContext, cwd: string, surface: PanelSurface): Pan
   }
   if (kind === 'files') {
     if (path === undefined || path === null) return { kind };
-    return { kind, path: inside(ctx, cwd, path, 'panel.open files path', 'dir') };
+    return { kind, path: inside(ctx, thread, path, 'panel.open files path', 'dir') };
   }
   if (kind === 'diff') {
     // A diff names a file that may be gone from the working tree.
     if (path === undefined || path === null) return { kind };
-    return { kind, path: inside(ctx, cwd, path, 'panel.open diff path') };
+    return { kind, path: inside(ctx, thread, path, 'panel.open diff path') };
   }
   if (kind === 'browser') {
     const url = (surface as { url?: unknown }).url;
@@ -143,7 +156,7 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
     if (!turn) throw refusal(`${method} needs a thread with a turn`);
     if (source === undefined && !parts.length) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'artifacts.publish.path: expected a file path', data: { field: 'path' } });
     if (source !== undefined) {
-      const path = inside(ctx, thread.cwd, source, 'artifacts.publish path', 'file');
+      const path = inside(ctx, thread, source, 'artifacts.publish path', 'file');
       const media = FAKE_MEDIA[path];
       const body = media ? new Uint8Array(await (await fetch(media.url())).arrayBuffer()) : new TextEncoder().encode(ctx.files.get(path) ?? '');
       if (body.length > ARTIFACT_MAX_BYTES) throw refusal('artifacts.publish file must be at most 512 MB');
@@ -174,7 +187,7 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
     'artifacts.preview': async ({ threadId, path }) => {
       const thread = ctx.thread(threadId);
       if (thread.archived) throw refusal('artifacts.preview needs an active thread');
-      const relative = inside(ctx, thread.cwd, path, 'artifacts.preview path', 'file');
+      const relative = inside(ctx, thread, path, 'artifacts.preview path', 'file');
       if (!/\.html?$/i.test(relative)) throw refusal('artifacts.preview path must be an HTML file');
       const url = `http://preview.invalid/${encodeURIComponent(threadId)}/${encodeURIComponent(relative)}`;
       ctx.emitToThread(threadId, 'panel.requested', { threadId, surface: { kind: 'browser', url }, at: ctx.now() });
@@ -182,7 +195,7 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
     },
     'artifacts.previewClose': async ({ threadId, path }) => {
       const thread = ctx.thread(threadId);
-      inside(ctx, thread.cwd, path, 'artifacts.previewClose path');
+      inside(ctx, thread, path, 'artifacts.previewClose path');
       return { ok: true as const };
     },
     'artifacts.read': async ({ threadId, messageId, artifactId, view, previewMax }) => {
@@ -211,7 +224,7 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
       if (params.script !== undefined && typeof params.script !== 'string') throw refusal('artifacts.viewCheck script must be JavaScript text');
       if (params.scheme !== undefined && params.scheme !== 'dark' && params.scheme !== 'light') throw refusal('artifacts.viewCheck scheme must be dark or light');
       fakeSharedFile(ctx, params.threadId, params.path, 'publish');
-      const path = inside(ctx, thread.cwd, params.path, 'artifacts.viewCheck path', 'file');
+      const path = inside(ctx, thread, params.path, 'artifacts.viewCheck path', 'file');
       if (!/\.html?$/i.test(path)) throw refusal('artifacts.viewCheck path must be an HTML file');
       const source = ctx.files.get(path) ?? '';
       if (!source.trim()) throw refusal('artifacts.viewCheck page is empty');
@@ -238,7 +251,7 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
       if (thread.archived) throw refusal('artifacts.view needs an active thread');
       const turn = thread.turns.at(-1);
       if (!turn) throw refusal('artifacts.view needs a thread with a turn');
-      const path = inside(ctx, thread.cwd, params.path, 'artifacts.view path', 'file');
+      const path = inside(ctx, thread, params.path, 'artifacts.view path', 'file');
       if (!/\.html?$/i.test(path)) throw refusal('artifacts.view path must be an HTML file');
       const source = ctx.files.get(path) ?? '';
       if (!source.trim()) throw refusal('artifacts.view page is empty');
@@ -276,7 +289,7 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
     },
     'panel.open': async (params) => {
       const thread = ctx.thread(params.threadId);
-      const surface = checkSurface(ctx, thread.cwd, params.surface);
+      const surface = checkSurface(ctx, thread, params.surface);
       // The core sends this to every client subscribed to the thread, and
       // `shown` says whether there was one to receive it.
       const shown = ctx.bus.subscribed.has(thread.id);
@@ -289,7 +302,7 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
       const thread = ctx.thread(threadId);
       const question = ctx.pendingQuestions.get(questionId)?.request;
       if (question?.threadId !== thread.id || !question.open) throw refusal(`questions.openPage: ${questionId} is not a pending question with a page`);
-      const surface = checkSurface(ctx, thread.cwd, { kind: 'browser', url: question.open.url });
+      const surface = checkSurface(ctx, thread, { kind: 'browser', url: question.open.url });
       if (surface.kind === 'browser') await all()['browser.command']({ threadId: thread.id, action: { kind: 'open', url: surface.url } });
       return { ok: true as const };
     },
@@ -306,11 +319,12 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
       return status;
     },
     'git.diff': async (params) => {
-      const path = inside(ctx, ctx.thread(params.threadId).cwd, params.path, 'git.diff path');
+      const thread = ctx.thread(params.threadId);
+      const path = inside(ctx, thread, params.path, 'git.diff path');
       const change = FAKE_CHANGES.find((one) => one.path === path);
       if (!change) throw ctx.notFound('change', path);
       // The origin the status gave is checked like the path; the fixture already knows it.
-      if (params.oldPath !== undefined && params.oldPath !== null) inside(ctx, ctx.thread(params.threadId).cwd, params.oldPath, 'git.diff oldPath');
+      if (params.oldPath !== undefined && params.oldPath !== null) inside(ctx, thread, params.oldPath, 'git.diff oldPath');
       const sides = FAKE_DIFFS[path] ?? {
         // A row with no fixture of its own still opens on two readable sides.
         oldText: `// ${path}
@@ -326,13 +340,13 @@ const ready = true;
       return diff;
     },
     'files.list': async (params) => {
-      const cwd = ctx.thread(params.threadId).cwd;
+      const thread = ctx.thread(params.threadId);
       fakeSharedFile(ctx,params.threadId,params.path||'.');
-      return listDir(ctx, inside(ctx, cwd, params.path ?? '', 'files.list path', 'dir')).filter(entry=>{try{fakeSharedFile(ctx,params.threadId,entry.path,'read',true);return true;}catch{return false;}});
+      return listDir(ctx, inside(ctx, thread, params.path ?? '', 'files.list path', 'dir')).filter(entry=>{try{fakeSharedFile(ctx,params.threadId,entry.path,'read',true);return true;}catch{return false;}});
     },
     'files.read': async (params) => {
       fakeSharedFile(ctx,params.threadId,params.path);
-      const path = inside(ctx, ctx.thread(params.threadId).cwd, params.path, 'files.read path', 'file');
+      const path = inside(ctx, ctx.thread(params.threadId), params.path, 'files.read path', 'file');
       // A picture, a sound and anything else binary answer as a url, the way
       // the core hands out a ticket, except that these carry their own bytes.
       const media = FAKE_MEDIA[path];
@@ -362,10 +376,10 @@ const ready = true;
     },
     'files.locate': async (params) => {
       fakeSharedFile(ctx,params.threadId,params.path);
-      const cwd = ctx.thread(params.threadId).cwd;
+      const thread = ctx.thread(params.threadId);
       if (typeof params.path !== 'string' || params.path.length === 0) throw refusal(`files.locate path: expected a file path, got ${JSON.stringify(params.path)}`);
       try {
-        inside(ctx, cwd, params.path, 'files.locate path', 'file');
+        inside(ctx, thread, params.path, 'files.locate path', 'file');
         return [params.path];
       } catch { /* Not there as written: look for it by its tail, as the core does. */ }
       const tail = params.path.replace(/\\/g, '/').split('/').filter((part) => part !== '' && part !== '.').join('/').toLowerCase();
@@ -375,10 +389,10 @@ const ready = true;
       return found.filter((path) => path.split('/').length === depth).sort();
     },
     'files.write': async (params) => {
-      const cwd = ctx.thread(params.threadId).cwd;
-      const path = inside(ctx, cwd, params.path, 'files.write path');
+      const thread = ctx.thread(params.threadId);
+      const path = inside(ctx, thread, params.path, 'files.write path');
       // The file may be new, its directory may not, and what is there already has to be a file.
-      inside(ctx, cwd, path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '', 'files.write path directory', 'dir');
+      inside(ctx, thread, path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '', 'files.write path directory', 'dir');
       if (isDirPath(ctx, path)) throw refusal(`files.write path is not a file: ${params.path}`);
       if (FAKE_MEDIA[path]) {
         throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'this file is not text' });

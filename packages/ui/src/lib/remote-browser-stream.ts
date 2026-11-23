@@ -21,6 +21,9 @@ export interface FramePainter {
 
 type Drawn = ImageBitmap | HTMLImageElement;
 
+/** A picture's own size in pixels, from its header as decoded. */
+export interface PictureSize { width: number; height: number }
+
 /** Safari before 15 has no `createImageBitmap` for a blob: an image element decodes it there. */
 async function decode(jpeg: Blob): Promise<Drawn> {
   if (typeof createImageBitmap === 'function') return createImageBitmap(jpeg);
@@ -32,12 +35,15 @@ async function decode(jpeg: Blob): Promise<Drawn> {
   } finally { URL.revokeObjectURL(url); }
 }
 
-export function framePainter(): FramePainter {
+const sizeOf = (drawn: Drawn): PictureSize => ({ width: 'naturalWidth' in drawn ? drawn.naturalWidth : drawn.width, height: 'naturalHeight' in drawn ? drawn.naturalHeight : drawn.height });
+
+/** `sized` hears the size of each picture painted, and null once none is: the view's box takes its proportions. */
+export function framePainter(sized?: (size: PictureSize | null) => void): FramePainter {
   let canvas: HTMLCanvasElement | undefined, shown: Drawn | null = null, waiting: Blob | null = null, decoding = false, closed = false, epoch = 0;
   const release = (drawn: Drawn | null) => { if (drawn && 'close' in drawn) drawn.close(); };
   const draw = () => {
     if (!canvas || !shown) return;
-    const width = 'naturalWidth' in shown ? shown.naturalWidth : shown.width, height = 'naturalHeight' in shown ? shown.naturalHeight : shown.height;
+    const { width, height } = sizeOf(shown);
     // Assigning a canvas its size clears it: only when the frame's size changes, as between a scroll's small frames and the still after.
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
@@ -54,13 +60,14 @@ export function framePainter(): FramePainter {
       release(shown);
       shown = drawn;
       draw();
+      sized?.(sizeOf(drawn));
     }
     decoding = false;
   };
   return {
     attach(next) { canvas = next; draw(); },
     paint(jpeg) { waiting = jpeg; if (!decoding && !closed) void run(); },
-    clear() { epoch++; waiting = null; release(shown); shown = null; },
+    clear() { epoch++; waiting = null; release(shown); shown = null; sized?.(null); },
     close() { closed = true; waiting = null; release(shown); shown = null; canvas = undefined; },
   };
 }

@@ -37,20 +37,24 @@ const CALL_TIMEOUT_MS = 20_000;
 /** In-page wait for drawn finite animations and fonts. Returns any unfinished work at the deadline. */
 export const SETTLE_ANIMATIONS = `new Promise((resolve) => {
   let live = true, fonts = false;
-  const done = (ok) => { if (!live) return; live = false; resolve(ok ? null : watched.filter((a) => !ended.has(a) && drawn(a))
+  const done = (ok) => { if (!live) return; live = false; clearTimeout(deadline); resolve(ok ? null : watched.filter(pending)
     .map((a) => (a.animationName ?? a.transitionProperty ?? a.id) + ' on .' + String(a.effect?.target?.className ?? '?').split(' ')[0] + ' ' + a.playState).concat(fonts ? [] : [...document.fonts].filter((f) => f.status === 'loading').map((f) => 'font ' + f.family + ' ' + f.weight + ' loading').concat(['document.fonts ' + document.fonts.status]))); };
   const drawn = (a) => !(a.effect instanceof KeyframeEffect) || a.effect.target?.checkVisibility?.({ contentVisibilityAuto: true }) !== false;
-  const ended = new Set();
   const watched = document.getAnimations().filter((a) => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity && drawn(a));
-  for (const a of watched) a.finished.then(() => ended.add(a), () => ended.add(a));
+  const pending = (a) => {
+    const state = a.playState;
+    return drawn(a) && (a.pending || (state !== 'finished' && state !== 'idle'));
+  };
   document.fonts.ready.then(() => { fonts = true; });
+  const settled = () => fonts && !watched.some(pending);
   const frame = () => {
     if (!live) return;
-    if (fonts && watched.every((a) => ended.has(a) || !drawn(a))) return done(true);
+    if (settled()) return done(true);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
-  setTimeout(() => done(false), ${CALL_TIMEOUT_MS - 5_000});
+  // The last paint can be suppressed even after the fonts and animations finish.
+  const deadline = setTimeout(() => done(settled()), ${CALL_TIMEOUT_MS - 5_000});
 })`;
 const POLL_MS = 100;
 /** Distinct debugging-port answers a failed wait reports. */
@@ -756,14 +760,10 @@ ${await this.#historyReport()}`);
   }
 
   /**
-   * Waits for the fonts and every finite animation that is drawn. Chrome
-   * settles an animation's `finished` promise on a rendering frame, so frames
-   * are requested until everything has settled. An element that is not
-   * rendered, such as one inside a folded `content-visibility` section, never
-   * gets that update: a theme change left its colour transitions finished
-   * with their promises pending, and the wait hung until the call timed out.
-   * Content can also stop being drawn during the wait (a phone's chat body
-   * covered by the list), so each frame looks again.
+   * Waits for the fonts and every finite animation that is drawn. Chromium
+   * can report a finished play state before it resolves the animation's
+   * promise. Each frame reads that state and checks which elements are still
+   * drawn, since the page can hide content while an animation runs.
    */
   async settleAnimations(): Promise<void> {
     // The page gives up first, so the frame pump never outlives the call.

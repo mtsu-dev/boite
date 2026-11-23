@@ -1,12 +1,14 @@
 import { afterEach, expect, test } from 'bun:test';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { settingAnswerText, type AgentContact, type CoordinationPeer, type AgentCreateAsked, type AgentCreated, type MessagePart, type Settings } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect } from '../src/client.ts';
 import { contactsBotOf } from './contacts-fixture.ts';
+import { memberAdmission } from '../src/contacts/admission.ts';
+import { runPlan } from '../src/contacts/bot.ts';
 import { echoThread, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 const cores: TestCore[] = [];
@@ -23,8 +25,8 @@ async function thrown(promise: PromiseLike<unknown>): Promise<{ message: string 
 }
 
 /** A core as an install starts it: the harness leaves the two agent settings as the core stored them. */
-async function boot(dataDir?: string): Promise<TestCore> {
-  const core = await startTestCore({ agentDefaults: 'boot', ...(dataDir === undefined ? {} : { dataDir }) });
+async function boot(dataDir?: string, policyFile?: string): Promise<TestCore> {
+  const core = await startTestCore({ agentDefaults: 'boot', ...(dataDir === undefined ? {} : { dataDir }), ...(policyFile === undefined ? {} : { policyFile }) });
   cores.push(core);
   return core;
 }
@@ -175,8 +177,10 @@ test('agent cannot approve or open the settings; repeated and archived approvals
  expect((await thrown(owner.call('agents.create.approve',{threadId,questionId:next.questionId}))).message).toContain('no open mochi card');
 });
 
-async function pair() {
- const a=await boot(),b=await boot(), ac=await a.connect(),bc=await b.connect();
+async function pair(policyB?: string) {
+ const a=await boot(),b=await boot(undefined,policyB), ac=await a.connect(),bc=await b.connect();
+ // Contacts start off on a new install: both owners turn them on first.
+ await ac.call('settings.set',{contacts:true});await bc.call('settings.set',{contacts:true});
  const at=await echoThread(a,ac,'alpha'),bt=await echoThread(b,bc,'bravo');
  a.core.contacts.setSettings({minTier:2});b.core.contacts.setSettings({minTier:2});
  a.core.contacts.selfUrl=async()=>a.url;
@@ -226,4 +230,102 @@ test.each(['directory','search','read'] as const)('reach change hides an unrelat
  const out=await pending;
  const seen=out&&('agents' in out?out.agents:'matches' in out?out.matches:[out.contact]);
  expect(seen?.some(t=>t.coreId===peer.coreId)??false).toBe(false);
+});
+
+test('contacts start off on a new install and refuse until the owner turns them on', async () => {
+  const h = await boot();
+  expect((h.core.journal.getSetting('settings') as Settings).contacts).toBe(false);
+  const owner = await h.connect();
+  const { threadId } = await echoThread(h, owner);
+  const off = 'contacts are off on this machine';
+  expect((await thrown(owner.call('contacts.invite', {}))).message).toContain(off);
+  expect((await thrown(owner.call('contacts.join', { link: 'boite-contact:x' }))).message).toContain(off);
+  const asked = await thrown(owner.call('collaboration.ask', { threadId, text: 'Who keeps the docs?' }));
+  expect(asked.message).toContain(off);
+  expect(asked.message).toContain('boite settings request contacts true --why');
+  expect(await owner.call('collaboration.contacts', { threadId })).toEqual([]);
+  // The key is one an agent may ask about; the card, drawn under a turn, opens the page, where the switch is.
+  await owner.call('turns.start', { threadId, prompt: 'Start.' });
+  await waitFor(() => h.core.threads.require(threadId).status === 'idle' && h.core.journal.listMessages(threadId).length > 0);
+  const card = await owner.call('settings.request', { threadId, key: 'contacts', value: true, reason: 'Work with a friend' });
+  expect(card.setting).toMatchObject({ kind: 'change', key: 'contacts', value: true, previous: false, sensitive: true });
+  // Accepting a contact's request opens something to them, through the API, an Operator card or a plan alike.
+  expect(() => h.core.contacts.requests.settle('creq-none', true, 'p', undefined, 'owner')).toThrow(off);
+  expect(() => h.core.contacts.requests.approve('creq-none')).toThrow(off);
+  expect((await thrown(runPlan(h.core, 'creq-none'))).message).toContain(off);
+  // Trusting a contact lets its held mail in: refused too.
+  expect((await thrown(owner.call('contacts.update', { coreId: 'c'.repeat(64), trusted: true }))).message).toContain(off);
+  await owner.call('settings.set', { contacts: true });
+  // On, the join reaches the link itself.
+  expect((await thrown(owner.call('contacts.join', { link: 'boite-contact:x' }))).message).not.toContain(off);
+});
+
+test('the switch drops a linked contact and dials it again, and the agents\' guide follows it', async () => {
+  const { a, b, bc, bt, bi } = await pair();
+  const guide = () => b.core.coordination.instructions(bt.threadId);
+  expect(guide()).toContain('Contacts (other owners\' Boites)');
+  await bc.call('settings.set', { contacts: false });
+  await waitFor(() => !a.core.contacts.linked(bi));
+  expect(guide()).not.toContain('Contacts (');
+  expect(await bc.call('collaboration.contacts', { threadId: bt.threadId })).toEqual([]);
+  await bc.call('settings.set', { contacts: true });
+  await waitFor(() => a.core.contacts.linked(bi), 10_000);
+  expect(guide()).toContain('Contacts (other owners\' Boites)');
+});
+
+test('the switch and the policy hold one state: off after a lifted policy still drops the link', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'boite-policy-')); dirs.push(dir);
+  const file = join(dir, 'policy.json');
+  const { a, b, bc, bi } = await pair(file);
+  writeFileSync(file, JSON.stringify({ network: { contacts: false } }));
+  b.core.policy.reload();
+  await waitFor(() => !a.core.contacts.linked(bi));
+  rmSync(file);
+  b.core.policy.reload();
+  await waitFor(() => a.core.contacts.linked(bi), 10_000);
+  await bc.call('settings.set', { contacts: false });
+  await waitFor(() => !a.core.contacts.linked(bi));
+});
+
+test('the first start that knows contacts keeps them on where a contact is kept, and never moves a stored choice', async () => {
+  const h = await boot();
+  const without = (): Settings => { const stored = { ...h.core.journal.getSetting('settings') as Settings }; delete stored.contacts; return stored; };
+  h.core.journal.setSetting('settings', without());
+  h.core.settings.seedContacts();
+  expect(h.core.settings.get().contacts).toBe(false);
+  h.core.journal.setSetting('settings', without());
+  h.core.journal.setSetting('contacts', [{ coreId: 'c'.repeat(64), name: 'Ada', role: 'guest' }]);
+  h.core.settings.seedContacts();
+  expect(h.core.settings.get().contacts).toBe(true);
+  // A member whose contacts the group relays to it, or one holding them for the group, keeps them too, while that
+  // member's admission holds: a copy left from a group this core left keeps nothing on.
+  h.core.journal.setSetting('contacts', []);
+  const other = await boot();
+  await other.core.group.create('Test owner');
+  const via = other.core.coordination.card().coreId;
+  const left = [{ coreId: 'd'.repeat(64), via, admission: '["gone",1,1]' }];
+  for (const key of ['contacts:relayed', 'contacts:held']) {
+    h.core.journal.setSetting('settings', without());
+    h.core.journal.setSetting(key, left);
+    h.core.settings.seedContacts();
+    expect(h.core.settings.get().contacts).toBe(false);
+  }
+  await other.core.group.invite().then(({ invite }) => h.core.group.join(invite));
+  const current = [{ coreId: 'd'.repeat(64), via, admission: memberAdmission(h.core, via) }];
+  for (const key of ['contacts:relayed', 'contacts:held']) {
+    h.core.journal.setSetting('settings', without());
+    h.core.journal.setSetting(key, current);
+    h.core.settings.seedContacts();
+    expect(h.core.settings.get().contacts).toBe(true);
+    h.core.journal.setSetting(key, []);
+  }
+  // A stored choice never moves, either way: off with a contact kept, on with none.
+  h.core.journal.setSetting('contacts', [{ coreId: 'c'.repeat(64), name: 'Ada', role: 'guest' }]);
+  h.core.journal.setSetting('settings', { ...without(), contacts: false });
+  h.core.settings.seedContacts();
+  expect(h.core.settings.get().contacts).toBe(false);
+  h.core.journal.setSetting('contacts', []);
+  h.core.journal.setSetting('settings', { ...without(), contacts: true });
+  h.core.settings.seedContacts();
+  expect(h.core.settings.get().contacts).toBe(true);
 });

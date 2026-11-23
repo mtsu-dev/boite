@@ -194,3 +194,28 @@ test('a child load updates the current team without a get and survives an in-fli
     expect(store.delegation!.agents.find(agent => agent.thread.id === 't-team-running')!.thread.load?.processes).toBe(7);
   } finally { gate.spy.mockRestore(); fixture.close(); }
 });
+
+test('progress for a new child turn reaches the team row when its read completes', async () => {
+  const fixture = await team();
+  const { store, client, emit } = fixture;
+  const threadId = 't-team-running';
+  const progress = { turnId: 'new-turn', phase: 'thinking', detail: null, at: 2 } as const;
+  const view = await client.call('delegation.get', { threadId });
+  const incoming = view.agents.find(agent => agent.thread.id === threadId)!;
+  incoming.thread.progress = null;
+  const held = store.delegation!.agents.find(agent => agent.thread.id === threadId)!;
+  held.thread.progress = { ...progress, turnId: 'previous-turn', at: 1 };
+  const call = client.call.bind(client);
+  let resolve!: (value: typeof view) => void;
+  const response = new Promise<typeof view>(done => { resolve = done; });
+  const spy = vi.spyOn(client, 'call').mockImplementation(((name: string, params: never) =>
+    name === 'delegation.get' ? response : call(name as never, params)) as typeof client.call);
+  try {
+    const loading = store.loadDelegation();
+    emit('thread.progress', { threadId, progress });
+    expect(held.thread.progress?.turnId).toBe('previous-turn');
+    resolve(view);
+    await loading;
+    expect(store.delegation!.agents.find(agent => agent.thread.id === threadId)!.thread.progress).toEqual(progress);
+  } finally { spy.mockRestore(); fixture.close(); }
+});

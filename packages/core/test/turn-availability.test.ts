@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Message, ThreadRetry } from '@boite/contracts';
+import { effectiveSetting, type Message, type ThreadRetry } from '@boite/contracts';
 import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext } from '../src/drivers/types.ts';
 import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
 import { LIMIT_RESUME } from '../src/threads/limit-resume.ts';
 import { RESUME_TEXT } from '../src/threads/resume-text.ts';
-import { echoThread, removeDir, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
+import { echoThread, removeDir, rolledBackArchive, scriptedClaude, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
 const delays = [...CAPACITY_RETRY.delaysMs];
@@ -33,7 +33,7 @@ function retryOf(h: TestCore, threadId: string): ThreadRetry | null {
 }
 
 test('a usage limit exposes its reset and can resume on a model chosen by the owner', async () => {
-  const h = await startTestCore();
+  const h = await startTestCore({ settings: { autoResumeLimitedThreads: false } });
   const contexts: TurnContext[] = [];
   const resetsAt = Date.now() + 60_000;
   const restore = setDriver('echo', {
@@ -262,8 +262,23 @@ test('Stop ends a capacity wait at once and Cancel fails the turn with the refus
   } finally { await h.stop(); }
 });
 
-test('a usage limit failure plans nothing while automatic resume is off', async () => {
+test('a fresh core without autoResumeLimitedThreads set plans the resume by default', async () => {
   const h = await startTestCore();
+  try {
+    expect(h.core.settings.get().autoResumeLimitedThreads).toBeUndefined();
+    expect(effectiveSetting(h.core.settings.get(), 'autoResumeLimitedThreads')).toBe(true);
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const turn = await client.call('turns.start', { threadId, prompt: '[usage-limit:400]' });
+    await waitFor(() => retryOf(h, threadId)?.kind === 'usage-limit', 2000);
+    expect(retryOf(h, threadId)?.turnId).toBe(turn.id);
+    await waitFor(() => h.core.journal.listTurns(threadId).length === 2, 3000);
+    expect(h.core.journal.listTurns(threadId)[1]!.execution?.operation).toBe('resume');
+  } finally { await h.stop(); }
+});
+
+test('a usage limit failure plans nothing while automatic resume is explicitly off', async () => {
+  const h = await startTestCore({ settings: { autoResumeLimitedThreads: false } });
   try {
     const client = await h.connect();
     const { threadId } = await echoThread(h, client);
@@ -425,3 +440,141 @@ test('a planned quota resume from an older core offers recovery and still fires'
     await removeDir(h.dataDir);
   }
 });
+
+test('a usage limit through Douane reads the gateway pool reset when the driver reports none', async () => {
+  const resetsSoon = Date.now() + 2 * 3600 * 1000;
+  const resetsLater = Date.now() + 5 * 3600 * 1000;
+  const resetsDisabled = Date.now() + 10 * 60 * 1000;
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      if (new URL(req.url).pathname === '/v1/quotas') {
+        return Response.json({
+          updated_at: new Date().toISOString(),
+          providers: [{
+            provider: 'claude',
+            name: 'Claude',
+            display: 'accounts',
+            entries: [
+              { id: 'disabled-1', label: 'Disabled', status: 'disabled', accounts: 1, windows: [{ id: 'five_hour', label: '5h', used_percent: 100, reset_at: new Date(resetsDisabled).toISOString() }] },
+              { id: 'acct-b', label: 'Account B', status: 'cooldown', accounts: 1, windows: [{ id: 'five_hour', label: '5h', used_percent: 100, reset_at: new Date(resetsLater).toISOString() }] },
+              { id: 'acct-a', label: 'Account A', status: 'cooldown', accounts: 1, windows: [{ id: 'five_hour', label: '5h', used_percent: 100, reset_at: new Date(resetsSoon).toISOString() }] },
+            ],
+          }],
+        });
+      }
+      return new Response('not found', { status: 404 });
+    },
+  });
+  const restore = setDriver('claude-sdk', {
+    protocol: 'claude-sdk',
+    startTurn() {
+      return { stop() {}, done: Promise.resolve({ status: 'error', sessionId: 's-douane', usage: null, error: 'usage limit', refusal: { kind: 'usage-limit', resetsAt: null } }) };
+    },
+  });
+  const h = await startTestCore({ settings: { autoResumeLimitedThreads: true } });
+  try {
+    scriptedClaude(h);
+    h.core.accounts.ensureDefaults();
+    const client = await h.connect();
+    await client.call('subscriptionProxy.configure', {
+      subscriptionProxy: { enabled: true, kind: 'douane', baseUrl: `http://127.0.0.1:${server.port}/v1`, dashboardUrl: `http://127.0.0.1:${server.port}/admin/#quotas` },
+      key: 'douane-test-key',
+    });
+    const project = await client.call('projects.add', { path: h.dataDir, name: 'Douane' });
+    const account = h.core.accounts.list().find(entry => entry.providerId === 'claude')!;
+    const thread = await client.call('threads.create', { projectId: project.id, providerId: 'claude', accountId: account.id });
+    const turn = await client.call('turns.start', { threadId: thread.id, prompt: 'go' });
+    await waitFor(() => h.core.journal.getTurn(turn.id)?.status === 'error');
+    await waitFor(() => retryOf(h, thread.id)?.resetsAt === resetsSoon, 2000);
+    expect(await client.call('turns.cancelRetry', { threadId: thread.id })).toEqual({ cancelled: true });
+  } finally {
+    restore();
+    await h.stop();
+    await server.stop(true);
+  }
+});
+
+test('a usage limit bypasses the 10s fresh quota cache and ignores expired quota windows', async () => {
+  const futureReset = Math.floor((Date.now() + 3 * 3600 * 1000) / 1000) * 1000;
+  const expiredReset = Math.floor((Date.now() - 60_000) / 1000) * 1000;
+  let driverResetsAt: number | null = null;
+  let fetchCount = 0;
+  const restore = setDriver('claude-sdk', {
+    protocol: 'claude-sdk',
+    startTurn() {
+      return { stop() {}, done: Promise.resolve({ status: 'error', sessionId: 's-quota', usage: null, error: 'usage limit', refusal: { kind: 'usage-limit', resetsAt: driverResetsAt } }) };
+    },
+  });
+  const h = await startTestCore({ settings: { autoResumeLimitedThreads: true } });
+  const fetcher = spyOn(globalThis, 'fetch').mockImplementation((async () => {
+    fetchCount += 1;
+    // First read primes the 10s cache at 95%; later reads reflect the 100% five-hour window alongside an expired window.
+    if (fetchCount === 1) {
+      return Response.json({ five_hour: { utilization: 95, resets_at: new Date(futureReset).toISOString() } });
+    }
+    return Response.json({
+      five_hour: { utilization: 100, resets_at: new Date(futureReset).toISOString() },
+      seven_day: { utilization: 100, resets_at: new Date(expiredReset).toISOString() },
+    });
+  }) as unknown as typeof fetch);
+  try {
+    scriptedClaude(h);
+    const account = h.core.accounts.add({ providerId: 'claude', label: 'QuotaFixture' });
+    const dir = h.core.accounts.accountEnv(account, h.core.providers.require('claude'))['CLAUDE_CONFIG_DIR']!;
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'fixture-token' } }));
+    // Linux requires .credentials.json in claude.json (Windows overrides session: []), so re-check after writing it.
+    h.core.accounts.check(account.id);
+    const client = await h.connect();
+    const project = await client.call('projects.add', { path: h.dataDir, name: 'QuotaCache' });
+    const thread = await client.call('threads.create', { projectId: project.id, providerId: 'claude', accountId: account.id });
+
+    // Prime the 10s ready cache with 95%.
+    const primed = await h.core.quotas.readAccount(account.id);
+    expect(primed?.status).toBe('ready');
+    expect(primed?.windows[0]?.usedPercent).toBe(95);
+    expect(fetchCount).toBe(1);
+
+    // 1) Immediately hit a usage limit with resetsAt: null -> must bypass the 10s ready cache and plan at futureReset.
+    driverResetsAt = null;
+    const t1 = await client.call('turns.start', { threadId: thread.id, prompt: 'first' });
+    await waitFor(() => h.core.journal.getTurn(t1.id)?.status === 'error');
+    await waitFor(() => retryOf(h, thread.id)?.resetsAt === futureReset, 2000);
+    expect(fetchCount).toBeGreaterThanOrEqual(2);
+    expect(await client.call('turns.cancelRetry', { threadId: thread.id })).toEqual({ cancelled: true });
+
+    // 2) Driver reports an already-expired reset -> must fall back to quotas and plan at futureReset instead of skipping.
+    driverResetsAt = expiredReset;
+    const t2 = await client.call('turns.start', { threadId: thread.id, prompt: 'second' });
+    await waitFor(() => h.core.journal.getTurn(t2.id)?.status === 'error');
+    await waitFor(() => retryOf(h, thread.id)?.resetsAt === futureReset, 2000);
+    expect(await client.call('turns.cancelRetry', { threadId: thread.id })).toEqual({ cancelled: true });
+  } finally {
+    fetcher.mockRestore();
+    restore();
+    await h.stop();
+  }
+});
+
+test('a planned usage limit resume fires promptly after a wall-clock jump (OS sleep / hibernation)', async () => {
+  const h = await startTestCore({ settings: { autoResumeLimitedThreads: true } });
+  const realNow = Date.now;
+  let offset = 0;
+  try {
+    (LIMIT_RESUME as { maxStepMs?: number }).maxStepMs = 40;
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const turn = await client.call('turns.start', { threadId, prompt: '[usage-limit:15000]' });
+    await waitFor(() => retryOf(h, threadId)?.turnId === turn.id);
+    // Simulate PC sleeping 20s past the reset while monotonic timers paused.
+    Date.now = () => realNow() + offset;
+    offset = 20_000;
+    await waitFor(() => h.core.journal.listTurns(threadId).length === 2, 1500);
+    expect(h.core.journal.listTurns(threadId)[1]!.execution?.operation).toBe('resume');
+  } finally {
+    Date.now = realNow;
+    await h.stop();
+  }
+});
+

@@ -421,10 +421,13 @@ test('a process killed during body writing leaves a recorded partial upload reco
     import { spyOn } from 'bun:test';
     import * as fs from 'node:fs/promises';
     import { AttachmentUploads } from ${JSON.stringify(new URL('../src/attachment-uploads.ts', import.meta.url).href)};
+    const ready = process.env.UPLOAD_READY;
+    const pending = ready + '.tmp';
     const write = fs.writeFile;
     spyOn(fs, 'writeFile').mockImplementation(async (path, body, options) => {
       await write(path, body.subarray(0, 3), options);
-      await write(process.env.UPLOAD_READY, String(path));
+      await write(pending, String(path));
+      await fs.rename(pending, ready);
       await new Promise(() => {});
     });
     setInterval(() => {}, 1000);

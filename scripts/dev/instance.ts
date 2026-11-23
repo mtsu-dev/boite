@@ -374,6 +374,27 @@ function saveState(devDir: string, state: State): void {
   writeFileSync(statePath(devDir), `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
 }
 
+async function handoffDevCore(state: State): Promise<void> {
+  let incomplete: Refusal | undefined;
+  try {
+    const record = coreFile(state.dataDir);
+    if (record?.pid !== state.pid || typeof record.token !== 'string' || typeof record.port !== 'number') throw new Refusal('core.json must identify the running Dev core', 1);
+    const result = await fetch(`http://127.0.0.1:${record.port}/shutdown-for-update?pid=${state.pid}`, {
+      method: 'POST', headers: { authorization: `Bearer ${record.token}` }, signal: AbortSignal.timeout(5_000),
+    });
+    const ack = result.status === 202 ? await result.json() as { ok?: boolean; pid?: number } : null;
+    if (ack?.ok !== true || ack.pid !== state.pid) throw new Refusal(`the running Dev core did not admit a restart (HTTP ${result.status})`, 1);
+  } catch (error) {
+    if (!ours(state.pid, state.identity)) return;
+    if (error instanceof Refusal) throw error;
+    // A lost reply can follow admission. Give the old core the same time to drain.
+    incomplete = new Refusal('could not complete the restart handoff with the running Dev core', 1);
+  }
+  if (!await waitFor(() => ours(state.pid, state.identity) ? null : true, 60_000, () => false)) {
+    throw incomplete ?? new Refusal('the Dev core accepted the handoff but did not exit; its data was kept', 1);
+  }
+}
+
 async function restart(options: Options): Promise<void> {
   const devDir = devDataDir();
   const state = readState(devDir);
@@ -397,18 +418,7 @@ async function restart(options: Options): Promise<void> {
       throw new Refusal('the old Dev shell did not exit', 1);
     }
   }
-  if (holder !== null) {
-    const record = coreFile(state.dataDir);
-    if (record?.pid !== state.pid || typeof record.token !== 'string' || typeof record.port !== 'number') throw new Refusal('core.json must identify the running Dev core', 1);
-    const result = await fetch(`http://127.0.0.1:${record.port}/shutdown-for-update?pid=${state.pid}`, {
-      method: 'POST', headers: { authorization: `Bearer ${record.token}` }, signal: AbortSignal.timeout(5_000),
-    });
-    const ack = result.status === 202 ? await result.json() as { ok?: boolean; pid?: number } : null;
-    if (ack?.ok !== true || ack.pid !== state.pid) throw new Refusal(`the running Dev core did not admit a restart (HTTP ${result.status})`, 1);
-    if (!await waitFor(() => ours(state.pid, state.identity) ? null : true, 60_000, () => false)) {
-      throw new Refusal('the Dev core accepted the handoff but did not exit; its data was kept', 1);
-    }
-  }
+  if (holder !== null && ours(state.pid, state.identity)) await handoffDevCore(state);
   const launch = { ...options, echo: options.echo || state.echo === true };
   const started = shell ? await startShell(launch, state.dataDir, state.log) : await startCore(launch, state.dataDir, false, state.log);
   saveState(devDir, { ...state, ...started, echo: launch.echo, startedAt: Date.now() });

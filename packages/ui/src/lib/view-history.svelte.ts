@@ -10,6 +10,7 @@
  * entry, and a machine switch leaves one entry, not one for the thread that
  * machine had open and one for the thread asked for.
  */
+import { untrack } from 'svelte';
 import type { ProjectId, ThreadId } from '@boite/contracts';
 import type { SettingsTab, Store } from './store.svelte';
 import { workspace } from './workspace.svelte';
@@ -44,10 +45,14 @@ export function sameView(a: View, b: View): boolean {
 /** The visited views in order, and which one is on screen. */
 export class Trail {
   #views: View[] = [];
-  #index = -1;
+  #index = $state(-1);
+  /** The views' count, kept in state so the list head's buttons follow it. */
+  #count = $state(0);
 
   get current(): View | null { return this.#views[this.#index] ?? null; }
   get length(): number { return this.#views.length; }
+  /** Whether a view lies that way. One found gone on a press is skipped then, so a press can still find nothing. */
+  can(direction: -1 | 1): boolean { return direction < 0 ? this.#index > 0 : this.#index < this.#count - 1; }
 
   /** A view reached any other way than by the buttons: what was ahead of the last one is gone. */
   visit(view: View): void {
@@ -56,6 +61,7 @@ export class Trail {
     this.#views.splice(this.#index + 1, Infinity, view);
     const over = this.#views.length - TRAIL_LIMIT;
     if (over > 0) this.#views.splice(0, over);
+    this.#count = this.#views.length;
     this.#index = this.#views.length - 1;
   }
 
@@ -73,12 +79,14 @@ export class Trail {
         return view;
       }
       this.#views.splice(next, 1);
+      this.#count = this.#views.length;
       if (direction < 0) this.#index -= 1;
     }
   }
 
   clear(): void {
     this.#views = [];
+    this.#count = 0;
     this.#index = -1;
   }
 }
@@ -128,7 +136,8 @@ function record(): void {
   // A machine being switched to shows what it had open until what was asked for lands.
   const settled = workspace.selecting === 0 && workspace.active.booted;
   if (moving || !settled) return;
-  if (view) trail.visit(view);
+  // The trail's own state stays out of the effect's dependencies: it writes it.
+  if (view) untrack(() => trail.visit(view));
 }
 
 async function move(direction: -1 | 1): Promise<boolean> {

@@ -44,6 +44,8 @@ interface GitRun {
   stderr: string;
 }
 
+type BranchProof = { sha: string; branch: string | null; requireContainment?: true };
+
 export interface Listed {
   path: string;
   head: string | null;
@@ -184,7 +186,7 @@ export class WorktreeSweep {
     if (target.head === null) throw refused(`cannot verify the commit of ${path}`, { projectId: project.id, path });
     const proof = merged !== null && target.head === merged.sha ? merged : null;
     if (entry.unmerged && proof === null) throw refused('This worktree has commits on no other branch.', { projectId: project.id, path, unmerged: true });
-    const branchDeleted = await this.detach(project, path, target, proof ?? { sha: target.head, branch: target.branch });
+    const branchDeleted = await this.detach(project, path, target, proof ?? { sha: target.head, branch: target.branch, requireContainment: true });
     return { branch: target.branch, branchDeleted };
   }
 
@@ -194,7 +196,7 @@ export class WorktreeSweep {
    * (`branch -D`); a proof deletes it only while it still points at the
    * proved head (`update-ref -d` compares first) and no worktree has it.
    */
-  private async detach(project: Project, path: string, target: Listed, branchRule: 'force' | 'merged-only' | { sha: string; branch: string | null }): Promise<boolean> {
+  private async detach(project: Project, path: string, target: Listed, branchRule: 'force' | 'merged-only' | BranchProof): Promise<boolean> {
     // A vanished directory loses its registration to the same unforced
     // `remove` (git 2.55 exits 0 on it); `prune --expire` would keep it for an hour.
     const removal = ['worktree', 'remove', ...(branchRule === 'force' ? ['--force'] : []), target.path];
@@ -221,7 +223,7 @@ export class WorktreeSweep {
     return branchDeleted;
   }
 
-  private async deleteProvedBranch(project: Project, branch: string, proof: { sha: string; branch: string | null }): Promise<GitRun> {
+  private async deleteProvedBranch(project: Project, branch: string, proof: BranchProof): Promise<GitRun> {
     if (proof.branch !== branch) return { code: 1, stdout: '', stderr: `the merge proof is for ${proof.branch ?? 'a detached head'}, not ${branch}` };
     // One locked section: `update-ref` does not refuse a branch a worktree has, so
     // no registration may take the branch back between the list and the deletion.
@@ -230,7 +232,18 @@ export class WorktreeSweep {
       if (listed.code !== 0) return { code: listed.code, stdout: '', stderr: `cannot list worktrees: ${listed.stderr.trim() || `exit ${listed.code}`}` };
       const holder = parseWorktreeList(listed.stdout).find((worktree) => worktree.branch === branch);
       if (holder !== undefined) return { code: 1, stdout: '', stderr: `${branch} is checked out at ${holder.path}` };
-      return this.git(project, project.path, ['update-ref', '-d', `refs/heads/${branch}`, proof.sha]);
+      const own = `refs/heads/${branch}`;
+      if (!proof.requireContainment) return this.git(project, project.path, ['update-ref', '-d', own, proof.sha]);
+      let witness;
+      try {
+        witness = (await this.containingRefs(project, proof.sha)).find(ref => ref.name !== own && !ref.symbolic);
+      } catch (error) {
+        return { code: 1, stdout: '', stderr: messageOf(error) };
+      }
+      if (!witness) return { code: 1, stdout: '', stderr: 'no other branch contains its commit' };
+      // Git locks and verifies the containing ref in the same transaction as the deletion.
+      const transaction = `verify ${witness.name} ${witness.oid}\noption no-deref\ndelete ${own} ${proof.sha}\n`;
+      return this.git(project, project.path, ['update-ref', '--stdin'], undefined, transaction);
     });
   }
 
@@ -320,12 +333,19 @@ export class WorktreeSweep {
   }
 
   /** HEAD on no ref but the worktree's own branch. A worktree on an unborn branch has nothing to lose. */
-  async unmerged(project: Project, worktree: Listed): Promise<boolean> {
+  async unmerged(project: Project, worktree: Pick<Listed, 'head' | 'branch'>): Promise<boolean> {
     if (worktree.head === null) return false;
-    const refs = await this.read(project, project.path, ['for-each-ref', '--format=%(refname)', '--contains', worktree.head, 'refs/heads/', 'refs/remotes/']);
-    if (refs.code !== 0) throw refused(`git for-each-ref failed in ${project.path}: ${refs.stderr.trim() || `exit ${refs.code}`}`, { projectId: project.id });
     const own = worktree.branch === null ? null : `refs/heads/${worktree.branch}`;
-    return !refs.stdout.split('\n').some((ref) => ref.length > 0 && ref !== own);
+    return !(await this.containingRefs(project, worktree.head)).some(ref => ref.name !== own);
+  }
+
+  private async containingRefs(project: Project, head: string): Promise<{ name: string; oid: string; symbolic: boolean }[]> {
+    const refs = await this.read(project, project.path, ['--no-replace-objects', 'for-each-ref', '--format=%(refname)%09%(objectname)%09%(symref)', '--contains', head, 'refs/heads/', 'refs/remotes/']);
+    if (refs.code !== 0) throw refused(`git for-each-ref failed in ${project.path}: ${refs.stderr.trim() || `exit ${refs.code}`}`, { projectId: project.id });
+    return refs.stdout.split('\n').filter(Boolean).map(line => {
+      const [name, oid, symref] = line.split('\t');
+      return { name: name!, oid: oid!, symbolic: symref !== '' };
+    });
   }
 
   /**
@@ -343,10 +363,17 @@ export class WorktreeSweep {
   }
 
   /** A change under the project's trace id. No deadline: deleting a large tree takes what it takes. */
-  private async git(project: Project, cwd: string, args: string[], indexFile?: string): Promise<GitRun> {
+  private async git(project: Project, cwd: string, args: string[], indexFile?: string, input?: string): Promise<GitRun> {
     let spawned;
     try {
-      spawned = this.core.procs.spawn(traceId(project.id), 'git', args, { cwd, env: indexFile === undefined ? undefined : { GIT_INDEX_FILE: indexFile } });
+      const options = { cwd, env: indexFile === undefined ? undefined : { GIT_INDEX_FILE: indexFile } };
+      if (input === undefined) spawned = this.core.procs.spawn(traceId(project.id), 'git', args, options);
+      else {
+        const piped = this.core.procs.spawnPiped(traceId(project.id), 'git', args, options);
+        piped.proc.stdin.write(input);
+        piped.proc.stdin.end();
+        spawned = piped;
+      }
     } catch (error) {
       throw refused(`git did not start in ${cwd} (${messageOf(error)}): the worktree list needs git on PATH`, { projectId: project.id, cwd });
     }

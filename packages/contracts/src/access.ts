@@ -23,6 +23,13 @@ export const DEVICE_HOME_CREDENTIAL_STORES: readonly string[] = [
   'Library/Application Support/Firefox',
 ];
 
+/** Folders that hold keys or tokens wherever they sit in a tree. */
+export const DEVICE_SECRET_DIRS: ReadonlySet<string> = new Set(['.git', '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker']);
+
+/** Files that hold credentials; templates such as `.env.example` stay readable. */
+export const DEVICE_SECRET_FILE =
+  /^(\.env(\.(?!example$|sample$|template$)[^.]+)*|\.envrc|\.dev\.vars|\.netrc|_netrc|\.npmrc|\.pypirc|\.pgpass|\.htpasswd|\.git-credentials|\.credentials\.json|credentials(\.json)?|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.+\.(tfvars|tfstate|tfstate\.backup)|.+\.(pem|key|p12|pfx|jks|keystore|kdbx))$/i;
+
 /**
  * What a paired device reaches. Read this as the phone's screen: the sidebar,
  * a thread, the composer, the cards an agent raises, and the settings it only

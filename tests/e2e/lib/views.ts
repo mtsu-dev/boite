@@ -1,14 +1,23 @@
 import type { BrowserPage } from './cdp.ts';
 
 /**
- * Lists the sidebar's threads by project or by recency: the two words in the
- * list's head (ViewSwitch.svelte). `prefix` is `mobile-` for the phone's thread list.
+ * Lists the sidebar's threads by project or by recency: the View group of the
+ * display menu on a desktop, the two words of the phone's title (ViewSwitch.svelte)
+ * when `prefix` is `mobile-`.
  */
 export async function showThreadView(page: BrowserPage, view: 'projects' | 'recent', prefix = ''): Promise<void> {
-  const side = `[data-testid=${prefix}view-switch] [data-value=${view}]`;
-  await page.waitFor(`document.querySelector('${side}')`);
-  if (await page.evaluate(`document.querySelector('${side}').getAttribute('aria-checked') !== 'true'`)) await page.click(side);
-  await page.waitFor(`document.querySelector('${side}')?.getAttribute('aria-checked') === 'true'`);
+  if (prefix) {
+    const side = `[data-testid=${prefix}view-switch] [data-value=${view}]`;
+    await page.waitFor(`document.querySelector('${side}')`);
+    if (await page.evaluate(`document.querySelector('${side}').getAttribute('aria-checked') !== 'true'`)) await page.click(side);
+    await page.waitFor(`document.querySelector('${side}')?.getAttribute('aria-checked') === 'true'`);
+    return;
+  }
+  await openDisplayOptions(page);
+  const row = `[data-testid=view-switch] [data-value="view:${view}"]`;
+  if (await page.evaluate(`document.querySelector('${row}').getAttribute('aria-checked') !== 'true'`)) await page.click(row);
+  await page.waitFor(`document.querySelector('${row}')?.getAttribute('aria-checked') === 'true'`);
+  await closeDisplayOptions(page);
 }
 
 /** Orders the projects by recent activity or by the user's own arrangement, from the same panel. */

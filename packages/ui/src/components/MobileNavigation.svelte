@@ -61,6 +61,7 @@
   import { whenIdle } from '../lib/idle';
   import { needsAnAI } from '../lib/first-run';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsShownAnywhere } from '../lib/contacts-anywhere';
   import { contactsParts } from '../lib/contacts-entry';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
@@ -108,6 +109,10 @@
   $effect(() => {
     if (!contactsShown(store) || SidebarContacts) return;
     void contactsParts.SidebarContacts().then(module => { SidebarContacts = module.default; }).catch(() => {});
+  });
+  // What contacts ask arrives on the machine that holds them, which may not be the one in view.
+  $effect(() => {
+    if (!contactsShownAnywhere(store) || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
     void contactsParts.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
@@ -333,7 +338,7 @@
     {#if firstRun}{@render connection()}{/if}
     <!-- The first run's screen says what Boite is: the header keeps the machine alone, the way to its settings. -->
     <!-- The thread list's name is its two views, both in sight, the one on marked; the display menu sits beside the magnifier. -->
-    {#if !firstRun}<strong data-testid="mobile-title">{#if threadViews}<ViewSwitch size="title" label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
+    {#if !firstRun}<strong data-testid="mobile-title">{#if threadViews}<ViewSwitch label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
       options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="mobile-view-switch" />{:else}{title}{/if}</strong>{/if}
   </div>
   {#if placeShown && !firstRun && !(tabbed && !recover)}{@render connection()}{/if}
@@ -342,7 +347,7 @@
   {/if}
   <!-- The thread list's row is full with its views, three squares, "New" and the gear: the Whip waits on the other lists. -->
   {#if !recover && !chatting && !newShown && featureOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<WhipButton mobile />{/if}
-  {#if narrow.current && ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} />{/if}
+  {#if narrow.current && ContactRequestNotice && contactsShownAnywhere(store)}<ContactRequestNotice {store} />{/if}
   <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. Activity answers what is
        asked, so it creates nothing; the thread list's "+" is one tab away. -->
   {#if newShown}
@@ -475,7 +480,7 @@
       <!-- One thread, one row: its asking sub-agents are lines of it (lib/activity-feed.ts), as on the desktop. -->
       {@const needs = feedGroups(rows.filter(row => row.section === 'needs'))}
       {@const updates = feedGroups(rows.filter(row => row.section === 'updates'))}
-      {@const asked = ContactInboxRows && contactsShown(store) && !query}
+      {@const asked = ContactInboxRows && contactsShownAnywhere(store) && !query}
       {@const needsCount = needs.length + (asked ? inbox.contacts : 0)}
       <!-- The section's number is the tab's badge: its top rows (a sub-agent counts on its parent) and what contacts ask. -->
       <!-- The amber dot beside "Needs you", as on the desktop page; only updates left, one line says nothing waits. -->

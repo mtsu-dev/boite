@@ -20,7 +20,7 @@ const at = <T extends Element>(id: string) => document.querySelector<T>(`[data-t
 
 test('the reach is three steps with the selected one explained, mochi creation a switch, and each writes its setting', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
-  await client.call('settings.set', CLOSED_AGENT_DEFAULTS);
+  await client.call('settings.set', { ...CLOSED_AGENT_DEFAULTS, contacts: false });
   const store = new Store();
   store.attach(client);
   await store.connect();
@@ -42,6 +42,14 @@ test('the reach is three steps with the selected one explained, mochi creation a
 
   at<HTMLInputElement>('setting-agent-bot-creation').click();
   await expect.poll(async () => (await client.call('settings.get', {})).agentBotCreation).toBe('free');
+
+  // Contacts start off on a new install; the switch turns them on, and back off.
+  expect(at<HTMLInputElement>('setting-contacts').checked).toBe(false);
+  expect(document.body.textContent).toContain(words.contactsEffect);
+  at<HTMLInputElement>('setting-contacts').click();
+  await expect.poll(async () => (await client.call('settings.get', {})).contacts).toBe(true);
+  at<HTMLInputElement>('setting-contacts').click();
+  await expect.poll(async () => (await client.call('settings.get', {})).contacts).toBe(false);
 });
 
 test('the mochi card names the mochi, its role, projects and model, says it has full access, and Approve creates it', async ({ createClient }) => {

@@ -35,7 +35,8 @@ export const fr: Translation = {
     /** A project card's quiet threads folded under one action (FoldMore.svelte); a press shows them in place. */
     moreThreads: 'Voir {count} de plus',
     lessThreads: 'Voir moins',
-    displayView: 'Affichage',
+    displayView: 'Vue',
+    history: 'Historique', historyBack: 'Précédent', historyForward: 'Suivant',
     displayOrder: 'Trier par',
     groupWorkingRow: 'Fils en cours',
     groupIdleRow: 'Projets inactifs',
@@ -99,6 +100,7 @@ export const fr: Translation = {
     settings: 'Réglages',
     projectMenu: 'Actions du projet',
     copyPath: 'Copier le chemin',
+    copyThreadId: 'Copier l’identifiant du fil',
     manageProject: 'Gérer le projet',
     renameProject: 'Renommer le projet',
     projectName: 'Nom du projet',

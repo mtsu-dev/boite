@@ -111,7 +111,7 @@ describe('richMarkdown', () => {
       expect(readOnly).toBe(true);
       expect(copy.textContent).toBe('Copied');
       // The field goes, and focus comes back to the button.
-      expect(document.querySelector('.md-copy-field')).toBeNull();
+      expect(document.querySelector('.clipboard-copy-field')).toBeNull();
       expect(document.activeElement).toBe(copy);
     } finally {
       vi.unstubAllGlobals();

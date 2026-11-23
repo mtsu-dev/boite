@@ -15,7 +15,7 @@ import type { FileHandle } from 'node:fs/promises';
 import { open, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { DEVICE_HOME_CREDENTIAL_STORES, FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
+import { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_SECRET_DIRS, DEVICE_SECRET_FILE, FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
 import type { FileContent, FileEntry, ThreadId, Timestamp } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { locateFile } from './files.ts';
@@ -64,12 +64,6 @@ function deviceRoots(core: Core, threadId: ThreadId): string[] {
   const roots = project === null ? [] : [project.path, worktreeRoot(project.path, core.settings.get().worktreeStorage, project.id)];
   return roots.map(realOf);
 }
-
-/** Folders that hold keys or tokens wherever they sit in a tree. */
-const DEVICE_SECRET_DIRS = new Set(['.git', '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker']);
-/** Files that hold credentials; templates such as `.env.example` stay readable. */
-const DEVICE_SECRET_FILE =
-  /^(\.env(\.(?!example$|sample$|template$)[^.]+)*|\.envrc|\.dev\.vars|\.netrc|_netrc|\.npmrc|\.pypirc|\.pgpass|\.htpasswd|\.git-credentials|\.credentials\.json|credentials(\.json)?|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.+\.(tfvars|tfstate|tfstate\.backup)|.+\.(pem|key|p12|pfx|jks|keystore|kdbx))$/i;
 
 /**
  * Where the owner's logins live: the home folder's hidden entries (every agent

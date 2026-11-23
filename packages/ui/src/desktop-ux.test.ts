@@ -114,6 +114,12 @@ test('contacts are a place at the top of the rail, under Activity and above the 
     query<HTMLButtonElement>('[data-testid=contacts-rail-home]').click();
     await waitFor(() => store.page === 'home');
 
+    // The owner's switch off takes the button and the column away; on, they come back.
+    store.showChat();
+    await store.saveSettings({ contacts: false });
+    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') === null && document.querySelector('[data-testid=contacts-rail]') === null);
+    await store.saveSettings({ contacts: true });
+    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') !== null && document.querySelector('[data-testid=contacts-rail]') !== null);
   } finally {
     if (!contactsRail.folded) contactsRail.toggle();
     store.showChat();

@@ -149,6 +149,21 @@ test('a machine taken out of its group tells the phone so on its next hello, and
   expect((await open(a.url, { device: helloFor(phone, deviceId, id(a)) })).principal).toBe('session');
 });
 
+test('a phone whose admitting machine left is refused without a revocation proof', async () => {
+  const [a, b] = await pair();
+  const phone = phoneKey();
+  const { url } = await b.core.group.clients.addDevice();
+  const grant = new URL(url).searchParams.get('grant')!;
+  const { device: deviceId } = await open(b.url, { grant, device: { publicKey: phone.publicKey, sig: phone.sign(deviceAdmitInput(grant, phone.publicKey)) } });
+  await waitFor(() => a.core.group.view('owner')?.devices.some(device => device.id === deviceId) === true);
+  await b.core.group.leave();
+  await waitFor(() => a.core.group.roster?.cores.some(core => core.coreId === id(b) && core.removed) === true);
+  const { reason } = await rejection(open(a.url, { device: helloFor(phone, deviceId!, id(a)) }));
+  const rpc = (reason as { rpc: { code: number; data?: unknown } }).rpc;
+  expect(rpc.code).toBe(RpcErrorCode.Unauthorized);
+  expect(rpc.data).toBeUndefined();
+});
+
 test('a phone paired the older way hands over its key and keeps both until revoked, and removing a machine keeps the phones it added', async () => {
   const [a, b] = await pair();
   const legacy = await open(a.url, { grant: a.core.sessions.grant().grant });

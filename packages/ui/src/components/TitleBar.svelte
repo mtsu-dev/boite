@@ -13,7 +13,7 @@
   import { titleSlot } from '../lib/title-slot.svelte';
   import { needsAnAI } from '../lib/first-run';
   import { inbox } from '../lib/inbox.svelte';
-  import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsShownAnywhere } from '../lib/contacts-anywhere';
   import { contactsParts } from '../lib/contacts-entry';
   import WindowResizeHandles from './WindowResizeHandles.svelte';
 
@@ -40,7 +40,7 @@
    * to open.
    */
   /** On the phone Settings has no rail: what waits from contacts keeps its bell in the bar there. */
-  let contactNotice = $derived(store.page === 'settings' && contactsShown(store) && inShell && mobile.current);
+  let contactNotice = $derived(store.page === 'settings' && contactsShownAnywhere(store) && inShell && mobile.current);
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
     if (!contactNotice || ContactRequestNotice) return;

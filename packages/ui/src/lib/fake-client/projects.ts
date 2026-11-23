@@ -1,12 +1,11 @@
 /** Projects, their files and the Claude Code and Codex sessions they can import. */
-import { DEVICE_HOME_CREDENTIAL_STORES, PROJECT_NAME_MAX, RpcErrorCode, type ImportableSession, type Project, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_SECRET_DIRS, PROJECT_NAME_MAX, RpcErrorCode, type ImportableSession, type Project, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { missingFolder, pathKey } from './checks';
 import { FAKE_FILES, scoreFakeFile } from './files';
 import { IMPORT_LIST_MS } from './providers';
 import { DATA_DIR, FAKE_DRAFTS_PATH, toSummary } from './shared';
 import { putAway } from './threads';
-import { closeThreadTerminals } from './terminals';
 import { archiveProject, describedProject, requireFakeFolder } from './project-archive';
 import type { FakeContext, FakeMethods } from './context';
 
@@ -19,7 +18,6 @@ function importAccounts(ctx: FakeContext, session: ImportableSession): string[] 
 }
 
 const ABSOLUTE = /^([A-Za-z]:[\\/]|[\\/])/;
-const DEVICE_SECRET_DIRS = new Set(['.git', '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker']);
 
 /** The core's `folderToAdd`: an absolute path up to 4096 characters, and a name that fits; an empty one is the folder's. */
 export function folderToAdd(value: unknown, method: string): { path: string; name?: string } {
@@ -49,10 +47,15 @@ export function inFakeCredentialStore(path: string): boolean {
   });
 }
 
+export function inFakeDataFolder(path: string): boolean {
+  const key = pathKey(path), data = pathKey(DATA_DIR);
+  return key === data || key.startsWith(`${data}/`);
+}
+
 /** The core's `assertDeviceProjectFolder`, without links to follow: not boite's data folder, not the home folder or above, not a folder that holds keys. */
 function deviceProjectFolder(path: string): void {
-  const key = pathKey(path), data = pathKey(DATA_DIR), home = pathKey(HOME);
-  if (key === data || key.startsWith(`${data}/`)) {
+  const key = pathKey(path), home = pathKey(HOME);
+  if (inFakeDataFolder(path)) {
     throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add boite's data folder, or a folder inside it, as a project: ${path}`, data: { field: 'path', path, expected: 'a folder outside boite\'s data folder' } });
   }
   if (home === key || home.startsWith(`${key}/`) || !key.includes('/')) {
@@ -76,7 +79,8 @@ export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: 
   if (existing) return { project: describedProject(ctx, existing), added: false };
   const removed = ctx.removedProjects.get(key);
   if (removed) {
-    const project = { ...removed.project, name: folder.name ?? removed.project.name, archived: false };
+    const project = { ...removed.project, name: folder.name ?? removed.project.name };
+    delete project.archived;
     ctx.removedProjects.delete(key);
     ctx.projects.push(project);
     for (const thread of removed.threads) {
@@ -210,18 +214,13 @@ export function projectMethods(ctx: FakeContext) {
       const threads = [...ctx.threads.values()].filter((thread) => thread.projectId === params.projectId);
       const incognito = new Set(threads.filter(thread => thread.incognito).map(thread => thread.id));
       const retained = (thread: Thread) => !incognito.has(thread.id) && (!thread.parentThreadId || !incognito.has(thread.parentThreadId));
-      const archived = threads.filter(thread => thread.archived);
       const open = threads.filter(thread => !thread.archived);
       for (const thread of open) {
         thread.archived = true;
         thread.archivedAt = ctx.now();
         ctx.touch(thread);
       }
-      await Promise.all(open.map(thread => putAway(ctx, thread)));
-      await Promise.all(archived.map(async thread => {
-        await ctx.stopTurn(thread.id);
-        closeThreadTerminals(ctx, thread.id);
-      }));
+      await Promise.all(threads.map(thread => putAway(ctx, thread)));
       ctx.removedProjects.set(pathKey(project.path), { project, threads: threads.filter(retained), open: new Set(open.filter(retained).map(thread => thread.id)) });
       ctx.projects = ctx.projects.filter(p => p.id !== project.id);
       for (const thread of threads) {

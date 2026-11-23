@@ -352,22 +352,26 @@ test('review side-question processes receive no Boite credential and cannot spaw
   const old = process.env.BOITE_AGENT_TOKEN;
   process.env.BOITE_AGENT_TOKEN = 'fixture-inherited-agent-canary';
   let checkLateSpawn: (() => void) | undefined, signal: AbortSignal | undefined;
+  let output = '';
+  const inferenceLive = () => b.h.core.procs.liveThreads().some(id => id.startsWith('contact-inference:'));
   restore.push(setDriver('echo', {...getDriver('echo'), sideQuestion: async ctx => {
     signal = ctx.signal;
-    const proc = ctx.spawnChild(process.execPath, ['-e', 'console.log(Boolean(process.env.BOITE_AGENT_TOKEN || process.env.BOITE_TOKEN || process.env.BOITE_THREAD_ID))'], {env: {...process.env, BOITE_TOKEN: 'fixture-owner-canary'}});
-    let output = '';
-    for await (const chunk of proc.stdout!) output += chunk;
-    expect(output.trim()).toBe('false');
+    const proc = ctx.spawnChild(process.execPath, ['-e', 'console.log(Boolean(process.env.BOITE_AGENT_TOKEN || process.env.BOITE_TOKEN || process.env.BOITE_THREAD_ID)); setInterval(() => {}, 1000)'], {env: {...process.env, BOITE_TOKEN: 'fixture-owner-canary'}});
+    proc.stdout!.on('data', (chunk: Buffer) => { output += chunk.toString(); });
     checkLateSpawn = () => {ctx.spawnChild(process.execPath, ['-e', 'process.exit(1)']);};
     return new Promise<string>(() => undefined);
   }}));
-  b.h.core.sharedReview.timeoutMs = 500;
   try {
     await configure(); record();
+    await waitFor(() => output.includes('\n'));
+    expect(output.trim()).toBe('false');
+    expect(inferenceLive()).toBe(true);
+    // Cancel only once the child has reported its environment and is still running.
+    await configure({enabled: false});
     await waitFor(() => b.h.core.sharedAccess.get(scope).verdicts.length === 1);
     expect(signal?.aborted).toBe(true); expect(checkLateSpawn).toBeDefined();
     expect(checkLateSpawn!).toThrow();
-    expect(b.h.core.procs.liveThreads().some(id => id.startsWith('contact-inference:'))).toBe(false);
+    expect(inferenceLive()).toBe(false);
   } finally {if (old === undefined) delete process.env.BOITE_AGENT_TOKEN; else process.env.BOITE_AGENT_TOKEN = old;}
 }, 30000);
 

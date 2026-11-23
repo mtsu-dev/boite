@@ -28,6 +28,8 @@ export const fr: Translation = {
     },
     bots: 'Créer des mochis sans demander',
     botsEffect: 'Un mochi créé ainsi a un accès complet à cette machine',
+    contacts: 'Contacts',
+    contactsEffect: "Les agents travaillent avec les Boites d'autres personnes, et Contacts apparaît dans la barre latérale",
     values: { ask: 'Demander avant', free: 'Sans demander' },
   },
   settingRequest: {
@@ -81,6 +83,7 @@ export const fr: Translation = {
       muteAgents: 'Couper le son des agents',
       coordinationReach: "Jusqu'où un fil atteint les autres",
       agentBotCreation: 'Les agents créent des mochis sans demander',
+      contacts: 'Contacts',
       agentCpuCapPercent: 'Plafond CPU de tous les agents',
       agentMemoryBudgetPercent: 'Budget mémoire de tous les agents',
       threadMemoryCapMb: 'Plafond mémoire par fil',

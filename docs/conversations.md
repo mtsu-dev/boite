@@ -48,8 +48,10 @@ does. Turn off Check spelling and correct as I type in Settings, General, In
 the conversation, to keep your text as typed, with no red underline.
 
 Add a project with Add a project at the bottom of the sidebar. The sidebar
-lists threads by project or by recent activity: switch between Projects and
-Recent in Display options.
+lists threads by project or by recent activity: on a desktop, switch between
+Projects and Recent under View in the Filter menu; on a phone, in the list's
+title. The two arrows at the start of the list's head go back and forward
+through the conversations and pages you opened, as a mouse's side buttons do.
 
 If a machine's conversation list is incomplete, press Try again in the list.
 The conversations already loaded stay available while Boite reloads it.
@@ -139,6 +141,7 @@ refined once the first answer is done. A title you set yourself is never
 replaced.
 
 - Rename a thread with Rename in its thread menu, or in the header.
+- Choose Copy thread ID in the thread menu to put the thread's ID on the clipboard.
 - Regenerate title, in the thread menu or the title menu, asks again. The item
   reads Writing a title while it works.
 - Settings, General, Agent replies, Title model picks the model. Automatic

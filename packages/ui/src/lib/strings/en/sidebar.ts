@@ -47,6 +47,8 @@ export const strings = {
     /** The same action once they show: a press folds them back. */
     lessThreads: 'Show less',
     displayView: 'View',
+    /** The list head's two arrows: the views this window showed, as a mouse's back and forward buttons walk them. */
+    history: 'History', historyBack: 'Back', historyForward: 'Forward',
     displayOrder: 'Sort by',
     groupWorkingRow: 'Working threads',
     groupIdleRow: 'Idle projects',
@@ -115,6 +117,7 @@ export const strings = {
     settings: 'Settings',
     projectMenu: 'Project actions',
     copyPath: 'Copy path',
+    copyThreadId: 'Copy thread ID',
     manageProject: 'Manage project',
     renameProject: 'Rename project',
     projectName: 'Project name',

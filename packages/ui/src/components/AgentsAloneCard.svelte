@@ -1,21 +1,23 @@
 <script lang="ts">
-  import { agentBotCreation, coordinationReach, COORDINATION_REACH, type CoordinationReach } from '@boite/contracts';
+  import { agentBotCreation, contactsOn, coordinationReach, COORDINATION_REACH, type CoordinationReach } from '@boite/contracts';
   import CardScope from './CardScope.svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { toggled } from '../lib/autosave.svelte';
 
   /**
-   * The two things an agent may do without a card, one machine's settings:
+   * What an agent may do without a card, one machine's settings:
    * how far a conversation's agent reaches other conversations
    * (`coordinationReach`) and whether it creates a bot without asking
-   * (`agentBotCreation`). General on a desktop, Conversations on a phone.
+   * (`agentBotCreation`), and whether contacts are on (`contacts`, off unless
+   * turned on). General on a desktop, Conversations on a phone.
    */
   let { store }: { store: Store } = $props();
   const uid = $props.id();
   const words = $derived(strings.agentsAlone);
   const reach = $derived(coordinationReach(store.settings ?? {}));
   const free = $derived(agentBotCreation(store.settings ?? {}) === 'free');
+  const contacts = $derived(contactsOn(store.settings ?? {}));
 
   function pick(next: CoordinationReach): void {
     if (next !== reach) void store.saveSettings({ coordinationReach: next });
@@ -35,6 +37,10 @@
     </div>
     <p class="hint effect" id="{uid}-reach-effect" data-testid="coordination-reach-effect">{words.effects[reach]}</p>
   </div>
+  <label for="{uid}-contacts" class="switch-row" id="settings-contacts">
+    <span class="text"><span class="ui-label-box"><span id="{uid}-contacts-name">{words.contacts}</span></span><span class="hint" id="{uid}-contacts-effect">{words.contactsEffect}</span></span>
+    <input id="{uid}-contacts" aria-labelledby="{uid}-contacts-name" aria-describedby="{uid}-contacts-effect" type="checkbox" role="switch" data-testid="setting-contacts" checked={contacts} onchange={(event) => void toggled(event.currentTarget, on => store.saveSettings({ contacts: on }))} />
+  </label>
   <label for="{uid}-bot-creation" class="switch-row">
     <span class="text"><span class="ui-label-box"><span id="{uid}-bot-creation-name">{words.bots}</span></span><span class="hint" id="{uid}-bot-creation-effect">{words.botsEffect}</span></span>
     <input id="{uid}-bot-creation" aria-labelledby="{uid}-bot-creation-name" aria-describedby="{uid}-bot-creation-effect" type="checkbox" role="switch" data-testid="setting-agent-bot-creation" checked={free} onchange={(event) => void toggled(event.currentTarget, on => store.saveSettings({ agentBotCreation: on ? 'free' : 'ask' }))} />

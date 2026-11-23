@@ -1,7 +1,7 @@
 // Starts Chromium engines and owns their cookie saves, idle timers and shutdown.
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { PRIVATE_BROWSER_PROFILE } from '@boite/contracts';
+import { browserEngineOf, PRIVATE_BROWSER_PROFILE } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
 import { findChromium, profileIdentity, readSavedCookies } from './chromium.ts';
@@ -50,9 +50,10 @@ export class BrowserEngines {
   get(profile: string): Promise<Engine> {
     const current = this.pending.get(profile) ?? this.pending.get(`host:${profile}`);
     if (current) return current.then(engine => this.#closing.has(engine) || this.#ended.has(engine) ? engine.exited.then(() => this.get(profile)) : engine);
-    // A webview has no per-profile process flags. Custom identities use Chromium
-    // so its workers and popups inherit the same User-Agent as its pages.
-    const hosted = this.host.attached && !this.#userAgent(profile);
+    // The owner picks a profile's engine in Settings; it takes effect when the
+    // profile's browser next starts. A stored User-Agent applies only when
+    // Chromium starts, never to a profile the app hosts.
+    const hosted = this.host.attached && browserEngineOf(this.core.settings.get(), profile) !== 'chrome';
     const key = hosted ? `host:${profile}` : profile;
     let engine = this.pending.get(key);
     if (!engine) {

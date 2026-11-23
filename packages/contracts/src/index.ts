@@ -232,7 +232,7 @@ export { checkRpcParams } from './rpc-params.ts';
 export { defaultTitleModel } from './title-models.ts';
 export { ChangeLog, LIST_CHANGES_IDS, listCursorProblem, THREAD_LIST_PAGE_BYTES, ThreadListPages } from './list-changes.ts';
 export { GOAL_TRACKER_DEFAULTS, GOAL_CHECKLIST_MAX_ITEMS, GOAL_CHECKLIST_SOURCE_MAX, GOAL_CHECKLIST_TEXT_MAX, defaultTrackerModel, trackerEffort } from './goal-tracker.ts';
-export { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, deviceBound, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, type Caller } from './access.ts';
+export { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_SECRET_DIRS, DEVICE_SECRET_FILE, DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, deviceBound, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, type Caller } from './access.ts';
 export {
   APP_LANGUAGES, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTINGS_PAGES, botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isSettingsPage, readSettings,
   sameClientPreferences, settingAnswerText, settledMachineSetting, settledSetting,

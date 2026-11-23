@@ -57,14 +57,11 @@ export interface PageRuntime {
  * own browser, `target`, it runs on a session of its own, which the core
  * leaves to turn it off: the browser answers that alone, while
  * `Runtime.disable` gets no answer as long as a document request is held. The desktop app's webviews (`target` null)
- * keep it on the tab's session whatever the page, since the shell reads their
- * console itself.
+ * have one session per tab and nothing to hold a request with: the runtime is
+ * turned on and off there (`hostedRuntime`).
  */
 export function pageRuntime(cdp: Cdp, tab: string, target: string | null): PageRuntime {
-  if (target === null) {
-    const enabled = cdp.send('Runtime.enable', {}, tab).then(() => {}, () => {});
-    return { on: true, session: tab, follow: () => enabled, adopt: () => enabled };
-  }
+  if (target === null) return hostedRuntime(cdp, tab);
   const release = (held?: string) => held === undefined ? Promise.resolve() : cdp.send('Fetch.continueRequest', { requestId: held }, tab).then(() => {}, () => {});
   // Held from the tab's first request, so none slips past a runtime turning on.
   const fetching = cdp.send('Fetch.enable', DOCUMENT_REQUESTS, tab).then(() => {}, () => {});
@@ -105,6 +102,55 @@ export function pageRuntime(cdp: Cdp, tab: string, target: string | null): PageR
       await release(held);
     },
   };
+}
+
+/**
+ * The runtime of a desktop app's webview, on the tab's only session, by the
+ * same rule: `Runtime.enable` once a document of this machine committed,
+ * `Runtime.disable` as soon as the top frame asks for a public one
+ * (`followHostedPage`), and before the agent or the panel navigates to one
+ * (`Browser#navigate`, `remote-drive.ts`). The app holds no request, and a new
+ * document's process starts with the runtime the navigation began with: a
+ * public page that a page of this machine leads to by itself (a link, a
+ * redirect) can still start with it on, for its first milliseconds. A tab that
+ * only ever shows public pages never has it.
+ */
+function hostedRuntime(cdp: Cdp, tab: string): PageRuntime {
+  let on = false, moved = false;
+  let order: Promise<void> = Promise.resolve();
+  const turn = (want: boolean): Promise<void> => {
+    if (want === on) return order;
+    on = want;
+    return order = order.then(() => cdp.send(want ? 'Runtime.enable' : 'Runtime.disable', {}, tab).then(() => {}, () => {}));
+  };
+  return {
+    get on() { return on; },
+    get session() { return on ? tab : undefined; },
+    adopt(url) { return moved ? Promise.resolve() : turn(readsConsole(url)); },
+    follow(url) { moved = true; return turn(readsConsole(url)); },
+  };
+}
+
+/**
+ * Keeps a desktop app tab's `runtime` on its top document: off from the
+ * request of a public one, which the app relays with its frame
+ * (`compactPageEvent` in packages/ui/src/lib/browser-host.ts), and set by
+ * each committed top document.
+ */
+export function followHostedPage(runtime: PageRuntime, cdp: Cdp, tab: string, on: (method: string, listener: (params: Record<string, unknown>) => void) => void): void {
+  let top: string | undefined;
+  void cdp.send<{ frameTree: { frame: { id: string } } }>('Page.getFrameTree', {}, tab).then(tree => { top ??= tree.frameTree.frame.id; }, () => {});
+  on('Network.requestWillBeSent', params => {
+    if (params.type !== 'Document' || params.frameId === undefined || params.frameId !== top) return;
+    const url = String((params.request as { url: string }).url);
+    if (!readsConsole(url)) void runtime.follow(url);
+  });
+  on('Page.frameNavigated', params => {
+    const frame = params.frame as { id: string; parentId?: string; url: string };
+    if (frame.parentId) return;
+    top = frame.id;
+    void runtime.follow(frame.url);
+  });
 }
 
 /**

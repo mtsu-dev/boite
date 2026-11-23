@@ -17,6 +17,7 @@
   import type { AgentPane } from '../lib/store/layout.svelte';
   import { watchTeams, type TeamRow } from '../lib/teams.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsShownAnywhere } from '../lib/contacts-anywhere';
   import { contactsParts } from '../lib/contacts-entry';
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectView } from '../lib/project-view.svelte';
@@ -63,6 +64,8 @@
   const botsOn = $derived(experimentOn('resident-agents'));
   const teamsOn = $derived(botsOn);
   const contactsOn = $derived(contactsShown(store));
+  /** A request waits on the machine that holds the contact, which may not be the one in view. */
+  const contactsAnywhere = $derived(contactsShownAnywhere(store));
 
   // Every machine's bots stay read while the rail is drawn, so their pictures say how each one stands.
   followAgentDirectories(() => stores, () => botsOn);
@@ -329,7 +332,7 @@
 
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
-    if (!contactsOn || ContactRequestNotice) return;
+    if (!contactsAnywhere || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
 </script>
@@ -388,7 +391,7 @@
     </div>
   {/if}
   <!-- What contacts ask arrives as a toast; Activity lists it, the Bots list's Contacts side holds the rest. -->
-  {#if contactsOn && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
+  {#if contactsAnywhere && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
 
   {#if botsOn}
     <span class="separator" aria-hidden="true"></span>

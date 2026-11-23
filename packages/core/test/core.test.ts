@@ -174,9 +174,10 @@ describe('settings', () => {
       // Off only because the harness turns it off; a missing value reads as on.
       asyncQuestions: false,
       shortAnswers: false,
-      // Open only because the harness opens them; a first start closes both.
+      // Open only because the harness opens them; a first start closes all three.
       agentBotCreation: 'free',
       coordinationReach: 'group',
+      contacts: true,
     });
 
     const next = await client.call('settings.set', { warmProcessMinutes: 3 });

@@ -6,6 +6,11 @@ other projects, your machines, your devices or your other contacts.
 
 ## Before you start
 
+- Contacts are off on a new install. Turn them on in Settings, General, What
+  agents may do alone, under Contacts; the Contacts button then joins the app
+  rail. Turned off again, links pause and your contacts and their projects stay
+  kept until you turn it back on. An install that already had a contact keeps
+  them on.
 - Tailscale carries the link, each owner on their own tailnet. Someone with
   no Tailscale can still join an invitation sent from a tailscale.com tailnet.
 - Opening Contacts the first time creates the Operator, a built-in

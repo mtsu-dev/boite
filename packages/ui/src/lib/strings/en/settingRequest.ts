@@ -29,6 +29,8 @@ export const strings = {
     },
     bots: 'Create mochis without asking',
     botsEffect: 'A mochi created this way has full access to this machine',
+    contacts: 'Contacts',
+    contactsEffect: "Agents work with other people's Boites, and Contacts shows in the rail",
     values: { ask: 'Ask first', free: 'Without asking' },
   },
   settingRequest: {
@@ -82,6 +84,7 @@ export const strings = {
       muteAgents: 'Mute agent audio',
       coordinationReach: 'How far a conversation reaches other conversations',
       agentBotCreation: 'Agents create mochis without asking',
+      contacts: 'Contacts',
       agentCpuCapPercent: 'CPU cap for all agents',
       agentMemoryBudgetPercent: 'Memory budget for all agents',
       threadMemoryCapMb: 'Memory cap per conversation',

@@ -759,7 +759,9 @@ export class TerminalSession {
       if (this.#muted > 0 || !this.#attached) return;
       // A shell warmed at the default size must get the measured size before
       // the first keys. Otherwise readline can redraw using two widths in one command.
-      if (this.#fitTimer === null) this.#fitNow();
+      if (this.#fitTimer !== null) clearTimeout(this.#fitTimer);
+      this.#fitTimer = null;
+      this.#fitNow();
       this.#sendSize();
       if (this.#typed.length === 0) return;
       const typed = this.#typed;

@@ -3,6 +3,8 @@ import type { AgentCommand, AgentTotals, BackgroundTask, ToolDocument, Usage } f
 import type { PromptCacheLife, TurnRefusal } from '../types.ts';
 import { imageDocument } from '../documents.ts';
 import { stringify } from '../tool-text.ts';
+import { isClaudeUsageLimitText, isGatewayUsageLimitText, parseUsageLimitReset } from '../usage-limit.ts';
+import { isoTime } from './diagnostics.ts';
 
 /** `api_retry`: the CLI is running a request that failed and will try again. */
 export function isApiRetry(message: SDKMessage): boolean {
@@ -443,13 +445,59 @@ export function apiErrorReason(error: SDKAssistantMessageError, content: unknown
   return said === sentence ? sentence : `${sentence} ${said}`;
 }
 
-/** A gateway can report an exhausted subscription in its API error text, without a rate-limit event. */
-export function apiRefusal(error: SDKAssistantMessageError, reason: string, rejectedUntil: number | null): TurnRefusal | undefined {
+/** Tracks rejected rate-limit windows per `rateLimitType` so an `allowed` update on another window does not clear a rejected one. */
+export class RejectedWindows {
+  readonly #windows = new Map<string, number | null>();
+
+  note(info: { status?: unknown; resetsAt?: unknown; rateLimitType?: unknown; overageStatus?: unknown; overageResetsAt?: unknown } | null | undefined): void {
+    if (info === null || info === undefined) return;
+    const key = typeof info.rateLimitType === 'string' && info.rateLimitType.length > 0 ? info.rateLimitType : 'default';
+    if (info.status === 'rejected' || info.overageStatus === 'rejected') {
+      const iso = isoTime(info.status === 'rejected' ? info.resetsAt : info.overageResetsAt)
+        ?? isoTime(info.resetsAt)
+        ?? isoTime(info.overageResetsAt);
+      const at = iso === null ? null : Date.parse(iso);
+      this.#windows.set(key, at !== null && Number.isFinite(at) ? at : null);
+      return;
+    }
+    if (info.status === 'allowed') this.#windows.delete(key);
+  }
+
+  get hasRejected(): boolean {
+    const now = Date.now();
+    for (const at of this.#windows.values()) {
+      if (at === null || at > now) return true;
+    }
+    return false;
+  }
+
+  latest(now = Date.now()): number | null {
+    let latestFuture: number | null = null;
+    for (const at of this.#windows.values()) {
+      if (at !== null && at > now && (latestFuture === null || at > latestFuture)) latestFuture = at;
+    }
+    return latestFuture;
+  }
+}
+
+/**
+ * Availability refusal read from an API error frame or a failed result.
+ * A gateway or CLI can report an exhausted subscription without a `rate_limit`
+ * code or `rate_limit_event`, and carry the reset time in the error text.
+ */
+export function apiRefusal(
+  error: SDKAssistantMessageError | null,
+  reason: string,
+  rejectedUntil: number | null,
+  hasRejectedWindow = false,
+): TurnRefusal | undefined {
   if (error === 'overloaded') return { kind: 'capacity' };
-  if (error !== 'rate_limit' && !(error === 'server_error' && /\bAPI Error: 503 no available subscription for this model\b/i.test(reason))) return;
-  const reset = /\bused up until (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)\b/i.exec(reason)?.[1];
-  const parsed = reset === undefined ? NaN : Date.parse(reset);
-  return { kind: 'usage-limit', resetsAt: rejectedUntil ?? (Number.isFinite(parsed) ? parsed : null) };
+  const isLimit = error === 'rate_limit'
+    || ((error === 'server_error' || error === 'unknown' || error === null)
+      && isGatewayUsageLimitText(reason, error === 'server_error' ? 503 : null))
+    || ((error === null || error === 'unknown') && (hasRejectedWindow || isClaudeUsageLimitText(reason)));
+  if (!isLimit) return;
+  return { kind: 'usage-limit', resetsAt: rejectedUntil ?? parseUsageLimitReset(reason) };
 }
 
 /** The CLI's `task_type` as the kinds the UI draws. */

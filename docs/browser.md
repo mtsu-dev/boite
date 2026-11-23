@@ -46,7 +46,8 @@ Testing. The browser draws on the machine's graphics card when it can, as
 Chrome with a window does.
 
 To use a specific browser, set `BOITE_BROWSER` to its executable in the
-environment Boite starts with.
+environment Boite starts with. On Windows it applies to the profiles whose
+Engine is Chrome.
 
 ## Watch the agent's pages
 
@@ -94,9 +95,12 @@ card's Open button opens the page in the conversation's browser.
 Settings, Browser, Browser profiles lists the profiles:
 
 - Add profile creates one. Open new tabs here picks the profile new tabs use.
-- User-Agent, on a profile you created, appends a marker to the browser's
-  identity or replaces it. It applies the next time that profile's browser
-  starts. Default and Private keep the browser's own identity.
+- Engine, on every profile, Default included, picks the browser the agents
+  use in it: App window or Chrome. See [On Windows](#on-windows).
+- User-Agent, on a profile you created that runs in Chrome, appends a marker
+  to the browser's identity or replaces it. It applies the next time that
+  profile's browser starts. Default and Private keep the browser's own
+  identity. App window keeps a saved User-Agent but does not apply it.
 - Copy sign-ins to agents, in the Windows desktop app, sends a profile's
   cookies to the agent browser of a machine you pick. It is a copy at that
   moment: a later sign-in needs a new copy, and a site may still ask again.
@@ -107,8 +111,21 @@ Settings, Browser, Browser profiles lists the profiles:
 
 The desktop app hosts the agent's tabs in its own browser, with the same
 profiles as your own Browser tabs. A site you signed in to there is signed in
-for the agent too. Agent tabs are muted. The macOS and Linux apps do not host
-tabs: the agent uses its own browser on the machine.
+for the agent too. Agent tabs are muted.
+
+A profile's Engine decides where its agent tabs run:
+
+- App window, the default, runs them in the desktop app's own browser. The
+  panel shows them smoothly.
+- Chrome runs them in the browser described in
+  [Which browser it uses](#which-browser-it-uses). More sites that check for
+  bots let it through, and the panel shows it as a series of pictures.
+
+Sign-ins follow the profile from one engine to the other. Only you choose the
+engine, in Settings: an agent can neither change it nor get around it.
+
+The macOS and Linux apps, and a machine without the desktop app, do not host
+tabs: the agent always uses Chrome there.
 
 ## Limits
 

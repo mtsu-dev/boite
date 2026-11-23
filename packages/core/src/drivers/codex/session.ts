@@ -299,6 +299,7 @@ export class CodexSession {
         if (turn.isStopped) this.#interrupt(turn);
         // A server that answers with a turn already finished settles it here;
         // the one that answers `inProgress` settles on `turn/completed`.
+        turn.spentWindowResetsAt = this.#spentWindows.latest();
         turn.finish(started.turn);
       }
     } catch (error) {
@@ -306,7 +307,13 @@ export class CodexSession {
       // than "the request failed": give it a moment to be reported.
       const code = await exitWithin(this.#exited, EXIT_GRACE_MS, this.#processClosed);
       if (turn.isStopped) turn.endStopped();
-      else turn.fail(code === undefined ? messageOf(error) : this.#exitSentence(code), code === undefined ? logMessageOf(error) : this.#exitSentence(code, true));
+      else {
+        if (code === undefined) {
+          turn.spentWindowResetsAt = this.#spentWindows.latest();
+          turn.noteRefusal(turn.lastErrorInfo, messageOf(error));
+        }
+        turn.fail(code === undefined ? messageOf(error) : this.#exitSentence(code), code === undefined ? logMessageOf(error) : this.#exitSentence(code, true));
+      }
       this.#current = null;
       this.#endTurn(turn, true);
       return;
@@ -594,7 +601,10 @@ export class CodexSession {
       }
       case 'turn/completed': {
         const record = params['turn'] as CodexTurnRecord | undefined;
-        if (record !== undefined) turn.finish(record);
+        if (record !== undefined) {
+          turn.spentWindowResetsAt = this.#spentWindows.latest();
+          turn.finish(record);
+        }
         break;
       }
       case 'error':

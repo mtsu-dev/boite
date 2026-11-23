@@ -6,10 +6,12 @@
  * local core (`?fake=1`, a plain browser).
  */
 import {
+  browserEngineOf,
   browserProfilesOf,
   DEFAULT_BROWSER_PROFILE,
   findBrowserProfile,
   PRIVATE_BROWSER_PROFILE,
+  type BrowserEngine,
   type BrowserProfile,
   type Settings
 } from '@boite/contracts';
@@ -46,6 +48,21 @@ class BrowserProfiles {
   /** A name, an id, `default` or `private`, as an agent names it. */
   find(wanted: string): string | null {
     return findBrowserProfile(this.list, wanted);
+  }
+
+  /** What runs the profile's agent tabs, as the core reads it: default included. */
+  engine(id: string): BrowserEngine {
+    return browserEngineOf(this.source?.settings, id);
+  }
+
+  /** The owner's choice of engine; the built-in default keeps its own setting beside the list. */
+  saveEngine(id: string, engine: BrowserEngine): Promise<boolean> {
+    if (id !== DEFAULT_BROWSER_PROFILE) return this.save((profiles) => profiles.map((profile) => (profile.id === id ? { ...profile, engine } : profile)));
+    const source = this.source;
+    if (!source) return Promise.resolve(false);
+    const saved = this.#saving.then(() => source.saveSettings({ browserBuiltinProfiles: { default: { engine } } }));
+    this.#saving = saved.catch(() => {});
+    return saved;
   }
 
   #saving: Promise<unknown> = Promise.resolve();

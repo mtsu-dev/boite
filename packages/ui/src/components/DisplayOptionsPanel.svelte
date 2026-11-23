@@ -20,12 +20,13 @@
   import Menu from './Menu.svelte';
   import ProjectTile from './ProjectTile.svelte';
   import MachineIcon from './MachineIcon.svelte';
-  import { openArchived } from '../lib/archived-view.svelte';
+  import { closeArchived, openArchived } from '../lib/archived-view.svelte';
 
   /**
    * The display menu over the thread list (DisplayOptions.svelte loads it on
    * its own, out of the entry chunk), one named group after another, each a
-   * label over rows of one height: the project Recent lists, the project
+   * label over rows of one height: the view (Projects or Recent, on a phone
+   * named in its title instead), the project Recent lists, the project
    * order, the machine, what the list folds away (Display), the open project's
    * own switches, then the two ways out of the list on its last lines, the
    * archive and Add a project. It stays open while the user adjusts it; a
@@ -89,6 +90,11 @@
     next?.click();
     next?.focus();
   }
+  function setView(view: 'projects' | 'recent'): void {
+    if (workspace.view === view) return;
+    closeArchived();
+    workspace.setView(view);
+  }
   function setOrder(order: 'recent' | 'manual'): void {
     if (projectView.order !== order) projectView.toggle(entries);
   }
@@ -136,7 +142,16 @@
   use:floating={{ anchor, placement: 'bottom', align: 'end', cap: 640, dismiss: () => onclose() }}
   onanimationend={popover.end}
 >
-  <!-- No view switch here: both views are named in the list's own head (ViewSwitch.svelte). -->
+  <!-- A phone names both views in its title (ViewSwitch.svelte); the desktop head holds Back and Forward instead. -->
+  {#if !compact}
+    <section class="group">
+      <h3 class="ui-label" id="{uid}-view">{strings.sidebar.displayView}</h3>
+      <div role="radiogroup" aria-labelledby="{uid}-view" data-testid={`${prefix}view-switch`} data-view={workspace.view}>
+        {@render choice('view:projects', strings.sidebar.projectsView, projects, () => setView('projects'))}
+        {@render choice('view:recent', strings.sidebar.recentView, !projects, () => setView('recent'))}
+      </div>
+    </section>
+  {/if}
   {#if !projects && entries.length}
     <!-- The project Recent lists: its own menu, so a long list of projects scrolls there and not here. -->
     <section class="group">

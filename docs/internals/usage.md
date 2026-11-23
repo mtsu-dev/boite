@@ -592,13 +592,16 @@ and the cancellation of any automatic plan together. The continuation keeps its
 saved selection if the core stops before sending it.
 
 Settings > Limits has "Resume threads after a usage limit"
-(`autoResumeLimitedThreads`, off by default). With it on, a turn that failed
+(`autoResumeLimitedThreads`, on by default). With it on, a turn that failed
 on a usage limit plans one resume a minute after the window resets
-(`threads/limit-resume.ts`). The reset is the one the agent reported, else the
-latest window at 100 % in a fresh `quotas` read of the turn's account; with
-neither, nothing is planned. The plan sits in the journal setting
-`resumes` (`threads/resume.ts`), so a restart arms it again, and the row shows it as `retry`
-(`kind: 'usage-limit'`, `at`, `resetsAt`) with Do not resume.
+(`threads/limit-resume.ts`). The reset comes from the agent's rate-limit event,
+else parsed from the agent's error text (`drivers/usage-limit.ts`), else the
+latest future window at 100 % in a fresh `quotas` read of the turn's account
+(bypassing the 10 s fresh cache, or reading the Douane gateway pool when routed
+through Douane); with none, nothing is planned. The plan sits in the journal
+setting `resumes` (`threads/resume.ts`), so a restart arms it again, and long
+waits re-arm in minute steps so a wake from sleep fires on time. The row shows
+it as `retry` (`kind: 'usage-limit'`, `at`, `resetsAt`) with Do not resume.
 
 Nothing is planned for a failure whose window already reset (no retry loop),
 for a window the thread already resumed after, for a sub-thread, or for a

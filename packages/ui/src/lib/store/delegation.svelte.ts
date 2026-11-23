@@ -205,7 +205,7 @@ export class Delegation {
 
   patchProgress(threadId: ThreadId, progress: NonNullable<ThreadSummary['progress']>): void {
     const agent = this.delegation?.agents.find(agent => !agent.machine && agent.thread.id === threadId);
-    if (agent && !patchProgress(agent.thread, progress)) return;
+    if (agent) patchProgress(agent.thread, progress);
     const pending = this.teamRead;
     if (pending?.client === this.ctx.client) pending.progress.set(threadId, progress);
   }

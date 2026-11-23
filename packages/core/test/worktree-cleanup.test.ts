@@ -1,10 +1,12 @@
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, rmdirSync, symlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, rmdirSync, symlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
 import * as fs from 'node:fs';
+import * as promisedFs from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { ThreadSummary } from '@boite/contracts';
 import { assertAllowed } from '../src/access.ts';
 import { runCli } from '../src/cli.ts';
+import { keyOf } from '../src/checkouts.ts';
 import { realKey, restoreInterruptedCheckout } from '../src/checkout-removal.ts';
 import { finishCheckoutRecovery } from '../src/checkout-recovery.ts';
 import { Journal } from '../src/journal.ts';
@@ -227,10 +229,12 @@ describe('settled worktree cleanup', () => {
     const note = join(thread.cwd, 'notes.txt');
     if (!late) writeFileSync(note, 'keep me');
     if (late) {
+      const checkout = keyOf(realpathSync.native(thread.cwd));
       const spawn = harness.core.procs.spawn.bind(harness.core.procs);
       const removing = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
-        if (command === 'git' && args[0] === 'worktree' && (args[1] === 'move' || args[1] === 'remove') && args.at(args[1] === 'move' ? -2 : -1) === thread.cwd) {
-          writeFileSync(note, 'keep me');
+        if (command === 'git' && args[0] === 'worktree' && (args[1] === 'move' || args[1] === 'remove')) {
+          const location = args.at(args[1] === 'move' ? -2 : -1);
+          if (location && existsSync(location) && keyOf(realpathSync.native(location)) === checkout) writeFileSync(note, 'keep me');
         }
         return spawn(id, command, args, options);
       });
@@ -249,6 +253,7 @@ describe('settled worktree cleanup', () => {
     git(project.path, 'add', 'unchanged.txt', 'open.txt');
     git(project.path, 'commit', '-qm', 'add another file');
     const thread = await worktreeThread(project, 'Late tracked write');
+    const checkout = realpathSync.native(thread.cwd);
     const commit = git(thread.cwd, 'rev-parse', 'HEAD');
     await client.call('threads.archive', { threadId: thread.id });
     const fd = openSync(join(thread.cwd, 'README.md'), 'a');
@@ -276,7 +281,7 @@ describe('settled worktree cleanup', () => {
       expect(readFileSync(join(saved!, 'open.txt'), 'utf8')).toBe('before\nwritten after cleanup returned\n');
       expect(existsSync(join(saved!, '.git'))).toBe(false);
       if (process.platform === 'linux') expect(readdirSync(saved!).sort()).toEqual(['README.md', 'open.txt']);
-      expect(JSON.parse(readFileSync(join(dirname(saved!), 'recovery.json'), 'utf8'))).toMatchObject({ path: thread.cwd, commit });
+      expect(JSON.parse(readFileSync(join(dirname(saved!), 'recovery.json'), 'utf8'))).toMatchObject({ path: checkout, commit });
     } finally {
       log.mockRestore();
       closeSync(fd);
@@ -328,6 +333,7 @@ describe('settled worktree cleanup', () => {
     git(project.path, 'add', '.');
     git(project.path, 'commit', '-qm', 'attributes');
     const thread = await worktreeThread(project, 'Clean conversions');
+    const checkout = realpathSync.native(thread.cwd);
     const commit = git(thread.cwd, 'rev-parse', 'HEAD');
     expect(readFileSync(join(thread.cwd, 'doc.txt'), 'utf8')).toBe('one\r\ntwo\r\n');
     expect(readFileSync(join(thread.cwd, 'doc.fixture'), 'utf8')).toBe('text\n');
@@ -337,7 +343,7 @@ describe('settled worktree cleanup', () => {
     await client.call('threads.archive', { threadId: thread.id });
     expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch })]);
     const [recovery] = await client.call('worktrees.recoveries', {});
-    expect(recovery).toEqual({ path: thread.cwd, commit, recoveryPath: expect.any(String) });
+    expect(recovery).toEqual({ path: checkout, commit, recoveryPath: expect.any(String) });
     expect(readdirSync(recovery!.recoveryPath)).toEqual(['doc.fixture']);
     expect(readFileSync(join(recovery!.recoveryPath, 'doc.fixture'), 'utf8')).toBe('text\n');
     expect(readdirSync(dirname(thread.cwd)).filter(name => name.startsWith('.boite-removing-'))).toEqual([basename(dirname(recovery!.recoveryPath))]);
@@ -353,6 +359,7 @@ describe('settled worktree cleanup', () => {
     git(project.path, 'add', '.');
     git(project.path, 'commit', '-qm', 'attributes');
     const thread = await worktreeThread(project, 'Late filtered save');
+    const checkout = realpathSync.native(thread.cwd);
     const commit = git(thread.cwd, 'rev-parse', 'HEAD');
     expect(readFileSync(join(thread.cwd, 'doc.fixture'), 'utf8')).toBe('text\n');
     await client.call('threads.archive', { threadId: thread.id });
@@ -373,7 +380,7 @@ describe('settled worktree cleanup', () => {
     expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch })]);
     expect(saved).toBeDefined();
     expect(existsSync(thread.cwd)).toBe(false);
-    expect(await client.call('worktrees.recoveries', {})).toEqual([{ path: thread.cwd, commit, recoveryPath: saved! }]);
+    expect(await client.call('worktrees.recoveries', {})).toEqual([{ path: checkout, commit, recoveryPath: saved! }]);
     expect(readFileSync(join(saved!, 'doc.fixture'), 'utf8')).toBe('TeXt\n');
     expect(readdirSync(saved!)).toEqual(['doc.fixture']);
     git(project.path, 'worktree', 'add', '--detach', thread.cwd, commit);
@@ -386,11 +393,12 @@ describe('settled worktree cleanup', () => {
     mkdirSync(saved, { recursive: true });
     const path = join(saved, 'README.md');
     writeFileSync(path, 'captured edit\n');
+    const physicalPath = realpathSync.native(path);
     const rename = fs.renameSync;
     let captured: string | undefined;
     const intercept = spyOn(fs, 'renameSync').mockImplementation((from, to) => {
       rename(from, to);
-      if (from === path && typeof to === 'string') {
+      if (from === physicalPath && typeof to === 'string') {
         captured = to;
         writeFileSync(path, 'published again\n');
       }
@@ -493,17 +501,118 @@ describe('settled worktree cleanup', () => {
     const ref = `refs/heads/${thread.branch}`;
     git(project.path, 'commit', '--allow-empty', '-qm', 'advance main');
     const head = git(project.path, 'rev-parse', 'HEAD');
-    const spawn = harness.core.procs.spawn.bind(harness.core.procs);
-    const deleting = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
-      if (command === 'git' && args[1] === '-d' && (args[0] === 'branch' && args[2] === thread.branch || args[0] === 'update-ref' && args[2] === ref)) {
+    const spawnPiped = harness.core.procs.spawnPiped.bind(harness.core.procs);
+    const deleting = spyOn(harness.core.procs, 'spawnPiped').mockImplementation((id, command, args, options) => {
+      if (command === 'git' && args[0] === 'update-ref' && args[1] === '--stdin') {
         git(project.path, 'update-ref', ref, head);
       }
-      return spawn(id, command, args, options);
+      return spawnPiped(id, command, args, options);
     });
     restoreSpawn = () => deleting.mockRestore();
     await client.call('threads.archive', { threadId: thread.id });
     expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch, branchDeleted: false })]);
     expect(git(project.path, 'rev-parse', ref)).toBe(head);
+  });
+
+  test('keeps the last branch containing a commit when its other branch goes during cleanup', async () => {
+    const project = await repoProject();
+    const thread = await worktreeThread(project, 'Last branch');
+    const head = commitWork(thread.cwd).trim();
+    git(project.path, 'branch', 'other-copy', head);
+    const spawn = harness.core.procs.spawn.bind(harness.core.procs);
+    const removing = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
+      if (command === 'git' && args[0] === 'worktree' && args[1] === 'remove') git(project.path, 'branch', '-D', 'other-copy');
+      return spawn(id, command, args, options);
+    });
+    restoreSpawn = () => removing.mockRestore();
+    await client.call('threads.archive', { threadId: thread.id });
+    expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch, branchDeleted: false })]);
+    expect(git(project.path, 'rev-parse', thread.branch!).trim()).toBe(head);
+  });
+
+  test('keeps the last branch containing a commit when a remote ref is pruned at deletion', async () => {
+    const project = await repoProject();
+    const thread = await worktreeThread(project, 'Last branch before prune');
+    const head = commitWork(thread.cwd);
+    const remoteRef = 'refs/remotes/origin/other-copy';
+    git(project.path, 'update-ref', remoteRef, head);
+    const spawn = harness.core.procs.spawn.bind(harness.core.procs);
+    const spawnPiped = harness.core.procs.spawnPiped.bind(harness.core.procs);
+    let pruned = false;
+    const prune = () => {
+      git(project.path, 'update-ref', '-d', remoteRef, head);
+      pruned = true;
+    };
+    const deleting = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
+      if (command === 'git' && args[0] === 'update-ref' && args[1] === '-d' && args[2] === `refs/heads/${thread.branch}`) prune();
+      return spawn(id, command, args, options);
+    });
+    const transaction = spyOn(harness.core.procs, 'spawnPiped').mockImplementation((id, command, args, options) => {
+      if (command === 'git' && args[0] === 'update-ref' && args[1] === '--stdin') prune();
+      return spawnPiped(id, command, args, options);
+    });
+    restoreSpawn = () => { transaction.mockRestore(); deleting.mockRestore(); };
+    await client.call('threads.archive', { threadId: thread.id });
+    expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch, branchDeleted: false })]);
+    expect(pruned).toBe(true);
+    expect(git(project.path, 'rev-parse', `refs/heads/${thread.branch}`)).toBe(head);
+  });
+
+  test('keeps a staged checkout when a directory replaces a tracked file', async () => {
+    const project = await repoProject();
+    writeFileSync(join(project.path, 'z-last'), 'tracked');
+    git(project.path, 'add', 'z-last');
+    git(project.path, 'commit', '-qm', 'track another file');
+    const thread = await worktreeThread(project, 'Replaced entry');
+    const spawn = harness.core.procs.spawn.bind(harness.core.procs);
+    const listing = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
+      if (command === 'git' && args[0] === '-C' && args[2] === 'ls-files' && basename(args[1]!) === 'checkout') {
+        const path = join(args[1]!, 'z-last');
+        rmSync(path);
+        mkdirSync(path);
+        writeFileSync(join(path, 'keep.txt'), 'user data');
+      }
+      return spawn(id, command, args, options);
+    });
+    restoreSpawn = () => listing.mockRestore();
+    await client.call('threads.archive', { threadId: thread.id });
+    const log = spyOn(harness.core, 'log');
+    try {
+      expect(await cleanup.run()).toEqual([]);
+      expect(readFileSync(join(thread.cwd, 'README.md'), 'utf8')).toBe('hello\n');
+      expect(readFileSync(join(thread.cwd, 'z-last', 'keep.txt'), 'utf8')).toBe('user data');
+      expect(log.mock.calls).toContainEqual(['info', expect.stringMatching(/kept the worktree .*git worktree remove failed.*is not a file or symlink/),
+        { source: 'worktree-cleanup', event: 'worktrees.kept' }]);
+      expect(readdirSync(dirname(thread.cwd)).some(name => name.startsWith('.boite-removing-'))).toBe(false);
+    } finally { log.mockRestore(); }
+  });
+
+  test.skipIf(process.platform === 'win32').each([Buffer.from('missing/target'), Buffer.from([0xff, 0x2f, 0xfe])])('restores a dangling tracked symlink after a file appears during cleanup (%s)', async target => {
+    const project = await repoProject();
+    symlinkSync(target, join(project.path, 'tracked-link'));
+    git(project.path, 'add', 'tracked-link');
+    git(project.path, 'commit', '-qm', 'track symlink');
+    const thread = await worktreeThread(project, 'Tracked symlink');
+    const spawn = harness.core.procs.spawn.bind(harness.core.procs);
+    const checking = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
+      if (command === 'git' && args[0] === '-C' && basename(args[1]!) === 'saved' && args.includes('status')) {
+        writeFileSync(join(dirname(args[1]!), 'checkout', 'notes.txt'), 'keep me');
+      }
+      return spawn(id, command, args, options);
+    });
+    restoreSpawn = () => checking.mockRestore();
+    const link = promisedFs.link;
+    const platformLink = spyOn(promisedFs, 'link').mockImplementation(async (from, to) => {
+      if (typeof from === 'string' && basename(from) === 'tracked-link') throw Object.assign(new Error('cannot hard-link a symlink'), { code: 'EINVAL' });
+      await link(from, to);
+    });
+    await client.call('threads.archive', { threadId: thread.id });
+    try {
+      expect(await cleanup.run()).toEqual([]);
+      expect(readlinkSync(join(thread.cwd, 'tracked-link'), { encoding: 'buffer' })).toEqual(target);
+      expect(readFileSync(join(thread.cwd, 'notes.txt'), 'utf8')).toBe('keep me');
+      expect(readdirSync(dirname(thread.cwd)).some(name => name.startsWith('.boite-removing-'))).toBe(false);
+    } finally { platformLink.mockRestore(); }
   });
 
   test('a worktree no thread stands in goes only on a boite branch, outside a reservation, an hour after git last touched it', async () => {

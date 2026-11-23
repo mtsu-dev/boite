@@ -308,9 +308,11 @@ After emptying the staged checkout with `rmdir`, it runs `git worktree remove`
 without `--force` to clear Git's registration. With a merge proof, it runs
 `git update-ref -d refs/heads/<branch> <sha>`, which deletes the branch
 only while it still points at the merged commit and no other worktree has it
-checked out. Remote branches are left to the forge's own "delete head branch"
-setting. A worktree kept for a reason is looked at again an hour later, or as
-soon as its HEAD moves.
+checked out. When cleanup relies on another local or remote-tracking ref,
+one Git transaction verifies that ref and deletes the branch. If a fetch
+or prune changes the containing ref first, the branch stays. Remote branches
+are left to the forge's own "delete head branch" setting. A worktree kept for
+a reason is looked at again an hour later, or as soon as its HEAD moves.
 
 Each thread that stood there gets `worktreeRemoved` on its summary: the path,
 branch, whether the branch went, the reason (`pr-merged` or `clean`) and the
@@ -709,8 +711,9 @@ It also prints how to open, drive and stop the instance:
   names the instance's data directory.
 - `restart` asks the live core holding the instance's data for
   `POST /shutdown-for-update` with its expected PID. It waits for that process
-  to exit and starts this checkout again on the same data. Pass any `--env`
-  options needed by the next instance.
+  to exit and starts this checkout again on the same data. If the recorded
+  core already exited, restart goes ahead without an acknowledgment. Pass
+  any `--env` options needed by the next instance.
 - `stop` asks the core to shut down over `POST /shutdown`, waits for the
   process captured at spawn and removes temporary data and the output
   file. The state keeps each

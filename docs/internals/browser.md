@@ -35,7 +35,11 @@ version every other visitor of a site runs. Both are things a bot check reads.
 A machine meant to browse the public web installs Chrome stable.
 
 `BOITE_BROWSER` names the executable instead, and is then the only place
-looked at. Edge ships with Windows 10 and 11, so a Windows machine always has
+looked at. It names the browser of the Chrome engine only: while the desktop
+app hosts a profile ([Engine of a profile](#engine-of-a-profile)) the core looks
+for no browser at all and ignores the variable, so on Windows with the app it
+matters for the profiles set to Chrome, a profile with a User-Agent, and a core
+that runs without the app. Edge ships with Windows 10 and 11, so a Windows machine always has
 one. A machine without any says so: `browser.remoteStatus` answers
 `available: false` with the reason, the panel shows it, and `browser open`
 fails with the same sentence. Nothing is installed or downloaded.
@@ -116,8 +120,9 @@ flag's size by the forced scale of 2 twice.
 A browser whose identity cannot be read starts as it is, with a warning in the
 log. A page check of `boite view` skips the read.
 
-Settings > Browser has a User-Agent editor on each custom
-profile. Leave it empty for the unchanged browser identity, append a suffix
+Settings > Browser has a User-Agent editor on each custom profile whose engine
+is Chrome ([Engine of a profile](#engine-of-a-profile)). Leave it empty for the
+unchanged browser identity, append a suffix
 such as a bug bounty program marker, or replace the complete value. The
 setting is stored as `browserProfiles[].userAgent` (`mode: suffix | replace`,
 `value`) and applies when that profile's agent browser next starts. Close its
@@ -126,7 +131,7 @@ a change to an already running profile. Default and private profiles keep the
 browser identity; create a named profile to customize it.
 
 A profile keeps its current engine until it closes, including when the desktop
-app attaches or the User-Agent setting changes. Its next engine starts after
+app attaches or its engine or User-Agent setting changes. Its next engine starts after
 the previous engine finishes saving cookies, so two engines never overwrite
 the same profile's saved cookie snapshot. An engine that ended, closed by
 the core or lost when its connection dropped, holds its profile until its
@@ -167,8 +172,24 @@ as it was; it then reports what the page logged before. On public pages
 exception. A frame of another origin on the same site, which needs an
 execution context, is reached through the isolated world `boite-kit`
 (`Page.createIsolatedWorld`), the same one each time and invisible to the
-page. A tab of the desktop app's webviews keeps the runtime on its own
-session, since the shell reads its console.
+page.
+
+A tab of the desktop app's webviews has one DevTools session, the shell's,
+and nothing can hold its requests or open a second session there. The shell
+enables the runtime only on the user's own tabs
+(`platform/browser_diagnostics.rs`); on an agent's tab the core turns it on
+and off on that session by the same rule (`hostedRuntime`). It turns on once a
+private document committed, and off before the core or a viewer in the panel
+sends the tab to a public address (`#navigate` in `browser.ts`,
+`remote-drive.ts`). A navigation the page starts itself is seen at its
+request, which the app relays with its frame (`compactPageEvent` in
+`packages/ui/src/lib/browser-host.ts`): `Runtime.disable` is sent then, but
+it reaches only the page that leaves. Chromium gives the new document's
+process the runtime as it was when the navigation began, so a page of this
+machine that sends the tab to a public site, a link, a redirect or the back
+button, still shows that public page the runtime for its first milliseconds.
+A tab that never showed a page of this machine never has it, and the agent's
+own `open` and `navigate` turn it off before the navigation begins.
 
 This brings it level with the same Chrome running with a window on the same
 network, not past it. Etsy, SeLoger and Reddit still asked for a captcha on
@@ -472,12 +493,12 @@ its iframe. The kit lists each such iframe that has a size, and the core reads
 its document in the frame's own context and sets the lines under the iframe
 (`browser/page-frames.ts`):
 
-- A frame of the same site runs in the page's renderer, in an execution context
-  of its own on the tab's session; the core keeps each frame's context from the
-  `Runtime.executionContextCreated` events.
+- A frame of the same site runs in the page's renderer. The kit runs there in
+  the frame's isolated world `boite-kit`, which needs no runtime.
 - A frame of another site runs in a process of its own, a target whose id is
-  the frame's. The command attaches to it, enables its runtime, so its own
-  frames of the same site are listed too, and leaves it when it ends.
+  the frame's. The command attaches to it, reaches its own frames of the same
+  site through their isolated world on that session, and leaves it when it
+  ends.
 - The iframe's element names its frame through `DOM.describeNode`.
 
 Refs are stable: the kit keeps, in each document's own window, the ref of
@@ -515,10 +536,9 @@ against it would hide lines.
 
 A snapshot reads at most 30 frames of other origins, within its 40,000
 characters; one past either is a note under its iframe. With `-i`, a frame with
-nothing to act on is left out. The desktop app relays no
-`Runtime.executionContextDestroyed` and attaches to no frame's process: a hosted
-tab reaches a frame of the same site through its context, and a frame of
-another site shows as a note.
+nothing to act on is left out. The desktop app attaches to no frame's process:
+a hosted tab reaches a frame of the same site through its isolated world, and
+a frame of another site shows as a note.
 
 ## The desktop app hosts the tabs
 
@@ -576,6 +596,40 @@ the connection ends the relay, and the next tab opens in the core's own
 browser again. Other clients of the conversation, a phone or another machine,
 still watch a hosted tab as frames, taken through the app. The Linux and
 macOS apps do not host; their webviews have no DevTools channel to relay.
+
+### Engine of a profile
+
+Each profile runs its agent tabs in one of two engines, which the owner picks
+in Settings > Browser with the **Engine** button of the profile: **App window**
+(`app`, the hosted WebView2 above) or **Chrome** (`chrome`, the browser the
+core starts itself, [Which browser](#which-browser)). A custom profile stores
+it as `browserProfiles[].engine`. The built-in `default` profile is not in that
+list, so its engine has a key of its own, `browserBuiltinProfiles.default.engine`;
+the object leaves room for another built-in setting without a second flat key.
+`private` has no setting and runs in the app while hosted.
+
+`BrowserEngines.get` hosts a profile only when an app is attached and its engine
+is not `chrome`. An explicit engine wins over a stored User-Agent: the app keeps
+the value without applying it, and Chrome applies it when the profile starts
+there again. The Settings card shows the User-Agent editor on Chrome profiles
+only. A missing engine reads as before the setting existed:
+`chrome` for a profile with a User-Agent, `app` otherwise (`browserEngineOf` in
+`packages/contracts/src/browser.ts`). Without an attached app, on Linux, macOS,
+a phone-only core or a server, every profile runs in Chrome. A change applies
+when the profile's browser next starts, like the User-Agent.
+
+The engine is the owner's alone. `settings.set` is owner-only, and neither
+`browserProfiles` nor `browserBuiltinProfiles` is among the settings an agent may
+ask about (`REQUESTABLE_SETTINGS`); no CLI option or browser action picks or
+overrides an engine, and a site that blocks one engine does not switch the
+profile to the other. An agent may still open a tab in another profile by name,
+which then runs in that profile's engine.
+
+A sign-in follows the profile across engines through `boite-cookies.json`: the
+hosted engine saves the app's cookies there and hands the app the ones it
+lacks, and Chrome sets the whole saved copy when it starts. A cookie the app
+already holds wins over the saved copy, so a sign-in renewed in Chrome reaches
+the app only once the app's own cookie of the same name is gone.
 
 ## Network calls
 
@@ -775,6 +829,19 @@ The viewer sends only `ack` and `size`, never a frame request that chooses
 size or quality. The viewer decodes one picture at a time off
 the main thread (`createImageBitmap`), keeps only the newest one waiting, and
 draws it on a canvas (`lib/remote-browser-stream.ts`).
+
+The box around the canvas keeps the proportions of the picture painted in it,
+never the page's: it is as wide as the page's CSS width at the view's scale,
+and as tall as the picture makes it (`shownSize` in
+`lib/remote-browser-view.ts`). The `page` message and the pictures come apart,
+for a picture taken before a resize or one a screencast draws at another size,
+and a box of the page's size stretched such a picture to fill it. A point on
+the canvas is measured against the picture shown, which covers the page whole.
+The width sent as `size` or `maxWidth` fits the page's CSS dimensions into the
+viewer, or uses the chosen zoom, then applies the screen's density
+(`devicePixelRatio`, at most 2). It never depends on the decoded picture's
+dimensions, so integer JPEG rounding cannot trigger another size request.
+A change of screen density or zoom asks for the new width.
 
 The ticket is 24 random bytes, opens one socket within 30 seconds, and belongs
 to the RPC connection that asked: the stream is refused or closed (1008) when

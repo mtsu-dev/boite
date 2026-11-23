@@ -585,11 +585,13 @@ Reconnecting clears the capability check so an updated core is detected.
 
 ## Back and forward
 
-On a desktop, a mouse's back and forward buttons walk the views this window
-showed, in order: a thread, a draft, a settings tab or the Mochis page, on
+On a desktop, a mouse's back and forward buttons, and the two arrows at the
+start of the thread list's head, walk the views this window showed, in order: a thread, a draft, a settings tab or the Mochis page, on
 whichever machine each one was. Back from a thread on another machine returns
 to that machine as well as to the view. A view opened after going back replaces
-what was ahead of it, as in a browser.
+what was ahead of it, as in a browser. An arrow with nothing that way is
+dimmed. Projects and Recent, which the head held before, are the View group of
+its Filter menu; a phone keeps them in its title.
 
 The trail lives in memory (`lib/view-history.svelte.ts`), holds the last 100
 views and starts empty with each window. A thread or project deleted since, or a
