@@ -567,7 +567,9 @@ The question and the hint make Done the default (`DONE_RULE`): only something
 new for the user or a part of the task beyond these PRs keeps a thread open.
 The guide of a top-level conversation (not a subagent's or a mochi's, which
 `agent.done` refuses) also tells its agent to run `boite thread done` in the
-turn its last PR merged, which saves the question's turn.
+turn its last PR merged, which saves the question's turn, unless its reply
+waits on the user (a build to try, a question, a choice or an offer): run in
+the same turn, Done would hide a reply the user has not read yet.
 
 `agent.done` (`threads/agent-done.ts`) puts only the caller's own top-level
 conversation in Done; mochis' threads and sub-threads are refused. While a turn
