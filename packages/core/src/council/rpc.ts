@@ -1,7 +1,7 @@
 /** The council methods (`docs/internals/council.md`). Who may call which is in `access.ts`. */
 import { COUNCIL_DEFAULT_EFFORT } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { accountFor, catalog, PROBE_TIMEOUT_MS, providersNamed } from '../delegation/routes.ts';
+import { accountFor, catalog, hasNamedModel, PROBE_TIMEOUT_MS, providersNamed } from '../delegation/routes.ts';
 import { invalidParams } from '../errors.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
 import { needsModelDiscovery, PROBED_PROTOCOLS } from '../threads/selection.ts';
@@ -25,7 +25,7 @@ export async function prepareMembers(core: Core, probe: ProviderProbe, threadId:
     const providerId = providersNamed(core, model)?.[0];
     const account = providerId === undefined ? undefined : accountFor(core, parent, providerId);
     if (account !== undefined && PROBED_PROTOCOLS.includes(core.providers.require(account.providerId).protocol)
-      && !catalog(core, parent, true).choices.some(choice => `${choice.providerId}/${choice.model}` === model)) {
+      && !hasNamedModel(catalog(core, parent, true).choices, model)) {
       await read(model, { providerId: account.providerId, accountId: account.id, refresh: true });
     }
     const route = core.delegation.resolve(parent.id, { profileId: null, model });

@@ -1,13 +1,13 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_HANDOFF_MAX, builtinSettingRefusal, isAgentPicture, turnIsNews } from '@boite/contracts';
+import { AGENT_HANDOFF_MAX, builtinSettingRefusal, isAgentPicture, resolveModelSelection, turnIsNews } from '@boite/contracts';
 import type {
   AccountId, AgentBrain, AgentBuiltin, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, ModelInfo, RpcParams, RpcResult, ThreadSummary, Turn,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import type { Connection } from '../router.ts';
-import { botDefaultModel, checkModel, checkEffort, agentProvider, listsModel, modelsFor, PROBED_PROTOCOLS } from '../threads/selection.ts';
+import { botDefaultModel, checkModel, checkEffort, agentProvider, modelsFor, PROBED_PROTOCOLS, selectionFor } from '../threads/selection.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 import { withLoad } from '../threads/records.ts';
@@ -276,10 +276,12 @@ export class AgentStore {
     // may drop that id (a gateway renamed it), which must not block an unrelated change.
     const kept = previous !== null && previous.selection.providerId === provider.id && previous.selection.accountId === account.id
       && v.selection.model != null && previous.selection.model === v.selection.model;
-    const model = kept ? v.selection.model! : checkModel(provider, account.id, v.selection.model ?? botDefaultModel(provider, account.id));
+    const requested = v.selection.model ?? botDefaultModel(provider, account.id);
+    const resolved = selectionFor(provider, account.id, requested, v.selection.effort);
+    const model = kept ? requested : checkModel(provider, account.id, requested);
     if (!model) throw refused('selection.model: choose a default model');
     if (previous && this.core.journal.getSetting(`agents:runtime:${previous.id}`) && JSON.stringify(previous.selection) !== JSON.stringify({ ...v.selection, model }) && !this.resident.allowed(previous.id, { ...v.selection, model })) throw refused('selection.model: default model must be allowed by this agent policy');
-    const effort = kept && previous.selection.effort === v.selection.effort ? v.selection.effort : checkEffort(provider, account.id, model, v.selection.effort);
+    const effort = kept && previous.selection.effort === v.selection.effort ? v.selection.effort : checkEffort(provider, account.id, model, resolved?.effort ?? v.selection.effort);
     const projectIds = ids(v.projectIds ?? [], 'projectIds', 50);
     for (const id of projectIds) {
       // A project of another machine of the group: that machine checks it at every request, and while it turned groupBots on.
@@ -528,7 +530,7 @@ export class AgentStore {
     const account = this.core.journal.getAccount(agent.selection.accountId);
     if (account === null || account.providerId !== provider.id) return `Its account is gone; choose another account for ${agent.name}.`;
     const listed = agent.selection.model === null || provider.models.length === 0 ? null : this.#listedModels(provider, account.id);
-    if (listed !== null && !listsModel(provider, listed, agent.selection.model!)) {
+    if (listed !== null && !resolveModelSelection(listed, agent.selection.model)) {
       return `${provider.name} no longer lists ${agent.selection.model}; choose another model for ${agent.name} in its settings.`;
     }
     return null;

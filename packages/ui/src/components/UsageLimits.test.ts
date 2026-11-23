@@ -123,6 +123,27 @@ test('subscriptions from the same provider get separate cards with their chosen 
   expect(cards[1]!.querySelector('header small')).toBeNull();
 });
 
+
+test('fresh cooldown keeps the quota colors and shows the reason on the badge only', () => {
+  const reason = 'upstream quota exceeded';
+  const row: AccountQuota = { ...quota, accountId: 'proxy:claude:one',
+    gateway: { kind: 'douane', entryId: 'one', display: 'accounts', plan: null, accounts: 1, status: 'cooldown', statusReason: reason, credits: [] } };
+  component = mount(UsageLimits, { target: document.body, props: { rows: [row, {
+    ...row, accountId: 'proxy:claude:two', status: 'unavailable', error: 'Quota read timed out',
+  }] } });
+  flushSync();
+  const [fresh, stale] = document.querySelectorAll('[data-testid="usage-limit-provider"]');
+  const badge = fresh!.querySelector('[data-testid="usage-limit-status"]')!;
+  expect(badge.textContent).toBe('Cooling down');
+  expect(badge.getAttribute('title')).toBe(reason);
+  expect(fresh!.querySelector('[data-testid="usage-limit-account"].stale')).toBeNull();
+  expect(fresh!.querySelector('[data-testid="usage-limit-primary"]')?.getAttribute('data-tone')).toBe('ok');
+  expect(fresh!.querySelector('[role="status"]')).toBeNull();
+  expect(stale!.querySelector('[data-testid="usage-limit-status"]')!.textContent).toBe('Cooling down');
+  expect(stale!.querySelector('[data-testid="usage-limit-account"].stale')).not.toBeNull();
+  expect(stale!.querySelector('[role="status"]')!.textContent).toBe('Quota read timed out');
+});
+
 test('the weekly window leads the card large with its reset, the others follow compact', () => {
   component = mount(UsageLimits, { target: document.body, props: { rows: [quota] } });
   flushSync();

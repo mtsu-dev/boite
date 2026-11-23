@@ -3,10 +3,11 @@ import type { AccountId, ModelInfo, ProviderId, RpcEvents, RpcParams, RpcResult,
 import type { Core } from '../core.ts';
 import { forgetProbes, holdModels, probedModelsOf, probeModels, readModelsOf, refreshProbes, rememberExternalModels, settleRefresh } from '../drivers/index.ts';
 import { launchTemp, type LaunchTemp } from '../drivers/launch-temp.ts';
+import { publicModel } from '../drivers/model-capabilities.ts';
 import { mergeProxyModels, readSubscriptionProxyModels, savedRowOffered } from '../subscription-proxy.ts';
 import { invalidParams, refused } from '../errors.ts';
 import { logMessageOf } from '../log-errors.ts';
-import { forgetSavedCatalog, readNativeList, readSavedCatalog, saveCatalog, saveNativeList } from './saved-catalogs.ts';
+import { forgetSavedCatalog, readLegacyNativeList, readNativeList, readSavedCatalog, saveCatalog, saveNativeList } from './saved-catalogs.ts';
 
 /** The synthetic thread a probe process runs under, so the trace shows it like a login. */
 export function probeThreadId(providerId: ProviderId, accountId: AccountId): ThreadId {
@@ -46,38 +47,11 @@ async function probeProvider(
   }
 
   const proxyModels = await readSubscriptionProxyModels(core, provider);
-  if (proxyModels !== null) {
-    // The agent's own discovery, run through the gateway, describes each model
-    // as a subscription would: effort scale, speed tiers, names. The gateway
-    // only adds the models it routes beyond that list.
-    // When the agent fails behind a gateway that answers, the agent's last
-    // list stays: the gateway rows alone would drop its models' speed tiers.
-    const lane = JSON.stringify([provider.id, account.id]);
-    let native: ModelInfo[] | null = null;
-    try { native = (await probeNative(core, provider, account.id, cleanups, model)).models; }
-    catch (error) { core.logs.record('warn', logMessageOf(error), { source: provider.id, event: 'provider.probeFailed', threadId: probeThreadId(provider.id, account.id) }); }
-    if (!isCurrent()) throw refused('the subscription proxy changed during discovery; refresh models');
-    if (native !== null && model === undefined) {
-      natives.set(lane, native);
-      try { saveNativeList(core, provider.id, account.id, native); }
-      catch (error) { core.log('warn', `saving the ${provider.id} agent list: ${logMessageOf(error)}`); }
-    }
-    const partial = native === null;
-    // Only rows the agent itself listed, never an older gateway-only list. A
-    // list saved before the agent's rows were kept apart gives the rows with
-    // speed tiers, which a gateway row never carries.
-    const kept = partial
-      ? natives.get(lane) ?? readNativeList(core, provider.id, account.id)
-        ?? readSavedCatalog(core, provider.id, account.id)?.models.filter(row => (row.speeds?.length ?? 0) > 0)
-      : undefined;
-    const models = mergeProxyModels(native ?? kept ?? [], proxyModels);
-    const probedAt = Date.now();
-    rememberExternalModels(provider.protocol, provider.id, account.id, models);
-    core.bus.emit('providers.probed', { providerId: provider.id, accountId: account.id, models, probedAt });
-    return { result: { models, probedAt }, partial };
-  }
+  if (proxyModels !== null) return probeThroughGateway(core, provider, accountId, isCurrent, cleanups, natives, proxyModels, model);
   try {
-    const { models, probedAt } = await probeNative(core, provider, account.id, cleanups, model);
+    const native = await probeNative(core, provider, account.id, cleanups, model);
+    const { probedAt } = native;
+    const models = native.models.map(publicModel);
     core.accounts.require(account.id);
     if (!isCurrent()) throw refused('the provider or account changed during discovery; refresh models');
     core.bus.emit('providers.probed', { providerId: provider.id, accountId: account.id, models, probedAt });
@@ -86,6 +60,29 @@ async function probeProvider(
     core.logs.record('warn', logMessageOf(error), { source: provider.id, event: 'provider.probeFailed', threadId: probeThreadId(provider.id, account.id) });
     throw error;
   }
+}
+
+/** Keep the native reading with its provenance, scoped to the account and gateway. */
+async function probeThroughGateway(
+  core: Core, provider: ReturnType<Core['providers']['require']>, accountId: AccountId,
+  isCurrent: () => boolean, cleanups: Promise<void>[], natives: Map<string, ModelInfo[]>, proxyModels: ModelInfo[], model?: string,
+): Promise<{ result: RpcResult<'providers.probe'>; partial: boolean }> {
+  const lane = JSON.stringify([provider.id, accountId]);
+  let native: ModelInfo[] | null = null;
+  try { native = (await probeNative(core, provider, accountId, cleanups, model)).models; }
+  catch (error) { core.logs.record('warn', logMessageOf(error), { source: provider.id, event: 'provider.probeFailed', threadId: probeThreadId(provider.id, accountId) }); }
+  if (!isCurrent()) throw refused('the subscription proxy changed during discovery; refresh models');
+  if (native !== null && model === undefined) {
+    natives.set(lane, native);
+    try { saveNativeList(core, provider.id, accountId, native); }
+    catch (error) { core.log('warn', `saving the ${provider.id} agent list: ${logMessageOf(error)}`); }
+  }
+  const kept = native ?? natives.get(lane) ?? readNativeList(core, provider.id, accountId) ?? readLegacyNativeList(core, provider.id, accountId);
+  const models = mergeProxyModels(kept ?? [], proxyModels, provider.protocol);
+  const probedAt = Date.now();
+  rememberExternalModels(provider.protocol, provider.id, accountId, models);
+  core.bus.emit('providers.probed', { providerId: provider.id, accountId, models, probedAt });
+  return { result: { models, probedAt }, partial: native === null };
 }
 
 /**
@@ -162,50 +159,42 @@ export function registerProbeMethods(core: Core): ProviderProbe {
       for (const lane of map.keys()) if (accountId === undefined || (JSON.parse(lane) as string[])[1] === accountId) map.delete(lane);
     }
   };
-  const due = (lane: string): boolean => Date.now() >= (nextReadAt.get(lane) ?? 0);
   /** The last probe of each provider and account, settled or not: the next one waits for it. */
   const lanes = new Map<string, Promise<void>>();
+
+  function cachedCatalog(providerId: ProviderId, accountId: AccountId, lane: string): RpcResult<'providers.probe'> | null {
+    const provider = core.providers.require(providerId);
+    const known = answered.get(lane);
+    if (known !== undefined) {
+      const models = probedModelsOf(provider.protocol, providerId, accountId);
+      return models === null ? null : { models: models.map(publicModel), probedAt: known };
+    }
+    // A list from sign-in or from a turn takes precedence over the saved one.
+    if (!core.providers.enabled(providerId) || readModelsOf(provider.protocol, providerId, accountId) !== null) return null;
+    const saved = readSavedCatalog(core, providerId, accountId);
+    if (saved === null) return null;
+    const models = saved.models.filter(row => savedRowOffered(core, provider, row.id));
+    // Validation accepts the advertised list while a fresh read is in flight.
+    holdModels(providerId, accountId, models);
+    return { ...saved, models };
+  }
+
   const probe: ProviderProbe = (params) => {
-    if (params.model !== undefined && (typeof params.model !== 'string' || params.model.length === 0)) {
+    const { providerId, accountId, model, refresh } = params;
+    if (model !== undefined && (typeof model !== 'string' || model.length === 0)) {
       throw invalidParams('model must be a non-empty string when given', { field: 'model', expected: 'a non-empty string' });
     }
-    // A list already read starts no process, so it waits neither for a probe
-    // of this account that is still exiting nor for a refresh still reading:
-    // the list a refresh keeps is the one model checks accept meanwhile.
-    const lane = JSON.stringify([params.providerId, params.accountId]);
-    const known = answered.get(lane);
-    // A refresh never joins a plain read, which may answer from the driver's own list.
-    const key = JSON.stringify([params.providerId, params.accountId, params.model ?? null, params.refresh === true]);
-    const refreshKey = JSON.stringify([params.providerId, params.accountId, null, true]);
-    if (!params.refresh && params.model === undefined && known !== undefined) {
-      const models = probedModelsOf(core.providers.require(params.providerId).protocol, params.providerId, params.accountId);
-      if (models !== null) {
-        // A vendor ships models between reads: a list this old is read again
-        // behind the answer, so a new model and its speeds show up without a
-        // click on refresh.
-        if (due(lane) && !pending.has(refreshKey)) {
-          void probe({ providerId: params.providerId, accountId: params.accountId, refresh: true }).catch(() => undefined);
+    const lane = JSON.stringify([providerId, accountId]);
+    const key = JSON.stringify([providerId, accountId, model ?? null, refresh === true]);
+    if (!refresh && model === undefined) {
+      const cached = cachedCatalog(providerId, accountId, lane);
+      if (cached !== null) {
+        // A stale list answers immediately while one background refresh reads the new one.
+        const refreshKey = JSON.stringify([providerId, accountId, null, true]);
+        if (Date.now() >= (nextReadAt.get(lane) ?? 0) && !pending.has(refreshKey)) {
+          void probe({ providerId, accountId, refresh: true }).catch(() => undefined);
         }
-        return Promise.resolve({ models, probedAt: known });
-      }
-    }
-    // Nothing read since this core started, or since a change that dropped the
-    // list: the one saved under the same descriptor, program, gateway and
-    // login answers now, and a fresh read replaces it once the agent answers.
-    // A list a driver already holds, from a sign-in's own session or a turn, is
-    // fresher and starts no process: the plain path below answers it. A list
-    // only held for a refresh, the saved one included, does not count.
-    if (!params.refresh && params.model === undefined && known === undefined && core.providers.enabled(params.providerId)
-      && readModelsOf(core.providers.require(params.providerId).protocol, params.providerId, params.accountId) === null) {
-      const stored = readSavedCatalog(core, params.providerId, params.accountId);
-      const provider = core.providers.require(params.providerId);
-      const saved = stored && { ...stored, models: stored.models.filter(row => savedRowOffered(core, provider, row.id)) };
-      if (saved !== null) {
-        // Model checks accept the list on screen until the fresh read settles,
-        // whether this call starts that read or a refresh already runs.
-        holdModels(params.providerId, params.accountId, saved.models);
-        if (!pending.has(refreshKey) && due(lane)) void probe({ providerId: params.providerId, accountId: params.accountId, refresh: true }).catch(() => undefined);
-        return Promise.resolve(saved);
+        return Promise.resolve(cached);
       }
     }
     const existing = pending.get(key);
@@ -251,7 +240,7 @@ export function registerProbeMethods(core: Core): ProviderProbe {
     if (name === 'providers.probed') {
       const { providerId, accountId, models, probedAt } = payload as RpcEvents['providers.probed'];
       // A failed write costs the next start its instant list, never this answer.
-      try { saveCatalog(core, providerId, accountId, { models, probedAt }); }
+      try { saveCatalog(core, providerId, accountId, { models, probedAt }, true); }
       catch (error) { core.log('warn', `saving the ${providerId} model list: ${logMessageOf(error)}`); }
       return;
     }

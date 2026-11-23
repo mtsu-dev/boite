@@ -1,4 +1,4 @@
-import type { ModelInfo } from '@boite/contracts';
+import { resolveModelSelection, type ModelInfo } from '@boite/contracts';
 import { isNamedModel } from './model-order';
 
 export interface ModelDefault { model: string; effort: string | null }
@@ -49,15 +49,20 @@ export function writeModelDefaults(defaults: ModelDefaults): void {
   catch { /* Keep the preference for this session when storage is unavailable. */ }
 }
 
+export function defaultEffortFor(model: ModelInfo, ...preferred: (string | null | undefined)[]): string | null {
+  const scale = model.effort;
+  if (!scale) return null;
+  return preferred.find(effort => scale.levels.some(level => level.id === effort)) ?? scale.default ?? null;
+}
+
 /** Only choose ids the account's descriptor or probe actually offers. */
 export function resolveModelDefault(providerId: string, models: ModelInfo[], defaults: ModelDefaults): ModelDefault | null {
   const preferred = defaults[providerId] ?? INITIAL_MODEL_DEFAULTS[providerId];
-  const model = models.find((m) => m.id === preferred?.model) ??
+  const selection = resolveModelSelection(models, preferred?.model, preferred?.effort);
+  const model = selection?.model ??
     models.find((m) => m.default) ?? models.find((m) => !m.legacy) ?? models[0];
   if (!model) return null;
-  const effort = model.id === preferred?.model ? preferred.effort : model.effort?.default;
-  return { model: model.id, effort: model.effort?.levels.some((level) => level.id === effort)
-    ? effort ?? null : model.effort?.default ?? null };
+  return { model: model.id, effort: defaultEffortFor(model, selection?.effort, selection?.alias?.effort) };
 }
 
 /**

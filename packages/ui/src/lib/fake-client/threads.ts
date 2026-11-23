@@ -1,4 +1,4 @@
-import { chatPreviewSizeProblem, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
+import { chatPreviewSizeProblem, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, resolveModelSelection, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread, writeFakeFork } from './create-thread';
@@ -490,6 +490,8 @@ export function threadMethods(ctx: FakeContext) {
       if (changedModel || speed !== (thread.speed ?? null)) checkSpeed(ctx, nextProviderId, nextAccountId, model, speed);
       // As the core: a mochi's thread takes only a route its settings allow. After the await, so a settings save that moves it is in first.
       if (changedModel) ctx.agents.assertPick(thread.id, { providerId: nextProviderId, accountId: nextAccountId, model });
+      const selected = resolveModelSelection(modelsOf(ctx, nextProviderId, nextAccountId), model, effort);
+      if (changedModel && selected) params = { ...params, model: selected.model.id, effort: selected.effort };
       checkSelection(ctx, thread, params);
       const before = [thread.accountId, thread.model, thread.effort, thread.speed, thread.permissionMode].join('\0');
       const executionBefore = [thread.providerId, thread.accountId, thread.model, thread.effort, thread.speed ?? null].join('\0');

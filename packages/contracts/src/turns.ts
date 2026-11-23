@@ -281,7 +281,7 @@ export interface TurnsRpcMethods {
   /** Resume or discard exactly one unsent prompt held after restart, retaining its execution selection. */
   'turns.recover': { params: { threadId: ThreadId; turnId: TurnId; action: 'resume' | 'discard' }; result: Turn };
   /** Resume the latest interrupted turn, optionally with another model of the selected account. */
-  'turns.resume': { params: { threadId: ThreadId; turnId: TurnId; model?: string | null; expectedSelectionVersion?: number }; result: Turn };
+  'turns.resume': { params: { threadId: ThreadId; turnId: TurnId; model?: string | null; effort?: string | null; expectedSelectionVersion?: number }; result: Turn };
   /**
    * Cancels the retry the core planned for the thread (`ThreadSummary.retry`).
    * A capacity retry's turn then fails with the provider's refusal; a usage

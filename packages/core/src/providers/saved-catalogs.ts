@@ -8,7 +8,10 @@
 import { createHash } from 'node:crypto';
 import type { AccountId, ModelInfo, ProviderId } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { activeSubscriptionProxy } from '../subscription-proxy.ts';
+import { activeSubscriptionProxy, mergeProxyModels } from '../subscription-proxy.ts';
+
+import { antigravityCatalog } from '../drivers/acp/antigravity-catalog.ts';
+import { isAntigravity } from '../drivers/antigravity.ts';
 
 const PREFIX = 'model-catalog:';
 
@@ -20,6 +23,8 @@ export interface SavedCatalog {
 interface Stored extends SavedCatalog {
   /** What the list was read under, see `contextOf`. */
   context: string;
+  /** Gateway rows in this format can advertise speeds themselves. */
+  capabilityCatalog?: true;
 }
 
 const keyOf = (providerId: ProviderId, accountId: AccountId): string => `${PREFIX}${JSON.stringify([providerId, accountId])}`;
@@ -48,14 +53,26 @@ export function readSavedCatalog(core: Core, providerId: ProviderId, accountId: 
   catch { return null; }
   if (stored === null || typeof stored !== 'object' || !Array.isArray(stored.models) || !Number.isFinite(stored.probedAt)) return null;
   if (stored.context !== contextOf(core, providerId, accountId)) return null;
-  return { models: stored.models, probedAt: stored.probedAt as number };
+  const provider = core.providers.require(providerId);
+  const models = isAntigravity(provider) ? antigravityCatalog(stored.models)
+    : provider.protocol === 'claude-sdk' ? mergeProxyModels([], stored.models, 'claude-sdk') : stored.models;
+  return { models, probedAt: stored.probedAt as number };
 }
 
-export function saveCatalog(core: Core, providerId: ProviderId, accountId: AccountId, catalog: SavedCatalog): void {
+export function saveCatalog(core: Core, providerId: ProviderId, accountId: AccountId, catalog: SavedCatalog, capabilityCatalog?: true): void {
   const context = contextOf(core, providerId, accountId);
   if (context === null) return;
   // Written on every read, so the list a restart answers carries when it was read.
-  core.journal.setSetting(keyOf(providerId, accountId), { context, models: catalog.models, probedAt: catalog.probedAt } satisfies Stored);
+  core.journal.setSetting(keyOf(providerId, accountId), { context, models: catalog.models, probedAt: catalog.probedAt, capabilityCatalog } satisfies Stored);
+}
+
+/** Old gateways never advertised tiers, so these rows came from the native probe. */
+export function readLegacyNativeList(core: Core, providerId: ProviderId, accountId: AccountId): ModelInfo[] | undefined {
+  let stored: Partial<Stored> | null | undefined;
+  try { stored = core.journal.getSetting(keyOf(providerId, accountId)) as Partial<Stored> | null | undefined; }
+  catch { return undefined; }
+  if (stored?.capabilityCatalog) return undefined;
+  return readSavedCatalog(core, providerId, accountId)?.models.filter(row => (row.speeds?.length ?? 0) > 0);
 }
 
 export function forgetSavedCatalog(core: Core, accountId: AccountId): void {

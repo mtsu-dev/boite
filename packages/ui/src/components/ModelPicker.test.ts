@@ -253,6 +253,54 @@ test('a short gateway catalog identifies each upstream provider, including after
   }
 });
 
+test('searching an old model ID shows its canonical model once', async () => {
+  await mountAt('landing');
+  const model: ModelInfo = { id: 'claude-fable-5-2', name: 'Fable 5.2', aliases: [{ id: 'claude/claude-fable-5-2' }] };
+  const native = store.modelsOf.bind(store);
+  vi.spyOn(store, 'modelsOf').mockImplementation((provider, account) => provider === 'claude' ? [model] : native(provider, account));
+  query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+  await waitFor(() => document.querySelector('[data-testid=picker-search]') !== null);
+  const search = query<HTMLInputElement>('[data-testid=picker-search]');
+  search.value = 'claude/claude-fable-5-2';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => document.querySelector('[data-model="claude-fable-5-2"]') !== null);
+  expect(rows()).toBe(1);
+  expect(query('[data-model="claude-fable-5-2"]').textContent).toContain('Fable 5.2');
+});
+
+test.each(['favorite', 'old model ID'])('the draft applies the model and account when the %s uses the active effort', async way => {
+  await mountAt('landing');
+  const effort = (store.draftChoice ?? store.defaultChoice())!.effort!;
+  expect(effort).toBeTruthy();
+  const model: ModelInfo = {
+    id: 'gemini-4-neon', name: 'Gemini 4 Neon', aliases: [{ id: `gemini-4-neon-${effort}`, effort }],
+    effort: { default: 'low', levels: [{ id: 'low', label: 'Low' }, { id: effort, label: 'Draft effort' }] },
+  };
+  const native = store.modelsOf.bind(store);
+  vi.spyOn(store, 'modelsOf').mockImplementation((provider, account) => provider === 'opencode' ? [model] : native(provider, account));
+  vi.spyOn(store, 'catalogHas').mockImplementation(provider => provider === 'opencode');
+  if (way === 'favorite') vi.spyOn(store, 'favorites', 'get').mockReturnValue([
+    { providerId: 'opencode', accountId: 'a-opencode', model, items: [], effort },
+  ]);
+  query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+  if (way === 'favorite') {
+    await waitFor(() => document.querySelector('[data-testid=favorite-model]') !== null);
+    query<HTMLButtonElement>('[data-testid=favorite-model]').click();
+  } else {
+    await waitFor(() => document.querySelector('[data-provider=opencode]') !== null);
+    query<HTMLButtonElement>('[data-provider=opencode]').click();
+    await waitFor(() => document.querySelector('[data-model="gemini-4-neon"]') !== null);
+    const search = query<HTMLInputElement>('[data-testid=picker-search]');
+    search.value = model.aliases![0]!.id;
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    query<HTMLButtonElement>('[data-model="gemini-4-neon"]').click();
+  }
+  await vi.waitFor(() => expect(store.draftChoice).toMatchObject({
+    providerId: 'opencode', accountId: 'a-opencode', model: model.id, effort, speed: null,
+  }));
+});
+
 test('in the favorites, the refresh follows their reads, not the hidden column of the provider shown before', async () => {
   const model: ModelInfo = { id: 'douane/opencode/solo', name: 'Solo' };
   vi.spyOn(store, 'favorites', 'get').mockReturnValue([{ providerId: 'opencode', accountId: 'a-opencode', model, items: [] }]);

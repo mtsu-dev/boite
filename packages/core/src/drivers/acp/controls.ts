@@ -12,11 +12,18 @@ import type {
 import type { ModelInfo, PermissionMode } from '@boite/contracts';
 import { messageOf } from '../../errors.ts';
 import { PROXY_PREFIX_ENV } from '../../subscription-proxy.ts';
-import { antigravityLegacyFamily, isAntigravity } from '../antigravity.ts';
-import { grokReasoningEffortOf } from '../grok.ts';
+import { isAntigravity } from '../antigravity.ts';
 import type { SessionContext } from '../types.ts';
-import { AGENT_OWN_MODEL, agentModelsOf, categoryOption, effortOption, modelsFrom, selectValues, type AgentModels } from './models.ts';
+import { AGENT_OWN_MODEL, agentModelsOf, categoryOption, effortOption, modelsFrom, plainObject, selectValues, type AgentModels } from './models.ts';
 import { isGrok } from './protocol.ts';
+import { antigravityPlan } from './antigravity-selection.ts';
+import { categoryValue, listedModelPlan } from './control-options.ts';
+
+function requestListedModel(agent: ClientContext, sessionId: string, modelId: string, effort: string | null) {
+  return agent.request('session/set_model', {
+    sessionId, modelId, ...(effort === null ? {} : { _meta: { reasoningEffort: effort } }),
+  });
+}
 
 /**
  * The thread's permission mode as candidate `session/set_mode` ids, best first.
@@ -172,8 +179,8 @@ export class SessionControls {
     if (this.#agentModels === null && listed !== null) this.#agentModels = { currentModelId: null, available: listed.available };
   }
 
-  knowsOwnListedModel(): boolean {
-    return this.#ownListedModelRead;
+  knowsOwnModel(): boolean {
+    return this.hasModelOption() ? this.#ownModel !== null : this.#ownListedModelRead;
   }
 
   /** The model option's value in a `session/new` answer, the first one kept. */
@@ -211,10 +218,16 @@ export class SessionControls {
    * previous admission before the next protected prompt.
    */
   noteOptionUpdate(options: SessionConfigOption[]): void {
-    this.#configOptions = this.#configOptions.map(entry => {
-      if (entry.category !== 'mode' && entry.category !== 'model') return entry;
-      return options.find(option => option.id === entry.id && option.category === entry.category) ?? entry;
-    });
+    const previous = this.#configOptions;
+    const byId = new Map(previous.map(option => [option.id, option]));
+    for (const option of options) byId.set(option.id, option);
+    this.#configOptions = [...byId.values()];
+    if (categoryValue(previous, 'model') !== categoryValue(this.#configOptions, 'model')) {
+      this.#appliedModel = undefined;
+      this.#appliedEffort = undefined;
+    }
+    if (categoryValue(previous, 'thought_level') !== categoryValue(this.#configOptions, 'thought_level')
+      || categoryValue(previous, 'thinking') !== categoryValue(this.#configOptions, 'thinking')) this.#appliedEffort = undefined;
   }
 
   /** `current_mode_update`: a mode change the agent announced on its own. */
@@ -247,6 +260,55 @@ export class SessionControls {
     }
   }
 
+  async applySelection(ctx: SessionContext): Promise<void> {
+    if (isAntigravity(ctx.provider)) {
+      await this.#applyAntigravity(ctx);
+      return;
+    }
+    await this.applyModel(ctx);
+    await this.applyConfig(ctx);
+  }
+
+  async #applyAntigravity(ctx: SessionContext): Promise<void> {
+    const option = categoryOption(this.#configOptions, 'model');
+    const values = option ? selectValues(option) : this.#agentModels?.available.map(row => row.modelId) ?? [];
+    const own = option ? this.#ownModel : this.#ownListedModel;
+    const requested = ctx.thread.model === AGENT_OWN_MODEL ? null : ctx.thread.model;
+    const wanted = requested ?? own;
+    if (wanted === null) {
+      if (ctx.thread.effort !== null) throw new ModelRefused('thread.effort: Antigravity did not identify the account model');
+      return;
+    }
+    const catalog = modelsFrom(ctx.provider, this.#configOptions, this.#agentModels);
+    const current = option
+      ? (this.#ownOptions ? categoryValue(this.#configOptions, 'model') : undefined)
+      : this.#appliedModel ?? this.#agentModels?.currentModelId ?? undefined;
+    let plan;
+    try { plan = antigravityPlan(catalog, values, wanted, ctx.thread.effort, effortOption(this.#configOptions) ? current : undefined); }
+    catch (error) { throw new ModelRefused(messageOf(error)); }
+    if (plan.model !== current) {
+      if (option) {
+        const failure = await this.#setOption(ctx, 'model', plan.model, true);
+        if (failure) throw new ModelRefused(`thread.model: ${ctx.provider.name} ${failure.detail}`);
+      } else {
+        const { agent, sessionId } = this.#target();
+        if (agent === null || sessionId === null) throw new Error('the acp session went away before the prompt');
+        try {
+          const answer = await requestListedModel(agent, sessionId, plan.model, null);
+          const options = plainObject(answer)?.configOptions;
+          if (Array.isArray(options)) this.noteOptionUpdate(options as SessionConfigOption[]);
+        }
+        catch (error) { throw new ModelRefused(`thread.model: ${ctx.provider.name} refused ${plan.model}: ${messageOf(error)}`); }
+      }
+      this.#appliedEffort = undefined;
+    }
+    this.#appliedModel = plan.model;
+    if (plan.integrated || plan.effort === null) return;
+    const failure = await this.#setOption(ctx, this.#effortCategory(), plan.effort, true);
+    if (failure) throw new ModelRefused(`thread.effort: ${ctx.provider.name} ${failure.detail}`);
+    this.#appliedEffort = plan.effort;
+  }
+
   /**
    * The thread's model as one `session/set_model`, for the agents that take it
    * there rather than through `session/set_config_option`: Grok, with its
@@ -269,61 +331,27 @@ export class SessionControls {
     const { agent, sessionId } = this.#target();
     if (agent === null || sessionId === null) return;
 
-    const wanted = ctx.thread.model === AGENT_OWN_MODEL ? null : ctx.thread.model;
-    // Only Grok's `set_model` carries an effort; the others have no field for it.
-    const effort = grok && ctx.thread.effort !== null && ctx.thread.effort.length > 0 ? ctx.thread.effort : null;
-    // Back to the agent's own model on a session moved off it, by this process
-    // or by the one that left a loaded session: it has to be asked for. A
-    // session already on it sends nothing below.
-    const restore = !grok && wanted === null ? this.#ownListedModel : null;
-    if (wanted === null && effort === null && restore === null) return;
-
-    const listed = this.#agentModels;
-    const modelId = wanted ?? restore ?? listed?.currentModelId ?? null;
-    if (modelId === null) return;
-    if (this.#appliedModel === modelId && this.#appliedEffort === effort) return;
-
-    // Nothing sent yet, and the session already opened on that pair.
-    if (this.#appliedModel === undefined && listed !== null && listed.currentModelId === modelId) {
-      const entry = listed.available.find((model) => model.modelId === modelId) ?? null;
-      const current = entry === null ? null : grokReasoningEffortOf(entry.meta);
-      if (effort === null || effort === current) {
-        this.#appliedModel = modelId;
-        this.#appliedEffort = effort;
-        return;
-      }
-    }
-
-    const set = (withEffort: string | null) => agent.request('session/set_model', {
-      sessionId,
-      modelId,
-      ...(withEffort === null ? {} : { _meta: { reasoningEffort: withEffort } }),
-    });
-    // The session already runs this model: only the effort is new.
-    const running = this.#appliedModel === undefined ? listed?.currentModelId === modelId : this.#appliedModel === modelId;
-    let refusal: unknown;
+    const plan = listedModelPlan(grok, ctx.thread, this.#ownListedModel, this.#agentModels, this.#appliedModel, this.#appliedEffort);
+    if (plan === undefined) return;
+    const { model, effort } = plan;
     try {
-      await set(effort);
-      this.#appliedModel = modelId;
+      if (!plan.alreadyOpen) await requestListedModel(agent, sessionId, model, effort);
+      this.#appliedModel = model;
       this.#appliedEffort = effort;
-      return;
-    } catch (error) {
-      refusal = error;
-    }
-    const selected = wanted !== null || restore !== null;
-    if (selected && !running && effort !== null) {
-      // The pair was refused: the model alone tells which half the agent rejects.
-      try {
-        await set(null);
-        this.#appliedModel = modelId;
-        this.#appliedEffort = null;
-      } catch (error) {
-        throw new ModelRefused(`thread.model: ${ctx.provider.name} refused the model ${modelId}: ${messageOf(error)}`);
+    } catch (refusal) {
+      if (plan.requiresModel) {
+        // The pair was refused: the model alone tells which half the agent rejects.
+        try {
+          if (effort === null) throw refusal;
+          await requestListedModel(agent, sessionId, model, null);
+          this.#appliedModel = model;
+          this.#appliedEffort = null;
+        } catch (error) {
+          throw new ModelRefused(`thread.model: ${ctx.provider.name} refused the model ${model}: ${messageOf(error)}`);
+        }
       }
-    } else if (selected && !running) {
-      throw new ModelRefused(`thread.model: ${ctx.provider.name} refused the model ${modelId}: ${messageOf(refusal)}`);
+      ctx.log('warn', `acp: the agent refused the effort ${effort} on ${model}: ${messageOf(refusal)}`);
     }
-    ctx.log('warn', `acp: the agent refused the effort ${effort} on ${modelId}: ${messageOf(refusal)}`);
   }
 
   /** What a `session/new` or `session/load` answered about modes, if anything. */
@@ -398,16 +426,7 @@ export class SessionControls {
     }
     if (option.type === 'select' && String(option.currentValue) === modeId) return true;
     try {
-      const answer = await agent.request('session/set_config_option', { sessionId, configId: option.id, value: modeId });
-      const listed = (answer as { configOptions?: SessionConfigOption[] | null }).configOptions ?? null;
-      if (ctx.protectedExecution || ctx.modeRequired) {
-        const confirmed = categoryOption(listed ?? [], 'mode');
-        if (confirmed?.type !== 'select' || String(confirmed.currentValue) !== modeId) throw new Error(`execution.acp.permissionMode: native agent did not confirm ${modeId}`);
-      }
-      if (listed !== null && listed.length > 0) {
-        this.#configOptions = listed;
-        this.#ownOptions = true;
-      }
+      await this.#requestOption(agent, sessionId, option, 'mode', modeId, Boolean(ctx.protectedExecution || ctx.modeRequired));
       return true;
     } catch (error) {
       if (ctx.protectedExecution || ctx.modeRequired) throw new Error(`execution.acp.permissionMode: native agent refused ${modeId}: ${messageOf(error)}`);
@@ -474,17 +493,6 @@ export class SessionControls {
   }
 
   /**
-   * The model option for a pre-1.4 Antigravity id, such as
-   * `gemini-3.8-flash-low`, which the agent still takes although it lists only
-   * `gemini-3.8-flash` and its levels: threads and bots saved on one keep running.
-   */
-  #legacyModelOption(ctx: SessionContext, category: SessionConfigOptionCategory, wanted: string): SessionConfigOption | undefined {
-    if (category !== 'model' || !isAntigravity(ctx.provider)) return undefined;
-    const option = categoryOption(this.#configOptions, 'model');
-    return option !== null && antigravityLegacyFamily(selectValues(option), wanted) !== null ? option : undefined;
-  }
-
-  /**
    * The category the session files its effort under: the protocol's
    * `thought_level`, or Mistral Vibe's `thinking` when that is the one listed.
    */
@@ -495,6 +503,13 @@ export class SessionControls {
   /** One effort level on the session as it runs. False when the agent has no such option or refused it. */
   async applyEffort(ctx: SessionContext, effort: string): Promise<boolean> {
     if (isGrok(ctx.provider) || this.#configOptions.length === 0) return false;
+    if (isAntigravity(ctx.provider)) {
+      if (effortOption(this.#configOptions) === null) return false;
+      const applied = await this.#setOption(ctx, this.#effortCategory(), effort, true);
+      if (applied !== null) return false;
+      this.#appliedEffort = effort;
+      return true;
+    }
     if (effort === this.#appliedEffort) return true;
     if ((await this.#setOption(ctx, this.#effortCategory(), effort)) !== null) return false;
     this.#appliedEffort = effort;
@@ -510,11 +525,12 @@ export class SessionControls {
     ctx: SessionContext,
     category: SessionConfigOptionCategory,
     wanted: string | null,
+    confirm = false,
   ): Promise<Unapplied | null> {
-    const { agent, sessionId } = this.#target();
     const strictModel = !!ctx.protectedExecution && category === 'model';
     const gone: Unapplied = { kind: 'gone', detail: 'the agent process is gone' };
-    if (agent === null || sessionId === null) return gone;
+    const initial = this.#target();
+    if (initial.agent === null || initial.sessionId === null) return gone;
     // No effort set: an agent that lists `default` among its levels (OpenCode
     // 2) is put back on it, since it keeps the last level it was asked for.
     if ((wanted === null || wanted.length === 0) && category === 'thought_level') {
@@ -532,55 +548,54 @@ export class SessionControls {
     if (this.#ownOptions && listed?.type === 'select' && String(listed.currentValue) === wanted) return null;
     const refusal = `${category}\0${wanted}`;
     if (category !== 'model' && this.#refused.has(refusal)) return { kind: 'refused', detail: `refused the ${category} ${wanted}` };
-    const legacy = listed === undefined ? this.#legacyModelOption(ctx, category, wanted) : undefined;
-    const option = listed ?? legacy ?? this.#injectedModelOption(ctx, category, wanted);
-    if (option === undefined) {
-      const offered = categoryOption(this.#configOptions, category);
-      if (offered !== null && category === 'model') return { kind: 'unlisted', detail: `offers no model ${wanted}; it offers ${selectValues(offered).join(', ') || 'none'}` };
-      if (!this.#configWarned) {
-        this.#configWarned = true;
-        ctx.log('warn', `acp: the agent offers no ${category} option with the value ${wanted}`);
-      }
-      return { kind: offered === null ? 'absent' : 'unlisted', detail: `offers no ${category} ${wanted}` };
-    }
+    const option = listed ?? this.#injectedModelOption(ctx, category, wanted);
+    if (option === undefined) return this.#missingOption(ctx, category, wanted);
     // OpenCode 2 answers `session/new` a moment before it has loaded a provider
     // injected into its configuration: asked at once, it does not know the
     // model yet, and half a second later it does. Only a model it never listed
     // is asked again; a refusal of one it lists is its answer.
-    const waits = listed === undefined && legacy === undefined ? INJECTED_MODEL_RETRY_MS : [];
+    const waits = listed === undefined ? INJECTED_MODEL_RETRY_MS : [];
     for (let attempt = 0; ; attempt += 1) {
       const live = this.#target();
       if (live.agent === null || live.sessionId === null) return gone;
       try {
-        const answer = await live.agent.request('session/set_config_option', {
-          sessionId: live.sessionId,
-          configId: option.id,
-          value: wanted,
-        });
-        // The answer carries the options as they now stand, current values included.
-        const options = (answer as { configOptions?: SessionConfigOption[] | null }).configOptions ?? null;
-        if (strictModel) {
-          const confirmed = categoryOption(options ?? [], 'model');
-          if (confirmed?.type !== 'select' || confirmed.currentValue !== wanted) {
-            throw new Error(`execution.acp.model: native agent did not confirm ${wanted}`);
-          }
-        }
-        if (options !== null && options.length > 0) {
-          this.#configOptions = options;
-          this.#ownOptions = true;
-        }
+        await this.#requestOption(live.agent, live.sessionId, option, category, wanted, strictModel || confirm);
         return null;
       } catch (error) {
         const wait = waits[attempt];
-        if (wait === undefined) {
-          if (strictModel) throw new Error(`execution.acp.model: native agent refused ${wanted}: ${messageOf(error)}`);
-          if (category === 'model') return { kind: 'refused', detail: `refused the model ${wanted}: ${messageOf(error)}` };
-          ctx.log('warn', `acp: the agent refused the ${category} ${wanted}: ${messageOf(error)}`);
-          this.#refused.add(refusal);
-          return { kind: 'refused', detail: `refused the ${category} ${wanted}` };
-        }
+        if (wait === undefined) return this.#refusedOption(ctx, category, wanted, refusal, error, strictModel);
         await new Promise<void>((resolve) => { setTimeout(resolve, wait); });
       }
     }
+  }
+
+  async #requestOption(agent: ClientContext, sessionId: string, option: SessionConfigOption, category: SessionConfigOptionCategory, value: string, confirm: boolean): Promise<void> {
+    const answer = await agent.request('session/set_config_option', { sessionId, configId: option.id, value });
+    const options = answer.configOptions ?? [];
+    if (confirm && categoryValue(options, category) !== value) throw new Error(`native agent did not confirm ${category} ${value}`);
+    if (options.length > 0) {
+      this.#configOptions = options;
+      this.#ownOptions = true;
+    }
+  }
+
+  #missingOption(ctx: SessionContext, category: SessionConfigOptionCategory, wanted: string): Unapplied {
+    const offered = categoryOption(this.#configOptions, category);
+    if (offered !== null && category === 'model') {
+      return { kind: 'unlisted', detail: `offers no model ${wanted}; it offers ${selectValues(offered).join(', ') || 'none'}` };
+    }
+    if (!this.#configWarned) {
+      this.#configWarned = true;
+      ctx.log('warn', `acp: the agent offers no ${category} option with the value ${wanted}`);
+    }
+    return { kind: offered === null ? 'absent' : 'unlisted', detail: `offers no ${category} ${wanted}` };
+  }
+
+  #refusedOption(ctx: SessionContext, category: SessionConfigOptionCategory, wanted: string, key: string, error: unknown, strictModel: boolean): Unapplied {
+    if (strictModel) throw new Error(`execution.acp.model: native agent refused ${wanted}: ${messageOf(error)}`);
+    if (category === 'model') return { kind: 'refused', detail: `refused the model ${wanted}: ${messageOf(error)}` };
+    ctx.log('warn', `acp: the agent refused the ${category} ${wanted}: ${messageOf(error)}`);
+    this.#refused.add(key);
+    return { kind: 'refused', detail: `refused the ${category} ${wanted}` };
   }
 }

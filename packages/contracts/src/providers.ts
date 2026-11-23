@@ -311,7 +311,13 @@ export interface EffortLevel {
   description?: string;
 }
 
+export interface ModelAlias {
+  id: string;
+  effort?: string;
+}
+
 export interface ModelInfo {
+  aliases?: ModelAlias[];
   id: string;
   name: string;
   default?: boolean;

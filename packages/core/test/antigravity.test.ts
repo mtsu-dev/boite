@@ -1,3 +1,4 @@
+import { antigravityCatalog } from '../src/drivers/acp/antigravity-catalog.ts';
 /**
  * Antigravity's half of the ACP driver, on a fake that speaks the real
  * protocol: every account isolated, the seed file and the browser no-op written
@@ -14,6 +15,7 @@ import type { Attachment, Settings, ThreadId } from '@boite/contracts';
 import { readAntigravityQuota, type Fetch } from '../src/antigravity-quota.ts';
 import type { CoreClient } from '../src/client.ts';
 import { probeTimeoutMs } from '../src/drivers/acp/probe.ts';
+import { forgetProbes } from '../src/drivers/index.ts';
 import { antigravityCertificates, antigravitySubagentBatch } from '../src/drivers/antigravity.ts';
 import { shareProfile, variableHome } from '../src/profile-share.ts';
 import { profileFor } from '../src/providers/resolve.ts';
@@ -67,6 +69,7 @@ afterEach(async () => {
   const open = harness;
   harness = null;
   delete process.env['AGY_FAKE_LOG'];
+  delete process.env['AGY_FAKE_CATALOG'];
   delete process.env['GEMINI_API_KEY'];
   if (open !== null) await open.stop();
 });
@@ -494,14 +497,14 @@ describe('antigravity', () => {
     await waitFor(() => !existsSync(temp), 10_000);
   }, 30000);
 
-  test('a thread saved on a pre-1.4 model id runs, and no session lets the agent write its workflow skill', async () => {
+  test.each([[null, 'low'], ['medium', 'medium']] as const)('a thread saved on a pre-1.4 model ID and effort %s runs without the workflow tool', async (saved, expected) => {
     const client = await startCore();
-    // Threads and bots made before 1.4 hold `gemini-3.8-flash-low`, which the
-    // model option no longer lists; the agent still takes it.
-    const { threadId } = await agyThread(client, 'gemini-3.8-flash-low');
+    const { threadId } = await agyThread(client);
+    const core = harness!.core;
+    core.journal.putThread({ ...core.threads.require(threadId), model: 'gemini-3.8-flash-low', effort: saved });
     await runTurn(client, threadId, 'ping');
     const log = fakeLog().split('\n');
-    expect(log).toContain('set:model=gemini-3.8-flash-low');
+    expect(log).toContain(`set:thinking_level=${expected}`);
     expect(log).toContain('client:zed');
     const metas = log.filter((line) => line.startsWith('meta:'));
     expect(metas.length).toBeGreaterThan(0);
@@ -656,4 +659,228 @@ test('a council member named by its family resolves over a list an earlier core 
   const council = await client.call('council.start', { threadId, request: 'Review the plan.', models: ['agy-fake/gemini-3.8-flash', 'echo/echo'] });
   expect(council.members[0]).toMatchObject({ providerId: 'agy-fake', model: 'gemini-3.8-flash', effort: 'high', readOnly: 'approvals' });
   expect(council.warnings).toContain(`${council.members[0]!.name} has no xhigh effort, so it runs at high.`);
+});
+
+test('a saved Antigravity variant catalog resolves an old model choice with its effort', async () => {
+  const client = await startCore();
+  const { accountId } = await agyThread(client);
+  const families = [
+    ['gemini-4-hydrogen', 'Gemini 4 Hydrogen (Preview)'],
+    ['gemini-4-argon', 'Gemini 4 Argon'],
+    ['gemini-3.8-flash', 'Gemini 3.8 Flash'],
+    ['claude-opus-5-5', 'Claude Opus 5.5'],
+    ['claude-sonnet-5-5', 'Claude Sonnet 5.5'],
+  ] as const;
+  saveCatalog(harness!.core, 'agy-fake', accountId, {
+    models: [
+      { id: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash (Low)', default: true },
+      { id: 'gemini-3.5-flash-extra-low', name: 'Gemini 3.5 Flash' },
+      { id: 'gpt-oss-120b-medium', name: 'GPT-OSS' },
+      { id: 'gemini-3-flash-agent', name: 'Gemini 3 Flash Agent' },
+      ...families.flatMap(([id, name]) => [
+        { id: `${id}-minimal`, name: `${name} (Minimal)` },
+        { id: `${id}-high`, name: `${name} (High)` },
+        { id: `${id}-max`, name: `${name} (Max)` },
+      ]),
+    ],
+    probedAt: Date.now(),
+  });
+  const { models } = await client.call('providers.probe', { providerId: 'agy-fake', accountId });
+  expect(models.map(row => row.id)).toEqual(['gemini-3.5-flash', 'gpt-oss-120b-medium', 'gemini-3-flash-agent', ...families.map(([id]) => id)]);
+  expect(models[0]).toMatchObject({
+    name: 'Gemini 3.5 Flash', default: true,
+    aliases: [{ id: 'gemini-3.5-flash-low', effort: 'low' }, { id: 'gemini-3.5-flash-extra-low', effort: 'extra-low' }],
+    effort: { default: 'extra-low', levels: [{ id: 'extra-low' }, { id: 'low' }] },
+  });
+  expect(models[1]?.effort).toBeUndefined();
+  expect(models[2]?.effort).toBeUndefined();
+  expect(models.slice(3)).toMatchObject(families.map(([id, name]) => ({
+    id, name, effort: { default: 'high', levels: [{ id: 'minimal' }, { id: 'high' }, { id: 'max' }] },
+  })));
+});
+
+test('a thread started by an agent inherits a saved Antigravity alias from a cold catalog', async () => {
+  const client = await startCore();
+  const { accountId, threadId } = await agyThread(client);
+  const core = harness!.core;
+  const parent = core.threads.require(threadId);
+  core.journal.putThread({ ...parent, model: 'gemini-3.8-flash-low' });
+  forgetProbes({ accountId });
+  const spawned = await client.call('agent.spawn', {
+    threadId, project: parent.projectId!, prompt: 'Continue on the old choice', requestId: 'antigravity-alias',
+  });
+  expect(spawned.thread).toMatchObject({ model: 'gemini-3.8-flash', effort: 'low' });
+});
+
+test.each(['option', 'option:base', 'list'])('Antigravity folded settings select exact wire IDs via %s', async mode => {
+  const client = await startCore({ warmProcessMinutes: 5 });
+  process.env['AGY_FAKE_CATALOG'] = mode;
+  const { accountId, threadId } = await agyThread(client);
+  const { models } = await client.call('providers.probe', { providerId: 'agy-fake', accountId, refresh: true });
+  expect(models.filter(row => row.id !== 'default').map(row => row.id)).toEqual(['gemini-4-neon', 'gpt-oss-120b-medium', 'gemini-3.5-flash']);
+  expect(models.find(row => row.id === 'gemini-4-neon')).toMatchObject({
+    name: mode === 'option:base' ? 'Gemini 4 Neon Preview' : 'Gemini 4 Neon',
+    default: true, effort: { default: mode === 'option:base' ? 'xhigh' : 'medium', levels: [{ id: 'low' }, { id: 'medium' }, { id: 'xhigh' }] },
+  });
+  const selected = await client.call('threads.update', { threadId, model: 'gemini-4-neon-xhigh' });
+  expect(selected).toMatchObject({ model: 'gemini-4-neon', effort: 'xhigh' });
+  await runTurn(client, threadId, 'first');
+  await client.call('threads.update', { threadId, effort: 'medium' });
+  await runTurn(client, threadId, 'second');
+  await client.call('threads.update', { threadId, model: 'default' });
+  await runTurn(client, threadId, 'account default');
+  const wire = mode === 'list' ? 'listed-model:' : 'set:model=';
+  const calls = fakeLog().trim().split('\n').filter(line => line.startsWith(wire) || line.startsWith('prompt:'));
+  const prompt = calls[1]!;
+  expect(calls).toEqual([
+    wire + 'gemini-4-neon-xhigh', prompt, wire + 'gemini-4-neon-medium', prompt, wire + 'gemini-4-neon-low', prompt,
+  ]);
+  expect(prompt).toStartWith('prompt:');
+});
+
+test.each(['option', 'option:no-controls', 'list'])('Antigravity cold resume restores the account model via %s', async mode => {
+  const client = await startCore({ warmProcessMinutes: 0 });
+  process.env['AGY_FAKE_CATALOG'] = mode;
+  const { accountId, threadId } = await agyThread(client, 'gemini-4-neon-xhigh');
+  await runTurn(client, threadId, 'first');
+  const temp = loggedEnv('TEMP')!;
+  await waitFor(() => !existsSync(temp), 10_000);
+  forgetProbes({ accountId });
+  await client.call('threads.update', { threadId, model: 'default' });
+  await runTurn(client, threadId, 'back to default');
+  const wire = mode === 'list' ? 'listed-model:' : 'set:model=';
+  expect(fakeLog().trim().split('\n').filter(line => line.startsWith('load:') || line.startsWith(wire))).toEqual([
+    wire + 'gemini-4-neon-xhigh', 'load:gemini-4-neon-xhigh', wire + 'gemini-4-neon-low',
+  ]);
+});
+
+test.each([
+  ['option:removed', 'offers no xhigh effort'],
+  ['missing', 'offers no model gemini-4-neon'],
+])('Antigravity refuses a saved selection on cold resume without a matching wire choice (%s)', async (catalog, error) => {
+  const client = await startCore({ warmProcessMinutes: 0 });
+  process.env['AGY_FAKE_CATALOG'] = 'option';
+  const { accountId, threadId } = await agyThread(client, 'gemini-4-neon-xhigh');
+  await runTurn(client, threadId, 'first');
+  const temp = loggedEnv('TEMP')!;
+  await waitFor(() => !existsSync(temp), 10_000);
+  forgetProbes({ accountId });
+  process.env['AGY_FAKE_CATALOG'] = catalog;
+  const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+  await client.call('turns.start', { threadId, prompt: 'must not reach the agent' });
+  expect((await finished).error).toContain(error);
+  expect(fakeLog().match(/^prompt:/gm)).toHaveLength(1);
+});
+
+test('Antigravity keeps the saved effort when only its wire variant and the base remain', async () => {
+  const client = await startCore({ warmProcessMinutes: 0 });
+  process.env['AGY_FAKE_CATALOG'] = 'option';
+  const { accountId, threadId } = await agyThread(client, 'gemini-4-neon-medium');
+  await runTurn(client, threadId, 'first');
+  const temp = loggedEnv('TEMP')!;
+  await waitFor(() => !existsSync(temp), 10_000);
+  await client.call('threads.update', { threadId, effort: 'xhigh' });
+  forgetProbes({ accountId });
+  process.env['AGY_FAKE_CATALOG'] = 'option:last-variant';
+  await runTurn(client, threadId, 'resume');
+  expect(fakeLog().trim().split('\n').filter(line => line.startsWith('set:model=') || line.startsWith('load:'))).toEqual([
+    'set:model=gemini-4-neon-medium', 'load:gemini-4-neon-medium', 'set:model=gemini-4-neon-xhigh',
+  ]);
+});
+
+test('cold Antigravity discovery resolves old IDs for a model other than the current family', async () => {
+  const client = await startCore();
+  process.env['AGY_FAKE_CATALOG'] = 'family-history';
+  const { accountId, threadId } = await agyThread(client);
+  const parent = harness!.core.threads.require(threadId);
+  const { models } = await client.call('providers.probe', { providerId: 'agy-fake', accountId });
+  expect(models.find(model => model.default)?.id).toBe('gemini-3.8-flash');
+  expect(models.find(model => model.id === 'gemini-4-neon')?.aliases).toEqual([
+    { id: 'gemini-4-neon-low', effort: 'low' }, { id: 'gemini-4-neon-xhigh', effort: 'xhigh' },
+  ]);
+  const route = { projectId: parent.projectId!, providerId: parent.providerId, accountId, model: 'gemini-4-neon-xhigh' };
+  expect(await thrown(client.call('threads.create', { ...route, effort: 'medium' }))).toThrow('the model does not offer this reasoning effort');
+  const thread = await client.call('threads.create', route);
+  expect(thread).toMatchObject({ model: 'gemini-4-neon', effort: 'xhigh' });
+  await client.call('threads.subscribe', { threadId: thread.id });
+  await runTurn(client, thread.id, 'use the old effort');
+  expect(fakeLog()).toContain('set:model=gemini-4-neon\nset:thinking_level=xhigh\n');
+  await client.call('delegation.configure', { threadId, config: { enabled: true, paused: false, profiles: [] } });
+  expect((await client.call('delegation.spawn', {
+    threadId, model: route.model, task: 'Delegate on the old model', requestId: 'old-id',
+  })).thread).toMatchObject({ model: 'gemini-4-neon', effort: 'xhigh' });
+});
+
+test('local delegation keeps the effort encoded in an allowed legacy model', async () => {
+  const client = await startCore();
+  process.env['AGY_FAKE_CATALOG'] = 'option';
+  const { threadId } = await agyThread(client, 'gemini-4-neon-low');
+  const core = harness!.core;
+  const thread = core.threads.require(threadId);
+  core.journal.putThread({ ...thread, model: 'gemini-4-neon-low', effort: null });
+  await client.call('delegation.configure', { threadId, config: { enabled: true, paused: false, profiles: [], anyModel: false } });
+  expect(await thrown(client.call('delegation.spawn', {
+    threadId, model: 'gemini-4-neon-xhigh', task: 'Outside the allowed effort', requestId: 'wrong-level',
+  }))).toThrow('limited subagents');
+  expect(await thrown(client.call('delegation.spawn', {
+    threadId, model: 'gemini-4-neon', effort: 'xhigh', task: 'Explicit override', requestId: 'wrong-override',
+  }))).toThrow('limited subagents');
+  expect(await thrown(client.call('delegation.spawn', {
+    threadId, effort: 'xhigh', task: 'Override without a model', requestId: 'override-without-model',
+  }))).toThrow('limited subagents');
+  expect((await client.call('delegation.spawn', {
+    threadId, model: 'gemini-4-neon', task: 'Within the allowed effort', requestId: 'right-level',
+  })).thread).toMatchObject({ model: 'gemini-4-neon', effort: 'low' });
+});
+
+test('a mochi created on a legacy Antigravity model keeps its level unless explicitly overridden', async () => {
+  const client = await startCore({ agentBotCreation: 'free' });
+  process.env['AGY_FAKE_CATALOG'] = 'option';
+  const { threadId, accountId } = await agyThread(client, 'gemini-4-neon-low');
+  await client.call('providers.probe', { providerId: 'agy-fake', accountId });
+  for (const [name, effort] of [['Alias', undefined], ['Explicit', 'low']] as const) {
+    const result = await client.call('agents.create', { threadId, name, model: 'gemini-4-neon-xhigh', effort });
+    expect(result).toMatchObject({ agent: { selection: { model: 'gemini-4-neon', effort: effort ?? 'xhigh' } } });
+  }
+});
+
+test.each([null, 'low'])('Antigravity with a single remaining variant and saved effort %s', async effort => {
+  const client = await startCore({ warmProcessMinutes: 0 });
+  process.env['AGY_FAKE_CATALOG'] = 'option';
+  const { accountId, threadId } = await agyThread(client, 'gemini-4-neon-low');
+  await runTurn(client, threadId, 'first');
+  await waitFor(() => !existsSync(loggedEnv('TEMP')!), 10_000);
+  await client.call('threads.update', { threadId, effort });
+  forgetProbes({ accountId });
+  process.env['AGY_FAKE_CATALOG'] = 'option:only-variant';
+  const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+  await client.call('turns.start', { threadId, prompt: 'continue' });
+  const result = await finished;
+  if (effort === null) {
+    expect(result.error).toBeNull();
+    expect(fakeLog()).toContain('set:model=gemini-4-neon-xhigh');
+    expect(fakeLog().match(/^prompt:/gm)).toHaveLength(2);
+  } else {
+    expect(result.error).toContain('offers no low effort');
+    expect(fakeLog().match(/^prompt:/gm)).toHaveLength(1);
+  }
+});
+
+test('antigravityCatalog merges a primary variant and a historical alias when the base has no native scale yet', () => {
+  const models = antigravityCatalog(
+    [
+      { id: 'gemini-4-neon', name: 'Gemini 4 Neon' },
+      { id: 'gemini-4-neon-low', name: 'Gemini 4 Neon (Low)' },
+    ],
+    [
+      { id: 'gemini-4-neon-xhigh', name: 'Gemini 4 Neon (XHigh)' },
+    ],
+  );
+  expect(models).toHaveLength(1);
+  expect(models[0]).toMatchObject({
+    id: 'gemini-4-neon',
+    name: 'Gemini 4 Neon',
+    effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'xhigh', label: 'Extra high' }] },
+    aliases: [{ id: 'gemini-4-neon-low', effort: 'low' }, { id: 'gemini-4-neon-xhigh', effort: 'xhigh' }],
+  });
 });

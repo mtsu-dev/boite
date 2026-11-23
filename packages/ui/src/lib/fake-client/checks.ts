@@ -1,5 +1,6 @@
 import {
   RpcErrorCode,
+  resolveModelSelection,
   answerAttachmentError,
   type Account,
   type Attachment,
@@ -77,7 +78,8 @@ const PROBED_PROTOCOLS = ['claude-sdk', 'acp', 'codex-appserver', 'muse', 'pi'];
 /** The core's `checkModel`: null is the provider's default, anything else must be listed. */
 export function checkModel(provider: ProviderSummary, accountId: string, models: ModelInfo[], model: string | null, catalogRead = false): string | null {
   if (model === null) return null;
-  if (models.some((entry) => entry.id === model)) return model;
+  const selected = resolveModelSelection(models, model);
+  if (selected) return selected.model.id;
   throw refused(
     PROBED_PROTOCOLS.includes(provider.protocol) && !catalogRead
       ? 'the agent has not listed this model: open the model picker so Boite reads its models first'
@@ -89,7 +91,7 @@ export function checkModel(provider: ProviderSummary, accountId: string, models:
 /** The core's `checkEffort`: null is the model's default, anything else must be one of its levels. */
 export function checkEffort(provider: ProviderSummary, models: ModelInfo[], model: string | null, effort: string | null): string | null {
   if (effort === null) return null;
-  const levels = models.find((entry) => entry.id === model)?.effort?.levels ?? [];
+  const levels = resolveModelSelection(models, model)?.model.effort?.levels ?? [];
   if (levels.some((level) => level.id === effort)) return effort;
   throw refused('the model does not offer this reasoning effort', {
     providerId: provider.id,

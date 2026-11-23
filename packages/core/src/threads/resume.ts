@@ -1,9 +1,10 @@
-import type { PluginActor, RpcEvents, RpcParams, ThreadId, ThreadRecovery, ThreadRetry, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import { resumeModelSelection, resumeReceiptConflict, type PluginActor, type ResumeSelectionRequest, type RpcEvents, type RpcParams, type ThreadId, type ThreadRecovery, type ThreadRetry, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf, refused } from '../errors.ts';
 import type { ThreadStore } from '../threads.ts';
 import { withLoad } from './records.ts';
 import { CARRY_ON, RESUME_TEXT, type PlannedReason } from './resume-text.ts';
+import { modelsFor } from './selection.ts';
 
 /**
  * Mutable so a test can shorten them. `limit`: how long after a window's reset
@@ -184,26 +185,35 @@ export class ResumePlanner {
     this.#announce(turn.threadId);
   }
 
-  resume({ threadId, turnId, model, expectedSelectionVersion }: RpcParams<'turns.resume'>, plugin?: PluginActor): Turn {
+  resume({ threadId, turnId, model, effort, expectedSelectionVersion }: RpcParams<'turns.resume'>, plugin?: PluginActor): Turn {
     const thread = this.threads.require(threadId);
     const id = manualRequestId(turnId);
     const receipt = this.#core.journal.turnRequest(threadId, id);
     const accepted = receipt && this.#core.journal.getTurn(receipt.turn_id);
     if (accepted) {
-      if (model !== undefined && model !== accepted.execution?.model) throw refused('this turn already resumed on another model');
+      const execution = accepted.execution;
+      const provider = execution && this.#core.providers.get(execution.providerId);
+      const conflict = resumeReceiptConflict(provider ? modelsFor(provider, execution.accountId) : [], execution, { model, effort }, parseResumeReceipt(receipt.fingerprint));
+      if (conflict === 'model') throw refused('this turn already resumed on another model');
+      if (conflict === 'effort') throw refused('this turn already resumed with another reasoning effort');
       return accepted;
     }
     const recovery = this.recoveryOf(thread);
     const source = this.lastTurn(threadId);
     if (recovery?.turnId !== turnId || source?.id !== turnId) throw refused('turnId must name the latest interrupted turn of this thread', { field: 'turnId', threadId, turnId });
-    const changed = model !== undefined && model !== thread.model;
-    if (changed && (recovery.kind !== 'usage-limit' || thread.agentSessionId)) throw refused('the model can only change when resuming an ordinary conversation after a usage limit');
+    const provider = this.#core.providers.get(thread.providerId);
+    const { model: requestedModel, effort: nextEffort, changedModel, changed } =
+      resumeModelSelection(provider ? modelsFor(provider, thread.accountId) : [], thread, { model, effort });
+    if (changed && (recovery.kind !== 'usage-limit' || thread.agentSessionId)) throw refused('the model or reasoning effort can only change when resuming an ordinary conversation after a usage limit');
     const lead = recovery.kind === 'usage-limit' ? `A usage limit interrupted the previous turn. ${CARRY_ON}` : CARRY_ON;
-    const choice = changed ? { ...thread, model, effort: null, speed: null } : undefined;
+    const choice = changed ? { ...thread, model: requestedModel, effort: nextEffort, speed: changedModel ? null : thread.speed } : undefined;
     return this.threads.startTurn(threadId, { ...this.threads.handoff.continuation(source, lead), display: 'Resumed interrupted work' },
       { kind: 'resume', reason: 'manual', requestId: id, plugin }, {
         choice, expectedSelectionVersion,
         persistAdmission: () => {
+          this.#core.journal.db
+            .query('UPDATE turn_requests SET fingerprint = ? WHERE thread_id = ? AND request_id = ?')
+            .run(formatResumeReceipt({ model, effort }), threadId, id);
           const record = this.#load();
           record[threadId] = { handled: turnId, resumedWindow: record[threadId]?.resumedWindow };
           this.#core.journal.setSetting(KEY, record);
@@ -476,6 +486,27 @@ function requestId(turnId: TurnId, limit: boolean): string {
 }
 
 function manualRequestId(turnId: TurnId): string { return `manual-resume_${turnId}`; }
+
+const RESUME_RECEIPT_PREFIX = 'resume:';
+
+function formatResumeReceipt({ model, effort }: ResumeSelectionRequest): string {
+  const payload: ResumeSelectionRequest = {
+    ...(model !== undefined ? { model } : {}),
+    ...(effort !== undefined ? { effort } : {}),
+  };
+  return `${RESUME_RECEIPT_PREFIX}${JSON.stringify(payload)}`;
+}
+
+function parseResumeReceipt(fingerprint: string): ResumeSelectionRequest | undefined {
+  if (!fingerprint.startsWith(RESUME_RECEIPT_PREFIX)) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(fingerprint.slice(RESUME_RECEIPT_PREFIX.length));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    const { model, effort } = parsed as Record<string, unknown>;
+    const valid = (value: unknown): value is string | null => value === null || typeof value === 'string';
+    return { ...(valid(model) ? { model } : {}), ...(valid(effort) ? { effort } : {}) };
+  } catch { return undefined; }
+}
 
 /**
  * The row once `plan` went out, failed to or may have: the turn is handled, a

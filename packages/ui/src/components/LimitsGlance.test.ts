@@ -182,6 +182,32 @@ function proxied(owner: boolean, status: 'ready' | 'unsupported' | (() => Promis
   return { call, showSettings };
 }
 
+
+test('gateway bars stay fresh on cooldown and dim after a read error, even when expanded', async () => {
+  const fresh: AccountQuota = { ...quota, accountId: 'proxy:claude:one',
+    gateway: { kind: 'douane', entryId: 'one', display: 'accounts', plan: null, accounts: 1, status: 'cooldown', statusReason: 'upstream quota exceeded', credits: [] } };
+  let row = fresh;
+  const call = vi.fn(async (method: string) => method === 'subscriptionProxy.quotas'
+    ? { status: 'ready', providers: [], updatedAt: null, checkedAt: null, error: null } : [row]);
+  const store = { client: { call, on: () => () => {} }, owner: true, endpointUrl: 'glance-proxy-cooldown',
+    accounts: [], settings: { subscriptionProxy: douane } } as unknown as Store;
+  glance(store).click();
+  await settle();
+  const provider = document.querySelector('[data-testid="quota-provider"]')!;
+  expect(provider.querySelector('.meters.stale')).toBeNull();
+  expect(provider.querySelector('[role="meter"]')?.getAttribute('aria-valuenow')).toBe('80');
+  expect(provider.querySelector('[role="status"]')).toBeNull();
+
+  row = { ...fresh, status: 'unavailable', error: 'Quota read timed out' };
+  document.querySelector<HTMLButtonElement>('[data-testid="limits-glance-refresh"]')!.click();
+  await settle();
+  expect(provider.querySelector('.meters.stale [role="meter"]')).not.toBeNull();
+  expect(provider.querySelector('[role="status"]')!.textContent).toBe(row.error);
+  provider.querySelector<HTMLButtonElement>('.summary')!.click();
+  await settle();
+  expect(provider.querySelector('[role="meter"].stale')).not.toBeNull();
+});
+
 test('a paired device opens the glance on the gateway bars, without forcing a refresh', async () => {
   const { call, showSettings } = proxied(false, 'ready', 'glance-proxy-phone');
   document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!.click();

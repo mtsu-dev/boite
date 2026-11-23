@@ -156,6 +156,72 @@ test('an oversized, invalid or failing answer is refused without its body and ke
   expect(JSON.stringify(await (await harness.connect()).call('core.logs', {}))).not.toContain(secret);
 });
 
+
+test('gateway quota readings stay independent of cooldown and account errors across refreshes', async () => {
+  const [claude, antigravity] = DOUANE.providers;
+  const fresh = claude!.entries[0]!;
+  const average = antigravity!.entries[0]!;
+  const reason = 'upstream quota exceeded';
+  const retryAt = '2026-10-04T12:45:00Z';
+  const cooldown = { ...fresh, status: 'cooldown', error: reason, read_error: null, status_reason: reason, retry_at: retryAt };
+  const legacy = { ...fresh, id: 'legacy', status: 'cooldown', error: reason };
+  const websocket = { ...legacy, id: 'websocket', error: 'websocket upstream quota exceeded' };
+  const auth = { ...fresh, id: 'auth', status: 'error', error: 'OAuth token expired', read_error: null, status_reason: 'OAuth token expired' };
+  const readError = 'r'.repeat(300);
+  const readWithError = { ...cooldown, error: reason, read_error: `quota\u0000 read failed ${readError}`, windows: [], credits: [], updated_at: null };
+  const averageCooldown = { ...average, status: 'cooldown', error: 'legacy aggregate text', read_error: 'one account timed out', status_reason: reason };
+  const averageEmpty = { ...averageCooldown, windows: [], updated_at: null };
+  const body = (entries: object[], aggregate: object) => ({ ...DOUANE, providers: [
+    { ...claude, entries }, { ...antigravity, entries: [aggregate] },
+  ] });
+  let answer: ReturnType<typeof body> | null = body([fresh], average);
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return answer ? Response.json(answer) : new Response('unavailable', { status: 502 });
+  } });
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+  const owner = await harness.connect();
+  const read = async () => (await owner.call('quotas.list', { refresh: true })).filter(row => row.gateway);
+
+  const [initial] = await read();
+  expect(initial).toMatchObject({ status: 'ready', error: null, gateway: { status: 'ready' } });
+
+  answer = body([cooldown, legacy, websocket, auth], averageCooldown);
+  const [first, old, oldWebsocket, failedAuth, pool] = await read();
+  const reading = { windows: first!.windows, checkedAt: first!.checkedAt };
+  const credits = first!.gateway!.credits;
+  expect(first).toMatchObject({ status: 'ready', error: null, checkedAt: Date.parse(fresh.updated_at!),
+    gateway: { status: 'cooldown', statusReason: reason, retryAt } });
+  expect(reading.windows).toHaveLength(1);
+  expect(credits).toHaveLength(1);
+  expect(old).toMatchObject({ status: 'ready', error: null, gateway: { status: 'cooldown', statusReason: legacy.error } });
+  expect(oldWebsocket).toMatchObject({ status: 'ready', error: null, gateway: { status: 'cooldown', statusReason: websocket.error } });
+  expect(failedAuth).toMatchObject({ status: 'unavailable', error: auth.status_reason, gateway: { status: 'error', statusReason: auth.status_reason } });
+  expect(pool).toMatchObject({ status: 'ready', error: null, gateway: { display: 'average', status: 'cooldown', statusReason: reason } });
+
+  answer = body([readWithError, { ...legacy, error: 'could not read the quota', retry_at: 'invalid' },
+    { ...cooldown, id: 'explicit', read_error: reason, status_reason: undefined }], averageEmpty);
+  const [failedRead, ambiguous, explicit, failedPool] = await read();
+  expect(failedRead).toMatchObject({ ...reading, status: 'unavailable', error: `quota  read failed ${readError}`.slice(0, 300),
+    gateway: { status: 'cooldown', statusReason: reason, retryAt, credits } });
+  expect(ambiguous).toMatchObject({ status: 'unavailable', error: 'could not read the quota', gateway: { status: 'cooldown', retryAt: null } });
+  expect(explicit).toMatchObject({ status: 'unavailable', error: reason, gateway: { status: 'cooldown' } });
+  expect(explicit!.gateway!.statusReason).toBeUndefined();
+  expect(failedPool).toMatchObject({ status: 'unavailable', error: 'one account timed out', windows: pool!.windows,
+    gateway: { display: 'average', status: 'cooldown', statusReason: reason } });
+
+  answer = null;
+  const [globalFailure] = await read();
+  expect(globalFailure).toMatchObject({ ...reading, status: 'unavailable', error: 'Douane quotas returned HTTP 502.',
+    gateway: { status: 'cooldown', statusReason: reason, credits } });
+
+  answer = body([{ ...fresh, error: reason, read_error: null, status_reason: null, retry_at: null, credits: [],
+    windows: [{ ...fresh.windows[0]!, used_percent: 5 }] }], average);
+  const [recovered, recoveredPool] = await read();
+  expect(recovered).toMatchObject({ status: 'ready', error: null, windows: [{ usedPercent: 5 }],
+    gateway: { status: 'ready', statusReason: null, retryAt: null, credits: [] } });
+  expect(recoveredPool).toMatchObject({ status: 'ready', error: null, windows: [{ usedPercent: 40.5 }] });
+});
+
 test('rows that break the contract are dropped and strings are bounded', () => {
   expect(() => parseGatewayQuotas({ data: [] })).toThrow('providers array');
   const parsed = parseGatewayQuotas({ providers: [
@@ -163,7 +229,7 @@ test('rows that break the contract are dropped and strings are bounded', () => {
     { provider: 'codex', display: 'sideways', entries: [
       { id: 'no-label' },
       { id: 'x', label: `Codex\u0000 ${'n'.repeat(400)}`, accounts: -3, status: 'exploded', error: 'e'.repeat(900),
-        windows: [{ id: 'primary', label: 'Weekly', used_percent: 180, reset_at: 'not a date', primary: 'yes' }, { id: 'missing' }, { id: 'left', remaining_percent: 25, primary: true }],
+        windows: [{ id: 'primary', label: 'Weekly', used_percent: 180, reset_at: 'not a date', primary: 'yes' }, { id: 'missing' }, { id: 'left', remaining_percent: 25, primary: true }, { id: 'left', remaining_percent: 50 }],
         credits: [{ id: 'c', remaining: '12' }] },
       { id: 'x', label: 'duplicate' },
     ] },
@@ -184,6 +250,23 @@ test('rows that break the contract are dropped and strings are bounded', () => {
     { id: 'left', label: 'left', usedPercent: 75, resetsAt: null, primary: true },
   ]);
   expect(entry.credits).toEqual([{ id: 'c', label: 'c', unit: null, remaining: null, limit: null, used: null }]);
+});
+
+test('quota caps preserve the first provider, entry and line even after the shared entry budget runs out', () => {
+  const windows = Array.from({ length: 64 }, (_, index) => ({ id: `window-${index}`, used_percent: index }));
+  const entries = Array.from({ length: 1050 }, (_, index) => ({ id: `entry-${index}`, label: `Entry ${index}` }));
+  const { providers } = parseGatewayQuotas({ providers: [
+    { provider: 'first', entries: [{ ...entries[0], windows }, { ...entries[0], label: 'Duplicate' }, ...entries.slice(1)] },
+    { provider: 'first', entries: [] },
+    ...Array.from({ length: 40 }, (_, index) => ({ provider: `more-${index}`, entries: [{ id: 'later', label: 'Later' }] })),
+  ] });
+  expect(providers.map(provider => provider.providerId)).toEqual(['first', ...Array.from({ length: 31 }, (_, index) => `more-${index}`)]);
+  const first = providers[0]!;
+  expect(first.entries).toHaveLength(1024);
+  expect(first.entries.at(-1)?.id).toBe('entry-1023');
+  expect(providers.slice(1).every(provider => provider.entries.length === 0)).toBe(true);
+  expect(first.entries[0]?.label).toBe('Entry 0');
+  expect(first.entries[0]?.windows.map(window => window.id)).toEqual(windows.slice(0, 16).map(window => window.id));
 });
 
 test('the share used outside Douane is kept per window only when it is a percent', () => {

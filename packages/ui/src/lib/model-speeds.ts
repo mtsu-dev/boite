@@ -1,4 +1,4 @@
-import type { ModelInfo } from '@boite/contracts';
+import { resolveModelSelection, type ModelInfo } from '@boite/contracts';
 import type { Choice, PickPatch } from './store.svelte';
 import { strings } from './strings';
 
@@ -7,7 +7,8 @@ const rank = (id: string) => id === 'fast' || id === 'priority' ? 0 : id === 'ul
 
 /** Native tiers take precedence; separate variants must share an exact model id stem. */
 export function speedControl(models: ModelInfo[], choice: Choice | null): { speeds: Speed[]; speed: string | null; pick: (id: string | null) => PickPatch } {
-  const model = models.find(entry => entry.id === choice?.model);
+  const selection = resolveModelSelection(models, choice?.model, choice?.effort);
+  const model = selection?.model;
   if (model?.speeds?.length) return {
     speeds: [...model.speeds].sort((a, b) => rank(a.id) - rank(b.id)),
     speed: choice?.speed ?? null,
@@ -25,7 +26,7 @@ export function speedControl(models: ModelInfo[], choice: Choice | null): { spee
     pick: id => {
       const target = id === null ? base : variants.find(entry => entry.id === id);
       if (!target) return {};
-      const effort = choice?.effort ?? model?.effort?.default ?? null;
+      const effort = selection?.effort ?? model?.effort?.default ?? null;
       return { model: target.id, speed: null, effort: target.effort?.levels.some(level => level.id === effort) ? effort : target.effort?.default ?? null };
     },
   };

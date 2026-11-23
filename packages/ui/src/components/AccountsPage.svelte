@@ -545,7 +545,7 @@
         onpick={(patch) => {
           // A model belongs to its provider: a default is only ever one of this row's own.
           if (!patch.model || (patch.providerId !== undefined && patch.providerId !== provider.id)) return;
-          store.setModelDefault(provider.id, account.id, patch.model, store.defaultEffortOf(provider.id, account.id, patch.model));
+          store.setModelDefault(provider.id, account.id, patch.model, patch.effort ?? store.defaultEffortOf(provider.id, account.id, patch.model));
         }}
       />
       {#if info?.effort?.levels.length}

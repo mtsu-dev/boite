@@ -46,7 +46,7 @@ test('a paired client can discard exactly the held prompt without starting a tur
   expect(repeated.queueHold).toBeNull();
 });
 
-test('a paired client can resume a usage-limited turn on a different offered model', async ({ ready }) => {
+test('a paired client can resume a usage-limited turn on a different offered model and its selected effort', async ({ ready }) => {
   const { store, client } = await ready({ principal: 'session', delayMs: 0 });
   const threadId = 't-trace';
   await client.call('threads.update', { threadId, accountId: 'a-claude-main', model: 'claude-sonnet-5-5' });
@@ -55,16 +55,30 @@ test('a paired client can resume a usage-limited turn on a different offered mod
   const thread = store.openThread!;
   const turnId = thread.turns.at(-1)!.id;
   const model = store.modelsOf(thread.providerId, thread.accountId).find(entry => entry.id !== thread.model)!;
+  const effort = model.effort!.levels.find(level => level.id !== model.effort!.default)!.id;
+  const alias = `${model.id}-${effort}`;
+  const offered = store.modelsOf.bind(store);
+  vi.spyOn(store, 'modelsOf').mockImplementation((provider, account) => offered(provider, account).map(row =>
+    row.id === model.id ? { ...row, aliases: [{ id: alias, effort }] } : row));
+  vi.spyOn(store, 'catalogHas').mockReturnValue(true);
   client.offerRecovery(threadId, { kind: 'usage-limit', turnId, resetsAt: Date.now() + 60_000 });
   await vi.waitFor(() => expect(store.openThread?.recovery?.kind).toBe('usage-limit'));
   view = mount(ThreadRecovery, { target: document.body, props: { store } });
   flushSync();
   expect(document.body.textContent).toContain('Quota resets at');
   document.querySelector<HTMLButtonElement>('[aria-label="Resume with another model"]')!.click();
+  const search = () => document.querySelector<HTMLInputElement>('[data-testid=picker-search]');
+  await vi.waitFor(() => expect(search()).not.toBeNull());
+  search()!.value = alias;
+  search()!.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
   const option = () => document.querySelector<HTMLButtonElement>(`[data-model="${model.id}"]`);
   await vi.waitFor(() => expect(option()?.textContent).toContain(model.name));
   option()!.click();
-  await vi.waitFor(() => expect(store.openThread?.turns.at(-1)?.execution).toMatchObject({ operation: 'resume', model: model.id }));
+  await vi.waitFor(() => expect(store.openThread?.turns.at(-1)?.execution).toMatchObject({ operation: 'resume', model: model.id, effort }));
+  const resumedId = store.openThread?.turns.at(-1)?.id;
+  expect((await client.call('turns.resume', { threadId, turnId, model: model.id, effort })).id).toBe(resumedId);
+  await expect(client.call('turns.resume', { threadId, turnId, model: model.id, effort: model.effort!.default })).rejects.toThrow('already resumed');
   expect(store.openThread?.recovery).toBeNull();
 });
 

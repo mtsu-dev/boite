@@ -432,7 +432,7 @@ export class FakeContext {
   /** Threads whose title is being written, which the core refuses a second ask for. */
   readonly retitling = new Set<ThreadId>();
   seq = 0;
-  readonly turnRequests = new Map<string, { content: string; turn: Turn; messageId: string }>();
+  readonly turnRequests = new Map<string, { content: string; turn: Turn; messageId: string; requested?: { model?: string | null; effort?: string | null } }>();
   readonly delayMs: number;
   readonly rttMs: number;
   readonly chunkSize: number | undefined;

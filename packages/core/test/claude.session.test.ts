@@ -150,6 +150,20 @@ describe('claude driver', () => {
     expect(queries[1]!.setters).toEqual(['fastMode false']);
   });
 
+  test('legacy Fable reaches the SDK bare and changing models while Fast is active checks its state again', async () => {
+    const { client, threadId } = await openClaudeThread();
+    await client.call('settings.set', { warmProcessMinutes: 5 });
+    harness.core.journal.putThread({ ...harness.core.threads.require(threadId), model: 'claude/claude-fable-5-2', speed: 'fast' });
+    scripted(fake => { fake.fastStaysOff = queries.length === 1; }, answerEach('sess-fable'));
+    expect(await runTurn(client, threadId, 'first')).toBe('done');
+    expect(calls[0]!.options).toMatchObject({ model: 'claude-fable-5-2', settings: { fastMode: true } });
+    harness.core.journal.putThread({ ...harness.core.threads.require(threadId), model: 'claude/claude-opus-5' });
+    expect(await runTurn(client, threadId, 'second')).toBe('done');
+    expect(queries[0]!.setters).toEqual(['setModel claude-opus-5', 'fastMode true']);
+    expect(calls[1]!.options).toMatchObject({ model: 'claude-opus-5', resume: 'sess-fable', settings: { fastMode: true } });
+    expect(calls.map(call => call.prompts)).toEqual([['first'], ['second']]);
+  });
+
   test('viewing initializes a prompt-free query and retains it across real turns at zero minutes', async () => {
     const { client, threadId } = await openClaudeThread();
     scripted(fake => fake.emit(init('sess-prepared')), answerEach('sess-prepared'));

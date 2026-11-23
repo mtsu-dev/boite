@@ -9,11 +9,11 @@
   let pending = $state(false);
   let disabled = $derived(pending || store.connection !== 'ready');
 
-  async function resume(model?: string | null) {
+  async function resume(model?: string | null, effort?: string | null) {
     if (disabled || !thread) return;
     pending = true;
     try {
-      await store.resumeTurn({ threadId: thread.id, turnId: recovery.turnId, model, expectedSelectionVersion: thread.selectionVersion ?? 0 });
+      await store.resumeTurn({ threadId: thread.id, turnId: recovery.turnId, model, effort, expectedSelectionVersion: thread.selectionVersion ?? 0 });
     } finally { pending = false; }
   }
 </script>
@@ -23,5 +23,5 @@
 </button>
 {#if thread && recovery.kind === 'usage-limit' && !thread.agentSessionId && store.accountOf(thread.accountId)}
   <ModelPicker {store} choice={thread} single locked {disabled} actionLabel={strings.thread.resumeWithModel}
-    onpick={patch => { if (patch.model !== undefined) void resume(patch.model); }} />
+    onpick={patch => { if (patch.model !== undefined) void resume(patch.model, patch.effort); }} />
 {/if}

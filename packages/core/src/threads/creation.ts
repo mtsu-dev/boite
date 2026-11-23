@@ -8,7 +8,7 @@ import { checkContext } from '../context-mode.ts';
 import { checkCwd, draftFolderName, makeDraftFolder, titleOf } from './inputs.ts';
 import { checkIncognito, incognitoRoot, makeIncognitoFolder } from './incognito.ts';
 import { DRAFT_CLEANUP_TIMEOUT_MS, DraftReservationLedger, type BeforeDraftMutation, type DraftOwnership } from './draft-reservation-ledger.ts';
-import { checkEffort, checkModel, checkSpeed, defaultModel } from './selection.ts';
+import { checkSelection, defaultModel } from './selection.ts';
 
 type CreateParams = RpcParams<'threads.create'>;
 
@@ -33,9 +33,7 @@ export class ThreadCreation {
     if (project.kind === 'drafts') {
       throw refused('a draft has no worktree: the drafts folder is not a git repository', { projectId: project.id });
     }
-    const model = checkModel(provider, account.id, params.model ?? defaultModel(provider));
-    checkEffort(provider, account.id, model, params.effort ?? null);
-    checkSpeed(provider, account.id, model, params.speed ?? null);
+    checkSelection(provider, account.id, params.model ?? defaultModel(provider), params.effort ?? null, params.speed ?? null);
     checkContext(provider, params.context);
     const id = newId('thr_');
     const ledger = new DraftReservationLedger(this.core);
@@ -67,9 +65,8 @@ export class ThreadCreation {
     const incognito = checkIncognito(params, project, placed !== undefined);
 
     const now = Date.now();
-    const model = checkModel(provider, account.id, params.model ?? defaultModel(provider));
-    const effort = checkEffort(provider, account.id, model, params.effort ?? null);
-    const speed = checkSpeed(provider, account.id, model, params.speed ?? null), contextMode = checkContext(provider, params.context);
+    const { model, effort, speed } = checkSelection(provider, account.id, params.model ?? defaultModel(provider), params.effort ?? null, params.speed ?? null);
+    const contextMode = checkContext(provider, params.context);
     const id = placed?.id ?? newId('thr_');
     // A worktree's directory is the core's own and uses the configured storage;
     // anything a client names has to be inside it. A draft with no directory
@@ -139,9 +136,7 @@ export class ThreadCreation {
   validate(params: CreateParams): void {
     const { project, provider, account } = this.check(params);
     checkIncognito(params, project, params.worktree !== undefined);
-    const model = checkModel(provider, account.id, params.model ?? defaultModel(provider));
-    checkEffort(provider, account.id, model, params.effort ?? null);
-    checkSpeed(provider, account.id, model, params.speed ?? null);
+    checkSelection(provider, account.id, params.model ?? defaultModel(provider), params.effort ?? null, params.speed ?? null);
     checkContext(provider, params.context);
     if (params.cwd) checkCwd(project, params.cwd);
   }

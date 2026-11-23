@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
-import { RpcErrorCode, type AccountQuota } from '@boite/contracts';
+import { RpcErrorCode, type AccountQuota, type SubscriptionProxyQuotas } from '@boite/contracts';
 import { RpcFailure } from '../lib/client';
 import { SvelteMap } from 'svelte/reactivity';
 import { Store } from '../lib/store.svelte';
@@ -219,6 +219,9 @@ test('Douane quotas are native cards grouped by provider, with plan, status, cre
     expect(claude).toHaveLength(2);
     expect(claude[0]!.querySelector('[data-testid="usage-limit-plan"]')!.textContent).toBe('Max 20x');
     expect(claude[1]!.querySelector('[data-testid="usage-limit-status"]')!.textContent).toBe('Cooling down');
+    expect(claude[1]!.querySelector('[data-testid="usage-limit-account"].stale')).toBeNull();
+    expect(claude[1]!.querySelector('[role="status"]')).toBeNull();
+    expect(claude[1]!.querySelectorAll('[role="meter"]')).toHaveLength(2);
     expect(claude[0]!.querySelectorAll('[role="meter"]')).toHaveLength(2);
     expect(groups[1]!.querySelector('[data-testid="usage-limit-credit"]')!.textContent).toMatch(/Credits.*62,500 credits/);
     // An average stands for its accounts: Boite names it, in the app's language.
@@ -272,20 +275,39 @@ test('CLIProxyAPI and a Douane without the route keep the embedded dashboard', a
   }
 });
 
-test('a failed Douane read shows once above its dimmed last bars', async () => {
+test('a failed Douane read shows once above its dimmed last bars and a successful refresh clears it', async () => {
   const error = 'Douane quotas returned HTTP 502.';
   const row: AccountQuota = { ...quota('Claude'), accountId: 'proxy:claude:one', status: 'unavailable', error, checkedAt: Date.UTC(2026, 9, 4, 9),
-    gateway: { kind: 'douane', entryId: 'one', display: 'accounts', plan: null, accounts: 1, status: 'ready', credits: [] } };
-  const call = vi.fn(async (method: string) => method === 'subscriptionProxy.quotas'
-    ? { status: 'unavailable', providers: [], updatedAt: null, checkedAt: row.checkedAt, error } : [row]);
+    gateway: { kind: 'douane', entryId: 'one', display: 'accounts', plan: null, accounts: 1, status: 'cooldown', credits: [] } };
+  const state: SubscriptionProxyQuotas = { status: 'unavailable', providers: [], updatedAt: null, checkedAt: row.checkedAt, error };
+  let onGateway: ((value: SubscriptionProxyQuotas) => void) | undefined;
+  let recovered = false;
+  const call = vi.fn(async (method: string) => {
+    if (method === 'subscriptionProxy.quotas') return state;
+    if (!recovered) return [row];
+    onGateway?.({ ...state, status: 'ready', error: null });
+    return [{ ...row, status: 'ready', error: null }];
+  });
+  const on = (event: string, listener: (value: SubscriptionProxyQuotas) => void) => {
+    if (event === 'subscriptionProxy.quotasUpdated') onGateway = listener;
+    return () => {};
+  };
   mounted = mount(LimitsPage, { target: document.body, props: {
-    store: { client: { call, on: () => () => {} }, connection: 'ready', owner: true, endpointUrl: 'gateway-failed',
+    store: { client: { call, on }, connection: 'ready', owner: true, endpointUrl: 'gateway-failed',
       settings: { subscriptionProxy: douane } } as unknown as Store,
   } });
   await settle();
   expect(document.querySelector('[data-testid="gateway-quotas-error"]')!.textContent).toContain(error);
   expect(document.body.textContent!.split(error)).toHaveLength(2);
   expect(document.querySelector('[data-testid="usage-limit-account"]')!.classList.contains('stale')).toBe(true);
+  expect(document.querySelector('[data-testid="usage-limit-status"]')!.textContent).toBe('Cooling down');
+
+  recovered = true;
+  document.querySelector<HTMLButtonElement>('[data-testid="gateway-quotas-error"] button')!.click();
+  await settle();
+  expect(document.querySelector('[data-testid="gateway-quotas-error"]')).toBeNull();
+  expect(document.querySelector('[data-testid="usage-limit-account"]')!.classList.contains('stale')).toBe(false);
+  expect(document.querySelector('[data-testid="usage-limit-status"]')!.textContent).toBe('Cooling down');
 });
 test('the automatic resume switch saves the setting and a refusal puts it back', async () => {
   const call = vi.fn(async () => [quota('Claude')]);

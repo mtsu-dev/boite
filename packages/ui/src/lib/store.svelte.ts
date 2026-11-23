@@ -446,7 +446,9 @@ export class Store {
   set probingModels(value) { this.#ctx.models.probingModels = value; }
 
   toggleFavorite(...args: Parameters<Models['toggleFavorite']>) { return this.#ctx.models.toggleFavorite(...args); }
+  removeFavorite(...args: Parameters<Models['removeFavorite']>) { return this.#ctx.models.removeFavorite(...args); }
   modelsOf(...args: Parameters<Models['modelsOf']>) { return this.#ctx.models.modelsOf(...args); }
+  resolvedChoice(...args: Parameters<Models['resolvedChoice']>) { return this.#ctx.models.resolvedChoice(...args); }
   modelOf(...args: Parameters<Models['modelOf']>) { return this.#ctx.models.modelOf(...args); }
   probeModelEffort(...args: Parameters<Models['probeModelEffort']>) { return this.#ctx.models.probeModelEffort(...args); }
   isProbing(...args: Parameters<Models['isProbing']>) { return this.#ctx.models.isProbing(...args); }

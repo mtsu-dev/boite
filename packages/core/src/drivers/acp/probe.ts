@@ -1,13 +1,14 @@
 /** The probe: the models the agent itself lists, read by one short-lived process. */
 import { Readable, Writable } from 'node:stream';
 import type { ClientConnection, SessionConfigOption } from '@agentclientprotocol/sdk/unstable';
-import type { AccountId, ModelInfo, ProviderId } from '@boite/contracts';
+import { resolveModelSelection, type AccountId, type ModelInfo, type ProviderId } from '@boite/contracts';
 import { messageOf, unavailable } from '../../errors.ts';
 import { agentEnv, profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import { stderrDrained, stderrLines } from '../lines.ts';
 import type { ProbeContext, ProbeResult } from '../types.ts';
-import { agentModelsOf, categoryOption, effortFrom, effortOption, modelsFrom, selectValues, type AgentModels } from './models.ts';
-import { acpClientInfo, acpSessionMeta, canDeleteSessions, CLIENT_NAME, discardSession, isGrok, preferExit, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
+import { categoryOption, effortFrom, effortOption, modelsFrom, selectValues, type AgentModels } from './models.ts';
+import { acpClientInfo, acpSessionMeta, canDeleteSessions, CLIENT_NAME, isGrok, preferExit, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
+import { discoveredControls, probeControls } from './control-probe.ts';
 import { jsonLinesOnly } from './stdout.ts';
 import { unpacksAtLaunch } from '../launch-temp.ts';
 
@@ -103,31 +104,32 @@ export async function readModels(ctx: ProbeContext, deps: AcpDeps, noteOptions: 
     const open = sdk.client({ name: CLIENT_NAME }).connect(stream);
     connection = open;
 
-    const read = (async (): Promise<{ options: SessionConfigOption[] | null; listed: AgentModels | null; effort: ProbeReading['effort'] }> => {
+    const read = (async (): Promise<{ options: SessionConfigOption[] | null; listed: AgentModels | null; effort: ProbeReading['effort']; models: ModelInfo[] }> => {
       const init = await open.agent.request('initialize', {
         protocolVersion: sdk.PROTOCOL_VERSION,
         clientCapabilities: {},
         clientInfo: acpClientInfo(ctx.provider),
       });
-      const created = await open.agent.request('session/new', { cwd: ctx.cwd, mcpServers: [], ...acpSessionMeta(ctx.provider, init) });
-      const options = created.configOptions ?? null;
-      // OpenCode lists a model's efforts only once the session is on that model:
-      // the `thought_level` option is absent from `session/new` and arrives in
-      // the answer to the model change. Grok writes its scales in `_meta`.
-      let effort: ProbeReading['effort'] = null;
-      const wanted = ctx.model;
-      const modelOption = categoryOption(options, 'model');
-      if (wanted !== undefined && !isGrok(ctx.provider) && modelOption !== null && selectValues(modelOption).includes(wanted)) {
-        const answer = await open.agent.request('session/set_config_option', {
-          sessionId: created.sessionId,
-          configId: modelOption.id,
-          value: wanted,
-        });
-        const listed = (answer as { configOptions?: SessionConfigOption[] | null }).configOptions ?? null;
-        effort = { model: wanted, scale: effortFrom(effortOption(listed)) };
-      }
-      await discardSession(open.agent, canDeleteSessions(init), created.sessionId);
-      return { options, listed: agentModelsOf(created), effort };
+      return probeControls(open.agent, ctx.cwd, acpSessionMeta(ctx.provider, init), canDeleteSessions(init), async created => {
+        const { options, listed } = discoveredControls(created);
+        const models = modelsFrom(ctx.provider, options, listed);
+        const wanted = ctx.model;
+        const selected = resolveModelSelection(models, wanted);
+        const id = selected?.model.id ?? wanted;
+        const modelOption = categoryOption(options, 'model');
+        let effort: ProbeReading['effort'] = null;
+        if (id !== undefined && selected?.model.effort === undefined && !isGrok(ctx.provider) && modelOption !== null && selectValues(modelOption).includes(id)) {
+          const answer = await open.agent.request('session/set_config_option', { sessionId: created.sessionId, configId: modelOption.id, value: id });
+          const changed = (answer as { configOptions?: SessionConfigOption[] | null }).configOptions ?? null;
+          effort = { model: id, scale: effortFrom(effortOption(changed)) };
+          const refreshed = modelsFrom(ctx.provider, changed, listed).find(row => row.id === id);
+          if (refreshed?.aliases) {
+            const original = models.find(row => row.id === id);
+            if (original) original.aliases = refreshed.aliases;
+          }
+        }
+        return { options, listed, effort, models };
+      });
     })();
 
     // When the agent exits, stdout closes and the pending request rejects with
@@ -135,7 +137,7 @@ export async function readModels(ctx: ProbeContext, deps: AcpDeps, noteOptions: 
     // waits a moment for the exit, whose code and stderr line say why.
     const answer = await Promise.race([read.catch((error: unknown) => preferExit(died, error)), died, expired]);
     noteOptions(answer.options ?? []);
-    return { models: modelsFrom(ctx.provider, answer.options, answer.listed), effort: answer.effort, ownModel: answer.listed?.currentModelId ?? null };
+    return { models: answer.models, effort: answer.effort, ownModel: answer.listed?.currentModelId ?? null };
   } finally {
     if (timer !== null) clearTimeout(timer);
     try {
