@@ -339,9 +339,16 @@ them in SQLite:
   If an older core returns rows or conversations from other providers for a
   filtered request, the page reports the unsupported filter and asks for an
   update instead of showing those totals as filtered usage.
-- Removing a project, or purging the deleted conversations
-  (`threadDeletionRetentionDays`), erases their turns but not what they spent.
-  In the transaction that erases them, the journal first copies each finished
+- A removed project keeps its conversations and turns. Usage can still filter
+  by that project and show its ranked conversations to the owner. Paired
+  devices see the same unfiltered totals. Their project filters, rankings,
+  per-thread totals and turn details use the same visibility as the project
+  and conversation views. A removed project has no named entry on a paired
+  device, and deleted or hidden conversations have no entry even as subagents
+  of a visible conversation. Adding the folder again
+  restores the project and reopens the conversations archived by the removal.
+  When a deleted conversation is purged (`threadDeletionRetentionDays`),
+  its turns leave the journal. The same transaction first copies each finished
   turn into `removed_turn_usage`: the time it finished, the provider and model
   resolved as above, and its stored `Usage`. Nothing there names the turn, its
   conversation or its project. Buckets, the `providerId` filter and the count of
@@ -577,14 +584,24 @@ during a wait fails the turn the usual way.
 
 ### Usage limit
 
+The thread shows `recovery` with the interrupted turn and the reset time the
+provider reported, even with automatic resume off. `turns.resume` accepts that
+turn's ID and an optional model from the current account's catalogue. The model
+only applies to the continuation. The admission commits the prompt, its receipt
+and the cancellation of any automatic plan together. The continuation keeps its
+saved selection if the core stops before sending it.
+
 Settings > Limits has "Resume threads after a usage limit"
-(`autoResumeLimitedThreads`, off by default). With it on, a turn that failed
+(`autoResumeLimitedThreads`, on by default). With it on, a turn that failed
 on a usage limit plans one resume a minute after the window resets
-(`threads/limit-resume.ts`). The reset is the one the agent reported, else the
-latest window at 100 % in a fresh `quotas` read of the turn's account; with
-neither, nothing is planned. The plan sits in the journal setting
-`resumes` (`threads/resume.ts`), so a restart arms it again, and the row shows it as `retry`
-(`kind: 'usage-limit'`, `at`, `resetsAt`) with Do not resume.
+(`threads/limit-resume.ts`). The reset comes from the agent's rate-limit event,
+else parsed from the agent's error text (`drivers/usage-limit.ts`), else the
+latest future window at 100 % in a fresh `quotas` read of the turn's account
+(bypassing the 10 s fresh cache, or reading the Douane gateway pool when routed
+through Douane); with none, nothing is planned. The plan sits in the journal
+setting `resumes` (`threads/resume.ts`), so a restart arms it again, and long
+waits re-arm in minute steps so a wake from sleep fires on time. The row shows
+it as `retry` (`kind: 'usage-limit'`, `at`, `resetsAt`) with Do not resume.
 
 Nothing is planned for a failure whose window already reset (no retry loop),
 for a window the thread already resumed after, for a sub-thread, or for a
@@ -595,8 +612,8 @@ instead if the setting went off, the thread was archived, answered, stopped or
 is busy, its provider, account, model or session generation changed, a card
 waits for the user, or the user paused its team. A cache ping in the way
 stops and lets it go; it neither cancels the plan nor counts as the turn that
-answered. A plan a core caught while dispatching is dropped at the next start,
-since its turn may have gone out.
+answered. At startup a dispatching plan with an admission receipt is settled.
+A dispatching plan without a receipt is armed again.
 The resume is a `resume` turn with the request id `limit-resume_<turnId>`,
 labelled "Resumed after the usage limit reset", whose prompt asks the agent to
 continue without repeating work.

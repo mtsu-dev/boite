@@ -22,6 +22,10 @@ export interface CoreInfo {
   /** Optional optimizations. Their absence keeps older cores and clients interoperable. */
   features?: {
     threadSnapshots?: boolean;
+    /** Snapshot proofs cover the held messages before the resume anchor as well as its tail. */
+    threadPrefixProofs?: boolean;
+    /** Bounded composer pages and point reads of a record announced by revision. */
+    composerPages?: boolean;
     /** Answers a request that carries `progress` in counted slices (`RPC_CHUNK_MARK`). */
     chunkedAnswers?: boolean;
     /** `threads.get` takes `around` and `compactImages`; `messages.list` takes `after`. */
@@ -66,6 +70,8 @@ export interface CoreInfo {
     botMoveQueue?: boolean;
     /** `threads.listChanges`: a reconnect reads only the threads that changed while it was away. */
     listChanges?: boolean;
+    /** `threads.listChanges` can return the full list in byte-bounded pages. */
+    threadListPages?: boolean;
     /** `threads.subscribe` and an opening `threads.get` take `channels`: a client leaves live command output, or more, on the core. */
     streamChannels?: boolean;
     /** `browser.remoteStream`: a viewer's frames are pushed on a websocket of their own (`BROWSER_STREAM_ROUTE`). Without it a viewer asks for each frame with `browser.remoteFrame`, which every core answers. */

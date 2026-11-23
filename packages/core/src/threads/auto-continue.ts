@@ -38,7 +38,7 @@ export class AutoContinues {
   readonly #crashed: Turn[] = [];
   #closed = false;
   #started = false;
-  #cut: boolean | undefined;
+  #cutBlocker: string | null | undefined;
   #heldRuns: Set<string> | undefined;
   #heldTeams: Set<string> | undefined;
 
@@ -60,11 +60,12 @@ export class AutoContinues {
    * this core writes any, so call it before recovery.
    */
   previousRunCut(): boolean {
-    if (this.#cut === undefined) {
+    if (this.#cutBlocker === undefined) {
       const row = this.#core.journal.db.query("SELECT ts FROM events WHERE thread_id IS NOT NULL AND type != 'thread.background.interrupted' ORDER BY id DESC LIMIT 1").get() as { ts: number } | null;
-      this.#cut = this.#core.journal.getSetting(STOPPED_KEY) == null && row !== null && Date.now() - row.ts <= HANDOFF.maxAgeMs;
+      this.#cutBlocker = this.#core.journal.getSetting(STOPPED_KEY) != null ? 'the core was stopped deliberately'
+        : row === null || Date.now() - row.ts > HANDOFF.maxAgeMs ? 'the interruption is outside the automatic recovery window' : null;
     }
-    return this.#cut;
+    return this.#cutBlocker === null;
   }
 
   /**
@@ -75,15 +76,17 @@ export class AutoContinues {
     if (!this.#core.journal.isClosed()) this.#core.journal.setSetting(STOPPED_KEY, Date.now());
   }
 
-  /** Whether a turn the previous core left running resumes once this one starts. Recovery closes it either way. */
-  resumesCrashed(turn: Turn): boolean {
+  /** Why a turn left running cannot resume automatically, or null when it will. */
+  crashBlocker(turn: Turn): string | null {
     const thread = this.#core.journal.getThread(turn.threadId);
-    if (thread === null || !this.#eligible(thread, turn) || !this.previousRunCut()) return false;
+    if (thread === null || !this.#eligible(thread, turn)) return 'this kind of turn does not resume automatically';
+    if (!this.previousRunCut()) return this.#cutBlocker!;
     // As `plan` decides: a turn already resumed, or a row out of resumes, gets none.
     const entry = this.#resumes.entry(turn.threadId);
-    if (entry !== undefined && (entry.handled === turn.id || (entry.streak ?? 0) >= AUTO_CONTINUE.delaysMs.length)) return false;
+    if (entry?.handled === turn.id) return 'automatic recovery already handled this turn';
+    if ((entry?.streak ?? 0) >= AUTO_CONTINUE.delaysMs.length) return 'automatic recovery attempts ran out';
     this.#crashed.push(turn);
-    return true;
+    return null;
   }
 
   /**
@@ -104,7 +107,7 @@ export class AutoContinues {
     const resumed = new Set<ThreadId>();
     for (const turn of this.#crashed.splice(0)) {
       if (this.#resumes.planned(turn.threadId)) continue;
-      const prompt = this.#withHeldWork(turn.threadId, this.threads.handoff.continuation(turn, RESUME_TEXT.crash.prompt));
+      const prompt = this.#withHeldWork(turn.threadId, RESUME_TEXT.crash.prompt);
       if (this.#plan(turn.threadId, turn, 'crash', prompt, AUTO_CONTINUE.startDelayMs)) resumed.add(turn.threadId);
     }
     if (!cut) return;
@@ -159,10 +162,15 @@ export class AutoContinues {
     if (result.refusal) return;
     if (result.cwdGone || result.contextFull) {
       // Handled: a later start that finds work this thread held (a team, a workflow run) resumes nothing either.
-      const window = this.#resumes.entry(thread.id)?.resumedWindow;
-      this.#resumes.settle(thread.id, { streak: 0, handled: turn.id, ...(window !== undefined ? { resumedWindow: window } : {}) });
+      this.#resumes.settle(thread.id, {
+        streak: 0,
+        handled: turn.id,
+        resumedWindow: this.#resumes.entry(thread.id)?.resumedWindow,
+        recovery: result.contextFull ? undefined : { kind: 'interrupted', turnId: turn.id, detail: 'the working directory is unavailable' },
+      });
       return;
     }
+    this.#resumes.offer(turn, { kind: 'interrupted' });
     const error = (turn.error ?? result.error ?? 'unknown error').trim();
     const quoted = error.length > ERROR_QUOTE ? `${error.slice(0, ERROR_QUOTE)} [cut]` : error;
     this.#plan(thread.id, turn, 'error', `Your previous turn ended on an error before it finished: ${quoted}\n\nBoite resumed the thread by itself. ${CARRY_ON}`);
@@ -203,7 +211,8 @@ export class AutoContinues {
     const streak = entry.streak ?? 0;
     if (entry.handled === turn.id) return false;
     if (streak >= AUTO_CONTINUE.delaysMs.length) {
-      this.#resumes.settle(threadId, { streak: 0, handled: turn.id, ...(entry.resumedWindow !== undefined ? { resumedWindow: entry.resumedWindow } : {}) });
+      this.#resumes.settle(threadId, { streak: 0, handled: turn.id, resumedWindow: entry.resumedWindow, recovery: entry.recovery });
+      this.#resumes.offer(turn, { kind: 'interrupted', detail: 'automatic recovery attempts ran out' });
       this.#resumes.log('warn', threadId, `Turn ${turn.id} stopped again after ${streak} automatic resumes in a row; Boite leaves it to the user`, 'gave-up', null, { reason }, reason);
       return false;
     }

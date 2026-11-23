@@ -22,10 +22,11 @@ Open Settings, Usage.
 
 - Tokens include cache reads and writes. A turn that reported no usage counts
   as a turn only.
-- The page counts only what Boite ran. Removing a project keeps its
-  conversations and their totals, tagged Removed in the project menu; adding
-  the folder again brings them back. Purging deleted conversations keeps their
-  totals. An incognito conversation keeps nothing.
+- The page counts only what Boite ran. The owner can still select a project
+  tagged Removed and see its conversations in Usage. A paired device includes
+  the same usage in the overall totals and lists the project and its
+  conversations again when the owner adds the folder back. Purging deleted
+  conversations keeps their totals. An incognito conversation keeps nothing.
 - Each provider keeps its own colour on every chart.
 - A machine that is not connected is named above the page and left out of
   the totals.
@@ -89,11 +90,15 @@ account every five minutes, even with no window open.
 
 ## Resume after a usage limit
 
-Resume threads after a usage limit, in Settings, Limits, is off by default.
-Turned on, a Claude or Codex thread stopped by a subscription limit resumes by
-itself a minute after the limit resets, once per window. Stop, a new message
-or a changed model cancels it, and the banner above the box has Do not
-resume.
+When a usage limit stops a request, the conversation shows the reset time
+when the provider supplies it. Choose Resume to continue the request, or
+Resume with another model to pick one available on the same account for that
+turn. The model selected for later messages stays as it was.
+
+Resume threads after a usage limit, in Settings, Limits, is on by default.
+A Claude or Codex thread stopped by a subscription limit resumes by itself a
+minute after the limit resets, once per window. Stop, a new message or a
+changed model cancels it, and the banner above the box has Do not resume.
 
 When a model is at capacity, Claude and Codex turns try again by themselves
 after 30 seconds, 2 minutes and 5 minutes. Stop retrying ends the wait.

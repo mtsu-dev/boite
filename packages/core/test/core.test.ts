@@ -50,27 +50,42 @@ test('shutdown still stops owned children and closes the journal when both start
 });
 
 describe('projects', () => {
-  test('removing a project drains turns, keeps every row, and adding its folder back restores it', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    const project = harness.core.projects.require(harness.core.threads.require(threadId).projectId);
-    await client.call('turns.start', { threadId, prompt: '[sleep:60000]', clientRequestId: 'remove-request' });
-    expect(harness.core.journal.turnRequest(threadId, 'remove-request')).not.toBeNull();
-    const messages = harness.core.journal.listMessages(threadId).length;
-    expect(messages).toBeGreaterThan(0);
-    await client.call('projects.remove', { projectId: project.id });
-    expect(harness.core.scheduler.state().running).toHaveLength(0);
-    // Out of every list, still on disk.
-    expect((await client.call('projects.list', {})).some((listed) => listed.id === project.id)).toBe(false);
-    expect(harness.core.journal.getThread(threadId)).toBeNull();
-    expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
-    expect(harness.core.journal.listMessages(threadId)).toHaveLength(messages);
+  test('removing a project drains turns and re-adding its folder restores the history after restart', async () => {
+    await harness.stop();
+    const dataDir = mkdtempSync(join(tmpdir(), 'boite-removed-project-'));
+    try {
+      harness = await startTestCore({ dataDir });
+      const client = await harness.connect();
+      const { threadId } = await echoThread(harness, client);
+      const project = harness.core.projects.require(harness.core.threads.require(threadId).projectId);
+      const doneThread = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: harness.core.threads.require(threadId).accountId });
+      const plugin = { pluginId: 'review-fixture', pluginName: 'Review fixture' };
+      const done = harness.core.threads.archive(doneThread.id, true, true, plugin);
+      expect(done.doneAt).toBeNumber();
+      const turn = await client.call('turns.start', { threadId, prompt: '[sleep:60000]', clientRequestId: 'remove-request' });
+      await client.call('projects.remove', { projectId: project.id });
+      expect(harness.core.scheduler.state().running).toHaveLength(0);
+      expect(harness.core.journal.getThread(threadId)).toBeNull();
+      expect(harness.core.journal.getProject(project.id)).toBeNull();
+      await harness.stop();
 
-    const restored = await client.call('projects.add', { path: project.path });
-    expect(restored.id).toBe(project.id);
-    expect(harness.core.journal.getThread(threadId)).toMatchObject({ id: threadId, projectId: project.id, archived: false });
-    expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
-    expect(harness.core.journal.listMessages(threadId)).toHaveLength(messages);
+      harness = await startTestCore({ dataDir });
+      const restarted = await harness.connect();
+      expect(await restarted.call('threads.list', { includeArchived: true })).toEqual([]);
+      expect(await restarted.call('projects.list', {})).toEqual([]);
+      expect(await restarted.call('projects.add', { path: project.path })).toMatchObject({ id: project.id, doneThreads: 1 });
+      expect(await restarted.call('threads.get', { threadId: done.id })).toMatchObject({
+        id: done.id, archived: true, doneAt: done.doneAt, archiveReason: { type: 'plugin', ...plugin },
+      });
+      const restored = await restarted.call('threads.get', { threadId });
+      expect(restored.archived).toBe(false);
+      expect(restored.turns.map(row => row.id)).toEqual([turn.id]);
+      expect(restored.messages[0]?.parts[0]).toMatchObject({ text: '[sleep:60000]' });
+      expect(harness.core.journal.turnRequest(threadId, 'remove-request')?.turn_id).toBe(turn.id);
+    } finally {
+      await harness.stop();
+      await removeDir(dataDir);
+    }
   });
   test('a thread archived before its project is removed comes back as it was, and an add during the removal is refused before any write', async () => {
     const client = await harness.connect();
@@ -83,7 +98,7 @@ describe('projects', () => {
     const removing = harness.core.projects.remove(project.id);
     expect(() => harness.core.projects.add(project.path)).toThrow('this project is being removed');
     // Another client cannot reopen a thread to run a turn on it while its project goes.
-    expect(() => harness.core.threads.archive(open, false)).toThrow('its project is being removed');
+    expect(() => harness.core.threads.archive(open, false)).toThrow('project is being removed');
     await removing;
     expect((await client.call('projects.list', {})).some((listed) => listed.id === project.id)).toBe(false);
     await client.call('projects.add', { path: project.path });
@@ -159,9 +174,10 @@ describe('settings', () => {
       // Off only because the harness turns it off; a missing value reads as on.
       asyncQuestions: false,
       shortAnswers: false,
-      // Open only because the harness opens them; a first start closes both.
+      // Open only because the harness opens them; a first start closes all three.
       agentBotCreation: 'free',
       coordinationReach: 'group',
+      contacts: true,
     });
 
     const next = await client.call('settings.set', { warmProcessMinutes: 3 });

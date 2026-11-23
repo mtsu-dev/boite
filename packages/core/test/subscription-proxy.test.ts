@@ -9,6 +9,7 @@ import { readNativeList, saveCatalog } from '../src/providers/saved-catalogs.ts'
 import { childEnv } from '../src/drivers/claude/query.ts';
 import { agentEnv } from '../src/providers/resolve.ts';
 import { mergeProxyModels, readSubscriptionProxyModels, subscriptionProxyCodexArgs, subscriptionProxyEnv } from '../src/subscription-proxy.ts';
+import { modelCapabilities } from '../src/drivers/model-capabilities.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 import { countEvents } from './event-count.ts';
@@ -245,15 +246,42 @@ test('a gateway that translates every model keeps proprietary models in their ow
   const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
   const ids = async (providerId: 'claude' | 'codex', accountId: string) =>
     (await owner.call('providers.probe', { providerId, accountId })).models.map(model => model.id);
-  expect(await ids('claude', claude.id)).toEqual(['claude/claude-opus-5-5', 'antigravity/claude-sonnet-5-5-high', 'antigravity/gemini-3-flash',
-    'antigravity/gpt-oss-120b-medium', 'kimi/kimi-k2', 'qwen/qwen3-gptq', 'claude/default', 'claude/kimi-k2', 'codex/qwen3-coder',
-    'meta/llama-4-maverick']);
-  expect(await ids('codex', codex.id)).toEqual(['codex/gpt-6-sol', 'codex/codex-auto-review', 'antigravity/gemini-3-flash',
-    'antigravity/gpt-oss-120b-medium', 'kimi/kimi-k2', 'qwen/qwen3-gptq', 'codex/o5', 'codex/computer-use-preview', 'claude/kimi-k2',
-    'codex/qwen3-coder', 'meta/llama-4-maverick']);
+  expect(await ids('claude', claude.id)).toEqual(['claude-opus-5-5', 'kimi/kimi-k2', 'qwen/qwen3-gptq', 'claude/default',
+    'claude/kimi-k2', 'codex/qwen3-coder', 'meta/llama-4-maverick']);
+  expect(await ids('codex', codex.id)).toEqual(['codex/gpt-6-sol', 'codex/codex-auto-review', 'kimi/kimi-k2', 'qwen/qwen3-gptq', 'codex/o5',
+    'codex/computer-use-preview', 'claude/kimi-k2', 'codex/qwen3-coder', 'meta/llama-4-maverick']);
 });
 
-for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerId} takes the gateway with its own config schema and advertised Antigravity Claude routes`, async () => {
+test("Antigravity's models, Claude's routed there included, and Gemini are offered to no harness but Antigravity", async () => {
+  // Google bans an account used outside Antigravity: a gateway that translates them to every API still keeps them there.
+  const anyApi = ['anthropic', 'openai', 'openai-response'];
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return Response.json({ data: [
+      ...['antigravity/claude-opus-5-5-high', 'antigravity/gemini-3-flash', 'gemini/gemini-3-pro', 'google/gemini-3-flash-lite',
+        'claude/claude-opus-5-5', 'codex/gpt-6-sol', 'kimi/kimi-k2'].map(id => ({ id, supported_endpoint_types: anyApi })),
+      // An older catalog without endpoint metadata does not carry them across either.
+      { id: 'antigravity/claude-sonnet-5' }, { id: 'antigravity/gemini-legacy' },
+    ] });
+  } });
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+  const owner = await harness.connect();
+  const offered = async (providerId: 'claude' | 'codex' | 'opencode' | 'opencode-v2') => {
+    if (providerId.startsWith('opencode')) await owner.call('providers.setEnabled', { providerId, enabled: true });
+    const account = await owner.call('accounts.add', { providerId, label: `Gateway ${providerId}` });
+    return (await owner.call('providers.probe', { providerId, accountId: account.id })).models.map(model => model.id);
+  };
+  expect(await offered('claude')).toEqual(['claude-opus-5-5', 'kimi/kimi-k2']);
+  expect(await offered('codex')).toEqual(['codex/gpt-6-sol', 'kimi/kimi-k2']);
+  for (const providerId of ['opencode', 'opencode-v2'] as const) {
+    expect(await offered(providerId)).toEqual(['douane/kimi/kimi-k2']);
+    // Nor does a catalog OpenCode was offered before, still stored for its next spawn.
+    harness.core.journal.setSetting('subscription-proxy-opencode-models', [{ id: 'antigravity/gemini-3-flash', name: 'Gemini' }, { id: 'kimi/kimi-k2', name: 'Kimi' }]);
+    const injected = JSON.parse(subscriptionProxyEnv(harness.core, harness.core.providers.require(providerId))['OPENCODE_CONFIG_CONTENT']!);
+    expect(Object.keys(injected[providerId === 'opencode' ? 'provider' : 'providers'].douane.models)).toEqual(['kimi/kimi-k2']);
+  }
+});
+
+for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerId} takes the gateway with its own config schema and none of Antigravity's models`, async () => {
   const anyApi = ['anthropic', 'openai', 'openai-response'];
   const sent: { key: string | null } = { key: null };
   gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
@@ -264,8 +292,8 @@ for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerI
         'codex/o5', 'claude/default', 'codex/qwen3-coder'].map(id => ({ id, name: `Name of ${id}`, supported_endpoint_types: anyApi })),
       // A model the gateway only answers over Messages has no Chat Completions route for OpenCode to call.
       { id: 'kimi/messages-only', supported_endpoint_types: ['anthropic'] },
-      { id: 'antigravity/claude-messages-only', supported_endpoint_types: ['anthropic'] },
-      // Legacy catalogs remain usable, but cannot establish a cross-harness Claude route.
+      // A legacy catalog that says nothing of its APIs is taken at its word, Antigravity's models aside.
+      { id: 'kimi/kimi-legacy' },
       { id: 'antigravity/claude-unadvertised' },
       { id: 'antigravity/gemini-legacy' },
       // An id that could not be a key of OpenCode's configuration is left out rather than written into it.
@@ -284,10 +312,10 @@ for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerI
   // No OpenCode on a test machine: its own list is missing, the gateway's stands alone.
   const { models } = await owner.call('providers.probe', { providerId, accountId: account.id });
   expect(sent.key).toBe('Bearer gateway-key');
-  // Only explicitly advertised Antigravity Claude routes cross the native-harness boundary.
-  expect(models.map(model => model.id)).toEqual(['douane/antigravity/claude-sonnet-5-5-high', 'douane/antigravity/gemini-3-flash', 'douane/antigravity/gpt-oss-120b-medium',
-    'douane/muse/muse-code', 'douane/opencode_go/kimi-k3', 'douane/codex/qwen3-coder', 'douane/antigravity/gemini-legacy']);
-  expect(models[0]).toEqual({ id: 'douane/antigravity/claude-sonnet-5-5-high', name: 'Name of antigravity/claude-sonnet-5-5-high' });
+  // Antigravity's models, whatever their family, stay in Antigravity.
+  expect(models.map(model => model.id)).toEqual(['douane/muse/muse-code', 'douane/opencode_go/kimi-k3', 'douane/codex/qwen3-coder',
+    'douane/kimi/kimi-legacy']);
+  expect(models[0]).toEqual({ id: 'douane/muse/muse-code', name: 'Name of muse/muse-code' });
 
   const provider = harness.core.providers.require(providerId);
   const collection = providerId === 'opencode' ? 'provider' : 'providers';
@@ -304,13 +332,10 @@ for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerI
   // The key is named, never written: OpenCode reads it from its environment.
   expect(env['OPENCODE_CONFIG_CONTENT']).not.toContain('gateway-key');
   const catalog = {
-    'antigravity/claude-sonnet-5-5-high': { name: 'Name of antigravity/claude-sonnet-5-5-high' },
-    'antigravity/gemini-3-flash': { name: 'Name of antigravity/gemini-3-flash' },
-    'antigravity/gpt-oss-120b-medium': { name: 'Name of antigravity/gpt-oss-120b-medium' },
     'muse/muse-code': { name: 'Name of muse/muse-code' },
     'opencode_go/kimi-k3': { name: 'Name of opencode_go/kimi-k3' },
     'codex/qwen3-coder': { name: 'Name of codex/qwen3-coder' },
-    'antigravity/gemini-legacy': { name: 'antigravity/gemini-legacy' },
+    'kimi/kimi-legacy': { name: 'kimi/kimi-legacy' },
   };
   const integration = providerId === 'opencode' ? {
     npm: '@ai-sdk/openai-compatible', name: 'Douane',
@@ -360,45 +385,45 @@ for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerI
 for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerId} preserves gateway thinking and token limits without inventing legacy capabilities`, async () => {
   gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
     return Response.json({ data: [
-      { id: 'antigravity/claude-opus-4-6-thinking', name: 'Opus thinking', supported_endpoint_types: ['openai'],
+      { id: 'opencode_go/kimi-k3-thinking', name: 'Kimi thinking', supported_endpoint_types: ['openai'],
         context_length: 200_000, max_output_tokens: 64_000,
         thinking: { min: 1024, max: 32_768, zero_allowed: false, dynamic_allowed: true, levels: [] } },
-      { id: 'antigravity/gemini-alias', supported_endpoint_types: ['openai'], context_window: 8192, max_output_tokens: 4096, thinking: null },
-      { id: 'antigravity/gemini-invalid', context_length: '200000', max_output_tokens: -1, thinking: { min: -1, max: '32000', levels: [] } },
-      { id: 'antigravity/gemini-effort-only', supported_endpoint_types: ['openai'],
+      { id: 'qwen/qwen-alias', supported_endpoint_types: ['openai'], context_window: 8192, max_output_tokens: 4096, thinking: null },
+      { id: 'qwen/qwen-invalid', context_length: '200000', max_output_tokens: -1, thinking: { min: -1, max: '32000', levels: [] } },
+      { id: 'qwen/qwen-effort-only', supported_endpoint_types: ['openai'],
         supportedReasoningEfforts: [{ reasoningEffort: 'high' }] },
-      { id: 'antigravity/gemini-context-only', supported_endpoint_types: ['openai'], context_length: 8192 },
-      { id: 'antigravity/gemini-output-only', supported_endpoint_types: ['openai'], max_output_tokens: 4096 },
-      { id: 'antigravity/gemini-invalid-output', supported_endpoint_types: ['openai'], context_length: 8192, max_output_tokens: -1 },
-      { id: 'antigravity/gemini-invalid-context', supported_endpoint_types: ['openai'], context_length: '8192', max_output_tokens: 4096 },
+      { id: 'qwen/qwen-context-only', supported_endpoint_types: ['openai'], context_length: 8192 },
+      { id: 'qwen/qwen-output-only', supported_endpoint_types: ['openai'], max_output_tokens: 4096 },
+      { id: 'qwen/qwen-invalid-output', supported_endpoint_types: ['openai'], context_length: 8192, max_output_tokens: -1 },
+      { id: 'qwen/qwen-invalid-context', supported_endpoint_types: ['openai'], context_length: '8192', max_output_tokens: 4096 },
     ] });
   } });
   harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
   const provider = harness.core.providers.require(providerId);
   const models = await readSubscriptionProxyModels(harness.core, provider);
-  expect(models?.[0]?.id).toBe('douane/antigravity/claude-opus-4-6-thinking');
+  expect(models?.[0]?.id).toBe('douane/opencode_go/kimi-k3-thinking');
   // The inline config is rebuilt from the persisted catalog, including after later spawns.
   const injected = JSON.parse(subscriptionProxyEnv(harness.core, provider)['OPENCODE_CONFIG_CONTENT']!);
   const catalog = injected[providerId === 'opencode' ? 'provider' : 'providers'].douane.models;
-  expect(catalog['antigravity/claude-opus-4-6-thinking']).toEqual({
-    name: 'Opus thinking', limit: { context: 200_000, output: 64_000 },
+  expect(catalog['opencode_go/kimi-k3-thinking']).toEqual({
+    name: 'Kimi thinking', limit: { context: 200_000, output: 64_000 },
     ...(providerId === 'opencode'
       ? { reasoning: true, interleaved: { field: 'reasoning_content' } }
       : { compatibility: { reasoningField: 'reasoning_content' } }),
   });
-  expect(catalog['antigravity/gemini-alias']).toEqual({ name: 'antigravity/gemini-alias', limit: { context: 8192, output: 4096 } });
-  expect(catalog['antigravity/gemini-invalid']).toEqual({ name: 'antigravity/gemini-invalid' });
-  expect(catalog['antigravity/gemini-effort-only']).toEqual({ name: 'antigravity/gemini-effort-only',
+  expect(catalog['qwen/qwen-alias']).toEqual({ name: 'qwen/qwen-alias', limit: { context: 8192, output: 4096 } });
+  expect(catalog['qwen/qwen-invalid']).toEqual({ name: 'qwen/qwen-invalid' });
+  expect(catalog['qwen/qwen-effort-only']).toEqual({ name: 'qwen/qwen-effort-only',
     ...(providerId === 'opencode'
       ? { reasoning: true, interleaved: { field: 'reasoning_content' } }
       : { compatibility: { reasoningField: 'reasoning_content' } }),
   });
   // OpenCode 1 requires both limits when the block is present; OpenCode 2 accepts each independently.
   for (const [id, limit] of [
-    ['antigravity/gemini-context-only', { context: 8192 }],
-    ['antigravity/gemini-output-only', { output: 4096 }],
-    ['antigravity/gemini-invalid-output', { context: 8192 }],
-    ['antigravity/gemini-invalid-context', { output: 4096 }],
+    ['qwen/qwen-context-only', { context: 8192 }],
+    ['qwen/qwen-output-only', { output: 4096 }],
+    ['qwen/qwen-invalid-output', { context: 8192 }],
+    ['qwen/qwen-invalid-context', { output: 4096 }],
   ] as const) {
     expect(catalog[id]).toEqual({ name: id, ...(providerId === 'opencode-v2' ? { limit } : {}) });
   }
@@ -407,8 +432,18 @@ for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerI
 test('Grok runs through Douane by its environment alone, and keeps its own sign-in behind CLIProxyAPI', async () => {
   let listed = 0;
   gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
-    if (new URL(request.url).pathname.endsWith('/models')) listed += 1;
-    return Response.json({ data: [{ id: 'xai/grok-5' }] });
+    const path = new URL(request.url).pathname;
+    if (request.method === 'GET' && path === '/v1/quotas') {
+      expect(request.headers.get('Authorization')).toBe('Bearer gateway-key');
+      return Response.json({ providers: [{ provider: 'xai', name: 'Grok', entries: [
+        { id: 'grok-seat', label: 'Gateway Grok', status: 'ready', accounts: 1, windows: [{ id: 'weekly', used_percent: 25 }] },
+      ] }] });
+    }
+    if (request.method === 'GET' && path.endsWith('/models')) {
+      listed += 1;
+      return Response.json({ data: [{ id: 'xai/grok-5' }] });
+    }
+    throw new Error(`Unexpected provider request: ${request.method} ${path}`);
   } });
   const url = `http://127.0.0.1:${gateway.port}/v1`;
   harness = await startTestCore({ settings: { subscriptionProxy: config(url) } });
@@ -438,6 +473,12 @@ test('Grok runs through Douane by its environment alone, and keeps its own sign-
     { XAI_API_KEY: 'inherited-key', GROK_MODELS_BASE_URL: 'https://inherited.test/v1' });
   expect(spawned['XAI_API_KEY']).toBe('gateway-key');
   expect(spawned['GROK_MODELS_BASE_URL']).toBe(url);
+  const route = JSON.parse(spawned['GROK_CONFIG']!).models.extra_headers['x-douane-provider'];
+  const quotas = await owner.call('quotas.list', {});
+  expect(quotas.find(row => row.providerId === route && row.gateway)).toMatchObject({
+    accountId: 'proxy:xai:grok-seat', windows: [{ id: 'weekly', usedPercent: 25 }], gateway: { kind: 'douane', entryId: 'grok-seat' },
+  });
+  expect(quotas.some(row => row.accountId === account.id)).toBe(false);
   // The CLI lists the gateway's models itself: the core reads no catalog to merge into its answer.
   expect(await readSubscriptionProxyModels(harness.core, provider)).toBeNull();
   expect(listed).toBe(0);
@@ -516,7 +557,7 @@ test('legacy CLIProxy catalogs select native families and malformed gateway erro
     return fail ? new Response('private-token-in-body', { status: 401 }) : Response.json({ data: [
       { id: 'claude/claude-sonnet-4-5' }, { id: 'codex/gpt-5.4', display_name: 'Codex GPT 5.4',
         supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'More reasoning' }, { reasoningEffort: 'xhigh' }, { reasoningEffort: 'xhigh' }] },
-      { id: 'gemini-3-pro' }, { id: 'antigravity/gpt-oss-120b-medium' }, { id: 'codex/o5-mini' },
+      { id: 'gemini-3-pro' }, { id: 'antigravity/gpt-oss-120b-medium' }, { id: 'opencode_go/gpt-oss-120b-medium' }, { id: 'codex/o5-mini' },
     ] });
   } });
   harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}`, 'cliproxyapi') } });
@@ -524,7 +565,7 @@ test('legacy CLIProxy catalogs select native families and malformed gateway erro
   const account = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway' });
   expect((await owner.call('providers.probe', { providerId: 'codex', accountId: account.id })).models).toEqual([{ id: 'codex/gpt-5.4', name: 'Codex GPT 5.4', default: true,
     effort: { levels: [{ id: 'high', label: 'High', description: 'More reasoning' }, { id: 'xhigh', label: 'Extra high' }], default: 'high' } },
-    { id: 'antigravity/gpt-oss-120b-medium', name: 'antigravity/gpt-oss-120b-medium', default: false },
+    { id: 'opencode_go/gpt-oss-120b-medium', name: 'opencode_go/gpt-oss-120b-medium', default: false },
     { id: 'codex/o5-mini', name: 'codex/o5-mini', default: false }]);
   fail = true;
   expect(await thrown(owner.call('providers.probe', { providerId: 'codex', accountId: account.id, refresh: true }))).toThrow('HTTP 401');
@@ -617,6 +658,21 @@ test('a list saved before the agent\'s rows were kept apart still gives its rows
   } finally { restore(); }
 });
 
+test('a list saved before Antigravity\'s models were kept to their harness answers a picker without them', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { return new Response('down', { status: 503 }); } });
+  const sol = { id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol', default: true };
+  const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => { throw new Error('codex app-server did not start'); } });
+  try {
+    harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+    const owner = await harness.connect();
+    const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
+    saveCatalog(harness.core, 'codex', codex.id, { models: [sol, { id: 'antigravity/claude-opus-5-5-high', name: 'Opus' },
+      { id: 'antigravity/gpt-oss-120b-medium', name: 'GPT-OSS' }, { id: 'gemini-3-pro', name: 'Gemini' }, { id: 'codex/gpt-new', name: 'GPT new' }], probedAt: 1 });
+    expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id })).models.map(model => model.id))
+      .toEqual(['gpt-6.2-sol', 'codex/gpt-new']);
+  } finally { restore(); }
+});
+
 test('an agent list read under a gateway that changed meanwhile is never kept for the new one', async () => {
   const serve = (id: string) => Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
     return Response.json({ data: [{ id, name: id, supported_endpoint_types: ['openai-response'] }] });
@@ -642,4 +698,54 @@ test('an agent list read under a gateway that changed meanwhile is never kept fo
     const models = (await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models.map(model => model.id);
     expect(models).not.toContain('stale-native');
   } finally { restore(); other.stop(true); agent.resolve(); }
+});
+
+test('Claude gateway models retain Fable capabilities and only fold the Claude route', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => Response.json({ data: [
+    { id: 'claude/claude-fable-5-2',
+      reasoning_efforts: [{ id: 'high', default: true }], capabilities: {
+        adaptive_thinking: true,
+        speed: { default: 'standard', options: ['standard', { id: 'fast', label: 'Fast', description: 'Claude Fast mode' }] },
+        effort: { levels: ['low', 'high'], default: 'high' },
+      },
+      service_tiers: [{ id: 'with spaces' }, { name: 'Missing ID' }, null] },
+    { id: 'claude-fable-5-2', service_tiers: ['default'], additional_speed_tiers: ['standard', { id: 'fast', name: 'Fast' }] },
+    { id: 'openrouter/claude-fable-5-2' },
+  ] }) });
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}`) } });
+  const provider = harness.core.providers.require('claude');
+  const rows = await readSubscriptionProxyModels(harness.core, provider);
+  expect(rows?.map(row => row.id)).toEqual(['claude-fable-5-2', 'openrouter/claude-fable-5-2']);
+  expect(rows?.[0]).toMatchObject({
+    aliases: [{ id: 'claude/claude-fable-5-2' }],
+    effort: { default: 'high', levels: [{ id: 'low' }, { id: 'high' }, { id: 'ultrathink' }] },
+    speeds: [{ id: 'fast', label: 'Fast', description: 'Claude Fast mode' }],
+  });
+  expect(subscriptionProxyEnv(harness.core, provider).ANTHROPIC_CUSTOM_HEADERS).toContain('x-douane-model-catalog: claude');
+  const native = { id: 'claude-fable-5-2', name: 'Fable 5.2', ...modelCapabilities({
+    capabilities: { speed: false, adaptive_thinking: false },
+  }, { claude: true }) };
+  const [merged] = mergeProxyModels([native], rows ?? [], 'claude-sdk');
+  expect(merged?.speeds).toBeUndefined();
+  expect(merged?.effort?.levels.map(level => level.id)).toEqual(['low', 'high']);
+  expect(merged?.aliases).toEqual([{ id: 'claude/claude-fable-5-2' }]);
+});
+
+test('malformed speed metadata leaves the field unknown while an empty tier list refuses proxy fallback', () => {
+  const model = { id: 'claude-fable-5-2', name: 'Fable 5.2' };
+  const proxy = [{ ...model, speeds: [{ id: 'fast', label: 'Fast' }] }];
+  const merge = (service_tiers: unknown[]) => mergeProxyModels([{ ...model, ...modelCapabilities({ service_tiers }) }], proxy, 'claude-sdk')[0]?.speeds;
+  expect(merge([null, {}, { id: 'invalid tier' }])).toEqual(proxy[0]?.speeds);
+  expect(merge([])).toBeUndefined();
+});
+
+test('model discovery refuses an oversized gateway response before parsing', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return new Response('x'.repeat((4 << 20) + 64), { headers: { 'content-type': 'application/json' } });
+  } });
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}`) } });
+  const provider = harness.core.providers.require('claude');
+  const failed = await readSubscriptionProxyModels(harness.core, provider).catch((error: unknown) => error);
+  expect(failed).toBeInstanceOf(Error);
+  expect((failed as Error).message).toContain('bounded response');
 });

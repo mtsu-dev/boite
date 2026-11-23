@@ -140,6 +140,8 @@ export interface HarnessUpdate {
   state: 'idle' | 'checking' | 'updating' | 'failed';
   /** Why the last check or update failed, null otherwise. */
   message: string | null;
+  /** Present for failures classified by the machine that checked or installed the agent. */
+  failedPhase?: 'check' | 'install';
   checkedAt: Timestamp | null;
   /**
    * While `updating`: the running turns of this agent that have not paused
@@ -309,7 +311,13 @@ export interface EffortLevel {
   description?: string;
 }
 
+export interface ModelAlias {
+  id: string;
+  effort?: string;
+}
+
 export interface ModelInfo {
+  aliases?: ModelAlias[];
   id: string;
   name: string;
   default?: boolean;
@@ -424,6 +432,8 @@ export interface ProviderSummary {
   capabilities: ProviderCapabilities;
   /** How Boite starts login: a piped command, ACP, a terminal or a device-code protocol. */
   login: false | { kind: 'command' | 'acp' | 'terminal' | 'device' };
+  /** Steering implemented by this ACP variant. Availability still depends on its turn. */
+  acpSteering?: boolean;
   /** True when the provider cannot use its default login location. */
   alwaysIsolated: boolean;
   /** Where the managed install stands, null when this profile has no `install` block. */

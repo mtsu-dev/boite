@@ -1,9 +1,11 @@
 import { dlopen, FFIType, ptr } from 'bun:ffi';
+import { toNamespacedPath } from 'node:path';
 import type { HeldFileLock } from '../types.ts';
 
 const GENERIC_READ = 0x8000_0000;
 const GENERIC_WRITE = 0x4000_0000;
 const FILE_READ_ATTRIBUTES = 0x80;
+const FILE_SHARE_READ_DELETE = 0x5;
 /** Read, write and delete stay shared: the holder's record is read and rewritten by path, and released by deletion. */
 const FILE_SHARE_ALL = 0x7;
 const OPEN_EXISTING = 3;
@@ -23,6 +25,7 @@ function loadKernel32() {
   return dlopen('kernel32.dll', {
     // Handles travel as u64: INVALID_HANDLE_VALUE is all ones, past what a number holds exactly.
     CreateFileW: { args: [FFIType.ptr, FFIType.u32, FFIType.u32, FFIType.ptr, FFIType.u32, FFIType.u32, FFIType.ptr], returns: FFIType.u64 },
+    MoveFileExW: { args: [FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
     LockFileEx: { args: [FFIType.u64, FFIType.u32, FFIType.u32, FFIType.u32, FFIType.u32, FFIType.ptr], returns: FFIType.i32 },
     GetFileInformationByHandle: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
     WriteFile: { args: [FFIType.u64, FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
@@ -33,10 +36,25 @@ function loadKernel32() {
 }
 let kernel32: ReturnType<typeof loadKernel32>['symbols'] | undefined;
 
-function open(path: string, access: number, disposition: number): bigint | null {
+function open(path: string, access: number, disposition: number, sharing = FILE_SHARE_ALL): bigint | null {
   const wide = new Uint8Array(Buffer.from(`${path}\0`, 'utf16le'));
-  const handle = kernel32!.CreateFileW(ptr(wide), access, FILE_SHARE_ALL, null, disposition, FILE_ATTRIBUTE_NORMAL, null);
+  const handle = kernel32!.CreateFileW(ptr(wide), access, sharing, null, disposition, FILE_ATTRIBUTE_NORMAL, null);
   return handle === 0n || handle === INVALID_HANDLE_VALUE ? null : handle;
+}
+
+/** Deny writable handles and mappings, while sharing reads and deletion. */
+export function windowsExcludeRecoveryWriters(file: string): (() => void) | null {
+  kernel32 ??= loadKernel32().symbols;
+  const handle = open(file, GENERIC_READ, OPEN_EXISTING, FILE_SHARE_READ_DELETE);
+  return handle === null ? null : () => { kernel32!.CloseHandle(handle); };
+}
+
+/** With flags zero the move fails if the destination exists or cannot be moved atomically. */
+export function windowsRestoreRecoveryName(from: string, to: string): void {
+  kernel32 ??= loadKernel32().symbols;
+  const source = Buffer.from(`${toNamespacedPath(from)}\0`, 'utf16le');
+  const target = Buffer.from(`${toNamespacedPath(to)}\0`, 'utf16le');
+  kernel32.MoveFileExW(ptr(source), ptr(target), 0);
 }
 
 /** Volume serial and 64-bit file index from BY_HANDLE_FILE_INFORMATION, or null when unreadable. */

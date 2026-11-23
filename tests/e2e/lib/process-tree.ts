@@ -22,7 +22,7 @@ const OFF_EXE = 44;
 const EXE_CHARS = 260;
 
 /** Selects descendants from a snapshot, with creation times supplied independently of Windows. */
-export function selectProcessTree(all: readonly TreeProcess[], rootPid: number, createdAt: (pid: number) => bigint | null): TreeProcess[] {
+export function selectProcessTree(all: readonly TreeProcess[], rootPid: number, createdAt: (pid: number) => bigint | null, launcherPid?: number): TreeProcess[] {
   if (!all.some(process => process.ProcessId === rootPid)) return [];
   const times = new Map<number, bigint | null>();
   const time = (pid: number) => {
@@ -33,6 +33,8 @@ export function selectProcessTree(all: readonly TreeProcess[], rootPid: number, 
   for (let grew = true; grew;) {
     grew = false;
     for (const process of all) {
+      // A recycled PPID can point back to the launcher even when times tie.
+      if (process.ProcessId === launcherPid) continue;
       if (!ids.has(process.ProcessId) && ids.has(process.ParentProcessId) && process.ProcessId !== 0) {
         const parent = time(process.ParentProcessId);
         const child = time(process.ProcessId);
@@ -81,7 +83,8 @@ export async function windowsProcessTree(rootPid: number, authorized?: () => boo
     } finally {
       k32.symbols.CloseHandle(snapshot);
     }
-    const tree = selectProcessTree(all, rootPid, creationTime);
+    // Every root inspected here was launched by this test process.
+    const tree = selectProcessTree(all, rootPid, creationTime, process.pid);
     for (const process of tree) process.CommandLine = commandLine(process.ProcessId);
     return tree;
   } finally {

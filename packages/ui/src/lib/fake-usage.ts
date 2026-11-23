@@ -235,7 +235,27 @@ function seededDay(day: Date, today: Date, now: number): Group[] {
   return groups.filter((group) => group.at <= now);
 }
 
-interface LedgerOptions { seeded: boolean; finished: FakeFinishedTurn[]; now?: number }
+type ProjectName = Pick<UsageHistoryProject, 'name' | 'removed'>;
+type ThreadName = Pick<UsageHistoryThread, 'title' | 'projectId' | 'providerId' | 'archived'>;
+
+interface LedgerOptions {
+  seeded: boolean;
+  finished: FakeFinishedTurn[];
+  projects?: ReadonlyMap<ProjectId, ProjectName>;
+  threads?: ReadonlyMap<ThreadId, ThreadName>;
+  visibleOnly?: boolean;
+  now?: number;
+}
+
+function projectName(options: LedgerOptions, projectId: ProjectId): ProjectName | undefined {
+  return options.projects?.get(projectId) ?? LEDGER_PROJECTS[projectId];
+}
+
+function visibleGroup(group: Group, options: LedgerOptions): boolean {
+  // Seeded turns can name a project different from the current thread's.
+  return !options.visibleOnly || options.threads?.has(group.threadId) === true
+    && (group.projectId === null || options.projects?.get(group.projectId)?.removed === false);
+}
 
 /** The ledger's groups over `[edges[0], edges[last])`. */
 function ledger(edges: readonly number[], options: LedgerOptions): Group[] {
@@ -260,10 +280,19 @@ function ledger(edges: readonly number[], options: LedgerOptions): Group[] {
 }
 
 /** A thread's totals over the groups given, named as `usage.history` names it. */
-function threadTotals(groups: readonly Group[], providerId?: string): Map<ThreadId, UsageHistoryThread> {
+function threadTotals(groups: readonly Group[], options: LedgerOptions, providerId?: string): Map<ThreadId, UsageHistoryThread> {
   const threads = new Map<ThreadId, UsageHistoryThread>();
   for (const group of groups) {
-    const thread = threads.get(group.threadId) ?? { threadId: group.threadId, title: group.title, projectId: group.projectId, providerId: providerId ?? group.providerId, archived: group.threadId.startsWith('u-'), turns: 0, usage: emptyUsage() };
+    const named = options.threads?.get(group.threadId);
+    const thread = threads.get(group.threadId) ?? {
+      threadId: group.threadId,
+      title: named?.title ?? group.title,
+      projectId: group.projectId,
+      providerId: providerId ?? named?.providerId ?? group.providerId,
+      archived: named?.archived ?? (group.threadId.startsWith('u-') || (group.projectId !== null && projectName(options, group.projectId)?.removed === true)),
+      turns: 0,
+      usage: emptyUsage(),
+    };
     thread.turns += group.turns;
     addUsage(thread.usage, group.usage);
     threads.set(group.threadId, thread);
@@ -280,14 +309,16 @@ export function fakeUsageHistory(edges: number[], options: LedgerOptions & { pro
   const groups = ledger(edges, options);
   const projects = new Map<ProjectId | null, UsageHistoryProject>();
   for (const group of groups) {
-    const known = group.projectId === null ? undefined : LEDGER_PROJECTS[group.projectId];
+    const known = group.projectId === null ? undefined : projectName(options, group.projectId);
     const project = projects.get(group.projectId) ?? { projectId: group.projectId, name: group.projectId === null ? null : known?.name ?? null, removed: group.projectId !== null && (known?.removed ?? true), turns: 0, usage: emptyUsage() };
     project.turns += group.turns;
     addUsage(project.usage, group.usage);
     projects.set(group.projectId, project);
   }
-  const kept = groups.filter((group) => (options.providerId === undefined || group.providerId === options.providerId)
-    && (options.projectId === undefined || group.projectId === options.projectId));
+  const { projectId } = options;
+  const hiddenProject = options.visibleOnly && typeof projectId === 'string' && options.projects?.get(projectId)?.removed !== false;
+  const kept = hiddenProject ? [] : groups.filter(group => (options.providerId === undefined || group.providerId === options.providerId)
+    && (projectId === undefined || group.projectId === projectId));
   const rows = new Map<string, UsageHistoryRow>();
   for (const group of kept) {
     let bucket = 0;
@@ -301,7 +332,12 @@ export function fakeUsageHistory(edges: number[], options: LedgerOptions & { pro
     rows.set(key, row);
   }
   const ordered = [...rows.values()].sort((a, b) => a.bucket - b.bucket || a.providerId.localeCompare(b.providerId) || (a.model ?? '').localeCompare(b.model ?? ''));
-  return { edges: [...edges], rows: ordered, threads: [...threadTotals(kept, options.providerId).values()], projects: [...projects.values()], pricing: { ...LEDGER_PRICING } };
+  const eligible = options.visibleOnly ? kept.filter(group => visibleGroup(group, options)) : kept;
+  return {
+    edges: [...edges], rows: ordered, threads: [...threadTotals(eligible, options, options.providerId).values()],
+    projects: [...projects.values()].filter(project => !options.visibleOnly || !project.removed),
+    pricing: { ...LEDGER_PRICING },
+  };
 }
 
 /**
@@ -310,7 +346,8 @@ export function fakeUsageHistory(edges: number[], options: LedgerOptions & { pro
  */
 export function fakeUsageThread(threadId: ThreadId, edges: number[], options: LedgerOptions & { providerId?: string }): UsageThreadDetail {
   const { providerId } = options;
-  const groups = ledger(edges, options).filter((group) => providerId === undefined || group.providerId === providerId);
+  const groups = ledger(edges, options).filter(group => (providerId === undefined || group.providerId === providerId)
+    && visibleGroup(group, options));
   const own = groups.filter((group) => group.threadId === threadId);
   const turns: UsageThreadTurn[] = [];
   let reported = 0;
@@ -335,18 +372,19 @@ export function fakeUsageThread(threadId: ThreadId, edges: number[], options: Le
   const truncated = turns.length > USAGE_THREAD_TURNS_MAX;
   const finished = options.finished.find((turn) => turn.threadId === threadId);
   const named = PROFILES.flatMap((profile) => profile.threads.map((thread) => ({ ...thread, providerId: profile.providerId }))).find((thread) => thread.id === threadId);
-  const thread = threadTotals(own, providerId).get(threadId) ?? {
+  const known = options.threads?.get(threadId);
+  const thread = threadTotals(own, options, providerId).get(threadId) ?? {
     threadId,
-    title: named?.title ?? finished?.title ?? '',
-    projectId: named === undefined ? finished?.projectId ?? null : named.project === undefined ? 'p-boite' : named.project,
-    providerId: providerId ?? named?.providerId ?? finished?.providerId ?? '',
-    archived: threadId.startsWith('u-'),
+    title: known?.title ?? named?.title ?? finished?.title ?? '',
+    projectId: known ? known.projectId : named === undefined ? finished?.projectId ?? null : named.project === undefined ? 'p-boite' : named.project,
+    providerId: providerId ?? known?.providerId ?? named?.providerId ?? finished?.providerId ?? '',
+    archived: known?.archived ?? threadId.startsWith('u-'),
     turns: 0,
     usage: emptyUsage(),
   };
   const cost = (entry: UsageHistoryThread) => entry.usage.costUsdEquivalent ?? 0;
   const tokens = (entry: UsageHistoryThread) => entry.usage.inputTokens + entry.usage.outputTokens + entry.usage.cacheReadTokens + entry.usage.cacheWriteTokens;
-  const children = [...threadTotals(groups.filter((group) => group.parentId === threadId), providerId).values()]
+  const children = [...threadTotals(groups.filter(group => group.parentId === threadId), options, providerId).values()]
     .sort((a, b) => cost(b) - cost(a) || tokens(b) - tokens(a) || b.turns - a.turns);
   return { thread, reported, priced, turns: truncated ? turns.slice(-USAGE_THREAD_TURNS_MAX) : turns, truncated, children };
 }

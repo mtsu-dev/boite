@@ -5,9 +5,9 @@
  * are in `packages/contracts/src/setting-requests.ts`, the core's cards in
  * `packages/core/src/threads/cards.ts`.
  */
-import { COORDINATION_REACH, EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk, type SettingsPage } from '@boite/contracts';
+import { COORDINATION_REACH, EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk } from '@boite/contracts';
 import { experimentCopy } from './experiment-copy';
-import { experimentsShown } from './experiments.svelte';
+import { movedTo, settingsDestination, type SettingsTab } from './settings-tabs';
 import { formatLocale } from './i18n.svelte';
 import { fill, strings } from './strings';
 import { formatTokens } from './format';
@@ -127,6 +127,7 @@ export function settingHelp(key: RequestableKey): string | null {
     groupThreads: [strings.machines.groupThreadsHint],
     groupBots: [strings.machines.groupBotsHint],
     agentBotCreation: [`${alone.bots}: ${alone.botsEffect}`],
+    contacts: [alone.contactsEffect],
     coordinationReach: COORDINATION_REACH.map(step => `${alone.steps[step]}: ${alone.effects[step]}`),
   };
   const text = parts[key as RequestableSetting];
@@ -175,14 +176,16 @@ export function settingValueText(key: RequestableKey, value: unknown, providers:
   return JSON.stringify(value);
 }
 
-export function settingsPageLabel(page: SettingsPage): string {
+export function settingsPageLabel(page: SettingsTab): string {
   const tabs = strings.settings.tabs;
-  const labels: Record<SettingsPage, string> = {
+  const labels: Record<SettingsTab, string> = {
+    home: tabs.home,
     general: tabs.general,
     appearance: tabs.appearance,
     keyboard: tabs.keyboard,
     voice: strings.speech.heading,
     accounts: tabs.accounts,
+    browser: tabs.browser,
     plugins: tabs.plugins,
     brain: strings.brain.heading,
     usage: tabs.usage,
@@ -191,6 +194,7 @@ export function settingsPageLabel(page: SettingsPage): string {
     resources: tabs.resources,
     machines: tabs.machines,
     advanced: tabs.advanced,
+    diagnostics: tabs.diagnostics,
     experiments: tabs.experiments,
   };
   return labels[page];
@@ -234,50 +238,14 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
   return labels[section] ?? null;
 }
 
-/** Pages a paired device's Settings leaves out: `OWNER_TABS` in `SettingsShell.svelte`. */
-const OWNER_PAGES: readonly SettingsPage[] = ['accounts', 'plugins', 'resources', 'brain'];
-/** Cards of the shared pages that only the owner's Settings draws there. */
-const OWNER_SECTIONS: readonly string[] = ['quiet', 'agents-alone', 'agent-replies', 'worktrees', 'privacy', 'execution', 'origins', 'cache-keepalive', 'auto-compact', 'device-stream', 'background-compaction'];
-/**
- * What a phone browser's Settings (`MobileSettings.svelte`) draws: the pages
- * it opens whole, then the cards it has of the others. Keep it in step with
- * that component's `page`.
- */
-const PHONE_PAGES: readonly SettingsPage[] = ['appearance', 'accounts', 'voice', 'usage', 'limits', 'task-manager', 'experiments', 'brain'];
-const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
-  resources: ['limits', 'tasks'],
-  machines: ['machines', 'group'],
-  general: ['archived', 'worktrees', 'conversations', 'quiet', 'agents-alone', 'agent-replies'],
-  advanced: ['cache-keepalive', 'auto-compact', 'background-compaction', 'device-stream'],
-};
-
-/**
- * Where a card's setting is now. A card asked while the prompt cache
- * keepalive, background compaction and the live device stream were
- * experiments still names the Experiments
- * page; their switches are in System since, and no build lists that page.
- */
-const MOVED_TO_SYSTEM: readonly string[] = ['cache-keepalive', 'background-compaction', 'device-stream'];
-export function settingPlace(setting: SettingAsk): Pick<SettingAsk, 'page' | 'section'> {
-  if (setting.page === 'experiments' && setting.section !== null && MOVED_TO_SYSTEM.includes(setting.section)) return { page: 'advanced', section: setting.section };
-  return { page: setting.page, section: setting.section };
+/** Whether Settings draws the page or card a request names. */
+export function settingsReachable({ page, section }: Pick<SettingAsk, 'page' | 'section'>, client: { owner: boolean; phone: boolean }): boolean {
+  return settingsDestination(page, section, client);
 }
 
-/**
- * Whether this client's Settings has the card a settings card points at. A
- * button that would land on Home instead is not offered.
- */
-export function settingsReachable(asked: SettingAsk, client: { owner: boolean; phone: boolean }): boolean {
-  const setting = settingPlace(asked);
-  const section = setting.section;
-  // A Release has no Experiments page.
-  if (setting.page === 'experiments' && !experimentsShown()) return false;
-  if (!client.owner && (OWNER_PAGES.includes(setting.page) || (section !== null && OWNER_SECTIONS.includes(section)))) return false;
-  if (!client.phone || PHONE_PAGES.includes(setting.page)) return true;
-  const cards = PHONE_CARDS[setting.page];
-  if (cards === undefined) return false;
-  // Resources and Machines open as pages of their own; General and Advanced only through one of their cards.
-  return section === null ? setting.page === 'resources' || setting.page === 'machines' : cards.includes(section);
+/** The current Settings location of a card that may name an older route. */
+export function settingPlace({ page, section }: SettingAsk): { page: SettingsTab; section: SettingAsk['section'] } {
+  return { page: movedTo(page, section) ?? page, section };
 }
 
 /** `Resources › Limits`, the trail under a card. */

@@ -7,8 +7,8 @@ test('an owning Store follows current progress, reconnect snapshots, and complet
   const store = new Store();
   store.attach(client);
   const observed: string[] = [];
-  client.on('thread.updated', thread => {
-    if (thread.id === 't-trace' && thread.progress) observed.push(thread.progress.phase);
+  client.on('thread.progress', ({ threadId, progress }) => {
+    if (threadId === 't-trace') observed.push(progress.phase);
   });
   try {
     await store.connect();

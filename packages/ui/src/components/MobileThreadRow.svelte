@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { threadWait } from '../lib/background';
+  import WaitLine from './WaitLine.svelte';
   import { rowAsks, rowSaysState, stateForm } from '../lib/status-order';
-  import { Archive, Ellipsis, GitBranch, Pin, PinOff } from '@lucide/svelte';
+  import { Archive, Ellipsis, Pin, PinOff } from '@lucide/svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
@@ -14,7 +16,7 @@
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline from './ThreadHeadline.svelte';
   import ThreadBot from './ThreadBot.svelte';
-  import PullRequestBadge from './PullRequestBadge.svelte';
+  import ThreadRowDetails from './ThreadRowDetails.svelte';
   import ThreadState from './ThreadState.svelte';
   import { wordFit } from '../lib/word-fit';
   import { threadState } from '../lib/thread-state';
@@ -68,6 +70,7 @@
   /** A dot when the user must act or a turn failed, the arc for work, each with its word; "Done" for news; the time alone otherwise (ThreadState draws it then). */
   const form = $derived(stateForm(kind));
   const away = $derived(owner.connection !== 'ready');
+  const wait = $derived(!away && reason === undefined ? threadWait(thread, owner) : null);
   const pr = trackThreadPullRequest(() => ({ owner, thread }));
   /** A list row's pull request and branch; Activity's cards keep their own lines. */
   const pullRequest = $derived(reason === undefined ? pr.value : null);
@@ -106,9 +109,7 @@
       {#if bot}<ThreadBot {bot} attention={kind === 'waiting'} />{/if}
       {#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}
       {#if where?.host}<MachinePlace host={where.host} />{/if}
-      {#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}
-      {#if pullRequest}<PullRequestBadge {pullRequest} />{/if}
-      {#if branch}<span class="branch" data-testid="thread-branch" title={branch}><GitBranch size={12} /><span class="ui-label">{branch}</span></span>{/if}
+      <ThreadRowDetails offline={chip} {pullRequest} {branch} />
     </span>
     {#if since !== undefined}<time class="since ui-label" title={exactTime(since)}>{ago(since, now)}</time>{/if}
   </span>
@@ -134,9 +135,10 @@
       {#if reason !== undefined}
         <span class="title-line" data-row-title>{#if !feedKind && form !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} offline={away} ask={why} /></span>
       {:else}
-        <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} showProvider={bot !== null} offline={away}
+        <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} showProvider={bot !== null} offline={away} elapsedShownSince={wait?.since}
           at={rowSaysState(kind) ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
       {/if}
+      {#if wait}<WaitLine {wait} />{/if}
       {#if listLine}<span class="meta meta-room" aria-hidden="true"><span class="ui-label">&nbsp;</span></span>{/if}
     </button>
     <!-- A list row's place line over the room kept for it: the pull request's link cannot sit inside the row's button. -->
@@ -205,14 +207,11 @@
      moving the line ("atlas-api" lost its p). */
   .meta .where { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; padding-block: 0.3em; margin-block: -0.3em; overflow: hidden; white-space: nowrap; }
   .meta .where > .ui-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .where > .branch { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
-  .where > .branch :global(svg) { flex: none; }
-  .where > .branch > .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* The room the list row's place line takes in its button, and the line laid over it inside the button's 1 px border and padding. */
   .meta-room { visibility: hidden; }
   .list-meta { position: absolute; left: 13px; right: 13px; bottom: 10px; pointer-events: none; }
   /* "Offline" when nothing above says it: MachinePlace's state mark, alone. */
-  .where > .away { flex: none; padding: 0 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); font-size: var(--text-xs); line-height: 1.5; }
+  .where > :global(.offline-chip) { font-size: var(--text-xs); line-height: 1.5; }
   /* Activity's since when, last on the place line: the title keeps its line whole. */
   .meta .since { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   /* The title line's end: the mark, then the time, centred on the first line's capitals (the title's box is trimmed

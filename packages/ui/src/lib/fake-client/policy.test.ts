@@ -136,3 +136,12 @@ test('a core without the policy method leaves nothing locked', async ({ createSt
   expect(store.providers.some((provider) => provider.policy !== undefined)).toBe(false);
   expect(lockedBy(store.policy, 'network.push')).toBeNull();
 });
+
+test('contacts switched off refuse every path that opens something to a contact, and a refusal still passes', async ({ ready }) => {
+  const { client } = await ready({ delayMs: 0 });
+  await client.call('settings.set', { contacts: false });
+  const off = { code: RpcErrorCode.Refused, data: { reason: 'contacts-off' } };
+  await expect(client.call('contacts.decide', { id: 'creq-none', accept: true } as never)).rejects.toMatchObject(off);
+  await expect(client.call('contacts.decideMail', { id: 'mail-none', accept: true } as never)).rejects.toMatchObject(off);
+  await expect(client.call('contacts.decide', { id: 'creq-none', accept: false } as never)).rejects.not.toMatchObject(off);
+});

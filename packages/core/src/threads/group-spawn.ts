@@ -1,3 +1,4 @@
+import { resolveModelSelection } from '@boite/contracts';
 /*
  * `boite thread new --machine`: an agent starts a thread on another machine
  * of its group. The caller's core checks the caller as for a thread of its
@@ -128,14 +129,16 @@ export function checkGroupStart(value: unknown): GroupStart {
  * A strict start takes exactly its model, level and speed, or refuses.
  */
 export function agentHere(core: Core, start: Pick<GroupStart, 'agent'>, machine: string): { providerId: string; accountId: string; model?: string; effort: string | null; speed: string | null; permissionMode: PermissionMode } {
-  const { providerId, model, effort, speed, permissionMode, strict } = start.agent;
+  const { providerId, model, effort: requestedEffort, speed, permissionMode, strict } = start.agent;
   const provider = core.providers.available().some(summary => summary.id === providerId) ? core.providers.require(providerId) : null;
   const account = provider === null ? undefined : loggedInAccount(core.accounts.list().filter(entry => entry.providerId === providerId));
   if (provider === null || account === undefined) {
     throw refused(`${providerId} is not signed in on ${machine}; start the thread from a thread there, or sign it in on ${machine}`, { field: 'agent.providerId', providerId });
   }
   const models = modelsFor(provider, account.id);
-  const listed = model === null ? undefined : models.find(entry => entry.id === model);
+  const selection = resolveModelSelection(models, model, requestedEffort);
+  const listed = selection?.model;
+  const effort = selection?.effort ?? requestedEffort;
   if (strict === true) {
     const name = `${providerId}/${model}`;
     if (listed === undefined) throw refused(`${name} is not a model of ${machine}; expected ${models.map(entry => `${providerId}/${entry.id}`).join(', ') || 'none'}`, { field: 'agent.model' });
@@ -146,7 +149,7 @@ export function agentHere(core: Core, start: Pick<GroupStart, 'agent'>, machine:
     return { providerId, accountId: account.id, model: listed.id, effort, speed, permissionMode };
   }
   const kept = listed !== undefined;
-  return { providerId, accountId: account.id, ...(kept ? { model: model! } : {}), effort: kept ? effort : null, speed: kept ? speed : null, permissionMode };
+  return { providerId, accountId: account.id, ...(kept ? { model: listed.id } : {}), effort: kept ? effort : null, speed: kept ? speed : null, permissionMode };
 }
 
 /**

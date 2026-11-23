@@ -1,10 +1,11 @@
 <script lang="ts">
+  import ModalScrim from './ModalScrim.svelte';
   import { errorText } from '../lib/errors';
   import { tick, untrack } from 'svelte';
   import { ArrowUp, ChevronDown, ChevronRight, Folder, FolderOpen, Monitor, X } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
   import { mobileOverlay } from '../lib/mobile-history';
-  import { focusInitial, restoreFocus } from '../lib/focus';
+  import { focusInitial, trapModalTab } from '../lib/focus';
   import { workspace } from '../lib/workspace.svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -19,7 +20,6 @@
   let busy = $state(false);
   let error = $state('');
   let revision = 0;
-  let previous: HTMLElement | null = null;
   let target = $state<Store>();
   const selected = $derived(target ?? store);
   const available = $derived(workspace.machinesOr(store));
@@ -32,7 +32,6 @@
     ++revision;
     if (!store.projectPickerOpen) { overlay.hide(); return; }
     target = store;
-    previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     overlay.show();
     void untrack(() => browse());
     void tick().then(() => focusInitial(input, card));
@@ -63,7 +62,6 @@
   function close() {
     ++revision;
     store.projectPickerOpen = false;
-    restoreFocus(previous);
   }
   async function machine(id: string) {
     if (id === 'manage') { close(); store.showSettings('machines'); return; }
@@ -99,19 +97,13 @@
   }
   function keydown(event: KeyboardEvent) {
     if (!store.projectPickerOpen) return;
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
-    if (event.key !== 'Tab') return;
-    const stops = Array.from(card?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)') ?? []);
-    const first = stops[0]; const last = stops.at(-1);
-    if (!first || !last) return;
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); close(); }
   }
 </script>
 
-<svelte:window onkeydown={keydown} />
+<svelte:window onkeydown={keydown} onkeydowncapture={event => { if (store.projectPickerOpen) trapModalTab(event, card); }} />
 {#if overlay.shown}
-  <div class="scrim" class:closing={overlay.closing} use:overlay.attach onanimationend={overlay.end} role="presentation" onclick={e => { if (e.target === e.currentTarget) close(); }}>
+  <ModalScrim {overlay} onclose={close} --modal-inset="16px">
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="project-picker-title" tabindex="-1" bind:this={card} data-testid="project-picker">
       <header><h2 id="project-picker-title">{strings.firstRun.heading}</h2><button type="button" class="ghost icon" aria-label={strings.common.cancel} onclick={close}><X size={16} /></button></header>
       <div class="body">
@@ -135,12 +127,10 @@
       </div>
       <footer><button type="button" class="ghost" data-testid="project-cancel" onclick={close}><span class="ui-label">{strings.common.cancel}</span></button><button type="button" class="primary" data-testid="project-add" disabled={busy || !path.trim() || !selected.addsProjects || selected.connection !== 'ready'} onclick={() => void open()}><FolderOpen size={15} /><span class="ui-label">{strings.common.open}</span></button></footer>
     </div>
-  </div>
+  </ModalScrim>
 {/if}
 
 <style>
-  .scrim { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: var(--color-scrim); animation: fade var(--dur-2) var(--ease-out-quint); }
-  .scrim.closing { animation-name: fade-out; pointer-events: none; }
   .dialog { width: min(480px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); }
   header, footer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; }
   header { justify-content: space-between; border-bottom: 1px solid var(--color-border); }

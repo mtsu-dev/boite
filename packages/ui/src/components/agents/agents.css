@@ -20,10 +20,8 @@
 .agents-rail .agents-teams-empty p { margin: 0; }
 .agents-rail .agents-teams-empty button { gap: 5px; margin-left: -8px; }
 
-/* A desktop's column: the selected bot's head, its conversation, then the threads it handles and the ones it is done with. */
-/* It holds a head and a short list: it keeps to that width when the thread list beside other pages is dragged wider,
-   so the conversation keeps its reading width. */
-@media (min-width: 721px) { .rail.agents-rail:not(.drawer) { width: min(var(--sidebar-width), 280px); } }
+/* A desktop's column: the selected bot's head, its conversation, then the threads it handles and the ones it is done with.
+   Its width cap lives in `lib/prefs.ts` (`visibleSidebarWidth`), applied through RailFrame's `--sidebar-width`. */
 .bot-head { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 6px 8px 14px; }
 .bot-head > .agent-avatar { flex: none; }
 .bot-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }

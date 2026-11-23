@@ -63,6 +63,14 @@ export class SnapshotRead<T extends { id: string }> {
   apply(fresh: readonly T[], held: readonly T[]): T[] {
     if (!this.active) return [...held];
     this.deferred = this.protected.size > 0;
+    const rows = this.preview(fresh, held);
+    this.#finish(true);
+    return rows;
+  }
+
+  /** The first page can paint while this read still collects events for the final list. */
+  preview(fresh: readonly T[], held: readonly T[]): T[] {
+    if (!this.active) return [...held];
     const owned = (row: T) => this.scope === 'all' || this.group(row) === this.scope;
     const protectedRow = (row: T) => this.protected.has('all') || this.protected.has(this.group(row));
     const rows = new Map(held.filter(row => !owned(row) || protectedRow(row)).map(row => [row.id, row]));
@@ -76,7 +84,6 @@ export class SnapshotRead<T extends { id: string }> {
       const row = rows.get(id);
       if (row && owned(row) && !protectedRow(row)) rows.set(id, { ...row, ...fields });
     }
-    this.#finish(true);
     return [...rows.values()];
   }
 

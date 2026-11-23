@@ -23,7 +23,7 @@
   import { keepFocus } from '../lib/focus';
   import { contextLevel, contextPercent } from '../lib/tokens';
   import { speedControl } from '../lib/model-speeds';
-  import { desktopSettings } from '../lib/settings-tabs';
+  import { desktopSettings, settingsDestination } from '../lib/settings-tabs';
   import { machineAway } from '../lib/machine-away';
   import { declineHint } from '../lib/composer-placeholder';
   import { repliesOf } from '../lib/question-reply.svelte';
@@ -157,7 +157,7 @@
    * nowhere, and the sentence behind it is the one a send would answer with.
    */
   const phoneWidth = new MediaQuery('(max-width: 720px)');
-  let providersReachable = $derived(store.owner && desktopSettings(phoneWidth.current));
+  let providersReachable = $derived(settingsDestination('accounts', null, { owner: store.owner, phone: !desktopSettings(phoneWidth.current) }));
   // One word per mode, one plain line under it, the long sentence on hover.
   // A legacy mode still live (`plan`) keeps its own choice until another is picked.
   let modeChoices = $derived<ModeChoice[]>([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]
@@ -183,17 +183,18 @@
   // An agent keeps no speed of its own: its chips offer none.
   let speedOptions = $derived(speedControl(choice && !bot ? store.modelsOf(choice.providerId, choice.accountId) : [], choice));
   let speeds = $derived(speedOptions.speeds);
-  let activeEffort = $derived(choice?.effort ?? store.modelOf(choice)?.effort?.default ?? null);
+  let activeEffort = $derived((choice ? store.resolvedChoice(choice).effort : null) ?? store.modelOf(choice)?.effort?.default ?? null);
   /** The model has a scale but no default: its agent picks the level until the user does. */
   let agentDefault = $derived(effortLevels.length > 0 && store.modelOf(choice)?.effort?.default === undefined);
 
   /** A null effort runs at the model's own default, not at a preset the client configured. */
   function cacheKey(selection: Choice): CacheKey {
+    const resolved = store.resolvedChoice(selection);
     return {
       accountId: selection.accountId,
       protocol: store.providers.find(entry => entry.id === selection.providerId)?.protocol ?? null,
-      model: selection.model ?? null,
-      effort: selection.effort ?? store.modelOf(selection)?.effort?.default ?? null,
+      model: resolved.model ?? null,
+      effort: resolved.effort ?? store.modelOf(selection)?.effort?.default ?? null,
       speed: selection.speed ?? null,
     };
   }
@@ -206,9 +207,14 @@
     if (thread) {
       const changedModel = patch.model !== undefined || patch.accountId !== undefined;
       const target = { ...choice, ...patch, effort: patch.effort !== undefined ? patch.effort : changedModel ? null : choice.effort, speed: patch.speed !== undefined ? patch.speed : changedModel ? null : choice.speed ?? null };
+      const expectedSelectionVersion = thread.selectionVersion ?? 0;
       picking = true;
       try {
-        if (switchDropsHistory(thread, target.accountId)) {
+        const historyAtRisk = switchDropsHistory(thread, target.accountId);
+        const preview = historyAtRisk && !botRoute ? await store.previewAccountSwitch(thread.id, target.accountId) : null;
+        const resumes = preview?.session === 'resume';
+        if (historyAtRisk && !resumes) {
+          chip?.close();
           slider?.close();
           const from = providerName(store, thread.providerId);
           const to = providerName(store, target.providerId);
@@ -238,25 +244,25 @@
         }
         const accepted = await store.update(thread.id, {
           accountId: target.accountId, model: target.model, effort: target.effort, speed: target.speed,
-          expectedSelectionVersion: thread.selectionVersion ?? 0,
+          expectedSelectionVersion,
+          ...(resumes ? { requireSavedSession: true } : {}),
         });
         if (accepted) store.remember(target);
-      } finally { picking = false; }
+      } catch (error) { store.error = errorText(error); }
+      finally { picking = false; }
       return;
     }
 
-    if (patch.speed !== undefined) { choice = { ...choice, ...patch }; store.remember(choice); return; }
-    // An effort alone: the model stays, so nothing else moves.
-    if (patch.effort !== undefined) {
-      if (patch.effort === choice.effort) return;
-      choice = { ...choice, effort: patch.effort };
+    if (patch.providerId === undefined && patch.accountId === undefined && patch.model === undefined) {
+      if (patch.speed === undefined && (patch.effort === undefined || patch.effort === choice.effort)) return;
+      choice = { ...choice, ...patch };
       store.remember(choice);
       return;
     }
 
-    // Another model runs on its own scale, so the effort goes back to that model's default.
     const picked = { ...choice, ...patch };
-    choice = { ...picked, effort: store.defaultEffortOf(picked.providerId, picked.accountId, picked.model), speed: null };
+    const changed = picked.providerId !== choice.providerId || picked.accountId !== choice.accountId || picked.model !== choice.model;
+    choice = { ...picked, effort: patch.effort ?? store.defaultEffortOf(picked.providerId, picked.accountId, picked.model), speed: changed ? null : picked.speed };
     store.remember(choice);
   }
 

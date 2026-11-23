@@ -1,10 +1,11 @@
-import { agentDefaultsToWrite, checkSettingsPatch, defaultSettings, followedPatch, keepLaterFavorites, readSettings, MACHINE_SETTINGS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
+import { agentDefaultsToWrite, browserUserAgentIsWhole, contactsDefaultToWrite, checkSettingsPatch, defaultSettings, followedPatch, keepLaterFavorites, readSettings, MACHINE_SETTINGS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { writesTitles } from './drivers/index.ts';
 import { invalidParams } from './errors.ts';
 import { DOUANE_PLUGIN } from './plugins/gateway.ts';
 import { prepareLocalProxyKey } from './subscription-proxy-auth.ts';
 import { announceMachineSetting } from './threads/group-spawn.ts';
+import { contactsKept } from './contacts/switch.ts';
 import { isAbsolute, resolve } from 'node:path';
 
 export const DEFAULT_SETTINGS = defaultSettings();
@@ -35,21 +36,41 @@ export class SettingsStore {
     const patch = { ...stored } as Partial<Settings>;
     Reflect.deleteProperty(patch, 'maxConcurrentTurns');
     Reflect.deleteProperty(patch, 'perAccountConcurrency');
+    // A whole User-Agent saved as a suffix, before `browserUserAgentError` refused one, sent the
+    // browser's own twice; read as the replacement it meant, so the list saves again as it is.
+    if (Array.isArray(patch.browserProfiles) && patch.browserProfiles.some(profile => profile.userAgent?.mode === 'suffix' && browserUserAgentIsWhole(profile.userAgent.value))) {
+      patch.browserProfiles = patch.browserProfiles.map(profile => profile.userAgent?.mode === 'suffix' && browserUserAgentIsWhole(profile.userAgent.value)
+        ? { ...profile, userAgent: { mode: 'replace', value: profile.userAgent.value } } : profile);
+    }
     return { ...defaultSettings(), ...patch };
   }
 
   /**
    * The first start that knows `agentBotCreation` and `coordinationReach`
    * stores them, once: closed on a new data directory, open (what agents did
-   * before) on one whose journal existed before this start. A stored value is
-   * never rewritten, so no later default moves an install.
+   * before) on one whose journal existed before this start, and `contacts`:
+   * on only where a contact is already kept. A stored value is never
+   * rewritten, so no later default moves an install.
    */
   seedAgentDefaults(journalExisted: boolean): void {
     const stored = this.#core.journal.getSetting('settings');
-    const missing = agentDefaultsToWrite(stored, journalExisted);
+    this.#seed(stored, agentDefaultsToWrite(stored, journalExisted), { journalExisted });
+  }
+
+  /**
+   * `contacts` the same way, once, after the group is restored: on where a
+   * contact is already kept, directly or through the group
+   * (`contacts/switch.ts`), off anywhere else.
+   */
+  seedContacts(): void {
+    const stored = this.#core.journal.getSetting('settings');
+    this.#seed(stored, contactsDefaultToWrite(stored, contactsKept(this.#core)), {});
+  }
+
+  #seed(stored: unknown, missing: Record<string, boolean | string>, data: Record<string, boolean>): void {
     if (Object.keys(missing).length === 0) return;
     this.#core.journal.setSetting('settings', { ...(typeof stored === 'object' && stored !== null ? stored : {}), ...missing });
-    this.#core.logs.info(`Agent defaults stored: ${Object.entries(missing).map(([key, value]) => `${key} ${value}`).join(', ')}`, { source: 'settings', event: 'settings.agent-defaults', data: { ...missing, journalExisted } });
+    this.#core.logs.info(`Agent defaults stored: ${Object.entries(missing).map(([key, value]) => `${key} ${value}`).join(', ')}`, { source: 'settings', event: 'settings.agent-defaults', data: { ...missing, ...data } });
   }
 
   #overlay(settings: Settings): Settings {

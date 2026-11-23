@@ -50,8 +50,8 @@
       capHeight = height > 0 ? Math.ceil(height) : undefined;
     };
     const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
-    for (const child of node.children) resized?.observe(child);
-    measure();
+    if (resized) for (const child of node.children) resized.observe(child);
+    else measure();
     return () => resized?.disconnect();
   });
   const count = $derived(entries.reduce((total, { project }) => total + archiveCount(project, kind), 0));
@@ -131,7 +131,7 @@
     {#if loading}<p class="hint" role="status"><span class="ui-label">{strings.app.loading}</span></p>{/if}
     {#if failed}<div class="hint" role="status"><span class="ui-label">{strings.sidebar.doneLoadFailed}</span><button type="button" class="ghost small" data-testid="recent-done-retry" onclick={() => retry++}><span class="ui-label">{strings.common.retry}</span></button></div>{/if}
     <WindowList items={rows} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} scrollRoot={cap ? box : scrollRoot} estimate={44} {measurements}>
-      {#snippet row(entry)}{#if DoneThread}<DoneThread {entry} {now} showMachine={multi} showProject={spans} {onopen} />{/if}{/snippet}
+      {#snippet row(entry)}{#if DoneThread}<DoneThread owner={entry.machine.store} thread={entry.thread} {now} machine={multi ? entry.machine : undefined} project={spans ? entry.project : undefined} {onopen} />{/if}{/snippet}
     </WindowList>
     {#if !loading && !failed && !rows.length}<p class="hint"><span class="ui-label">{strings.sidebar.noMatch}</span></p>{/if}
 {/snippet}

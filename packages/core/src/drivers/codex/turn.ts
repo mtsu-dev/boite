@@ -1,4 +1,5 @@
 import type { ToolStatus, Usage } from '@boite/contracts';
+import { pacing } from '../../pacing.ts';
 import { DecidedTurnParts } from '../turn-parts.ts';
 import type { PromptCacheLife, TurnContext, TurnRefusal, TurnResult } from '../types.ts';
 import { codexRefusal } from './availability.ts';
@@ -50,9 +51,10 @@ export class CodexTurn extends DecidedTurnParts {
   readonly #textItems = new Map<string, { index: number; text: string; complete: boolean }>();
   /** Tools whose streamed output waits for the next flush, so a chatty command costs one write per beat. */
   readonly #dirty = new Set<string>();
-  #flushTimer: ReturnType<typeof setTimeout> | null = null;
+  #flushTimer: unknown = null;
 
   #completedTurnId: string | null = null;
+  nativeFinished = false;
   #status: TurnResult['status'] = 'done';
   #error: string | null = null;
   #diagnosticError: string | undefined;
@@ -65,6 +67,7 @@ export class CodexTurn extends DecidedTurnParts {
   usageCounts: CodexTokenCounts | null = null;
   /** The thread's cumulative `total` at this turn's latest usage update. */
   usageTotal: CodexTokenCounts | null = null;
+  usageLast: CodexTokenCounts | null = null;
   /** The published prompt cache lifetime of the model this turn ran on. */
   cacheLife: PromptCacheLife | null = null;
   /** `thread/resume` said the Codex thread is gone. */
@@ -100,14 +103,21 @@ export class CodexTurn extends DecidedTurnParts {
         this.#status = 'stopped';
         break;
       case 'failed':
+        this.nativeFinished = true;
         this.#refusal = codexRefusal(record.error?.codexErrorInfo ?? this.lastErrorInfo, record.error?.message, this.spentWindowResetsAt);
         this.fail(record.error?.message ?? 'the codex agent failed the turn');
         return;
       default:
         return;
     }
+    this.nativeFinished = true;
     this.decided = true;
     this.decide();
+  }
+
+  noteRefusal(info: unknown, message: string | undefined): void {
+    if (this.decided) return;
+    this.#refusal = codexRefusal(info, message, this.spentWindowResetsAt);
   }
 
   fail(reason: string, diagnostic?: string): void {
@@ -230,12 +240,11 @@ export class CodexTurn extends DecidedTurnParts {
     if (pending.length > LIVE_OUTPUT_MAX * 4) foldOutput(entry);
     this.#dirty.add(itemId);
     if (this.#flushTimer !== null) return;
-    this.#flushTimer = setTimeout(() => this.#flushOutput(), LIVE_OUTPUT_BEAT_MS);
-    this.#flushTimer.unref?.();
+    this.#flushTimer = pacing.set(() => this.#flushOutput(), LIVE_OUTPUT_BEAT_MS, { unref: true });
   }
 
   #flushOutput(): void {
-    if (this.#flushTimer !== null) clearTimeout(this.#flushTimer);
+    if (this.#flushTimer !== null) pacing.clear(this.#flushTimer);
     this.#flushTimer = null;
     for (const itemId of this.#dirty) {
       const entry = this.#tools.get(itemId);

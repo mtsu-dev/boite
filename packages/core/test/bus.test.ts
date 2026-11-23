@@ -79,3 +79,42 @@ test('rollback discards nested notifications and new deltas, preserving earlier 
   expect(committed).toEqual(['before', 'core.log', 'after']);
   bus.dispose();
 });
+
+test('the first text follows its part immediately after the commit and rolls back with it', () => {
+  const bus = new Bus();
+  let deliveredInternally = 0;
+  bus.onAny(name => { if (name === 'message.delta') deliveredInternally += 1; });
+  const seen: string[] = [];
+  bus.onCommitted((name, payload) => seen.push(name === 'message.delta' ? (payload as { text: string }).text : name));
+  const slot = { threadId: 't', messageId: 'm', partIndex: 0 };
+  const firstText = () => {
+    const before = deliveredInternally;
+    bus.emit('message.part', { ...slot, part: { type: 'text', text: '' } });
+    bus.emit('message.delta', { ...slot, text: 'first' }, { firstText: true });
+    expect(deliveredInternally).toBe(before + 1);
+    expect(seen).toEqual([]);
+  };
+  expect(() => bus.afterCommit(() => { firstText(); throw new Error('rollback'); })).toThrow('rollback');
+  expect(seen).toEqual([]);
+  bus.afterCommit(firstText);
+  bus.emit('message.delta', { ...slot, text: 'next' });
+  expect(seen).toEqual(['message.part', 'first']);
+  bus.flush();
+  expect(seen).toEqual(['message.part', 'first', 'next']);
+  bus.dispose();
+});
+
+test('another thread can publish a part while pending text stays batched on this thread', () => {
+  const bus = new Bus();
+  const seen: string[] = [];
+  bus.onCommitted((name, payload) => seen.push(name === 'message.delta' ? (payload as { text: string }).text : name));
+  const slot = (threadId: string) => ({ threadId, messageId: threadId, partIndex: 0 });
+  bus.emit('message.delta', { ...slot('a'), text: 'one' });
+  bus.emit('message.delta', { ...slot('b'), text: 'b' });
+  bus.emit('message.part', { ...slot('b'), part: { type: 'text', text: 'replacement' } });
+  expect(seen).toEqual(['b', 'message.part']);
+  bus.emit('message.delta', { ...slot('a'), text: ' two' });
+  bus.emit('core.log', { level: 'info', message: 'global', at: 0 });
+  expect(seen).toEqual(['b', 'message.part', 'one two', 'core.log']);
+  bus.dispose();
+});

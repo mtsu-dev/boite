@@ -19,6 +19,19 @@ afterEach(async () => {
 });
 
 describe('echo driver', () => {
+  test('stopping a running tool never publishes a successful result', async () => {
+    const { client, threadId } = await openEchoThread(harness);
+    const opened = client.next('message.part', event => event.threadId === threadId && event.part.type === 'tool' && event.part.status === 'running');
+    const { finished } = await startTurn(client, threadId, 'Inspect this [tool:60000] then finish');
+    const task = await opened;
+    await client.call('turns.stop', { threadId });
+    expect((await finished).status).toBe('stopped');
+    const { messages } = await client.call('threads.get', { threadId });
+    expect(messages.find(message => message.id === task.messageId)?.parts[task.partIndex]).toMatchObject({
+      type: 'tool', status: 'error', output: null,
+    });
+  });
+
   test('a turn streams the prompt back, then finishes with usage', async () => {
     const { client, threadId } = await openEchoThread(harness);
 

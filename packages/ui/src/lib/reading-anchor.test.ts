@@ -5,12 +5,37 @@ import { ReadingAnchor } from './reading-anchor';
 function box(top: () => number, mid?: string): HTMLElement {
   const node = document.createElement('div');
   if (mid) node.dataset['mid'] = mid;
-  node.getBoundingClientRect = () => ({ top: top(), bottom: top() + 100, left: 0, right: 0, width: 0, height: 100, x: 0, y: top(), toJSON: () => ({}) });
+  node.getBoundingClientRect = () => {
+    const y = top();
+    return { top: y, bottom: y + 100, left: 0, right: 0, width: 0, height: 100, x: 0, y, toJSON: () => ({}) };
+  };
   document.body.append(node);
   return node;
 }
 
 describe('ReadingAnchor', () => {
+  test('uses a virtual row estimate without measuring the entire overscan', () => {
+    const viewport = box(() => 0);
+    Object.defineProperty(viewport, 'clientHeight', { value: 600 });
+    const column = document.createElement('div');
+    viewport.append(column);
+    let reads = 0;
+    const rows = Array.from({ length: 40 }, (_, index) => box(() => {
+      reads++;
+      return (index - 25) * 100 - 20;
+    }, `m-${index}`));
+    column.append(...rows);
+    const anchors = new ReadingAnchor(undefined);
+    try {
+      // An approximate slot places the top a row too far down.
+      anchors.remember(viewport, column, rows[26]);
+      expect(anchors.current).toEqual({ id: 'm-25', offset: -20, message: 'm-25' });
+      expect(reads).toBeLessThan(6);
+    } finally {
+      viewport.remove();
+    }
+  });
+
   test('a held row stays the anchor, to the fraction, until a scroll moves it more than 2 px', () => {
     let row = -40.25;
     const viewport = box(() => 0);

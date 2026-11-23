@@ -15,6 +15,7 @@ import { browserProfiles } from './browser-profiles.svelte';
 import { work } from './work-prefs.svelte';
 import { ZOOM_STEPS } from './zoom';
 import { CONTACTS_RAIL_WIDTH, contactsRail } from './contacts-rail.svelte';
+import { visibleSidebarWidth, type SidebarPage } from './prefs';
 import { FileDocuments, type FileDocument, type FileSaved, type FileWrite } from './file-documents.svelte';
 
 /**
@@ -201,9 +202,12 @@ function parse(raw: string): Record<string, PanelState> {
  * left and the contacts column on the right. A phone gives the panel the
  * whole screen.
  */
-export function panelSibling(layout: { sidebarCollapsed: boolean; sidebarWidth: number; owner: boolean }, viewport: number): number {
+export function panelSibling(
+  layout: { sidebarCollapsed: boolean; sidebarWidth: number; agentsSidebarWidth?: number | null; page?: SidebarPage } & Parameters<typeof contactsRail.shown>[0],
+  viewport: number
+): number {
   if (viewport <= 720) return 0;
-  return (layout.sidebarCollapsed ? 0 : layout.sidebarWidth) + (contactsRail.shown(layout) ? CONTACTS_RAIL_WIDTH : 0);
+  return (layout.sidebarCollapsed ? 0 : visibleSidebarWidth(layout)) + (contactsRail.shown(layout) ? CONTACTS_RAIL_WIDTH : 0);
 }
 
 /** The app rail and the frame gaps between the columns, measured on a desktop window. */

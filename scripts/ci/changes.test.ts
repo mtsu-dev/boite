@@ -1,15 +1,15 @@
 import { expect, test } from 'bun:test';
 import { CI_WORKFLOWS, INSTALLER_SCRIPTS, REPOSITORY_SCRIPTS, affectedChecks, ciMode, lastGreen, needsCodeChecks, needsNativeWindows, needsWorkflowLint, plan } from './changes.ts';
 
-const none = { core: false, web: false, desktop: false, shellRust: false, server: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false };
-const allChecks = { core: true, web: true, desktop: true, shellRust: true, server: true, androidServer: true, telemetry: true, e2eTypes: true, stress: true };
+const none = { core: false, web: false, desktop: false, shellRust: false, server: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false, browser: false };
+const allChecks = { core: true, web: true, desktop: true, shellRust: true, server: true, androidServer: true, telemetry: true, e2eTypes: true, stress: true, browser: true };
 
 test('checks follow runtime boundaries and combine changed paths', () => {
   expect(affectedChecks(['apps/shell/src-tauri/src/main.rs'])).toEqual({ ...none, desktop: true, shellRust: true });
   expect(affectedChecks(['Dockerfile'])).toEqual({ ...none, server: true });
-  expect(affectedChecks(['packages/ui/src/app.css'])).toEqual({ ...none, web: true, desktop: true, server: true, stress: true });
-  expect(affectedChecks(['packages/core/src/main.ts'])).toEqual({ ...allChecks, shellRust: false, androidServer: false });
-  expect(affectedChecks(['tests/e2e/ui.test.ts', 'docker/compose.yml'])).toEqual({ ...none, desktop: true, server: true, e2eTypes: true });
+  expect(affectedChecks(['packages/ui/src/app.css'])).toEqual({ ...none, web: true, desktop: true, server: true, stress: true, browser: true });
+  expect(affectedChecks(['packages/core/src/main.ts'])).toEqual({ ...allChecks, shellRust: false, androidServer: false, browser: false });
+  expect(affectedChecks(['tests/e2e/ui.test.ts', 'docker/compose.yml'])).toEqual({ ...none, desktop: true, server: true, e2eTypes: true, browser: true });
 });
 
 test('the shell Rust tests run only for the inputs they compile', () => {
@@ -43,7 +43,7 @@ test('ordinary benches and architecture scripts keep the cheap type-check route'
   for (const file of ['bench/retitle.ts', 'scripts/architecture/check.ts', 'packages/plugin-sdk/src/connect.ts', 'examples/plugins/hello/src/main.ts']) {
     expect(affectedChecks([file])).toEqual({ ...none, web: true });
   }
-  expect(affectedChecks(['bench/retitle.ts', 'packages/core/src/main.ts'])).toEqual({ ...allChecks, shellRust: false, androidServer: false });
+  expect(affectedChecks(['bench/retitle.ts', 'packages/core/src/main.ts'])).toEqual({ ...allChecks, shellRust: false, androidServer: false, browser: false });
 });
 
 test('telemetry-only changes require behavioral relay coverage on PRs and main', () => {
@@ -60,6 +60,19 @@ test('E2E-only changes require focused type checking without UI unit tests', () 
   }
 });
 
+test('pull requests affecting the desktop or phone client run focused browser E2E', () => {
+  for (const file of ['packages/ui/src/App.svelte', 'packages/contracts/src/threads.ts', 'tests/e2e/mobile-focus.test.ts', 'bun.lock']) {
+    expect(plan(affectedChecks([file]), 'pr'), file).toMatchObject({ desktop: false, e2e: false, e2ePr: true });
+  }
+  for (const file of ['docs/internals/ci.md', 'packages/core/src/cli.ts', 'Dockerfile']) {
+    expect(plan(affectedChecks([file]), 'pr'), file).toMatchObject({ e2ePr: false });
+  }
+  const ui = affectedChecks(['packages/ui/src/App.svelte']);
+  for (const mode of ['queue', 'warm', 'full'] as const) {
+    expect(plan(ui, mode), mode).toMatchObject({ e2e: true, e2ePr: false });
+  }
+});
+
 test('stress fixtures and their bench helpers require the bounded stress suite', () => {
   for (const file of ['tests/stress/drivers.test.ts', 'tests/stress/lib/protocol-load.ts', 'bench/agent-stress.ts', 'bench/lib/health.ts']) {
     expect(affectedChecks([file])).toEqual({ ...none, web: true, stress: true });
@@ -67,8 +80,8 @@ test('stress fixtures and their bench helpers require the bounded stress suite',
   for (const mode of ['queue', 'warm', 'full'] as const) {
     expect(plan(affectedChecks(['packages/core/src/scheduler.ts']), mode).stress).toBe(true);
   }
-  expect(affectedChecks(['packages/ui/src/App.svelte'])).toEqual({ ...none, web: true, desktop: true, server: true, stress: true });
-  expect(affectedChecks(['tests/e2e/lib/core.ts'])).toEqual({ ...none, desktop: true, e2eTypes: true, stress: true });
+  expect(affectedChecks(['packages/ui/src/App.svelte'])).toEqual({ ...none, web: true, desktop: true, server: true, stress: true, browser: true });
+  expect(affectedChecks(['tests/e2e/lib/core.ts'])).toEqual({ ...none, desktop: true, e2eTypes: true, stress: true, browser: true });
 });
 
 test('shared inputs and unknown files fail open to every check', () => {

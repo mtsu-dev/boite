@@ -4,13 +4,14 @@
   import { Pause, Play, ArrowUp, ArrowDown, Copy, MonitorSmartphone, Send } from '@lucide/svelte';
   import { REMOTE_PRESS_MAX, REMOTE_TEXT_MAX, type RemoteBrowserFrame, type RemoteBrowserInput, type RemoteBrowserPicker } from '@boite/contracts';
   import { browserKey, hasKeyboard, liveInput, writeClipboardLater } from '../lib/live-input';
+  import { keyCap } from '../lib/keybindings';
   import type { Store } from '../lib/store.svelte';
   import { strings } from '../lib/strings';
   import BrowserNav from './BrowserNav.svelte';
   import { normalizeUrl } from '../lib/browser-bridge';
   import { policySearch } from '../lib/policy';
-  import { dragScroll, FRAME_INTERVAL, frameMaxWidth, framePoint, frameQuality, nextPollDelay } from '../lib/remote-browser-view';
-  import { framePainter, frameStream, jpegBlob, type FrameStream } from '../lib/remote-browser-stream';
+  import { dragScroll, FRAME_INTERVAL, frameMaxWidth, framePoint, frameQuality, nextPollDelay, shownSize } from '../lib/remote-browser-view';
+  import { framePainter, frameStream, jpegBlob, type FrameStream, type PictureSize } from '../lib/remote-browser-stream';
   /**
    * One tab of the browser the conversation's agent drives on the machine that
    * runs it, watched and driven from any client. Without `tabId`, the agent's
@@ -30,7 +31,9 @@
    * Either way a frame is painted on the canvas.
    */
   let stream: FrameStream | null = null, pullOnly = false;
-  const painter = framePainter();
+  // The size of the picture on the canvas: the box takes its proportions, so it is never stretched.
+  let painted = $state.raw<PictureSize | null>(null);
+  const painter = framePainter(size => { if (size?.width !== painted?.width || size?.height !== painted?.height) painted = size; });
   $effect(() => painter.attach(picture));
   let pending = false, requestedAt = 0;
   // What the next request asks for and when: see remote-browser-view.ts.
@@ -60,14 +63,18 @@
   let address = $state(''), editingAddress = false, fresh = $state(true);
   const addressId = `remote-address-${crypto.randomUUID()}`, hintId = `${addressId}-hint`, pickerId = `${addressId}-picker`;
   const secure = $derived(/^https:\/\//i.test(frame?.url ?? ''));
-  const previewScale = $derived(frame ? (zoom || Math.min(areaWidth / frame.width, areaHeight / frame.height)) : 1);
+  const shown = $derived(frame ? shownSize(frame, painted) : null);
+  const previewScale = $derived(shown ? (zoom || Math.min(areaWidth / shown.width, areaHeight / shown.height)) : 1);
+  const requestWidth = $derived(frame ? frame.width * (zoom || Math.min(areaWidth / frame.width, areaHeight / frame.height)) : areaWidth);
+  // The screen's density, which changes when the window moves to another screen or the page is zoomed.
+  let pixelRatio = $state(window.devicePixelRatio || 1);
   const validSize = $derived([viewportWidth, viewportHeight].every(n => typeof n === 'number' && Number.isInteger(n) && n >= 240 && n <= 3840));
   const usable = $derived(!!frame && frameClient === store.client && !paused && !busy && !error && store.connection === 'ready');
   function stop() { generation++; clearTimeout(timer); stream?.stop(); stream = null; }
   function blank() { frame = null; frameClient = null; painter.clear(); }
   /** Whether input may still name `target`: the page a live stream shows is the page; any other frame is good for five seconds. */
   const aged = (target: RemoteBrowserFrame) => !(stream?.live && target === frame) && performance.now() - (receivedAt.get(target) ?? -Infinity) > 5000;
-  const widest = () => frameMaxWidth(frame ? frame.width * previewScale : areaWidth, window.devicePixelRatio);
+  const widest = () => frameMaxWidth(requestWidth, pixelRatio);
   function watch(run: number) {
     const client = store.client;
     if (!client || client.state !== 'ready') { error = strings.remoteBrowser.reconnecting; return; }
@@ -90,7 +97,7 @@
     });
   }
   const pushed = () => !pullOnly && store.core?.features?.browserStream === true && typeof store.client?.frames === 'function';
-  $effect(() => { void previewScale; void areaWidth; void frame?.width; untrack(() => stream?.resized()); });
+  $effect(() => { void requestWidth; void pixelRatio; untrack(() => stream?.resized()); });
   $effect(() => { void tabId; untrack(() => { if (stream || pullOnly) { pullOnly = false; resume(); } }); });
   // A list stays with the page it was tapped on.
   $effect(() => { if (choice && (!frame || frame.width !== choice.tap.width || frame.height !== choice.tap.height || paused)) choice = null; });
@@ -103,7 +110,7 @@
     let retry = false;
     try {
       if (!client || client.state !== 'ready') throw new Error(strings.remoteBrowser.reconnecting);
-      const maxWidth = frameMaxWidth(frame ? frame.width * previewScale : areaWidth, window.devicePixelRatio), quality = frameQuality(roundTrip);
+      const maxWidth = widest(), quality = frameQuality(roundTrip);
       // The frame shown: the core answers with a newer one, or that the page drew nothing new within a second.
       const after = frame && frameClient === client ? frame.id : undefined;
       const next = await client.call('browser.remoteFrame', { threadId, ...(tabId ? { tabId } : {}), ...(maxWidth ? { maxWidth } : {}), ...(quality !== 55 ? { quality } : {}), ...(after ? { after } : {}) });
@@ -157,12 +164,25 @@
     const visibility = () => { if (document.hidden) { stop(); fresh = false; } else resume(); };
     // A phone back from the background, a reopened PWA or a returning network resumes at once.
     const back = () => { if (!document.hidden && !pending && !stream?.live) resume(); };
+    // A query for the density now changes when it does, and is asked again for the next one. A window moved to
+    // another screen is resized too, which an engine that does not report the query still does.
+    let density: MediaQueryList | undefined;
+    const ratio = () => {
+      if (density && pixelRatio === (window.devicePixelRatio || 1)) return;
+      density?.removeEventListener('change', ratio);
+      pixelRatio = window.devicePixelRatio || 1;
+      density = window.matchMedia?.(`(resolution: ${pixelRatio}dppx)`);
+      density?.addEventListener('change', ratio);
+    };
+    ratio();
+    window.addEventListener('resize', ratio);
     document.addEventListener('visibilitychange', visibility);
     for (const name of ['pageshow', 'online', 'focus'] as const) window.addEventListener(name, back);
     return () => {
       // A view closed mid-drag lets go of the page.
       if (pointer) release(pointer);
       pointer = undefined; alive = false; stop(); painter.close(); document.removeEventListener('visibilitychange', visibility);
+      density?.removeEventListener('change', ratio); window.removeEventListener('resize', ratio);
       for (const name of ['pageshow', 'online', 'focus'] as const) window.removeEventListener(name, back);
     };
   });
@@ -334,14 +354,16 @@
     zoom = 0;
     void input({ kind: 'viewport', width: viewportWidth, height: viewportHeight });
   }
+  /** What a point on the canvas is measured against: the picture it shows, which covers the page whole. */
+  const drawnOf = (current: RemoteBrowserFrame) => picture && picture.width > 0 && picture.height > 0 ? { width: picture.width, height: picture.height } : current;
   function point(event: MouseEvent, current: RemoteBrowserFrame) {
-    return picture ? framePoint(picture.getBoundingClientRect(), current, event.clientX, event.clientY) : null;
+    return picture ? framePoint(picture.getBoundingClientRect(), drawnOf(current), event.clientX, event.clientY) : null;
   }
   /** As `point`, for a drag released outside the picture: it ends on the nearest edge. */
   function edgePoint(event: MouseEvent, current: RemoteBrowserFrame) {
     if (!picture) return null;
     const box = picture.getBoundingClientRect(), within = (n: number, low: number, size: number) => Math.max(low, Math.min(low + size, n));
-    return framePoint(box, current, within(event.clientX, box.left, box.width), within(event.clientY, box.top, box.height));
+    return framePoint(box, drawnOf(current), within(event.clientX, box.left, box.width), within(event.clientY, box.top, box.height));
   }
   function down(event: PointerEvent) {
     choice = null;
@@ -508,7 +530,7 @@
   {/if}
   <div class="screen-area" class:zoomed={zoom > 0} title={desk && frame ? strings.remoteBrowser.deskHint : undefined} bind:this={area} bind:clientWidth={areaWidth} bind:clientHeight={areaHeight}>
     {#if frame}
-      <button bind:this={screen} type="button" class="screen" style:width={`${frame.width * previewScale}px`} style:height={`${frame.height * previewScale}px`} class:stale={paused || error} class:desk aria-label={desk ? strings.remoteBrowser.interactDesk : strings.remoteBrowser.interact} aria-describedby={desk ? hintId : undefined} disabled={!usable} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={cancel} oncontextmenu={e => e.preventDefault()}>
+      <button bind:this={screen} type="button" class="screen" style:width={`${(shown?.width ?? frame.width) * previewScale}px`} style:height={`${(shown?.height ?? frame.height) * previewScale}px`} class:stale={paused || error} class:desk aria-label={desk ? strings.remoteBrowser.interactDesk : strings.remoteBrowser.interact} aria-describedby={desk ? hintId : undefined} disabled={!usable} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={cancel} oncontextmenu={e => e.preventDefault()}>
         <canvas bind:this={picture} width="0" height="0" aria-label={strings.remoteBrowser.image} data-testid="remote-browser-frame"></canvas>
       </button>
     {:else}<p class="empty">{strings.remoteBrowser.waiting}</p>{/if}
@@ -532,7 +554,7 @@
   {#if !desk}
   <footer>
     <div class="keys"><button type="button" class="ghost small icon" disabled={!usable} onclick={() => void input({ kind: 'scroll', x: 0, y: -500 })} aria-label={strings.remoteBrowser.scrollUp}><ArrowUp size={16} /></button><button type="button" class="ghost small icon" disabled={!usable} onclick={() => void input({ kind: 'scroll', x: 0, y: 500 })} aria-label={strings.remoteBrowser.scrollDown}><ArrowDown size={16} /></button>
-      {#each (['Tab', 'Enter', 'Escape', 'Backspace'] as const) as key}<button type="button" class="ghost small" disabled={!usable} onclick={() => void input({ kind: 'key', key })}><span class="ui-label">{key === 'Backspace' ? '⌫' : key === 'Escape' ? 'Esc' : key}</span></button>{/each}
+      {#each (['Tab', 'Enter', 'Escape', 'Backspace'] as const) as key}<button type="button" class="ghost small" disabled={!usable} onclick={() => void input({ kind: 'key', key })}><span class="ui-label">{key === 'Backspace' ? '⌫' : keyCap(key)}</span></button>{/each}
       <button type="button" class="ghost small icon" data-testid="remote-browser-copy" disabled={!usable} aria-label={strings.remoteBrowser.copy} title={strings.remoteBrowser.copy} onclick={() => void copySelection()}><Copy size={15} /></button>
     </div>
     <form onsubmit={e => { e.preventDefault(); void sendText(false); }}><input bind:value={text} data-testid="remote-browser-text" maxlength="2000" enterkeyhint="send" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label={strings.remoteBrowser.text} placeholder={strings.remoteBrowser.text} onkeydown={textKey} /><button type="submit" class="ghost small icon" disabled={!usable || !text} aria-label={strings.remoteBrowser.send}><Send size={16} /></button></form>

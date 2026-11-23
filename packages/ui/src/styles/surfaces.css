@@ -47,6 +47,15 @@
   border-radius: var(--radius-lg);
 }
 
+.tooltip-surface {
+  border: 1px solid var(--overlay-edge);
+  border-radius: var(--tooltip-radius, var(--radius-overlay));
+  background: var(--overlay-surface);
+  box-shadow: var(--shadow-overlay);
+  color: var(--color-foreground);
+  font-size: var(--text-sm);
+}
+
 /* The one inline error: a sentence under what failed, in the danger ink. */
 p.error {
   color: var(--color-danger);

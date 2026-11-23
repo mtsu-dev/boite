@@ -70,8 +70,12 @@ export function noteClaudeMessage(ctx: Diagnosable, message: SDKMessage, session
   }
 }
 
-/** A reset time in seconds or milliseconds as ISO text; null for anything a Date cannot hold, which would throw. */
+/** A reset time in seconds, milliseconds, or ISO text as ISO text; null for anything a Date cannot hold, which would throw. */
 export function isoTime(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+  }
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   const date = new Date(value * (value < 1e12 ? 1000 : 1));
   return Number.isNaN(date.getTime()) ? null : date.toISOString();

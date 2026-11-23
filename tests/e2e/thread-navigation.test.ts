@@ -113,7 +113,7 @@ test('closing an image and dragging chat text or a thread link preserves the con
       context.fillStyle = style.color; context.font = '16px sans-serif'; context.fillText('Selection reference', 12, 52);
       const parts = [
         { type: 'text', text: 'Select these words after closing the reference image. The conversation should stay open. [Launch game](build/game.exe)' },
-        { type: 'file', name: 'reference.png', mimeType: 'image/png', bytes: 100, data: canvas.toDataURL().split(',')[1] }
+        { type: 'file', name: 'reference.png', mimeType: 'image/png', data: canvas.toDataURL().split(',')[1] }
       ];
       s.openThread.messages = [
         { id:'selection-message', threadId:'t-trace', turnId:'selection-turn', role:'assistant', state:'complete', createdAt:Date.now(), parts },
@@ -164,43 +164,55 @@ test('closing an image and dragging chat text or a thread link preserves the con
   } finally { await page.close(); }
 }, 30_000);
 
-test('dropping URL text keeps the app open and still inserts text in the composer', async () => {
-  const page = await BrowserPage.launch({ url, windowSize: { width: 1280, height: 900 } });
-  try {
-    await page.waitFor(`${state}.openThread`);
-    const text = url + '&dropped=1';
-    await page.evaluate(`(async () => {
-      await ${state}.open('t-trace');
-      document.addEventListener('dragover', event => { window.__textDropOver = event.defaultPrevented; });
-    })()`);
-    for (const phone of [false, true]) {
-      await page.send('Emulation.setDeviceMetricsOverride', { width: phone ? 390 : 1280, height: phone ? 844 : 900, deviceScaleFactor: 1, mobile: phone });
-      // CDP's resize reply precedes the rendered frame used by native drag hit testing.
-      await page.evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: 'phone', width: 390, height: 844 }]) {
+  test(`dropping URL text keeps the app open and still inserts text in the ${viewport.name} composer`, async () => {
+    // Exercise the native mouse drag against both layouts. Chromium's mobile
+    // emulation can discard CDP drag events before they reach the document.
+    const page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1280, height: 900 } });
+    try {
+      await page.send('Emulation.setDeviceMetricsOverride', { width: viewport.width, height: viewport.height, deviceScaleFactor: 1, mobile: false });
+      await page.navigate(url);
+      await page.waitFor(`${state}.openThread`);
+      const text = url + '&dropped=1';
+      await page.evaluate(`(async () => {
+        await ${state}.open('t-trace');
+        document.addEventListener('dragover', event => {
+          const target = event.target;
+          window.__textDropOver = {
+            target: target instanceof Element ? target.closest('${id('timeline')}, ${id('composer-input')}')?.dataset.testid ?? target.tagName : null,
+            prevented: event.defaultPrevented,
+          };
+        });
+      })()`);
+      await page.settleAnimations();
       for (const target of ['timeline', 'composer-input']) {
         await page.waitFor(`(() => {
           const element = document.querySelector('${id(target)}');
-          const r = element.getBoundingClientRect();
-          return r.width > 0 && r.height > 0 && element.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+          const r = element?.getBoundingClientRect();
+          return r?.width > 0 && r.height > 0 && element.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
         })()`);
         const point = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('${id(target)}').getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; })()`);
         const data = { items: [{ mimeType: 'text/uri-list', data: text }, { mimeType: 'text/plain', data: text }], dragOperationsMask: 1 };
-        for (const type of ['dragEnter', 'dragOver']) await page.send('Input.dispatchDragEvent', { type, ...point, data });
-        expect(await page.evaluate('window.__textDropOver')).toBe(target === 'timeline');
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+        await page.evaluate('window.__textDropOver = null');
+        // Chromium sends enter/leave instead of dragover when the timeline
+        // reflows under the cursor. Hover again after that retargeting.
+        for (const type of ['dragEnter', 'dragOver', 'dragOver']) await page.send('Input.dispatchDragEvent', { type, ...point, data });
+        await page.waitFor(`window.__textDropOver?.target === '${target}'`);
+        expect(await page.evaluate('window.__textDropOver')).toEqual({ target, prevented: target === 'timeline' });
         await page.send('Input.dispatchDragEvent', { type: 'drop', ...point, data });
         const history = await page.send('Page.getNavigationHistory', {}) as { currentIndex: number; entries: Array<{ url: string }> };
         expect(history.entries[history.currentIndex]!.url).toBe(url);
         expect(await page.evaluate(`${state}.openThread.id`)).toBe('t-trace');
         if (target === 'composer-input') {
           expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe(text);
-          await page.type(id('composer-input'), '');
         }
       }
-      await capture(page, `text-drop-${phone ? 'phone' : 'desktop'}.png`);
-    }
-    expect(page.errors()).toEqual([]);
-  } finally { await page.close(); }
-}, 30_000);
+      await capture(page, `text-drop-${viewport.name}.png`);
+      expect(page.errors()).toEqual([]);
+    } finally { await page.close(); }
+  }, 30_000);
+}
 
 test('archive and delete leave a project draft on desktop and phone', async () => {
   const page = await BrowserPage.launch({ url, windowSize: { width: 1280, height: 900 } });
@@ -216,6 +228,11 @@ test('archive and delete leave a project draft on desktop and phone', async () =
         await page.waitFor(`document.querySelector('${id('thread-menu-trigger')}')`);
         await page.click(id('thread-menu-trigger'));
         await page.click(`${id('thread-menu-trigger-menu')} [data-value=${action}]`);
+        if (action === 'delete') {
+          await page.waitFor(`document.querySelector('${id('confirm-dialog')}')`);
+          expect(await page.evaluate(`${state}.openThread?.title`)).toBe('Navigation check');
+          await page.click(id('confirm-ok'));
+        }
         await page.waitFor(`${state}.openThread === null && ${state}.draft?.projectId === 'p-boite'`);
         expect(await page.evaluate(`!!document.querySelector('${id('composer-input')}')`)).toBe(true);
         expect(await page.evaluate(`${state}.openThread`)).toBeNull();

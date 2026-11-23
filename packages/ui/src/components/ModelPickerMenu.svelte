@@ -2,8 +2,8 @@
   import { onDestroy } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { Check, ChevronRight, Star, RefreshCw } from '@lucide/svelte';
-  import { orderedModels, type FavoriteModel } from '../lib/model-order';
-  import type { Account, ModelInfo } from '@boite/contracts';
+  import { orderedModels } from '../lib/model-order';
+  import { resolveModelSelection, type Account, type ModelInfo } from '@boite/contracts';
   import AccountSeats from './AccountSeats.svelte';
   import ModelSearch from './ModelSearch.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
@@ -11,10 +11,12 @@
   import { floating } from '../lib/floating';
   import { focusInitial } from '../lib/focus';
   import { Closing } from '../lib/closing.svelte';
+  import type { AnchoredPopover } from '../lib/anchored-popover.svelte';
   import { fill, strings } from '../lib/strings';
-  import { FIRST_MODELS, favoriteIds, firstModels, groupModels, modelSource } from '../lib/model-list';
+  import { FIRST_MODELS, favoriteIds, firstModels, groupModels, modelMatches, modelSource } from '../lib/model-list';
   import { pickerKeydown } from '../lib/model-picker-keys';
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
+  import type { ResolvedFavorite } from '../lib/model-favorites.svelte';
   import { desktopSettings } from '../lib/settings-tabs';
 
   /**
@@ -39,7 +41,7 @@
     store: Store;
     choice: Choice | null;
     /** The chip's open state: this body mounts while it is shown. */
-    popover: Closing;
+    popover: AnchoredPopover;
     /** The chip's root, which holds this body: the keys and the anchor read it. */
     root: () => HTMLElement | undefined;
     /** Optional restriction for callers that intentionally keep one account. */
@@ -71,11 +73,12 @@
   let pickPending = $state(false);
   /** Shared by every machine; each is resolved to an account of this one (`lib/model-favorites.svelte.ts`). */
   const favorites = $derived(store.favorites);
-  const favoriteSet = $derived.by(() => favoriteIds(store.favorites, shown?.id, shownAccountId));
+  const favoriteSet = $derived.by(() => favoriteIds(favorites.filter(entry => entry.effort === undefined ||
+    entry.effort === entry.model.effort?.default), shown?.id, shownAccountId));
   function favorite(model: ModelInfo): boolean {
     return favoriteSet.has(model.id);
   }
-  async function applyPick(instance: { providerId: string; accountId: string }, requested?: string, close = true) {
+  async function applyPick(instance: { providerId: string; accountId: string }, requested?: string, close = true, effort?: string) {
     if (pickPending || disabled) return;
     const owner = store;
     const generation = owner.clientGeneration;
@@ -89,12 +92,16 @@
       const provider = owner.providerOf(instance.providerId);
       if (!provider) return;
       const native = agentListed(provider.protocol);
+      const select = (rows: ModelInfo[], id: string | null) => {
+        const resolved = resolveModelSelection(rows, id, effort);
+        return { ...instance, model: resolved?.model.id ?? id, ...(resolved?.effort ? { effort: resolved.effort } : {}) };
+      };
       // A row from a list the core already gave lands now: a refresh still
       // reading behind it changes nothing, and the core keeps that list meanwhile.
       if (requested !== undefined && (owner.catalogHas(instance.providerId, instance.accountId, requested)
-        || (!native && owner.modelsOf(instance.providerId, instance.accountId).some((entry) => entry.id === requested)))) {
-        apply({ ...instance, model: requested });
-        if (close) popover.hide();
+        || (!native && resolveModelSelection(owner.modelsOf(instance.providerId, instance.accountId), requested)))) {
+        apply(select(owner.modelsOf(instance.providerId, instance.accountId), requested));
+        if (close) popover.close();
         return;
       }
       if (native) await owner.probeModels(instance.providerId, instance.accountId);
@@ -103,12 +110,12 @@
       const preferred = owner.defaultModelOf(provider, instance.accountId);
       const model = requested ?? (models.some(entry => entry.id === preferred) ? preferred
         : models.find(entry => entry.default)?.id ?? models[0]?.id ?? null);
-      if ((model !== null && !models.some(entry => entry.id === model)) || (native && models.length === 0)) {
+      if ((model !== null && !resolveModelSelection(models, model)) || (native && models.length === 0)) {
         owner.error = strings.composer.favoriteUnavailable;
         return;
       }
-      apply({ ...instance, model });
-      if (close) popover.hide();
+      apply(select(models, model));
+      if (close) popover.close();
     } finally { if (epoch === pickEpoch) pickPending = false; }
   }
 
@@ -117,8 +124,8 @@
     return protocol === 'claude-sdk' || protocol === 'acp' || protocol === 'codex-appserver' || protocol === 'muse' || protocol === 'pi';
   }
 
-  function pickFavorite(entry: FavoriteModel) {
-    return applyPick(entry, entry.model.id);
+  function pickFavorite(entry: ResolvedFavorite) {
+    return applyPick(entry, entry.model.id, true, entry.effort);
   }
 
   let provider = $derived(choice ? store.providerOf(choice.providerId) : null);
@@ -216,9 +223,7 @@
   );
 
   function matches(model: ModelInfo): boolean {
-    if (words.length === 0) return true;
-    const hay = `${model.id} ${model.name}`.toLowerCase();
-    return words.every((word) => hay.includes(word));
+    return words.length === 0 || modelMatches(model, words);
   }
 
   /** A matching default stays above long lists; filtering never changes the selection. */
@@ -239,7 +244,7 @@
   let groups = $derived(groupModels(capped ? firstModels(filteredCurrent, isCurrentModel) : filteredCurrent));
 
   function isCurrentModel(model: ModelInfo): boolean {
-    return shown !== null && choice?.providerId === shown.id && choice?.model === model.id;
+    return shown !== null && choice?.providerId === shown.id && choice.accountId === shownAccountId && store.modelOf(choice)?.id === model.id;
   }
 
   // Desktop can type immediately. Phones keep their keyboard closed until tapped.
@@ -286,7 +291,9 @@
       holds(shown.id)
         ? { providerId: choice!.providerId, accountId: choice!.accountId }
         : firstInstanceOf(shown.id);
-    if (instance) return applyPick(instance, model.id);
+    if (!instance) return;
+    const alias = model.aliases?.find(entry => entry.id.toLowerCase() === modelQuery.trim().toLowerCase());
+    return applyPick(instance, alias && !shownModels.some(row => row.id === alias.id) ? alias.id : model.id);
   }
 
   /**
@@ -387,13 +394,13 @@
     {#if favoritesOpen}
       <div class="head"><span class="provider-name ui-label">{strings.composer.favorites}</span></div>
       <div class="model-list">
-      {#each favorites as entry (`${entry.providerId}:${entry.accountId}:${entry.model.id}`)}
+      {#each favorites as entry (`${entry.providerId}:${entry.accountId}:${entry.model.id}:${entry.effort ?? ''}`)}
         <div class="model-entry">
-          <button type="button" class="row model favorite-row" role="menuitem" data-row data-testid="favorite-model" title={entry.model.id} disabled={disabled || pickPending || !store.providerOf(entry.providerId)?.available} onclick={() => void pickFavorite(entry)}>
-            <ProviderLogo providerId={entry.providerId} size={16} /><span class="name">{store.modelsOf(entry.providerId, entry.accountId).find(m => m.id === entry.model.id)?.name ?? entry.model.name}{#if modelSource(entry.model)}<span class="account-label">{modelSource(entry.model)}</span>{/if}{#if favorites.some(other => other.providerId === entry.providerId && other.model.id === entry.model.id && other.accountId !== entry.accountId)}<span class="account-label">{store.accountOf(entry.accountId)?.label}</span>{/if}</span>
+          <button type="button" class="row model favorite-row" role="menuitem" data-row data-testid="favorite-model" title={entry.items[0]?.model.id ?? entry.model.id} disabled={disabled || pickPending || !store.providerOf(entry.providerId)?.available} onclick={() => void pickFavorite(entry)}>
+            <ProviderLogo providerId={entry.providerId} size={16} /><span class="name">{entry.model.name}{#if entry.effort}<span class="account-label">{entry.model.effort?.levels.find(level => level.id === entry.effort)?.label ?? entry.effort}</span>{/if}{#if modelSource(entry.model)}<span class="account-label">{modelSource(entry.model)}</span>{/if}{#if favorites.some(other => other.providerId === entry.providerId && other.model.id === entry.model.id && other.accountId !== entry.accountId)}<span class="account-label">{store.accountOf(entry.accountId)?.label}</span>{/if}</span>
           </button>
           {#if store.owner}
-            <button type="button" class="favorite-button" aria-label={strings.composer.unfavorite} onclick={() => store.toggleFavorite(entry.providerId, entry.accountId, entry.model)}><Star size={14} fill="currentColor" /></button>
+            <button type="button" class="favorite-button" aria-label={strings.composer.unfavorite} onclick={() => store.removeFavorite(entry)}><Star size={14} fill="currentColor" /></button>
           {:else}
             <span class="favorite-button favorite-mark" aria-hidden="true"><Star size={14} fill="currentColor" /></span>
           {/if}

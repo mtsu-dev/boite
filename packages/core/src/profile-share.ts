@@ -24,7 +24,7 @@ import { currentOs, homePath } from './paths.ts';
  * puts its session file under that same variable, so the provider's own location
  * is the variable's own default, never `~/.<id>`.
  */
-const ISOLATION_DEFAULTS: Record<string, string[]> = {
+export const ISOLATION_DEFAULTS: Record<string, string[]> = {
   XDG_DATA_HOME: ['.local', 'share'],
   XDG_CONFIG_HOME: ['.config'],
   XDG_STATE_HOME: ['.local', 'state'],

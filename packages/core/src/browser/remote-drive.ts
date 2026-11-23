@@ -11,6 +11,7 @@ import { RENDER_SCALE } from './chromium.ts';
 import { DEFAULT_MAX_WIDTH, DEFAULT_QUALITY, MAX_SOCKET_BUFFER_BYTES, PushStream, StreamWire, type Picture, type PushOptions } from './push-stream.ts';
 import { chooseScript, EDITABLE_SCRIPT, KEY_CODES, PAGE_INFO_SCRIPT, pickerScript, selectionScript } from './scripts.ts';
 import { press } from './automation.ts';
+import { readsConsole } from './page-runtime.ts';
 import type { Tab } from './types.ts';
 
 const FRAME_REUSE_MS = 150;
@@ -413,7 +414,15 @@ export class RemoteDrive {
       for (const viewer of this.#pushes.values()) if (viewer.tab.id === tab.id) viewer.frames = [];
     };
     switch (input.kind) {
-      case 'navigate': retire(); await this.#context.send(tab, 'Page.navigate', { url: input.url }); return { ok: true };
+      case 'navigate': {
+        retire();
+        // Off before the navigation starts, as for the agent's (`#navigate` in browser.ts).
+        if (!readsConsole(input.url)) await tab.page.frames?.runtime?.follow(input.url);
+        const reply = await this.#context.send(tab, 'Page.navigate', { url: input.url }) as { errorText?: string; isDownload?: boolean };
+        if (reply.isDownload || reply.errorText) await tab.page.frames?.runtime?.follow(tab.url || 'about:blank');
+        if (reply.errorText && !reply.isDownload) throw refused(`${input.url} could not be opened: ${reply.errorText}`);
+        return { ok: true };
+      }
       case 'reload': retire(); await this.#context.send(tab, 'Page.reload'); return { ok: true };
       case 'history': {
         retire();

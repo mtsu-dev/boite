@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { BRANCH_SCHEMA, journalSchema, lockHolder, schemaState } from './dev-data.ts';
 import { parseArgs, statePath } from './instance.ts';
+import { connect } from '../../packages/core/src/client.ts';
 
 const ROOT = resolve(import.meta.dir, '..', '..');
 const SCRIPT = join(import.meta.dir, 'instance.ts');
@@ -60,6 +61,77 @@ afterEach(async () => {
 }, TIMEOUT);
 
 describe('bun run dev:instance', () => {
+  test('restart asks the running Dev core to hand over an interrupted echo turn', async () => {
+    const box = fresh();
+    const first = await instance(box, '--echo');
+    expect(first.code).toBe(0);
+    const { pid, port, token } = JSON.parse(readFileSync(join(box.devDir, 'core.json'), 'utf8')) as { pid: number; port: number; token: string };
+    const url = `http://127.0.0.1:${port}`;
+    const client = await connect(url, token);
+    let threadId: string, turnId: string;
+    try {
+      const project = await client.call('projects.add', { path: box.home, name: 'Dev restart test' });
+      const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+      const thread = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id });
+      threadId = thread.id;
+      await client.call('threads.subscribe', { threadId });
+      const started = client.next('turn.started', turn => turn.threadId === threadId, 10_000);
+      turnId = (await client.call('turns.start', { threadId, prompt: '[sleep:60000] Finish the interrupted request' })).id;
+      await started;
+      const restarted = await instance(box, 'restart');
+      expect(restarted.code).toBe(0);
+      expect(restarted.out).toContain(`boite-core ready ${url}`);
+      expect(JSON.parse(readFileSync(join(box.devDir, 'core.json'), 'utf8')).pid).not.toBe(pid);
+    } finally { client.close(); }
+    const next = await connect(url, token);
+    try {
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const thread = await next.call('threads.get', { threadId });
+        expect(thread.turns.find(turn => turn.id === turnId)?.status).toBe('stopped');
+        const continued = thread.turns.find(turn => turn.execution?.operation === 'resume');
+        if (continued || Date.now() > deadline) {
+          expect(continued).toBeDefined();
+          expect(thread.messages.some(message => message.turnId === continued?.id && message.parts.some(part => part.type === 'text' && part.text.includes('Finish the interrupted request')))).toBe(true);
+          break;
+        }
+        await Bun.sleep(50);
+      }
+    } finally { next.close(); }
+  }, TIMEOUT);
+
+  test('restart waits for a draining core when the handoff acknowledgement is truncated', async () => {
+    const box = fresh();
+    expect((await instance(box, '--echo')).code).toBe(0);
+    const path = join(box.devDir, 'core.json');
+    const record = JSON.parse(readFileSync(path, 'utf8')) as { pid: number; port: number; token: string };
+    const url = `http://127.0.0.1:${record.port}`;
+    const client = await connect(url, record.token);
+    try {
+      const project = await client.call('projects.add', { path: box.home, name: 'Dev handoff test' });
+      const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+      const { id: threadId } = await client.call('threads.create', { projectId: project.id, providerId: account.providerId, accountId: account.id });
+      await client.call('threads.subscribe', { threadId });
+      const running = client.next('message.part', event => event.threadId === threadId && event.part.type === 'tool' && event.part.status === 'running');
+      await client.call('turns.start', { threadId, prompt: '[tool:3500] Finish this tool before the restart' });
+      await running;
+    } finally { client.close(); }
+    const server = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch() {
+      const response = await fetch(`${url}/shutdown-for-update?pid=${record.pid}`, { method: 'POST', headers: { authorization: `Bearer ${record.token}` } });
+      expect(response.status).toBe(202);
+      await response.arrayBuffer();
+      expect(lockHolder(box.devDir)?.pid).toBe(record.pid);
+      return new Response('{', { status: 202 });
+    } });
+    try {
+      writeFileSync(path, JSON.stringify({ ...record, port: server.port }));
+      const restarted = await instance(box, 'restart');
+      expect(restarted.err).toBe('');
+      expect(restarted.code).toBe(0);
+      expect(JSON.parse(readFileSync(path, 'utf8')).pid).not.toBe(record.pid);
+    } finally { await server.stop(true); }
+  }, TIMEOUT);
+
   test('a first run says the Dev data starts empty, the next one reuses it', async () => {
     const box = fresh();
     const first = await instance(box);

@@ -1,8 +1,8 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { threadActive, defaultCoordinationConfig, reachRefusal, TEAM_LETTERS_PER_BATCH } from '@boite/contracts';
-import type { AgentAddress, AgentContact, AgentLetter, AgentMatch, AgentTranscript, CoordinationBridgeResponse, CoordinationConfig, CoordinationPeer, CoordinationView, RpcParams, ThreadStatus } from '@boite/contracts';
+import { defaultCoordinationConfig, reachRefusal, TEAM_LETTERS_PER_BATCH } from '@boite/contracts';
+import type { AgentAddress, AgentContact, AgentLetter, AgentMatch, AgentTranscript, CoordinationBridgeResponse, CoordinationConfig, CoordinationPeer, CoordinationView, RpcParams } from '@boite/contracts';
 import { checkRemoteContact } from './coordination-lookup.ts';
 import { coordinationScope, type CoordinationScope } from './coordination-scope.ts';
 import { CoordinationLookups } from './coordination-directory.ts';
@@ -11,6 +11,7 @@ import { askContact, CoordinationBridge } from './coordination-bridge.ts';
 import { dropGroupRead, policedRoutes, policyAllowsLetter } from './coordination-group.ts';
 import { address, coordinationGuide, coordinationUrl, LETTER_TTL_MS, RESIDENT_LETTER_TTL_MS, same, text, SWEEP_PROBES } from './coordination-letter.ts';
 import { withProjects, withRelations } from './coordination-relation.ts';
+import { pauseInterruptedCoordination, replaceAutoPause, wakesAfterRestart, wakesOnNewLetter, type AutoPauseReason } from './coordination-recovery.ts';
 import { firstAnswer, PeerGone, PeerRefusal, post, settle, type Answer, type Envelope, type Operation } from './coordination-wire.ts';
 import { checkTailnetName } from './contacts/invite.ts';
 import { outgoingContact, incomingContact } from './contacts/human-letters.ts';
@@ -27,6 +28,7 @@ import { forwardCoordination } from './coordination-rpc.ts';
 import { datedByPeer, PeerClocks } from './peer-clock.ts';
 import { trustCoordination, trustedCoordinationPeers } from './coordination-trust.ts';
 import { TeamLetters } from './coordination-team.ts';
+import { contactsOff } from './contacts/switch.ts';
 
 const HOUR = 3_600_000;
 /** How long a delivered, expired, rejected or uncertain letter stays in the journal. */
@@ -50,10 +52,9 @@ export class Coordination {
   #publicKey = '';
   #coreId = '';
   #closed = false;
-  /** Releases local acknowledgement waits before driver teardown can reject them. */
-  readonly #localWaits = new Set<() => void>();
+  readonly #closing = new AbortController();
   readonly #pending = new Set<Promise<unknown>>();
-  readonly #delivering = new Set<string>();
+  readonly #delivering = new Map<string, symbol>();
   /** The letters `admit` let through, while their sink records them. */
   #admitting: Set<string> | null = null;
   /** Answers other cores' signed requests. */
@@ -83,22 +84,8 @@ export class Coordination {
       closed: () => this.#closed, selfId: () => this.#self('').coreId, trusted: () => this.trusted(), peers: () => this.peers(), signature: input => this.signature(input),
       directory: () => this.localDirectory(), contactDirectory: coreId => this.contactDirectory(coreId), receive: (letter, peer) => this.mailboxes.receive(letter, peer) ?? this.#receive(letter, peer), received: id => this.#find(id, 'in') ?? this.mailboxes.received(id),
     });
-    // A restart keeps idle contacts reachable, but never replays pending work automatically.
     if (!threadJsonChecked) core.journal.validateVisibleThreadJson();
-    const candidates = core.journal.db.query(`SELECT settings.key, settings.value, threads.rowid FROM settings JOIN threads ON settings.key = 'coordination:' || threads.id
-      WHERE threads.id NOT IN (SELECT thread_id FROM thread_deletions) AND (typeof(settings.value) <> 'text' OR NOT json_valid(settings.value))
-      ORDER BY threads.rowid`).all() as { key: string; value: string; rowid: number }[];
-    // Find the real parser error now; report it after the preceding recovery writes.
-    const invalidConfig = candidates.find(({ value }) => { try { JSON.parse(value); return false; } catch { return true; } });
-    const interrupted = core.journal.db.query(`SELECT id, status, rowid FROM threads WHERE id NOT IN (SELECT thread_id FROM thread_deletions)
-      AND (? IS NULL OR rowid <= ?) AND (status IN ('queued', 'running', 'waiting') OR rowid = ?
-        OR id IN (SELECT thread_id FROM coordination_letters WHERE status IN ('queued', 'received', 'uncertain')))
-      ORDER BY rowid`).all(invalidConfig?.rowid ?? null, invalidConfig?.rowid ?? null, invalidConfig?.rowid ?? null) as { id: string; status: ThreadStatus; rowid: number }[];
-    for (const thread of interrupted) {
-      if (thread.rowid === invalidConfig?.rowid) core.journal.getSetting(invalidConfig.key);
-      const pending = core.journal.db.query("SELECT 1 FROM coordination_letters WHERE thread_id = ? AND (status IN ('queued', 'received') OR (status = 'uncertain' AND json_extract(data, '$.error') = 'Queued for provider delivery')) LIMIT 1").get(thread.id);
-      if (pending || threadActive(thread.status)) this.pause(thread.id, 'restart');
-    }
+    pauseInterruptedCoordination(core.journal, threadId => this.pause(threadId, 'restart'));
     // A thread that finishes a turn can take its waiting letters now, not at the next sweep.
     this.#off = core.bus.onAny((name, payload) => {
       if (name === 'turn.finished' && !this.#closed) this.#kick((payload as { threadId: string }).threadId);
@@ -209,15 +196,15 @@ export class Coordination {
    * A pause the core applies by itself (Stop, a restart, a failed wake). It lasts until the user's next message;
    * after a restart or a failed wake, another agent's next letter ends it too, so a crashed thread can be woken.
    */
-  pause(threadId: string, reason: 'stop' | 'restart' | 'failure' = 'stop'): void {
+  pause(threadId: string, reason: AutoPauseReason = 'stop'): void {
     const config = this.config(threadId);
     if (config.mode === 'off') return;
+    const pauseKey = `${AUTO_PAUSE_PREFIX}${threadId}`;
     if (config.paused) {
-      // Stop over a restart's or a failed wake's pause makes it Stop's; the owner's pause carries no reason and stays as it is.
-      if (reason === 'stop' && this.#wakesForAgent(threadId)) this.#core.journal.setSetting(`${AUTO_PAUSE_PREFIX}${threadId}`, reason);
+      replaceAutoPause(this.#core.journal, pauseKey, reason);
       return;
     }
-    this.#core.journal.setSetting(`${AUTO_PAUSE_PREFIX}${threadId}`, reason);
+    this.#core.journal.setSetting(pauseKey, reason);
     this.#saveConfig(threadId, { ...config, paused: true });
   }
   /** The user wrote to the thread again: a pause the core applied by itself ends, the owner's stays. */
@@ -229,10 +216,8 @@ export class Coordination {
   }
   /** Paused by Stop or by the owner: what holds a thread's own scheduled wake (`threads/scheduled-wakes.ts`). */
   heldByUser(threadId: string): boolean { return this.config(threadId).paused && !this.#wakesForAgent(threadId); }
-  /** A pause another agent's letter ends: a restart's or a failed wake's, not Stop's or the owner's. One saved before reasons were recorded reads as a restart's. */
   #wakesForAgent(threadId: string): boolean {
-    const reason = this.#core.journal.getSetting(`${AUTO_PAUSE_PREFIX}${threadId}`);
-    return Boolean(reason) && reason !== 'stop';
+    return wakesOnNewLetter(this.#core.journal.getSetting(`${AUTO_PAUSE_PREFIX}${threadId}`));
   }
   /**
    * The owner trusted the contact mail a held wake refused, or let held mail through: a failure's pause ends,
@@ -295,8 +280,8 @@ export class Coordination {
   }
   /** Reachable threads, the most recently active first: an old thread never hides a live one. */
   private localDirectory(projectId?: string): AgentContact[] {
-    return this.#core.journal.listThreads(projectId)
-      .filter(t => !t.archived && !t.teamId && !t.councilId && this.config(t.id).mode !== 'off' && (projectId !== undefined || this.config(t.id).remote))
+    return this.#core.journal.listThreads(projectId, { includeArchived: false })
+      .filter(t => !t.teamId && !t.councilId && this.config(t.id).mode !== 'off' && (projectId !== undefined || this.config(t.id).remote))
       .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100).map(t => this.#contact(t.id));
   }
   /** What this thread may reach on its own core: its project, and every remote-enabled thread when it is one too. */
@@ -375,14 +360,18 @@ export class Coordination {
     const resident = local ? this.#core.workforce.projects.over(params.threadId, to.threadId) : null;
     let from = this.#contact(params.threadId, resident !== null);
     const id = answerId ?? randomUUID(), config = this.scope(params.threadId, { id, to });
-    if (config.paused) throw refused('coordination paused by the owner');
+    const returnAnswer = answerId !== undefined && this.#core.threads.spawns.answers(params.threadId, to, answerId);
+    const paused = () => this.config(params.threadId).paused && !(returnAnswer && this.#wakesForAgent(params.threadId));
+    if (paused()) throw refused('coordination paused by the owner');
     const body = text(params.text, 'text');
     const requestId = text(params.requestId, 'requestId', 128);
     const fingerprint = createHash('sha256').update(JSON.stringify([to, body, params.replyTo ?? null, ...(human ? ['contact-human'] : [])])).digest('hex');
     const existing = this.#core.journal.db.query('SELECT data, fingerprint FROM coordination_letters WHERE thread_id = ? AND request_id = ?').get(params.threadId, requestId) as Row | null;
     if (existing) {
       if (existing.fingerprint !== fingerprint) throw refused('requestId already used for different content');
-      return JSON.parse(existing.data) as AgentLetter;
+      const letter = JSON.parse(existing.data) as AgentLetter;
+      if (returnAnswer && local && letter.status === 'queued') this.#deliverLocal(letter);
+      return this.#find(letter.id, 'out') ?? letter;
     }
     if (same(from, to)) throw refused('an agent cannot message itself');
     let toTitle: string;
@@ -401,7 +390,7 @@ export class Coordination {
       if (!peer && !route) throw refused('destination machine is not trusted for coordination');
       if (!human && (this.#core.contacts.isContact(to.coreId) || route)) this.#core.contacts.checkSendTier(params.threadId, to.coreId);
       from = this.#contact(params.threadId, resident !== null);
-      if (!this.scope(params.threadId, { id, to }).machine(to.coreId) || this.config(params.threadId).paused) throw refused('coordination permissions changed; retry the send');
+      if (!this.scope(params.threadId, { id, to }).machine(to.coreId) || paused()) throw refused('coordination permissions changed; retry the send');
       // No directory round trip on send: a disconnected recipient can receive after reconnect.
       toTitle = to.threadId;
       toMachine = peer?.name ?? route!.name;
@@ -414,7 +403,7 @@ export class Coordination {
     }
     const provenance = await outgoingContact(this.#core, from, to, human, connection);
     if (to.coreId !== from.coreId) this.#core.contacts.reach.checkSend(from.threadId, to, provenance.sharedProjectId !== undefined);
-    this.#contact(params.threadId, resident !== null); if (this.config(params.threadId).paused) throw refused('coordination paused by the owner');
+    this.#contact(params.threadId, resident !== null); if (paused()) throw refused('coordination paused by the owner');
     if (to.coreId !== from.coreId && !this.scope(params.threadId, { id, to }).machine(to.coreId)) throw refused('coordination permissions changed; retry the send');
     const raced = this.rows('thread_id = ? AND request_id = ?', params.threadId, requestId)[0];
     if (raced) { if (raced.fingerprint !== fingerprint) throw refused('requestId already used for different content'); return JSON.parse(raced.data) as AgentLetter; }
@@ -429,10 +418,21 @@ export class Coordination {
     // The thread's turns now report back to the agent that wrote to it, waking it only once it watches the thread.
     if (resident) this.#core.workforce.projects.follow(resident.id, to.threadId, 'touched');
     this.#changed(from.threadId);
-    if (to.coreId === from.coreId) {
-      try { this.#receive(letter); } catch (error) { this.update(letter, 'rejected', messageOf(error)); }
-    } else queueMicrotask(() => { void this.tick(); });
+    if (local) this.#deliverLocal(letter);
+    else queueMicrotask(() => { void this.tick(); });
     return this.#find(letter.id, 'out')!;
+  }
+
+  /** A crash can leave the outgoing row without its local receipt. */
+  #deliverLocal(letter: AgentLetter): void {
+    const saved = this.#find(letter.id, 'in');
+    if (saved) {
+      this.update(saved, saved.status, saved.error);
+      if (saved.status === 'received') this.#resumeForAgent(saved.to.threadId);
+      this.#kick(saved.to.threadId);
+      return;
+    }
+    try { this.#receive(letter); } catch (error) { this.update(letter, 'rejected', messageOf(error)); }
   }
   /** Called only after the gateway's sealed group envelope and the saved source route match. */
   receiveRouted(letter: AgentLetter, name: string): AgentLetter {
@@ -549,7 +549,8 @@ export class Coordination {
     const bot = contactsBot(this.#core);
     // A member whose bot lives on the group's Bots host asks through it, like the host's own threads.
     const role = bot !== null ? (bot.threadId === threadId ? 'self' : 'other') : this.#core.contacts.hostAsks.relays() ? 'other' : 'none';
-    return coordinationGuide(config.paused, config.remote && (this.#core.contacts.list().length > 0 || this.#core.contacts.members.relayed().length > 0 || this.#core.group.peers().length > 0), role);
+    // Contacts held off (`contacts/switch.ts`) leave the guide without them.
+    return coordinationGuide(config.paused, config.remote && !contactsOff(this.#core) && (this.#core.contacts.list().length > 0 || this.#core.contacts.members.relayed().length > 0 || this.#core.group.peers().length > 0), role);
   }
 
   /** Hook delivery: one batch at a provider's next safe tool boundary. */
@@ -625,7 +626,7 @@ export class Coordination {
     const resident = this.#core.workforce.projects.mayReceive(letter, letter.from.coreId === this.#self('').coreId);
     if (resident !== null) return resident;
     const recipient = this.config(letter.to.threadId);
-    if (recipient.mode === 'off' || recipient.paused) return false;
+    if (recipient.mode === 'off' || (recipient.paused && !wakesAfterRestart(this.#core, letter, this.#self('').coreId, AUTO_PAUSE_PREFIX + letter.to.threadId))) return false;
     if (letter.from.coreId !== this.#self('').coreId) {
       if (!recipient.remote) return false;
       const routed = this.mailboxes.mayReceive(letter);
@@ -659,18 +660,6 @@ export class Coordination {
       return true;
     }, undefined, true);
   }
-  async #steer(threadId: string, prompt: string): Promise<{ submitted: boolean } | null> {
-    if (this.#closed) return null;
-    const stopped = Promise.withResolvers<null>();
-    const cancel = () => stopped.resolve(null);
-    this.#localWaits.add(cancel);
-    try {
-      return await Promise.race([
-        this.#core.threads.steer(threadId, prompt).then(submitted => ({ submitted })),
-        stopped.promise,
-      ]);
-    } finally { this.#localWaits.delete(cancel); }
-  }
   /** Restore on actual provider delivery, after pause, expiry and permission checks. */
   #restoreProject(threadId: string): void {
     const projectId = this.#core.threads.require(threadId).projectId;
@@ -683,7 +672,9 @@ export class Coordination {
     if (!thread || thread.archived || thread.status === 'waiting' || thread.status === 'queued') return;
     const ready = this.#ready(threadId, BATCH);
     if (!ready.length) return;
-    this.#delivering.add(threadId);
+    const delivery = Symbol();
+    this.#delivering.set(threadId, delivery);
+    const release = () => { if (this.#delivering.get(threadId) === delivery) this.#delivering.delete(threadId); };
     const local = () => this.#ready(threadId, BATCH, null, true);
     try {
       if (thread.status === 'running') {
@@ -697,11 +688,11 @@ export class Coordination {
         }, local);
         if (!steered) return;
         try {
-          const result = await this.#steer(threadId, steered.prompt);
-          if (result === null || this.#closed || this.#core.journal.isClosed()) return;
+          const submitted = await this.#core.threads.steer(threadId, steered.prompt, { release, signal: this.#closing.signal });
+          if (this.#closed || this.#core.journal.isClosed()) return;
           for (const letter of steered.letters) {
             const current = this.#find(letter.id, 'in');
-            if (current?.status === 'uncertain' && current.error === 'Awaiting provider acknowledgement') this.update(current, result.submitted ? 'delivered' : 'received');
+            if (current?.status === 'uncertain' && current.error === 'Awaiting provider acknowledgement') this.update(current, submitted ? 'delivered' : 'received');
           }
         } catch (error) {
           if (this.#closed || this.#core.journal.isClosed()) return;
@@ -735,7 +726,7 @@ export class Coordination {
         this.pause(threadId, 'failure'); this.#core.log('warn', `coordination ${threadId}: ${messageOf(error)}`);
       }
     }
-    finally { this.#delivering.delete(threadId); }
+    finally { release(); }
   }
   /** A scheduled coordination turn reached its driver; no claim that the model read it. */
   submitted(threadId: string, turnId: string): void {
@@ -793,7 +784,7 @@ export class Coordination {
       const peer = this.trusted().find(p => p.coreId === letter.to.coreId);
       const route = !peer ? this.mailboxes.route(letter.from.threadId, letter.to.coreId) : undefined;
       if ((!peer && !route) || !config.machine(letter.to.coreId) || config.mode === 'off') { this.update(letter, 'rejected', 'Machine permission revoked'); return; }
-      if (config.paused && letter.status === 'queued') return;
+      if (config.paused && letter.status === 'queued' && !(this.#wakesForAgent(letter.from.threadId) && this.#core.threads.spawns.answers(letter.from.threadId, letter.to, letter.id))) return;
       try {
         const answer = peer ? await this.exchange(peer, letter.status === 'queued' ? 'deliver' : 'receipt', letter.status === 'queued' ? letter : { id: letter.id, fromThreadId: letter.from.threadId }) as AgentLetter : await this.mailboxes.relay(letter);
         if (this.#closed) return;
@@ -885,8 +876,7 @@ export class Coordination {
   beginClose(): void {
     if (this.#closed) return;
     this.#closed = true;
-    for (const cancel of this.#localWaits) cancel();
-    this.#localWaits.clear();
+    this.#closing.abort();
     this.bridge.close();
     this.mailboxes.beginClose();
     clearInterval(this.#timer); this.#off();

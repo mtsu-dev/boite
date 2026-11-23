@@ -1,6 +1,7 @@
 // Owns command labels and actions shared by the palette and keyboard settings.
 import type { KeybindingCommand } from '@boite/contracts';
 import { archiveThread, reopenLastArchived } from './archive';
+import { openArchived } from './archived-view.svelte';
 import { lastAnswer } from './message-display';
 import { sidebarRows } from './sidebar-rows.svelte';
 import { workspace } from './workspace.svelte';
@@ -85,7 +86,7 @@ const commandTable: readonly CommandDefinition[] = [
   } },
   { id: 'subagents', run: (store) => { store.showChat(); store.panel.toggleKind('agents'); } },
   { id: 'task-manager', run: (store) => { store.showSettings('task-manager'); } },
-  { id: 'archived', run: (store) => { store.showSettings('general', 'archived'); } },
+  { id: 'archived', run: (store) => openArchived(store) },
   { id: 'tour', run: (store) => { store.showChat(); openTour(); } },
 ];
 const commandsById = new Map(commandTable.map(command => [command.id, command]));

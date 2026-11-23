@@ -116,7 +116,7 @@ test('the slots equal a sum of the raw turns after a write, a rewrite, a move, a
   expect(journal.db.query('SELECT SUM(turns) AS turns FROM usage_slots').get()).toEqual({ turns: 7 });
 });
 
-test('a journal from before the slots builds them from every finished and removed turn', async () => {
+test.each([51, 53])('schema %i without slots builds them from every finished and removed turn', async (version) => {
   const { echo, other } = await setup();
   const dir = mkdtempSync(join(tmpdir(), 'boite-slots-'));
   const file = join(dir, 'journal.db');
@@ -127,11 +127,10 @@ test('a journal from before the slots builds them from every finished and remove
     copy.putTurn(turn(other, D0 + DAY + 2, usage(2, 2)));
     copy.putTurn(turn(other, D0 + DAY + 3, null, null));
     copy.db.query('INSERT INTO removed_turn_usage VALUES (?, ?, ?, ?)').run(D0 + 2 * DAY, 'codex', 'gpt-5', JSON.stringify(usage(5, 5)));
-    // What a core before the slots left: no table, version 51.
-    copy.db.exec('DROP TABLE usage_slots; PRAGMA user_version = 51');
+    copy.db.exec(`DROP TABLE usage_slots; PRAGMA user_version = ${version}`);
     copy.close();
     copy = new Journal(file);
-    expect(copy.schema.from).toBe(51);
+    expect(copy.schema.from).toBe(version);
     const [slots, raw] = sides(copy, EDGES);
     expect(slots).toEqual(raw);
     expect(raw.map((row) => [row.bucket, row.project_id, row.provider_id, row.model, row.turns])).toEqual([

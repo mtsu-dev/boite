@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
-import type { Message } from '@boite/contracts';
+import type { ChatPreviewSize, Message } from '@boite/contracts';
 import ChatImage from './ChatImage.svelte';
 import { reactive } from '../test/reactive.svelte';
 import type { Store } from '../lib/store.svelte';
@@ -61,8 +61,8 @@ test('a deferred picture has its size and its blur before a byte arrives, asks f
   expect(loadDisplayImage).not.toHaveBeenCalled();
 
   show(true);
-  // 16:9 at 88 px is drawn 156 px wide: the thumbnail's copy is enough on this 1x screen.
-  expect(loadDisplayImage).toHaveBeenCalledWith('t', 'm', 1, 'image/png', true);
+  // 16:9 at 88 px is drawn 156 px wide: the 192 px copy is enough on this 1x screen.
+  expect(loadDisplayImage).toHaveBeenCalledWith('t', 'm', 1, 'image/png', 192);
   await vi.waitFor(() => expect(document.querySelector('[data-testid=image-part]')?.getAttribute('src')).toBe(COPY));
   expect(image.dataDeferred).toBe(true);
   expect(loadMessageAttachment).not.toHaveBeenCalled();
@@ -75,11 +75,11 @@ test('a deferred picture has its size and its blur before a byte arrives, asks f
   expect(box.style.width).toBe(width);
   show(true);
   expect(loadDisplayImage).toHaveBeenCalledTimes(1);
-  // The original, once fetched for the viewer, takes the copy's place in the same box.
+  // Fetching the original for the viewer keeps the light copy in the timeline.
   image.data = PIXEL;
   delete image.dataDeferred;
   flushSync();
-  expect(document.querySelector('[data-testid=image-part]')?.getAttribute('src')).toBe(`data:image/png;base64,${PIXEL}`);
+  expect(document.querySelector('[data-testid=image-part]')?.getAttribute('src')).toBe(COPY);
   expect(box.style.width).toBe(width);
 });
 
@@ -108,11 +108,11 @@ test('a picture whose fetch failed asks again when it comes back near the screen
   await vi.waitFor(() => expect(box.title).toBe(''));
 });
 
-test('a thumbnail asks for the small copy while it stays sharp on the screen, and the large one past that', () => {
+test('a thumbnail asks for the smallest copy that stays sharp on the screen', () => {
   const show = observeBy();
   const ratio = window.devicePixelRatio;
-  const asked: boolean[] = [];
-  const store = { loadDisplayImage: vi.fn(async (...args: unknown[]) => { asked.push(args[4] as boolean); return COPY; }), reportError: vi.fn() } as unknown as Store;
+  const asked: ChatPreviewSize[] = [];
+  const store = { loadDisplayImage: vi.fn(async (_threadId: string, _messageId: string, _partIndex: number, _mimeType: string, size: ChatPreviewSize) => { asked.push(size); return COPY; }), reportError: vi.fn() } as unknown as Store;
   const mountAt = (devicePixelRatio: number, width: number, height: number) => {
     Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: devicePixelRatio });
     const image = reactive<ImagePart>({ type: 'image', mimeType: 'image/png', data: '', alt: null, dataDeferred: true, bytes: 70, width, height });
@@ -124,14 +124,14 @@ test('a thumbnail asks for the small copy while it stays sharp on the screen, an
   try {
     // A 16:9 screenshot needs 313 device pixels on a 2x screen: the 320 px copy.
     mountAt(2, 1920, 1080);
-    // 469 on a 3x phone: the large copy, or the thumbnail would be blurred.
+    // 469 on a 3x phone: the 480 px copy.
     mountAt(3, 1920, 1080);
-    // A panorama covers the box by its height: 88 px tall is 352 px wide, past 320 on a 1x screen.
+    // A panorama covers the box by its height: 88 px tall is 352 px wide, requiring 384 px on a 1x screen.
     mountAt(1, 4000, 1000);
   } finally {
     Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: ratio });
   }
-  expect(asked).toEqual([true, false, false]);
+  expect(asked).toEqual([320, 480, 384]);
 });
 
 test('a picture that came with its bytes reads its size from their header and asks for nothing', () => {

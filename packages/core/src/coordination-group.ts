@@ -1,5 +1,6 @@
 import type { AgentLetter, CoordinationPeer } from '@boite/contracts';
 import type { Core } from './core.ts';
+import { assertContacts, contactsOff } from './contacts/switch.ts';
 
 const SETTING = 'coordination:group-reads';
 type Grants = Record<string, { groupId: string; epoch: number; selfEpoch: number }>;
@@ -46,7 +47,7 @@ export function policedRoutes(core: Core, peer: CoordinationPeer, operation?: st
   const routes = core.group.routes(peer.coreId);
   const contact = core.contacts.isRelayPeer(peer) || (routes === null && core.contacts.has(peer.coreId));
   const contactOperation = operation?.startsWith('contact.') || operation?.startsWith('relay.');
-  core.policy.assert((contact || contactOperation === true) && core.policy.networkOff('contacts'), 'network.contacts', peer.name);
+  if (contact || contactOperation === true) assertContacts(core, peer.name);
   core.policy.assert(!contact && routes !== null && core.policy.networkOff('groups'), 'network.groups', peer.name);
   return routes;
 }
@@ -54,7 +55,7 @@ export function policedRoutes(core: Core, peer: CoordinationPeer, operation?: st
 /** Queued direct and relayed contact mail must not outlive a policy reload. */
 export function policyAllowsLetter(core: Core, letter: AgentLetter): boolean {
   if (letter.from.coreId === core.coordination.card().coreId) return true;
-  if (letter.contact && core.policy.networkOff('contacts')) return false;
+  if (letter.contact && contactsOff(core)) return false;
   const peer = core.coordination.trusted().find(peer => peer.coreId === letter.from.coreId);
   try { if (peer) policedRoutes(core, peer); return true; }
   catch { return false; }

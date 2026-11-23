@@ -15,7 +15,7 @@ import type { FileHandle } from 'node:fs/promises';
 import { open, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
+import { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_SECRET_DIRS, DEVICE_SECRET_FILE, FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
 import type { FileContent, FileEntry, ThreadId, Timestamp } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { locateFile } from './files.ts';
@@ -65,12 +65,6 @@ function deviceRoots(core: Core, threadId: ThreadId): string[] {
   return roots.map(realOf);
 }
 
-/** Folders that hold keys or tokens wherever they sit in a tree. */
-const DEVICE_SECRET_DIRS = new Set(['.git', '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker']);
-/** Files that hold credentials; templates such as `.env.example` stay readable. */
-const DEVICE_SECRET_FILE =
-  /^(\.env(\.(?!example$|sample$|template$)[^.]+)*|\.envrc|\.dev\.vars|\.netrc|_netrc|\.npmrc|\.pypirc|\.pgpass|\.htpasswd|\.git-credentials|\.credentials\.json|credentials(\.json)?|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.+\.(tfvars|tfstate|tfstate\.backup)|.+\.(pem|key|p12|pfx|jks|keystore|kdbx))$/i;
-
 /**
  * Where the owner's logins live: the home folder's hidden entries (every agent
  * CLI, gh, rclone, keyrings, shell history) and the per-user stores of Windows
@@ -86,17 +80,27 @@ function homeCredentialEntry(home: string, real: string): string | null {
   return first.startsWith('.') || /^(appdata|library)$/i.test(first) ? first : null;
 }
 
+function isCredentialPath(core: Core, home: string, path: string, real: string, forProjectRoot = false): boolean {
+  const { roots, exact } = core.providers.credentialPaths(core.accounts.list(), forProjectRoot);
+  for (const name of DEVICE_HOME_CREDENTIAL_STORES) roots.add(join(home, name));
+  for (const root of roots) {
+    if (contains(root, path) || contains(realOf(root), real)) return true;
+  }
+  for (const entry of exact) {
+    if (relative(entry, path) === '' || relative(realOf(entry), real) === '') return true;
+  }
+  return false;
+}
+
 /**
  * The home folder's known login folders, as segments: each agent CLI's, the key
  * and token stores, and the ones other CLIs keep under the XDG folders. `AppData`
  * and `Library` hold every Windows and macOS app's logins and count whole.
  */
 const HOME_LOGIN_FOLDERS = [
-  '.codex', '.claude', '.gemini', '.grok', '.pi', '.hermes', '.vibe', '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker',
-  '.password-store', '.cargo', '.config/gh', '.config/gcloud', '.config/opencode', '.local/share/opencode', '.local/share/keyrings',
-  '.config/muse', '.local/share/muse', '.local/state/muse', '.config/opencode-v2', '.local/share/opencode-v2', '.local/state/opencode-v2',
-  '.cache/opencode-v2', 'appdata', 'library',
-].map((folder) => folder.split('/'));
+  ...DEVICE_HOME_CREDENTIAL_STORES, '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker',
+  '.cargo', '.config/gcloud', 'AppData', 'Library',
+].map(folder => folder.toLowerCase().split('/'));
 
 /**
  * The login folder of the home folder that holds `real`, checked whatever the
@@ -124,7 +128,7 @@ function heldLoginFolder(home: string, real: string): string | null {
 }
 
 function loginRefusal(entry: string, path: string, threadId?: ThreadId): RpcFailure {
-  return refused(`a paired device does not read the home folder's ${entry}, which holds logins; open ${path} on the owner's machine`, { ...(threadId ? { threadId } : {}), path, expected: `a path outside the home folder's ${entry}` });
+  return refused(`a paired device does not read credential files (the home folder's ${entry} holds logins); open ${path} on the owner's machine`, { ...(threadId ? { threadId } : {}), path, expected: `a path outside the home folder's ${entry}` });
 }
 
 /**
@@ -141,25 +145,29 @@ function loginRefusal(entry: string, path: string, threadId?: ThreadId): RpcFail
  */
 export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, path: string | undefined): void {
   const base = realOf(cwd);
-  const target = realOf(resolve(cwd, path ?? ''));
+  const absolute = resolve(cwd, path ?? '');
+  const target = realOf(absolute);
   if (!contains(base, target)) return;
-  assertDeviceTarget(core, threadId, base, target, path);
+  assertDeviceTarget(core, threadId, base, target, absolute, path);
 }
 
 /** The rules above, for `target` inside the real folder `base`. */
-function assertDeviceTarget(core: Core, threadId: ThreadId, base: string, target: string, path: string | undefined): void {
+function assertDeviceTarget(core: Core, threadId: ThreadId, base: string, target: string, absolute: string, path: string | undefined): void {
+  const roots = deviceRoots(core, threadId);
   const data = realOf(core.dataDir);
-  if (contains(data, target) && !deviceRoots(core, threadId).some((root) => root !== data && contains(data, root) && contains(root, target))) {
+  if (contains(data, target) && !roots.some((root) => root !== data && contains(data, root) && contains(root, target))) {
     throw refused(`a paired device does not read boite's data folder: ${path ?? ''}`, { threadId });
   }
   const parts = relative(base, target).split(sep).filter(Boolean);
   const home = realOf(homePath());
-  if (![base, ...deviceRoots(core, threadId)].some((root) => contains(root, home))) {
+  const coversHome = [base, ...roots].some(root => contains(root, home));
+  if (!coversHome) {
     const login = homeLoginFolder(core, home, target);
     if (login !== null) throw loginRefusal(login, path ?? '', threadId);
   }
-  const entry = [base, ...deviceRoots(core, threadId)].some((root) => contains(root, home)) ? homeCredentialEntry(home, target) : null;
-  if (entry !== null || parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
+  const entry = coversHome ? homeCredentialEntry(home, target) : null;
+  if (entry !== null || isCredentialPath(core, home, absolute, target)
+    || parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
     throw refused(`a paired device does not read credential files${entry === null ? '' : ` (the home folder's ${entry} holds logins)`}; open ${path ?? ''} on the owner's machine`, { threadId });
   }
 }
@@ -181,7 +189,7 @@ export function assertDeviceHistoryFile(core: Core, threadId: ThreadId, cwd: str
     if (target === null || !contains(base, target)) {
       throw refused(`a paired device does not read ${absolute} at HEAD: it is outside the thread's working directory`, { threadId });
     }
-    assertDeviceTarget(core, threadId, base, target, absolute);
+    assertDeviceTarget(core, threadId, base, target, absolute, absolute);
   }
 }
 
@@ -190,7 +198,9 @@ export function assertDeviceHistoryFile(core: Core, threadId: ThreadId, cwd: str
  * read from, so it is held to the same rules first: not boite's data folder or
  * inside it, not the home folder, one of its parents or a disk root (they hold
  * every login), not one of the home folder's known login folders, a folder
- * inside one or a folder that holds one, and not a folder that holds keys or tokens or one inside it. A folder
+ * inside one or a folder that holds one, and not a folder that holds keys or
+ * tokens or one inside it. This includes declared login paths outside the
+ * default home layout. A folder
  * inside another hidden entry of the home folder (`~/.worktrees`, `~/.dotfiles`)
  * is allowed: it is a root of its own, and the entry's other folders stay out
  * of it. Its links are followed, as a read follows them.
@@ -206,9 +216,9 @@ export function assertDeviceProjectFolder(core: Core, folder: string): void {
   }
   const login = homeLoginFolder(core, home, real) ?? heldLoginFolder(home, real);
   if (login !== null) {
-    throw refused(`a paired device does not add the home folder's ${login} as a project, since it holds logins; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside the home folder's ${login}` });
+    throw refused(`a paired device does not add a folder that holds keys or tokens as a project: the home folder's ${login} holds logins; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside the home folder's ${login}` });
   }
-  if (real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
+  if (isCredentialPath(core, home, resolve(folder), real, true) || real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
     throw refused(`a paired device does not add a folder that holds keys or tokens as a project; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` });
   }
 }
@@ -286,23 +296,8 @@ async function writeAll(handle: FileHandle, data: Uint8Array): Promise<void> {
 }
 
 /** Open the real directory checked a moment ago. The handle stays on that inode if its path is renamed. */
-export async function openHeldDirectory(real: string, dev: bigint, ino: bigint, what: string, path: string): Promise<FileHandle> {
-  let handle: FileHandle;
-  try {
-    handle = await open(real, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | NOFOLLOW);
-  } catch {
-    throw refused(`${what} changed while it was opened: ${path}`, { what, path });
-  }
-  try {
-    const stats = await handle.stat({ bigint: true });
-    if (!stats.isDirectory() || stats.dev !== dev || stats.ino !== ino) {
-      throw refused(`${what} changed while it was opened: ${path}`, { what, path });
-    }
-    return handle;
-  } catch (error) {
-    await handle.close();
-    throw error;
-  }
+export function openHeldDirectory(real: string, dev: bigint, ino: bigint, what: string, path: string): Promise<FileHandle> {
+  return openChecked(real, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0), dev, ino, what, path, 'dir');
 }
 
 /**
@@ -321,7 +316,9 @@ export async function createExclusiveFile(dir: FileHandle, name: string, fallbac
 }
 
 /** Open the real file checked a moment ago, and refuse a symlink swapped in since. */
-export async function openChecked(real: string, flags: number, dev: bigint, ino: bigint, what: string, path: string): Promise<FileHandle> {
+export async function openChecked(
+  real: string, flags: number, dev: bigint, ino: bigint, what: string, path: string, expect: 'file' | 'dir' = 'file',
+): Promise<FileHandle> {
   let handle: FileHandle;
   try {
     handle = await open(real, flags | NOFOLLOW);
@@ -330,7 +327,8 @@ export async function openChecked(real: string, flags: number, dev: bigint, ino:
   }
   try {
     const stats = await handle.stat({ bigint: true });
-    if (!stats.isFile() || stats.dev !== dev || stats.ino !== ino) {
+    const matches = expect === 'dir' ? stats.isDirectory() : stats.isFile();
+    if (!matches || stats.dev !== dev || stats.ino !== ino) {
       throw refused(`${what} changed while it was opened: ${path}`, { what, path });
     }
     return handle;
@@ -417,8 +415,14 @@ function byName(a: { name: string }, b: { name: string }): number {
  * nobody asked to walk, and the link is followed when a client opens it.
  */
 async function listDirectory(cwd: string, path: string | undefined): Promise<FileEntry[]> {
-  const target = existingInside(cwd, path === undefined || path.length === 0 ? '.' : path, 'dir', 'files.list path');
-  const dirents = await readdir(target.absolute, { withFileTypes: true });
+  const directory = path === undefined || path === '' ? '.' : path;
+  const what = 'files.list path';
+  const target = existingInside(cwd, directory, 'dir', what);
+  const dirents = await readdir(target.absolute, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'EACCES' || error.code === 'EPERM') throw refused(`${what} cannot be read: ${directory}`, { what, path: directory });
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') throw refused(`${what} is no longer a directory: ${directory}`, { what, path: directory });
+    throw error;
+  });
   const ordered = dirents
     .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || byName(a, b))
     .slice(0, FILES_LIST_MAX);

@@ -48,8 +48,10 @@ offline need HTTPS.
    copied link and tap Paste the link.
 3. The phone lists every machine of the group and opens on that computer.
 
+- On a slow connection, Boite shows Starting while it loads.
 - The code works once, for ten minutes: treat it like a password.
 - To take a phone out, press Remove from the group on its row there.
+  A fresh link adds it again, including when the phone was offline during removal.
 - On iPhone, add the Home Screen app from inside it, with its Scan button:
   it does not share Safari's storage, and the Camera app opens Safari.
 - A link to a machine without an HTTPS address opens that machine's own page
@@ -72,18 +74,19 @@ the VPN or the Wi-Fi.
 
 - The bottom bar holds Threads, Activity and Mochis. The + for a new conversation sits in the thread list's header.
 - Mark all as read, above Activity's list, clears failures, stops and
-  finished work. Questions and permissions stay until you answer them.
+  finished work. Clearing a stop leaves unread replies in its conversation.
+  Questions and permissions stay until you answer them.
 - The gear at the end of each list's header opens Settings; Back, or the
   system's back gesture, returns to the list.
-- Slide a row left for Pin and Archive. Tap a conversation's title for its
-  menu: the side panel, pin, rename, find, archive and delete.
+- Slide a row left for Pin and Archive. In a conversation, tap the three dots
+  to pin, rename, find, archive or delete. Tap Panels to open the side panel.
 - Enter writes a new line and the send button sends. With a physical
   keyboard, Ctrl+Enter or Cmd+Enter sends. Back closes the open sheet first.
 - Pictures shrink to 2000 px on the long edge before they leave the phone.
 - In the [agent's browser](browser.md), press Show, tap to click, drag to
   scroll and type in the field below the preview.
 
-Tap a conversation's title to move it when the menu offers Move. Its plan
+Open the three-dot menu to move a conversation when it offers Move. Its plan
 appears in the chat. On a phone connected as the owner, Settings includes
 Accounts, Providers, Brain, Worktrees, Voice and Diagnostics. The task manager
 is in Diagnostics for the owner and has its own Settings entry on a paired

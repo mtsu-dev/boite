@@ -2,14 +2,13 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Account, Project, ProviderDescriptor, RpcParams, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { refused } from '../errors.ts';
-import { logMessageOf } from '../log-errors.ts';
+import { messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
 import { checkContext } from '../context-mode.ts';
 import { checkCwd, draftFolderName, makeDraftFolder, titleOf } from './inputs.ts';
 import { checkIncognito, incognitoRoot, makeIncognitoFolder } from './incognito.ts';
-import { DRAFT_CLEANUP_TIMEOUT_MS, type BeforeDraftMutation } from './draft-reservation-ledger.ts';
-import { checkEffort, checkModel, checkSpeed, defaultModel } from './selection.ts';
+import { DRAFT_CLEANUP_TIMEOUT_MS, DraftReservationLedger, type BeforeDraftMutation, type DraftOwnership } from './draft-reservation-ledger.ts';
+import { checkSelection, defaultModel } from './selection.ts';
 
 type CreateParams = RpcParams<'threads.create'>;
 
@@ -34,22 +33,29 @@ export class ThreadCreation {
     if (project.kind === 'drafts') {
       throw refused('a draft has no worktree: the drafts folder is not a git repository', { projectId: project.id });
     }
-    const model = checkModel(provider, account.id, params.model ?? defaultModel(provider));
-    checkEffort(provider, account.id, model, params.effort ?? null);
-    checkSpeed(provider, account.id, model, params.speed ?? null);
+    checkSelection(provider, account.id, params.model ?? defaultModel(provider), params.effort ?? null, params.speed ?? null);
+    checkContext(provider, params.context);
     const id = newId('thr_');
-    const placed = await this.core.worktrees.add(id, project, params.worktree?.branch, undefined, beforeMutation ? {
-      beforeMutation: placed => beforeMutation({ threadId: id, project, path: placed.path, branch: placed.branch, kind: 'worktree' }),
-      assertActive: () => beforeMutation.assertActive?.(id), timeoutMs: DRAFT_CLEANUP_TIMEOUT_MS,
-    } : undefined);
+    const ledger = new DraftReservationLedger(this.core);
+    let ownership: DraftOwnership | undefined;
     try {
-      return this.create({ ...params, cwd: placed.path }, { id, branch: placed.branch, branchNamingPending: placed.namingPending }, publish);
-    } catch (error) {
-      try {
-        await this.core.worktrees.remove(id, project, placed, beforeMutation ? DRAFT_CLEANUP_TIMEOUT_MS : undefined);
-      } catch (cleanupError) {
-        this.core.log('warn', `could not clean up the worktree ${placed.path} after creation failed: ${logMessageOf(cleanupError)}`, { threadId: id });
+      const placed = await this.core.worktrees.add(id, project, params.worktree?.branch, undefined, {
+        beforeMutation: placed => {
+          ownership = { threadId: id, project, path: placed.path, branch: placed.branch, base: placed.base, kind: 'worktree' };
+          return beforeMutation ? beforeMutation(ownership) : ledger.record(ownership);
+        },
+        assertActive: () => beforeMutation?.assertActive?.(id),
+        timeoutMs: beforeMutation ? DRAFT_CLEANUP_TIMEOUT_MS : undefined,
+        runCheckoutHook: beforeMutation === undefined,
+      });
+      const thread = this.create({ ...params, cwd: placed.path }, { id, branch: placed.branch, branchNamingPending: placed.namingPending }, publish);
+      if (!beforeMutation) {
+        try { ledger.forget(id); }
+        catch (error) { this.core.log('warn', `worktree ownership retained after publication: ${messageOf(error)}`, { threadId: id }); }
       }
+      return thread;
+    } catch (error) {
+      if (ownership) await ledger.cleanup(ownership);
       throw error;
     }
   }
@@ -59,9 +65,8 @@ export class ThreadCreation {
     const incognito = checkIncognito(params, project, placed !== undefined);
 
     const now = Date.now();
-    const model = checkModel(provider, account.id, params.model ?? defaultModel(provider));
-    const effort = checkEffort(provider, account.id, model, params.effort ?? null);
-    const speed = checkSpeed(provider, account.id, model, params.speed ?? null), contextMode = checkContext(provider, params.context);
+    const { model, effort, speed } = checkSelection(provider, account.id, params.model ?? defaultModel(provider), params.effort ?? null, params.speed ?? null);
+    const contextMode = checkContext(provider, params.context);
     const id = placed?.id ?? newId('thr_');
     // A worktree's directory is the core's own and uses the configured storage;
     // anything a client names has to be inside it. A draft with no directory
@@ -110,11 +115,12 @@ export class ThreadCreation {
   }
 
   publish(thread: ThreadSummary): ThreadSummary {
+    const project = thread.projectId ? this.core.projects.require(thread.projectId) : null;
     this.core.journal.append({ type: 'thread.created', threadId: thread.id, version: 1, payload: thread }, () => this.core.journal.putThread(thread));
     // Capture inherited shared authority before an idle child can outlive its parent's board goal.
     if (thread.parentThreadId) this.core.sharedAccess.bound(thread.id);
     this.core.bus.emit('thread.created', thread);
-    if (thread.projectId && this.core.projects.require(thread.projectId).archived) this.core.projects.archive(thread.projectId, false);
+    if (project?.archived) this.core.projects.archive(project.id, false);
     return thread;
   }
 
@@ -130,9 +136,7 @@ export class ThreadCreation {
   validate(params: CreateParams): void {
     const { project, provider, account } = this.check(params);
     checkIncognito(params, project, params.worktree !== undefined);
-    const model = checkModel(provider, account.id, params.model ?? defaultModel(provider));
-    checkEffort(provider, account.id, model, params.effort ?? null);
-    checkSpeed(provider, account.id, model, params.speed ?? null);
+    checkSelection(provider, account.id, params.model ?? defaultModel(provider), params.effort ?? null, params.speed ?? null);
     checkContext(provider, params.context);
     if (params.cwd) checkCwd(project, params.cwd);
   }

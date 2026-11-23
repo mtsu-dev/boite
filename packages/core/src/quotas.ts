@@ -341,19 +341,22 @@ export class QuotaStore {
    * the list. Null for an account that is gone; a failed read answers its last
    * good reading, marked unavailable.
    */
-  async readAccount(accountId: string, refresh = false): Promise<AccountQuota | null> {
+  async readAccount(accountId: string, refresh = false, bypassFreshCache = false): Promise<AccountQuota | null> {
     const account = this.#core.accounts.list().find((row) => row.id === accountId);
     if (account === undefined) return null;
     // `one` answers a Muse observation itself, and only while the row is on.
-    return this.alerts.decorate(await this.#one(account, refresh));
+    return this.alerts.decorate(await this.#one(account, refresh, bypassFreshCache));
   }
-  async #one(account: Account, refresh: boolean): Promise<AccountQuota> {
+  async #one(account: Account, refresh: boolean, bypassFreshCache = false): Promise<AccountQuota> {
     const base = this.#base(account);
     if (base.status !== 'unavailable') return base;
     if (this.#isMuse(account)) return this.#observations.get(account.id) ?? base;
     const cached = this.#cache.get(account.id);
-    // Refresh cannot bypass failure backoff or turn a hover into a request flood.
-    if (cached && (Date.now() < cached.retryAt || (!refresh && Date.now() - (cached.value.checkedAt ?? 0) < CACHE_MS))) return cached.value;
+    // Refresh cannot bypass failure backoff or turn a hover into a request flood;
+    // a usage-limit turn failure may bypass the 10s ready cache to read the newly spent window.
+    const inReadyDebounce = cached !== undefined && cached.value.status === 'ready' && Date.now() < cached.retryAt;
+    const inErrorBackoff = cached !== undefined && cached.value.status !== 'ready' && Date.now() < cached.retryAt;
+    if (cached && (inErrorBackoff || (!bypassFreshCache && (inReadyDebounce || (!refresh && Date.now() - (cached.value.checkedAt ?? 0) < CACHE_MS))))) return cached.value;
     const existing = this.#pending.get(account.id);
     if (existing) return this.#settled(account, existing);
     const generation = this.#generation;

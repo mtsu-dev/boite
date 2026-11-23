@@ -15,8 +15,9 @@ import { openCodeBackgroundCompaction } from './providers/opencode.ts';
 import { activeSubscriptionProxy, subscriptionProxyEnv } from './subscription-proxy.ts';
 import { agentEnv, hostAgentsEnabled, profileFor, resolveExecutable, resolveLaunch } from './providers/resolve.ts';
 import { sqliteHasRows } from './providers/sqlite-login.ts';
+import { providerLoginHome, providerSessionFiles } from './providers/session-paths.ts';
 import { browserNoopPath, browserNoopScript, currentOs, homePath } from './paths.ts';
-import { variableHome, shareKeys, shareProfile, unshareProfile, type ShareProblem } from './profile-share.ts';
+import { shareKeys, shareProfile, unshareProfile, type ShareProblem } from './profile-share.ts';
 import type { SpawnedPipedProcess } from './procs.ts';
 import { logAccountStatus, logLoginState } from './account-log.ts';
 
@@ -577,7 +578,7 @@ export class AccountStore {
       });
     } catch (error) {
       this.#core.providers.installs.release(provider.id);
-      void folders?.dispose();
+      this.operations.settle(accountId, folders?.dispose());
       throw refused(`the ${provider.name} agent did not start: ${messageOf(error)}`, {
         accountId,
         command: launch.executable,
@@ -660,8 +661,8 @@ export class AccountStore {
     acp.kill();
     this.#core.procs.killTree(loginThreadId(accountId));
     await acp.exited;
-    // Removing an unpacked agent takes seconds; the sign-in result does not wait for it.
-    void scratch?.();
+    // Removing an unpacked agent takes seconds; the sign-in result does not wait for it, an account removal does.
+    this.operations.settle(accountId, scratch?.());
     if (!this.#core.journal.isClosed()) {
       try {
         const provider = this.#core.providers.require(this.require(accountId).providerId);
@@ -814,12 +815,7 @@ export class AccountStore {
   #sessionStatus(account: Pick<Account, 'isolationDir'>, provider: ProviderDescriptor): Account['status'] {
     if (activeSubscriptionProxy(this.#core, provider)) return 'ok';
     if (provider.auth.kind === 'none') return 'ok';
-    // A profile may say where the login lives on its OS, or, with an empty list,
-    // that it can live outside any file there: then a file still proves a login
-    // and its absence proves nothing.
-    const own = profileFor(provider)?.session;
-    const session = own !== undefined && own.length > 0 ? own : provider.auth.session ?? [];
-    const sqlite = provider.auth.sqlite;
+    const { session, sqlite, mayBeExternal } = providerSessionFiles(provider);
     if (session.length === 0 && sqlite === undefined) return 'unknown';
     const base = account.isolationDir ?? this.defaultLocation(provider);
     if (base === null) return 'unknown';
@@ -829,7 +825,7 @@ export class AccountStore {
       if (rows !== false || session.length === 0) return rows === null ? 'unknown' : rows ? 'ok' : 'unauthenticated';
     }
     if (session.every((file) => existsSync(join(base, file)))) return 'ok';
-    return own?.length === 0 ? 'unknown' : 'unauthenticated';
+    return mayBeExternal ? 'unknown' : 'unauthenticated';
   }
 
   /**
@@ -838,14 +834,7 @@ export class AccountStore {
    * `~/.<id>`.
    */
   defaultLocation(provider: ProviderDescriptor): string | null {
-    const profile = profileFor(provider);
-    if (profile !== undefined) {
-      for (const key of Object.keys(profile.isolation)) {
-        const value = variableHome(key, profile);
-        if (value !== null) return value;
-      }
-    }
-    return join(homePath(), `.${provider.id}`);
+    return providerLoginHome(provider).path;
   }
 }
 

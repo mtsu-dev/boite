@@ -1,5 +1,16 @@
 export interface OutlineEntry { start: number; end: number }
 
+/** The last prompt at or above a row. Prompt and row indexes both follow the drawn order. */
+export function promptAtRow(prompts: readonly { id: string }[], positions: ReadonlyMap<string, number>, row: number): string | null {
+  let first = 0, end = prompts.length;
+  while (first < end) {
+    const mid = (first + end) >>> 1;
+    if ((positions.get(prompts[mid]!.id) ?? Infinity) <= row) first = mid + 1;
+    else end = mid;
+  }
+  return prompts[first - 1]?.id ?? null;
+}
+
 /**
  * How far each of `count` entries moves when the rail opens from `pitch` to
  * `open` px per entry around `at`, in px from the top of the rail at rest. The

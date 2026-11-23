@@ -64,7 +64,6 @@
   "delegation.result",
   "delegation.resume",
   "delegation.send",
-  "delegation.spawn",
   "delegation.stop",
   "delegation.wait",
   "devices.clipboard",

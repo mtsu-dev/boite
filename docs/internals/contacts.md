@@ -1,7 +1,27 @@
 # Contacts
 
-On in every build, with no switch ([experiments](experiments.md#contacts)).
-A full security pass and a network pass are still to come.
+In every build, with no experiment switch ([experiments](experiments.md#contacts)),
+behind the owner's own switch below. A full security pass and a network pass
+are still to come.
+
+## The owner's switch
+
+The machine setting `contacts` is off unless `true`. A first start writes
+`false`, or `true` where the journal already keeps a contact: its own, or a
+copy another member relays or holds for the group under an admission still
+current, read once the group is restored. An install that linked someone
+before the setting existed keeps its links; a stored choice never moves. Off, contacts stop where the policy's `network.contacts:
+false` stops them (`contacts/switch.ts`): no invitation, join, grant, trust given, accepted
+request, human reply or `collaboration.ask`, refused with the reason
+`contacts-off` and the `boite settings request contacts true` way to ask;
+kept links close and are not dialed, the agents' guide leaves the contacts
+section out, and `collaboration.contacts` answers an empty list. What is kept
+(contacts, opened projects, letters) waits: a request, letter or answer queued
+for a member or a contact whose own switch is off is tried again, never
+refused, and a join the inviter already answered is kept on both sides. Turned
+on, the links are dialed again at once, past any wait earned before. Unlike the policy, the switch leaves Funnel routes mounted: they
+answer only a contact's signed hello, which the switch refuses. The app shows
+the Contacts button and column only while it is on.
 
 A contact is another owner's Boite. Your agents and theirs work together on the
 projects each side opens to the other, and on nothing else. A contact never
@@ -673,20 +693,22 @@ Every contact letter is scanned before it reaches an agent, by a fixed table
 of patterns in English and French (`contacts/flags.ts`, no model): a request
 for a secret, a key or a credentials file (`secret`), a destructive command
 (`destructive`) and words written to steer an agent (`injection`). A match
-holds the letter, records a `ContactFlag` and wakes the mochi with the letter
-quoted as data. A refusal at a shared project's boundary (`boundary`) and the
-activity reviewer's doubt (`review`) wake it the same way, with nothing held.
+holds the letter and records a `ContactFlag`. Secret and injection flags take
+precedence over destructive ones. The mochi receives a notice for a secret or
+injection flag, and the owner reads and decides on the letter in Contacts
+under Messages. A destructive flag includes the letter as quoted data for the
+mochi. A refusal at a shared project's boundary (`boundary`) and the activity
+reviewer's doubt (`review`) also wake the mochi.
 
-The mochi reads it and decides: deliver the letter (`contacts.bot.flag` with
-`deliver`), refuse it (its sender reads the reason), write to the other mochi or
-thread first, or cut the contact's access with `contacts.bot.cut { contact,
-reason }`: `relation: <id>` ends that relation, `project: <id or name>` closes
-that project on every machine of the group, and neither ends every relation
-and closes every project. The contact and its link stay the owner's.
-Without a mochi, a flagged letter waits for the owner as held mail. A flag
-waiting for a decision is never dropped to make room: at 200 open flags a new
-letter that would be flagged is refused, its sender reads why, and decided
-flags give way first.
+The mochi can deliver a destructive letter (`contacts.bot.flag` with
+`deliver`), refuse a flagged letter with a reason for its sender, or cut the
+contact's access using `contacts.bot.cut { contact, reason }`. A
+`relation: <id>` ends that relation. A `project: <id or name>` closes that
+project on every machine of the group. Without either, the cut ends every
+relation and closes every project. The contact and its link stay the owner's.
+Without a mochi, every flagged letter waits for the owner as held mail. At
+200 open flags, the next letter that would be flagged is refused and its
+sender reads why. An open flag remains until a decision.
 
 The decision comes back to the asking thread as a message (`origin:
 'contact'`). Mochi decisions are attributed to the contact's mochi; only an
@@ -1195,6 +1217,13 @@ and install the protected capability before preparation. Mail introducing a new
 authority waits for an active native turn to finish; it cannot enter the old
 unrestricted process. Unsupported protocols and legacy unscoped native mail stay
 held.
+
+Contact mail admitted into a conversation continues to restrict browser,
+desktop, device, window and secret tools on that conversation and its
+descendants after the receiving turn ends. The owner's trust action lifts
+this restriction on the admitted history. An active contact relation, a
+contact-created thread or a captured shared-project boundary can still
+restrict tools on its own.
 
 The file policy denies environment variants, private keys, credential
 directories/files, hard links and paths outside that checkout. Both the supplied spelling and

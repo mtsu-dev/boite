@@ -36,6 +36,45 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
+test('subagent rows drop effort and then model as the conversation narrows', async () => {
+  await page.evaluate(`globalThis.__boiteTest.workspace.active.open('t-trace')`);
+  await page.waitFor(`!!document.querySelector('${id('composer-foot-fold')}')`);
+  await page.click(id('composer-foot-fold'));
+  const row = `${id('agent-dock-row')}[title="Audit subscription flow"]`;
+  await page.waitFor(`!!document.querySelector('${row}')`);
+  const read = `(() => {
+    const row = document.querySelector('${row}');
+    function visibleText(selector) {
+      const node = row.querySelector(selector);
+      if (!node) return null;
+      const bounds = (node.closest('.details') ?? row).getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rect = range.getBoundingClientRect();
+      if (rect.width === 0 || rect.top >= bounds.bottom || rect.bottom <= bounds.top) return null;
+      if (rect.left < bounds.left || rect.right > bounds.right || rect.top < bounds.top || rect.bottom > bounds.bottom) {
+        throw new Error('Partially visible text: ' + node.textContent);
+      }
+      return node.textContent;
+    }
+    return {
+      name: visibleText('.words'), model: visibleText('${id('agent-dock-model')}'),
+      effort: visibleText('${id('agent-dock-effort')}'), duration: Boolean(visibleText('.since'))
+    };
+  })()`;
+  const strip = `document.querySelector('${id('composer-strip-lines')}').style`;
+  try {
+    for (const [width, model, effort] of [[460, 'Sonnet 5.5', 'High'], [355, 'Sonnet 5.5', null], [290, null, null], [460, 'Sonnet 5.5', 'High']] as const) {
+      await page.evaluate(`${strip}.maxWidth = '${width}px'`);
+      await settle();
+      expect(await page.evaluate(read)).toEqual({ name: 'Audit subscription flow', model, effort, duration: true });
+    }
+  } finally {
+    await page.evaluate(`${strip}.maxWidth = ''`);
+    await page.click(id('composer-foot-fold'));
+  }
+}, 30_000);
+
 test('the waiting line stands above the card that holds the task band, folded and open, on desktop and phone', async () => {
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => store.open('t-trace'))`);
   await page.waitFor(`document.querySelector('${id('agent-dock')}')?.dataset.runs === '1'`);

@@ -50,8 +50,8 @@ export interface TerminalMount {
   onexit?: (exitCode: number | null) => void;
 }
 
-/** A drag of the drawer's edge fits the screen every frame; the shell is told once it settles. */
-const RESIZE_SETTLE_MS = 80;
+/** Keep the screen and shell at the same size while a resize or a burst of typing settles. */
+const FIT_SETTLE_MS = 80;
 /** How long the screen waits for the code font before it measures a cell with what it has. */
 const FONT_WAIT_MS = 400;
 const FONT_SIZE = 13;
@@ -205,8 +205,7 @@ export class TerminalSession {
   #stale = false;
   /** The size the shell was last told. */
   #sent: { cols: number; rows: number } | null = null;
-  #resizeTimer: ReturnType<typeof setTimeout> | null = null;
-  #frame: number | null = null;
+  #fitTimer: ReturnType<typeof setTimeout> | null = null;
   #observer: ResizeObserver | null = null;
   /** What lives as long as the session: the connection watch and the shell's exit. */
   #cleanups: (() => void)[] = [];
@@ -290,8 +289,7 @@ export class TerminalSession {
     if (this.#disposed) return;
     this.#disposed = true;
     this.#run++;
-    if (this.#resizeTimer !== null) clearTimeout(this.#resizeTimer);
-    if (this.#frame !== null) cancelAnimationFrame(this.#frame);
+    if (this.#fitTimer !== null) clearTimeout(this.#fitTimer);
     if (this.#releaseTimer !== null) clearTimeout(this.#releaseTimer);
     this.#observer?.disconnect();
     for (const cleanup of this.#cleanups.reverse()) cleanup();
@@ -308,10 +306,8 @@ export class TerminalSession {
     if (this.#disposed || this.#host !== null || this.#term === null) return;
     // An attach in flight lands on nothing.
     this.#run++;
-    if (this.#resizeTimer !== null) clearTimeout(this.#resizeTimer);
-    this.#resizeTimer = null;
-    if (this.#frame !== null) cancelAnimationFrame(this.#frame);
-    this.#frame = null;
+    if (this.#fitTimer !== null) clearTimeout(this.#fitTimer);
+    this.#fitTimer = null;
     this.#disposeScreen();
     this.element.replaceChildren();
     this.#loading = null;
@@ -500,9 +496,12 @@ export class TerminalSession {
         if (keys && this.#typed.length < 4096) this.#typed += data;
         return;
       }
+      // A changing pane can wait to fit until this burst of input has left.
+      // Until then, xterm must still interpret the shell's echo at its old width.
+      if (this.#fitTimer !== null) this.#scheduleFit();
       this.store.writeTerminal(this.id, data);
     });
-    const resize = term.onResize(() => this.#scheduleResize());
+    const resize = term.onResize(() => this.#sendSize());
     this.#screenCleanups.push(() => { input.dispose(); resize.dispose(); });
     this.#screenCleanups.push(client.on('terminal.output', (event) => {
       if (event.id !== this.id) return;
@@ -757,7 +756,14 @@ export class TerminalSession {
     term.reset();
     const flushTyped = () => {
       if (this.#disposed || run !== this.#run) return;
-      if (this.#muted > 0 || !this.#attached || this.#typed.length === 0) return;
+      if (this.#muted > 0 || !this.#attached) return;
+      // A shell warmed at the default size must get the measured size before
+      // the first keys. Otherwise readline can redraw using two widths in one command.
+      if (this.#fitTimer !== null) clearTimeout(this.#fitTimer);
+      this.#fitTimer = null;
+      this.#fitNow();
+      this.#sendSize();
+      if (this.#typed.length === 0) return;
       const typed = this.#typed;
       this.#typed = '';
       this.store.writeTerminal(this.id, typed);
@@ -769,33 +775,28 @@ export class TerminalSession {
     // Only replayed queries were already answered. Live cursor queries must
     // reach the shell, even when they arrived before the snapshot response.
     if (live.length > 0) term.write(live, flushTyped);
-    this.#scheduleResize();
   }
 
   #scheduleFit(): void {
-    if (this.#frame !== null) return;
-    this.#frame = requestAnimationFrame(() => {
-      this.#frame = null;
+    if (this.#fitTimer !== null) clearTimeout(this.#fitTimer);
+    this.#fitTimer = setTimeout(() => {
+      this.#fitTimer = null;
       this.#fitNow();
-    });
+    }, FIT_SETTLE_MS);
   }
 
   #fitNow(): void {
     const host = this.#host;
-    if (!this.#opened || host === null || host.clientWidth === 0 || host.clientHeight === 0) return;
+    if (!this.#opened || this.#muted > 0 || host === null || host.clientWidth === 0 || host.clientHeight === 0) return;
     try { this.#fit?.fit(); } catch { /* hidden for a frame */ }
   }
 
-  #scheduleResize(): void {
-    if (this.#resizeTimer !== null) clearTimeout(this.#resizeTimer);
-    this.#resizeTimer = setTimeout(() => {
-      this.#resizeTimer = null;
-      const term = this.#term;
-      if (term === null || !this.#attached) return;
-      if (this.#sent?.cols === term.cols && this.#sent.rows === term.rows) return;
-      this.#sent = { cols: term.cols, rows: term.rows };
-      this.store.resizeTerminal(this.id, term.cols, term.rows);
-    }, RESIZE_SETTLE_MS);
+  #sendSize(): void {
+    const term = this.#term;
+    if (term === null || !this.#attached || this.#muted > 0) return;
+    if (this.#sent?.cols === term.cols && this.#sent.rows === term.rows) return;
+    this.#sent = { cols: term.cols, rows: term.rows };
+    this.store.resizeTerminal(this.id, term.cols, term.rows);
   }
 
   /** False hands the key to the page (the app's chord, the browser's paste) instead of the shell. */

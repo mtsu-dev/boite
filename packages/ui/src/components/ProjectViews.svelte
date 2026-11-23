@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FolderPlus, Plus, Search } from '@lucide/svelte';
+  import { ArrowLeft, ArrowRight, FolderPlus, Plus, Search } from '@lucide/svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { machineFilter } from '../lib/machine-filter.svelte';
@@ -9,16 +9,15 @@
   import type { Store } from '../lib/store.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
   import PluginSlotButtons from './PluginSlotButtons.svelte';
-  import ViewSwitch from './ViewSwitch.svelte';
+  import { go, trail } from '../lib/view-history.svelte';
   import FilterChips from './FilterChips.svelte';
   import { inbox } from '../lib/inbox.svelte';
-  import { closeArchived } from '../lib/archived-view.svelte';
 
   /**
-   * The thread list's head, one row: its two views, Projects and Recent, as a
-   * segmented switch with the side on raised, then the display menu named
+   * The thread list's head, one row: Back and Forward over the views this
+   * window showed (view-history.svelte.ts), then the display menu named
    * "Filter", search, a folder with a plus that adds a project and "+" for a new thread, its name and key in its tooltip.
-   * Recent's project filter and the machine filter live in the display menu,
+   * The two views, Projects and Recent, Recent's project filter and the machine filter live in the display menu,
    * which dots its button while one of them hides threads; each one on is a
    * chip in words on the line under the head, removed with a press.
    */
@@ -43,8 +42,10 @@
 <div class="list-head" data-testid="list-first-run" aria-hidden="true"></div>
 {:else}
 <div class="list-head">
-  <h2 class="title" data-testid="list-view-name"><ViewSwitch label={strings.sidebar.displayView} current={workspace.view} onpick={view => { closeArchived(); workspace.setView(view as 'projects' | 'recent'); }}
-    options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="view-switch" /></h2>
+  <div class="history" role="group" aria-label={strings.sidebar.history}>
+    <button class="ghost icon" title={strings.sidebar.historyBack} aria-label={strings.sidebar.historyBack} data-testid="history-back" disabled={!trail.can(-1)} onclick={() => void go(-1)}><ArrowLeft size={16} /></button>
+    <button class="ghost icon" title={strings.sidebar.historyForward} aria-label={strings.sidebar.historyForward} data-testid="history-forward" disabled={!trail.can(1)} onclick={() => void go(1)}><ArrowRight size={16} /></button>
+  </div>
   <div class="actions">
     <!-- The buttons plugin interfaces put in the sidebar, on the machine that loaded them. -->
     {#if store === workspace.primary}<PluginSlotButtons slot="sidebar" threadId={store.openThread?.id ?? null} compact />{/if}
@@ -60,14 +61,15 @@
 {/if}
 
 <style>
-  /* No rule under it: the rows fade out beneath it instead (RailFrame.svelte). The switch starts on the cards' edge. */
-  /* The switch keeps its width and 4 px clear of Filter: shrunk, its segment ran under Filter's focus ring. */
+  /* No rule under it: the rows fade out beneath it instead (RailFrame.svelte). Back starts on the cards' edge. */
   .list-head { display: flex; align-items: center; gap: 4px; min-width: 0; height: 36px; margin-top: 10px; padding: 0; }
-  .title { display: flex; flex: 1 0 auto; min-width: 0; margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--color-foreground); }
-  .actions { display: flex; align-items: center; gap: 2px; flex: none; }
+  .history { display: flex; align-items: center; gap: 2px; flex: none; }
+  .actions { display: flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }
   /* A pointer's full 32 px target each. */
-  .actions :global(button.icon) { flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-muted-foreground); }
-  .actions :global(button.icon:hover) { color: var(--color-foreground); }
+  .list-head :global(button.icon) { flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-muted-foreground); }
+  .list-head :global(button.icon:hover:not(:disabled)) { color: var(--color-foreground); }
+  /* Nothing that way: the arrow stays in place, faded, so the head never shifts. */
+  .history button:disabled { opacity: 0.35; cursor: default; background: none; }
   /* Filter: its glyph and its word, 32 px high as the glyphs beside it. */
   .actions :global(button.worded) { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 7px; border-radius: var(--radius-md);
     font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); white-space: nowrap; }
@@ -79,22 +81,21 @@
     .actions :global(button.worded) { width: 32px; padding: 0; justify-content: center; }
     .actions :global(button.worded .word) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   }
-  /* The narrowest column: the views' words keep 4 px sides and the glyphs 28 px; search leaves the head for its
-     shortcut and the palette, Add a project for the Filter menu's last row, so Filter and New thread stay inside it at 208 px in English and French. */
+  /* The narrowest column: the glyphs 28 px; search leaves the head for its shortcut and the palette, Add a project
+     for the Filter menu's last row, so the arrows, Filter and New thread stay inside it at 208 px in English and French. */
   @container sidebar (max-width: 239px) {
-    .list-head .title :global(.side) { padding: 0 4px; }
-    .actions :global(button.icon), .actions :global(button.worded) { width: 28px; height: 28px; }
+    .list-head :global(button.icon), .actions :global(button.worded) { width: 28px; height: 28px; }
     .actions :is(.search, .add-project) { display: none; }
     .list-head { gap: 2px; }
-    .actions { gap: 0; }
+    .actions, .history { gap: 0; }
   }
   /* Level with the main column's bar: the head's middle on the title band's (RailFrame.svelte pulls the column up
-     over that band and pads it 6 px), so the views, Filter and search share one line with the bar's buttons. */
+     over that band and pads it 6 px), so the arrows, Filter and search share one line with the bar's buttons. */
   @media (min-width: 721px) {
     .list-head { margin-top: calc(var(--titlebar) / 2 - 18px - 6px); }
   }
   @media (max-width: 720px) {
     /* `button.icon` grows to the touch target on a phone. */
-    .actions :global(button.icon) { width: var(--touch-target); height: var(--touch-target); }
+    .list-head :global(button.icon) { width: var(--touch-target); height: var(--touch-target); }
   }
 </style>

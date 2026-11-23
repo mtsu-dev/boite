@@ -41,6 +41,7 @@
   import ProjectTile from './ProjectTile.svelte';
   import MachinePlace from './MachinePlace.svelte';
   import MachineOffline from './MachineOffline.svelte';
+  import ThreadListNotice from './ThreadListNotice.svelte';
   import ProjectRollup from './ProjectRollup.svelte';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
@@ -60,12 +61,19 @@
   import { whenIdle } from '../lib/idle';
   import { needsAnAI } from '../lib/first-run';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsShownAnywhere } from '../lib/contacts-anywhere';
   import { contactsParts } from '../lib/contacts-entry';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
 
-  let { store, recover = false, screen = $bindable('chat'), tabbed = $bindable(false) }: { store: Store; recover?: boolean; screen: 'chat' | 'threads' | 'activity'; tabbed?: boolean } = $props();
+  let { store, recover = false, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
+    store: Store;
+    recover?: boolean;
+    onleavesettings?: () => void;
+    screen: 'chat' | 'threads' | 'activity';
+    tabbed?: boolean;
+  } = $props();
   const narrow = new MediaQuery('(max-width: 720px)');
   /**
    * A conversation slides in over the list it opens from, and back off it to
@@ -101,6 +109,10 @@
   $effect(() => {
     if (!contactsShown(store) || SidebarContacts) return;
     void contactsParts.SidebarContacts().then(module => { SidebarContacts = module.default; }).catch(() => {});
+  });
+  // What contacts ask arrives on the machine that holds them, which may not be the one in view.
+  $effect(() => {
+    if (!contactsShownAnywhere(store) || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
     void contactsParts.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
@@ -170,6 +182,19 @@
       // Recent is a flat history, newest first under the pins, as on the desktop; the cards rank by status.
       .sort(listScreen === 'threads' && workspace.view === 'recent' ? compareRecent : compareEntries));
   const inRecent = $derived(listScreen === 'threads' && workspace.view === 'recent');
+  const rowsByProject = $derived.by(() => {
+    const machines = new Map<string, Map<string, typeof rows>>();
+    for (const row of rows) {
+      const projectId = row.thread.projectId;
+      if (projectId === null) continue;
+      let projects = machines.get(row.machine.id);
+      if (!projects) machines.set(row.machine.id, projects = new Map());
+      const group = projects.get(projectId);
+      if (group) group.push(row);
+      else projects.set(projectId, [row]);
+    }
+    return machines;
+  });
   /** Recent's line under the title starts with where the row lives, once the tiles alone may not tell rows apart. */
   /** This app's own machine goes unsaid on Recent's place line and on the cards: the other machines are named. */
   const home = $derived(machines.find(m => m.store === workspace.primary));
@@ -198,7 +223,7 @@
   /** The list a conversation was opened from: Back returns to it. The landing conversation has none, so Back leaves. */
   let from = $state<'threads' | 'activity' | null>(null);
   $effect(() => {
-    if (store.page !== 'chat' || screen !== 'chat' || !from) return;
+    if (!narrow.current || store.page !== 'chat' || screen !== 'chat' || !from) return;
     const list = from;
     return mobileOverlay(() => { from = null; screen = list; });
   });
@@ -209,19 +234,6 @@
     screen = 'chat';
   });
 
-  /*
-   * Settings is a page over the place it was opened from, not a place of its
-   * own: the header's arrow, and the phone's Back, return there.
-   */
-  let before: 'chat' | 'agents' | 'home' = 'chat';
-  $effect(() => { const page = store.page; if (page !== 'settings') before = page; });
-  function leaveSettings() {
-    if (before === 'agents') store.showAgents();
-    else if (before === 'home') store.showHome();
-    else store.showChat();
-  }
-  $effect(() => { if (narrow.current && store.page === 'settings' && !recover) return mobileOverlay(leaveSettings); });
-
   function show(next: typeof screen) {
     store.showChat();
     store.sidebarOpen = false;
@@ -229,10 +241,13 @@
     screen = next;
   }
   // Allow, Answer or Review pressed in Activity: once the thread no longer needs the user, Activity comes back where it stood.
-  followActivityReturn({
-    activity: () => screen === 'activity',
-    chat: () => screen === 'chat',
-    reopen: () => { show('activity'); void tick().then(() => { if (scrollRoot) void restoreActivity(scrollRoot); }); }
+  $effect(() => {
+    if (!narrow.current) return;
+    followActivityReturn({
+      activity: () => screen === 'activity',
+      chat: () => screen === 'chat',
+      reopen: () => { show('activity'); void tick().then(() => { if (scrollRoot) void restoreActivity(scrollRoot); }); }
+    });
   });
   /** The threads of a project that need the user, its heading's count, and how many of them failed, as on the desktop card. */
   function needsCount(entry: ProjectEntry): { count: number; failed: number } {
@@ -304,6 +319,8 @@
   </button>
 {/snippet}
 
+<!-- Resizing releases the phone's controls, but keeps this navigation's filters and list state. -->
+{#if narrow.current}
 <header class="mobile-header" class:chatting={chatting && !firstRun} class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
   {#if chatting && !firstRun}
     <!-- The only way out of a conversation on a phone. A thread that waits elsewhere is in its name and the tab bar's count, not a dot on the arrow. -->
@@ -315,7 +332,7 @@
       <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.sidebar.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.sidebar.threads} onclick={() => show('threads')}><ArrowLeft size={20} /></button>
     {/if}
   {:else if store.page === 'settings' && !recover}
-    <button class="ghost icon back" data-testid="mobile-settings-leave" aria-label={strings.mobile.settingsLeave} title={strings.mobile.settingsLeave} onclick={leaveSettings}><ArrowLeft size={20} /></button>
+    <button class="ghost icon back" data-testid="mobile-settings-leave" aria-label={strings.mobile.settingsLeave} title={strings.mobile.settingsLeave} onclick={onleavesettings}><ArrowLeft size={20} /></button>
   {:else if recover}
     <img class="brand-icon" src={appMark()} alt="" width="30" height="30" />
   {/if}
@@ -334,7 +351,7 @@
     {#if firstRun}{@render connection()}{/if}
     <!-- The first run's screen says what Boite is: the header keeps the machine alone, the way to its settings. -->
     <!-- The thread list's name is its two views, both in sight, the one on marked; the display menu sits beside the magnifier. -->
-    {#if !firstRun}<strong data-testid="mobile-title">{#if threadViews}<ViewSwitch size="title" label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
+    {#if !firstRun}<strong data-testid="mobile-title">{#if threadViews}<ViewSwitch label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
       options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="mobile-view-switch" />{:else}{title}{/if}</strong>{/if}
   </div>
   {#if placeShown && !firstRun && !(tabbed && !recover)}{@render connection()}{/if}
@@ -343,7 +360,7 @@
   {/if}
   <!-- The thread list's row is full with its views, three squares, "New" and the gear: the Whip waits on the other lists. -->
   {#if !recover && !chatting && !newShown && featureOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<WhipButton mobile />{/if}
-  {#if narrow.current && ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} />{/if}
+  {#if narrow.current && ContactRequestNotice && contactsShownAnywhere(store)}<ContactRequestNotice {store} />{/if}
   <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. Activity answers what is
        asked, so it creates nothing; the thread list's "+" is one tab away. -->
   {#if newShown}
@@ -363,6 +380,7 @@
   {/if}
   <!-- The filters on, in words on a line of their own: the row above keeps the views, the machine and three squares. -->
   {#if threadViews && !chatting}<FilterChips entries={groups} owner={store} prefix="mobile-" compact {atWork} />{/if}
+  {#if tabbed && !recover && listScreen === 'threads'}<ThreadListNotice {machines} />{/if}
 </header>
 
 {#if tabbed || leaving}
@@ -391,7 +409,7 @@
     {#if listScreen === 'threads' && workspace.view === 'projects'}
       {#snippet projectRows(projects: ProjectEntry[], later = false)}
       {#each projects as group (projectKey(group))}
-        {@const groupRows = rows.filter(row => row.machine.id === group.machine.id && row.thread.projectId === group.project.id)}
+        {@const groupRows = rowsByProject.get(group.machine.id)?.get(group.project.id) ?? []}
         {@const workingOpen = projectThreadView.isOpen(group, 'working')}
         {@const doneOpen = archiveCount(group.project, 'done') > 0 && doneFilter.shown}
         {@const archivedOpen = later && archiveCount(group.project, 'archived') > 0}
@@ -475,7 +493,7 @@
       <!-- One thread, one row: its asking sub-agents are lines of it (lib/activity-feed.ts), as on the desktop. -->
       {@const needs = feedGroups(rows.filter(row => row.section === 'needs'))}
       {@const updates = feedGroups(rows.filter(row => row.section === 'updates'))}
-      {@const asked = ContactInboxRows && contactsShown(store) && !query}
+      {@const asked = ContactInboxRows && contactsShownAnywhere(store) && !query}
       {@const needsCount = needs.length + (asked ? inbox.contacts : 0)}
       <!-- The section's number is the tab's badge: its top rows (a sub-agent counts on its parent) and what contacts ask. -->
       <!-- The amber dot beside "Needs you", as on the desktop page; only updates left, one line says nothing waits. -->
@@ -525,6 +543,7 @@
     {/if}
   </section>
 {/if}
+{/if}
 
 <style>
   /* Typed, so the foot's fade eases to a row's top when the list settles instead of jumping. */
@@ -556,6 +575,7 @@
     @media (min-width: 480px) { .new .long { display: block; } .new .short { display: none; } }
     /* The filters' line under the row, the whole width. */
     .mobile-header > :global(.filter-chips) { flex-basis: 100%; padding-bottom: 4px; }
+    .mobile-header > :global(.thread-list-notice) { flex-basis: 100%; }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
     /* The display options close the field's row, after a hairline. */

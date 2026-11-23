@@ -16,6 +16,7 @@ import { assertSearchActive, waitForSearch } from '../journal-reads.ts';
 import { REPLY_WINDOW_MS } from './reach.ts';
 import { checkNormalizedRemote } from './git-remote.ts';
 import { contactFace } from './face.ts';
+import { contactsOff, contactsOffWord } from './switch.ts';
 
 type ContactSummary = RpcResult<'collaboration.contacts'>[number];
 interface SourceRoute { threadId: string; coreId: string; via: string; name: string; stamp: string; admission: number }
@@ -94,7 +95,7 @@ export class ContactMailboxes {
   async #discover(threadId: string): Promise<{ contacts: RpcResult<'collaboration.contacts'>; unavailable: string[] }> {
     const local = this.#core.contacts.forThread(threadId);
     const config = this.#core.coordination.config(threadId);
-    if (config.mode === 'off' || !config.remote) return { contacts: [], unavailable: [] };
+    if (config.mode === 'off' || !config.remote || contactsOff(this.#core)) return { contacts: [], unavailable: [] };
     const from = this.#source(threadId);
     const replies = await Promise.all(this.#core.group.peers().sort((a, b) => a.coreId.localeCompare(b.coreId)).map(async peer => {
       try {
@@ -121,6 +122,8 @@ export class ContactMailboxes {
         return peer.name;
       }
     }));
+    // Switched off while the members answered: nothing is remembered or listed.
+    if (contactsOff(this.#core)) return { contacts: [], unavailable: [] };
     this.#source(threadId);
     const result = [...local];
     const offered = replies.flatMap(reply => typeof reply === 'string' ? [] : reply);
@@ -404,6 +407,8 @@ export class ContactMailboxes {
       this.#pending.add(job);
     }
     if (!this.#mailboxes().length) return;
+    // Contacts switched off here: the letters wait in the mailbox for the switch, never refused.
+    if (contactsOff(this.#core)) return;
     // A queued provider wake can return an uncertain receipt; refresh it until settled.
     this.#init();
     // Reserve one slot for an older retry; new arrivals cannot postpone it until expiry.
@@ -441,6 +446,8 @@ export class ContactMailboxes {
       if (!answer || answer.id !== letter.wire.id || !same(answer.from, letter.canonical.from) || !same(answer.to, letter.canonical.to)) throw refused('route: invalid initiating conversation receipt');
       this.#save({ ...letter, wire: { ...letter.wire, status: answer.status, error: answer.error } });
     } catch (error) {
+      // A member whose contacts are switched off keeps the letter waiting: the switch turned back on delivers it.
+      if (contactsOffWord(messageOf(error))) return;
       if (!this.#closed && (error instanceof PeerRefusal || error instanceof RpcFailure)) this.#save({ ...letter, wire: { ...letter.wire, status: 'rejected', error: messageOf(error) } });
     }
   }

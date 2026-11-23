@@ -1,9 +1,11 @@
 import { afterEach, expect, vi } from 'vitest';
 import { test as fixtureTest } from '../test/fake-client';
 import { flushSync, mount, unmount } from 'svelte';
-import { RpcErrorCode } from '@boite/contracts';
+import { RpcErrorCode, type RpcParams } from '@boite/contracts';
 import App from '../App.svelte';
 import { FakeClient } from '../lib/fake-client';
+import { fakeCore } from '../lib/fake-client/coordination';
+import { recordContactDelivery } from '../lib/fake-client/contact-hold';
 import { TestComposerCore } from '../test/composer-core';
 import { RpcFailure } from '../lib/client';
 import { defaultPrefs, PREFS_STORAGE_KEY, STASH_STORAGE_KEY } from '../lib/prefs';
@@ -233,7 +235,9 @@ async function mountOnFake(delayMs?: number, missing?: string[], composerState?:
   // The tour would be up over the composer on a device that has not seen it.
   closeTour();
   running = mount(App, { target });
-  await waitFor(() => store.booted && store.openThread !== null);
+  await waitFor(() => store.booted && store.openThread !== null
+    && target.querySelector('[data-testid=composer-input]') !== null
+    && target.querySelector('[data-testid=sidebar]') !== null, 4_000);
   if (delayMs !== undefined) { store.attach(new FakeClient({ delayMs, ...(missing ? { missing } : {}), ...(composerState ? { composerState } : {}) })); await store.connect(); }
 }
 
@@ -1056,6 +1060,15 @@ test('a thread that cannot run draws its notice in the box\'s place, not a disab
   expect(query<HTMLElement>('[data-testid=contact-hold]').classList.contains('replaces')).toBe(true);
   store.openThread!.contactHold = null;
   await waitFor(() => !card.hidden);
+  expect(input().value).toBe('one more change');
+  const { coreId } = await store.client!.call('collaboration.identity', {});
+  recordContactDelivery(fakeCore(coreId)!, 't-trace');
+  await waitFor(() => document.querySelector('[data-testid=contact-hold-trust]') !== null);
+  expect(input().disabled).toBe(false);
+  expect(card.hidden).toBe(false);
+  query<HTMLButtonElement>('[data-testid=contact-hold-trust]').click();
+  await waitFor(() => document.querySelector('[data-testid=contact-hold]') === null);
+  expect(call).toHaveBeenCalledWith('threads.trustContactHistory', { threadId: 't-trace' });
   expect(input().value).toBe('one more change');
 });
 
@@ -1915,7 +1928,10 @@ test('Send pressed during a file read goes once the file is ready, unless the us
   await waitFor(() => store.openThread!.messages.length > before && !store.busy);
   const sent = store.openThread!.messages.filter(m => m.role === 'user').at(-1)!;
   expect(sent.parts.some(part => part.type === 'text' && part.text === 'Read these notes, all of them')).toBe(true);
-  expect(sent.parts).toContainEqual({ type: 'file', mimeType: 'text/plain', name: 'notes.txt', data: btoa('notes') });
+  const history = await store.client!.call('threads.get', { threadId: 't-trace' });
+  expect(history.messages.find(message => message.id === sent.id)?.parts).toContainEqual({
+    type: 'file', mimeType: 'text/plain', name: 'notes.txt', data: btoa('notes')
+  });
   expect(input().value).toBe('');
 });
 
@@ -2753,6 +2769,15 @@ test('thirty pasted screenshots over the byte total show at once, and Send press
   }));
   // jsdom's 5 MB storage cannot back up the 10 MB the box holds before its fit; a browser keeps it in its journal.
   const save = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {});
+  const client = store.client!;
+  const call = client.call.bind(client);
+  // The codec above simulates the encoded sizes. Its output has no pixels for the thumbnail decoder to read.
+  const preview = vi.spyOn(client, 'call').mockImplementation((method, params) => {
+    if (method === 'messages.attachment' && (params as RpcParams<'messages.attachment'>).previewMax !== undefined) {
+      return Promise.resolve({ data: PIXEL, mimeType: 'image/png', bytes: decodedBytes(PIXEL) });
+    }
+    return call(method, params as never);
+  });
   try {
     await openIdle('t-trace');
     const before = store.openThread!.messages.length;
@@ -2767,13 +2792,16 @@ test('thirty pasted screenshots over the byte total show at once, and Send press
     expect(loaded()).toBe(false);
     press('Enter');
     await waitFor(() => (store.openThread?.messages.length ?? 0) > before, 8000);
-    const sent = store.openThread!.messages.filter((message) => message.role === 'user').at(-1)!;
+    const thread = await client.call('threads.get', { threadId: 't-trace' });
+    const sent = thread.messages.filter((message) => message.role === 'user').at(-1)!;
     const images = sent.parts.filter((part) => part.type === 'image');
     expect(images).toHaveLength(30);
-    expect(images.reduce((sum, part) => sum + decodedBytes(part.type === 'image' ? part.data : ''), 0)).toBeLessThanOrEqual(ATTACHMENTS_TOTAL_MAX_BYTES);
+    const sizes = images.map(part => decodedBytes(part.data));
+    expect(sizes.every(bytes => bytes > 0)).toBe(true);
+    expect(sizes.reduce((sum, bytes) => sum + bytes, 0)).toBeLessThanOrEqual(ATTACHMENTS_TOTAL_MAX_BYTES);
     expect(store.error).toBeNull();
     expect(input().value).toBe('');
-  } finally { decode.mockRestore(); save.mockRestore(); }
+  } finally { decode.mockRestore(); save.mockRestore(); preview.mockRestore(); }
 });
 
 test('a pasted copy that stays over the byte total at its smallest says to remove pictures, and keeps them', async ({ app: _app }) => {

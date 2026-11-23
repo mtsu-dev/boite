@@ -45,7 +45,7 @@ test.skipIf(!findChromium().path)('a configured profile sends its User-Agent to 
   }
 }, 90_000);
 
-test('profile User-Agent settings save, survive rename and clear on desktop and phone', async () => {
+test('a profile switched to Chrome saves a User-Agent that survives rename and clears, on desktop and phone', async () => {
   const port = await freePort();
   const server = await startDevUi(port);
   let page: BrowserPage | undefined;
@@ -65,7 +65,18 @@ test('profile User-Agent settings save, survive rename and clear on desktop and 
         await page.click('[data-testid=settings-tab-browser]');
       }
       await page.evaluate(`${store}.saveSettings({ browserProfiles: [{ id: 'p-research', name: 'Research' }] })`);
+      // A User-Agent belongs to the Chrome engine: the profile runs in the app's window until the owner picks Chrome.
+      const engine = '[data-profile=p-research] [data-testid=browser-profile-engine]';
+      await page.waitFor(`document.querySelector('${engine}')?.textContent.includes('App window')`);
+      expect(await page.evaluate("document.querySelector('[data-testid=browser-user-agent-edit]') === null")).toBe(true);
+      await page.click(engine);
+      await page.waitFor("document.querySelector('[data-testid=browser-profile-engine-menu] [data-value=chrome]')");
+      await page.settleAnimations();
+      await page.screenshot(join(import.meta.dir, '.artifacts', mobile ? 'browser-engine-menu-phone.png' : 'browser-engine-menu-desktop.png'));
+      await page.click('[data-testid=browser-profile-engine-menu] [data-value=chrome]');
+      await page.waitFor(`${store}.settings.browserProfiles[0].engine === 'chrome'`);
       await page.click('[data-testid=browser-user-agent-edit]');
+      expect(await page.evaluate(`document.querySelector('${engine}').disabled`)).toBe(true);
       await page.type('[data-testid=browser-user-agent-value]', 'Bounty/1');
       await page.click('[data-testid=browser-user-agent-save]');
       await page.waitFor(`${store}.settings.browserProfiles[0].userAgent?.value === 'Bounty/1'`);
@@ -73,7 +84,7 @@ test('profile User-Agent settings save, survive rename and clear on desktop and 
       await page.type('[data-testid=browser-profile-rename-input]', 'Research renamed');
       await page.evaluate("document.querySelector('form.rename').requestSubmit(); true");
       await page.waitFor(`${store}.settings.browserProfiles[0].name === 'Research renamed'`);
-      expect(await page.evaluate(`JSON.stringify(${store}.settings.browserProfiles[0].userAgent)`)).toBe(JSON.stringify({ mode: 'suffix', value: 'Bounty/1' }));
+      expect(await page.evaluate(`JSON.stringify(${store}.settings.browserProfiles[0])`)).toBe(JSON.stringify({ id: 'p-research', name: 'Research renamed', engine: 'chrome', userAgent: { mode: 'suffix', value: 'Bounty/1' } }));
       await page.click('[data-testid=browser-user-agent-edit]');
       await page.click('[data-testid=browser-user-agent-mode]');
       await page.click('[data-value=replace]');

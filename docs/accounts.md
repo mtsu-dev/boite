@@ -95,7 +95,9 @@ Settings, Brain, Hooks; the agent starts without it.
 As an option, Claude Code, Codex and both OpenCode versions can go through a
 gateway you run, and Grok and Antigravity too when the gateway is Douane.
 Antigravity then uses the Google accounts Douane pools, with no Google sign-in
-in Boite. Boite supports
+in Boite. Antigravity's models, Gemini among them, run only in Antigravity:
+Google bans an account used anywhere else, so the other agents are never
+offered them through the gateway. Boite supports
 Douane and CLIProxyAPI.
 
 1. Open Settings, Providers, Subscription proxy.

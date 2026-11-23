@@ -1,16 +1,18 @@
-import { afterEach, beforeEach, expect, setSystemTime, test } from 'bun:test';
+import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Message, Turn } from '@boite/contracts';
+import type { ImageAttachment, Message, Turn } from '@boite/contracts';
+import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
+import { profileFor } from '../src/providers/resolve.ts';
 import { startServer } from '../src/server.ts';
 import { AUTO_CONTINUE } from '../src/threads/auto-continue.ts';
 import { RESUME_TEXT } from '../src/threads/resume-text.ts';
 import { CRASH_RESUMING, CRASH_WHILE_RUNNING } from '../src/threads/recovery.ts';
-import { echoThread, removeDir, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
+import { echoThread, holdAccountTurns, removeDir, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 const defaults = { ...AUTO_CONTINUE, delaysMs: [...AUTO_CONTINUE.delaysMs] };
 const restores: (() => void)[] = [];
@@ -20,7 +22,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   Object.assign(AUTO_CONTINUE, { ...defaults, delaysMs: [...defaults.delaysMs] });
-  for (const restore of restores.splice(0)) restore();
+  for (const restore of restores.splice(0).reverse()) restore();
   setSystemTime();
 });
 
@@ -34,7 +36,7 @@ function scripted(...outcomes: Outcome[]): TurnContext[] {
     startTurn(ctx) {
       seen.push(ctx);
       const next = outcomes[Math.min(seen.length - 1, outcomes.length - 1)]!;
-      return { stop() {}, done: Promise.resolve(typeof next === 'function' ? next(ctx) : next) };
+      return { stop() {}, async steer() { return true; }, done: Promise.resolve(typeof next === 'function' ? next(ctx) : next) };
     },
   }));
   return seen;
@@ -59,27 +61,48 @@ function openingOf(h: TestCore, threadId: string, turnId: string): { text: strin
   return part.type === 'text' ? { text: part.text, label: part.displayText } : { text: '', label: undefined };
 }
 
-test('a turn that ends on an API error resumes by itself with the error and a carry-on prompt', async () => {
+test.each(['native', 'cold', 'lost'] as const)('a turn that ends on an API error resumes with the error and its attachments (%s session)', async session => {
   const h = await startTestCore();
-  const asked = scripted(failed('API Error: Connection refused (ECONNREFUSED)'), done);
+  const fail = Promise.withResolvers<TurnResult>();
+  const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const original = Buffer.from(await new Bun.Image(pixel).resize(2000, 1125, { fit: 'fill' }).png().bytes());
+  const image: ImageAttachment = { kind: 'image', mimeType: 'image/png', data: original.toString('base64'), name: 'target.png' };
+  const asked = scripted(() => fail.promise, ...(session === 'lost' ? [{
+    status: 'error' as const, sessionId: null, usage: null, sessionLost: true, error: 'native session lost',
+  }] : []), done);
   try {
     const client = await h.connect();
     const { threadId } = await echoThread(h, client);
     const retries: string[] = [];
     client.on('thread.updated', thread => { if (thread.id === threadId && thread.retry) retries.push(`${thread.retry.kind} ${thread.retry.attempt}/${thread.retry.attempts}`); });
     const first = await client.call('turns.start', { threadId, prompt: 'port the shader' });
+    await waitFor(() => h.core.threads.runner.handles.has(threadId));
+    expect(await client.call('turns.steer', { threadId, turnId: first.id, prompt: 'keep the contrast', clientRequestId: 'resume_steer_1' })).toEqual({ accepted: true });
+    expect(await client.call('turns.steer', { threadId, turnId: first.id, prompt: 'use this target', attachments: [image], clientRequestId: 'resume_steer_2' })).toEqual({ accepted: true });
+    fail.resolve({ ...failed('API Error: Connection refused (ECONNREFUSED)'), sessionId: session === 'cold' ? null : 'native' });
     await waitFor(() => turns(h, threadId).length === 2 && turns(h, threadId)[1]!.status === 'done');
     const resume = turns(h, threadId)[1]!;
     expect(resume.execution?.operation).toBe('resume');
-    expect(asked).toHaveLength(2);
+    expect(asked).toHaveLength(session === 'lost' ? 3 : 2);
     expect(asked[1]!.prompt).toContain('ECONNREFUSED');
     expect(asked[1]!.prompt).toContain('Continue the current task from where it stopped');
+    expect(asked[1]!.thread.sessionId).toBe(session === 'cold' ? null : 'native');
+    expect(asked[1]!.prompt).toMatch(/port the shader[\s\S]*keep the contrast[\s\S]*use this target/);
+    if (session === 'lost') expect(asked[2]!.sessionId).toBeNull();
+    for (const context of asked.slice(1)) {
+      expect(context.attachments).toHaveLength(1);
+      const preview = context.attachments[0]!;
+      expect(preview.name).toBe(image.name);
+      expect(await new Bun.Image(Buffer.from(preview.data, 'base64')).metadata()).toMatchObject({ width: 1280, height: 720 });
+      const reference = context.prompt.split('\n').find(line => line.startsWith('{"name":"target.png","path":'))!;
+      expect(readFileSync(JSON.parse(reference).path).equals(original)).toBe(true);
+    }
     expect(openingOf(h, threadId, resume.id).label).toBe(RESUME_TEXT.error.label);
     expect(h.core.journal.getTurn(first.id)?.status).toBe('error');
     expect(retries).toContain('auto-continue 1/2');
     expect(h.core.threads.require(threadId)).toMatchObject({ status: 'idle' });
     expect((await client.call('threads.get', { threadId })).retry).toBeNull();
-  } finally { await h.stop(); }
+  } finally { fail.resolve(failed()); await h.stop(); }
 });
 
 test('two resumes in a row that fail again end the row: the last failure stays for the user', async () => {
@@ -95,6 +118,9 @@ test('two resumes in a row that fail again end the row: the last failure stays f
     expect(asked).toHaveLength(3);
     expect(turns(h, threadId).map(turn => [turn.status, turn.execution?.operation ?? 'user'])).toEqual([['error', 'user'], ['error', 'resume'], ['error', 'resume']]);
     expect(h.core.threads.list({ includeArchived: true }).find(thread => thread.id === threadId)?.retry).toBeNull();
+    expect((await client.call('threads.get', { threadId })).recovery).toMatchObject({
+      kind: 'interrupted', turnId: turns(h, threadId)[2]!.id, detail: 'automatic recovery attempts ran out',
+    });
     // The user's next prompt starts a new row.
     await client.call('turns.start', { threadId, prompt: 'try again' });
     await waitFor(() => turns(h, threadId).length === 6);
@@ -229,7 +255,9 @@ test('an archive that rolls back keeps the planned resume, which still fires', a
 
 test('a turn that ends right after a compaction, with no answer after it, resumes', async () => {
   const h = await startTestCore();
-  const asked = scripted(ctx => {
+  const compact = Promise.withResolvers<void>();
+  const asked = scripted(async ctx => {
+    await compact.promise;
     say(ctx, { type: 'text', text: 'Reading the renderer.' }, { type: 'compaction', trigger: 'auto', preTokens: 190_000, postTokens: 30_000 });
     return done;
   }, ctx => {
@@ -239,14 +267,27 @@ test('a turn that ends right after a compaction, with no answer after it, resume
   try {
     const client = await h.connect();
     const { threadId } = await echoThread(h, client);
-    await client.call('turns.start', { threadId, prompt: 'port the renderer' });
+    // This long prompt exercises compaction recovery without starting a goal.
+    await client.call('settings.set', { autoGoals: false });
+    const first = await client.call('turns.start', {
+      threadId, prompt: `Port the renderer. ${'x'.repeat(4_500)} Preserve transparent shadows. ${'y'.repeat(4_500)} Keep the blue button.`,
+    });
+    await waitFor(() => h.core.threads.runner.handles.has(threadId));
+    expect(await client.call('turns.steer', { threadId, turnId: first.id, prompt: 'Correction: use a green button.', clientRequestId: 'resume_compact_1' })).toEqual({ accepted: true });
+    await client.call('threads.tasks.set', { threadId, tasks: [
+      { id: 'renderer', text: 'Port the renderer', status: 'completed' },
+      { id: 'button', text: 'Use a green button', status: 'pending' },
+    ] });
+    compact.resolve();
     await waitFor(() => turns(h, threadId).length === 2 && turns(h, threadId)[1]!.status === 'done');
     expect(asked[1]!.prompt).toContain('compacted');
+    expect(asked[1]!.prompt).toMatch(/Port the renderer[\s\S]*Preserve transparent shadows[\s\S]*Keep the blue button[\s\S]*Correction: use a green button/);
+    expect(asked[1]!.prompt).toContain('[pending] Use a green button');
     expect(openingOf(h, threadId, turns(h, threadId)[1]!.id).label).toBe(RESUME_TEXT.compaction.label);
     // The resume answered after its own compaction: nothing more.
     await Bun.sleep(150);
     expect(turns(h, threadId)).toHaveLength(2);
-  } finally { await h.stop(); }
+  } finally { compact.resolve(); await h.stop(); }
 });
 
 test('background work that ends without waking its agent resumes the thread; a Stop that ended it does not', async () => {
@@ -291,43 +332,63 @@ test('background work that ends without waking its agent resumes the thread; a S
 });
 
 /** A killed core stops writing mid-turn: its journal closes under the running turn. */
-async function crash(h: TestCore): Promise<void> {
+async function crash(h: TestCore, cut?: () => void): Promise<void> {
   h.core.journal.close();
+  cut?.();
   await h.server.stop();
   await h.core.close();
   delete process.env.BOITE_DATA_DIR;
 }
 
-async function restart(h: TestCore): Promise<{ core: Core; stop: () => Promise<void> }> {
+async function restart(h: TestCore, beforeListen?: (core: Core) => void): Promise<{ core: Core; connect: TestCore['connect']; stop: () => Promise<void> }> {
   const core = new Core({ dataDir: h.dataDir, token: h.token });
+  beforeListen?.(core);
   const server = startServer({ core, host: '127.0.0.1', port: 0 });
-  return { core, stop: async () => { await server.stop(); await core.close(); await removeDir(h.dataDir); } };
+  return { core, connect: () => connect(server.url, h.token), stop: async () => { await server.stop(); await core.close(); await removeDir(h.dataDir); } };
 }
 
-async function crashMidTurn(prompt: string): Promise<{ h: TestCore; threadId: string; turnId: string }> {
+async function crashMidTurn(prompt: string, stopFirst = false, accepted = false): Promise<{ h: TestCore; threadId: string; turnId: string }> {
   const h = await startTestCore();
   let started = false;
+  let cut: (() => void) | undefined;
   // The agent never answers by itself; the closing core's stop is all that settles it.
   restores.push(setDriver('echo', {
     protocol: 'echo',
     startTurn(ctx) {
+      if (accepted) ctx.sessionAccepted?.('native');
       say(ctx, { type: 'text', text: 'Halfway through.' });
       started = true;
       const { promise, resolve } = Promise.withResolvers<TurnResult>();
-      return { stop() { resolve({ status: 'stopped', sessionId: 'native', usage: null }); }, done: promise };
+      cut = () => resolve({ status: 'stopped', sessionId: 'native', usage: null });
+      return { stop() { if (!stopFirst) cut?.(); }, done: promise };
     },
   }));
   const client = await h.connect();
   const { threadId } = await echoThread(h, client);
   const turn = await client.call('turns.start', { threadId, prompt });
   await waitFor(() => started);
+  if (stopFirst) {
+    expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    expect(h.core.journal.getTurn(turn.id)?.status).toBe('running');
+  }
   client.close();
-  await crash(h);
+  await crash(h, cut);
   return { h, threadId, turnId: turn.id };
 }
 
-test('a core that dies mid-turn resumes that turn once the next core starts, quoting the request', async () => {
-  const { h, threadId, turnId } = await crashMidTurn('migrate the journal to schema 38');
+test('an acknowledged Stop survives a crash while the native attempt is still running', async () => {
+  const { h, threadId, turnId } = await crashMidTurn('stop this migration', true);
+  const asked = scripted(done);
+  const next = await restart(h);
+  try {
+    expect(next.core.journal.getTurn(turnId)).toMatchObject({ status: 'stopped', error: null });
+    expect(next.core.threads.get(threadId).turns).toHaveLength(1);
+    expect(asked).toHaveLength(0);
+  } finally { await next.stop(); }
+});
+
+test.each([false, true])('a core that dies mid-turn resumes once (native admission: %s)', async (accepted) => {
+  const { h, threadId, turnId } = await crashMidTurn('migrate the journal to schema 38', false, accepted);
   const asked = scripted(done);
   const next = await restart(h);
   try {
@@ -335,6 +396,8 @@ test('a core that dies mid-turn resumes that turn once the next core starts, quo
     expect(next.core.journal.getTurn(turnId)).toMatchObject({ status: 'error', error: CRASH_RESUMING });
     const resume = next.core.threads.get(threadId).turns[1]!;
     expect(resume.execution?.operation).toBe('resume');
+    expect(asked[0]!.sessionId).toBe(accepted ? 'native' : null);
+    expect(next.core.journal.getTurn(turnId)?.execution?.sessionId).toBe(accepted ? 'native' : null);
     expect(asked[0]!.prompt).toContain('Boite stopped unexpectedly');
     expect(asked[0]!.prompt).toContain('migrate the journal to schema 38');
     const opening = next.core.threads.get(threadId).messages.find(message => message.turnId === resume.id && message.role === 'system')!.parts[0]!;
@@ -375,6 +438,34 @@ test('a crash over an hour ago, or a core stopped on purpose, resumes nothing', 
     await Bun.sleep(150);
     expect(next.core.threads.get(threadId).turns).toHaveLength(1);
     expect(after).toHaveLength(0);
+  } finally { await next.stop(); }
+});
+
+test('a manual resume that crashed before dispatch retains its admitted turn and replaces the automatic plan', async () => {
+  AUTO_CONTINUE.delaysMs = [60_000, 60_000];
+  const h = await startTestCore();
+  scripted(failed());
+  const client = await h.connect();
+  const { threadId, accountId } = await echoThread(h, client);
+  const source = await client.call('turns.start', { threadId, prompt: 'save my interrupted request' });
+  await waitFor(() => h.core.threads.get(threadId).retry?.kind === 'auto-continue');
+  holdAccountTurns(h, accountId);
+  const manual = await client.call('turns.resume', { threadId, turnId: source.id });
+  expect(manual.status).toBe('queued');
+  expect(h.core.threads.get(threadId).retry).toBeNull();
+  client.close();
+  await crash(h);
+
+  const asked = scripted(done);
+  const next = await restart(h);
+  try {
+    const reopened = await next.connect();
+    expect((await reopened.call('turns.resume', { threadId, turnId: source.id })).id).toBe(manual.id);
+    await waitFor(() => next.core.journal.getTurn(manual.id)?.status === 'done');
+    expect(next.core.threads.get(threadId)).toMatchObject({ retry: null, recovery: null });
+    expect(next.core.threads.get(threadId).turns.map(turn => turn.id)).toEqual([source.id, manual.id]);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.prompt).toContain('save my interrupted request');
   } finally { await next.stop(); }
 });
 
@@ -495,21 +586,138 @@ test('a crash after a turn that failed on a full context resumes nothing, though
   } finally { await next.stop(); }
 });
 
-test('a resume planned before a crash survives it and goes out from the next core', async () => {
+test('a missing working directory leaves manual recovery after a restart with a held team', async () => {
+  const h = await startTestCore();
+  const fail = Promise.withResolvers<TurnResult>();
+  const asked = scripted(() => fail.promise, done);
+  let next: Awaited<ReturnType<typeof restart>> | undefined;
+  try {
+    const client = await h.connect();
+    const folder = join(h.dataDir, 'missing-worktree');
+    mkdirSync(folder);
+    const project = await client.call('projects.add', { path: folder, name: 'missing-worktree' });
+    const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+    const { id: threadId } = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'orchestrator' });
+    const source = await client.call('turns.start', { threadId, prompt: 'save this interrupted work' });
+    await waitFor(() => asked.length === 1);
+    await removeDir(folder);
+    fail.resolve(failed());
+    await waitFor(() => turns(h, threadId)[0]?.status === 'error');
+    expect((await client.call('threads.get', { threadId })).retry).toBeNull();
+    h.core.journal.setSetting(`delegation:${threadId}`, { ...h.core.delegation.config(threadId), enabled: true, paused: true, pausedBy: 'restart', pausedAt: Date.now() + 60_000 });
+    client.close();
+    await crash(h);
+    mkdirSync(folder);
+    next = await restart(h);
+
+    const reopened = await next.connect();
+    await Bun.sleep(150);
+    const snapshot = await reopened.call('threads.get', { threadId });
+    expect(snapshot.retry).toBeNull();
+    expect(snapshot.turns.map(turn => turn.id)).toEqual([source.id]);
+    expect(asked).toHaveLength(1);
+    expect(snapshot.recovery).toEqual({
+      kind: 'interrupted', turnId: source.id, detail: 'the working directory is unavailable',
+    });
+    const resume = await reopened.call('turns.resume', { threadId, turnId: source.id });
+    const core = next.core;
+    await waitFor(() => core.journal.getTurn(resume.id)?.status === 'done');
+    expect(asked[1]?.prompt).toContain('save this interrupted work');
+  } finally {
+    fail.resolve(failed());
+    if (next) await next.stop();
+    else await h.stop();
+  }
+});
+
+
+test.each([
+  { stage: 'planned', slowProbe: false, stop: false },
+  { stage: 'dispatching', slowProbe: false, stop: false },
+  { stage: 'admitted', slowProbe: false, stop: false },
+  { stage: 'settled after a cache ping', slowProbe: false, stop: false },
+  { stage: 'planned', slowProbe: true, stop: false },
+  { stage: 'admitted', slowProbe: true, stop: false },
+  { stage: 'planned', slowProbe: true, stop: true },
+  { stage: 'admitted', slowProbe: true, stop: true },
+])('a resume survives a crash while $stage (slow probe: $slowProbe, Stop: $stop)', async ({ stage, slowProbe, stop }) => {
   // Long enough to crash first; the plan keeps its time across the restart.
   AUTO_CONTINUE.delaysMs = [1_500, 1_500];
   const h = await startTestCore();
   scripted(failed());
   const client = await h.connect();
   const { threadId } = await echoThread(h, client);
-  await client.call('turns.start', { threadId, prompt: 'index the docs' });
+  const source = await client.call('turns.start', { threadId, prompt: 'index the docs' });
   await waitFor(() => h.core.threads.list({ includeArchived: true }).find(thread => thread.id === threadId)?.retry?.kind === 'auto-continue');
+  let admittedId: string | undefined;
+  if (stage !== 'planned' || slowProbe) {
+    const entry = h.core.threads.resumes.entry(threadId)!;
+    const plan = { ...entry.plan, ...(stage !== 'planned' ? { dispatching: true } : {}), ...(slowProbe ? { at: Date.now() } : {}) };
+    h.core.journal.setSetting('resumes', { [threadId]: { ...entry, plan } });
+    if (stage === 'admitted' || stage === 'settled after a cache ping') {
+      holdAccountTurns(h);
+      const input = h.core.threads.handoff.continuation(source, entry.plan!.prompt);
+      const admitted = h.core.threads.startTurn(threadId, input, { kind: 'resume', reason: 'carry-on', requestId: `auto-continue_${source.id}` });
+      expect(admitted.status).toBe('queued');
+      admittedId = admitted.id;
+      if (stage === 'settled after a cache ping') {
+        h.core.journal.putTurn({ ...source, id: 'cache-ping', status: 'done', finishedAt: Date.now(), execution: { ...source.execution!, operation: 'keepalive' } });
+        h.core.journal.setSetting('resumes', { [threadId]: { handled: source.id, streak: 1, resumeTurnId: admitted.id } });
+      }
+    }
+  }
   client.close();
   await crash(h);
   const asked = scripted(done);
-  const next = await restart(h);
+  const probe = Promise.withResolvers<string>();
+  const unrelatedProbe = Promise.withResolvers<string>();
+  let probing = false;
+  let listSettled = false;
+  const next = await restart(h, slowProbe ? core => {
+    const program = join(h.dataDir, 'probe-agent.exe');
+    const unrelated = join(h.dataDir, 'unrelated-probe.exe');
+    writeFileSync(program, '', { mode: 0o755 });
+    writeFileSync(unrelated, '', { mode: 0o755 });
+    profileFor(core.providers.require('echo'))!.executable = [{ kind: 'file', value: program, major: 2 }];
+    profileFor(core.providers.require('claude'))!.executable = [{ kind: 'file', value: unrelated, major: 2 }];
+    core.providers.attachVersions(path => {
+      if (path === unrelated) return unrelatedProbe.promise;
+      probing = true;
+      return probe.promise;
+    }, () => {});
+    // The list RPC's wait can expire before the probe's own deadline.
+    const settle = core.providers.settle.bind(core.providers);
+    spyOn(core.providers, 'settle').mockImplementation(async () => { await settle(40); listSettled = true; });
+  } : undefined);
   try {
-    await waitFor(() => next.core.threads.get(threadId).turns.length === 2 && next.core.threads.get(threadId).turns[1]!.status === 'done');
+    if (slowProbe) {
+      await waitFor(() => probing && listSettled);
+      expect(asked).toHaveLength(0);
+      if (admittedId) expect(next.core.journal.getTurn(admittedId)?.status).toBe('queued');
+      else expect(next.core.journal.getSetting('resumes')).toMatchObject({ [threadId]: { plan: { turnId: source.id } } });
+      if (stop) {
+        const reopened = await next.connect();
+        expect(await reopened.call('turns.stop', { threadId })).toEqual({ stopped: true });
+        reopened.close();
+      }
+      probe.resolve('probe-agent 2.0.0');
+      if (stop) {
+        await waitFor(() => next.core.providers.summary('echo')?.available === true);
+        expect(asked).toHaveLength(0);
+        if (admittedId) expect(next.core.journal.getTurn(admittedId)?.status).toBe('stopped');
+        else expect(next.core.journal.turnRequest(threadId, `auto-continue_${source.id}`)).toBeNull();
+        return;
+      }
+    }
+    await waitFor(() => asked.length === 1 && next.core.journal.runningTurn(threadId) === null);
     expect(asked[0]!.prompt).toContain('API Error: 503');
-  } finally { await next.stop(); }
+    expect(asked).toHaveLength(1);
+    const receipt = next.core.journal.turnRequest(threadId, `auto-continue_${source.id}`);
+    if (admittedId) expect(receipt?.turn_id).toBe(admittedId);
+    expect(next.core.journal.getTurn(receipt!.turn_id)?.status).toBe('done');
+  } finally {
+    probe.resolve('probe-agent 2.0.0');
+    unrelatedProbe.resolve('unrelated-probe 2.0.0');
+    await next.stop();
+  }
 });

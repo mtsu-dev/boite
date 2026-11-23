@@ -141,7 +141,17 @@ bash docker/smoke.sh boite-server:test
 The test creates its own container and data volume. It verifies the built UI,
 authentication, installed provider executables, an echo turn, graceful shutdown
 and persistence after restart, then removes its container and volume. It makes
-no real provider call and uses no existing login directory.
+no real provider call and uses no existing login directory. It also runs
+`docker/launcher-smoke.ts` under Docker's default seccomp filter. The group
+launcher beside bun must be mode 755 and run. An agent spawned the way the core
+spawns one must end with that core once it is killed, and the probe's own answer
+says how: ready, the agent must be admitted natively in its own group; refused
+for a kernel before 6.9, or a pidfd syscall the filter denies that the smoke's
+own call to it fails with the same errno, it must fall back to the sh watcher,
+and the smoke claims no native admission. Any other refusal, such as a launcher
+that does not speak the core's protocol or whose setup or exec fails while
+pidfds work, fails the smoke. A second agent goes through the watcher on every
+kernel.
 
 ## Updating from the app
 
@@ -206,8 +216,10 @@ reason in its status. When the data directory sits on another filesystem than
 the installation, the same room is checked beside the data directory too,
 since a rollback must then copy the snapshot across; the live data already
 sits on that disk, so the copy is the only thing added there. A copy cut short is
-deleted. Health must report the target version and that service's new PID
-within 30 seconds.
+deleted. Within 30 seconds the worker must see a healthy reply and verify
+the target version and new main PID. Loopback `/health` reports both fields.
+Public requests get liveness only. For a service bound to a non-loopback
+address, the worker verifies the version, PID and endpoint in `core.json`.
 Failure restores both the previous installation and its data snapshot before
 restarting. The snapshot is renamed back into place, never copied a second
 time, so a rollback needs no room beyond what the update checked: a second

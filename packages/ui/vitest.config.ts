@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { VERSION as svelteCompilerVersion } from 'svelte/compiler';
 import { lucideGlyph } from './icon-plugin.ts';
 import { completeCatalogues } from './catalogue-plugin.ts';
 import { DurationSequencer } from './test-sequencer.ts';
@@ -11,7 +12,18 @@ import { DurationSequencer } from './test-sequencer.ts';
  * no longer ships.
  */
 export default defineConfig({
-  plugins: [lucideGlyph(), completeCatalogues(), svelte()],
+  plugins: [
+    lucideGlyph(),
+    completeCatalogues(),
+    svelte(),
+    {
+      name: 'boite:svelte-cache-version',
+      configureVitest({ defineCacheKeyGenerator }) {
+        // The lockfile can change before Bun updates the installed compiler.
+        defineCacheKeyGenerator(() => svelteCompilerVersion);
+      },
+    },
+  ],
   resolve: { conditions: ['browser'] },
   test: {
     maxWorkers: 8,

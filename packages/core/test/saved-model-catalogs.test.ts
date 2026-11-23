@@ -6,11 +6,30 @@ import type { ModelInfo } from '@boite/contracts';
 import { getDriver, probedModelsOf, setDriver } from '../src/drivers/index.ts';
 import { removeDir } from '../src/fs-retry.ts';
 import { RETRY_CATALOG_MS, STALE_CATALOG_MS } from '../src/providers/probe.ts';
+import { readSavedCatalog, saveCatalog } from '../src/providers/saved-catalogs.ts';
 import type { CoreClient } from '../src/client.ts';
 import { startTestCore } from './harness.ts';
 
 const before: ModelInfo[] = [{ id: 'saved', name: 'Saved', default: true }];
 const after: ModelInfo[] = [{ id: 'fresh', name: 'Fresh', default: true }];
+
+test.each(['claude/claude-fable-5-2', 'claude-fable-5-2'])('a saved Claude catalog retains the historical alias for %s and keeps foreign routes distinct', async id => {
+  const core = await startTestCore();
+  try {
+    const client = await core.connect();
+    const account = await client.call('accounts.add', { providerId: 'claude', label: 'Saved Claude routes' });
+    saveCatalog(core.core, 'claude', account.id, { models: [
+      { id, name: 'Fable' },
+      { id: 'openrouter/claude-fable-5-2', name: 'OpenRouter Fable' },
+    ], probedAt: 1 });
+    expect(readSavedCatalog(core.core, 'claude', account.id)?.models).toEqual([
+      { id: 'claude-fable-5-2', name: 'Fable', aliases: [{ id: 'claude/claude-fable-5-2' }] },
+      { id: 'openrouter/claude-fable-5-2', name: 'OpenRouter Fable' },
+    ]);
+  } finally {
+    await core.stop();
+  }
+});
 
 /** The answer, or null when it did not arrive within `ms`. */
 async function answered<T>(promise: Promise<T>, ms: number): Promise<T | null> {

@@ -1,5 +1,5 @@
 import type { SessionConfigOption } from '@agentclientprotocol/sdk/unstable';
-import type { AccountId, ModelInfo, ProviderDescriptor, ProviderId, ThreadId } from '@boite/contracts';
+import { acpSteeringKind, type AccountId, type ModelInfo, type ProviderDescriptor, type ProviderId, type ThreadId } from '@boite/contracts';
 import { agentModelsOf, modelsFrom, plainObject } from './acp/models.ts';
 import { AcpSession, sessionKey, type AcpMemory } from './acp/session.ts';
 import { forgetCompaction, forgetFolder, forgetThreadResolution, type CompactionPlace } from './acp/opencode-compaction.ts';
@@ -8,14 +8,14 @@ import { isGrok, MINUTE_MS, type AcpDeps } from './acp/protocol.ts';
 import { AcpTurn } from './acp/turn.ts';
 import type { Driver, LiveTurnSettings, ProbeContext, ProbeFilter, ProbeResult, SessionContext, TurnContext, TurnHandle } from './types.ts';
 import { noteWarmSession } from './driver-log.ts';
+import { ThreadSessions } from './thread-sessions.ts';
 
 /**
  * One ACP agent process per thread, kept between turns the way the Claude one is.
  * `memory`: what outlives a process, given by a test that reads it.
  */
 export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProcess: new Set<ProviderId>(), refusedLoads: new Set<string>(), compactionWindows: new Map<string, number>(), resolvedModels: new Map<string, { cwd: string; model: string }>() }): Driver {
-  const sessions = new Map<ThreadId, AcpSession>();
-  const viewed = new Set<ThreadId>();
+  const sessions = new ThreadSessions<AcpSession>();
   const probes = new Map<string, ProbeEntry>();
   let probeRevision = 0;
   // Where each live conversation runs, until it is released: a folder left by
@@ -47,14 +47,14 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
     // A conversation that moved may have been the old folder's last one.
     if (before !== undefined && !samePlace(before, place)) leave(before);
 
-    let session = sessions.get(threadId) ?? null;
+    let session = sessions.current.get(threadId) ?? null;
     const compaction = forTurn && session?.compactionMoved(ctx) === true;
     const usable = session?.usable(key, warmMs) === true && !compaction;
     const changed = isGrok(ctx.provider) ? 'the thread changed mode, account or folder' : 'the thread changed account or folder';
     const sameSetup = session?.key === key;
     noteWarmSession(ctx, `${ctx.provider.id} ACP`, { kept: session !== null, usable, sameSetup: sameSetup && !compaction, setupChange: sameSetup ? 'the compaction limit changed' : changed });
     if (session !== null && !usable) {
-      sessions.delete(threadId);
+      sessions.current.delete(threadId);
       if (sameSetup && compaction) ctx.log('info', 'acp session: OpenCode 2 restarts with the compaction limit of the thread');
       session.close(sameSetup ? null : changed, ctx);
       session = null;
@@ -68,7 +68,7 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
         deps,
         memory,
         (ended) => {
-          if (sessions.get(threadId) === ended) sessions.delete(threadId);
+          sessions.ended(threadId, ended);
           // Released during its turn: the turn's end noted the folder again.
           if (!places.has(threadId)) {
             forgetThreadResolution(memory, threadId);
@@ -93,10 +93,10 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
           probes.set(probeKey, entry);
         },
       );
-      sessions.set(threadId, session);
+      sessions.current.set(threadId, session);
     }
     const running = session;
-    if (viewed.has(threadId)) running.setViewed(true);
+    if (sessions.viewed.has(threadId)) running.setViewed(true);
     const probed = probes.get(probeKey);
     running.seedConfig(probed?.options ?? [], probed?.ownModel);
     return running;
@@ -104,11 +104,7 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
 
   return {
     prepare: (ctx, options) => acquire(ctx, options?.forTurn === true).prepare(ctx, options?.forTurn),
-    setViewed(threadId, active) {
-      if (active) viewed.add(threadId);
-      else viewed.delete(threadId);
-      sessions.get(threadId)?.setViewed(active);
-    },
+    setViewed: sessions.setViewed,
     protocol: 'acp',
 
     async probe(ctx: ProbeContext): Promise<ProbeResult> {
@@ -131,7 +127,7 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
       const wanted = ctx.model;
       // A prepared session already read the agent's catalog. Inspect it without
       // changing its model; an unseen model's efforts use a separate probe.
-      const prepared = ctx.catalogThread === undefined ? undefined : sessions.get(ctx.catalogThread.id);
+      const prepared = ctx.catalogThread === undefined ? undefined : sessions.current.get(ctx.catalogThread.id);
       const models = await prepared?.catalog(ctx) ?? null;
       if (models !== null) {
         const previous = new Map((entry.result?.models ?? []).filter(model => model.effort !== undefined).map(model => [model.id, model.effort]));
@@ -214,7 +210,7 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
       if (filter.refresh !== true) probeRevision += 1;
       // Dropped before the sessions hear it: a live process notes again what it runs.
       forgetCompaction(memory, filter);
-      for (const session of sessions.values()) session.forgetCatalog(filter);
+      for (const session of sessions.current.values()) session.forgetCatalog(filter);
       // A reloaded or updated agent may count its cost differently.
       if (filter.accountId === undefined) {
         if (filter.providerId === undefined) memory.costPerProcess.clear();
@@ -229,10 +225,11 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
 
     startTurn(ctx: TurnContext): TurnHandle {
       const turn = new AcpTurn(ctx);
+      const steering = acpSteeringKind(ctx.provider);
       const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
       const running = acquire(ctx, true);
       running.attach(turn, warmMs);
-      const steerOpenCode: NonNullable<TurnHandle['steer']> = (text, attachments, onAccepted) => running.steerOpenCode(turn, text, attachments, onAccepted);
+      const steerOpenCode: NonNullable<TurnHandle['steer']> = (text, attachments, onAccepted, signal) => running.steerOpenCode(turn, text, attachments, onAccepted, signal);
       return {
         done: turn.done,
         ...(isGrok(ctx.provider) || ctx.protectedExecution ? {} : { setPermissionMode: (mode: TurnContext['thread']['permissionMode']) => running.setPermissionMode(turn, mode) }),
@@ -243,26 +240,21 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
         // Plain ACP has no input while a prompt runs. Grok adds one; OpenCode 2
         // takes it only over its native server, not over ACP behind a sandbox.
         get steer() {
-          if (isGrok(ctx.provider)) return (text: string) => running.steer(turn, text);
-          if (ctx.provider.id === 'opencode-v2' && running.steersOpenCode()) return steerOpenCode;
+          if (steering === 'grok') return (text: string) => running.steer(turn, text);
+          if (steering === 'opencode' && running.steersOpenCode()) return steerOpenCode;
           return undefined;
         },
       };
     },
 
     releaseThread(threadId: ThreadId): void {
-      viewed.delete(threadId);
+      sessions.viewed.delete(threadId);
       forgetThread(threadId);
-      const session = sessions.get(threadId);
-      if (session === undefined || session.busy()) return;
-      sessions.delete(threadId);
-      session.close(null);
+      sessions.takeIdle(threadId)?.close(null);
     },
 
     shutdown(): void {
-      const open = [...sessions.values()];
-      sessions.clear();
-      viewed.clear();
+      const open = sessions.takeAll();
       places.clear();
       probes.clear();
       memory.costPerProcess.clear();

@@ -15,7 +15,7 @@ the OpenCode server, protected bridges, health checks).
 | 1 | Usage analytics | The analytics relay (`DEFAULT_TELEMETRY_URL` in `packages/core/src/telemetry.ts`), which forwards to the analytics store | Queue flushed every 5 min, a daily ping, product events | Install UUID (hashed by the relay in basic mode), event, time, app and OS version, arch, provider, outcome, durations; enhanced adds model, effort, permission mode, rounded token counts. The relay sees the IP | Basic, in published builds only | Settings > General > Privacy and analytics: Off; `BOITE_TELEMETRY_URL=""` | `analytics` |
 | 2 | Analytics consent receipt | Same relay, `POST /consent` | The user picks a mode in the tour or Settings | Mode, receipt UUID, IP | On an explicit choice | `BOITE_TELEMETRY_URL=""` | `analytics` |
 | 3 | Analytics deletion and export | Same relay, `POST /forget`, `POST /export` | Leaving enhanced mode (retried until accepted), Export | Enhanced install UUID | After enhanced was on | None: it is the deletion path | `analytics` (`off` holds a pending deletion until the key allows it) |
-| 4 | Desktop app update check | GitHub releases API and release assets of the app's repository | 8 s after the window opens, every 6 h, on focus after 15 min, Check for updates | GET, user agent, IP | On, desktop app only | None | `updates.app: "off"` |
+| 4 | Desktop app update check | Channel index on `raw.githubusercontent.com`, GitHub releases API and release assets of the app's repository | 8 s after the window opens, every 6 h, on focus after 15 min, Check for updates | GET, index ETag, user agent, IP | On, desktop app only | None | `updates.app: "off"` |
 | 5 | Desktop app update download | GitHub release assets | Update click; by itself when automatic installs are on | GET, IP | On click; automatic off | `autoInstallUpdates` | `updates.app` (`off` refuses it, `check` locks automatic installs off) |
 | 6 | Server core update check | GitHub releases API | Standalone Linux server: 8 s after start, every 6 h, when an owner connects after 15 min | GET, IP | On for a standalone server | None | `updates.server: "off"` |
 | 7 | Server core update download | GitHub release asset | Update click on the server's row | GET, IP | No | Do not click | `updates.server: "off"` |
@@ -49,8 +49,8 @@ the OpenCode server, protected bridges, health checks).
 | 35 | Group relay socket | A member reached through another | A client reaching a member it cannot dial | Signed hello, relayed frames | No | Leave the group | `network.groups: false` |
 | 36 | Tailnet name lookup | `100.100.100.100`, the local Tailscale resolver | Computing group addresses | PTR query for the machine's tailnet IP | On when Tailscale is up | `BOITE_TAILNET=0` | None: answered by the Tailscale daemon on the machine |
 | 37 | Clients to connected machines | The local core or machine URLs the user added | While connected | RPC, attachment downloads | Local core only | Remove the machine | None: user-initiated, to machines the user added |
-| 38 | Contacts: Tailscale API | `api.tailscale.com/api/v2` | Invite, join, Contacts page (60 s cache) | Tailscale API key, tailnet IP, device id | No: needs a stored key | Remove the key | `network.contacts: false` |
-| 39 | Contact join and link | The inviter's tailnet name or Funnel address | Pasting a link, kept links, contact requests | Core id, keys, machine name, one-time token, then sealed requests | No | Remove the contact | `network.contacts: false` |
+| 38 | Contacts: Tailscale API | `api.tailscale.com/api/v2` | Invite, join, Contacts page (60 s cache) | Tailscale API key, tailnet IP, device id | No: needs a stored key and Contacts on | Remove the key, or turn Contacts off | `network.contacts: false` |
+| 39 | Contact join and link | The inviter's tailnet name or Funnel address | Pasting a link, kept links, contact requests | Core id, keys, machine name, one-time token, then sealed requests | No: Contacts start off | Turn Contacts off, or remove the contact | `network.contacts: false` |
 | 40 | Contact routes on Tailscale Funnel | The public internet, through Funnel on port 8443 | An "Elsewhere" invitation | Exposes `/contacts/*` publicly | No | Cancel invitations | `network.contacts: false` (refused; routes kept from before close at startup) |
 | 41 | Funnel reachability check | The name servers of `ts.net` (DNS, UDP 53), else `dns.google`, `cloudflare-dns.com`, then the machine's own Funnel address | After an "Elsewhere" invitation and at start while routes are up, every 5 s for 5 minutes then every 30 s | Funnel host name, an empty join request | No | As row 40 | `network.contacts: false` |
 | 41b | Funnel name lookup, guest side | The name servers of `ts.net` (DNS, UDP 53) | A join, a link dial or a contact request whose `ts.net` name the system resolver does not know | The inviter's Funnel host name | No | Remove the contact | `network.contacts: false` |
@@ -58,7 +58,8 @@ the OpenCode server, protected bridges, health checks).
 | 43 | Agent sign-in | The agent vendor's login, run by the CLI | Connect click on Providers | The vendor's OAuth, handled by the CLI | No | Do not click | `providers.allow` / `providers.deny` for a blocked provider; user-initiated for an allowed one |
 | 44 | External links | Docs, Tailscale admin, release notes, runtime downloads, in the system browser | A click | A normal browser request | No | Do not click | None: opened by the user in the system browser, outside Boite |
 | 45 | agent-desktop download | `registry.npmjs.org`, the pinned `agent-desktop` release | A conversation's first virtual desktop or `boite desktop` command on a core without it | GET, IP | On; on Linux, with the desktop tools | None | `agentDesktop: false` |
-| 46 | Model prices | `models.dev/api.json` | The first price lookup when the cached rates are missing or a day old; a lookup of an unknown model, at most once an hour and once per model; an hour after a failure | GET with the user agent `boite` and the stored ETag, IP | On | None | `modelPrices: false` |
+| 46 | Worktree default branch lookup | The selected Git remote of the project | Making a worktree that starts from the project's default branch | Git HEAD lookup and, if the commit is missing, a fetch using the repository's Git configuration | Only for repositories with a remote | Use a project without a remote to work locally | None: initiated by creating a worktree in a project with a configured remote |
+| 47 | Model prices | `models.dev/api.json` | The first price lookup when the cached rates are missing or a day old; a lookup of an unknown model, at most once an hour and once per model; an hour after a failure | GET with the user agent `boite` and the stored ETag, IP | On | None | `modelPrices: false` |
 
 ## Flows with no user switch
 
@@ -79,5 +80,5 @@ Each one is either blocked by a policy key or started by the user:
   `providers.allow` or in `providers.deny`; for an allowed provider they run
   only on the user's click, since choosing the agent is the administrator's
   decision and installing it is the user's.
-- Rows 31, 37 and 44: user-initiated toward a destination the user chose, as
+- Rows 31, 37, 44 and 46: user-initiated toward a destination the user chose, as
   the table says.

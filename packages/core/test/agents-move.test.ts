@@ -57,6 +57,22 @@ function held(h: TestCore, agent: AgentProfile) {
 
 const lastText = (h: TestCore, threadId: string) => h.core.journal.listMessages(threadId).at(-1)?.parts[0];
 
+test.each([null, 'low'])('a moved mochi resolves a legacy model with stored effort %s', async effort => {
+  const { desk, pc, owner, pcId, deskProject } = await group();
+  const model = 'echo-legacy-family';
+  const alias = 'echo-legacy-family-xhigh';
+  for (const h of [desk, pc]) h.core.providers.require('echo').models.push({
+    id: model, name: 'Legacy family', aliases: [{ id: alias, effort: 'xhigh' }],
+    effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'xhigh', label: 'Extra high' }] },
+  });
+  const { agent } = await makeAgent(desk, owner, { name: 'Legacy', projectIds: [deskProject.id] });
+  desk.core.workforce.records.update('profile', agent.id, agent.revision, {
+    ...agent, selection: { ...agent.selection, model: alias, effort },
+  });
+  const moved = await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'legacy-model' });
+  expect(pc.core.workforce.records.get('profile', moved.agentId).selection).toMatchObject({ model, effort: effort ?? 'xhigh' });
+});
+
 test('a move carries the mochi, its memory, routines, projects and the end of its conversation; the next prompt there says so once', async () => {
   const { desk, pc, owner, pcOwner, deskId, pcId, pcPeer, deskProject, pcProject } = await group();
   const { agent: made, threadId } = await makeAgent(desk, owner, {

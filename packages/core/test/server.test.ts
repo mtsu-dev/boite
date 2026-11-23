@@ -483,6 +483,17 @@ describe('server', () => {
     expect(body.pid).toBe(process.pid);
   });
 
+  test('health over a public host name or forwarded request only reports liveness', async () => {
+    for (const headers of [
+      { host: 'boite.example' },
+      { host: 'localhost', forwarded: 'host=boite.example;proto=https' },
+    ]) {
+      const response = await fetch(`${harness.url}/health`, { headers: new Headers(headers as Record<string, string>) });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+    }
+  });
+
   test('health and hello report the bundle loaded by this core run', async () => {
     const bundled = await startTestCore({ bundleHash: 'loaded-bundle' });
     try {

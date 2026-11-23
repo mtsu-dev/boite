@@ -452,7 +452,7 @@ export const CONTACT_FLAG_KINDS = ['secret', 'destructive', 'injection', 'bounda
  * at: a letter asking for a secret, a destructive command or words written to
  * steer an agent (`secret`, `destructive`, `injection`), a refusal at a shared
  * project's boundary (`boundary`), or the activity reviewer's doubt
- * (`review`). A flagged letter waits, undelivered, for the bot's verdict.
+ * (`review`). The owner must release secret and injection letters.
  */
 export interface ContactFlag {
   id: string;
@@ -467,8 +467,21 @@ export interface ContactFlag {
   threadId?: ThreadId;
   relationId?: string;
   at: Timestamp;
-  /** `open` until the bot decides: the letter delivered, refused, or the contact's access cut. */
+  /** `open` until the letter is delivered, refused, or the contact's access is cut. */
   status: 'open' | 'delivered' | 'refused' | 'cut';
+}
+
+export function contactFlagNeedsOwner(flag: Pick<ContactFlag, 'kind' | 'letterId'>): boolean {
+  return flag.letterId !== undefined && (flag.kind === 'secret' || flag.kind === 'injection');
+}
+
+/** Host tools and secret cards require a conversation free of contact instructions. */
+export function contactToolMethod(method: string): boolean {
+  return /^(windows|desktop|browser|devices|secrets)\./.test(method);
+}
+
+export function contactToolRefusal(method: string): string {
+  return `${method}: this conversation is handling contact instructions; this tool is reserved for the owner's requests`;
 }
 export interface ContactSettings {
   /** The least capable model an agent may run on to write to a contact, or to be heard from one. Default 1. */

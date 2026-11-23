@@ -30,13 +30,13 @@ function context(core: Core, store: AgentStore, route: (model: string | undefine
 function checked(core: Core, store: AgentStore, thread: ThreadSummary, params: AgentCreateParams): AgentCreation {
   const result = checkAgentCreate(params, context(core, store, (model, effort) => {
     try {
-      const route = resolveRoute(core, thread, CREATE_ROUTES, { ...(model === undefined ? {} : { model }), ...(effort === undefined ? {} : { effort }) });
+      const route = resolveRoute(core, thread, CREATE_ROUTES, { ...(model === undefined ? {} : { model }), ...(effort === undefined ? {} : { effort }) }, 'automatic');
       const provider = core.providers.require(route.providerId);
       // As `agents.profile.save` fills a route on the provider's default model.
       const chosen = checkModel(provider, route.accountId, route.model ?? botDefaultModel(provider, route.accountId));
       if (chosen === null) return { ok: false, message: 'model: this thread runs on its provider\'s default model; name one with --model' };
       // Full access, as a bot made on the Bots page.
-      return { ok: true, value: { providerId: route.providerId, accountId: route.accountId, model: chosen, effort: effort === undefined ? null : route.effort, permissionMode: 'bypassPermissions' } };
+      return { ok: true, value: { providerId: route.providerId, accountId: route.accountId, model: chosen, effort: model === undefined && effort === undefined ? null : route.effort, permissionMode: 'bypassPermissions' } };
     } catch (error) {
       if (error instanceof RpcFailure) return { ok: false, message: error.message };
       throw error;

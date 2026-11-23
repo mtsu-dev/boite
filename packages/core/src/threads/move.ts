@@ -263,7 +263,7 @@ export class ThreadMove {
   }
 
   #children(thread: ThreadSummary): ThreadSummary[] {
-    return this.#core.journal.listThreads(thread.projectId ?? undefined).filter((one) => one.parentThreadId === thread.id);
+    return this.#core.journal.listChildren(thread.id, thread.projectId);
   }
 
   #write(thread: ThreadSummary, target: Project, cwd: string, branch: string | null, stopBackground: boolean, by: 'user' | 'agent', branchNamingPending: boolean): ThreadSummary {

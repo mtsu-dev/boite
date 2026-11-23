@@ -12,7 +12,7 @@ import { runCommand } from './lib/commands.svelte';
 import { undo } from './lib/undo.svelte';
 import { confirm } from './lib/confirm.svelte';
 import { fill, strings } from './lib/strings';
-import { clampPanel, rightPanel } from './lib/right-panel.svelte';
+import { clampPanel, panelSibling, rightPanel } from './lib/right-panel.svelte';
 import { contactsRail } from './lib/contacts-rail.svelte';
 import { AgentsView, openAgent } from './lib/agents.svelte';
 import { saveAgent } from './lib/agent-menu';
@@ -114,6 +114,12 @@ test('contacts are a place at the top of the rail, under Activity and above the 
     query<HTMLButtonElement>('[data-testid=contacts-rail-home]').click();
     await waitFor(() => store.page === 'home');
 
+    // The owner's switch off takes the button and the column away; on, they come back.
+    store.showChat();
+    await store.saveSettings({ contacts: false });
+    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') === null && document.querySelector('[data-testid=contacts-rail]') === null);
+    await store.saveSettings({ contacts: true });
+    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') !== null && document.querySelector('[data-testid=contacts-rail]') !== null);
   } finally {
     if (!contactsRail.folded) contactsRail.toggle();
     store.showChat();
@@ -271,13 +277,20 @@ test("the rail counts the threads and subagents at work and a mochi's unread rep
   }
 });
 
-test("a right click on a mochi's rail picture opens its menu, not the webview's, and its picks reach the mochi", async () => {
+test("a mochi's rail menu opens by keyboard and pointer, returns focus and acts on that mochi", async () => {
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {
     await waitFor(() => document.querySelector('[data-testid=rail-bot]') !== null);
     const bot = query<HTMLButtonElement>('[data-testid=rail-bot]');
     const id = bot.dataset['agentId']!;
+    bot.focus();
+    const menuKey = new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true });
+    bot.dispatchEvent(menuKey);
+    expect(menuKey.defaultPrevented).toBe(true);
+    await waitFor(() => document.activeElement?.closest('[data-testid=context-menu]') !== null);
+    press(document.activeElement!, 'Escape');
+    await waitFor(() => document.activeElement === bot);
     const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 });
     bot.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
@@ -549,7 +562,7 @@ test('the palette and the project menu reach the archive, its list already read'
   expect(document.querySelector('[data-testid=archived-show]')).toBeNull();
   expect(query('[data-testid=archived-list]').textContent).toContain('Finish the trace tab');
 
-  store.showChat();
+  query<HTMLButtonElement>('[data-testid=sidebar-archived-back]').click();
   await waitFor(() => document.querySelector('[data-testid=project-menu]') !== null);
   query<HTMLButtonElement>('[data-testid=project-menu]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archived]') !== null);
@@ -1006,3 +1019,82 @@ test('a page says where it applies once: one line for most of its cards, a tag o
   expect(document.querySelector('[data-testid=settings-scope] [data-testid=settings-machine]')).toBeNull();
   expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
 });
+
+test('the mochis column caps its visible width at 280 px across the bar, right panel and handle without altering the thread list width', async () => {
+  const drag = (handle: HTMLElement, fromX: number, toX: number) => {
+    const pointer = (type: string, x: number) => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: 100 });
+      Object.defineProperties(event, { pointerType: { value: 'mouse' }, pointerId: { value: 1 } });
+      return event;
+    };
+    handle.dispatchEvent(pointer('pointerdown', fromX));
+    handle.dispatchEvent(pointer('pointermove', toX));
+    handle.dispatchEvent(pointer('pointerup', toX));
+    flushSync();
+  };
+
+  writeExperiments(['resident-agents']);
+  await mountOnFake('/?fake=1&agents=1');
+  try {
+    await waitFor(() => store.openThread !== null);
+    store.setSidebarWidth(360);
+    flushSync();
+    expect(query('.app').style.getPropertyValue('--bar-left')).toBe('calc(360px + var(--frame-gap))');
+    expect(query('[data-testid=sidebar]').style.getPropertyValue('--sidebar-width')).toBe('360px');
+    expect(query('[data-testid=sidebar-resize]').getAttribute('aria-valuenow')).toBe('360');
+    expect(query('[data-testid=sidebar-resize]').getAttribute('aria-valuemax')).toBe('440');
+    expect(panelSibling(store, 1400)).toBe(360);
+
+    // On the Mochis page the column caps at 280 px: title bar, column, right panel and handle agree.
+    workspace.showAgents(store);
+    const view = AgentsView.of(store);
+    await view.refresh();
+    await openAgent(store, view.snapshot!.profiles[0]!.id);
+    await waitFor(() => store.page === 'agents' && document.querySelector('[data-testid=agents-resize]') !== null);
+    flushSync();
+
+    const agentsRail = () => query<HTMLElement>('.agents-rail');
+    const agentsHandle = () => query<HTMLElement>('[data-testid=agents-resize]');
+    expect(agentsRail().style.getPropertyValue('--sidebar-width')).toBe('280px');
+    expect(query('.app').style.getPropertyValue('--bar-left')).toBe('calc(280px + var(--frame-gap))');
+    expect(agentsHandle().getAttribute('aria-valuenow')).toBe('280');
+    expect(agentsHandle().getAttribute('aria-valuemax')).toBe('280');
+    expect(panelSibling(store, 1400)).toBe(280);
+
+    // Dragging past 280 px stops at the cap and leaves the thread list's chosen 360 px intact.
+    drag(agentsHandle(), 280, 440);
+    expect(agentsRail().style.getPropertyValue('--sidebar-width')).toBe('280px');
+    expect(query('.app').style.getPropertyValue('--bar-left')).toBe('calc(280px + var(--frame-gap))');
+    expect(agentsHandle().getAttribute('aria-valuenow')).toBe('280');
+    expect(panelSibling(store, 1400)).toBe(280);
+    expect(store.sidebarWidth).toBe(360);
+
+    // Dragging narrower shrinks the Mochis column in sync without changing the thread list's width.
+    drag(agentsHandle(), 280, 240);
+    expect(agentsRail().style.getPropertyValue('--sidebar-width')).toBe('240px');
+    expect(query('.app').style.getPropertyValue('--bar-left')).toBe('calc(240px + var(--frame-gap))');
+    expect(agentsHandle().getAttribute('aria-valuenow')).toBe('240');
+    expect(panelSibling(store, 1400)).toBe(240);
+    expect(store.sidebarWidth).toBe(360);
+
+    // Keyboard stepping past the cap and resetting stay within the Mochis cap and leave Threads alone.
+    agentsHandle().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    flushSync();
+    expect(agentsHandle().getAttribute('aria-valuenow')).toBe('256');
+    agentsHandle().dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    flushSync();
+    expect(agentsHandle().getAttribute('aria-valuenow')).toBe('280');
+    expect(store.sidebarWidth).toBe(360);
+
+    // Back on Threads: the user's 360 px width is still there.
+    store.showChat();
+    await waitFor(() => store.page === 'chat' && document.querySelector('[data-testid=sidebar]') !== null);
+    flushSync();
+    expect(query('[data-testid=sidebar]').style.getPropertyValue('--sidebar-width')).toBe('360px');
+    expect(query('.app').style.getPropertyValue('--bar-left')).toBe('calc(360px + var(--frame-gap))');
+    expect(panelSibling(store, 1400)).toBe(360);
+  } finally {
+    store.showChat();
+  }
+});
+

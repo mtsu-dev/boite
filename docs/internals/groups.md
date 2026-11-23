@@ -251,7 +251,10 @@ subscription and its sockets. The device's `group.get` lists its own entry only.
 
 **Removal.** `group.revokeDevice`, on any member, writes the device's removal in
 the roster. Every member, as it hears of it, drops the device's session and
-closes its sockets; a member that is off does it when it is back. A removal is
+closes its sockets; a member that is off does it when it is back. The device
+reconnects and discards its key only after a known member signs the refusal
+for that machine, the fresh hello nonce and the device key. This works
+through a relay whether the relay or the destination refuses the hello. A removal is
 final: the same key is never admitted again, and the app makes a new one when it
 is added again. A device admitted by a machine that is then removed with **Remove
 from the group** stays: the member that removes it signs those devices in again.

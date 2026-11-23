@@ -1,9 +1,9 @@
 # Workflows
 
 A workflow is a plan of steps that Boite runs for a conversation. Each step is
-a child agent, and a step starts once every step it depends on has ended. Use
-one when a task has a fixed shape: scan, then review each file, then fix, then
-report.
+a child agent. It starts once all its dependencies succeed or are skipped.
+Use a workflow when a task has a fixed shape: scan, review each file, fix,
+then report.
 
 No model sits in the middle deciding what runs next, so a plan behaves the
 same whichever agent wrote it or runs its steps. Nothing has to be turned on
@@ -48,14 +48,19 @@ it read the first results.
 
 - The run draws top to bottom: one row per phase, the steps of a phase side by
   side, an arrow down from each step to the steps waiting for it.
-- A card shows the step's status, its model, its elapsed time and its tokens.
+- A card shows the step's status, model, reasoning level, context when it differs
+  from full, elapsed time and reported tokens.
+  A known local model requested by a waiting step is marked Requested until
+  the step has its execution model.
   A step that runs once per item shows `done/total` and a segmented bar.
 - A loop draws a dashed arc back to the step it starts from. It is amber while
   the loop runs, green once its condition held, red once it ran out of rounds.
-  The closing step shows the round, such as `2/3`.
+  The closing step shows the round, such as `2/3`. Cards keep the reported
+  tokens from earlier rounds while the next round waits. A missing measurement
+  from an earlier round keeps the total partial.
 - A phase with more steps than fit turns the run into a plain list of phases.
-- The header totals the reported tokens. Tokens still being generated are not
-  counted.
+- The header totals the reported tokens. It marks a total as partial when some
+  started executions still have no measurement, or unknown when none reported.
 
 Click a step run by one agent to open its conversation. A step with several
 executions opens its detail: dependencies, condition, loop, each execution and
@@ -66,13 +71,15 @@ its output, with Open conversation. Back to the graph returns to the run.
 - Pause starts nothing new; steps already running finish. Resume picks up.
 - Stop asks first, then stops the running steps. The rest never starts and
   finished steps keep their results.
-- A failed step stops new launches and the agent hears of it at once. Retry
-  runs the failed step again in its own conversation, with the previous error.
+- A failed step blocks steps that depend on it. Independent steps and other
+  items keep running. Retry starts a fresh conversation for the failed step
+  with the previous error and keeps the earlier conversation's history.
 - Stopping or archiving the conversation stops its runs too.
 - An update or a restart from the app hands the run over: the next start of
   Boite runs the cut steps again. After a crash, or when Boite stayed stopped
   for more than an hour, running runs pause until you or the agent resume
-  them.
+  them. A finished or failed run with a summary still waiting sends it after
+  restart, once the conversation is free.
 - The owner can pause, resume and stop from a phone. A paired phone can
   follow the run and stop it.
 

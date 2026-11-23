@@ -41,6 +41,19 @@ test('a check still running keeps its name pending over a finished run of it, in
   expect(detail([{ name: 'test', conclusion: 'FAILURE', completedAt: '2026-10-15T10:01:00Z' }, { name: 'test', completedAt: '2026-10-15T10:02:00Z' }]).checks[0]!.status).toBe('passed');
 });
 
+test('commit status timestamps order base failures and stay out of CI job timing fields', () => {
+  const status: Run = { name: 'external', context: true, status: 'FAILURE', completedAt: '2026-10-15T10:01:00Z' };
+  const job: Run = { name: 'build', conclusion: 'FAILURE', completedAt: '2026-10-15T10:02:00Z' };
+  const parsed = parseDetail(detailJson([status, job], {
+    baseRef: { target: { oid: 'b'.repeat(40), statusCheckRollup: { contexts: { nodes: [job, status].map(checkRun) } } } },
+  }));
+  expect(parsed.baseFailure?.name).toBe('external');
+  expect(parsed.checks).toEqual([
+    expect.objectContaining({ name: 'external', context: true, workflow: '', started: '', finished: '' }),
+    expect.objectContaining({ name: 'CI / build', context: false, finished: job.completedAt }),
+  ]);
+});
+
 test('a failure is told once, a rerun failing again is told again, and passing waits for every required check', () => {
   let memory = initialMemory(since);
   let result = evaluate(memory, detail([{ name: 'lint', required: true }, { name: 'test', required: true, status: 'IN_PROGRESS' }, { name: 'docs', conclusion: 'FAILURE' }]), null);
@@ -291,6 +304,8 @@ interface FakeGitHub {
   /** The state only the detail read gives, as when GitHub merges between the fingerprint and the detail. */
   detailState?: 'MERGED' | 'CLOSED';
   runs: Run[];
+  baseHead?: string;
+  baseRuns?: Run[];
   comments: unknown[];
   reviews: unknown[];
   inline: unknown[];
@@ -331,14 +346,18 @@ async function answer(github: FakeGitHub, args: string[]): Promise<string> {
       timelineItems: { nodes: state === 'CLOSED' ? [{ actor: by }] : [] } } } } });
   }
   const mergeQueueEntry = github.queue === null ? null : { position: github.queue };
-  if (query?.includes('viewer')) return detailJson(github.runs, { state: github.detailState ?? github.state, mergeable: github.mergeable, mergeStateStatus: github.mergeState, headRefOid: github.head, mergeQueueEntry,
+  const checkCounts = (runs: Run[]) => {
+    const counts = new Map<string, number>();
+    for (const run of runs) { const key = run.status && run.status !== 'COMPLETED' ? run.status : run.conclusion ?? 'SUCCESS'; counts.set(key, (counts.get(key) ?? 0) + 1); }
+    return { checkRunCountsByState: [...counts].map(([state, count]) => ({ state, count })), statusContextCountsByState: [] };
+  };
+  const baseRef = github.baseHead ? { target: { oid: github.baseHead, statusCheckRollup: { contexts: { ...checkCounts(github.baseRuns ?? []), nodes: (github.baseRuns ?? []).map(checkRun) } } } } : null;
+  if (query?.includes('viewer')) return detailJson(github.runs, { state: github.detailState ?? github.state, mergeable: github.mergeable, mergeStateStatus: github.mergeState, headRefOid: github.head, mergeQueueEntry, baseRef,
     ...(github.headRef ? { headRefName: github.headRef, headRepository: { nameWithOwner: github.headRepository } } : {}) });
   if (query) {
-    const counts = new Map<string, number>();
-    for (const run of github.runs) { const key = run.status && run.status !== 'COMPLETED' ? run.status : run.conclusion ?? 'SUCCESS'; counts.set(key, (counts.get(key) ?? 0) + 1); }
-    return JSON.stringify({ data: { repository: { pullRequest: { state: github.state, mergeable: github.mergeable, mergeStateStatus: github.mergeState, headRefOid: github.head, updatedAt: github.updatedAt, mergeQueueEntry,
+    return JSON.stringify({ data: { repository: { pullRequest: { state: github.state, mergeable: github.mergeable, mergeStateStatus: github.mergeState, headRefOid: github.head, updatedAt: github.updatedAt, mergeQueueEntry, baseRef,
       comments: { totalCount: github.comments.length, nodes: [] }, reviews: { totalCount: github.reviews.length, nodes: [] }, reviewThreads: { totalCount: 0 },
-      commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { checkRunCountsByState: [...counts].map(([state, count]) => ({ state, count })), statusContextCountsByState: [] } } } }] } } } } });
+      commits: { nodes: [{ commit: { statusCheckRollup: { contexts: checkCounts(github.runs) } } }] } } } } });
   }
   if (/^repos\/example\/repo\/(?:rules\/)?branches\//.test(path)) {
     if (github.rulesFailure) throw new Error(github.rulesFailure);
@@ -375,6 +394,25 @@ async function settled(threadId: string): Promise<void> {
 }
 const wakeText = (threadId: string, turnId: string) => [...harness!.core.journal.walkTurnMessages(threadId, turnId)].find(message => message.role === 'system')!.parts
   .map(part => part.type === 'text' ? part.text : '').join('');
+
+test('the first base failure wakes a watch even when the PR head has not changed', async () => {
+  const { owner, threadId, github, watches, drive } = await watchedThread();
+  github.baseHead = 'b'.repeat(40);
+  github.baseRuns = [{ name: 'base unit' }, { name: 'base browser', status: 'IN_PROGRESS' }];
+  await owner.call('threads.watchPullRequest', { threadId });
+
+  github.baseRuns = [
+    { name: 'base unit', conclusion: 'FAILURE', completedAt: '2026-10-15T10:05:00Z' },
+    { name: 'base browser', conclusion: 'FAILURE', completedAt: '2026-10-15T10:02:00Z' },
+  ];
+  await drive();
+  expect(watches.of(threadId)[0]?.seen).toMatchObject({ head: 'aaaaaaa', checks: { failed: 0 }, baseFailure: { sha: github.baseHead, name: 'CI / base browser' } });
+  await settled(threadId);
+  expect(wakes(threadId)).toHaveLength(1);
+  expect(wakeText(threadId, wakes(threadId)[0]!.id)).toContain('Base main (bbbbbbb): CI / base browser failed');
+  await drive();
+  expect(wakes(threadId)).toHaveLength(1);
+});
 
 test('a watch read refreshes the head the conversation link claims for the worktree cleanup', async () => {
   const { owner, threadId, github, drive } = await watchedThread();
@@ -443,7 +481,16 @@ test('a watch reads first without waking, wakes once per change with links, and 
   github.comments = Array.from({ length: 101 }, (_, index) => comment(index + 1, index === 100 ? 'coderabbitai[bot]' : 'meetsu', later()));
   github.updatedAt = '2026-10-15T09:31:00Z';
   github.calls = [];
+  const core = harness!.core;
+  const pendingAtWake: number[] = [];
+  const unsubscribe = core.bus.onCommitted((name, event) => {
+    if (name !== 'message.started' || !('role' in event) || event.threadId !== threadId || event.role !== 'system') return;
+    const saved = core.journal.getSetting(`pr-watches:${threadId}`) as { pending: unknown[] }[];
+    pendingAtWake.push(saved[0]!.pending.length);
+  });
   await drive();
+  unsubscribe();
+  expect(pendingAtWake).toEqual([0]);
   expect(github.calls).toContain('issues/7/comments?per_page=100&page=2');
   await settled(threadId);
   expect(wakes(threadId)).toHaveLength(1);

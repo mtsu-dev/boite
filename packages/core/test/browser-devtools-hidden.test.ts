@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { Cdp } from '../src/browser/cdp.ts';
 import { findChromium } from '../src/browser/chromium.ts';
 import { pageRuntime, readsConsole } from '../src/browser/page-runtime.ts';
-import { createBrowserFixture } from './browser/fixture.ts';
+import { createBrowserFixture, picture } from './browser/fixture.ts';
+import { thrown } from './settle.ts';
 
 // Sites and captchas test whether DevTools reads the page: with the runtime
 // domain on, Chromium describes each console argument for the client, which
@@ -60,7 +61,8 @@ afterAll(() => {
   if (wrapperDir) rmSync(wrapperDir, { recursive: true, force: true });
 });
 
-real('a public page cannot tell DevTools drives it, and a page of this machine keeps its console in the diagnostics', async () => {
+/** The agent's commands on the shop, and what its page and frames say. */
+function drive() {
   const { agent, threadId, evaluate } = browserFixture;
   const command = async (action: Record<string, unknown>) => (await agent.call('browser.command', { threadId, action: action as never })).value as Record<string, unknown>;
   const heard = async (wanted: Record<string, string>) => {
@@ -74,26 +76,30 @@ real('a public page cannot tell DevTools drives it, and a page of this machine k
   };
   const consoleSaid = async () => ((await command({ kind: 'diagnostics' })).entries as Array<{ kind: string; text: string }>)
     .filter(entry => entry.kind === 'console').map(entry => entry.text);
+  /** Opens the public shop, then reads and presses inside both its frames, which leaves nothing on, not even for an instant: the page logs an error on every tick of its event loop. */
+  const shopUnseen = async () => {
+    await command({ kind: 'open', url: `http://shop.example:${site.port}/` });
+    await command({ kind: 'wait', load: 'load' });
+    expect(await evaluate('probe()')).toBe(false);
+    await heard({ billing: 'false', captcha: 'false' });
+    let snapshot = '';
+    for (let round = 0; round < 10; round++) snapshot = String((await command({ kind: 'snapshot', interactive: true })).text);
+    for (const who of ['billing', 'captcha']) {
+      const ref = new RegExp(`button "Pay ${who}" \\[ref=(e\\d+)\\]`).exec(snapshot);
+      expect(ref, `${who} in\n${snapshot}`).not.toBeNull();
+      await command({ kind: 'click', selector: `@${ref![1]}` });
+      await heard({ [`${who}-pressed`]: 'yes' });
+    }
+    expect(await evaluate('probe()')).toBe(false);
+    await heard({ billing: 'false', captcha: 'false' });
+    expect(await consoleSaid()).not.toContain('shop ready');
+  };
+  return { command, heard, consoleSaid, shopUnseen, evaluate };
+}
 
-  const shop = `http://shop.example:${site.port}/`;
-  await command({ kind: 'open', url: shop });
-  await command({ kind: 'wait', load: 'load' });
-  expect(await evaluate('probe()')).toBe(false);
-  await heard({ billing: 'false', captcha: 'false' });
-
-  // The agent still reads and presses inside both frames, and reaching them leaves nothing
-  // on, not even for an instant: the page logs an error on every tick of its event loop.
-  let snapshot = '';
-  for (let round = 0; round < 10; round++) snapshot = String((await command({ kind: 'snapshot', interactive: true })).text);
-  for (const who of ['billing', 'captcha']) {
-    const ref = new RegExp(`button "Pay ${who}" \\[ref=(e\\d+)\\]`).exec(snapshot);
-    expect(ref, `${who} in\n${snapshot}`).not.toBeNull();
-    await command({ kind: 'click', selector: `@${ref![1]}` });
-    await heard({ [`${who}-pressed`]: 'yes' });
-  }
-  expect(await evaluate('probe()')).toBe(false);
-  await heard({ billing: 'false', captcha: 'false' });
-  expect(await consoleSaid()).not.toContain('shop ready');
+real('a public page cannot tell DevTools drives it, and a page of this machine keeps its console in the diagnostics', async () => {
+  const { command, heard, consoleSaid, shopUnseen, evaluate } = drive();
+  await shopUnseen();
   await evaluate(`location.href = 'http://127.0.0.1:${site.port}/report.txt'`);
   await Bun.sleep(500);
   expect(await evaluate('location.hostname')).toBe('shop.example');
@@ -186,3 +192,55 @@ test('a public document that comes while the runtime leaves waits until it has l
   await Promise.all([first, second]);
   expect(released.sort()).toEqual(['first', 'second']);
 });
+
+// The desktop app's webviews: the same rule on the tab's only DevTools session, which the core turns off before it
+// sends the tab to a public page.
+browserFixture.real('on the desktop app too, a public page cannot tell DevTools drives it, and a page of this machine keeps its console', async () => {
+  const host = await browserFixture.fakeHost('shell', ['--host-resolver-rules=MAP *.example 127.0.0.1']);
+  try {
+    await host.app.call('browser.hostAttach', {});
+    const { command, heard, consoleSaid, shopUnseen, evaluate } = drive();
+    expect(await command({ kind: 'status' })).toMatchObject({ hosted: true });
+    await shopUnseen();
+
+    await command({ kind: 'open', url: `http://127.0.0.1:${site.port}/`, reuse: true });
+    await command({ kind: 'wait', load: 'load' });
+    expect(await evaluate("console.info('local console ready'); probe()")).toBe(true);
+    expect(await consoleSaid()).toContain('local console ready');
+
+    const { owner, threadId } = browserFixture;
+    await owner.call('threads.subscribe', { threadId });
+    for (const driver of ['agent', 'panel']) {
+      const navigate = async (url: string) => {
+        if (driver === 'agent') return command({ kind: 'open', url, reuse: true });
+        const frame = await picture(owner.call('browser.remoteFrame', { threadId }));
+        return owner.call('browser.remoteInput', { threadId, frameId: frame.id, input: { kind: 'navigate', url } });
+      };
+      await navigate(`http://shop.example:${site.port}/report.txt`);
+      expect(await evaluate('location.hostname')).toBe('127.0.0.1');
+      const downloaded = `${driver} console after download`;
+      expect(await evaluate(`console.info('${downloaded}'); probe()`)).toBe(true);
+      expect(await consoleSaid()).toContain(downloaded);
+
+      const failed = `http://shop.example:${site.port}/failed`;
+      const send = Cdp.prototype.send;
+      Cdp.prototype.send = async function (this: Cdp, ...args: Parameters<Cdp['send']>) {
+        if (args[0] === 'Page.navigate' && args[1]?.url === failed) return { errorText: 'net::ERR_ABORTED' };
+        return send.apply(this, args);
+      } as Cdp['send'];
+      try { expect(await thrown(navigate(failed))).toThrow('net::ERR_ABORTED'); }
+      finally { Cdp.prototype.send = send; }
+      expect(await evaluate('location.hostname')).toBe('127.0.0.1');
+      const aborted = `${driver} console after failed navigation`;
+      expect(await evaluate(`console.info('${aborted}'); probe()`)).toBe(true);
+      expect(await consoleSaid()).toContain(aborted);
+    }
+
+    // From the page of this machine to a public one: off before its first script.
+    await command({ kind: 'open', url: `http://shop.example:${site.port}/`, reuse: true });
+    await command({ kind: 'wait', load: 'load' });
+    expect(await evaluate('location.hostname')).toBe('shop.example');
+    expect(await evaluate('probe()')).toBe(false);
+    await heard({ billing: 'false', captcha: 'false' });
+  } finally { await host.close(); }
+}, 60_000);

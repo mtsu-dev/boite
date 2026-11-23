@@ -3,12 +3,15 @@ import type { ThreadSummary } from '@boite/contracts';
 import { toThread, type ThreadRow } from './rows.ts';
 import { writeThreadUsage } from './usage-slots.ts';
 
+export const REMOVED_PROJECTS = 'SELECT id FROM projects WHERE removed_at IS NOT NULL';
+export const VISIBLE_THREAD_ROWS = `FROM threads WHERE id NOT IN (SELECT thread_id FROM thread_deletions)
+  AND (project_id IS NULL OR project_id NOT IN (${REMOVED_PROJECTS}))`;
+
 /** Whole thread rows a client can see, with the time of their last prompt. Callers add `AND ...` filters. */
 export const VISIBLE_THREADS = `SELECT *,
   EXISTS (SELECT 1 FROM threads parent WHERE parent.id = threads.parent_thread_id AND parent.agent_session_id IS NOT NULL) AS parent_is_bot,
   (SELECT MAX(created_at) FROM messages WHERE thread_id = threads.id AND role = 'user') AS last_user_message_at
-  FROM threads WHERE id NOT IN (SELECT thread_id FROM thread_deletions)
-    AND (project_id IS NULL OR project_id NOT IN (SELECT id FROM projects WHERE removed_at IS NOT NULL))`;
+  ${VISIBLE_THREAD_ROWS}`;
 
 /**
  * Visible threads matching `filter`, in creation order. Every read of whole
@@ -17,6 +20,11 @@ export const VISIBLE_THREADS = `SELECT *,
  */
 export function threadsWhere(db: Database, filter: string, ...params: string[]): ThreadSummary[] {
   return (db.query(`${VISIBLE_THREADS} ${filter} ORDER BY rowid`).all(...params) as ThreadRow[]).map(toThread);
+}
+
+/** Only ids are needed to freeze the order of a sidebar read. The first page paints the newest rows. */
+export function recentThreadIds(db: Database): string[] {
+  return (db.query(`SELECT id ${VISIBLE_THREAD_ROWS} AND archived = 0 ORDER BY updated_at DESC, id`).all() as { id: string }[]).map(row => row.id);
 }
 
 /** Current native sessions remain reserved while deleted threads are recoverable, children included. */
@@ -53,8 +61,8 @@ export function writeThread(db: Database, thread: ThreadSummary): void {
 function writeThreadRow(db: Database, thread: ThreadSummary): void {
   db.query(
     `INSERT OR REPLACE INTO threads
-     (id, project_id, title, title_source, provider_id, account_id, model, effort, cwd, branch, permission_mode, status, unread, archived, pinned, session_id, context, created_at, updated_at, session_generation, selection_version, speed, parent_thread_id, prompt_cache, agent_session_id, session_resume_at, title_state, branch_naming_pending, fork_origin, done_at, incognito, archived_at, context_mode, team_id, debate_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (id, project_id, title, title_source, provider_id, account_id, model, effort, cwd, branch, permission_mode, status, unread, archived, pinned, session_id, context, created_at, updated_at, session_generation, selection_version, speed, parent_thread_id, prompt_cache, agent_session_id, session_resume_at, title_state, branch_naming_pending, fork_origin, done_at, incognito, archived_at, context_mode, team_id, debate_id, interruption_read_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     thread.id,
     thread.projectId,
@@ -90,5 +98,6 @@ function writeThreadRow(db: Database, thread: ThreadSummary): void {
     thread.archived ? (thread.archivedAt ?? null) : null, thread.contextMode ? JSON.stringify(thread.contextMode) : null,
     thread.teamId ?? null,
     thread.councilId ?? null,
+    thread.interruptionReadAt ?? null,
   );
 }

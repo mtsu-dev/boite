@@ -76,6 +76,22 @@ test('a group contact route keeps letters and the wake on the initiating core wi
   expect(a.core.coordination.trusted().some(peer => peer.coreId === ci)).toBe(false);
 }, 30000);
 
+test('a reply routed to a member whose contacts are switched off waits on the gateway and arrives once they are on again', async () => {
+  const { a, b, c, ci, source, recipient } = await routed();
+  const sent = await a.core.coordination.send({ threadId: source, to: { coreId: ci, threadId: recipient }, text: 'Which port?', requestId: 'off-question' });
+  await waitFor(() => c.core.coordination.get(recipient).messages.some(letter => letter.id === sent.id), 10000);
+  const incoming = c.core.coordination.get(recipient).messages.find(letter => letter.id === sent.id)!;
+  a.core.settings.set({ contacts: false });
+  const response = await c.core.coordination.send({ threadId: recipient, to: incoming.from, replyTo: incoming.id, text: 'Port 8080.', requestId: 'off-answer' });
+  await waitFor(() => b.core.coordination.mailboxes.received(response.id) !== null, 10000);
+  // The gateway tries and meets the member's switch: the letter stays waiting, never rejected.
+  await Bun.sleep(2500);
+  expect(b.core.coordination.mailboxes.received(response.id)?.status).not.toBe('rejected');
+  expect(a.core.coordination.get(source).messages.some(letter => letter.id === response.id)).toBe(false);
+  a.core.settings.set({ contacts: true });
+  await waitFor(() => a.core.coordination.get(source).messages.some(letter => letter.id === response.id), 12000);
+}, 30000);
+
 test('older uncertain mailbox receipts do not block a new routed reply', async () => {
   const { a, b, c, ci, ac, source, recipient } = await routed();
   const sources = [source];

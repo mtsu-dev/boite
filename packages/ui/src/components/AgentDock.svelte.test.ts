@@ -81,7 +81,7 @@ test('the work a thread waits on reads "Waiting on N" with its names, and Stop s
   await store.connect();
   const parent = store.threads.find(thread => thread.id === 't-team-running')!.parentThreadId!;
   await store.open(parent);
-  const props = $state({ store, threadId: parent });
+  const props = $state({ store, threadId: parent, open: false });
   component = mount(AgentDock, { target: document.body, props });
   await vi.waitFor(() => expect(line()?.dataset.count).toBe('2'));
   // Two subagents and the workflow it started.
@@ -95,9 +95,19 @@ test('the work a thread waits on reads "Waiting on N" with its names, and Stop s
   expect(names()).toHaveLength(3);
   for (const name of names()) expect(titles).toContain(name);
   expect(document.querySelector<HTMLElement>('[data-testid=agent-dock-names]')?.title).toBe(names().join(', '));
-  // Without a strip to fold into, the line is the counts, the names and Stop.
+  // Without a strip to fold into, the line still offers the panel and Stop.
   expect(document.querySelector('[data-testid=agent-dock] [aria-expanded]')).toBeNull();
-  expect(document.querySelectorAll('[data-testid=agent-dock] button')).toHaveLength(1);
+  expect([...document.querySelectorAll<HTMLButtonElement>('[data-testid=agent-dock] button')].map(button => button.dataset.testid)).toEqual(['agent-dock-panel', 'agent-dock-stop']);
+
+  const running = store.delegation!.agents.find(agent => agent.thread.id === 't-team-running')!;
+  running.lastTurn!.execution = { ...running.thread, model: 'claude-opus-5-5', effort: null, sessionGeneration: 0, selectionVersion: 0 };
+  const waiting = store.delegation!.agents.find(agent => agent.thread.id === 't-team-waiting')!;
+  waiting.thread.model = null;
+  waiting.thread.effort = null;
+  props.open = true;
+  await tick();
+  expect([...document.querySelectorAll('[data-testid=agent-dock-model]')].map(node => node.textContent)).toEqual(['Opus 5.5']);
+  expect([...document.querySelectorAll('[data-testid=agent-dock-effort]')].map(node => node.textContent)).toEqual(['High']);
 
   // At the root, one call stops every subagent of the team.
   const stopAll = vi.spyOn(store, 'stopDelegatedAgent').mockResolvedValue();

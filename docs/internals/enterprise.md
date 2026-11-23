@@ -29,7 +29,9 @@ when its inode, size or modification time changed) and on every client read
 of the policy. An edit applies without a restart: settings it locks change at
 once, providers it blocks show as off, and clients receive `policy.changed`.
 Two exceptions need a restart: `network.lan` decides the listening address at
-startup, and `network.contacts` closes Tailscale Funnel routes at startup. A
+startup, and `network.contacts` closes Tailscale Funnel routes at startup. The owner's
+own `contacts` setting ([contacts](contacts.md#the-owners-switch)) refuses the
+same calls without the policy. A
 grouped core's extra LAN listeners follow `network.lan` without one, at the
 group's next check (15 seconds at most).
 

@@ -11,11 +11,14 @@ export interface ComposerPrefs {
   speed?: string | null;
 }
 
-/** What the window remembers: the sidebar's width and whether it is folded. */
+/** What the window remembers: the sidebar's width, optional Mochis column width, and whether it is folded. */
 export interface LayoutPrefs {
   sidebarWidth: number;
   sidebarCollapsed: boolean;
+  agentsSidebarWidth?: number;
 }
+
+export type SidebarPage = 'chat' | 'agents' | 'home' | 'settings';
 
 export const PREFS_STORAGE_KEY = 'boite.composer';
 export const LAYOUT_STORAGE_KEY = 'boite.layout';
@@ -26,6 +29,8 @@ export const SIDEBAR_DEFAULT = 312;
 const SIDEBAR_OLD_DEFAULTS = new Set([280, 300]);
 export const SIDEBAR_MIN = 208;
 export const SIDEBAR_MAX = 440;
+/** The Mochis column holds a head and a short list: cap it so the conversation keeps its reading width. */
+export const AGENTS_SIDEBAR_MAX = 280;
 
 const MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo', 'dontAsk'];
 
@@ -37,8 +42,29 @@ function defaultLayout(): LayoutPrefs {
   return { sidebarWidth: SIDEBAR_DEFAULT, sidebarCollapsed: false };
 }
 
-export function clampSidebar(width: number): number {
-  return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(width)));
+export function sidebarMax(page: SidebarPage, drawer = false): number {
+  return page === 'agents' && !drawer ? AGENTS_SIDEBAR_MAX : SIDEBAR_MAX;
+}
+
+export function clampSidebar(width: number, max = SIDEBAR_MAX): number {
+  return Math.min(max, Math.max(SIDEBAR_MIN, Math.round(width)));
+}
+
+/**
+ * Single source of truth for the left column's visible width on desktop:
+ * capped on the Mochis page (outside a drawer), using the Mochis column's own
+ * width once dragged there while leaving the thread list's width untouched.
+ */
+export function visibleSidebarWidth(
+  layout: { sidebarWidth: number; agentsSidebarWidth?: number | null; page?: SidebarPage },
+  drawer = false
+): number {
+  const page = layout.page ?? 'chat';
+  const max = sidebarMax(page, drawer);
+  const raw = page === 'agents' && !drawer && typeof layout.agentsSidebarWidth === 'number'
+    ? layout.agentsSidebarWidth
+    : layout.sidebarWidth;
+  return clampSidebar(raw, max);
 }
 
 function read<T>(key: string, fallback: () => T, parse: (raw: Partial<T>) => T): T {
@@ -78,13 +104,20 @@ export function writePrefs(prefs: ComposerPrefs): void {
 }
 
 export function readLayout(): LayoutPrefs {
-  return read(LAYOUT_STORAGE_KEY, defaultLayout, (parsed) => ({
-    sidebarWidth:
-      typeof parsed.sidebarWidth === 'number' && Number.isFinite(parsed.sidebarWidth) && !SIDEBAR_OLD_DEFAULTS.has(parsed.sidebarWidth)
-        ? clampSidebar(parsed.sidebarWidth)
-        : SIDEBAR_DEFAULT,
-    sidebarCollapsed: parsed.sidebarCollapsed === true
-  }));
+  return read(LAYOUT_STORAGE_KEY, defaultLayout, (parsed) => {
+    const agentsSidebarWidth =
+      typeof parsed.agentsSidebarWidth === 'number' && Number.isFinite(parsed.agentsSidebarWidth)
+        ? clampSidebar(parsed.agentsSidebarWidth, AGENTS_SIDEBAR_MAX)
+        : undefined;
+    return {
+      sidebarWidth:
+        typeof parsed.sidebarWidth === 'number' && Number.isFinite(parsed.sidebarWidth) && !SIDEBAR_OLD_DEFAULTS.has(parsed.sidebarWidth)
+          ? clampSidebar(parsed.sidebarWidth)
+          : SIDEBAR_DEFAULT,
+      sidebarCollapsed: parsed.sidebarCollapsed === true,
+      ...(agentsSidebarWidth !== undefined ? { agentsSidebarWidth } : {})
+    };
+  });
 }
 
 export function writeLayout(layout: LayoutPrefs): void {

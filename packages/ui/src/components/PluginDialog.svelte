@@ -1,9 +1,11 @@
 <script lang="ts">
+  import ModalScrim from './ModalScrim.svelte';
   import { tick, untrack, type Snippet } from 'svelte';
   import { Puzzle, ShieldCheck, X } from '@lucide/svelte';
   import type { PluginSettingValue, PluginState } from '@boite/contracts';
   import { PLUGIN_PERMISSIONS, pluginSettingValues } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
+  import { trapModalTab } from '../lib/focus';
   import { mobileOverlay } from '../lib/mobile-history';
   import { hasFiles, permissionTitle, pluginAuthor } from '../lib/plugin-card';
   import { fill, strings } from '../lib/strings';
@@ -29,7 +31,6 @@
   } = $props();
 
   const t = strings.plugins;
-  const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), a[href]';
   const overlay = new Closing();
   let card = $state<HTMLDivElement | undefined>(undefined);
   /** The plugin last shown, kept while the dialog plays its exit. */
@@ -54,15 +55,7 @@
     // A menu of choices open inside the dialog takes its own Escape first.
     if (event.key === 'Escape' && card?.querySelector('[role="menu"]')) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onclose(); return; }
-    if (event.key !== 'Tab' || !card) return;
-    const stops = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const first = stops[0], last = stops[stops.length - 1];
-    if (!first || !last) return;
-    const active = document.activeElement;
-    const inside = active instanceof Node && card.contains(active);
-    if (event.shiftKey ? inside && active !== first : inside && active !== last) return;
-    event.preventDefault();
-    (event.shiftKey ? last : first).focus({ preventScroll: true });
+    trapModalTab(event, card);
   }
 
   const settings = $derived(shown?.settings ?? []);
@@ -80,8 +73,7 @@
 
 {#if overlay.shown && shown}
   {@const current = shown}
-  <div class="scrim" class:closing={overlay.closing} role="presentation" use:overlay.attach onanimationend={overlay.end}
-    onclick={(event) => { if (event.target === event.currentTarget) onclose(); }}>
+  <ModalScrim {overlay} {onclose} sheet>
     <div class="dialog" class:closing={overlay.closing} role="dialog" aria-modal="true" aria-labelledby="plugin-dialog-title" tabindex="-1"
       bind:this={card} data-testid="plugin-dialog" data-plugin={current.id}>
       <div class="head">
@@ -142,19 +134,10 @@
         <button type="button" class="quiet push" onclick={onclose}><span class="ui-label">{strings.common.close}</span></button>
       </div>
     </div>
-  </div>
+  </ModalScrim>
 {/if}
 
 <style>
-  .scrim {
-    position: fixed; inset: 0; z-index: 60;
-    display: flex; align-items: flex-start; justify-content: center;
-    padding-top: min(8vh, 72px);
-    background: var(--color-scrim);
-    /* The one motion set (app.css): one duration and curve in and out. */
-    animation: fade var(--motion-duration) var(--motion-curve);
-  }
-  .scrim.closing { animation: fade-out var(--motion-duration) var(--motion-curve); pointer-events: none; }
   .dialog {
     width: min(560px, calc(100vw - 32px));
     max-height: min(84vh, 720px);
@@ -194,7 +177,6 @@
   .push { margin-left: auto; }
   .danger-text { color: var(--color-danger); }
   @media (max-width: 720px) {
-    .scrim { align-items: flex-end; padding-top: 0; }
     .dialog { width: 100vw; max-height: 90dvh; border-radius: var(--radius-overlay) var(--radius-overlay) 0 0; padding-bottom: env(safe-area-inset-bottom); }
     .authorizations { grid-template-columns: minmax(0, 1fr); }
     .reach, .chips { justify-content: flex-start; }

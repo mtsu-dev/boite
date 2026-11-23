@@ -14,10 +14,16 @@ export function sentBack(core: Core, threadId: string, turn?: Pick<Turn, 'queued
     .get(threadId) as { data: string; step_key: string } | null;
   if (!row) return false;
   const run = JSON.parse(row.data) as WorkflowRun;
-  const inst = run.nodes.flatMap(node => node.instances).find(entry => entry.key === row.step_key);
+  const node = run.nodes.find(node => node.id === row.step_key.split('#')[0]);
+  const inst = node?.instances.find(entry => entry.key === row.step_key);
+  const history = node?.previous?.find(entry => entry.key === row.step_key);
   if (turn === undefined) {
     const last = core.journal.db.query('SELECT id FROM turns WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1').get(threadId) as { id: string } | null;
     turn = last ? core.journal.getTurn(last.id) : null;
   }
-  return !!inst && !!turn && inst.threadId === threadId && inst.status !== 'running' && inst.finishedAt !== null && turn.queuedAt >= inst.finishedAt;
+  if (!turn) return false;
+  if (inst?.threadId === threadId) return inst.status !== 'running' && inst.finishedAt !== null && turn.queuedAt >= inst.finishedAt;
+  const attempt = inst?.previousAttempts?.find(entry => entry.threadId === threadId) ?? history?.previousAttempts?.find(entry => entry.threadId === threadId);
+  const finishedAt = attempt?.finishedAt ?? (history?.threadId === threadId ? history.finishedAt : null);
+  return finishedAt != null && turn.queuedAt >= finishedAt;
 }

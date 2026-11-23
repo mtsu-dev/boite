@@ -10,6 +10,8 @@ export const strings = {
     projectFailedThreads: '{project}: {count} failed',
     projectMixedThreads: '{project}: {waiting} need you, {failed} failed',
     loadingProjects: 'Loading projects',
+    threadListFailed: 'Could not load all conversations from {machine}.',
+    threadListRetrying: 'Reloading conversations from {machine}.',
     projectDoneThreads: '{project}: {count} done',
     projectArchivedThreads: '{project}: {count} archived',
     /** The fold under the list for projects with no open conversation, and what choosing one does. */
@@ -45,6 +47,8 @@ export const strings = {
     /** The same action once they show: a press folds them back. */
     lessThreads: 'Show less',
     displayView: 'View',
+    /** The list head's two arrows: the views this window showed, as a mouse's back and forward buttons walk them. */
+    history: 'History', historyBack: 'Back', historyForward: 'Forward',
     displayOrder: 'Sort by',
     groupWorkingRow: 'Working threads',
     groupIdleRow: 'Idle projects',
@@ -69,12 +73,15 @@ export const strings = {
     reopenThread: 'Move to Recent',
     reopenNamedThread: 'Move "{title}" to Recent',
     doneNotice: 'This thread is done',
+    archivedNotice: 'This thread was set aside',
     /** Above the composer, or the done notice, of a thread whose worktree Boite removed. */
     contactHold: {
       title: 'Contact mail holds this thread',
+      toolsTitle: 'Contact mail restricts tools',
+      toolsBody: 'Boite limits sensitive tools because this conversation has read messages from a contact.',
       body: 'Its history holds messages from {contacts}, sent outside a shared project. Boite cannot bound what that mail asks, so it refuses every turn here.',
       trust: 'Trust this history',
-      trustTip: 'The agent then runs with its usual tools and reads that mail like the rest of its history.',
+      trustTip: 'Trusting the history lifts the restrictions caused by that mail.',
       ownerOnly: 'Trust it from the computer that runs this Boite.'
     },
     worktreeGone: {
@@ -110,6 +117,7 @@ export const strings = {
     settings: 'Settings',
     projectMenu: 'Project actions',
     copyPath: 'Copy path',
+    copyThreadId: 'Copy thread ID',
     manageProject: 'Manage project',
     renameProject: 'Rename project',
     projectName: 'Project name',
@@ -132,7 +140,7 @@ export const strings = {
     projectMissingBody: 'The folder {path} does not exist any more: it was deleted, moved or renamed. Put it back to keep working here, or remove the project from Boite.',
     projectMissingCheck: 'Check again',
     removeProjectTitle: 'Remove {project} from Boite?',
-    removeProjectBody: 'Its threads, their history and usage stay saved: add the folder again to bring them back. Files on disk stay where they are.',
+    removeProjectBody: 'Its conversations stop. Add the same folder again to recover their history and reopen the ones that were open. Files on disk stay in place.',
     remove: 'Remove',
     threadMenu: 'Thread actions',
     /** A pencil on a thread's row: something typed in its box and not sent. */
@@ -194,6 +202,10 @@ export const strings = {
     unpin: 'Unpin',
     archive: 'Archive',
     deleteUnavailable: 'Update Boite on the machine hosting this conversation to delete it. The conversation has been kept.',
+    deleteThreadTitle: 'Delete "{title}"?',
+    deleteThreadForever: 'This machine keeps deleted conversations indefinitely, until you permanently delete them.',
+    deleteThreadDay: 'This machine keeps deleted conversations for 1 day, then permanently deletes their history.',
+    deleteThreadDays: 'This machine keeps deleted conversations for {count} days, then permanently deletes their history.',
     deletedToast: 'Deleted "{title}". You can restore it from Settings.',
     /** The toast after an archive, with its way back: the button and Ctrl+Z. */
     archivedToast: 'Archived "{title}"',

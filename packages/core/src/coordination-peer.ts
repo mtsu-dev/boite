@@ -18,6 +18,7 @@ import { receiveProject } from './contacts/project-relay.ts';
 import { redactSharedText, redactSharedContact } from './contacts/file-policy.ts';
 import { machineSettingChanged, readMachineSetting } from './threads/group-spawn.ts';
 import { policedRoutes } from './coordination-group.ts';
+import { assertContacts } from './contacts/switch.ts';
 
 /** What the desk reads of the coordination it answers for. */
 export interface PeerSide {
@@ -205,7 +206,7 @@ export class PeerDesk {
    * (`contacts/members.ts`); `relayed`, asked by that machine for the contact.
    */
   private async contact(peer: CoordinationPeer, operation: string, payload: unknown, relayed: boolean, signal: AbortSignal): Promise<unknown> {
-    this.#core.policy.assert(this.#core.policy.networkOff('contacts'), 'network.contacts');
+    assertContacts(this.#core);
     const members = this.#core.contacts.members;
     if (operation === 'contact.project') return receiveProject(this.#core, peer.coreId, payload, relayed, signal);
     if (this.#core.sharedProjects.hasContact(peer.coreId) && ['directory', 'search', 'read'].includes(operation)) throw refused('operation: associated projects require scoped contact.project queries');

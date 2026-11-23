@@ -1,5 +1,7 @@
 import { secureId } from '../secure-id';
 import { FakeComposerState } from './composer';
+import { FakeImagePreviews } from './image-preview';
+import { FakeAttachmentUrls } from './attachment-urls';
 import type { FakeArchiveState, MergedPrFixture } from './merged-pr-archive';
 /** The state one fake core keeps, and the plumbing every domain module shares. */
 import { observeProgress } from './progress';
@@ -21,6 +23,7 @@ import {
   processAgentCommand,
   type Attachment,
   type Account,
+  type ArtifactContent,
   type BackgroundTask,
   type AgentLetter,
   type BrainStatus,
@@ -45,6 +48,7 @@ import {
   type ProviderSummary,
   type QuestionAnswer,
   type QuestionRequest,
+  type ResumeSelectionReceipt,
   type RpcEventName,
   type RpcEvents,
   type RpcMethodName,
@@ -69,7 +73,7 @@ import {
 import { effectiveExperiments } from '@boite/contracts';
 import { CLOSED_AGENT_DEFAULTS, OPEN_AGENT_DEFAULTS } from '@boite/contracts';
 
-/** `?agents=closed`: the two agent settings as a new install holds them. */
+/** `?agents=closed`: the two agent settings and contacts as a new install holds them. */
 function closedAgents(): boolean {
   return typeof location !== 'undefined' && new URLSearchParams(location.search).get('agents') === 'closed';
 }
@@ -259,6 +263,7 @@ export class FakeContext {
   /** The admin policy, as `policy.get` answers it: none, as on most machines, unless `?policy=` names a fixture (`policy.ts`). */
   policy: PolicyState;
   projects: Project[] = [];
+  readonly removedProjects = new Map<string, { project: Project; threads: Thread[]; open: Set<ThreadId> }>();
   /** The image of each project whose icon is one, as `projects.icon` answers it. */
   projectImages = new Map<string, { version: string; dataUrl: string }>();
   /** What `git worktree list` would report for each project (`worktrees.ts`). */
@@ -281,8 +286,7 @@ export class FakeContext {
   readonly removedDefaultProviders = new Set<string>();
   readonly threads = new Map<ThreadId, Thread>();
   readonly deletedThreads = new Map<ThreadId, { threads: Thread[]; archived: boolean[]; deletedAt: number }>();
-  /** Projects `projects.remove` took out of the lists, with their threads, as the core keeps their rows. */
-  readonly removedProjects = new Map<string, { project: Project; threads: Thread[]; open: ThreadId[] }>();
+  readonly removingThreads = new Set<ThreadId>();
   readonly coordination = new Map<ThreadId, CoordinationConfig>();
   readonly delegationConfigs = new Map<ThreadId, DelegationConfig>();
   readonly delegationAgents = new Map<ThreadId, DelegationRow[]>();
@@ -331,7 +335,10 @@ export class FakeContext {
   readonly autoGoalMessages = new Map<string, string>();
   /** The working tree `files.list`, `files.read` and `files.write` share. */
   readonly files = new Map<string, string>(Object.entries(FAKE_TREE));
+  readonly artifacts = new Map<string, ArtifactContent>();
   readonly artifactUrls = new Set<string>();
+  readonly imagePreviews = new FakeImagePreviews();
+  readonly attachmentUrls = new FakeAttachmentUrls();
   private storedSettings!: Settings;
 
   /** As in the core, policy values are read over the saved choices, never saved over them. */
@@ -426,7 +433,7 @@ export class FakeContext {
   /** Threads whose title is being written, which the core refuses a second ask for. */
   readonly retitling = new Set<ThreadId>();
   seq = 0;
-  readonly turnRequests = new Map<string, { content: string; turn: Turn; messageId: string }>();
+  readonly turnRequests = new Map<string, { content: string; turn: Turn; messageId: string; requested?: ResumeSelectionReceipt }>();
   readonly delayMs: number;
   readonly rttMs: number;
   readonly chunkSize: number | undefined;
@@ -549,7 +556,7 @@ export class FakeContext {
         this.delegationConfigs.set(rootId, { ...delegationConfig(this, rootId), paused: false });
         this.emit('delegation.changed', { threadId: rootId });
       },
-      child: (root, profile, title, task) => workflowChild(this, root, profile, title, task),
+      child: (root, profile, title, task, context) => workflowChild(this, root, profile, title, task, context),
       answer: (threadId, text, ok) => workflowAnswer(this, threadId, text, ok),
       again: (threadId, task) => workflowAgain(this, threadId, task),
       member: (query, field) => void fakeMember(this, query, field),
@@ -558,7 +565,7 @@ export class FakeContext {
         const there = fakeCore(coreId);
         if (!there?.threads.has(threadId)) return null;
         workflowAnswer(there, threadId, text, ok);
-        return there.thread(threadId).turns.at(-1)?.id ?? null;
+        return there.thread(threadId).turns.at(-1) ?? null;
       },
       changed: (rootId, runId, templatesProjectId) => {
         if (templatesProjectId !== undefined) this.emit('workflows.changed', { threadId: rootId, runId, templatesProjectId });
@@ -595,9 +602,9 @@ export class FakeContext {
     };
     this.settings = {
       ...defaultSettings(),
-      // The demo machine reads as an install older than these two settings, as the core leaves one: open.
-      // `?agents=closed` shows a new install.
-      ...(closedAgents() ? CLOSED_AGENT_DEFAULTS : OPEN_AGENT_DEFAULTS)
+      // The demo machine reads as an install older than these two settings, as the core leaves one: open,
+      // and with contacts on, as the core leaves an install that kept a contact. `?agents=closed` shows a new install.
+      ...(closedAgents() ? { ...CLOSED_AGENT_DEFAULTS, contacts: false } : { ...OPEN_AGENT_DEFAULTS, contacts: true })
     };
     // `?gateway=douane` or `cliproxyapi`: a gateway the owner saved and turned off, for a paired phone to switch on.
     // `&gatewayOn=1` starts it on, its accounts in the limits (one used outside Douane lights the rail's limits).
@@ -616,7 +623,7 @@ export class FakeContext {
       version: options.version ?? '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
-      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
+      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true, threadListPages: true },
       os,
       channel: 'stable',
       pid: 4242,
@@ -679,6 +686,7 @@ export class FakeContext {
     // The core counts what its clients hear of a summary (`threads/list-changes.ts`).
     if (event === 'thread.created' || event === 'thread.updated') this.threadChanges.note((payload as RpcEvents['thread.updated']).id);
     if (event === 'thread.removed') this.threadChanges.note((payload as RpcEvents['thread.removed']).threadId);
+    if (event === 'thread.progress') this.threadChanges.note((payload as RpcEvents['thread.progress']).threadId);
     this.composer.observe(this, event, payload);
     if (event === 'thread.removed') cancelSecretCards(this, (payload as RpcEvents['thread.removed']).threadId);
     if (event === 'thread.updated') {
@@ -755,6 +763,11 @@ export class FakeContext {
     const summary = structuredClone(toSummary(thread));
     this.emit('thread.updated', summary);
     return structuredClone(summary);
+  }
+
+  canRevive(thread: Thread): boolean {
+    return thread.archived && thread.doneAt != null && !this.removingThreads.has(thread.id)
+      && !!thread.parentThreadId && this.threads.get(thread.parentThreadId)?.archived === false;
   }
 
   setBackground(thread: Thread, tasks: BackgroundTask[], ended: 'no-longer-reported' | 'session-ended' = 'no-longer-reported'): void {

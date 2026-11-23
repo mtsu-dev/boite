@@ -39,8 +39,9 @@ server listens, each eligible entry is handled separately:
 - A queued turn re-enters the scheduler with its existing prompt and identity.
 - A cut running turn gets a continuation shown as "Resumed after a restart".
   It resumes the native session and asks the agent to check interrupted command
-  results before continuing. Up to 8,000 characters of the original request
-  accompany it; images are not resent.
+  results before continuing. It carries the complete request, any corrections
+  made during the turn and the current task list. Attachments follow the
+  provider's capabilities and the usual per-turn limits.
 - A turn left running when the old core was killed is closed as stopped, without
   an error part, then gets the same continuation.
 
@@ -54,9 +55,11 @@ the continuation starts or the entry is explicitly excluded. Repeated recovery
 reuses an accepted continuation rather than creating another turn. A second
 restart retains pending entries; a repeated resume note does not quote itself.
 Each admission rechecks ownership and stopping state, including a user Stop
-triggered while an earlier continuation starts.
+triggered while an earlier continuation starts. A new turn on the thread
+cancels its pending continuation while the provider's version check runs.
+Cache pings leave that continuation pending.
 
-An unreadable record or one older than one hour resumes nothing. Archived,
+An unreadable record or one older than one hour resumes no recorded turn. Archived,
 deleted or non-runnable threads are excluded; failed admission logs its reason.
 This protects admission identity, not exactly-once execution of arbitrary shell
 side effects. The agent must inspect what completed before relying on it.
@@ -72,6 +75,9 @@ pauses the team and the runs instead, marked as held by a restart: the parent
 agent resumes them with `boite delegate resume`
 ([delegation](delegation.md#stop-pause-and-resume),
 [workflows](workflows.md#failure-stop-and-restart)).
+The next core also attempts delivery of pending summaries for successful and
+failed workflows. If it finds an already admitted summary turn that never
+started, it queues that same turn with its stored ID and prompt.
 
 Compactions and coordination wakes are excluded. A mochi's thread
 resumes like any conversation; a wake that was waiting for its thread to be
@@ -92,9 +98,22 @@ says why and asks the agent to carry on without repeating work:
 | Background work the agent waited on ended without waking it (failed, vanished, cut by a restart or an [agent update](agent-updates.md#background-work)) | Resumed after background work was interrupted | 1 min, then 5 min; 3 s after a restart |
 
 A crash resume quotes the cut turn's request like a handoff continuation. When
-a crash paused the conversation's subagent team or workflow runs, the prompt
+the turn carried corrections, the continuation includes their full text and the
+thread's current task list. The same input is used after a compaction or a
+manual resume of interrupted work. When automatic recovery is exhausted or
+blocked, the thread shows the reason and offers Resume.
+
+When a crash paused the conversation's subagent team or workflow runs, the prompt
 asks the agent to check them and run `boite delegate resume`; a parent that had
 no turn running gets a resume for that alone.
+
+After a recent crash, an unsent conversation prompt returns to the queue with
+its original input and selection. A planned resume stays in the journal while
+its provider's version check runs, and an admitted turn waits with its existing
+ID. Stop cancels a plan or queued turn while it waits. Long-idle or explicitly
+held prompts stay held for an owner decision. If the provider acknowledged the
+first prompt or emitted its first native response, the running turn and
+conversation already record the resumable session ID.
 
 Nothing resumes for a turn that answered, a turn the user stopped, a refusal
 at capacity or at a usage limit, which retries on its own
@@ -115,8 +134,9 @@ event over an hour ago, or when it was stopped on purpose without a handoff
 
 Each plan sits in the journal setting `resumes` with the usage limit resumes
 (`threads/resume.ts`; a core that still has the older `auto-continues` or
-`limit-resumes` reads them into it once), so a restart arms it
-again; one caught while dispatching is dropped. The row shows it as `retry`
+`limit-resumes` reads them into it once), so a restart arms it again. A plan that
+was dispatching can be rearmed if there is no admission receipt. An admitted
+continuation keeps its existing turn ID. The row shows an armed plan as `retry`
 (`kind: 'auto-continue'`) with Do not resume. When it fires it is dropped
 instead if the thread was archived, answered or is busy, a card waits for the
 user, or the user paused its team. A cache ping in the way stops and lets it go.

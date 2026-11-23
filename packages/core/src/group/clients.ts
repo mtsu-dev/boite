@@ -9,8 +9,8 @@
  * of that member's own. docs/internals/groups.md describes both.
  */
 import { verify } from 'node:crypto';
-import { deviceAdmitInput, deviceHelloInput, DEVICE_LINK_JOIN, GROUP_TICKET_TTL_MS, PAIRING_ROLES, ungroupedInput } from '@boite/contracts';
-import type { DeviceHello, DeviceInvite, Group, GroupTicket, PairingRole, UngroupedData } from '@boite/contracts';
+import { deviceAdmitInput, deviceHelloInput, deviceRevokedInput, DEVICE_LINK_JOIN, GROUP_TICKET_TTL_MS, PAIRING_ROLES, ungroupedInput } from '@boite/contracts';
+import type { DeviceHello, DeviceInvite, DeviceRevokedData, Group, GroupTicket, PairingRole, UngroupedData } from '@boite/contracts';
 import { invalidParams, messageOf, refused, unauthorized, unavailable } from '../errors.ts';
 import type { GroupStore } from '../group.ts';
 import { newToken } from '../ids.ts';
@@ -99,7 +99,8 @@ export class GroupClients {
     const id = deviceId(publicKey);
     // Before the grant is spent: a removed key gets a refusal that leaves the link good for the key the app makes next.
     if (this.#group.roster?.deviceKeys?.some((device) => device.id === id && device.removed)) {
-      throw unauthorized('this device was removed from the group: it needs a new key, which the app makes when it is added again');
+      const data = nonce === null ? undefined : this.#revocation(nonce, id);
+      throw unauthorized('this device was removed from the group: it needs a new key, which the app makes when it is added again', data);
     }
     const role = this.#group.core.sessions.redeem(grant, id, nonce);
     await this.#ensureGroup();
@@ -114,8 +115,8 @@ export class GroupClients {
    * record of the device: its last visit, its push destination, its sockets.
    */
   authenticateDevice(hello: unknown, client: ClientIdentity, now = Date.now()): { sessionId: string; role: PairingRole; deviceId: string } {
-    // Unauthorized says the device is out for good, and the app drops its key on it. A device this machine has not
-    // heard of yet, its roster behind the member that admitted it, is told to come back; so is a clock that is off.
+    // The app drops its key only on a signed revocation. A device this machine has not heard of yet,
+    // its roster behind the member that admitted it, is told to come back; so is a clock that is off.
     const roster = this.#group.roster;
     const raw = (typeof hello === 'object' && hello !== null ? hello : {}) as Partial<DeviceHello>;
     // Out of every group, removed or gone, it says so under its key: its own word, which the app takes as a `group.get`
@@ -125,19 +126,28 @@ export class GroupClients {
     if (roster === null) throw this.#ungrouped(raw.nonce);
     const known = typeof raw.id === 'string' ? roster.deviceKeys?.find((device) => device.id === raw.id) : undefined;
     if (known === undefined) throw unavailable('this machine has not heard of this device yet: its group tells it within seconds');
-    const entry = liveDeviceKeys(roster).find((device) => device === known);
-    if (entry === undefined) throw unauthorized('this device was removed from the group');
     if (typeof raw.at !== 'number' || Math.abs(now - raw.at) > DEVICE_HELLO_SKEW_MS) {
       throw refused('the device hello is dated more than two minutes from this machine\'s clock: set the clock of this device or that machine');
     }
     if (typeof raw.nonce !== 'string' || raw.nonce.length < 16 || raw.nonce.length > 64) throw refused('device.nonce: expected 16 to 64 characters');
-    if (!deviceSigned(entry.publicKey, deviceHelloInput(this.#group.selfId(), raw.at, raw.nonce), raw.sig)) throw unauthorized('the device hello is not signed by its key for this machine');
+    if (!deviceSigned(known.publicKey, deviceHelloInput(this.#group.selfId(), raw.at, raw.nonce), raw.sig)) throw unauthorized('the device hello is not signed by its key for this machine');
+    const entry = liveDeviceKeys(roster).find((device) => device === known);
+    if (entry === undefined) {
+      if (known.removed) throw unauthorized('this device was removed from the group', this.#revocation(raw.nonce, known.id));
+      throw unauthorized('the machine that admitted this device is no longer in the group');
+    }
     for (const [nonce, until] of this.#deviceNonces) if (until <= now) this.#deviceNonces.delete(nonce);
     const key = `${entry.id}:${raw.nonce}`;
     if (this.#deviceNonces.has(key)) throw refused('this device hello was already used');
     if (this.#deviceNonces.size >= DEVICE_NONCES_MAX) throw unavailable('too many device hellos at once: try again in a minute');
     this.#deviceNonces.set(key, raw.at + DEVICE_HELLO_SKEW_MS * 2);
     return { sessionId: this.#deviceSession(entry, client, now), role: entry.role, deviceId: entry.id };
+  }
+
+  #revocation(nonce: string, id: string): DeviceRevokedData {
+    const { coreId, publicKey } = this.#group.core.coordination.card();
+    const sig = this.#group.core.coordination.signature(Buffer.from(deviceRevokedInput(coreId, nonce, id))).toString('base64');
+    return { reason: 'device-revoked', publicKey, sig };
   }
 
   /** The refusal that says this machine is in no group, signed over the nonce of the hello it answers. */
@@ -206,6 +216,14 @@ export class GroupClients {
     const entry = roster === null ? undefined : liveDeviceKeys(roster).find((device) => device.id === deviceIdValue);
     if (roster === null || entry === undefined || entry.push === this.#group.selfId()) return;
     this.#group.commit({ ...roster, deviceKeys: roster.deviceKeys!.map((device) => (device === entry ? { ...entry, push: this.#group.selfId(), rev: clockOf(roster) + 1 } : device)) });
+  }
+
+  /** A departing machine also closes device sessions. Only a recorded removal invalidates the device key. */
+  deviceSessionWasRevoked(sessionId: string): boolean {
+    const member = this.#group.issuedFor(sessionId);
+    if (!member?.startsWith('key:')) return false;
+    const id = member.slice('key:'.length);
+    return this.#group.roster?.deviceKeys?.some(device => device.id === id && device.removed) ?? false;
   }
 
   /** Takes a device out of the group, by its key's id or its older pairing's id. */

@@ -41,7 +41,7 @@ import { newId } from '../ids.ts';
 import { messageExcerpt } from '../continuation.ts';
 import { PeerGone, PeerRefusal } from '../coordination-wire.ts';
 import { machineArg, memberNamed } from '../threads/group-spawn.ts';
-import { checkEffort, checkModel } from '../threads/selection.ts';
+import { checkEffort, selectionFor } from '../threads/selection.ts';
 import { MOVE_NOTE_PREFIX, withLoad } from '../threads/records.ts';
 import { readBrainFile, rewriteBrainFile } from './brain-files.ts';
 import { defaultAccount, BUILTIN_TEXT } from './builtin.ts';
@@ -682,9 +682,10 @@ export class BotMoves {
     const descriptor = this.#core.providers.require(account.providerId);
     const fallback = descriptor.models.find(model => model.default)?.id ?? descriptor.models[0]?.id ?? null;
     let model = fallback, effort: string | null = null;
-    if (same !== undefined && wanted.model !== null) {
-      try { model = checkModel(descriptor, account.id, wanted.model) ?? fallback; } catch { model = fallback; }
-      if (model === wanted.model) { try { effort = checkEffort(descriptor, account.id, model, wanted.effort); } catch { effort = null; } }
+    const selected = same === undefined ? undefined : selectionFor(descriptor, account.id, wanted.model, wanted.effort);
+    if (selected) {
+      model = selected.model.id;
+      try { effort = checkEffort(descriptor, account.id, model, selected.effort); } catch { effort = null; }
     }
     if (model === null) throw refused(`agents.move: ${here} has no model to run ${name} on ${descriptor.name}; sign in there first`, { field: 'machine' });
     return { providerId: account.providerId, accountId: account.id, model, effort, permissionMode: wanted.permissionMode };

@@ -12,7 +12,7 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
   expect(names).toEqual([
     'Android server / apk',
     'Build UI',
-    // Bundle size is reported but advisory (ADVISORY in required-checks.ts).
+    // Bundle size and Thread transfer are reported but advisory (ADVISORY in required-checks.ts).
     // Written out, not derived from CORE_ALL or PORTABLE_ALL: renaming a runner
     // renames a required check too.
     'Core tests (Linux arm64)',
@@ -124,9 +124,13 @@ test('only the plan decides which jobs run, the same way for a pull request and 
       expect(job.needs).toBeUndefined();
       continue;
     }
-    // Bundle size compares a pull request with its base: the queue skips it.
+    // Bundle size and Thread transfer compare a pull request with its base: the queue skips them.
     if (id === 'size') {
       expect(job.if).toBe("github.event_name == 'pull_request' && needs.changes.outputs.size == 'true'");
+      continue;
+    }
+    if (id === 'transfer') {
+      expect(job.if).toBe("github.event_name == 'pull_request' && (needs.changes.outputs.core == 'true' || needs.changes.outputs.web == 'true')");
       continue;
     }
     // A sharded check's own job runs after its shards, on the same plan output.

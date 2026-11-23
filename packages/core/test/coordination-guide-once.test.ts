@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { AGENT_ENV } from '@boite/contracts';
 import { SHORT_ANSWERS } from '../src/agent-guide.ts';
+import { runCli } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
 import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
@@ -20,7 +22,7 @@ test('the coordination guide goes once a native session: again when it changes, 
   let directive = 'Hello';
   const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
     prompts.push(ctx.prompt);
-    if (ctx.prompt.includes('Continue me')) continuation = ctx.continuation?.().prompt ?? null;
+    if (ctx.prompt.includes('Continue me')) void Promise.resolve(ctx.continuation?.()).then(value => { continuation = value?.prompt ?? null; });
     // Echo plays the directive of this turn alone: a fresh session's prompt also carries the history.
     const play = ctx.turn.execution?.operation === 'compact' || ctx.prompt === CAPACITY_CONTINUE_PROMPT ? ctx.prompt : directive;
     return echoDriver.startTurn({ ...ctx, prompt: play });
@@ -38,6 +40,19 @@ test('the coordination guide goes once a native session: again when it changes, 
     // Twenty turns of one session: the guide rode on every one of them before.
     const guide = h.core.coordination.instructions(threadId);
     expect(first).toContain(guide);
+    expect(first).toContain('Boite subagents');
+    const workflow = await run('Inspect the workflow');
+    expect(workflow).toContain('boite workflow help');
+    expect(workflow).not.toContain('Boite subagents');
+    const delegationTurn = await run('Hand the review to a subagent');
+    expect(delegationTurn).not.toContain('Boite subagents');
+    const help = /Delegation commands: boite (delegate help)\./.exec(delegationTurn)?.[1];
+    expect(help).toBe('delegate help');
+    const output: string[] = [];
+    const env = { [AGENT_ENV.coreUrl]: h.url, [AGENT_ENV.token]: h.core.agents.tokenFor(threadId), [AGENT_ENV.threadId]: threadId };
+    expect(await runCli(help!.split(' '), { out: text => output.push(text), err: text => output.push(text), env, cwd: h.dataDir })).toBe(0);
+    expect(output.join('')).toContain('delegate spawn <brief>');
+    expect(output.join('')).not.toContain('workflow check|run <plan>');
     const before = prompts.length;
     for (let index = 2; index <= 20; index++) {
       const prompt = await run(`Turn ${index}`);
@@ -85,5 +100,11 @@ test('the coordination guide goes once a native session: again when it changes, 
     await owner.call('threads.update', { threadId, accountId: spare.id });
     expect(await run('On the spare account')).toContain(GUIDE);
     expect(await run('Settled on the spare')).not.toContain(GUIDE);
+    const delegation = h.core.delegation.config(threadId);
+    h.core.delegation.configure(threadId, { ...delegation, enabled: false });
+    expect(await run('Work on this')).toContain('the owner turned them off');
+    expect(await run('Check the workflow')).not.toContain('the owner turned them off');
+    h.core.delegation.configure(threadId, delegation);
+    expect(await run('Carry on')).toContain('boite delegate spawn');
   } finally { restore(); }
 }, 60_000);

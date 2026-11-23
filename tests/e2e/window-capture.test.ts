@@ -61,6 +61,11 @@ for (const [label, viewport] of [['desktop', DESKTOP], ['phone', PHONE]] as cons
     await reveal('[data-testid="window-capture"][data-kind="clip"]');
     await page.waitFor(visible('[data-testid="window-capture"][data-kind="clip"]'));
     await capture(`capture-card-${label}.png`);
+    const thumb = '[data-testid="window-capture"][data-kind="clip"] [data-testid="window-capture-thumb"]';
+    await page.waitFor(`document.querySelector('${thumb} img')?.naturalWidth === 320`);
+    await page.click(thumb);
+    await page.waitFor(`document.querySelector('[data-testid="image-viewer"] img')?.naturalWidth === 1920`);
+    await page.click('[data-testid="image-viewer-close"]');
   }, 90_000);
 
   test(`Settings lists the allowed windows, confirms a removal and edits the exclusions (${label})`, async () => {

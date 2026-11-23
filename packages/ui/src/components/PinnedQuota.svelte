@@ -11,6 +11,7 @@
   import { quotaWindowName, quotaResetTime, tenth } from '../lib/format';
   import type { Store } from '../lib/store.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
+  import QuotaLoadState from './QuotaLoadState.svelte';
   import QuotaExtras from './QuotaExtras.svelte';
 
   let { store, dock = false, inline = false, area }: { store: Store; dock?: boolean; inline?: boolean; area?: HTMLElement } = $props();
@@ -113,26 +114,26 @@
   </header>
   <div class="body">
     {#if !connected}<p role="status">{strings.connection.unavailable}</p>{/if}
-    {#if reader.error}<p class="error" role="alert">{fill(strings.quotas.readFailed, { error: reader.error })}</p>{/if}
-    {#if reader.outdated}<p>{strings.quotas.outdated}</p>
-    {:else if reader.rows === null}<p role="status">{strings.quotas.loading}</p>
-    {:else if rows.length === 0}<p>{strings.quotas.pinnedEmpty}</p>{/if}
-    {#each ordered as row (row.accountId)}
-      <article data-testid="pinned-quota-account" data-account-id={row.accountId} data-provider={row.providerId} class:stale={row.status === 'unavailable'}>
-        <div class="account"><span class="ui-label" title={quotaAccountName(row)}><PrivateText text={quotaAccountName(row)} /></span></div>
-        {#each row.windows as window (window.id)}
-          {@const left = remainingPercent(window.usedPercent)}
-          <div class="window" title={window.resetsAt === null ? strings.quotas.noReset : fill(strings.quotas.resets, { time: quotaResetTime(window.resetsAt) })}>
-            <span class="name ui-label" title={quotaWindowName(window.label)}>{quotaWindowName(window.label)}</span>
-            <span class="track" role="meter" aria-label={`${quotaAccountName(row)} ${quotaWindowName(window.label)}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={left} aria-busy={reader.busy && !reader.landed.includes(row.accountId)} data-tone={quotaTone(window.usedPercent)}><span class="fill" style:width={`${left}%`}></span></span>
-            <span class="amount" data-tone={quotaTone(window.usedPercent)}>{tenth(left)}%</span>
-          </div>
-        {/each}
-        <QuotaExtras {row} compact />
-        {#if row.error}<p class="error" role="status">{row.error}</p>
-        {:else if row.windows.length === 0 && quotaCredits(row) === null}<p>{strings.quotas.noReading}</p>{/if}
-      </article>
-    {/each}
+    <QuotaLoadState error={reader.error} outdated={reader.outdated} pending={reader.rows === null}
+      busy={!connected || reader.busy} retry={() => refresh(true)} testPrefix="pinned-quota" size="pinned">
+      {#if rows.length === 0 && !reader.error}<p>{strings.quotas.pinnedEmpty}</p>{/if}
+      {#each ordered as row (row.accountId)}
+        <article data-testid="pinned-quota-account" data-account-id={row.accountId} data-provider={row.providerId} class:stale={row.status === 'unavailable' || row.error !== null}>
+          <div class="account"><span class="ui-label" title={quotaAccountName(row)}><PrivateText text={quotaAccountName(row)} /></span></div>
+          {#each row.windows as window (window.id)}
+            {@const left = remainingPercent(window.usedPercent)}
+            <div class="window" title={window.resetsAt === null ? strings.quotas.noReset : fill(strings.quotas.resets, { time: quotaResetTime(window.resetsAt) })}>
+              <span class="name ui-label" title={quotaWindowName(window.label)}>{quotaWindowName(window.label)}</span>
+              <span class="track" role="meter" aria-label={`${quotaAccountName(row)} ${quotaWindowName(window.label)}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={left} aria-busy={reader.busy && !reader.landed.includes(row.accountId)} data-tone={quotaTone(window.usedPercent)}><span class="fill" style:width={`${left}%`}></span></span>
+              <span class="amount" data-tone={quotaTone(window.usedPercent)}>{tenth(left)}%</span>
+            </div>
+          {/each}
+          <QuotaExtras {row} compact />
+          {#if row.error}<p class="error" role="status">{row.error}</p>
+          {:else if row.windows.length === 0 && quotaCredits(row) === null}<p>{strings.quotas.noReading}</p>{/if}
+        </article>
+      {/each}
+    </QuotaLoadState>
   </div>
 </aside>
 
