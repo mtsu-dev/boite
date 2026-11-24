@@ -246,8 +246,13 @@ for (const restart of [false, true]) test(`stopping the run${restart ? ' after a
   await waitFor(() => !held.has(childId) && pc.core.threads.require(childId).status !== 'running', 1_000);
   expect(pc.core.journal.listTurns(childId).at(-1)?.status).toBe('stopped');
   const step = () => caller.core.workflows.get(threadId, started.id).nodes[0]!.instances[0]!;
-  await pc.core.delegation.remote.flush(caller.core.coordination.card().coreId);
   const state = () => caller.core.delegation.remote.record(threadId, step().machine!.requestId)?.state;
+  // A flush is a no-op while the outbox's own timer is sending: wait for the report, not for one flush.
+  const reported = (done: (last: NonNullable<ReturnType<typeof state>>['lastTurn']) => boolean) => {
+    void pc.core.delegation.remote.flush(caller.core.coordination.card().coreId);
+    return waitFor(() => done(state()?.lastTurn ?? null));
+  };
+  await reported(last => last?.status === 'stopped');
   const stopped = state()?.lastTurn;
   expect(stopped).toMatchObject({ status: 'stopped', usage });
   expect(step().usage).toMatchObject(usage);
@@ -256,7 +261,7 @@ for (const restart of [false, true]) test(`stopping the run${restart ? ' after a
   const member = await pc.connect();
   const followUp = await member.call('turns.start', { threadId: childId, prompt: followUpPrompt });
   await waitFor(() => pc.core.journal.getTurn(followUp.id)?.finishedAt != null);
-  await pc.core.delegation.remote.flush(caller.core.coordination.card().coreId);
+  await reported(last => last?.id === followUp.id && last.finishedAt != null);
   expect(state()?.lastTurn).toMatchObject({ id: followUp.id, usage: followUpUsage });
   expect(state()?.workflowStop?.turn.id).toBe(stopped?.id);
   expect(step().usage).toMatchObject(usage);

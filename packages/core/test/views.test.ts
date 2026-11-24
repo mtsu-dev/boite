@@ -28,11 +28,13 @@ async function start(withBrowser: boolean): Promise<void> {
   harness = await startTestCore(); client = await harness.connect();
   // Every check starts a browser of its own, and a loaded Windows runner took past the 20-second limit to start one:
   // the page then goes out unchecked and a refusal this file expects never comes (2026-10-13, twice). These tests
-  // are about what a check finds, so they give it a minute; the product keeps its limit.
+  // are about what a check finds, so they give it a minute; the product keeps its limit. A macOS runner's browser
+  // still answered nothing in that minute (2026-11-24, merge queue run 45475263259): a check that comes back
+  // unchecked gets one fresh browser, so only a browser that fails twice fails these tests.
   const probe = harness.core.browser.probe.bind(harness.core.browser);
-  harness.core.browser.probe = (url, widths) => probe(url, widths, 60_000);
+  harness.core.browser.probe = async (url, widths) => await probe(url, widths, 60_000) ?? probe(url, widths, 60_000);
   const checkView = harness.core.browser.checkView.bind(harness.core.browser);
-  harness.core.browser.checkView = (url, options) => checkView(url, options, 60_000);
+  harness.core.browser.checkView = async (url, options) => await checkView(url, options, 60_000) ?? checkView(url, options, 60_000);
   ({ threadId } = await echoThread(harness, client));
   agent = await connect(harness.url, harness.core.agents.tokenFor(threadId));
   await client.call('turns.start', { threadId, prompt: 'Explain it with a drawing' });
