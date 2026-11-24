@@ -88,6 +88,10 @@ Stop it with `bun run dev:instance stop`.
 
 ## Follow through on pull requests
 
+Without write access to this repository, read
+[CONTRIBUTING.md](CONTRIBUTING.md) before the first commit: which PRs are
+accepted, and the steps of [working from a fork](CONTRIBUTING.md#working-from-a-fork).
+
 A PR marked ready gets an mtsu-patrol review; a draft gets CI only. Read every
 finding and the failures
 from every applicable CI job before changing code. Verify findings against the
