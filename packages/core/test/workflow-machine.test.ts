@@ -248,9 +248,9 @@ for (const restart of [false, true]) test(`stopping the run${restart ? ' after a
   const step = () => caller.core.workflows.get(threadId, started.id).nodes[0]!.instances[0]!;
   const state = () => caller.core.delegation.remote.record(threadId, step().machine!.requestId)?.state;
   // A flush is a no-op while the outbox's own timer is sending: wait for the report, not for one flush.
-  const reported = (done: (last: NonNullable<ReturnType<typeof state>>['lastTurn']) => boolean) => {
-    void pc.core.delegation.remote.flush(caller.core.coordination.card().coreId);
-    return waitFor(() => done(state()?.lastTurn ?? null));
+  const reported = async (done: (last: NonNullable<ReturnType<typeof state>>['lastTurn']) => boolean) => {
+    await pc.core.delegation.remote.flush(caller.core.coordination.card().coreId);
+    await waitFor(() => done(state()?.lastTurn ?? null));
   };
   await reported(last => last?.status === 'stopped');
   const stopped = state()?.lastTurn;

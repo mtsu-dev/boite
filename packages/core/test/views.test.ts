@@ -14,6 +14,8 @@ import { thrown } from './settle.ts';
 /** The checks that load a page need a Chromium-based browser; the rest runs with none, as a machine without one would. */
 const browser = findChromium().path;
 const real = browser ? test : test.skip;
+/** One try of a check in this file; two of them stay under the 120 s an RPC waits. */
+const CHECK_MS = 50_000;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 
 let harness: TestCore;
@@ -28,13 +30,13 @@ async function start(withBrowser: boolean): Promise<void> {
   harness = await startTestCore(); client = await harness.connect();
   // Every check starts a browser of its own, and a loaded Windows runner took past the 20-second limit to start one:
   // the page then goes out unchecked and a refusal this file expects never comes (2026-10-13, twice). These tests
-  // are about what a check finds, so they give it a minute; the product keeps its limit. A macOS runner's browser
-  // still answered nothing in that minute (2026-11-24, merge queue run 45475263259): a check that comes back
-  // unchecked gets one fresh browser, so only a browser that fails twice fails these tests.
+  // are about what a check finds, so they give it more time; the product keeps its limit. A macOS runner's browser
+  // still answered nothing in a minute (2026-11-24, merge queue run 45475263259): a check that comes back unchecked
+  // gets one fresh browser, so only a browser that fails twice fails these tests. Both tries fit the 120 s an RPC waits.
   const probe = harness.core.browser.probe.bind(harness.core.browser);
-  harness.core.browser.probe = async (url, widths) => await probe(url, widths, 60_000) ?? probe(url, widths, 60_000);
+  harness.core.browser.probe = async (url, widths) => await probe(url, widths, CHECK_MS) ?? probe(url, widths, CHECK_MS);
   const checkView = harness.core.browser.checkView.bind(harness.core.browser);
-  harness.core.browser.checkView = async (url, options) => await checkView(url, options, 60_000) ?? checkView(url, options, 60_000);
+  harness.core.browser.checkView = async (url, options) => await checkView(url, options, CHECK_MS) ?? checkView(url, options, CHECK_MS);
   ({ threadId } = await echoThread(harness, client));
   agent = await connect(harness.url, harness.core.agents.tokenFor(threadId));
   await client.call('turns.start', { threadId, prompt: 'Explain it with a drawing' });
