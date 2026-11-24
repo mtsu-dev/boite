@@ -49,6 +49,43 @@ an issue, a PR or a fixture. Report vulnerabilities privately as
 [SECURITY.md](SECURITY.md) describes. Participation follows the
 [code of conduct](CODE_OF_CONDUCT.md).
 
+## Working from a fork
+
+These steps are for you and for any agent writing the PR for you.
+
+- **Allow edits by maintainers.** Tick it when you open the PR (`gh pr create`
+  ticks it unless you pass `--no-maintainer-edit`), so a maintainer can push a
+  small fix to your branch instead of waiting for you.
+- **Start from the current `main`.** GitHub refuses a push that brings commits
+  touching `.github/workflows/` from an OAuth or classic token without the
+  `workflow` scope (`gh auth refresh -s workflow` when Git pushes through `gh`),
+  or from a fine-grained token without write access to Workflows. Once the PR
+  is open, its Update branch button, if available, merges `main` too. Do not base the branch on an older `main` to get
+  around it; the tree you tested is then not the tree that merges.
+- **Keep it a draft until the evidence is in the description.** The review
+  starts when the PR is marked ready. Captures go in the description, not "in a
+  comment later". `gh` cannot upload images: an agent saves the files and says
+  where, and you drag them into the description on GitHub.
+- **Run what the PR's CI skips.** A pull request runs the Linux checks and, for
+  a UI change, three phone E2E files on Windows, and the Windows core suite
+  only for protection code and shared toolchain inputs; the merge queue runs
+  every E2E file, Windows and macOS
+  ([pull request runs](docs/internals/ci.md#pull-request-runs)). A UI change
+  runs `BOITE_E2E_SKIP_SHELL=1 bun run e2e` before it goes ready; a shell
+  change builds the shell first
+  ([shell build](docs/internals/development.md#rebuilding-the-shell-executable))
+  and runs `bun run e2e`. A failure in the queue sends the PR back.
+- **Run every test you add or change**, and check that it fails without your
+  fix. Write its pass line in the description. A test that cannot pass, for
+  example one that reads a CSS custom property jsdom does not compute, fails CI
+  on every run.
+- **Say what you did not run.** A change to the desktop shell, a native dialog
+  or input handling that you checked only in a browser says so under
+  Verification, with the platforms left untested.
+- **Answer every review finding** on the current head: fix it and reply with
+  the commit, or reply with the reason you decline it, then resolve the thread
+  you fixed.
+
 ## Setup and checks
 
 Code boundaries are in [AGENTS.md](AGENTS.md), setup in
