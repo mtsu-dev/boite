@@ -6,7 +6,7 @@
  * fetches the redirect URL before `authenticate` answers.
  *
  * Run as `bun <this file>`. `AGY_FAKE_LOG` names a file it appends to:
- * `initialize`, `client:<name>` for the client it was told it serves, `env <NAME>=<value>` for the variables the account is supposed
+ * `initialize`, `pid:<pid>`, `client:<name>` for the client it was told it serves, `env <NAME>=<value>` for the variables the account is supposed
  * to carry, `callback:<url>` with the redirect URL a test is meant to paste,
  * `fetched:<path>` when that URL is hit, `authenticated`, `new:<cwd>` then
  * `meta:<json>` for each session it opens with its model list, `set:<id>=<value>`
@@ -19,7 +19,13 @@
  * batch with `start_subagent`, fails a second launch, runs an MCP tool of
  * the same title and launches a third batch with 1.4.1's `invoke_subagent`; `scenario:command` answers while a shell command it started
  * still runs, and `scenario:short-command` finishes that command a moment
- * after its answer.
+ * after its answer. `scenario:swarm` adds a swarm worker and answers while it
+ * works, as 1.5 does: the worker reports in the session's inbox a moment
+ * later (`worker reported`), then the agent, woken by the report, runs a
+ * slow tool and answers again with no prompt open (`synthesized`);
+ * `scenario:swarm-ask` asks a permission there instead and answers 2 s after
+ * the user (`permission answered`). `scenario:swarm-stuck` adds one
+ * that never reports.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -147,9 +153,32 @@ function waitForCallback(): { url: string; hit: Promise<void>; stop(): void } {
   };
 }
 
+/** A record under `<GEMINI_HOME>/antigravity-acp/brain/<conversation>/.system_generated/`, where 1.5 keeps a session's children. */
+function writeRecord(conversation: string, path: string[], body: unknown): void {
+  const file = join(process.env['GEMINI_HOME'] ?? '', 'antigravity-acp', 'brain', conversation, '.system_generated', ...path);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(body), 'utf8');
+}
+
+/**
+ * A `swarm` add, as 1.5.2 records it: the worker's record under the session,
+ * the launching call in the worker's own inbox, its row in the roster.
+ */
+function addWorker(sessionId: string, toolCallId: string): string {
+  const worker = `worker-${crypto.randomUUID().slice(0, 8)}`;
+  writeRecord(sessionId, ['subagents', `${worker}.json`], { conversationId: worker, state: 'SUBAGENT_STATE_RUNNING', subagentDescriptor: { role: 'Swarm Worker (reader-1)' } });
+  writeRecord(worker, ['messages', 'launch.json'], {
+    id: 'launch', sender: sessionId, content: 'Read the logs',
+    sourceMetadata: { tool: { conversationId: sessionId, toolCall: { id: toolCallId, name: 'swarm', argumentsJson: '{"action":"add","name":"reader"}' } } },
+  });
+  writeRecord(sessionId, ['swarm', 'members.json'], { members: { 'reader-1': { conversation_id: worker, role: 'worker', phase: 'RUNNING', desired_state: 'RUNNING' } } });
+  return worker;
+}
+
 const app = agent({ name: 'agy-fake' })
   .onRequest('initialize', ({ params }) => {
     log('initialize');
+    log(`pid:${process.pid}`);
     clientName = params.clientInfo?.name ?? '';
     log(`client:${clientName}`);
     for (const name of WATCHED) log(`env ${name}=${process.env[name] ?? ''}`);
@@ -249,6 +278,41 @@ const app = agent({ name: 'agy-fake' })
         setTimeout(() => {
           void update({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed', rawOutput: { combinedOutput: 'done', exitCode: 0 } });
         }, 300);
+      }
+    }
+    if (text.includes('scenario:swarm')) {
+      const id = `${params.sessionId}:swarm`;
+      await update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Running swarm', kind: 'other', status: 'in_progress', rawInput: { action: 'add', name: 'reader' } });
+      const worker = addWorker(params.sessionId, id);
+      await update({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed', rawOutput: 'Added @reader-1' });
+      if (!text.includes('scenario:swarm-stuck')) {
+        setTimeout(() => {
+          writeRecord(params.sessionId, ['messages', 'report.json'], { id: 'report', sender: worker, priority: 'MESSAGE_PRIORITY_HIGH', content: 'The logs say the disk filled up.' });
+          log('worker reported');
+          // The wake: the report read, then a reply with no prompt open whose
+          // tool works longer than the quiet that ends a held turn.
+          setTimeout(() => {
+            writeRecord(params.sessionId, ['messages', 'read.json'], { report: true });
+            const synthesize = () => update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ' synthesis: the disk filled up' } }).then(() => log('synthesized'));
+            if (text.includes('scenario:swarm-ask')) {
+              // A permission the user answers late, then a reply that takes its time.
+              void client.request('session/request_permission', {
+                sessionId: params.sessionId,
+                toolCall: { toolCallId: `${params.sessionId}:clean`, title: 'Clean the disk', rawInput: { path: '/tmp' } },
+                options: [{ optionId: 'yes', name: 'Allow once', kind: 'allow_once' }, { optionId: 'no', name: 'Reject once', kind: 'reject_once' }],
+              }).then(() => {
+                log('permission answered');
+                setTimeout(() => void synthesize(), 2_000);
+              });
+              return;
+            }
+            const check = `${params.sessionId}:check`;
+            void update({ sessionUpdate: 'tool_call', toolCallId: check, title: 'Checking the disk', kind: 'execute', status: 'in_progress' });
+            setTimeout(() => {
+              void update({ sessionUpdate: 'tool_call_update', toolCallId: check, status: 'completed', rawOutput: '100%' }).then(synthesize);
+            }, 4_500);
+          }, 1_500);
+        }, 1_500);
       }
     }
     await update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'pong' } });

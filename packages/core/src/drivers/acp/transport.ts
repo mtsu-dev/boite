@@ -42,11 +42,9 @@ export function spawnTransport(
   // model's window; until then it keeps its own ceiling.
   const buffer = native ? wantedCompactionBuffer(memory, ctx) : null;
   const accountEnv = withOpenCodeCompactionBuffer(ctx.accountEnv, buffer);
+  const env: Record<string, string | undefined> = { ...agentEnv(ctx.provider, temp === null ? accountEnv : { ...accountEnv, ...temp.env }), ...protection?.env, ...(password === null ? {} : { OPENCODE_PASSWORD: password }) };
   try {
-    child = ctx.spawnChild(launch.executable, native ? nativeArgs : args, {
-      cwd: protection?.cwd ?? ctx.thread.cwd,
-      env: { ...agentEnv(ctx.provider, temp === null ? accountEnv : { ...accountEnv, ...temp.env }), ...protection?.env, ...(password === null ? {} : { OPENCODE_PASSWORD: password }) },
-    });
+    child = ctx.spawnChild(launch.executable, native ? nativeArgs : args, { cwd: protection?.cwd ?? ctx.thread.cwd, env });
   } catch (error) {
     void temp?.dispose();
     try { protection?.close(Promise.resolve()); } catch { /* preserve spawn error */ }
@@ -58,7 +56,7 @@ export function spawnTransport(
     child.once('close', dispose);
     child.once('error', dispose);
   }
-  return { child, buffer, native, password, protection };
+  return { child, buffer, native, password, protection, env };
 }
 
 type Transport = ReturnType<typeof spawnTransport>;

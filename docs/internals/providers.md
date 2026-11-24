@@ -788,6 +788,21 @@ invoke_subagent?`; agents before 1.4.1 name it `start_subagent`; without
 is launched, its output is the launch's description, and the agent reports no
 child ids, names, models or results, so the batch stays running while the turn
 runs and reads unknown after it; only a failed launch is final, with its error.
+From 1.5 the children of an `invoke_subagent` call, and the workers a `swarm`
+call adds, outlive the prompt: the coordinator ends it to wait for them, and
+when one reports, the agent wakes the coordinator and streams its next reply
+with no prompt open. The protocol says none of this, so after a prompt that
+ends this way the driver reads the agent's records under `GEMINI_HOME`
+(`antigravity-acp/brain/<session>/.system_generated/`: `subagents/`, each
+conversation's `messages/` inbox, `swarm/members.json` and
+`logs/transcript.jsonl`, in `drivers/acp/detached.ts`). The turn stays open
+while a child launched by one of its calls has not reported in the session's
+inbox and is neither killed nor parked, while the agent owes the session a
+reply, while a tool that reply started runs and while a question or a
+permission waits for the user. It ends 3 s after the last of these, with no
+update from the session since. The reply the agent starts on its own is drawn
+into that turn. Stop on a held turn closes the
+process, and its children with it. An unreadable record holds nothing open.
 The same quirk changes three things in how Boite talks to it, found on the 1.4.5
 agent on 2026-11-04:
 

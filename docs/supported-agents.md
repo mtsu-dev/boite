@@ -55,6 +55,10 @@ same agent.
 - Asks before acting: the agent requests permission in the chat before it runs
   a command or edits a file. pi never asks.
 
+When Antigravity starts helpers (`/swarm` or its own subagents) and pauses to
+wait for them, the conversation keeps working until they report and Antigravity
+writes its answer. Stop ends Antigravity and its helpers.
+
 Every agent keeps its conversation when you close and reopen Boite, and you can
 [switch agent or model](models.md) in the middle of a conversation.
 
