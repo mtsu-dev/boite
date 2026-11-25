@@ -61,7 +61,7 @@
 
   /** A phone has no room left of the bubbles for the outline rail: it is not drawn there. */
   const narrow = new MediaQuery('(max-width: 720px)');
-  const reveal = new MessageReveal(() => messages, () => narrow.current, () => shownTurns);
+  const reveal = new MessageReveal(() => messages, () => narrow.current, () => timeline);
 
   /** `resting`: the turn a finished thread ends on (`lib/resting-turn.ts`), whose summary line is the thread's footer. */
   let { store, threadId, messages, resting = null }: { store: Store; threadId: string; messages: Message[]; resting?: string | null } = $props();

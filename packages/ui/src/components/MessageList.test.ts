@@ -1765,8 +1765,13 @@ test('a prompt queued behind a finished turn keeps the buttons of the answer bef
   expect(document.querySelector(`[data-mid="${answer.id}"]`)?.closest('article')?.hasAttribute('data-latest')).toBe(true);
 });
 
-// A cache ping's hidden "ok" was the phone's last answer: the real answer under it lost its line, footer included.
-test('a cache ping after the last answer leaves that answer\'s buttons and resting line on a phone', async ({ ready }) => {
+// A reply the timeline hides was the phone's last answer: the real answer above it lost its buttons and its footer.
+const HIDDEN_AFTER: Array<[string, { quiet?: true; execution: object }, string, Message['parts']]> = [
+  ['a cache ping', { execution: { operation: 'keepalive' } }, 'Reply with the single word ok.', [{ type: 'text', text: 'ok' }]],
+  ['a folded quiet wake', { quiet: true, execution: { operation: 'event', opensRequest: true } }, 'A pull request changed.', [{ type: 'text', text: '[quiet] nothing new' }]],
+  ['an automatic compaction', { execution: { operation: 'compact', automatic: true } }, 'Compacting the conversation.', [{ type: 'compaction', trigger: 'auto', preTokens: 51_100, postTokens: 10_800 }]],
+];
+test.for(HIDDEN_AFTER)('%s after the last answer leaves that answer\'s buttons and resting line on a phone', async ([, turn, opening, parts], { ready }) => {
   window.localStorage.clear();
   vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
   onTestFinished(() => { vi.unstubAllGlobals(); });
@@ -1775,17 +1780,18 @@ test('a cache ping after the last answer leaves that answer\'s buttons and resti
   const thread = live.openThread!;
   const messages = thread.messages;
   const answer = messages.findLast((message) => message.role === 'assistant')!;
-  const answered = thread.turns.find((turn) => turn.id === answer.turnId)!;
+  const answered = thread.turns.find((current) => current.id === answer.turnId)!;
   Object.assign(answered, { status: 'done', finishedAt: answered.finishedAt ?? answered.startedAt });
   const at = Date.now();
-  thread.turns.push({ id: 'turn-ping', threadId: 't-long', status: 'done', queuedAt: at, startedAt: at, finishedAt: at + 1, usage: null, error: null, execution: { operation: 'keepalive' } as Turn['execution'] });
+  thread.turns.push({ id: 'turn-hidden', threadId: 't-long', status: 'done', queuedAt: at, startedAt: at, finishedAt: at + 1, usage: null, error: null, ...turn, execution: { providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, ...turn.execution } } as Turn);
   messages.push(
-    { id: 'm-ping', threadId: 't-long', turnId: 'turn-ping', role: 'system', parts: [{ type: 'text', text: 'Reply with the single word ok.', displayText: 'Prompt cache kept warm' }], state: 'complete', createdAt: at },
-    { id: 'm-ok', threadId: 't-long', turnId: 'turn-ping', role: 'assistant', parts: [{ type: 'text', text: 'ok' }], state: 'complete', createdAt: at + 1 });
+    { id: 'm-hidden-open', threadId: 't-long', turnId: 'turn-hidden', role: 'system', parts: [{ type: 'text', text: opening }], state: 'complete', createdAt: at },
+    { id: 'm-hidden', threadId: 't-long', turnId: 'turn-hidden', role: 'assistant', parts, state: 'complete', createdAt: at + 1 });
   stubLayout(messages.length * ESTIMATE);
   running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages, resting: answered.id } });
   await settle();
 
+  expect(document.querySelector('[data-mid="m-hidden"]')).toBeNull();
   const row = document.querySelector(`[data-mid="${answer.id}"]`)?.closest('article');
   expect(row?.hasAttribute('data-latest')).toBe(true);
   expect(row?.querySelector('[data-testid=turn-summary]')?.classList.contains('resting')).toBe(true);

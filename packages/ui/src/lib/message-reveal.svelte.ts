@@ -1,4 +1,4 @@
-import type { Message, Turn } from '@boite/contracts';
+import type { Message } from '@boite/contracts';
 
 /** What a tap on a control does to the row: one in the open row keeps it, any other only closes it. */
 const CONTROL = 'button, a, input, textarea, select, summary, label, [role="button"], [contenteditable="true"]';
@@ -14,20 +14,17 @@ export class MessageReveal {
   #messages: () => Message[];
   #phone: () => boolean;
   #lastPrompt = $derived.by(() => this.#messages().findLast((message) => message.role === 'user')?.id ?? null);
-  #turns: () => readonly Pick<Turn, 'id' | 'execution'>[];
+  #drawn: () => readonly Message[];
   /**
-   * The turn of the last answer drawn, read from the messages: a queued or unanswered turn after it has none, and a
-   * cache ping's reply is never drawn (`quietKeepalives`).
+   * The turn of the last answer drawn, read from the timeline as it is drawn (`drawn`): a queued or unanswered turn
+   * after it has none, and a cache ping's reply, an automatic compaction and a folded quiet wake draw no answer.
    */
-  #lastAnswer = $derived.by(() => {
-    const pings = new Set(this.#turns().filter((turn) => turn.execution?.operation === 'keepalive').map((turn) => turn.id));
-    return this.#messages().findLast((message) => message.role === 'assistant' && !pings.has(message.turnId))?.turnId ?? null;
-  });
+  #lastAnswer = $derived.by(() => this.#drawn().findLast((message) => message.role === 'assistant')?.turnId ?? null);
 
-  constructor(messages: () => Message[], phone: () => boolean, turns: () => readonly Pick<Turn, 'id' | 'execution'>[] = () => []) {
+  constructor(messages: () => Message[], phone: () => boolean, drawn: () => readonly Message[] = messages) {
     this.#messages = messages;
     this.#phone = phone;
-    this.#turns = turns;
+    this.#drawn = drawn;
     $effect(() => {
       if (this.revealed === null) return;
       const away = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest(`[data-reveal="${this.revealed}"]`)) this.revealed = null; };
