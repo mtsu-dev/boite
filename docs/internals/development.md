@@ -415,7 +415,7 @@ includes running, queued and background work. Pins and unsent
 drafts stay visible while Working is folded and appear once when expanded;
 questions and failures stay in the main list. Done and Archived read only that project's
 archived summaries when expanded, with the same reading and restore actions as
-Recent. Paused, below the open projects, holds the projects whose every
+Recent. Inactive (section `paused`), below the open projects, holds the projects whose every
 conversation rests: none at work, none with news, a question, a failure, a pin
 or unsent text, and no new draft, so folding it hides nothing that waits on the
 user. A project leaves it as soon as a conversation starts or needs the user.
@@ -433,7 +433,7 @@ with done or archived conversations shows each count on its row, which unfolds
 that history under it. Creating or restoring a conversation or starting a draft
 returns its project to the open cards. In the custom order a project moves among
 the cards of its own section.
-Every fold starts from one table, `PROJECT_FOLDS_OPEN`: Working and Paused open,
+Every fold starts from one table, `PROJECT_FOLDS_OPEN`: Working and Inactive open,
 No threads and Archived projects closed. A header folds its section for the
 session; the next launch starts from the table again.
 Group inactive projects, in settings and the Display options panel, can be disabled

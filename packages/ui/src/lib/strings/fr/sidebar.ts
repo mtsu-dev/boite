@@ -18,7 +18,7 @@ export const fr: Translation = {
     idleProjects: 'Aucun fil',
     workingProjects: 'En cours',
     workingProjectsHint: 'Tous les fils de ces projets sont au travail. Un projet redescend dès que l’un d’eux a besoin de vous.',
-    pausedProjects: 'En pause',
+    pausedProjects: 'Inactifs',
     pausedProjectsHint: 'Rien ne tourne dans ces projets et rien ne vous attend. Un projet remonte dès qu’un fil démarre ou a besoin de vous.',
     idleProjectsHint: 'Aucun fil dans ces projets, ni actif ni arrêté. Choisissez-en un pour lancer un fil.',
     filter: 'Filtrer',

@@ -62,7 +62,7 @@ Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
 
 In the Projects view, the projects where something needs you come first.
-Below them, Paused gathers the projects where no thread runs and nothing
+Below them, Inactive gathers the projects where no thread runs and nothing
 waits on you; fold it to hide them. No threads, closed at launch, lists the
 projects without a single thread: choose one to start a thread there. Archived
 projects come last, closed too. Turn off Inactive projects in the Filter menu

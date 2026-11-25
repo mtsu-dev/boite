@@ -20,7 +20,7 @@ export const strings = {
     workingProjects: 'Working',
     workingProjectsHint: 'Every conversation in these projects is at work. A project moves down once one needs you.',
     /** The section under the open projects: conversations, none at work and none waiting on the user. */
-    pausedProjects: 'Paused',
+    pausedProjects: 'Inactive',
     pausedProjectsHint: 'Nothing runs in these projects and nothing waits on you. A project moves up once a thread starts or needs you.',
     idleProjectsHint: 'No thread in these projects, running or stopped. Choose one to start a thread.',
     filter: 'Filter',

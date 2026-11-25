@@ -63,7 +63,7 @@ async function mountOnFake(): Promise<void> {
   running = mount(App, { target });
   await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null));
   workspace.view = 'projects';
-  // A header moves among the cards of its own section: pinned, both projects stay open cards, out of Paused.
+  // A header moves among the cards of its own section: pinned, both projects stay open cards, out of Inactive.
   store.threads = store.threads.map((thread) => ({ ...thread, pinned: true }));
   await waitFor(() => document.querySelectorAll('section[data-testid=project]').length === 2 && document.querySelector('[data-testid=paused-projects]') === null);
 }

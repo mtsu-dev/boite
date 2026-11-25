@@ -113,7 +113,7 @@ test('with working grouping on, a project whose every conversation is at work si
   expect([toggle.getAttribute('aria-expanded'), toggle.querySelector('.fold-count')?.textContent]).toEqual(['false', '1']);
 });
 
-test('a project where nothing runs and nothing waits sits under Paused; one without a thread goes to the closed No threads fold, archived history included', async () => {
+test('a project where nothing runs and nothing waits sits under Inactive; one without a thread goes to the closed No threads fold, archived history included', async () => {
   await mountOnFake();
   const resting = await project('resting');
   const archivedOnly = await project('archived-only');
@@ -128,7 +128,7 @@ test('a project where nothing runs and nothing waits sits under Paused; one with
   // Read, its turn over: at rest.
   setThread(quiet.id, { status: 'idle', unread: false });
 
-  // Paused starts open and lists the card as the open ones are drawn.
+  // Inactive starts open and lists the card as the open ones are drawn.
   await waitFor(() => card('[data-testid=paused-projects]', resting.id) !== null);
   expect(document.querySelector('[data-testid=paused-projects-toggle]')?.getAttribute('aria-expanded')).toBe('true');
   // Archived by hand or done, a project left without a thread is no card and no section of its own anymore.
@@ -150,13 +150,13 @@ test('a project where nothing runs and nothing waits sits under Paused; one with
   clearArchivedFocus();
   closeArchived();
 
-  // Folded, Paused keeps its header and count and hides the card.
+  // Folded, Inactive keeps its header and count and hides the card.
   await waitFor(() => document.querySelector('[data-testid=paused-projects-toggle]') !== null);
   document.querySelector<HTMLButtonElement>('[data-testid=paused-projects-toggle]')!.click();
   await waitFor(() => document.querySelector('[data-testid=paused-projects] .disclosure-fold')?.classList.contains('open') === false);
   expect(document.querySelector('[data-testid=paused-projects-toggle] .fold-count')?.textContent).toBe(String(document.querySelectorAll('[data-testid=paused-projects] section[data-testid=project]').length));
 
-  // A reply to read is for the user: the project leaves Paused for the open cards, which no fold hides.
+  // A reply to read is for the user: the project leaves Inactive for the open cards, which no fold hides.
   setThread(quiet.id, { unread: true });
   await waitFor(() => card('[data-testid=paused-projects]', resting.id) === null && card('[data-testid=sidebar]', resting.id) !== null);
 
