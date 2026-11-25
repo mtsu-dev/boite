@@ -3,7 +3,11 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   palette: {
-    placeholder: 'Cherchez un fil, un projet ou une commande',
+    placeholder: 'Cherchez un fil, un message ou une commande',
+    searchAll: 'Tout chercher',
+    mentions: 'Mentions dans les messages',
+    speakers: { user: 'Vous :', assistant: 'Agent :' },
+    matchFields: { project: 'Projet :', model: 'Modèle :', branch: 'Branche :', pr: 'Pull request :', machine: 'Machine :', parent: 'Fil parent :' },
     groups: { running: 'En cours', finished: 'Finis', done: 'Terminés', archived: 'Archivés' },
     projects: 'Projets',
     /** Extra words a project row answers to: picking one starts a thread there. */

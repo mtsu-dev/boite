@@ -1,6 +1,7 @@
 import type { RpcMethodName, RpcMethods } from './index.ts';
 import { checkSettingsPatch } from './settings-validation.ts';
 import { streamChannelsProblem } from './stream-channels.ts';
+import { MESSAGE_SEARCH_QUERY_LIMIT, MESSAGE_SEARCH_RESULT_LIMIT } from './message-search.ts';
 
 export type RpcParamsCheck<T = unknown> =
   | { ok: true; params: T }
@@ -25,6 +26,16 @@ const RPC_PARAMS: { readonly [M in RpcMethodName]?: (params: unknown) => RpcPara
   },
   'threads.subscribe': channelsRule<'threads.subscribe'>,
   'threads.get': channelsRule<'threads.get'>,
+  'threads.search': params => {
+    const { query, limit, includeArchived } = (params ?? {}) as Record<string, unknown>;
+    if (typeof query !== 'string' || query.length > MESSAGE_SEARCH_QUERY_LIMIT)
+      return { ok: false, field: 'query', message: `threads.search.query: expected text up to ${MESSAGE_SEARCH_QUERY_LIMIT} characters` };
+    if (limit !== undefined && (typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1 || limit > MESSAGE_SEARCH_RESULT_LIMIT))
+      return { ok: false, field: 'limit', message: `threads.search.limit: expected a whole number from 1 to ${MESSAGE_SEARCH_RESULT_LIMIT}` };
+    if (includeArchived !== undefined && typeof includeArchived !== 'boolean')
+      return { ok: false, field: 'includeArchived', message: 'threads.search.includeArchived: expected a boolean' };
+    return { ok: true, params: params as RpcMethods['threads.search']['params'] };
+  },
 };
 
 /** The params a handler receives, or the field the method's rule refuses. */

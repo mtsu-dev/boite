@@ -578,7 +578,7 @@ export class Workspace {
   }
 
   /** A named draft, a project's fresh draft, or the machine's last visit when no destination is given. */
-  async select(target: Store, threadId?: string, projectId?: string | null, options: { fresh?: boolean; draftId?: string } = {}): Promise<void> {
+  async select(target: Store, threadId?: string, projectId?: string | null, options: { fresh?: boolean; draftId?: string; match?: { messageId: string; query: string } } = {}): Promise<void> {
     this.selecting += 1;
     try {
       await this.#select(target, threadId, projectId, options);
@@ -587,11 +587,11 @@ export class Workspace {
     }
   }
 
-  async #select(target: Store, threadId: string | undefined, projectId: string | null | undefined, options: { fresh?: boolean; draftId?: string }): Promise<void> {
+  async #select(target: Store, threadId: string | undefined, projectId: string | null | undefined, options: { fresh?: boolean; draftId?: string; match?: { messageId: string; query: string } }): Promise<void> {
     ++this.#generation;
     this.#moveTo(target);
     target.visible = true;
-    if (threadId) await target.open(threadId);
+    if (threadId) await target.open(threadId, true, options);
     else if (projectId !== undefined || options.draftId !== undefined) target.startDraft(projectId, options);
     else {
       target.showChat();

@@ -1,11 +1,29 @@
-import { listCursorProblem, RpcErrorCode, THREAD_LIST_PAGE_BYTES, ThreadListPages } from '@boite/contracts';
+import { gradeMessage, listCursorProblem, messageSearchTerms, orderMessageMatches, RpcErrorCode, searchableMessageText, THREAD_LIST_PAGE_BYTES, ThreadListPages, type ThreadMessageMatch } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import type { FakeContext, FakeMethods } from './context';
 import { toSummary } from './shared';
 
-export function threadListMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.list' | 'threads.listChanges'> {
+export function threadListMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.list' | 'threads.listChanges' | 'threads.search'> {
   const pages = new ThreadListPages();
   return {
+    'threads.search': async ({ query, limit = 20, includeArchived = true }) => {
+      const terms = messageSearchTerms(query);
+      const matches: ThreadMessageMatch[] = [];
+      if (!terms.length) return { query, matches };
+      for (const thread of ctx.threads.values()) {
+        if (thread.incognito || (!includeArchived && thread.archived) || (thread.projectId && ctx.removedProjects.has(thread.projectId))) continue;
+        let best: ThreadMessageMatch | undefined;
+        for (const message of thread.messages) {
+          if (message.role !== 'user' && message.role !== 'assistant') continue;
+          const grade = gradeMessage(searchableMessageText(message), terms);
+          if (!grade) continue;
+          const hit = { threadId: thread.id, messageId: message.id, messageCreatedAt: message.createdAt, role: message.role, ...grade };
+          if (!best || orderMessageMatches(hit, best) < 0) best = hit;
+        }
+        if (best) matches.push(best);
+      }
+      return { query, matches: matches.sort(orderMessageMatches).slice(0, limit) };
+    },
     'threads.list': async (params) => {
       return [...ctx.threads.values()]
         .filter((t) => (params.projectId ? t.projectId === params.projectId : true))

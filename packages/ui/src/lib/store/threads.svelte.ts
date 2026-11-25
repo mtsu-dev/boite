@@ -17,7 +17,7 @@ import { DeviceSnapshots, readingPage } from './device-snapshots';
 import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, unreadInterruptionAt } from '@boite/contracts';
 import { DeferredParts } from './deferred-parts';
 import { askPage, ThreadPreloads } from './thread-preload';
-import { lightPage, NewerPages, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
+import { publishSearchJump, lightPage, NewerPages, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
 import { LiveWeights } from './live-weights.svelte';
 export type { ReadingPosition } from './reading-pages.svelte';
 import { forgetArchivedThread } from '../archive-history';
@@ -351,7 +351,7 @@ export class Threads {
    * open's `threads.get`) and covers this row too, so the open's read does
    * not protect the row from it.
    */
-  async open(threadId: ThreadId, navigate = true, options: { requests?: boolean; liveCreation?: boolean; listed?: boolean } = {}): Promise<void> {
+  async open(threadId: ThreadId, navigate = true, options: { requests?: boolean; liveCreation?: boolean; listed?: boolean; match?: { messageId: MessageId; query: string } } = {}): Promise<void> {
     const s = this.ctx.store;
     const { delegation } = this.ctx;
     const client = this.ctx.client;
@@ -369,14 +369,13 @@ export class Threads {
       }
     };
     // Nothing in memory, and no press on its way: the device's snapshot paints the thread and gives the cursor the page asks from.
-    const snapshot = this.openThread?.id === threadId || this.readingThreads.get(threadId) || this.preloads.waitingThreadId === threadId || !this.snapshots.mayHold(threadId) ? undefined : await this.snapshots.read(threadId);
+    const snapshot = options.match || this.openThread?.id === threadId || this.readingThreads.get(threadId) || this.preloads.waitingThreadId === threadId || !this.snapshots.mayHold(threadId) ? undefined : await this.snapshots.read(threadId);
     if (!newest()) return;
     const previousThread = this.openThread;
     let held = this.openThread?.id === threadId ? this.openThread : this.readingThreads.get(threadId) ?? snapshot;
     // The bare row of an open still on its way holds nothing to paint: clicked again, the thread shows loading, not an empty history.
-    if (held && held.messages.length === 0 && this.#unloaded.has(threadId)) held = undefined;
-    // A press on this thread already asked for its page (`thread-preload.ts`): the open takes it over.
-    const preloaded = this.preloads.claim(threadId, client, held);
+    if (options.match || (held && held.messages.length === 0 && this.#unloaded.has(threadId))) held = undefined;
+    const preloaded = options.match ? null : this.preloads.claim(threadId, client, held);
     const deselect = this.openThread?.id !== threadId && s.delegationSelectedAgentId && s.delegationSelectedAgentId !== threadId;
     // Paint a recent visit in this task. Its revalidation and subscription can
     // take a whole network round trip without holding the reader's text back.
@@ -402,7 +401,7 @@ export class Threads {
       const bundled = s.core?.features?.threadSnapshots === true;
       // A claimed press left the previous thread, the unread mark and the requests to this open.
       const { subscribed, fetched, around, proofFirst } = preloaded ?? askPage(this.ctx, this, client, threadId, held,
-        { ...(previous && previous !== threadId && previous !== delegation.delegationSubscribedThreadId ? { previous } : {}), ...(options.requests === false ? { requests: false } : {}), markRead: true }, newest);
+        { ...(previous && previous !== threadId && previous !== delegation.delegationSubscribedThreadId ? { previous } : {}), ...(options.requests === false ? { requests: false } : {}), markRead: true }, newest, options.match?.messageId);
       const bundledRequests = bundled && !preloaded;
       if (options.requests !== false) {
         permissionRead = this.ctx.requests.permissionRead(client, threadId, bundledRequests ? () => fetched.then(thread => thread.opened?.permissions ?? []) : undefined);
@@ -439,6 +438,7 @@ export class Threads {
       if (held && thread.messagesAfter === undefined) delete held.messagesAfter;
       if (options.liveCreation && this.openThread?.id === threadId) mergeCreationSnapshot(thread, this.openThread);
       this.#unloaded.delete(threadId);
+      if (options.match) publishSearchJump(s, thread, options.match);
       this.#show(held ? reconcileThread(held, thread) : thread, navigate, true);
       this.preloads.done(preloaded);
       loaded = true;

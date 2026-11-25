@@ -76,6 +76,17 @@ questions and permissions stay, and so does the button's number. On a phone,
 or without a middle button, Mark all as read at the top of Activity clears the
 finished threads along with failures and stops.
 
+## Find conversations and messages
+
+Press Ctrl+K (Cmd+K on Mac). On a phone, tap the magnifying glass in the
+thread list and choose Search all. Search by thread title, project, model,
+branch or pull request number. For example,
+type `opus orchard` to find Orchard conversations that used Opus.
+
+Mentions in messages shows the best matching message in each conversation,
+including archives. Put a phrase in double quotes to find its words together.
+Choose a mention to open the conversation at that message.
+
 ## Drafts without a project
 
 A new device opens a draft. Drafts live in `Documents/Boite`, and each

@@ -72,13 +72,13 @@ export function readingAround(ctx: StoreContext, opener: Pick<Opener, 'readingPo
  * vouch for, a long thread left away from its end opens around the reader's
  * message, any other reads its last screen.
  */
-function pageRequest(ctx: StoreContext, opener: Opener, threadId: ThreadId, held: Thread | undefined): { params: RpcParams<'threads.get'>; around: MessageId | undefined } {
+function pageRequest(ctx: StoreContext, opener: Opener, threadId: ThreadId, held: Thread | undefined, anchor?: MessageId): { params: RpcParams<'threads.get'>; around: MessageId | undefined } {
   // A thread already in hand, open or among the recent ones, asks only for
   // what it cannot vouch for: a reconnect on a long conversation used to
   // download its last 120 messages again for the two that were new.
   const features = ctx.store.core?.features;
   const resume = snapshotResume(threadId, held, features?.threadPrefixProofs === true, true);
-  const around = !held || features?.threadPrefixProofs ? readingAround(ctx, opener, threadId) : undefined;
+  const around = anchor ?? (!held || features?.threadPrefixProofs ? readingAround(ctx, opener, threadId) : undefined);
   // A page holds about one screen; the rest comes as the reader scrolls. A resume tail is never cut.
   const { sync, ...target } = resume;
   const limit = target.after ? MESSAGE_PAGE_MAX : Math.min(MESSAGE_PAGE_MAX, Math.max(INITIAL_MESSAGE_PAGE, held?.messages.length ?? 0));
@@ -90,12 +90,12 @@ function pageRequest(ctx: StoreContext, opener: Opener, threadId: ThreadId, held
  * bundled core the subscription in the same call with `open`. `current` says
  * whether the loading view may still count the page in.
  */
-export function askPage(ctx: StoreContext, opener: Opener, client: Client, threadId: ThreadId, held: Thread | undefined, open: { previous?: ThreadId; requests?: boolean; markRead?: boolean }, current: () => boolean): PageAsk {
+export function askPage(ctx: StoreContext, opener: Opener, client: Client, threadId: ThreadId, held: Thread | undefined, open: { previous?: ThreadId; requests?: boolean; markRead?: boolean }, current: () => boolean, anchor?: MessageId): PageAsk {
   const features = ctx.store.core?.features;
   const bundled = features?.threadSnapshots === true;
   const channels = ctx.streams.params(threadId);
   const subscribed = bundled ? null : client.call('threads.subscribe', { threadId, ...channels });
-  const { params, around } = pageRequest(ctx, opener, threadId, held);
+  const { params, around } = pageRequest(ctx, opener, threadId, held, anchor);
   const fetched = client.call('threads.get', { ...params,
     ...(bundled ? { open, ...channels } : {})
   }, held || !features?.chunkedAnswers ? {} : {

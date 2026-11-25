@@ -344,6 +344,9 @@
       aria-label={lent?.searchLabel ?? strings.mobile.search} placeholder={lent?.searchLabel ?? strings.mobile.search} data-testid="mobile-search" use:focusOnMount onkeydown={event => { if (event.key === 'Escape') closeSearch(); }} />
       {#if store.page === 'chat' && headerList === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
     </div>
+    {#if store.page === 'chat' && headerList === 'threads'}
+      <button class="ghost global-search" data-testid="mobile-global-search" onclick={() => store.paletteOpen = true}>{strings.palette.searchAll}</button>
+    {/if}
     <button class="ghost icon" data-testid="mobile-search-close" aria-label={strings.mobile.clearSearch} onclick={closeSearch}><X size={20} /></button>
   {:else}
   <!-- The page's name, then the machine, the display menu and the search on its row; the places themselves are the bottom bar's. -->
@@ -578,6 +581,7 @@
     .mobile-header > :global(.thread-list-notice) { flex-basis: 100%; }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
+    .global-search { flex: none; min-height: 44px; white-space: nowrap; }
     /* The display options close the field's row, after a hairline. */
     .display { display: flex; align-self: stretch; align-items: center; flex: none; border-left: 1px solid var(--color-border); }
     .display :global(.trigger) { width: var(--touch-target); height: var(--touch-target); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }

@@ -4,7 +4,10 @@
  * test and the component only draws.
  */
 
-export type PaletteKind = 'thread' | 'project' | 'command';
+import type { SearchRange } from '@boite/contracts';
+import { matchThreadFields, type MatchHint, type ThreadField } from './palette-search';
+
+export type PaletteKind = 'thread' | 'mention' | 'project' | 'command';
 
 export interface PaletteItem {
   id: string;
@@ -20,6 +23,9 @@ export interface PaletteItem {
   section?: string;
   /** When the row was last used: the order inside a thread group, most recent first. */
   at?: number;
+  fields?: ThreadField[];
+  titleRanges?: SearchRange[];
+  matchHint?: MatchHint;
 }
 
 /** A text a query word may land on, and what landing there costs against the label. */
@@ -167,26 +173,28 @@ export const MATCHED_ROWS: Readonly<Record<string, number>> = { running: 8, fini
 
 /**
  * The palette's list: threads at work, then finished, done and archived ones, then the projects, the bots and the
- * commands. A thread group runs most recent first; the other headings keep the order given, best match first under a
- * query. A query only drops what does not match: the headings and the order inside a thread group stay.
+ * commands. A thread group runs most recent first until a query orders its threads by match quality.
  */
 export function paletteSections(query: string, items: readonly PaletteItem[]): PaletteSection[] {
   const typed = query.trim().length > 0;
   const caps = typed ? MATCHED_ROWS : RESTING_ROWS;
   const sections = new Map<string, { kind: PaletteKind; rows: { item: PaletteItem; score: number; order: number }[] }>();
   items.forEach((item, order) => {
-    const score = typed ? scoreFields(query, itemFields(item)) : 0;
-    if (score === null || score < 0) return;
+    const match = typed && item.fields ? matchThreadFields(query, item.fields) : null;
+    const score = typed ? (item.fields ? match?.score : scoreFields(query, itemFields(item))) : 0;
+    if (score == null || score < 0) return;
     const id = item.section ?? item.kind;
     const section = sections.get(id) ?? { kind: item.kind, rows: [] };
     sections.set(id, section);
-    section.rows.push({ item, score, order });
+    section.rows.push({ item: match ? { ...item, ...match } : item, score, order });
   });
   const out: PaletteSection[] = [];
   for (const id of [...SECTION_ORDER, ...[...sections.keys()].filter((key) => !SECTION_ORDER.includes(key))]) {
     const section = sections.get(id);
     if (!section) continue;
-    if (section.kind === 'thread') section.rows.sort((a, b) => (b.item.at ?? 0) - (a.item.at ?? 0) || a.order - b.order);
+    if (section.kind === 'thread') section.rows.sort((a, b) =>
+      (typed && a.item.fields && b.item.fields ? b.score - a.score : 0)
+      || (b.item.at ?? 0) - (a.item.at ?? 0) || a.order - b.order);
     else section.rows.sort((a, b) => b.score - a.score || a.order - b.order);
     const rows = section.rows.slice(0, caps[id] ?? PALETTE_LIMIT).map((row) => row.item);
     if (rows.length > 0) out.push({ id, kind: section.kind, items: rows });

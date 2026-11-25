@@ -598,7 +598,20 @@ export interface ThreadStats {
   prompts: number;
 }
 
+export interface ThreadMessageMatch {
+  threadId: ThreadId;
+  messageId: MessageId;
+  role: 'user' | 'assistant';
+  snippet: string;
+  messageCreatedAt: Timestamp;
+  score: number;
+}
+
 export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
+  'threads.search': {
+    params: { query: string; limit?: number; includeArchived?: boolean };
+    result: { query: string; matches: ThreadMessageMatch[] };
+  };
   /** Owner-only, private bounded diagnostic history, including earlier runs. */
   'journal.inspect': { params: { cursor?: JournalInspectionCursor | null; limit?: number }; result: JournalInspection };
   /**

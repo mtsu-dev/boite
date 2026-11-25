@@ -143,6 +143,29 @@ test('typing filters across threads and commands, the arrows move, Enter opens t
   expect(store.openThread?.id).toBe('t-trace');
 });
 
+test('metadata and message results coexist and Enter requests a page around the mention', async () => {
+  const call = vi.spyOn(client, 'call');
+  const turn = await client.call('turns.start', { threadId: 't-trace', prompt: 'Check the Echo trace collector.' });
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  await type('echo trace');
+  expect(rows()).toContain('thread:t-trace');
+  expect(document.querySelector('[data-palette-id="thread:t-trace"] [data-testid=palette-match-hint]')?.textContent).toContain('Echo');
+  await vi.waitFor(() => {
+    flushSync();
+    expect(document.querySelector('[data-section=mentions] mark')?.textContent).toBe('Echo');
+  });
+  const id = rows().find(row => row.startsWith('mention:'))!;
+  expect(rows().indexOf(id)).toBeGreaterThan(rows().indexOf('thread:t-trace'));
+  while (selectedId() !== id) key('ArrowDown');
+  key('Enter');
+  await vi.waitFor(() => expect(store.messageSearchJump).toMatchObject({ threadId: 't-trace', query: 'echo trace' }));
+  const target = store.messageSearchJump!.messageId;
+  expect(call.mock.calls).toContainEqual(['threads.get', expect.objectContaining({ threadId: 't-trace', around: target }), expect.any(Object)]);
+  expect(store.openThread?.messages.find(message => message.id === target)?.turnId).toBe(turn.id);
+});
+
 test('a command runs: settings opens on the tab asked, and Escape closes without picking', async () => {
   store.paletteOpen = true;
   flushSync();

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { flushSync, onDestroy, onMount, tick, untrack } from 'svelte';
   import { MESSAGE_PAGE, type Message } from '@boite/contracts';
+  import { clearMessageSearch } from '../lib/find';
+  import { useMessageSearchJump } from '../lib/message-search-jump.svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import MessageTurnSummary from './MessageTurnSummary.svelte';
@@ -66,7 +68,6 @@
   /** `closing`: a finished thread's last word (`lib/closing-line.ts`), drawn under the last message and scrolling with it. */
   let { store, threadId, messages, closing = null }: { store: Store; threadId: string; messages: Message[]; closing?: string | null } = $props();
   const viewer = new ListViewer();
-  /** The find bar is its own chunk, fetched the first time it opens. A failed fetch tries again on the next open. */
   let FindBar = $state.raw<typeof import('./FindBar.svelte').default>();
   $effect(() => {
     if (store.findOpen && !FindBar) void import('./FindBar.svelte').then((module) => { FindBar = module.default; }).catch(() => { store.findOpen = false; });
@@ -198,7 +199,7 @@
   let handledFocus = untrack(() => store.promptFocus);
   function stopLift() { cancelAnimationFrame(liftFrame); liftFrame = 0; lifting = false; }
   function releaseNavigation(event?: KeyboardEvent) {
-    releaseAnchor(); navigationTarget = null; navigationAnchor = null;
+    clearMessageSearch(); releaseAnchor(); navigationTarget = null; navigationAnchor = null;
     if (promptTarget) pinned = false;
     promptTarget = null;
     stopLift();
@@ -215,19 +216,18 @@
   });
   const drawnPrompts = $derived(timeline.filter(message => message.role === 'user'));
 
-  /** To a message, or to the row of it that draws `part` when a long one is cut in several, and to the element `anchor` in that row. */
   function jumpToMessage(id: string, part?: number, offset?: number, anchor?: string) {
-    releaseNavigation();
-    const box = viewport;
-    const index = rowIndexOf(rows, id, part, offset);
-    if (!box || index < 0) return;
+    const box = viewport, index = rowIndexOf(rows, id, part, offset);
+    if (!box || index < 0) return false;
+    untrack(releaseNavigation);
     failureTarget = { id };
     navigationTarget = rows[index]!.id; navigationAnchor = anchor ?? null;
     pinned = false;
     behind = true;
     box.scrollTop = totals(rows)[index] ?? 0;
-    scrollTop = box.scrollTop;
+    scrollTop = box.scrollTop; return true;
   }
+  useMessageSearchJump(() => ({ store, threadId, messages, ready: !!viewport }), jumpToMessage, () => navigationTarget, row => anchors.nodes.get(row));
 
   // Keep the target aligned as estimated heights become real measurements; wheel, touch, scrollbar and keyboard input return control to the reader.
   $effect(() => {
