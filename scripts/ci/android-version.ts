@@ -10,11 +10,10 @@ import { join } from 'node:path';
  */
 
 /**
- * Every Boite APK is signed with one key, the one this file publishes for the
- * Trusted Web Activity Boite shipped before its native app: copies still
- * installed open full screen while the core serves it.
+ * The SHA-256 digest of the certificate every Boite APK is signed with. An
+ * update signed with another key is one Android refuses.
  */
-export const ASSETLINKS = 'packages/ui/public/.well-known/assetlinks.json';
+export const APK_CERT_DIGEST = '3cf11e0f4a9a1a9c5341b36a81393c2f4bea79cd7449ded93594889d461c3726';
 
 export interface AppVersion {
   major: number;
@@ -84,14 +83,6 @@ export function digest(value: string): string {
 export function signerDigest(printCerts: string): string | null {
   const match = /certificate SHA-256 digest:\s*([0-9a-fA-F:]+)/.exec(printCerts);
   return match ? digest(match[1]!) : null;
-}
-
-export function assetlinksDigest(json: string, packageName = 'com.boite.two'): string {
-  const statements = JSON.parse(json) as { target?: { package_name?: string; sha256_cert_fingerprints?: string[] } }[];
-  const target = statements.find((statement) => statement.target?.package_name === packageName)?.target;
-  const fingerprint = target?.sha256_cert_fingerprints?.[0];
-  if (!fingerprint) throw new Error(`${ASSETLINKS} names no certificate for ${packageName}`);
-  return digest(fingerprint);
 }
 
 export function run(command: string[], quiet = false): { ok: boolean; out: string } {
