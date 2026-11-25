@@ -158,6 +158,7 @@
   }
   /** Typing in a field never leaves the thread: a chord, Enter, Escape or a key outside a field reads the anchor. */
   function rememberBeforeKey(event: KeyboardEvent) { if (!typingKey(event)) rememberAnchor(); }
+  function rememberBeforeClick() { if (anchors.pending) rememberAnchor(); }
   function restoreAnchor(anchor: RowAnchor | undefined = anchors.current) {
     if (!anchor || !viewport?.isConnected || pinned || navigationTarget || promptTarget) return;
     const delta = anchors.drift(viewport, anchor);
@@ -170,15 +171,16 @@
   onMount(() => {
     // Capture the settled layout before a navigation click removes this list.
     document.addEventListener('pointerdown', rememberAnchor, true);
+    document.addEventListener('click', rememberBeforeClick, true);
     document.addEventListener('keydown', rememberBeforeKey, true);
     return () => {
       document.removeEventListener('pointerdown', rememberAnchor, true);
+      document.removeEventListener('click', rememberBeforeClick, true);
       document.removeEventListener('keydown', rememberBeforeKey, true);
     };
   });
   let restoredReading = false;
   onDestroy(() => {
-    if (anchors.pending) rememberAnchor();
     anchors.cancelPending();
     if (!viewport || !store.readingPositions) return;
     store.readingPositions.delete(threadId);
@@ -385,8 +387,9 @@
   function onMeasured(entries: ResizeObserverEntry[]): { moved: boolean; restore: boolean; boxResized: boolean; anchor: RowAnchor | undefined } | null {
     const box = viewport;
     const { boxResized, nextViewHeight, gapFixes, deltas } = collectMeasuredEntries(entries, box, viewHeight, rows, slots, heights);
-    if (deltas.length === 0 && !boxResized && gapFixes.length === 0) return null;
-    const needsAnchor = boxResized || anchors.held || deltas.some(d => d.at <= view.first + 2 || d.next < d.previous);
+    const restoring = anchors.restoring || anchors.held;
+    if (deltas.length === 0 && !boxResized && gapFixes.length === 0 && !restoring) return null;
+    const needsAnchor = boxResized || restoring || deltas.some(d => d.at <= view.first + 2 || d.next < d.previous);
     if (needsAnchor && !pinned && !navigationTarget && !promptTarget) rememberAnchor();
     const anchor = anchors.current;
     if (boxResized && box) { viewHeight = nextViewHeight; readEndRoom(box); }
@@ -478,7 +481,7 @@
         const batch = measurable([...pending.values()], id => slots.indexOf(rows, id) >= 0);
         pending.clear();
         const result = onMeasured(batch);
-        if (!result || (!result.moved && !result.boxResized)) return;
+        if (!result || (!result.moved && !result.boxResized && !result.restore)) return;
         if (pinned) { scrolledGap = 0; return; }
         // A row growing below moves no scroll position: the gap a later notch down is measured against grows with it.
         void tick().then(() => { if (result.restore) restoreAnchor(result.anchor); if (box.scrollTop === scrollTop) scrolledGap = box.scrollHeight - box.scrollTop - box.clientHeight; });
