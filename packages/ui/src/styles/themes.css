@@ -284,6 +284,9 @@
   border-radius: var(--radius-bubble);
   border-bottom-left-radius: var(--radius-sm);
 }
+/* A drawn block (```steps, ```bars...) lays out to the width it is given: the
+   bubble that holds one takes the column's width instead of its text's. */
+.answer-bubble:has(.md-native) { width: auto; }
 @media (max-width: 720px) { .answer-bubble { padding: 10px 14px; } }
 .typing { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; color: var(--color-muted-foreground); }
 .typing > span { width: 5px; height: 5px; border-radius: var(--radius-full); background: currentColor; animation: typing var(--dur-typing) ease-in-out infinite var(--loops); }

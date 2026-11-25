@@ -118,7 +118,10 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
 /* ```steps, ```options, ```bars and ```stats (lib/native-blocks.ts): drawn
    from their lines with the app's own tokens, no frame of their own. The
    accent marks the highlighted item only. */
-.md-native { position: relative; margin: 6px 0 10px; white-space: normal; container-type: inline-size; }
+/* No container query here: a size container has no width of its own, so one
+   alone in a fit-content bubble drew 0px wide. The bubble widens instead
+   (`.answer-bubble:has(.md-native)` in themes.css). */
+.md-native { position: relative; margin: 6px 0 10px; white-space: normal; }
 .md-native > pre { margin: 0; }
 .md-native[data-view='diagram'] > pre,
 .md-native[data-view='code'] > .md-native-figure { display: none; }
@@ -150,20 +153,24 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
 .md-step > .md-native-body { padding-top: 1px; }
 .md-step.md-accent > .md-step-mark { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); }
 
-.md-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.md-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px; }
 .md-option { padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
 .md-option.md-accent { border-color: var(--color-accent); background: var(--color-accent-soft); }
 .md-option.md-accent .md-native-title { font-weight: 600; }
 
-/* The rows share the block's columns (subgrid), so every track starts and ends at the same place. */
-.md-bars { display: grid; grid-template-columns: minmax(0, 28%) minmax(0, 1fr) auto; column-gap: 12px; row-gap: 10px; }
-.md-bar { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; row-gap: 2px; font-size: var(--text-sm); }
+/* Each row is its own grid with the same columns: the label takes a share of
+   the row and the value the width of the longest one (`--md-bar-value`, set
+   in ch by lib/native-blocks.ts), so every track starts and ends at the same
+   place. No subgrid, which Safari 15.4 and Chrome 111 lack. */
+.md-bars { display: flex; flex-direction: column; gap: 10px; }
+.md-bar { display: grid; grid-template-columns: minmax(0, 28%) minmax(0, 1fr) max-content; align-items: center; column-gap: 12px; row-gap: 2px; font-size: var(--text-sm); }
 .md-bar-label { color: var(--color-foreground); overflow-wrap: anywhere; }
 .md-bar-track { height: 8px; overflow: hidden; border-radius: var(--radius-full); background: var(--color-surface-3); }
 .md-bar-fill { display: block; width: var(--share); min-width: 2px; height: 100%; border-radius: inherit; background: var(--color-accent); }
+.md-bar-fill.md-bar-zero { min-width: 0; }
 .md-has-accent > .md-bar:not(.md-accent) .md-bar-fill { background: color-mix(in oklch, var(--color-muted-foreground) 40%, transparent); }
 .md-bar.md-accent > .md-bar-label { font-weight: 600; }
-.md-bar-value { color: var(--color-foreground); font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.md-bar-value { color: var(--color-foreground); font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; min-width: var(--md-bar-value, auto); }
 .md-bar-note { grid-column: 2 / -1; color: var(--color-muted-foreground); font-size: var(--text-xs); }
 
 .md-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
@@ -173,11 +180,10 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
 .md-stat-value { color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.25; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .md-stat-detail { color: var(--color-muted-foreground); font-size: var(--text-xs); }
 
-/* A phone's column: one option per row, a bar's track under its label and value. */
-@container (max-width: 479px) {
-  .md-options { grid-template-columns: minmax(0, 1fr); }
-  .md-bars { grid-template-columns: minmax(0, 1fr) auto; }
-  .md-bar { row-gap: 4px; }
+/* A phone's column: a bar's track goes under its label and value. Options
+   and stats wrap on their own (auto-fit). */
+@media (max-width: 720px) {
+  .md-bar { grid-template-columns: minmax(0, 1fr) max-content; row-gap: 4px; }
   .md-bar-track { grid-row: 2; grid-column: 1 / -1; }
   .md-bar-note { grid-column: 1 / -1; }
 }

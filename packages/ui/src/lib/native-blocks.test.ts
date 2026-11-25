@@ -24,6 +24,35 @@ test('bars compare across time, byte and magnitude units, and percentages scale 
   // A unit with no family compares with itself only.
   expect(shares('A | 120 fps\nB | 60 fps')).toEqual([1, 0.5]);
   expect(readValue('-3 ms')).toBeNull();
+  // A zero bar is an empty track, not a sliver.
+  const zero = drawNative('bars', parseNative('bars', 'A | 0 ms\nB | 0.01 ms\nC | 10 s')!);
+  expect([...zero.querySelectorAll('.md-bar-fill')].map(fill => fill.classList.contains('md-bar-zero'))).toEqual([true, false, false]);
+  expect(zero.style.getPropertyValue('--md-bar-value')).toBe('7ch');
+});
+
+test('a value reads only when the whole field is a number and an optional unit', () => {
+  expect(readValue('12,500.5 s')).toEqual({ family: 'time', amount: 12500.5 });
+  expect(readValue('4,25')).toEqual({ family: 'count', amount: 4.25 });
+  expect(readValue('120 req/s')).toEqual({ family: 'unit:req/s', amount: 120 });
+  // Grouping is three digits after a group of one to three; an underscore is no unit.
+  for (const text of ['1234,567', '12,34,567', '1,2345,678', '1_345', '1_345 ms', '1.2.3', '4,2,5']) expect(readValue(text), text).toBeNull();
+  // A unit named like an Object property is a unit of its own, not a lookup into the prototype.
+  expect(readValue('5 constructor')).toEqual({ family: 'unit:constructor', amount: 5 });
+  expect(readValue('5 __proto__')).toBeNull();
+  expect(readValue('5 toString')).toEqual({ family: 'unit:toString', amount: 5 });
+  // A number past the double range, or one its unit pushes there, is not a measure.
+  expect(readValue('9'.repeat(400))).toBeNull();
+  expect(readValue(`1${'0'.repeat(300)} TiB`)).toBeNull();
+  expect(parseNative('bars', `A | 1${'0'.repeat(300)} TiB\nB | 1 TiB`)).toBeNull();
+  expect(parseNative('bars', 'A | 0 ms\nB | 0 s')?.map(item => item.share)).toEqual([0, 0]);
+});
+
+test('a backslash escapes the next character, so only an odd run of them keeps a pipe in its field', () => {
+  expect(parseNative('options', 'C:\\\\| root')).toEqual([{ accent: false, title: 'C:\\\\', detail: 'root' }]);
+  expect(parseNative('options', 'a\\\\\\| b')).toEqual([{ accent: false, title: 'a\\\\| b' }]);
+  expect(parseNative('options', 'a\\*b | trailing \\')).toEqual([{ accent: false, title: 'a\\*b', detail: 'trailing \\' }]);
+  // The inline renderer reads the doubled backslash as one.
+  expect(drawNative('options', parseNative('options', 'C:\\\\| root')!).querySelector('.md-native-title')!.textContent).toBe('C:\\');
 });
 
 test('a block that does not fit its grammar is not drawn', () => {

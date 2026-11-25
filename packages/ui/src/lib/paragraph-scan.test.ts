@@ -80,7 +80,19 @@ test('a paragraph being written stops where a diagram, a formula or a view opens
   expect(pendingDrawing(scan.pending(indented))).toEqual({ text: indented, drawing: false });
   expect(pendingDrawing('```Mermaid\nflowchart LR')).toEqual({ text: '', drawing: true });
   expect(renderMarkdown('```Mermaid\nflowchart LR\n```')).toContain('md-mermaid');
-  for (const kind of ['steps', 'options', 'bars', 'stats']) expect(pendingDrawing(`Plan:\n\`\`\`${kind}\n* One | first`)).toEqual({ text: 'Plan:', drawing: true });
+  // Native blocks draw in rich rendering only; elsewhere (reasoning, plain prose) they stay code as they stream.
+  for (const kind of ['steps', 'options', 'bars', 'stats']) {
+    const draft = `Plan:\n\`\`\`${kind}\n* One | first`;
+    expect(pendingDrawing(draft, true)).toEqual({ text: 'Plan:', drawing: true });
+    expect(pendingDrawing(draft)).toEqual({ text: draft, drawing: false });
+  }
+  const native = 'Plan:\n```bars\nA | 2 s\n';
+  const rich = new ParagraphScan();
+  rich.blocks(native, true);
+  expect(rich.drafting(native)).toEqual({ text: native.trimEnd(), drawing: false });
+  // The completed lines are read again when the rendering turns rich, and back.
+  expect(rich.drafting(native, true)).toEqual({ text: 'Plan:', drawing: true });
+  expect(rich.drafting(native)).toEqual({ text: native.trimEnd(), drawing: false });
   // A quote is drawn as a document of its own, so a view opened in it is held back from its first line.
   expect(pendingDrawing('Look:\n> Here:\n> ```view\n> <svg')).toEqual({ text: 'Look:\n> Here:', drawing: true });
   expect(renderMarkdown('> ```view\n> <p>Hi</p>\n> ```')).toContain('md-view');

@@ -40,8 +40,10 @@ The engine only marks: `md-mermaid` with the source in `data-source`,
 name in `data-kind` and its lines in `data-source`.
 The `richMarkdown` action (`lib/rich-markdown.ts`) watches the nodes that show
 Markdown and hands each marked element to `lib/rich-markdown-draw.ts` as it
-enters the page. Every drawing is cached by source, so a remounted message is
-drawn again at once.
+enters the page. Mermaid diagrams and formulas are cached by source, so a
+remounted message is drawn again at once. A view loads its page again, at the
+height it last had. Native blocks are not cached: they are a few DOM nodes,
+rebuilt from their lines each time their message mounts.
 
 ## Loading
 

@@ -143,7 +143,7 @@
   const drafting = $derived.by(() => {
     void blocks;
     if (!live) return { text: '', drawing: false };
-    const draft = scan.drafting(answer);
+    const draft = scan.drafting(answer, rich);
     // A partial page link waits until its view can replace it.
     return views?.length && !draft.drawing && /^ {0,3}!\[[^\n]*$/.test(draft.text) ? { text: '', drawing: false } : draft;
   });

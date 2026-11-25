@@ -2,9 +2,10 @@
  * The four blocks chat draws from a few plain lines, with no page and no
  * round trip: ```steps, ```options, ```bars and ```stats (`lib/markdown.ts`
  * marks them `md-native`). One grammar for all four: a line is an item, blank
- * lines are skipped, `|` splits its fields (`\|` is a literal pipe) and a
- * leading `* ` highlights it. A block with no item, more than `MAX_ITEMS`, a
- * field too many or a bar it cannot measure is not drawn: it stays code.
+ * lines are skipped, `|` splits its fields (`\|` is a literal pipe, `\\` a
+ * literal backslash) and a leading `* ` highlights it. A block with no item,
+ * more than `MAX_ITEMS`, a field too many or a bar it cannot measure is not
+ * drawn: it stays code.
  *
  * Structure is built with DOM calls; a field's text goes through the escaped
  * inline renderer (`markdown-inline.ts`, no HTML, no `javascript:` link).
@@ -56,13 +57,18 @@ export function parseNative(kind: NativeKind, source: string): NativeItem[] | nu
   return items;
 }
 
-/** A line's fields, trimmed: a `\|` stays a pipe inside its field. */
+/**
+ * A line's fields, trimmed. A backslash escapes the next character, so `\\|`
+ * is a pipe in its field and `\\\\|` a backslash before a separator; the
+ * escapes other than the pipe stay for the inline renderer to read.
+ */
 function split(line: string): string[] {
   const fields: string[] = [];
   let field = '';
   for (let index = 0; index < line.length; index++) {
     const char = line[index]!;
-    if (char === '\\' && line[index + 1] === '|') { field += '|'; index++; continue; }
+    const next = line[index + 1];
+    if (char === '\\' && next !== undefined) { field += next === '|' ? '|' : char + next; index++; continue; }
     if (char === '|') { fields.push(field.trim()); field = ''; continue; }
     field += char;
   }
@@ -71,27 +77,33 @@ function split(line: string): string[] {
 }
 
 /** Units that compare across rows: each family's scale to its base. Any other unit must be the same on every row. */
-const UNITS: Record<string, [family: string, scale: number]> = {
-  ns: ['time', 1e-9], us: ['time', 1e-6], 'µs': ['time', 1e-6], ms: ['time', 1e-3], s: ['time', 1], sec: ['time', 1], min: ['time', 60], h: ['time', 3600],
-  b: ['bytes', 1], kb: ['bytes', 1e3], mb: ['bytes', 1e6], gb: ['bytes', 1e9], tb: ['bytes', 1e12],
-  kib: ['bytes', 1024], mib: ['bytes', 1024 ** 2], gib: ['bytes', 1024 ** 3], tib: ['bytes', 1024 ** 4],
-  '': ['count', 1], k: ['count', 1e3], m: ['count', 1e6], bn: ['count', 1e9],
-  '%': ['percent', 1]
-};
-const VALUE = /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?|\.\d+)\s*([^\d\s].{0,15})?$/u;
+const UNITS = new Map<string, [family: string, scale: number]>([
+  ['ns', ['time', 1e-9]], ['us', ['time', 1e-6]], ['µs', ['time', 1e-6]], ['ms', ['time', 1e-3]], ['s', ['time', 1]], ['sec', ['time', 1]], ['min', ['time', 60]], ['h', ['time', 3600]],
+  ['b', ['bytes', 1]], ['kb', ['bytes', 1e3]], ['mb', ['bytes', 1e6]], ['gb', ['bytes', 1e9]], ['tb', ['bytes', 1e12]],
+  ['kib', ['bytes', 1024]], ['mib', ['bytes', 1024 ** 2]], ['gib', ['bytes', 1024 ** 3]], ['tib', ['bytes', 1024 ** 4]],
+  ['', ['count', 1]], ['k', ['count', 1e3]], ['m', ['count', 1e6]], ['bn', ['count', 1e9]],
+  ['%', ['percent', 1]]
+]);
+/**
+ * A number, then an optional unit that starts with a letter, `%` or `°`. The
+ * number is grouped by thousands (`1,250`, `12,500.5`), plain (`42`, `4.2`,
+ * `.5`) or a decimal comma that cannot read as a group (`4,2`, `4,25`); a
+ * comma before three digits groups thousands, so `1234,567` matches nothing.
+ */
+const VALUE = /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+,(?:\d{1,2}|\d{4,})|\d+(?:\.\d+)?|\.\d+)\s*([\p{L}%°][^\s\d]*(?:[\s/][^\s\d]+)?)?$/u;
 
-/** A value as a number in its family's base unit, or null when it is not a non-negative measure. */
+/** A value as a number in its family's base unit, or null when it is not a finite, non-negative measure. */
 export function readValue(text: string): { family: string; amount: number } | null {
   const match = VALUE.exec(text.trim());
   if (!match) return null;
-  // `1,250` groups thousands; `4,2` is a decimal comma.
-  const digits = /,\d{3}(?:\D|$)/.test(match[1]!) ? match[1]!.replaceAll(',', '') : match[1]!.replace(',', '.');
-  const amount = Number(digits);
-  if (!Number.isFinite(amount)) return null;
-  const unit = (match[2] ?? '').trim();
+  const number = match[1]!;
+  const digits = /,\d{3}(?:\D|$)/.test(number) ? number.replaceAll(',', '') : number.replace(',', '.');
+  const unit = match[2] ?? '';
+  if (unit.length > 16) return null;
   // Case does not matter: `M` and `m` are a million, so time spells out `min`.
-  const known = UNITS[unit.toLowerCase()];
-  return known ? { family: known[0], amount: amount * known[1] } : { family: `unit:${unit}`, amount };
+  const [family, scale] = UNITS.get(unit.toLowerCase()) ?? [`unit:${unit}`, 1];
+  const amount = Number(digits) * scale;
+  return Number.isFinite(amount) ? { family, amount } : null;
 }
 
 /** Sets each bar's share: against 100 for percentages up to 100, else against the longest bar. False when rows do not compare. */
@@ -102,6 +114,7 @@ function measure(items: NativeItem[]): boolean {
   if (values.some(value => value!.family !== family)) return false;
   const longest = Math.max(...values.map(value => value!.amount));
   const scale = family === 'percent' && longest <= 100 ? 100 : longest;
+  if (!Number.isFinite(scale)) return false;
   items.forEach((item, index) => { item.share = scale > 0 ? values[index]!.amount / scale : 0; });
   return true;
 }
@@ -111,6 +124,8 @@ export function drawNative(kind: NativeKind, items: NativeItem[]): HTMLElement {
   const list = document.createElement(kind === 'steps' ? 'ol' : kind === 'stats' ? 'dl' : 'ul');
   list.className = `md-${kind}`;
   if (items.some(item => item.accent)) list.classList.add('md-has-accent');
+  // Every bar's value column is as wide as the longest value, so the tracks line up without a subgrid.
+  if (kind === 'bars') list.style.setProperty('--md-bar-value', `${Math.max(...items.map(item => item.value?.length ?? 0))}ch`);
   for (const [index, item] of items.entries()) {
     const row = document.createElement(kind === 'stats' ? 'div' : 'li');
     row.className = `md-${kind.slice(0, -1)}`;
@@ -124,7 +139,10 @@ export function drawNative(kind: NativeKind, items: NativeItem[]): HTMLElement {
     else if (kind === 'bars') {
       const track = part('span', 'md-bar-track', '');
       const fill = part('span', 'md-bar-fill', '');
-      fill.style.setProperty('--share', `${Math.round((item.share ?? 0) * 1000) / 10}%`);
+      const share = Math.round((item.share ?? 0) * 1000) / 10;
+      fill.style.setProperty('--share', `${share}%`);
+      // A value too small to see keeps a sliver; a zero stays an empty track.
+      if (!item.share) fill.classList.add('md-bar-zero');
       track.append(fill);
       row.append(part('span', 'md-bar-label', item.title), track, part('span', 'md-bar-value', item.value ?? '', true));
       if (item.detail) row.append(part('span', 'md-bar-note', item.detail));

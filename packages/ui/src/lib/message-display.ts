@@ -134,17 +134,33 @@ export class ParagraphScan {
   #done: string[] = [];
   #tail = '';
   #result: string[] | null = null;
-  #drawing = new DrawingScan();
+  #drawing = new DrawingScan(false);
   #drawAt = -1;
+  #rich = false;
 
   /** The unfinished paragraph, for disclosures that show live text without parsing it. */
   pending(text: string): string { return blockText(text.slice(this.#start)); }
 
-  /** Reuses the completed-line grammar, speculating only on the unfinished line. */
-  drafting(text: string): { text: string; drawing: boolean } {
+  /**
+   * Reuses the completed-line grammar, speculating only on the unfinished
+   * line. `rich` is the rendering's (`renderMarkdown`): without it the native
+   * blocks stay code, so they hold nothing back.
+   */
+  drafting(text: string, rich = false): { text: string; drawing: boolean } {
+    if (rich !== this.#rich) this.#rescan(text, rich);
     const at = this.#drawAt >= 0 ? this.#drawAt : this.#drawing.line(text.slice(this.#read), false) ? this.#read : -1;
     return at < 0 ? { text: this.pending(text), drawing: false }
       : { text: blockText(text.slice(this.#start, at)).replace(/\r\n/g, '\n'), drawing: true };
+  }
+
+  /** Reads the complete lines of the unfinished paragraph again under the other grammar. */
+  #rescan(text: string, rich: boolean): void {
+    this.#rich = rich;
+    this.#drawing = new DrawingScan(rich);
+    this.#drawAt = -1;
+    for (let offset = this.#start, end = text.indexOf('\n', offset); end !== -1 && end < this.#read; offset = end + 1, end = text.indexOf('\n', offset)) {
+      if (this.#drawing.line(text.slice(offset, end))) { this.#drawAt = offset; return; }
+    }
   }
 
   /** An epoch is supplied only by a writer that records appends and rotates it on replacement. */
@@ -157,7 +173,7 @@ export class ParagraphScan {
       this.#fences.reset();
       this.#done = [];
       this.#result = null;
-      this.#drawing = new DrawingScan();
+      this.#drawing = new DrawingScan(this.#rich);
       this.#drawAt = -1;
     }
     this.#previous = text;
@@ -173,7 +189,7 @@ export class ParagraphScan {
         const block = blockText(text.slice(this.#start, offset));
         if (block) { this.#done.push(block); grew = true; }
         this.#start = offset;
-        this.#drawing = new DrawingScan();
+        this.#drawing = new DrawingScan(this.#rich);
         this.#drawAt = -1;
       }
     }
@@ -187,8 +203,10 @@ export class ParagraphScan {
   }
 }
 
-/** The fences `lib/rich-markdown.ts` draws, or a formula on lines of its own (`lib/markdown.ts`). */
-const DRAWN = new Set(['mermaid', 'math', 'view', 'steps', 'options', 'bars', 'stats']);
+/** The fences `lib/rich-markdown.ts` draws, or a formula on lines of its own (`lib/markdown.ts`), in any rendering. */
+const DRAWN = new Set(['mermaid', 'math', 'view']);
+/** The fences it draws only in rich rendering: `lib/native-blocks.ts`. */
+const DRAWN_RICH = new Set(['steps', 'options', 'bars', 'stats']);
 const DISPLAY_MATH = /^(?:\$\$|\\\[)/;
 
 /**
@@ -197,9 +215,9 @@ const DISPLAY_MATH = /^(?:\$\$|\\\[)/;
  * written of it would show as source, then jump to a drawing, so a placeholder
  * stands there (`drawing`) until its paragraph is complete.
  */
-export function pendingDrawing(tail: string): { text: string; drawing: boolean } {
+export function pendingDrawing(tail: string, rich = false): { text: string; drawing: boolean } {
   const lines = tail.split(/\r?\n/);
-  const at = drawingLine(lines);
+  const at = drawingLine(lines, rich);
   return at < 0 ? { text: tail, drawing: false } : { text: lines.slice(0, at).join('\n').trimEnd(), drawing: true };
 }
 
@@ -209,8 +227,8 @@ export function pendingDrawing(tail: string): { text: string; drawing: boolean }
  * document of its own once its marks are off, so what is held back is what
  * it draws.
  */
-function drawingLine(lines: string[]): number {
-  const scan = new DrawingScan();
+function drawingLine(lines: string[], rich: boolean): number {
+  const scan = new DrawingScan(rich);
   for (let index = 0; index < lines.length; index++) {
     if (scan.line(lines[index]!)) return index;
   }
@@ -221,6 +239,9 @@ function drawingLine(lines: string[]): number {
 class DrawingScan {
   #fences = new FenceScan();
   #quote: DrawingScan | null = null;
+  readonly #rich: boolean;
+
+  constructor(rich: boolean) { this.#rich = rich; }
 
   line(line: string, complete = true): boolean {
     // pendingDrawing splits CRLF before descending through quote documents.
@@ -232,12 +253,13 @@ class DrawingScan {
     const fence = openFence(line);
     if (fence) {
       if (complete) { this.#fences.line(line); this.#quote = null; }
-      return DRAWN.has(fenceLanguage(fence).toLowerCase());
+      const kind = fenceLanguage(fence).toLowerCase();
+      return DRAWN.has(kind) || (this.#rich && DRAWN_RICH.has(kind));
     }
     if (DISPLAY_MATH.test(line.trim())) return true;
     const quote = QUOTE.exec(line);
     if (!quote) { if (complete) this.#quote = null; return false; }
-    const inner = this.#quote ?? new DrawingScan();
+    const inner = this.#quote ?? new DrawingScan(this.#rich);
     if (complete) this.#quote = inner;
     return inner.line(quote[1]!, complete);
   }
