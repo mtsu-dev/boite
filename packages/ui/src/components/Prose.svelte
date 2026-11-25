@@ -286,6 +286,8 @@
   }
 
   .flow > .prose { max-width: min(100%, var(--prose)); }
+  /* A drawn block lays out to the width it is given, so its run takes the measure, not its text's width. */
+  .flow > .prose:has(:global(.md-native)) { align-self: stretch; }
 
   /* `pretty` keeps a paragraph from ending on one stranded word. */
   .prose :global(p) {

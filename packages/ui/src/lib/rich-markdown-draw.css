@@ -170,7 +170,7 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
 .md-bar-fill.md-bar-zero { min-width: 0; }
 .md-has-accent > .md-bar:not(.md-accent) .md-bar-fill { background: color-mix(in oklch, var(--color-muted-foreground) 40%, transparent); }
 .md-bar.md-accent > .md-bar-label { font-weight: 600; }
-.md-bar-value { color: var(--color-foreground); font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; min-width: var(--md-bar-value, auto); }
+.md-bar-value { color: var(--color-foreground); font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; min-width: var(--md-bar-value, auto); max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }
 .md-bar-note { grid-column: 2 / -1; color: var(--color-muted-foreground); font-size: var(--text-xs); }
 
 .md-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }

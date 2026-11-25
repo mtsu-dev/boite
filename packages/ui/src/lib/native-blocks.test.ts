@@ -45,6 +45,18 @@ test('a value reads only when the whole field is a number and an optional unit',
   expect(readValue(`1${'0'.repeat(300)} TiB`)).toBeNull();
   expect(parseNative('bars', `A | 1${'0'.repeat(300)} TiB\nB | 1 TiB`)).toBeNull();
   expect(parseNative('bars', 'A | 0 ms\nB | 0 s')?.map(item => item.share)).toEqual([0, 0]);
+  // A long field that is no value is refused in linear time, not after backtracking over it.
+  const started = performance.now();
+  // The unit pattern this replaced took 330 ms on the first one (2026-11-25).
+  for (const text of [`1 m${'/'.repeat(20000)}1`, `1 m${'/'.repeat(5000)}!`, `${'9'.repeat(20000)}!`, `1 a${' a'.repeat(20000)}1`]) expect(readValue(text)).toBeNull();
+  expect(performance.now() - started).toBeLessThan(50);
+});
+
+test('a long value is drawn at most 14 characters wide, whole in its tooltip', () => {
+  const long = '1'.repeat(120);
+  const bars = drawNative('bars', parseNative('bars', `A | ${long}\nB | 2`)!);
+  expect(bars.style.getPropertyValue('--md-bar-value')).toBe('14ch');
+  expect([...bars.querySelectorAll<HTMLElement>('.md-bar-value')].map(value => value.title)).toEqual([long, '']);
 });
 
 test('a backslash escapes the next character, so only an odd run of them keeps a pipe in its field', () => {

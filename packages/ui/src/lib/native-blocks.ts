@@ -85,12 +85,16 @@ const UNITS = new Map<string, [family: string, scale: number]>([
   ['%', ['percent', 1]]
 ]);
 /**
- * A number, then an optional unit that starts with a letter, `%` or `°`. The
- * number is grouped by thousands (`1,250`, `12,500.5`), plain (`42`, `4.2`,
- * `.5`) or a decimal comma that cannot read as a group (`4,2`, `4,25`); a
- * comma before three digits groups thousands, so `1234,567` matches nothing.
+ * A number, then what follows it. The number is grouped by thousands
+ * (`1,250`, `12,500.5`), plain (`42`, `4.2`, `.5`) or a decimal comma that
+ * cannot read as a group (`4,2`, `4,25`); a comma before three digits groups
+ * thousands, so `1234,567` matches nothing. The rest is read apart (`UNIT`),
+ * after its length: no pattern here can backtrack over a long field.
  */
-const VALUE = /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+,(?:\d{1,2}|\d{4,})|\d+(?:\.\d+)?|\.\d+)\s*([\p{L}%°][^\s\d]*(?:[\s/][^\s\d]+)?)?$/u;
+const VALUE = /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+,(?:\d{1,2}|\d{4,})|\d+(?:\.\d+)?|\.\d+)\s*([^\d,.].*)?$/u;
+const UNIT_LENGTH = 16;
+/** A unit starts with a letter, `%` or `°`, and may have one `/` or space part (`req/s`). Its classes never overlap. */
+const UNIT = /^[\p{L}%°][^\s\d/]*(?:[\s/][^\s\d/]+)?$/u;
 
 /** A value as a number in its family's base unit, or null when it is not a finite, non-negative measure. */
 export function readValue(text: string): { family: string; amount: number } | null {
@@ -99,7 +103,7 @@ export function readValue(text: string): { family: string; amount: number } | nu
   const number = match[1]!;
   const digits = /,\d{3}(?:\D|$)/.test(number) ? number.replaceAll(',', '') : number.replace(',', '.');
   const unit = match[2] ?? '';
-  if (unit.length > 16) return null;
+  if (unit.length > UNIT_LENGTH || (unit && !UNIT.test(unit))) return null;
   // Case does not matter: `M` and `m` are a million, so time spells out `min`.
   const [family, scale] = UNITS.get(unit.toLowerCase()) ?? [`unit:${unit}`, 1];
   const amount = Number(digits) * scale;
@@ -119,13 +123,16 @@ function measure(items: NativeItem[]): boolean {
   return true;
 }
 
+/** The widest a bar's value is drawn, in characters, so its track keeps the row. */
+const VALUE_CH = 14;
+
 /** The drawing of a block's items, made of elements and escaped inline text only. */
 export function drawNative(kind: NativeKind, items: NativeItem[]): HTMLElement {
   const list = document.createElement(kind === 'steps' ? 'ol' : kind === 'stats' ? 'dl' : 'ul');
   list.className = `md-${kind}`;
   if (items.some(item => item.accent)) list.classList.add('md-has-accent');
   // Every bar's value column is as wide as the longest value, so the tracks line up without a subgrid.
-  if (kind === 'bars') list.style.setProperty('--md-bar-value', `${Math.max(...items.map(item => item.value?.length ?? 0))}ch`);
+  if (kind === 'bars') list.style.setProperty('--md-bar-value', `${Math.min(VALUE_CH, Math.max(...items.map(item => item.value?.length ?? 0)))}ch`);
   for (const [index, item] of items.entries()) {
     const row = document.createElement(kind === 'stats' ? 'div' : 'li');
     row.className = `md-${kind.slice(0, -1)}`;
@@ -144,7 +151,10 @@ export function drawNative(kind: NativeKind, items: NativeItem[]): HTMLElement {
       // A value too small to see keeps a sliver; a zero stays an empty track.
       if (!item.share) fill.classList.add('md-bar-zero');
       track.append(fill);
-      row.append(part('span', 'md-bar-label', item.title), track, part('span', 'md-bar-value', item.value ?? '', true));
+      const value = part('span', 'md-bar-value', item.value ?? '', true);
+      // The value column stops at `VALUE_CH`, cut with an ellipsis; the whole value stays in its tooltip.
+      if ((item.value?.length ?? 0) > VALUE_CH) value.title = item.value!;
+      row.append(part('span', 'md-bar-label', item.title), track, value);
       if (item.detail) row.append(part('span', 'md-bar-note', item.detail));
     } else {
       row.append(part('dt', 'md-stat-label', item.title), part('dd', 'md-stat-value', item.value ?? ''));

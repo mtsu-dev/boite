@@ -157,8 +157,10 @@ value, a bar it cannot read or units that do not compare, the block is not
 drawn: it stays code with its copy button and no error line, since a
 misleading chart is worse than none. A drawn block has the bar of a diagram,
 Copy and a switch between Block and Code; a copied selection gives back its
-fence. Layout follows the block's own width through a container query, so a
-phone's column and a narrow panel get the one-column form.
+fence. A bubble or a run of text that holds a block takes the column's width.
+Options and stats are cards that wrap on their own (an auto-fit grid); under
+720px a bar's track goes below its label and value, and a value is drawn at
+most 14 characters wide, cut with an ellipsis, its whole text in a tooltip.
 
 ## What the agent is told
 
