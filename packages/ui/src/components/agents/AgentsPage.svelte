@@ -166,10 +166,17 @@
   let tried = false;
   /** The default agent could not be opened: the card offers a retry instead of loading. */
   let openFailed = $state(false);
+  /** Monotonic token for the active `beginOpen` so a cancelled or superseded call never clears a newer open. */
+  let openToken = 0;
+  function clearOpening() {
+    openToken += 1;
+    openingAgentId = null;
+  }
   function beginOpen(id: string): Promise<string | null> {
+    const token = ++openToken;
     openingAgentId = id;
     return openAgent(store, id).finally(() => {
-      if (openingAgentId === id) openingAgentId = null;
+      if (openToken === token) openingAgentId = null;
     });
   }
   // A link from elsewhere (a thread an agent runs, a settings card) names the agent to open.
@@ -182,7 +189,7 @@
       tried = true;
       focus = null;
       listShown = false;
-      if (target.agentId === agent?.id && thread && (store.connection !== 'ready' || store.subscribedThreadId === thread.id)) { openingAgentId = null; pane = target.pane ?? null; return; }
+      if (target.agentId === agent?.id && thread && (store.connection !== 'ready' || store.subscribedThreadId === thread.id)) { clearOpening(); pane = target.pane ?? null; return; }
       wanted = target.pane ? { agentId: target.agentId, pane: target.pane } : null;
       void beginOpen(target.agentId);
     });
@@ -201,7 +208,8 @@
     openFailed = false;
     const last = lastOpenedAgent(store);
     const chosen = rows.some(r => r.profile.id === last) ? last! : rows[0]!.profile.id;
-    void beginOpen(chosen).then(opened => { if (!opened) openFailed = true; });
+    const token = openToken + 1;
+    void beginOpen(chosen).then(opened => { if (!opened && openToken === token) openFailed = true; });
   }
   // On a phone the open conversation hides the list; the root carries it as a class, as `.app:has(...)` would restyle every node.
   $effect(() => {
@@ -231,7 +239,7 @@
     const target = machine.store;
     if (target !== store) { workspace.showAgents(target, agentId, next); return; }
     focus = null; listShown = false;
-    if (agentId === agent?.id && thread && (store.connection !== 'ready' || store.subscribedThreadId === thread.id)) { openingAgentId = null; pane = next ?? null; return; }
+    if (agentId === agent?.id && thread && (store.connection !== 'ready' || store.subscribedThreadId === thread.id)) { clearOpening(); pane = next ?? null; return; }
     pane = null;
     wanted = next ? { agentId, pane: next } : null;
     void beginOpen(agentId);
@@ -244,13 +252,13 @@
   /** A team's chat on this page's machine, in place of a form or a pane; `again` selects it even when it is open. */
   function showTeamChat(threadId: string, again = false) {
     tried = true;
-    openingAgentId = null;
+    clearOpening();
     focus = null; pane = null; listShown = false;
     if (again || teamThread?.id !== threadId) void workspace.select(store, threadId);
   }
   /** One step out: a form, then the conversation, then the list. */
   function back() {
-    openingAgentId = null;
+    clearOpening();
     wanted = null;
     if (focus) focus = null;
     else {

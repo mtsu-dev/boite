@@ -252,10 +252,10 @@ test('on a phone, Back during a pending mochi open cancels it so the late respon
     await view.refresh();
     const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
     const rawCall = client.call.bind(client);
-    let releaseOpen!: () => void;
+    const openResolvers: (() => void)[] = [];
     vi.spyOn(client, 'call').mockImplementation(async (method: string, params?: unknown) => {
       if (method === 'agents.open') {
-        await new Promise<void>(resolve => { releaseOpen = resolve; });
+        await new Promise<void>(resolve => { openResolvers.push(resolve); });
       }
       return rawCall(method as never, params as never);
     });
@@ -278,11 +278,26 @@ test('on a phone, Back during a pending mochi open cancels it so the late respon
     expect(document.documentElement.classList.contains('agents-detail-open')).toBe(false);
 
     // Resolving the stale agents.open must not reopen detail or land the bot thread.
-    releaseOpen();
+    openResolvers.shift()!();
     await new Promise(resolve => setTimeout(resolve, 40));
     flushSync();
     expect(document.documentElement.classList.contains('agents-detail-open')).toBe(false);
     expect(store.openThread?.agentSessionId).toBeFalsy();
+
+    // Tap, Back, then immediately retap the same mochi: the cancelled first open settling must not drop the second open's detail/skeleton.
+    row.click();
+    flushSync();
+    document.querySelector<HTMLButtonElement>('.agent-mobile-back')!.click();
+    flushSync();
+    row.click();
+    flushSync();
+    expect(document.documentElement.classList.contains('agents-detail-open')).toBe(true);
+    openResolvers.shift()!();
+    await new Promise(resolve => setTimeout(resolve, 40));
+    flushSync();
+    expect(document.documentElement.classList.contains('agents-detail-open')).toBe(true);
+    openResolvers.shift()!();
+    await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
   } finally {
     if (page) unmount(page);
     window.matchMedia = origMatchMedia;
