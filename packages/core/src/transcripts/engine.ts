@@ -69,7 +69,7 @@ interface ThreadInfo {
 
 type Step =
   | { kind: 'compact-live'; threadId: string; sessions: RawSession[]; bytes: number }
-  | { kind: 'compact-deleted'; rootId: string; deletedAt: number; threads: { id: string; sessions: RawSession[] }[]; bytes: number; keepImages: boolean }
+  | { kind: 'compact-deleted'; rootId: string; deletedAt: number; threads: { id: string; sessions: RawSession[] }[]; bytes: number; keepImages: boolean; images: { count: number; bytes: number } }
   | { kind: 'erase-deleted'; rootId: string; deletedAt: number; threadIds: string[]; sessions: RawSession[]; bytes: number }
   | { kind: 'erase-archived'; threadId: string; bytes: number }
   | { kind: 'leftover'; raw: RawSession; thread: ArchivedThread; erase: boolean; keepImages: boolean; bytes: number }
@@ -123,10 +123,11 @@ export class Transcripts {
     const timer = setInterval(pass, everyMs);
     startup.unref();
     timer.unref();
-    let mode = JSON.stringify(this.#core.settings.get().transcriptStorage);
+    // The delays, not the mode alone: the delay a deleted conversation is kept for is part of them.
+    let mode = JSON.stringify(this.policy());
     const off = this.#core.bus.onCommitted(name => {
       if (name !== 'settings.updated') return;
-      const next = JSON.stringify(this.#core.settings.get().transcriptStorage);
+      const next = JSON.stringify(this.policy());
       if (next === mode) return;
       mode = next;
       pass();
@@ -248,8 +249,12 @@ export class Transcripts {
         const archived = members.reduce((sum, thread) => { const held = this.store.threadBytes(thread.id); return sum + held.records + held.images + held.others; }, 0);
         steps.push({ kind: 'erase-deleted', rootId, deletedAt, threadIds: members.map(thread => thread.id), sessions, bytes: bytes + archived });
       } else if (due(policy.deletedCompactDays, deletedAt, now)) {
+        const keepImages = !due(policy.imagesEraseDays, deletedAt, now);
+        // The images an earlier pass stored for it leave with this one when their delay is up.
+        const images = { count: 0, bytes: 0 };
+        if (!keepImages) for (const thread of members) { const held = this.store.threadBytes(thread.id); images.count += held.imageCount; images.bytes += held.images; }
         steps.push({
-          kind: 'compact-deleted', rootId, deletedAt, bytes, keepImages: !due(policy.imagesEraseDays, deletedAt, now),
+          kind: 'compact-deleted', rootId, deletedAt, bytes, keepImages, images,
           threads: members.map(thread => ({ id: thread.id, sessions: deleted.get(thread.id) ?? [] })),
         });
       }
@@ -265,7 +270,7 @@ export class Transcripts {
     // An image several conversations hold goes once the last of them lets go of it: counted here when this plan
     // takes every hold, since no step alone accounts for it.
     const erased = steps.flatMap(step => step.kind === 'erase-archived' ? [step.threadId] : step.kind === 'erase-deleted' ? step.threadIds : []);
-    const faded = steps.flatMap(step => step.kind === 'images' ? [step.threadId] : []);
+    const faded = steps.flatMap(step => step.kind === 'images' ? [step.threadId] : step.kind === 'compact-deleted' && !step.keepImages ? step.threads.map(thread => thread.id) : []);
     return { steps, rawBytes, raws: [...raws.values()], unlinked, shared: this.store.sharedBlobs(erased, faded) };
   }
 
@@ -304,7 +309,7 @@ export class Transcripts {
     const images = { count: 0, bytes: 0 };
     for (const step of plan.steps) {
       if (step.kind === 'compact-live') { compact.threads += 1; compact.bytes += step.bytes; }
-      else if (step.kind === 'compact-deleted') { compact.threads += step.threads.length; compact.bytes += step.bytes; }
+      else if (step.kind === 'compact-deleted') { compact.threads += step.threads.length; compact.bytes += step.bytes; images.count += step.images.count; images.bytes += step.images.bytes; }
       else if (step.kind === 'erase-deleted') { erase.threads += step.threadIds.length; erase.bytes += step.bytes; }
       else if (step.kind === 'erase-archived') { erase.threads += 1; erase.bytes += step.bytes; }
       else if (step.kind === 'leftover') { (step.erase ? erase : compact).bytes += step.bytes; }
@@ -356,7 +361,8 @@ export class Transcripts {
         }) ?? 0);
       }
     });
-    return this.progress();
+    // The pass starts after this answer: the caller is told it runs, not what the pass before it left.
+    return this.#progress.running || this.#halted() ? this.progress() : { ...idle(), running: true };
   }
 
   #halted(): boolean { return this.#stopped || this.#core.stopping || this.#core.journal.isClosed(); }
@@ -458,12 +464,11 @@ export class Transcripts {
     this.#core.imports.removing.add(raw.id);
     try {
       // A mode applied while the files go stops the removal at the file it is on.
-      await removeSession(raw, () => this.#current() && !this.#halted());
+      return await removeSession(raw, () => this.#current() && !this.#halted());
     } finally {
       this.#core.imports.removing.delete(raw.id);
+      this.#scan = null;
     }
-    this.#scan = null;
-    return raw.bytes;
   }
 
   /** Removes the files of the sessions whose conversation just left the journal, and notes those that are gone. */
@@ -537,7 +542,7 @@ export class Transcripts {
       }
       // Checked here, with no await before the write: a mode applied meanwhile keeps the images.
       if (!this.#current()) return -added;
-      if (!step.keepImages) this.store.eraseImages(thread.id, now);
+      if (!step.keepImages) added -= this.store.eraseImages(thread.id, now).bytes;
     }
     if (this.#halted() || !this.#current()) return -added;
     // A session written while it was read is newer than its archive: the family stays for the next pass.

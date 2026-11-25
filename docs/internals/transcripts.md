@@ -76,8 +76,13 @@ Under `<data dir>/transcripts/`:
   archived or removed like the session they belonged to). It uses a rollback journal, and reads open it
   read-only until something is archived: a preview leaves no file beside it.
 
-A record is `{ "k": <kind>, "t": <time>, ... }`: `user`, `assistant`,
-`reasoning`, `call`, `result`, `usage`, `turn`, `system`, `context`, `other`.
+A record is `{ "k": <kind>, "t": <time when the source gives one>, ... }`.
+The kinds include `user`, `assistant`, `reasoning`, `call`, `result`, `usage`,
+`turn`, `system`, `context`, `summary`, `other` and `raw` (a line that is not
+JSON); a Claude session adds its own (`request`, `request-shape`, `queue`,
+`file-snapshot`, `cost`, `wire` and the titles, mode, agent name and tag it
+last set). Each source's compactor (`claude.ts`, `codex.ts`, `journal-source.ts`)
+holds the kinds it writes.
 A payload leaves a record for the blob store only when it is base64 from its
 first character to its last and decodes back to the same text; in a tool's
 input, only an image or document part or a data URL does.

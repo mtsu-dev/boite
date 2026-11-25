@@ -7,13 +7,15 @@ import { accessRefusal, TRANSCRIPT_PRESETS, transcriptPolicy } from '@boite/cont
 import type { CoreClient } from '../src/client.ts';
 import { claudeProjectFolder } from '../src/imports/claude.ts';
 import { capOutput, FAILED_OUTPUT_CAP, OUTPUT_CAP, sha256, type TranscriptRecord } from '../src/transcripts/records.ts';
-import { scanSessions } from '../src/transcripts/locate.ts';
+import { Transcripts } from '../src/transcripts/engine.ts';
+import { removeSession, scanSessions } from '../src/transcripts/locate.ts';
 import { blobPath, compactSession, readArchive } from '../src/transcripts/session.ts';
 import { TranscriptStore } from '../src/transcripts/store.ts';
 import { claudeSessionFixture, FIXTURE_SESSION_ID } from './fixtures/claude-session.ts';
 import { CODEX_FIXTURE_SESSION_ID, codexRolloutPath, codexSessionFixture } from './fixtures/codex-session.ts';
 import { startTestCore, testProject } from './harness.ts';
 import { rejection } from './settle.ts';
+import type { Core } from '../src/core.ts';
 import type { TestCore } from './harness.ts';
 
 const DAY = 86_400_000;
@@ -184,7 +186,7 @@ test('a Codex subagent is read with the session that spawned it, and a linked fo
   mkdirSync(outside, { recursive: true });
   writeFileSync(join(outside, `${parent}.jsonl`), claudeSessionFixture('/elsewhere', { sessionId: parent }));
   mkdirSync(join(scratch, 'claude'));
-  symlinkSync(join(scratch, 'outside'), join(scratch, 'claude', 'projects'));
+  symlinkSync(join(scratch, 'outside'), join(scratch, 'claude', 'projects'), 'junction');
   expect((await scanSessions(join(scratch, 'claude'), 'claude', true)).size).toBe(0);
 });
 
@@ -433,7 +435,8 @@ test('sessions no thread names are archived on request only, and never erased', 
   await harness.core.transcripts.run();
   expect(existsSync(stray)).toBe(true);
 
-  await client.call('transcripts.compactUnlinked', { days: 7 });
+  // The answer says the pass runs, though it starts after it.
+  expect((await client.call('transcripts.compactUnlinked', { days: 7 })).running).toBe(true);
   await harness.core.transcripts.run();
   expect(existsSync(stray)).toBe(false);
   expect(existsSync(file)).toBe(true);
@@ -509,6 +512,75 @@ test('a file the archive does not read stays in its folder, and a session writte
   for (const words of ['After the archive', 'One more thing']) {
     expect((await client.call('transcripts.read', { conversation: threadId, sessionId: last, query: words })).records).toHaveLength(1);
   }
+});
+
+test('a removal stopped midway answers the bytes that went, and a new deletion delay alone starts a pass', async () => {
+  const file = join(scratch, 'account', 'projects', 'folder', 'conv.jsonl');
+  const tool = join(dirname(file), 'conv', 'tool-results', 'out.txt');
+  mkdirSync(dirname(tool), { recursive: true });
+  writeFileSync(file, 'first\n');
+  writeFileSync(tool, 'second\n');
+  const [raw] = [...(await scanSessions(join(scratch, 'account'), 'claude', true)).values()];
+  let asked = 0;
+  // Stopped at the second file, and not resumed though the answer turns back to yes.
+  expect(await removeSession(raw!, () => asked++ !== 1)).toBe(6);
+  expect([existsSync(file), existsSync(tool), raw!.bytes, asked]).toEqual([false, true, 13, 2]);
+
+  let changed: (name: string) => void = () => undefined;
+  let days = 7;
+  const engine = new Transcripts({
+    dataDir: scratch,
+    settings: { get: () => ({ transcriptStorage: { mode: 'custom' }, threadDeletionRetentionDays: days }) },
+    bus: { onCommitted: (handler: typeof changed) => { changed = handler; return () => undefined; } },
+  } as unknown as Core);
+  let passes = 0;
+  engine.run = async () => { passes += 1; };
+  const stop = engine.start();
+  changed('settings.updated');
+  expect(passes).toBe(0);
+  days = 21;
+  changed('settings.updated');
+  expect(passes).toBe(1);
+  await stop();
+});
+
+test('the images a deleted conversation had stored count in the preview and in what its pass freed', async () => {
+  const delays = { idleCompactDays: null, deletedCompactDays: 0, deletedEraseDays: null, imagesEraseDays: 0 };
+  await core();
+  const engine = harness.core.transcripts;
+  const project = await testProject(harness, client);
+  const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+  const ids: string[] = [];
+  for (const title of ['First', 'Second']) {
+    const thread = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title });
+    await client.call('threads.remove', { threadId: thread.id });
+    engine.store.putThread({ id: thread.id, title, projectPath: project.path, provider: 'echo', model: null, createdAt: Date.now(), updatedAt: Date.now(), deletedAt: Date.now() }, Date.now());
+    ids.push(thread.id);
+  }
+  // One image both hold, one the first holds alone.
+  const shared = { sha256: 'a'.repeat(64), bytes: 32, stored: 32, mime: 'image/png', ext: 'png' };
+  const alone = { sha256: 'b'.repeat(64), bytes: 16, stored: 16, mime: 'image/png', ext: 'png' };
+  engine.store.holdBlobs(ids[0]!, [shared, alone]);
+  engine.store.holdBlobs(ids[1]!, [shared]);
+  for (const blob of [shared, alone]) {
+    const path = blobPath(engine.store.blobsDir, blob.sha256, blob.ext);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, Buffer.alloc(blob.stored));
+  }
+  const before = engine.store.totalBytes();
+  const preview = await engine.preview(delays);
+  expect(preview.images).toEqual({ count: 2, bytes: 48 });
+  expect(preview.freedBytes).toBe(48);
+  // Applying the setting starts the pass; the run after it only waits for its end.
+  const ended: { freedBytes: number; lastError: string | null }[] = [];
+  const off = harness.core.bus.onAny((name, payload) => {
+    if (name === 'transcripts.progress' && !(payload as { running: boolean }).running) ended.push(payload as typeof ended[number]);
+  });
+  harness.core.settings.set({ threadDeletionRetentionDays: 0, transcriptStorage: { mode: 'custom', custom: delays } });
+  await engine.run();
+  off();
+  expect(ended[0]!.lastError).toBeNull();
+  expect(ended[0]!.freedBytes).toBe(before - engine.store.totalBytes());
 });
 
 test('a pass planned for Delete stops erasing once another mode is applied', async () => {
