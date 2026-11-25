@@ -337,6 +337,22 @@ export class Journal {
     return rows.length;
   }
 
+  /**
+   * Purges one deleted family whatever its age, keeping its usage: the archive
+   * holds its conversations by then (`transcripts/engine.ts`). Nothing goes
+   * unless `rootId` is still deleted since `deletedAt`: a family restored, or
+   * restored and deleted again, stays. `beforeDelete` reads their rows last.
+   */
+  purgeDeletedFamily(rootId: string, deletedAt: number, beforeDelete?: (threadIds: string[]) => void): string[] {
+    if (this.closed) return [];
+    const rows = this.db.query(`SELECT thread_id FROM thread_deletions WHERE root_id = ?1
+      AND EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = ?1 AND root_id = ?1 AND deleted_at = ?2)`).all(rootId, deletedAt) as { thread_id: string }[];
+    const ids = rows.map(row => row.thread_id);
+    if (ids.length > 0) beforeDelete?.(ids);
+    this.deleteThreads(ids, { keepUsage: true });
+    return ids;
+  }
+
   /** Erase conversation history and its dependent records in one transaction, before client notifications. */
   deleteThreads(threadIds: string[], options: { keepUsage?: boolean } = {}): void {
     if (threadIds.length === 0) return;

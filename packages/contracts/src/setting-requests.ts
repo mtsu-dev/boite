@@ -108,6 +108,7 @@ export const REQUESTABLE_SETTINGS = {
   autoGoals: { page: 'general', section: 'agent-replies', sensitive: false },
   threadDoneRetentionDays: { page: 'general', section: 'archived', sensitive: true },
   threadDeletionRetentionDays: { page: 'general', section: 'archived', sensitive: true },
+  transcriptStorage: { page: 'general', section: 'transcripts', sensitive: true },
   worktreeStorage: { page: 'general', section: 'worktrees', sensitive: true },
   focusGuard: { page: 'general', section: 'quiet', sensitive: true },
   muteAgents: { page: 'general', section: 'quiet', sensitive: true },

@@ -20,7 +20,8 @@
   import Menu from './Menu.svelte';
   import ProjectTile from './ProjectTile.svelte';
   import MachineIcon from './MachineIcon.svelte';
-  import { closeArchived, openArchived } from '../lib/archived-view.svelte';
+  import { openArchived } from '../lib/archived-view.svelte';
+  import { mochiLayout } from '../lib/mochi-layout.svelte';
 
   /**
    * The display menu over the thread list (DisplayOptions.svelte loads it on
@@ -92,7 +93,6 @@
   }
   function setView(view: 'projects' | 'recent'): void {
     if (workspace.view === view) return;
-    closeArchived();
     workspace.setView(view);
   }
   function setOrder(order: 'recent' | 'manual'): void {
@@ -108,11 +108,11 @@
     onclose(true);
     onaddproject?.();
   }
-  /** The archive takes the list's place (a page of its own on a phone), on the project Recent lists when one is picked. */
+  /** The archive opens in Settings, on the project Recent lists when one is picked, else on the machine the list shows. */
   function showArchived(): void {
     onclose();
-    if (selected && !projects) openArchived(selected.machine.store, selected.project.id);
-    else openArchived(owner);
+    if (selected && !projects) void openArchived(selected.machine.store, selected.project.id);
+    else void openArchived(machines.find(machine => machine.id === shownMachine)?.store ?? owner);
   }
 </script>
 
@@ -198,6 +198,10 @@
     {#if projects}
       {@render toggle('other', strings.sidebar.groupIdleRow, recentPreferences.groupOtherProjects, strings.settings.groupOtherProjectsHint,
         () => recentPreferences.setGroupOtherProjects(!recentPreferences.groupOtherProjects))}
+    {/if}
+    {#if !compact}
+      {@render toggle('mochi-layout', strings.sidebar.mochiLayoutRow, mochiLayout.on, strings.sidebar.mochiLayoutHint,
+        () => mochiLayout.toggle())}
     {/if}
   </section>
   {#if merged}

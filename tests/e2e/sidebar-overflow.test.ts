@@ -39,7 +39,9 @@ test('overflow fades the mochis at the hidden edges and scroll leaves the thread
   const server = await startUi(port);
   let page: BrowserPage | undefined;
   try {
-    page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&agents=1&working=20`, windowSize: { width: 1100, height: 520 } });
+    page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1100, height: 520 } });
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('boite.mochi-layout', '1');` });
+    await page.navigate(`http://127.0.0.1:${port}/?fake=1&agents=1&working=20`);
     const bots = `document.querySelector('[data-testid=app-rail] .bots')`;
     const threads = `document.querySelector('[data-testid=sidebar] .scroll')`;
     const header = `document.querySelector('[data-testid=sidebar] .views')`;

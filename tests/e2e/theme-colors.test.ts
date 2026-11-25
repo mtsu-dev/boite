@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { openSettings } from './lib/mobile.ts';
 import { startUi } from './lib/ui.ts';
 
 let server: { close(): Promise<void> };
@@ -12,8 +13,7 @@ async function capture(name: string) {
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }
 async function appearance() {
-  await page.waitFor(`document.querySelector('${id('nav-settings')}') || document.querySelector('${id('settings-tab-appearance')}')`);
-  if (await page.evaluate(`!!document.querySelector('${id('nav-settings')}')`)) await page.click(id('nav-settings'));
+  await openSettings(page);
   await page.waitFor(`document.querySelector('${id('settings-tab-appearance')}')`);
   await page.click(id('settings-tab-appearance'));
   await page.waitFor(`document.querySelector('${id('appearance-page')}')`);
