@@ -19,9 +19,11 @@ it starts working. The startup timer counts the current turn.
 Your message stays near the top while the reply fits below it. When the reply
 outgrows that space, the chat follows the latest text until you scroll up.
 Once the thread is done, its last reply ends on one quiet line, Worked for and
-the time. Point at the reply to see when it finished, the tokens it spent and
-its Copy, Retry and Fork buttons. Earlier replies show that line only when you
-point at them.
+the time. Point at the reply, or move the keyboard into it, to see when it
+finished, the tokens it spent and its buttons (Copy, and Retry or Fork where
+the reply allows them). Earlier replies show that line only when you point at
+them. On a phone the line shows its time and buttons, and the "i" at its end
+holds when it finished and the tokens.
 The conversation header names what it is waiting on and how long the wait has
 lasted when the start time is available. In the thread list, rows waiting on
 sub-agents, pull requests, monitors or background work show a pulsing icon and

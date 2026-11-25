@@ -33,7 +33,7 @@
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
+  import { lastLined, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
@@ -61,7 +61,7 @@
 
   /** A phone has no room left of the bubbles for the outline rail: it is not drawn there. */
   const narrow = new MediaQuery('(max-width: 720px)');
-  const reveal = new MessageReveal(() => messages, () => narrow.current);
+  const reveal = new MessageReveal(() => messages, () => narrow.current, () => shownTurns);
 
   /** `resting`: the turn a finished thread ends on (`lib/resting-turn.ts`), whose summary line is the thread's footer. */
   let { store, threadId, messages, resting = null }: { store: Store; threadId: string; messages: Message[]; resting?: string | null } = $props();
@@ -660,7 +660,7 @@
   });
 
   /** Only once the loaded window reaches the thread's end: newer history still unread is not its last word. */
-  let restingShown = $derived(resting !== null && store.messagesAfter === null && !store.loadingNewer ? resting : null);
+  let restingShown = $derived(resting !== null && store.messagesAfter === null && !store.loadingNewer ? lastLined(timeline, shaped.folds, shownTurns) : null);
   /** A line lands at the foot of a pinned list: the bottom takes it in, like a new message. */
   function followFoot(): void {
     const box = viewport;

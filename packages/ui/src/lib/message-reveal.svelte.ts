@@ -1,4 +1,4 @@
-import type { Message } from '@boite/contracts';
+import type { Message, Turn } from '@boite/contracts';
 
 /** What a tap on a control does to the row: one in the open row keeps it, any other only closes it. */
 const CONTROL = 'button, a, input, textarea, select, summary, label, [role="button"], [contenteditable="true"]';
@@ -14,12 +14,20 @@ export class MessageReveal {
   #messages: () => Message[];
   #phone: () => boolean;
   #lastPrompt = $derived.by(() => this.#messages().findLast((message) => message.role === 'user')?.id ?? null);
-  /** The turn of the last answer drawn, read from the messages: a queued or unanswered turn after it has none. */
-  #lastAnswer = $derived.by(() => this.#messages().findLast((message) => message.role === 'assistant')?.turnId ?? null);
+  #turns: () => readonly Pick<Turn, 'id' | 'execution'>[];
+  /**
+   * The turn of the last answer drawn, read from the messages: a queued or unanswered turn after it has none, and a
+   * cache ping's reply is never drawn (`quietKeepalives`).
+   */
+  #lastAnswer = $derived.by(() => {
+    const pings = new Set(this.#turns().filter((turn) => turn.execution?.operation === 'keepalive').map((turn) => turn.id));
+    return this.#messages().findLast((message) => message.role === 'assistant' && !pings.has(message.turnId))?.turnId ?? null;
+  });
 
-  constructor(messages: () => Message[], phone: () => boolean) {
+  constructor(messages: () => Message[], phone: () => boolean, turns: () => readonly Pick<Turn, 'id' | 'execution'>[] = () => []) {
     this.#messages = messages;
     this.#phone = phone;
+    this.#turns = turns;
     $effect(() => {
       if (this.revealed === null) return;
       const away = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest(`[data-reveal="${this.revealed}"]`)) this.revealed = null; };

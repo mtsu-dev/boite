@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, onTestFinished, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { flushSync, mount, unmount } from 'svelte';
-import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message, type MessagePart } from '@boite/contracts';
+import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message, type MessagePart, type Turn } from '@boite/contracts';
 import { strings } from '../lib/strings';
 import MessageList from './MessageList.svelte';
 import JumpLatest from './JumpLatest.svelte';
@@ -1763,6 +1763,32 @@ test('a prompt queued behind a finished turn keeps the buttons of the answer bef
 
   expect(document.querySelector('[data-mid="m-queued"]')?.closest('article')?.hasAttribute('data-latest')).toBe(true);
   expect(document.querySelector(`[data-mid="${answer.id}"]`)?.closest('article')?.hasAttribute('data-latest')).toBe(true);
+});
+
+// A cache ping's hidden "ok" was the phone's last answer: the real answer under it lost its line, footer included.
+test('a cache ping after the last answer leaves that answer\'s buttons and resting line on a phone', async ({ ready }) => {
+  window.localStorage.clear();
+  vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
+  onTestFinished(() => { vi.unstubAllGlobals(); });
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  const thread = live.openThread!;
+  const messages = thread.messages;
+  const answer = messages.findLast((message) => message.role === 'assistant')!;
+  const answered = thread.turns.find((turn) => turn.id === answer.turnId)!;
+  Object.assign(answered, { status: 'done', finishedAt: answered.finishedAt ?? answered.startedAt });
+  const at = Date.now();
+  thread.turns.push({ id: 'turn-ping', threadId: 't-long', status: 'done', queuedAt: at, startedAt: at, finishedAt: at + 1, usage: null, error: null, execution: { operation: 'keepalive' } as Turn['execution'] });
+  messages.push(
+    { id: 'm-ping', threadId: 't-long', turnId: 'turn-ping', role: 'system', parts: [{ type: 'text', text: 'Reply with the single word ok.', displayText: 'Prompt cache kept warm' }], state: 'complete', createdAt: at },
+    { id: 'm-ok', threadId: 't-long', turnId: 'turn-ping', role: 'assistant', parts: [{ type: 'text', text: 'ok' }], state: 'complete', createdAt: at + 1 });
+  stubLayout(messages.length * ESTIMATE);
+  running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages, resting: answered.id } });
+  await settle();
+
+  const row = document.querySelector(`[data-mid="${answer.id}"]`)?.closest('article');
+  expect(row?.hasAttribute('data-latest')).toBe(true);
+  expect(row?.querySelector('[data-testid=turn-summary]')?.classList.contains('resting')).toBe(true);
 });
 
 test('a row counts at the height it is drawn, fractions included, so rows measured above the reader move the view by what they weigh', async () => {

@@ -1,4 +1,4 @@
-import type { Message, MessagePart, MoveNotice, NewConversationNotice, ThreadLink, ThreadSummary } from '@boite/contracts';
+import type { Message, MessagePart, MoveNotice, NewConversationNotice, ThreadLink, ThreadSummary, Turn } from '@boite/contracts';
 import { QUOTE } from './markdown';
 import { FenceScan, fenceLanguage, openFence } from './fences';
 
@@ -254,6 +254,22 @@ export function movedBy(message: Message): MoveNotice | null {
 export function newConversationOf(message: Message): NewConversationNotice | null {
   if (message.role !== 'system') return null;
   for (const part of message.parts) if (part.type === 'text' && part.newConversation) return part.newConversation;
+  return null;
+}
+
+/**
+ * The done turn whose summary line ends `timeline`, past new-conversation markers, folded wakes (`folds`) and cache
+ * pings, which draw none; null when the last line drawn is not a done turn's. `lib/resting-turn.ts` says whether
+ * the thread rests at all.
+ */
+export function lastLined(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
+  for (let index = timeline.length - 1; index >= 0; index--) {
+    const message = timeline[index]!;
+    if (newConversationOf(message) || folds.has(message.id)) continue;
+    const turn = turns.find(current => current.id === message.turnId);
+    if (!turn || turn.execution?.operation === 'keepalive') continue;
+    return turn.status === 'done' ? turn.id : null;
+  }
   return null;
 }
 

@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
-import { proofPart, type Message } from '@boite/contracts';
-import { claudeKeywords, lastAnswer, promptSegments, sliceSegments, visibleAnswer, visibleUserText } from './message-display';
+import { proofPart, type Message, type Turn } from '@boite/contracts';
+import { claudeKeywords, lastAnswer, lastLined, promptSegments, sliceSegments, visibleAnswer, visibleUserText } from './message-display';
 
 test('the keywords count only for a Claude model run by Claude Code', () => {
   expect(claudeKeywords('claude-sdk', 'claude-opus-5-5')).toBe(true);
@@ -161,4 +161,16 @@ test('the last answer is the newest turn that said something, its text parts joi
   ];
   expect(lastAnswer(messages)).toBe('Answer one.\n\nAnd more. [BOITE_GOAL_COMPLETE]');
   expect(lastAnswer(messages.slice(0, 1))).toBe('');
+});
+
+test('the line a timeline ends on is the last done turn drawn with one, past markers, folded wakes and cache pings', () => {
+  const said = (id: string, turnId: string, extra: object = {}, role: Message['role'] = 'assistant') =>
+    ({ id, threadId: 't', turnId, role, state: 'complete', createdAt: 1, parts: [{ type: 'text', text: id, ...extra }] }) as Message;
+  const turn = (id: string, extra: Partial<Turn> = {}) => ({ id, status: 'done', execution: undefined, ...extra }) as Turn;
+  const turns = [turn('a'), turn('wake'), turn('ping', { execution: { operation: 'keepalive' } as Turn['execution'] })];
+  const timeline = [said('m-a', 'a'), said('m-wake', 'wake'), said('m-fresh', 'wake', { newConversation: { by: 'user' } }, 'system'), said('m-ping', 'ping')];
+  expect(lastLined(timeline, new Map([['m-wake', {}]]), turns)).toBe('a');
+  // Unfolded, the wake's own line ends the timeline; a turn that failed ends it with no resting line.
+  expect(lastLined(timeline, new Map(), turns)).toBe('wake');
+  expect(lastLined(timeline, new Map(), [turn('a'), turn('wake', { status: 'error' }), turns[2]!])).toBeNull();
 });

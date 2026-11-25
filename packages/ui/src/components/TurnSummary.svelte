@@ -232,10 +232,14 @@
   .summary.settled.pointed :global(.act) { opacity: 1; }
   @media (hover: none) { .summary.settled { opacity: 1; } }
   .summary.settled.marked, .summary.settled.resting { opacity: 1; }
-  /* The thread's last line keeps its time at rest; when it ended and what it spent come up in place with the pointer. */
+  /* The thread's last line keeps its time at rest. When it ended and what it spent stay in the flow, faded, after
+     everything else and before the buttons: a pointer or a focus anywhere in the answer brings them and the buttons
+     up in place, and nothing on the line moves. */
   @media (hover: hover) {
-    .summary.settled.resting .metric.meta { opacity: 0; transition: opacity var(--dur-2); }
-    :global(.message:hover) .summary.settled.resting .metric.meta, .summary.settled.resting.pointed .metric.meta, .summary.settled.resting:focus-within .metric.meta { opacity: 1; }
+    .summary.settled.resting .metric.meta { display: inline-flex; order: 1; opacity: 0; transition: opacity var(--dur-2); }
+    .summary.settled.resting .tail { order: 2; }
+    :global(.message:is(:hover, :focus-within)) .summary.settled.resting .metric.meta, .summary.settled.resting.pointed .metric.meta { opacity: 1; }
+    :global(.message:focus-within) .summary.settled.resting :global(.act) { opacity: 1; }
   }
   /* A line with nothing shown at rest takes no band of its own on a pointer
      device: it waits inside the gap to the next message, one row tall, so the
