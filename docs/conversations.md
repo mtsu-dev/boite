@@ -52,8 +52,12 @@ the conversation, to keep your text as typed, with no red underline.
 Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: on a desktop, switch between
 Projects and Recent under View in the Filter menu; on a phone, in the list's
-title. The two arrows at the start of the list's head go back and forward
-through the conversations and pages you opened, as a mouse's side buttons do.
+title. Under Display in the desktop Filter menu, Mochi layout turns on the left
+app rail with your mochis, teams and shortcuts along the window's edge; with it
+off, Activity, Contacts, Mochis, machines, updates, limits and Settings sit in
+the compact bar at the foot of the sidebar. The two arrows at the start of the
+list's head go back and forward through the conversations and pages you opened,
+as a mouse's side buttons do.
 
 If a machine's conversation list is incomplete, press Try again in the list.
 The conversations already loaded stay available while Boite reloads it.
@@ -72,16 +76,17 @@ A thread with a pull request keeps its last badge on this device. When you
 reopen Boite, the badge can appear as soon as the thread is listed, and Boite
 updates it when it checks again.
 
-The Threads button in the app rail, and the Threads tab on a phone, show how
-many threads are at work across your machines. When subagents are at work too,
-a second, lighter number counts them: in the rail, under the first, both at
-the rail's edge so the button's icon stays readable; beside it on the phone's tab.
+The Threads button in the app rail (when Mochi layout is on) and the Threads
+tab on a phone show how many threads are at work across your machines. When
+subagents are at work too, a second, lighter number counts them: in the rail,
+under the first, both at the rail's edge so the button's icon stays readable;
+beside it on the phone's tab.
 
-A middle click on the Activity button in the app rail takes the finished
-threads off Activity on every machine, without opening it. Failures, stops,
-questions and permissions stay, and so does the button's number. On a phone,
-or without a middle button, Mark all as read at the top of Activity clears the
-finished threads along with failures and stops.
+A middle click on the Activity button takes the finished threads off Activity
+on every machine, without opening it. Failures, stops, questions and
+permissions stay, and so does the button's number. On a phone, or without a
+middle button, Mark all as read at the top of Activity clears the finished
+threads along with failures and stops.
 
 ## Drafts without a project
 
@@ -190,6 +195,8 @@ above the message box or the bottom tabs.
   a phone. Pick a machine in Archived threads to change its retention settings.
   On a paired phone, use Undo in the confirmation toast immediately after
   deleting a conversation.
+- Once a mode is picked in Conversation storage, it replaces Keep deleted
+  conversations for: see [Conversation storage](#conversation-storage).
 - Archive project takes a project out of the list. Its threads keep running,
   and a new thread brings it back. Remove from Boite stops its conversations
   and hides the project. Add the same folder again to recover its history and
@@ -225,3 +232,32 @@ logo, pick Refresh icon in Manage project.
 - Technical reference: [drafts](internals/drafts.md),
   [titles](internals/titles.md), [imports](internals/imports.md),
   [project icons](internals/project-icons.md).
+
+
+## Conversation storage
+
+Agents write a lot to disk as they work. Conversation storage, under
+Settings > General (Settings > General > Archived threads on a phone), decides
+what the machine keeps as a conversation ages. Nothing changes until you pick
+a mode and press Apply.
+
+| Mode | A deleted conversation | An open conversation |
+| --- | --- | --- |
+| Delete | compacted at once, erased after 7 days | kept whole |
+| Classic | compacted after 7 days and kept, its images erased after 30 days | kept whole |
+| Storage | compacted after 30 days and kept with its images | compacted after 30 days without activity |
+| Custom | you set each delay | you set each delay |
+
+- Compacted means smaller, not summarized: every message, the agent's
+  reasoning, every tool call and every error stay. Long tool outputs are
+  shortened and each image is stored once.
+- A deleted conversation restores until it is compacted. After that it has
+  left the app and stays readable for audits, by you and by your agents.
+- An open conversation that was compacted still shows whole. Replying to it
+  starts a fresh agent session from what the app shows.
+- Usage and costs are kept in every mode, even for an erased conversation.
+- Pick a mode to see what it would free on this machine before applying it.
+  Compare shows the four modes side by side; Custom opens it so you can type
+  each delay, and an empty field means never.
+- Sessions no conversation uses are listed under the modes once one is
+  applied. Compact them keeps them for audits; nothing erases them.

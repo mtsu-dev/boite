@@ -148,7 +148,7 @@ for (const width of [1280, 390]) {
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
       // On the phone, Recently deleted is below the archive on the same page.
       if (width >= 720) {
-        await page.click('[data-testid=nav-settings]');
+        if (!await page.evaluate(`!!document.querySelector('[data-testid=settings-tab-general]')`)) await page.click('[data-testid=nav-settings]');
         await page.click('[data-testid=settings-tab-general]');
       }
       await page.waitFor(`document.querySelector('[data-testid=deleted-show]') || document.querySelector('[data-testid=deleted-list]')`);

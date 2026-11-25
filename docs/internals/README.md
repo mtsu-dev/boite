@@ -42,6 +42,7 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [Pointer interactions](interactions.md): edge scrollbars and loading a thread on press.
 - [Titles](titles.md): automatic and manual conversation titles.
 - [Session import](imports.md): import of a Claude Code conversation.
+- [Conversation storage](transcripts.md): modes, the compact archive format, its index and how agents read it.
 - [Agent updates](agent-updates.md): CLI update notices, automatic updates and remote machines.
 - [Diagnostics](diagnostics.md): logs, anonymized exports and problem reports.
 
