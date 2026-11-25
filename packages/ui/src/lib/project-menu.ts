@@ -112,10 +112,7 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
         });
         if (name !== null && owner.client === client && owner.clientGeneration === clientGeneration) await owner.renameProject(project.id, name);
       }
-      if (action === 'archived') {
-        if (workspace.active !== owner) await workspace.select(owner);
-        await openArchived(owner, project.id);
-      }
+      if (action === 'archived') await openArchived(owner, project.id);
       if (action === 'archive-project') await archiveProjectWithUndo(owner, project);
       if (action === 'worktree-default') {
         const current = owner.projects.find(p => p.id === project.id);

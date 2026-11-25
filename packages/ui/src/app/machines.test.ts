@@ -148,9 +148,23 @@ test('a project\'s archive opens Settings on that project\'s machine, every proj
   await waitFor(() => document.querySelector('[data-testid=archived-focus]') === null);
   expect(list()).toContain('Bench against legacy');
   expect(list()).not.toContain('Finish the trace tab');
+  // The project menu targets Builder in Settings without moving the window to Builder's chat.
+  store.showChat();
+  const view = workspace.view;
+  workspace.view = 'projects';
+  machineFilter.set(remote.id);
+  const projectMenu = '[data-project-id=p-boite] [data-testid=project-menu]';
+  const projectArchive = '[data-testid=context-menu] [data-testid=project-archived-toggle]';
+  await waitFor(() => document.querySelector(projectMenu) !== null);
+  query<HTMLButtonElement>(projectMenu).click();
+  await waitFor(() => document.querySelector(projectArchive) !== null);
+  query<HTMLButtonElement>(projectArchive).click();
+  await waitFor(() => list().includes('Bench against legacy') && document.querySelector('[data-testid=archived-focus]') !== null);
+  expect(query('[data-testid=settings-machine]').textContent).toContain(remote.label);
+  expect(workspace.active).toBe(store);
+  workspace.view = view;
   // Filter's archive follows the machine the thread list is narrowed to.
   store.showChat();
-  machineFilter.set(remote.id);
   await waitFor(() => document.querySelector('[data-testid=grouping-options]') !== null);
   query<HTMLButtonElement>('[data-testid=grouping-options]').click();
   await waitFor(() => document.querySelector('[data-testid=grouping-options-menu] [data-testid$=archived-entry]') !== null);
