@@ -77,7 +77,7 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
     { id: 'new', label: strings.sidebar.newThread, glyph: Plus, disabled: project.missing === true, ...(project.missing === true ? { title: strings.sidebar.projectMissing } : {}) },
     { id: 'copy', label: strings.sidebar.copyPath, title: project.path, glyph: Copy },
     ...(project.kind !== 'drafts' ? [{ id: 'rename', label: strings.common.rename, glyph: PencilLine }] : []),
-    // The list's own archive (lib/archived-view.svelte.ts): from a card it opens on this project, its count beside.
+    // The archive in Settings (lib/archived-view.svelte.ts): from a card it opens on this project, its count beside.
     {
       id: 'archived', label: strings.settings.archived.heading, glyph: History, testid: 'project-archived-toggle',
       ...(archived && archived.count > 0 ? {
@@ -114,7 +114,7 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
       }
       if (action === 'archived') {
         if (workspace.active !== owner) await workspace.select(owner);
-        openArchived(owner, project.id);
+        await openArchived(owner, project.id);
       }
       if (action === 'archive-project') await archiveProjectWithUndo(owner, project);
       if (action === 'worktree-default') {
