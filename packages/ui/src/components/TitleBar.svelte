@@ -1,7 +1,7 @@
 <script lang="ts">
   import { desktopShell } from '../lib/shell-platform';
   import { onMount } from 'svelte';
-  import { PanelLeftClose, PanelLeftOpen, Settings } from '@lucide/svelte';
+  import { Bot, PanelLeftClose, PanelLeftOpen, Settings } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import ThreadHeader from './ThreadHeader.svelte';
   import { strings } from '../lib/strings';
@@ -13,6 +13,7 @@
   import { titleSlot } from '../lib/title-slot.svelte';
   import { needsAnAI } from '../lib/first-run';
   import { inbox } from '../lib/inbox.svelte';
+  import { experimentOn } from '../lib/experiments.svelte';
   import { contactsShownAnywhere } from '../lib/contacts-anywhere';
   import { contactsParts } from '../lib/contacts-entry';
   import WindowResizeHandles from './WindowResizeHandles.svelte';
@@ -137,7 +138,11 @@
   {/if}
   {#if contactNotice && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
   {#if noRail && !mobile.current && store.booted && store.page !== 'settings' && (listless || store.sidebarCollapsed)}
-    <!-- With the Mochi layout rail off and no sidebar column visible, Settings stays one press away here. -->
+    <!-- With the Mochi layout rail off and no sidebar column visible, Mochis and Settings stay one press away here. -->
+    {#if experimentOn('resident-agents') && store.page !== 'agents'}
+      <button type="button" class="ghost icon edge-settings" title={strings.agents.heading} aria-label={strings.agents.heading}
+        data-testid="nav-agents" data-preload-view="agents" onclick={() => store.showAgents()}><Bot size={16} strokeWidth={1.75} /></button>
+    {/if}
     <button type="button" class="ghost icon edge-settings" title={`${strings.sidebar.settings}${store.keyHint('settings')}`} aria-label={strings.sidebar.settings}
       data-testid="nav-settings" data-preload-view="settings" onclick={() => store.showSettings()}><Settings size={16} strokeWidth={1.75} /></button>
   {/if}

@@ -163,7 +163,7 @@ test('Grain is visible above solid and acrylic surfaces and the settings fit a p
   await capture('grain-acrylic.png');
   expect(await page.evaluate(`getComputedStyle(document.body, '::after').pointerEvents`)).toBe('none');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.evaluate(`document.querySelector('${id('nav-settings')}').click()`);
+  await mobileAction(page, 'mobile-settings');
   await page.click(id('settings-tab-appearance'));
   await capture('providers-phone.png');
   expect(await page.evaluate(`document.querySelector('${id('settings')}').getBoundingClientRect().width`)).toBeLessThanOrEqual(390);
