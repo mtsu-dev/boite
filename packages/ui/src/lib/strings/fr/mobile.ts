@@ -15,7 +15,7 @@ export const fr: Translation = {
     offlineBody: 'Gardez Boite ouverte sur votre ordinateur et vérifiez votre connexion. Si vous utilisez Tailscale, gardez-le connecté sur les deux appareils.',
     troubleshoot: 'Dépanner', troubleshootSteps: 'Vérifications de la connexion',
     checkNearby: 'Appareils à proximité',
-    checkNearbyHint: 'Dans les paramètres Android : Applications, le navigateur qui fait tourner l’application, Autorisations, Appareils à proximité, Autoriser.',
+    checkNearbyHint: 'Dans les paramètres Android : Applications, puis votre navigateur ou l’app Boite, celle qui ouvre Boite, Autorisations, Appareils à proximité si la ligne existe, Autoriser.',
     checkReach: 'Joindre {host}', checkOpen: 'Ouvrir',
     checkReachHint: 'Ouvrez-la dans un onglet du navigateur. Si la page ne charge pas, ce téléphone ne joint pas la machine : vérifiez Tailscale, le VPN ou le Wi-Fi.',
     emptyTitle: 'Commencez un fil',

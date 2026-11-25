@@ -14,7 +14,7 @@ export const strings = {
     offlineBody: 'Keep Boite running on your computer and check your connection. If you use Tailscale, keep it connected on both devices.',
     troubleshoot: 'Troubleshoot', troubleshootSteps: 'Connection checks',
     checkNearby: 'Nearby devices',
-    checkNearbyHint: 'In Android settings: Apps, the browser that runs the app, Permissions, Nearby devices, Allow.',
+    checkNearbyHint: 'In Android settings: Apps, then your browser or the Boite app, whichever opens Boite, Permissions, Nearby devices if listed, Allow.',
     checkReach: 'Reach {host}', checkOpen: 'Open',
     checkReachHint: 'Open it in a browser tab. If the page does not load, this phone cannot reach the machine: check Tailscale, the VPN or the Wi-Fi.',
     emptyTitle: 'Start a conversation',
