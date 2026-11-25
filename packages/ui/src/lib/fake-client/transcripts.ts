@@ -3,7 +3,7 @@
  * file here: the sizes are a fixed disk, split by what a policy reaches, and
  * applying a mode compacts nothing.
  */
-import { RpcErrorCode, transcriptPolicyValid, type ArchivedTranscript, type TranscriptPolicy, type TranscriptProgress } from '@boite/contracts';
+import { RpcErrorCode, TRANSCRIPT_READ_MAX_RECORDS, transcriptPolicyValid, type ArchivedTranscript, type TranscriptPolicy, type TranscriptProgress } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { T0 } from './shared';
 import type { FakeContext, FakeMethods } from './context';
@@ -60,24 +60,36 @@ export function transcriptMethods(ctx: FakeContext): Pick<FakeMethods, Transcrip
       };
     },
     'transcripts.progress': async () => { owner('transcripts.progress'); return progress; },
-    'transcripts.compactUnlinked': async ({ days }) => {
+    'transcripts.compactUnlinked': async params => {
       owner('transcripts.compactUnlinked');
+      const days = (params as { days?: unknown } | undefined)?.days as number;
       if (!Number.isInteger(days) || days < 0) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'days must be a whole number of days, 0 or more', data: { field: 'days' } });
       progress = { running: false, compacted: unlinked.sessions, erased: 0, freedBytes: Math.round(unlinked.bytes * (1 - KEPT)), remaining: 0, lastError: null, finishedAt: Date.now() };
       unlinked = { bytes: 0, sessions: 0 };
       ctx.emit('transcripts.progress', progress);
       return progress;
     },
-    'transcripts.list': async ({ query }) => matches(query, ARCHIVED.title) ? [structuredClone(ARCHIVED)] : [],
-    'transcripts.failures': async ({ conversation, query }) => (conversation === undefined || conversation === ARCHIVED.threadId) && matches(query, 'expected 200, received 503')
-      ? [{ threadId: ARCHIVED.threadId, sessionId: 'journal', line: 3, at: T0 - 40 * DAY_MS + 9000, kind: 'tool', tool: 'Bash', text: 'error: expected 200, received 503' }]
-      : [],
-    'transcripts.read': async ({ conversation, kinds, query, after, limit }) => {
-      if (conversation !== ARCHIVED.threadId) return { sessionId: null, sessions: [], records: [], next: null };
-      const records = RECORDS.map((record, index) => ({ line: index + 1, record }))
-        .filter(item => item.line > (after ?? 0) && (kinds === undefined || kinds.includes(item.record.k)) && matches(query, JSON.stringify(item.record)))
-        .slice(0, limit ?? RECORDS.length);
-      return { sessionId: 'journal', sessions: ['journal'], records, next: null };
+    'transcripts.list': async ({ query, limit } = {}) => {
+      const hit = matches(query, ARCHIVED.title) || matches(query, ARCHIVED.projectPath ?? '') || ARCHIVED.threadId === query;
+      return hit ? [structuredClone(ARCHIVED)].slice(0, Math.min(Math.max(1, limit ?? 50), 500)) : [];
+    },
+    'transcripts.failures': async ({ conversation, query, limit } = {}) => {
+      if (conversation !== undefined && conversation !== ARCHIVED.threadId) return [];
+      const failure = { threadId: ARCHIVED.threadId, sessionId: 'journal', line: 3, at: T0 - 40 * DAY_MS + 9000, kind: 'tool', tool: 'Bash', text: 'error: expected 200, received 503' };
+      const hit = matches(query, failure.text) || matches(query, failure.tool) || matches(query, failure.kind);
+      return hit ? [failure].slice(0, Math.min(Math.max(1, limit ?? 100), 1000)) : [];
+    },
+    'transcripts.read': async params => {
+      const { conversation, sessionId, kinds, query, after, limit } = params ?? ({} as typeof params);
+      if (typeof conversation !== 'string' || conversation.length === 0) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'conversation must be the id of an archived conversation; transcripts.list gives them', data: { field: 'conversation' } });
+      if (conversation !== ARCHIVED.threadId && sessionId === undefined) return { sessionId: null, sessions: [], records: [], next: null };
+      if (conversation !== ARCHIVED.threadId || (sessionId !== undefined && sessionId !== 'journal')) {
+        throw new RpcFailure({ code: RpcErrorCode.Refused, message: `no session ${String(sessionId)} in the archive of ${conversation}`, data: { field: 'sessionId', expected: conversation === ARCHIVED.threadId ? ['journal'] : [] } });
+      }
+      const found = RECORDS.map((record, index) => ({ line: index + 1, record }))
+        .filter(item => item.line > (after ?? 0) && (kinds === undefined || kinds.length === 0 || kinds.includes(item.record.k)) && matches(query, JSON.stringify(item.record)));
+      const records = found.slice(0, Math.min(Math.max(1, limit ?? 100), TRANSCRIPT_READ_MAX_RECORDS));
+      return { sessionId: 'journal', sessions: ['journal'], records, next: found.length > records.length ? records.at(-1)!.line : null };
     },
   };
 }

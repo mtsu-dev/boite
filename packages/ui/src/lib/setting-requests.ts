@@ -5,7 +5,7 @@
  * are in `packages/contracts/src/setting-requests.ts`, the core's cards in
  * `packages/core/src/threads/cards.ts`.
  */
-import { COORDINATION_REACH, EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk } from '@boite/contracts';
+import { COORDINATION_REACH, EXPERIMENT_STAGES, TRANSCRIPT_MODES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk } from '@boite/contracts';
 import { experimentCopy } from './experiment-copy';
 import { movedTo, settingsDestination, type SettingsTab } from './settings-tabs';
 import { formatLocale } from './i18n.svelte';
@@ -156,7 +156,7 @@ export function settingValueText(key: RequestableKey, value: unknown, providers:
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return value.length === 0 ? words.none : value.map(String).join(', ');
   const object = value as Record<string, unknown>;
-  if (key === 'transcriptStorage' && typeof object.mode === 'string' && object.mode in strings.settings.transcripts.modes) {
+  if (key === 'transcriptStorage' && typeof object.mode === 'string' && (TRANSCRIPT_MODES as readonly string[]).includes(object.mode)) {
     return strings.settings.transcripts.modes[object.mode as keyof typeof strings.settings.transcripts.modes].name;
   }
   if (key === 'worktreeStorage') {

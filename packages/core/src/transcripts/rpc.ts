@@ -8,7 +8,10 @@ export function registerTranscriptMethods(core: Core): void {
     return core.transcripts.preview(params.policy);
   });
   core.router.register('transcripts.progress', () => core.transcripts.progress());
-  core.router.register('transcripts.compactUnlinked', params => core.transcripts.compactUnlinked(params.days));
+  core.router.register('transcripts.compactUnlinked', params => {
+    if (!Number.isInteger(params?.days) || params.days < 0) throw refused('days must be a whole number of days, 0 or more', { field: 'days' });
+    return core.transcripts.compactUnlinked(params.days);
+  });
   core.router.register('transcripts.list', params => core.transcripts.list(params ?? {}));
   core.router.register('transcripts.failures', params => core.transcripts.failures(params ?? {}));
   core.router.register('transcripts.read', params => {

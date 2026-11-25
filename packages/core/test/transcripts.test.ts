@@ -824,3 +824,20 @@ for (const mode of ['classic', 'storage'] as const) {
     expect(found.records.length).toBeGreaterThan(0);
   });
 }
+
+test('a title repeated on a new line of a Claude session is kept once, with its time, and compactUnlinked names a missing delay', async () => {
+  const file = join(scratch, 'titles.jsonl');
+  const title = (uuid: string, timestamp: string, aiTitle: string) => ({ type: 'ai-title', sessionId: 's', uuid, parentUuid: null, timestamp, aiTitle });
+  writeFileSync(file, jsonl([
+    title('u1', '2026-09-10T08:00:00.000Z', 'Disk check'),
+    title('u2', '2026-09-10T08:00:05.000Z', 'Disk check'),
+    title('u3', '2026-09-10T08:00:09.000Z', 'Disk cleanup'),
+  ]));
+  const out = join(scratch, 'titles.jsonl.zst');
+  await compactSession({ source: 'claude', files: [file], out, blobs: join(scratch, 'blobs'), keepBlobs: true });
+  expect((await records(out)).filter(entry => entry.k === 'ai-title').map(entry => [entry.t, entry.aiTitle])).toEqual([
+    ['2026-09-10T08:00:00.000Z', 'Disk check'], ['2026-09-10T08:00:09.000Z', 'Disk cleanup'],
+  ]);
+  await core();
+  expect(String((await rejection((client.call as (method: string) => Promise<unknown>)('transcripts.compactUnlinked'))).reason)).toContain('days must be a whole number of days');
+});

@@ -92,11 +92,12 @@ export class ClaudeNormalizer {
     else if (type === 'queue-operation') {
       this.emit(record({ t: entry.timestamp, k: 'queue', op: entry.operation, text: entry.content ? stripBlobs(entry.content, this.sink) : undefined }));
     } else if (LATEST_ONLY.has(type)) {
-      const { type: _type, sessionId: _session, ...rest } = entry;
+      // What names the line (its id, its parent, its time) is new each time: the value alone says whether it changed.
+      const { type: _type, sessionId: _session, timestamp, uuid: _uuid, parentUuid: _parent, ...rest } = entry;
       const key = JSON.stringify(rest);
       if (this.#state.get(type) !== key) {
         this.#state.set(type, key);
-        this.emit(record({ ...rest, k: type }));
+        this.emit(record({ t: timestamp, ...rest, k: type }));
       }
     } else if (BOOKKEEPING.has(type)) this.sink.count('dropped: bookkeeping', bytes);
     else if (type === 'cost-state') {
