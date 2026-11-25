@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Copy, Files, FlaskConical, GitPullRequest, Pencil, RotateCw, Trash2, Webhook, X } from '@lucide/svelte';
   import type { AgentTrigger } from '@boite/contracts';
+  import { triggerWebhookUrl } from '../../lib/agent-trigger';
   import type { AgentsView } from '../../lib/agents.svelte';
   import { confirm } from '../../lib/confirm.svelte';
   import { copyText } from '../../lib/contacts.svelte';
@@ -26,17 +27,14 @@
     ? fill(t.last, { state: t.outcomes[trigger.lastOutcome], when: dateTime(trigger.lastFiredAt) }) : null);
   const projectId = $derived(trigger.source.kind === 'webhook' ? null : trigger.source.projectId);
   const project = $derived(view.store.projects.find(candidate => candidate.id === projectId));
-  const endpoint = $derived(trigger.webhookPath ? webhookUrl(trigger.webhookPath) : null);
+  const endpoint = $derived(trigger.webhookPath
+    ? triggerWebhookUrl(trigger.webhookPath, view.store.endpointUrl, view.store.settings?.publicUrl ?? null, view.store.group, location.origin)
+    : null);
+  const address = $derived(endpoint ?? trigger.webhookPath);
+  const addressLabel = $derived(endpoint ? t.endpoint : t.endpointPath);
   let endpointField = $state<HTMLInputElement>();
   let secretField = $state<HTMLInputElement>();
   let copied = $state<'endpoint' | 'secret' | null>(null);
-
-  function webhookUrl(path: string): string {
-    const base = new URL(view.store.endpointUrl ?? location.origin);
-    if (base.protocol === 'ws:') base.protocol = 'http:';
-    if (base.protocol === 'wss:') base.protocol = 'https:';
-    return new URL(path, base).href;
-  }
 
   async function copy(field: 'endpoint' | 'secret', value: string, input?: HTMLInputElement) {
     copied = await copyText(value, input) ? field : null;
@@ -65,18 +63,19 @@
     <span class="routine-icon" title={t.kinds[trigger.source.kind]}><Icon size={compact ? 14 : 16} strokeWidth={1.75} /></span>
     <div class="routine-text">
       <strong title={trigger.name}>{trigger.name}</strong>
-      <span class="routine-when">{t.kinds[trigger.source.kind]}{#if project} · {project.name}{/if}</span>
+      <span class="routine-when">{t.kinds[trigger.source.kind]}{#if project}{' · '}{project.name}{/if}</span>
       {#if last}<span class="trigger-last" class:failed={trigger.lastOutcome === 'error'}>{last}</span>{/if}
     </div>
     {#if canEdit}
       <SettingSwitch checked={trigger.enabled} aria-label={trigger.enabled ? t.active : t.inactive} disabled={view.pending} onchange={() => void toggle()} />
     {:else}<span class="routine-state">{trigger.enabled ? t.active : t.inactive}</span>{/if}
   </header>
-  {#if endpoint}
+  {#if address}
     <div class="webhook-fields">
+      {#if !endpoint}<p class="hint">{t.endpointPath}</p>{/if}
       <div class="copy-line">
-        <input type="text" readonly value={endpoint} bind:this={endpointField} aria-label={t.endpoint} title={t.endpoint} />
-        <button type="button" class="small ghost icon" title={copied === 'endpoint' ? t.copied : t.endpoint} aria-label={t.endpoint} onclick={() => void copy('endpoint', endpoint, endpointField)}><Copy size={14} strokeWidth={1.75} /></button>
+        <input type="text" readonly value={address} bind:this={endpointField} aria-label={addressLabel} title={addressLabel} />
+        <button type="button" class="small ghost icon" title={copied === 'endpoint' ? t.copied : addressLabel} aria-label={addressLabel} onclick={() => void copy('endpoint', address, endpointField)}><Copy size={14} strokeWidth={1.75} /></button>
       </div>
       {#if !compact}<p class="hint">{t.auth}</p>{/if}
       {#if secret && canEdit}

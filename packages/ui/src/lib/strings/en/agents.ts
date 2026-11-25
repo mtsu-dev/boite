@@ -21,6 +21,7 @@ export const strings = {
       last: '{state} at {when}',
       test: 'Test',
       endpoint: 'Webhook URL',
+      endpointPath: 'Webhook path on this mochi’s machine',
       auth: 'Send a POST with the secret as a Bearer token or X-Boite-Secret, or sign the body for X-Hub-Signature-256 with HMAC-SHA256.',
       secret: 'Webhook secret',
       secretHint: 'Copy this secret now. Boite only shows it once.',

@@ -2,6 +2,7 @@
   import { AGENT_TRIGGER_PR_EVENTS, type AgentTrigger, type AgentTriggerPrEvent, type AgentTriggerSource } from '@boite/contracts';
   import { Files, GitPullRequest, Webhook } from '@lucide/svelte';
   import { untrack } from 'svelte';
+  import { triggerPatterns } from '../../lib/agent-trigger';
   import type { AgentsView } from '../../lib/agents.svelte';
   import { strings } from '../../lib/strings';
   import Menu from '../Menu.svelte';
@@ -15,6 +16,7 @@
   } = $props();
   const kinds = [{ id: 'webhook', icon: Webhook }, { id: 'file', icon: Files }, { id: 'pr', icon: GitPullRequest }] as const;
   const initial = untrack(() => trigger);
+  const openedRevision = initial?.revision;
   const source = initial?.source;
   const t = $derived(strings.agents.triggers);
   const granted = $derived(view.snapshot?.profiles.find(agent => agent.id === agentId)?.projectIds ?? []);
@@ -38,12 +40,12 @@
     if (cooldownSeconds === undefined || !name.trim() || !prompt.trim()) return;
     let source: AgentTriggerSource = { kind: 'webhook' };
     if (kind === 'file' && project && debounceMs !== undefined) {
-      source = { kind, projectId: project.id, patterns: patterns.split(',').map(pattern => pattern.trim()).filter(Boolean), debounceMs };
+      source = { kind, projectId: project.id, patterns: triggerPatterns(patterns), debounceMs };
     } else if (kind === 'pr' && project && events.length) {
       source = { kind, projectId: project.id, events };
     } else if (kind !== 'webhook') return;
-    const value = { agentId, name, prompt, enabled: trigger?.enabled ?? true, cooldownSeconds, source };
-    const saved = await view.call('agents.trigger.save', trigger ? { id: trigger.id, expectedRevision: trigger.revision, value } : { value });
+    const value = { agentId, name, prompt, enabled: initial?.enabled ?? true, cooldownSeconds, source };
+    const saved = await view.call('agents.trigger.save', initial ? { id: initial.id, expectedRevision: openedRevision, value } : { value });
     if (saved) ondone(saved.trigger, saved.secret);
   }
 </script>

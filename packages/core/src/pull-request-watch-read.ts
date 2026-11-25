@@ -54,6 +54,7 @@ export interface Fingerprint {
   state: 'OPEN' | 'CLOSED' | 'MERGED';
   status: string;
   remarks: string;
+  baseOid?: string;
   reviewRequests?: string[];
   changeReviews?: string[];
 }
@@ -115,7 +116,7 @@ export function parseFingerprint(raw: string): Fingerprint {
     state: prState(pr.state),
     status: [pr.state, pr.isDraft, pr.mergeable, pr.mergeStateStatus, pr.headRefOid, queuePosition(pr), counts(contexts.checkRunCountsByState), counts(contexts.statusContextCountsByState), base.oid, counts(baseContexts.checkRunCountsByState), counts(baseContexts.statusContextCountsByState)].map(String).join(' '),
     remarks: [comments.totalCount, newestEdit(comments), reviews.totalCount, newestEdit(reviews), row(pr.reviewThreads).totalCount, pr.updatedAt, reviewRequests, changeReviews].map(String).join(' '),
-    reviewRequests, changeReviews,
+    baseOid: text(base.oid, 64), reviewRequests, changeReviews,
   };
 }
 

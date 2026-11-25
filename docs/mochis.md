@@ -102,7 +102,7 @@ the event that should wake it and say what to do when it wakes.
   the old one immediately. Use the local app or an encrypted connection to
   create or rotate it. Use HTTPS when sending events over the internet.
 - **Project files** watches a project you granted to the mochi on this
-  machine. Enter comma-separated paths or patterns such as `src/**/*.ts`,
+  machine. Enter comma-separated paths or patterns such as `src/**/*.{ts,tsx}`,
   or leave them blank for all source paths. Boite groups changes before
   waking the mochi and skips common dependency, build and Git folders.
 - **Pull requests** listens to pull requests that Boite already watches in a

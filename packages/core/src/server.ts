@@ -485,7 +485,7 @@ export function startServer(options: ServerOptions): RunningServer {
     fetch(request, self) {
       if (stopping) return new Response('core stopping', { status: 503 });
       const url = new URL(request.url);
-      if (url.pathname.startsWith(AGENT_TRIGGER_WEBHOOK_ROUTE)) return core.workforce.triggers.http(request, url.pathname.slice(AGENT_TRIGGER_WEBHOOK_ROUTE.length));
+      if (url.pathname.startsWith(AGENT_TRIGGER_WEBHOOK_ROUTE)) return core.workforce.triggers.http(request, url.pathname.slice(AGENT_TRIGGER_WEBHOOK_ROUTE.length), self.requestIP(request)?.address ?? '');
 
       if (url.pathname === '/agent-messages' || url.pathname === JOIN_ROUTE || url.pathname === CONTACT_JOIN_ROUTE) {
         if (core.stopping) return new Response('core stopping', { status: 503 });

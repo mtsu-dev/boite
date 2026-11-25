@@ -1,18 +1,19 @@
+import { createHash } from 'node:crypto';
 import {
-  AGENT_TRIGGERS_MAX, AGENT_TRIGGER_WEBHOOK_ROUTE,
+  AGENT_TRIGGERS_MAX, AGENT_TRIGGER_WEBHOOK_ROUTE, pullRequestAddress,
   type AgentProfile, type AgentTrigger, type AgentTriggerEvent, type AgentTriggerPrEvent, type RpcParams, type RpcResult, type ThreadId,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf, refused } from '../errors.ts';
 import { newId, newToken } from '../ids.ts';
 import { watchTriggerFiles } from './trigger-files.ts';
+import { TriggerSecrets, WEBHOOK_TRIGGER_ID } from './trigger-secrets.ts';
 import { triggerConfig } from './trigger-validation.ts';
-import { webhookBody, webhookSignatureMatches, webhookTokenMatches } from './trigger-webhook.ts';
+import { WebhookReaders, webhookBody, webhookSignature, webhookSignatureMatches, webhookTokenMatches } from './trigger-webhook.ts';
 import { integer, quoted, text } from './validation.ts';
 
-const SECRET_KEY = 'agents:trigger-secret:';
-const MAX_WEBHOOK_READERS = 16;
 const WEBHOOK_SUMMARY_CHARS = 1200;
+export type PrTriggerTransition = { kind: AgentTriggerPrEvent; key: string };
 type TestResult = RpcResult<'agents.trigger.test'>;
 type Wake = { label: string; prompt: string; requestId: string };
 type FileWatch = { folder: string; close: () => void };
@@ -29,10 +30,12 @@ export class AgentTriggers {
   readonly #pending = new Map<string, Wake>();
   readonly #shutdown = new AbortController();
   readonly #off: () => void;
-  #readers = 0;
+  readonly #secrets: TriggerSecrets;
+  readonly #readers = new WebhookReaders();
 
   constructor(core: Core) {
     this.#core = core;
+    this.#secrets = new TriggerSecrets(core.dataDir);
     this.#off = core.bus.onCommitted((name, payload) => {
       if (name === 'project.removed' || name === 'project.added' || name === 'project.updated') {
         const projectId = 'projectId' in payload ? payload.projectId : 'id' in payload ? payload.id : null;
@@ -56,7 +59,9 @@ export class AgentTriggers {
     // A grant can disappear while a trigger is disabled. Its settings can still be turned off or replaced.
     if (value.source.kind !== 'webhook' && (value.enabled || !previous || previous.source.kind !== value.source.kind || previous.source.projectId !== value.source.projectId)) {
       if (!agent.projectIds?.includes(value.source.projectId)) throw refused('source.projectId: expected a local project granted to this mochi');
-      this.#core.projects.require(value.source.projectId);
+      if (this.#core.projects.require(value.source.projectId).archived) {
+        throw refused('source.projectId: expected a local project granted to this mochi');
+      }
     }
     if (!previous && this.#records.list('trigger').filter(t => t.agentId === agent.id).length >= AGENT_TRIGGERS_MAX) {
       throw refused(`trigger: a mochi may have at most ${AGENT_TRIGGERS_MAX} triggers`);
@@ -71,17 +76,18 @@ export class AgentTriggers {
       lastOutcome: previous?.lastOutcome === 'queued' ? 'skipped' as const : previous?.lastOutcome ?? null,
     };
     const trigger = this.#records.transaction(() => {
-      if (secret !== undefined) this.#core.journal.setSetting(SECRET_KEY + id, secret);
-      else if (previous?.hasSecret && !webhook) this.#core.journal.deleteSetting(SECRET_KEY + id);
-      return previous
+      const saved = previous
         ? this.#records.update('trigger', id, integer(params.expectedRevision, 'expectedRevision', 1, Number.MAX_SAFE_INTEGER), record)
         : this.#records.adopt('trigger', id, record);
+      if (secret !== undefined) this.#secrets.set(id, secret);
+      return saved;
     });
     this.#core.bus.whenCommitted(() => {
       this.#pending.delete(id);
       this.#stopWatch(id);
       this.#syncWatch(trigger, agent);
       this.#core.workforce.changed();
+      if (previous?.hasSecret && !webhook) this.#secrets.set(id, undefined);
     });
     return secret === undefined ? { trigger } : { trigger, secret };
   }
@@ -89,14 +95,12 @@ export class AgentTriggers {
   remove(params: RpcParams<'agents.trigger.remove'>): { removed: true } {
     const trigger = this.#get(params.triggerId);
     this.#allowOwn(params.threadId, trigger.agentId);
-    this.#records.transaction(() => {
-      this.#records.remove('trigger', trigger.id);
-      if (trigger.hasSecret) this.#core.journal.deleteSetting(SECRET_KEY + trigger.id);
-    });
+    this.#records.remove('trigger', trigger.id);
     this.#core.bus.whenCommitted(() => {
       this.#pending.delete(trigger.id);
       this.#stopWatch(trigger.id);
       this.#core.workforce.changed();
+      if (trigger.hasSecret) this.#secrets.set(trigger.id, undefined);
     });
     return { removed: true };
   }
@@ -110,12 +114,8 @@ export class AgentTriggers {
     if (trigger.source.kind !== 'webhook') throw refused('triggerId: expected a webhook trigger');
     if (!encrypted) throw refused('triggerId: rotate webhook secrets over HTTPS, Tailscale or the local app');
     const secret = newToken();
-    const updated = this.#records.transaction(() => {
-      this.#core.journal.setSetting(SECRET_KEY + trigger.id, secret);
-      return this.#records.update('trigger', trigger.id, trigger.revision, trigger);
-    });
-    this.#core.workforce.changed();
-    return { trigger: updated, secret };
+    this.#secrets.set(trigger.id, secret);
+    return { trigger, secret };
   }
 
   test(params: RpcParams<'agents.trigger.test'>): TestResult {
@@ -131,28 +131,29 @@ export class AgentTriggers {
     });
   }
 
-  async http(request: Request, id: string): Promise<Response> {
+  async http(request: Request, id: string, source: string): Promise<Response> {
     if (this.#shutdown.signal.aborted || this.#core.stopping) return new Response(null, { status: 503 });
     const trigger = this.#webhook(id);
     if (!trigger) return new Response(null, { status: 404 });
     if (request.method !== 'POST') return new Response(null, { status: 405, headers: { allow: 'POST' } });
-    const secret = this.#core.journal.getSetting(SECRET_KEY + id);
-    if (typeof secret !== 'string') return new Response(null, { status: 401 });
+    let secret: string | undefined;
+    try { secret = this.#secrets.get(id); }
+    catch { return new Response(null, { status: 503 }); }
+    if (secret === undefined) return new Response(null, { status: 401 });
     const token = request.headers.get('authorization')?.match(/^Bearer (.+)$/i)?.[1] ?? null;
     const shared = webhookTokenMatches(token, secret) || webhookTokenMatches(request.headers.get('x-boite-secret'), secret);
-    const signature = request.headers.get('x-hub-signature-256');
+    const signature = webhookSignature(request.headers.get('x-hub-signature-256'));
     if (!shared && !signature) return new Response(null, { status: 401 });
-    if (this.#readers >= MAX_WEBHOOK_READERS) return new Response(null, { status: 429 });
-
-    this.#readers++;
+    const release = this.#readers.acquire(id, source, shared);
+    if (!release) return new Response(null, { status: 429 });
     try {
       const body = await webhookBody(request, this.#shutdown.signal);
       if (body instanceof Response) return body;
-      if (!shared && !webhookSignatureMatches(signature, secret, body)) return new Response(null, { status: 401 });
+      if (!shared && (!signature || !webhookSignatureMatches(signature, secret, body))) return new Response(null, { status: 401 });
       if (this.#shutdown.signal.aborted || this.#core.stopping) return new Response(null, { status: 503 });
       const current = this.#webhook(id);
       if (!current) return new Response(null, { status: 404 });
-      if (this.#core.journal.getSetting(SECRET_KEY + id) !== secret) return new Response(null, { status: 401 });
+      if (this.#secrets.get(id) !== secret) return new Response(null, { status: 401 });
       const wait = this.#cooldown(current);
       if (wait > 0) return new Response(null, { status: 429, headers: { 'retry-after': String(Math.ceil(wait / 1000)) } });
       const payload = new TextDecoder().decode(body).replaceAll(secret, '[redacted]');
@@ -161,19 +162,28 @@ export class AgentTriggers {
         ...(eventName && /^[a-z_]{1,60}$/i.test(eventName) ? { eventName } : {}) });
       return new Response(null, { status: 202, headers: { 'cache-control': 'no-store' } });
     } finally {
-      this.#readers--;
+      release();
     }
   }
 
   /** Called from the existing PR tracker after it observes a change. */
-  pullRequest(threadId: ThreadId, url: string, events: AgentTriggerPrEvent[]): void {
-    if (!events.length || this.#core.stopping || this.#shutdown.signal.aborted) return;
+  pullRequest(threadId: ThreadId, url: string, transitions: PrTriggerTransition[]): void {
+    if (!transitions.length || this.#core.stopping || this.#shutdown.signal.aborted) return;
     const projectId = this.#core.journal.getThread(threadId)?.projectId;
     if (!projectId) return;
-    for (const trigger of this.#records.list('trigger')) {
-      if (!trigger.enabled || trigger.source.kind !== 'pr' || trigger.source.projectId !== projectId || this.#cooldown(trigger) > 0) continue;
-      const wanted = trigger.source.events;
-      const matched = events.filter(event => wanted.includes(event));
+    const triggers = this.#records.list('trigger').filter(trigger => trigger.enabled && trigger.source.kind === 'pr' && trigger.source.projectId === projectId);
+    if (!triggers.length) return;
+    const pr = pullRequestAddress(url);
+    const fresh = new Set<AgentTriggerPrEvent>();
+    for (const { kind, key } of transitions) {
+      if (!triggers.some(trigger => trigger.source.kind === 'pr' && trigger.source.events.includes(kind))) continue;
+      const id = createHash('sha256').update(JSON.stringify([projectId, pr.host, pr.repository.toLowerCase(), pr.number, kind, key])).digest('hex');
+      // The receipt also consumes an event suppressed by cooldown, so a slower watch cannot deliver it later.
+      this.#records.command('trigger-pr-transition', id, null, () => { fresh.add(kind); return null; });
+    }
+    for (const trigger of triggers) {
+      if (trigger.source.kind !== 'pr' || this.#cooldown(trigger) > 0) continue;
+      const matched = trigger.source.events.filter(event => fresh.has(event));
       if (matched.length) this.#fire(trigger, { kind: 'pr', events: matched, url });
     }
   }
@@ -188,7 +198,10 @@ export class AgentTriggers {
   }
 
   start(): void {
-    for (const trigger of this.#records.list('trigger')) if (trigger.lastOutcome === 'queued') this.#outcome(trigger.id, null, 'skipped');
+    const triggers = this.#records.list('trigger');
+    for (const trigger of triggers) if (trigger.lastOutcome === 'queued') this.#outcome(trigger.id, null, 'skipped');
+    try { this.#secrets.prune(new Set(triggers.filter(trigger => trigger.hasSecret).map(trigger => trigger.id))); }
+    catch (error) { this.#core.log('warn', messageOf(error)); }
     this.syncWatches();
   }
 
@@ -227,7 +240,7 @@ export class AgentTriggers {
   }
 
   #webhook(id: string): AgentTrigger | null {
-    if (!/^agt_trigger_[0-9a-z]{20}$/.test(id)) return null;
+    if (!WEBHOOK_TRIGGER_ID.test(id)) return null;
     const trigger = this.#records.find('trigger', id);
     if (!trigger?.enabled || trigger.source.kind !== 'webhook') return null;
     const agent = this.#records.find('profile', trigger.agentId);

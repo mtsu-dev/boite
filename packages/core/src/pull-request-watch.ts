@@ -1,4 +1,5 @@
-import { pullRequestAddress, WATCH_DONE_HINT, type AgentTriggerPrEvent, type PullRequestWatch, type PullRequestWatchSeen, type ThreadId } from '@boite/contracts';
+import { pullRequestAddress, WATCH_DONE_HINT, type PullRequestWatch, type PullRequestWatchSeen, type ThreadId } from '@boite/contracts';
+import type { PrTriggerTransition } from './agents/triggers.ts';
 import type { Core } from './core.ts';
 import { messageOf, refused } from './errors.ts';
 import {
@@ -262,7 +263,7 @@ export class PullRequestWatches {
       await this.core.linkedPullRequests.observe(threadId, record.url, 'OPEN', { head: read.branch ?? '', headRepository: read.headRepository ?? '' });
       if (this.#find(threadId, record.url) !== record) return 'OPEN';
       const { changes, next } = evaluate(record.memory, detail, remarks);
-      const triggerEvents = prTriggerEvents(changes, record.fingerprint, fingerprint);
+      const triggerEvents = prTriggerTransitions(changes, detail, record.fingerprint, fingerprint);
       runtime.detail = read;
       runtime.rules = read.base ? this.#required.stamp(rulesKey(record, read.base)) : null;
       record.memory = next;
@@ -329,7 +330,7 @@ export class PullRequestWatches {
     }
     this.#save(threadId);
     this.#changed(threadId);
-    if (state === 'MERGED') this.core.workforce.triggers.pullRequest(threadId, record.url, ['merged']);
+    if (state === 'MERGED') this.core.workforce.triggers.pullRequest(threadId, record.url, [{ kind: 'merged', key: String(closer.at) }]);
   }
 
   /**
@@ -508,11 +509,26 @@ function validRecord(value: unknown): value is WatchRecord {
   try { pullRequestAddress(record.url); return true; } catch { return false; }
 }
 
-function prTriggerEvents(changes: WatchChange[], previous: Fingerprint | null, current: Fingerprint): AgentTriggerPrEvent[] {
-  const events: AgentTriggerPrEvent[] = [];
-  if (changes.some(change => change.kind === 'failed' || change.kind === 'base-failed')) events.push('ci_failed');
-  if (changes.some(change => change.kind === 'conflict')) events.push('conflict');
-  if (previous?.reviewRequests && current.reviewRequests?.some(id => !previous.reviewRequests?.includes(id))) events.push('review_requested');
-  if (previous?.changeReviews && current.changeReviews?.some(id => !previous.changeReviews?.includes(id))) events.push('changes_requested');
-  return events;
+function prTriggerTransitions(changes: WatchChange[], detail: WatchDetail, previous: Fingerprint | null, current: Fingerprint): PrTriggerTransition[] {
+  const transitions: PrTriggerTransition[] = [];
+  for (const change of changes) {
+    if (change.kind === 'failed') {
+      const failing = new Set(change.checks.map(check => check.name));
+      for (const check of detail.checks) if (failing.has(check.name)) {
+        transitions.push({ kind: 'ci_failed', key: JSON.stringify([detail.head, check.name, check.conclusion, check.url, check.started, check.finished]) });
+      }
+    } else if (change.kind === 'base-failed') {
+      const { sha, name, conclusion, url } = change.check;
+      transitions.push({ kind: 'ci_failed', key: JSON.stringify([sha, name, conclusion, url]) });
+    } else if (change.kind === 'conflict') {
+      transitions.push({ kind: 'conflict', key: JSON.stringify([detail.head, current.baseOid, detail.base]) });
+    }
+  }
+  if (previous?.reviewRequests) {
+    for (const id of current.reviewRequests ?? []) if (!previous.reviewRequests.includes(id)) transitions.push({ kind: 'review_requested', key: id });
+  }
+  if (previous?.changeReviews) {
+    for (const id of current.changeReviews ?? []) if (!previous.changeReviews.includes(id)) transitions.push({ kind: 'changes_requested', key: id });
+  }
+  return transitions;
 }

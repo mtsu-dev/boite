@@ -74,7 +74,7 @@ export class FakeAgentTriggers {
   rotateSecret(params: RpcParams<'agents.trigger.rotateSecret'>): RpcResult<'agents.trigger.rotateSecret'> {
     const trigger = this.#get(params.triggerId);
     if (trigger.source.kind !== 'webhook') this.#refuse('triggerId: expected a webhook trigger');
-    return { trigger: this.#put({ ...trigger, revision: trigger.revision + 1, updatedAt: Date.now() }), secret: this.#secret() };
+    return { trigger: structuredClone(trigger), secret: this.#secret() };
   }
 
   test(params: RpcParams<'agents.trigger.test'>): TestResult {

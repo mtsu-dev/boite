@@ -23,6 +23,7 @@ export const fr: Translation = {
       last: '{state} à {when}',
       test: 'Tester',
       endpoint: 'URL du webhook',
+      endpointPath: 'Chemin du webhook sur la machine de ce mochi',
       auth: 'Envoie une requête POST avec le secret dans un jeton Bearer ou X-Boite-Secret, ou signe le contenu avec HMAC-SHA256 pour X-Hub-Signature-256.',
       secret: 'Secret du webhook',
       secretHint: 'Copie le secret maintenant. Boite ne l’affiche qu’une fois.',
