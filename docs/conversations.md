@@ -177,6 +177,8 @@ above the message box or the bottom tabs.
   a phone. Pick a machine in Archived threads to change its retention settings.
   On a paired phone, use Undo in the confirmation toast immediately after
   deleting a conversation.
+- Once a mode is picked in Conversation storage, it replaces Keep deleted
+  conversations for: see [Conversation storage](#conversation-storage).
 - Archive project takes a project out of the list. Its threads keep running,
   and a new thread brings it back. Remove from Boite stops its conversations
   and hides the project. Add the same folder again to recover its history and
@@ -212,3 +214,32 @@ logo, pick Refresh icon in Manage project.
 - Technical reference: [drafts](internals/drafts.md),
   [titles](internals/titles.md), [imports](internals/imports.md),
   [project icons](internals/project-icons.md).
+
+
+## Conversation storage
+
+Agents write a lot to disk as they work. Conversation storage, under
+Settings > General (Settings > General > Archived threads on a phone), decides
+what the machine keeps as a conversation ages. Nothing changes until you pick
+a mode and press Apply.
+
+| Mode | A deleted conversation | An open conversation |
+| --- | --- | --- |
+| Delete | compacted at once, erased after 7 days | kept whole |
+| Classic | compacted after 7 days and kept, its images erased after 30 days | kept whole |
+| Storage | compacted after 30 days and kept with its images | compacted after 30 days without activity |
+| Custom | you set each delay | you set each delay |
+
+- Compacted means smaller, not summarized: every message, the agent's
+  reasoning, every tool call and every error stay. Long tool outputs are
+  shortened and each image is stored once.
+- A deleted conversation restores until it is compacted. After that it has
+  left the app and stays readable for audits, by you and by your agents.
+- An open conversation that was compacted still shows whole. Replying to it
+  starts a fresh agent session from what the app shows.
+- Usage and costs are kept in every mode, even for an erased conversation.
+- Pick a mode to see what it would free on this machine before applying it.
+  Compare shows the four modes side by side; Custom opens it so you can type
+  each delay, and an empty field means never.
+- Sessions no conversation uses are listed under the modes once one is
+  applied. Compact them keeps them for audits; nothing erases them.

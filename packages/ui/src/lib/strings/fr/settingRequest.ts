@@ -78,6 +78,7 @@ export const fr: Translation = {
       titleModel: 'Modèle des titres',
       threadDoneRetentionDays: 'Supprimer les fils terminés après',
       threadDeletionRetentionDays: 'Purger les fils supprimés après',
+      transcriptStorage: 'Mode de stockage des fils',
       worktreeStorage: 'Emplacement des nouveaux worktrees',
       focusGuard: 'Garder les fenêtres des agents en arrière-plan',
       muteAgents: 'Couper le son des agents',

@@ -158,6 +158,8 @@ and assertions when making the suite faster.
   memory, routines and a desk, their `boite mochi` commands and their guide.
 - [Teams](docs/internals/teams.md): mochis and the owner in one group, routing, delivery
   through coordination letters, the reply envelope and `boite team`.
+- [Conversation storage](docs/internals/transcripts.md): the modes that compact and erase
+  old conversations, the archive format and how agents read it.
 - [Model switching](docs/internals/model-switching.md) and [context](docs/internals/context.md):
   session reuse, queued turns and compaction.
 - [Phone](docs/internals/phone.md) and [server](docs/internals/server.md):

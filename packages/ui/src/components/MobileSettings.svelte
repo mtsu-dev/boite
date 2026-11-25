@@ -29,6 +29,7 @@
   import PluginsPage from './PluginsPage.svelte';
   import ArchivedThreads from './ArchivedThreads.svelte';
   import DeletedThreads from './DeletedThreads.svelte';
+  import TranscriptStorage from './TranscriptStorage.svelte';
   import { openArchived } from '../lib/archived-view.svelte';
   import WorktreesCard from './WorktreesCard.svelte';
   import CompactionSettings from './CompactionSettings.svelte';
@@ -360,6 +361,7 @@
         <div class="page archived-page">
           <ArchivedThreads store={target} place="phone" onopen={onopenthread} />
           <DeletedThreads store={target} />
+          <TranscriptStorage store={target} />
         </div>
       {:else}
         <MachinesPage mobile {onopenthread} {store} showTitle={false} />

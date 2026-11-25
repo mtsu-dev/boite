@@ -75,3 +75,17 @@ export function sessionReferenced(db: Database, sessionId: string): boolean {
       OR (checkpoint LIKE '%' || ?1 || '%' AND json_valid(checkpoint) AND json_extract(checkpoint, '$.sessionId') = ?1)
     LIMIT 1`).get(sessionId) !== null;
 }
+
+/**
+ * Every session the journal names with the thread that names it, deleted
+ * threads included: a provider session whose id is not among them belongs to
+ * no conversation. A scan of every turn: run it off the core's thread.
+ */
+export function namedSessions(db: Database): { threadId: string; sessionId: string }[] {
+  const rows = db.query(`SELECT id AS threadId, session_id AS sessionId FROM threads WHERE session_id IS NOT NULL
+    UNION SELECT thread_id, json_extract(execution, '$.sessionId') FROM turns WHERE execution IS NOT NULL AND json_valid(execution)
+    UNION SELECT thread_id, json_extract(checkpoint, '$.sessionId') FROM turns WHERE checkpoint IS NOT NULL AND json_valid(checkpoint)
+    UNION SELECT substr(settings.key, ${'account-sessions:'.length + 1}), json_extract(saved.value, '$.sessionId') FROM settings, json_each(settings.value, '$.saved') AS saved
+      WHERE settings.key LIKE 'account-sessions:%' AND json_valid(settings.value)`).all() as { threadId: unknown; sessionId: unknown }[];
+  return rows.flatMap(row => typeof row.threadId === 'string' && typeof row.sessionId === 'string' && row.sessionId.length > 0 ? [{ threadId: row.threadId, sessionId: row.sessionId }] : []);
+}

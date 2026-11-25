@@ -5,6 +5,7 @@
   import ShellSettings from './ShellSettings.svelte';
   import TelemetrySettings from './TelemetrySettings.svelte';
   import DeletedThreads from './DeletedThreads.svelte';
+  import TranscriptStorage from './TranscriptStorage.svelte';
   import { openArchived } from '../lib/archived-view.svelte';
   import SettingsSection from './SettingsSection.svelte';
   import SettingField from './SettingField.svelte';
@@ -63,6 +64,7 @@
     <button type="button" data-testid="archived-show" onclick={() => openArchived(here)}><span class="ui-label">{strings.settings.archived.show}</span></button>
   </SettingsSection>
   <DeletedThreads {store} />
+  <TranscriptStorage {store} />
   <WorktreesCard {store} />
   <!-- The keys agents ask for live under Providers, the windows agents may see under Machines, the browser logins under Browser. -->
 
