@@ -92,6 +92,30 @@ stays readable.
   Limits), a routine or event that failed on a spent limit runs again once
   the limit resets.
 
+## Triggers
+
+Open **Triggers** below a mochi's routines. Use **Add trigger** to choose
+the event that should wake it and say what to do when it wakes.
+
+- **Webhook** gives another service a URL to POST to. Copy the secret when
+  you create the trigger. **Rotate secret** gives you a new one and disables
+  the old one immediately. Use the local app or an encrypted connection to
+  create or rotate it. Use HTTPS when sending events over the internet.
+- **Project files** watches a project you granted to the mochi on this
+  machine. Enter comma-separated paths or patterns such as `src/**/*.ts`,
+  or leave them blank for all source paths. Boite groups changes before
+  waking the mochi and skips common dependency, build and Git folders.
+- **Pull requests** listens to pull requests that Boite already watches in a
+  granted project. Choose failed CI, review requests, requests for changes,
+  merge conflicts or merges.
+
+Use **Test** to send a sample event. The trigger shows when it received an
+event and whether the mochi woke, waited or skipped it. A cooldown limits
+how often a trigger wakes it. A busy mochi takes the latest waiting event
+for each trigger after its turn. Paused or archived mochis and mochis over
+their daily budget do not wake. Triggers belong to their machine and are
+removed when a mochi moves to another one.
+
 ## The info panel
 
 The info button in the window's top bar opens the mochi's info panel on the

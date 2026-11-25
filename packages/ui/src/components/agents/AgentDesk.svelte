@@ -19,6 +19,7 @@
   import ProviderLogo from '../ProviderLogo.svelte';
   import AgentBrainEditor from './AgentBrainEditor.svelte';
   import AgentRoutines from './AgentRoutines.svelte';
+  import AgentTriggers from './AgentTriggers.svelte';
   import BotWorkList from './BotWorkList.svelte';
   import SurfaceHead from '../SurfaceHead.svelte';
   import './agents.css';
@@ -142,6 +143,7 @@
 
         <section class="desk-card desk-schedule" data-testid="desk-schedule">
           <AgentRoutines {view} agentId={agent.id} compact />
+          <AgentTriggers {view} agentId={agent.id} compact />
         </section>
       </div>
 

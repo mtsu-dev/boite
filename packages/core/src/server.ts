@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun';
 import type { Channel, RpcEventName, RpcEvents, ThreadId } from '@boite/contracts';
-import { APP_ORIGIN, FILE_ROUTE, RPC_MAX_FRAME_BYTES, RPC_PATH, RpcCloseCode, VIEW_ROUTE, SUBSCRIBED_EVENTS, agentHearsEvent } from '@boite/contracts';
+import { AGENT_TRIGGER_WEBHOOK_ROUTE, APP_ORIGIN, FILE_ROUTE, RPC_MAX_FRAME_BYTES, RPC_PATH, RpcCloseCode, VIEW_ROUTE, SUBSCRIBED_EVENTS, agentHearsEvent } from '@boite/contracts';
 import { timingSafeEqual } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, normalize, resolve, sep } from 'node:path';
@@ -485,6 +485,7 @@ export function startServer(options: ServerOptions): RunningServer {
     fetch(request, self) {
       if (stopping) return new Response('core stopping', { status: 503 });
       const url = new URL(request.url);
+      if (url.pathname.startsWith(AGENT_TRIGGER_WEBHOOK_ROUTE)) return core.workforce.triggers.http(request, url.pathname.slice(AGENT_TRIGGER_WEBHOOK_ROUTE.length));
 
       if (url.pathname === '/agent-messages' || url.pathname === JOIN_ROUTE || url.pathname === CONTACT_JOIN_ROUTE) {
         if (core.stopping) return new Response('core stopping', { status: 503 });

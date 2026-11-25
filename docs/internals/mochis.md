@@ -1017,6 +1017,43 @@ the thread has a turn in flight. The schedule editor writes a sentence under
 the choices saying what will happen and when it runs next, for example "Every
 Monday and Friday at 6:00 PM" (`schedule.ts`).
 
+## Event triggers
+
+`AgentTrigger` records use the `trigger` kind in `agent_entities`. Snapshots
+include the source, state, last dispatch outcome, and, for webhooks, the
+endpoint path and `hasSecret`. Only `agents.trigger.save` on webhook creation
+and `agents.trigger.rotateSecret` return the secret. Both require the owner
+and an encrypted connection to issue it. The 32-byte hex secret is stored
+separately in a journal setting, and `agents.record` events carry only the id
+and revision. A mochi's own thread may save or remove its own triggers, with
+webhook creation restricted to the owner. `boite mochi triggers` lists them.
+`agents.trigger.test` is owner-only and keeps a receipt keyed by `requestId`.
+`agents.trigger.remove` also deletes any stored webhook secret.
+
+- `POST /hooks/mochi/<triggerId>` accepts `Authorization: Bearer`,
+  `X-Boite-Secret`, or `X-Hub-Signature-256: sha256=<hex>` (HMAC-SHA256
+  of the exact request body). Comparison is constant-time. A missing or
+  disabled route returns 404, failed authentication 401, a body over 64 KiB
+  413 and cooldown 429 with `Retry-After`. Only a bounded, quoted payload
+  excerpt reaches the mochi. Use HTTPS when exposing the route.
+- File triggers use a recursive `fs.watch` on the local granted project's
+  folder. They group matching relative paths into a debounced batch and
+  ignore `.git`, `node_modules`, `.boite`, `dist` and `target`. Editing or
+  disabling a trigger, removing its project grant, or stopping the core
+  closes the file watch and drops its pending batch.
+- PR triggers reuse the existing PR tracker and its GitHub reads. An open
+  watch establishes a baseline, then forwards new CI failures, review
+  requests, requests for changes, conflicts and merges for its conversation's
+  project. The trigger filters these by its configured event types. There
+  is no second polling loop.
+
+Explicit triggers use the regular event wake checks for pauses, archived
+profiles, budget, provider availability and grants, independently of the
+general `eventWakes` setting. A busy mochi keeps its latest pending event per
+trigger in memory. On restart the core reopens eligible file watches and
+marks any previously queued event skipped. Triggers are scoped to the
+original machine and are removed at the source when a move completes.
+
 ## Budget and limits
 
 A mochi has no run cap: a wake runs as long as any turn, and the thread's own

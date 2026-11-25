@@ -447,6 +447,7 @@ export class BotMoves {
       for (const session of this.#store.records.list('session').filter(s => s.agentId === agent.id)) this.#store.records.remove('session', session.id);
       this.#store.records.remove('profile', agent.id);
     });
+    this.#store.triggers.removeForAgent(agent.id);
     this.#core.agentRuntime.forget(agent.id);
     this.#unqueue(agent.id);
     // Its settings: every key that ends with the bot's or its thread's id.

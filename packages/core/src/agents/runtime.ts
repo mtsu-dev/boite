@@ -546,6 +546,7 @@ export class AgentRuntime {
   private tick(): void {
     if (this.#closed || this.#core.stopping || this.#core.journal.isClosed()) return;
     this.#store.routines.tick();
+    this.#store.triggers.tick();
     this.#store.memory.tick();
     this.#store.projects.tick();
     this.#store.moves.sweep();

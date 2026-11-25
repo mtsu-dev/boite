@@ -33,6 +33,7 @@ state isDraft mergeable mergeStateStatus headRefOid updatedAt mergeQueueEntry{po
 comments(first:50,orderBy:{field:UPDATED_AT,direction:DESC}){totalCount nodes{lastEditedAt}}
 reviews(last:50){totalCount nodes{lastEditedAt}}
 reviewThreads{totalCount}
+reviewRequests(first:100){nodes{id}} changeReviews:reviews(last:100,states:[CHANGES_REQUESTED]){nodes{id}}
 baseRef{target{... on Commit{oid statusCheckRollup{contexts{checkRunCountsByState{state count} statusContextCountsByState{state count}}}}}}
 commits(last:1){nodes{commit{statusCheckRollup{state contexts{checkRunCountsByState{state count} statusContextCountsByState{state count}}}}}}
 }}}`;
@@ -53,6 +54,8 @@ export interface Fingerprint {
   state: 'OPEN' | 'CLOSED' | 'MERGED';
   status: string;
   remarks: string;
+  reviewRequests?: string[];
+  changeReviews?: string[];
 }
 
 /** Who merged or closed the pull request, and when, read once when it stops being open. */
@@ -106,10 +109,13 @@ export function parseFingerprint(raw: string): Fingerprint {
   const contexts = contextsOf(row(row(list(row(pr.commits).nodes)[0]).commit));
   const base = baseTip(pr), baseContexts = contextsOf(base);
   const comments = row(pr.comments), reviews = row(pr.reviews);
+  const reviewIds = (value: unknown) => list(row(value).nodes).map(node => text(row(node).id, 128)).filter(Boolean).sort();
+  const reviewRequests = reviewIds(pr.reviewRequests), changeReviews = reviewIds(pr.changeReviews);
   return {
     state: prState(pr.state),
     status: [pr.state, pr.isDraft, pr.mergeable, pr.mergeStateStatus, pr.headRefOid, queuePosition(pr), counts(contexts.checkRunCountsByState), counts(contexts.statusContextCountsByState), base.oid, counts(baseContexts.checkRunCountsByState), counts(baseContexts.statusContextCountsByState)].map(String).join(' '),
-    remarks: [comments.totalCount, newestEdit(comments), reviews.totalCount, newestEdit(reviews), row(pr.reviewThreads).totalCount, pr.updatedAt].map(String).join(' '),
+    remarks: [comments.totalCount, newestEdit(comments), reviews.totalCount, newestEdit(reviews), row(pr.reviewThreads).totalCount, pr.updatedAt, reviewRequests, changeReviews].map(String).join(' '),
+    reviewRequests, changeReviews,
   };
 }
 

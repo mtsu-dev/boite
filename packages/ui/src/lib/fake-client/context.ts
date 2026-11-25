@@ -477,6 +477,7 @@ export class FakeContext {
       // A wake runs on the thread like a turn the user started; one already running refuses it, as the composer's queue would wait.
       wake: (threadId, prompt, operation, label) => this.startTurn(threadId, prompt, [], operation, undefined, undefined, [], false, label),
       thread: threadId => this.threads.get(threadId),
+      project: projectId => this.projects.some(project => project.id === projectId && !project.archived),
       settle: threadId => { const thread = this.threads.get(threadId); if (thread?.unread) { thread.unread = false; this.touch(thread); } },
       waiting: threadId => [...this.pendingQuestions.values()].some(q => q.request.threadId === threadId) || [...this.pendingPermissions.values()].some(p => p.request.threadId === threadId),
       question: threadId => {

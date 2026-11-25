@@ -111,6 +111,33 @@ export interface AgentRoutine extends AgentRecord {
   quietRun?: number;
 }
 
+export const AGENT_TRIGGERS_MAX = 50;
+export const AGENT_TRIGGER_WEBHOOK_ROUTE = '/hooks/mochi/';
+export const AGENT_TRIGGER_PR_EVENTS = ['ci_failed', 'review_requested', 'changes_requested', 'conflict', 'merged'] as const;
+export type AgentTriggerPrEvent = typeof AGENT_TRIGGER_PR_EVENTS[number];
+export type AgentTriggerSource =
+  | { kind: 'webhook' }
+  | { kind: 'file'; projectId: string; patterns: string[]; debounceMs: number }
+  | { kind: 'pr'; projectId: string; events: AgentTriggerPrEvent[] };
+export type AgentTriggerEvent =
+  | { kind: 'webhook'; summary: string; eventName?: string }
+  | { kind: 'file'; paths: string[] }
+  | { kind: 'pr'; events: AgentTriggerPrEvent[]; url: string };
+export interface AgentTriggerConfig {
+  agentId: string;
+  name: string;
+  prompt: string;
+  enabled: boolean;
+  cooldownSeconds: number;
+  source: AgentTriggerSource;
+}
+export interface AgentTrigger extends AgentRecord, AgentTriggerConfig {
+  hasSecret: boolean;
+  webhookPath: string | null;
+  lastFiredAt: number | null;
+  lastOutcome: 'fired' | 'queued' | 'skipped' | 'error' | null;
+}
+
 /** How long a single-date routine stays listed once it ran, then the core removes it. */
 export const AGENT_ONCE_KEPT_MS = 7 * 86_400_000;
 /**
@@ -294,6 +321,8 @@ export interface AgentsSnapshot {
   profiles: AgentProfile[];
   sessions: AgentSession[];
   routines: AgentRoutine[];
+  /** Absent when connected to a core predating event triggers. */
+  triggers?: AgentTrigger[];
   status: AgentStatus[];
   /** Every agent's desk, open threads first, then the newest settled ones. */
   watches: AgentWatch[];
@@ -435,6 +464,10 @@ export interface AgentsRpcMethods {
   'agents.routine.remove': { params: { routineId: string; threadId?: string }; result: { removed: true } };
   /** Runs a routine now, as a turn on the agent's thread. Refused while that thread has a turn in flight. */
   'agents.routine.run': { params: { routineId: string; requestId: string }; result: { turnId: string } };
+  'agents.trigger.save': { params: { id?: string; expectedRevision?: number; value: AgentTriggerConfig; threadId?: string }; result: { trigger: AgentTrigger; secret?: string } };
+  'agents.trigger.remove': { params: { triggerId: string; threadId?: string }; result: { removed: true } };
+  'agents.trigger.test': { params: { triggerId: string; requestId: string }; result: { outcome: NonNullable<AgentTrigger['lastOutcome']>; turnId: string | null } };
+  'agents.trigger.rotateSecret': { params: { triggerId: string }; result: { trigger: AgentTrigger; secret: string } };
   /**
    * An event from outside Boite (a CI job, a script) for a bot, named by id or
    * name: an urgent fact keyed `external:<key>` (default `external`), which a

@@ -4,6 +4,7 @@ import type {
   AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentQueuedMove, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSelection, AgentSession, AgentStatus, AgentWatch, AgentsRpcMethods, AgentsSnapshot, RpcParams, RpcResult, Thread, Turn
 } from '@boite/contracts';
 import { RpcFailure } from './client';
+import { FakeAgentTriggers } from './fake-agent-triggers';
 
 export const nextOccurrence = nextAgentOccurrence;
 
@@ -57,6 +58,7 @@ export interface AgentRunner {
   selfName?: () => string;
   /** Why the agent's route cannot run on this core (its provider is turned off), as the core's status says it; null when it can. */
   problem?: (agent: AgentProfile, thread: Thread | undefined) => string | null;
+  project?: (projectId: string) => boolean;
 }
 
 /** A member of the group as a move sees it: its name, whether it takes bots, and its agents. */
@@ -90,6 +92,16 @@ export class FakeAgents {
   private queued = new Map<string, AgentQueuedMove>();
   private sessions = new Map<string, AgentSession>();
   private routines = new Map<string, AgentRoutine>();
+  private triggers = new FakeAgentTriggers({
+    profile: id => this.profile(id), owner: id => this.ownerOf(id), project: id => this.runner?.project?.(id) ?? false,
+    held: agent => {
+      const cap = this.runtime(agent.id).dailyBudgetUsd;
+      if (agent.status !== 'active' || this.limits.paused || (cap != null && (this.spend.get(agent.id) ?? 0) >= cap)) return 'skipped';
+      return this.busyThread(agent.id) || this.queued.has(agent.id) ? 'queued' : null;
+    },
+    wake: trigger => this.wake(trigger.agentId, trigger.prompt + '\n\nBoite sent a sample event to test this trigger.', 'event', `Trigger · ${trigger.name}`)?.id ?? null,
+    changed: () => this.bump(),
+  });
   private watches: AgentWatch[] = [];
   private configs = new Map<string, AgentRuntimeConfig>();
   private brains = new Map<string, AgentBrain>();
@@ -201,6 +213,7 @@ export class FakeAgents {
       routine.revision++;
     }
     this.leaveIfIdle(agentId);
+    queueMicrotask(() => this.triggers.flush(agentId));
     this.bump();
   }
   /** The waiting move of a bot whose threads are all idle, as the core's scheduler pass starts it; a failure drops it. */
@@ -331,6 +344,7 @@ export class FakeAgents {
       profiles,
       sessions: mine([...this.sessions.values()]),
       routines: mine([...this.routines.values()]).sort(byCreation),
+      triggers: mine(this.triggers.list()).sort(byCreation),
       status: profiles.map(agent => this.statusOf(agent)),
       // A removed thread leaves every desk, as the core reads none it cannot find.
       watches: mine(this.watches).filter(w => (own !== null || desk === undefined || w.agentId === desk) && (w.coreId !== undefined || !this.runner?.thread || this.runner.thread(w.threadId) !== undefined)).map(watch => this.watchOf(watch)).sort((a, b) => Number(['done', 'archived'].includes(a.state)) - Number(['done', 'archived'].includes(b.state)) || b.lastActivityAt - a.lastActivityAt),
@@ -375,6 +389,10 @@ export class FakeAgents {
     'agents.routine.save': p => this.saveRoutine(p),
     'agents.routine.remove': p => this.removeRoutine(p),
     'agents.routine.run': p => this.runRoutine(p),
+    'agents.trigger.save': p => this.triggers.save(p),
+    'agents.trigger.remove': p => this.triggers.remove(p),
+    'agents.trigger.test': p => this.triggers.test(p),
+    'agents.trigger.rotateSecret': p => this.triggers.rotateSecret(p),
     'agents.watch': p => this.watch(p),
     'agents.event': p => this.outsideEvent(p),
     'agents.limits.set': p => { this.limits = { paused: p.paused === true }; this.bump(); return { ...this.limits }; },
@@ -438,6 +456,7 @@ export class FakeAgents {
       this.sessions.delete(id);
     }
     for (const [id, routine] of [...this.routines]) if (routine.agentId === agent.id) this.routines.delete(id);
+    this.triggers.removeForAgent(agent.id);
     // As the core: nothing of the bot stays on the machine it left, its desk included.
     this.watches = this.watches.filter(watch => watch.agentId !== agent.id);
     this.entrusted = this.entrusted.filter(entry => entry.agentId !== agent.id);
@@ -585,6 +604,7 @@ export class FakeAgents {
       this.sessions.delete(id);
     }
     for (const [id, routine] of [...this.routines]) if (routine.agentId === agent.id) this.routines.delete(id);
+    this.triggers.removeForAgent(agent.id);
     const brain = this.brains.get(agent.id);
     this.brains.set(agent.id, { path: '', instructions: shipped.instructions, memory: '', revision: String(Number(brain?.revision ?? 0) + 1) });
     this.problems.delete(agent.id);

@@ -1,4 +1,4 @@
-import { pullRequestAddress, WATCH_DONE_HINT, type PullRequestWatch, type PullRequestWatchSeen, type ThreadId } from '@boite/contracts';
+import { pullRequestAddress, WATCH_DONE_HINT, type AgentTriggerPrEvent, type PullRequestWatch, type PullRequestWatchSeen, type ThreadId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { messageOf, refused } from './errors.ts';
 import {
@@ -262,6 +262,7 @@ export class PullRequestWatches {
       await this.core.linkedPullRequests.observe(threadId, record.url, 'OPEN', { head: read.branch ?? '', headRepository: read.headRepository ?? '' });
       if (this.#find(threadId, record.url) !== record) return 'OPEN';
       const { changes, next } = evaluate(record.memory, detail, remarks);
+      const triggerEvents = prTriggerEvents(changes, record.fingerprint, fingerprint);
       runtime.detail = read;
       runtime.rules = read.base ? this.#required.stamp(rulesKey(record, read.base)) : null;
       record.memory = next;
@@ -277,7 +278,7 @@ export class PullRequestWatches {
         // Read again when the burst settles, so what it brought goes out together.
         runtime.nextReadAt = record.pendingSince + this.#timing.coalesceMs;
       } else runtime.nextReadAt = now + this.#timing.intervalMs;
-      if (!baseline) { this.#save(threadId); this.#changed(threadId); }
+      if (!baseline) { this.#save(threadId); this.#changed(threadId); this.core.workforce.triggers.pullRequest(threadId, record.url, triggerEvents); }
       return 'OPEN';
     } catch (error) {
       if (this.#find(threadId, record.url) !== record) return null;
@@ -328,6 +329,7 @@ export class PullRequestWatches {
     }
     this.#save(threadId);
     this.#changed(threadId);
+    if (state === 'MERGED') this.core.workforce.triggers.pullRequest(threadId, record.url, ['merged']);
   }
 
   /**
@@ -504,4 +506,13 @@ function validRecord(value: unknown): value is WatchRecord {
   const record = value as WatchRecord | null;
   if (!record || typeof record !== 'object' || typeof record.url !== 'string' || typeof record.since !== 'number' || !record.memory || !Array.isArray(record.pending)) return false;
   try { pullRequestAddress(record.url); return true; } catch { return false; }
+}
+
+function prTriggerEvents(changes: WatchChange[], previous: Fingerprint | null, current: Fingerprint): AgentTriggerPrEvent[] {
+  const events: AgentTriggerPrEvent[] = [];
+  if (changes.some(change => change.kind === 'failed' || change.kind === 'base-failed')) events.push('ci_failed');
+  if (changes.some(change => change.kind === 'conflict')) events.push('conflict');
+  if (previous?.reviewRequests && current.reviewRequests?.some(id => !previous.reviewRequests?.includes(id))) events.push('review_requested');
+  if (previous?.changeReviews && current.changeReviews?.some(id => !previous.changeReviews?.includes(id))) events.push('changes_requested');
+  return events;
 }

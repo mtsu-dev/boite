@@ -9,6 +9,7 @@
   import AgentEditor from './AgentEditor.svelte';
   import AgentRuntimeSettings from './AgentRuntimeSettings.svelte';
   import AgentRoutines from './AgentRoutines.svelte';
+  import AgentTriggers from './AgentTriggers.svelte';
   import AgentBrainEditor from './AgentBrainEditor.svelte';
 
   /**
@@ -50,6 +51,7 @@
         {:else}
           <AgentEditor {view} record={agent} embedded ondone={() => {}} oncancel={() => {}} />
           <AgentRoutines {view} agentId={agent.id} />
+          <AgentTriggers {view} agentId={agent.id} />
           <AgentRuntimeSettings {view} {agent} />
         {/if}
       {/key}
