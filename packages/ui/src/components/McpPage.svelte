@@ -200,7 +200,7 @@
   .editor { min-width: 0; }
   .mcp-page :global(.card) { display: grid; gap: var(--space-2); padding: var(--space-3); margin: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--card-fill); }
   .mcp-page :global(.card > h2) { margin: 0 0 var(--space-1); display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
-  .mcp-page :global(.mcp-spinner) { animation: mcp-spin 800ms linear infinite; }
+  .mcp-page :global(.mcp-spinner) { animation: mcp-spin 800ms linear infinite var(--loops); }
   @keyframes mcp-spin { to { transform: rotate(1turn); } }
   @media (prefers-reduced-motion: reduce) { .mcp-page :global(.mcp-spinner) { animation: none; } }
   .empty { margin: 0; color: var(--color-subtle); padding: var(--space-3) 0; }
