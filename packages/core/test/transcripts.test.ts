@@ -797,3 +797,30 @@ test('a subagent rollout a stopped removal left is still its conversation\'s onc
   expect([harness.core.transcripts.progress().lastError, existsSync(child)]).toEqual([null, false]);
   expect(harness.core.transcripts.store.db.query('SELECT count(*) AS count FROM leftovers').get()).toEqual({ count: 0 });
 });
+
+for (const mode of ['classic', 'storage'] as const) {
+  test(`tool results whose session file is already gone are archived with their conversation (${mode})`, async () => {
+    await core();
+    const { threadId, file, side } = await importedThread();
+    rmSync(join(side, 'subagents'), { recursive: true });
+    mkdirSync(join(side, 'tool-results'));
+    const output = join(side, 'tool-results', 'out.txt');
+    const marker = 'error: conclusive diagnostic in a separate tool output';
+    writeFileSync(output, marker);
+    const at = Date.now() - 40 * DAY;
+    utimesSync(output, at / 1000, at / 1000);
+    rmSync(file);
+    if (mode === 'classic') {
+      await client.call('threads.remove', { threadId });
+      harness.core.journal.db.query('UPDATE thread_deletions SET deleted_at = ? WHERE root_id = ?').run(at, threadId);
+    } else harness.core.journal.db.query('UPDATE threads SET updated_at = ? WHERE id = ?').run(at, threadId);
+    const before = await client.call('transcripts.preview', { policy: TRANSCRIPT_PRESETS[mode] });
+    expect(before.totalBytes).toBeGreaterThanOrEqual(marker.length);
+    await client.call('settings.set', { transcriptStorage: { mode } });
+    await harness.core.transcripts.run();
+    expect([harness.core.transcripts.progress().lastError, existsSync(output)]).toEqual([null, false]);
+    // A deleted conversation's archive opens on its journal: the provider session is read by its id.
+    const found = await client.call('transcripts.read', { conversation: threadId, sessionId: FIXTURE_SESSION_ID, query: marker });
+    expect(found.records.length).toBeGreaterThan(0);
+  });
+}

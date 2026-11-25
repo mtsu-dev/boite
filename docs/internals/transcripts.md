@@ -73,7 +73,7 @@ Under `<data dir>/transcripts/`:
   conversation's leaving the journal, and whose it was, under each id its
   files go by: a Codex subagent's rollout is found under its own id once its
   parent's is gone, and tool results left without their session's file are
-  removed once their conversation is due to be erased). It uses a rollback journal, and reads open it
+  archived or removed like the session they belonged to). It uses a rollback journal, and reads open it
   read-only until something is archived: a preview leaves no file beside it.
 
 A record is `{ "k": <kind>, "t": <time>, ... }`: `user`, `assistant`,

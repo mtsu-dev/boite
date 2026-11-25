@@ -179,17 +179,13 @@ async function scanCodex(root: string, own: boolean, sessions: Map<string, RawSe
 
 /**
  * The sessions of one account directory, by account folder and id. A directory that cannot be read holds none.
- * Tool results whose session file is gone are no session: they go to `remnants`, for a removal to finish.
+ * Tool results whose session file is gone are still a session: what is left of one, archived or removed like it.
  */
-export async function scanSessions(dir: string, source: TranscriptSource, own: boolean, into = new Map<string, RawSession>(), remnants?: Map<string, RawSession>): Promise<Map<string, RawSession>> {
+export async function scanSessions(dir: string, source: TranscriptSource, own: boolean, into = new Map<string, RawSession>()): Promise<Map<string, RawSession>> {
   let root: string;
   try { root = await realpath(dir); } catch { return into; }
   if (source === 'claude') await scanClaude(root, own, into); else await scanCodex(root, own, into);
-  for (const [key, raw] of into) {
-    if (raw.files.length > 0) continue;
-    into.delete(key);
-    if (raw.toolResults.length > 0) remnants?.set(key, raw);
-  }
+  for (const [key, raw] of into) if (raw.files.length === 0 && raw.toolResults.length === 0) into.delete(key);
   return into;
 }
 

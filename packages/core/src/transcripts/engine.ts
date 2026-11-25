@@ -96,7 +96,7 @@ export class Transcripts {
   #progress = idle();
   #pass: Promise<void> | null = null;
   #stopped = false;
-  #scan: { at: number; raws: Map<string, RawSession>; remnants: Map<string, RawSession> } | null = null;
+  #scan: { at: number; raws: Map<string, RawSession> } | null = null;
   #ratio: { at: number; value: number | null } | null = null;
   /** The policy the pass under way was planned for; null when it follows none. */
   #planned: string | null = null;
@@ -160,9 +160,8 @@ export class Transcripts {
   async #sessions(fresh: boolean): Promise<Map<string, RawSession>> {
     if (!fresh && this.#scan !== null && Date.now() - this.#scan.at < SCAN_FRESH_MS) return this.#scan.raws;
     const raws = new Map<string, RawSession>();
-    const remnants = new Map<string, RawSession>();
-    for (const root of this.#roots()) await scanSessions(root.dir, root.source, root.own, raws, remnants);
-    this.#scan = { at: Date.now(), raws, remnants };
+    for (const root of this.#roots()) await scanSessions(root.dir, root.source, root.own, raws);
+    this.#scan = { at: Date.now(), raws };
     return raws;
   }
 
@@ -204,14 +203,6 @@ export class Transcripts {
       const naming = owners.get(id) ?? [];
       if (roots.size > 1 && naming.some(owner => owner.accountId === null || !roots.has(rootOf.get(owner.accountId) ?? ''))) {
         for (const owner of naming) unsure.add(owner.thread.rootId ?? owner.thread.id);
-      }
-    }
-    // Tool results a stopped removal left behind their session's file: they go when their conversation is due to be
-    // erased. Nothing can be archived from them alone, so a mode that only compacts leaves them where they are.
-    for (const raw of this.#scan?.remnants.values() ?? []) {
-      const owner = owners.has(raw.id) ? null : this.store.leftover(raw.root, raw.id);
-      if (owner !== null && owner.deletedAt !== null && due(policy.deletedEraseDays, owner.deletedAt, now)) {
-        steps.push({ kind: 'leftover', raw, thread: owner, erase: true, keepImages: false, bytes: raw.bytes });
       }
     }
     for (const raw of raws.values()) {
