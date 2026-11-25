@@ -172,6 +172,7 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
   'plugins.add': plugins,
   'plugins.dev': plugins,
   'plugins.inspect': plugins,
+  'mcp.test': when('mcp', values => values.mcp === false),
   'diagnostics.issue': when('issueReports', values => values.issueReports === false),
   'speech.install': dictationOff,
   'speech.warm': dictationOff,
