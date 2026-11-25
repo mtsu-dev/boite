@@ -84,8 +84,9 @@ test('protected and tool-free sessions never register; Muse and OpenCode use the
   const active = sessionMcp(ctx);
   expect(active).toBe(registration);
   const muse = museMcpConfig(active);
-  expect(muse.args[0]).toBe('-c');
-  expect(muse.args[1]).toContain(url);
+  expect(muse.args).toEqual(['-c', 'mcp_servers.fixture=' + JSON.stringify({
+    transport: 'streamable_http', url, headers: { Authorization: '${BOITE_MCP_AUTHORIZATION}' },
+  })]);
   expect(muse.args.join(' ')).not.toContain('test-thread-token');
   expect(Object.values(muse.env)).toEqual([registration.authorization]);
   const config = withOpenCodeMcp({ OPENCODE_CONFIG_CONTENT: '{"model":"fixture/model"}' }, active);

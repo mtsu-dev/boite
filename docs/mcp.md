@@ -15,7 +15,10 @@ server once and Boite makes it available to supported agents on that machine.
 Choose **Add custom server** to supply your own command and arguments
 (`stdio`) or an HTTP endpoint (`HTTP`). Enter one command argument per line.
 Turn on **Secret** for each credential. When you edit a saved secret, leave
-the field blank to keep it. Remove its row to delete it.
+the field blank to keep it. Remove its row to delete it. Use an encrypted
+connection to Boite to save credentials. HTTP servers with secret headers use
+HTTPS unless they run on this machine's loopback. If you change the server's
+scheme, host, or port, re-enter the credentials for the new address.
 
 ## Use a server
 

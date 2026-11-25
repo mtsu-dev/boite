@@ -21,7 +21,7 @@ import type { Core } from '../core.ts';
 import { agentEnvOf } from '../agent.ts';
 import type { SpawnedChild } from '../procs.ts';
 import { LineSplitter, STDOUT_LINE_MAX } from '../drivers/lines.ts';
-import { HttpMcpProxy, redactMcp } from './http.ts';
+import { HttpMcpProxy, redactMcpMessage } from './http.ts';
 import type { ManagedServer } from './registry.ts';
 import { managedStdioLaunch } from './stdio.ts';
 
@@ -584,7 +584,7 @@ export class LazyMcp {
   }
 
   #fromServer(session: Session, upstream: Upstream, message: Message): void {
-    if (session.managed) message = redactMcp(message, session.managed.redact);
+    if (session.managed) message = redactMcpMessage(message, session.managed.redact);
     if (message.method === undefined && message.id !== undefined && message.id !== null) {
       const waiting = typeof message.id === 'number' ? session.pending.get(message.id) : undefined;
       if (waiting === undefined) return;

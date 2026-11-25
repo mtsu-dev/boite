@@ -1,5 +1,6 @@
 <script lang="ts">
   import { BookOpen, Check, Cloud, Database, ExternalLink, FileText, Folder, GitBranch, ListChecks, LoaderCircle, Pencil, Play, Plug, Plus, Telescope, Trash2, TriangleAlert } from '@lucide/svelte';
+  import { SvelteMap } from 'svelte/reactivity';
   import { RpcErrorCode, type McpPreset, type McpProbeResult, type McpServer, type McpServerInput, type RpcResult } from '@boite/contracts';
   import { RpcFailure } from '../lib/client';
   import { confirm } from '../lib/confirm.svelte';
@@ -14,8 +15,8 @@
 
   let { store, phone = false }: { store: Store; phone?: boolean } = $props();
   let catalog = $state.raw<RpcResult<'mcp.list'> | null>(null);
-  let tests = $state<Record<string, McpProbeResult>>({});
-  let busy = $state<Record<string, string>>({});
+  const tests = new SvelteMap<string, McpProbeResult>();
+  const busy = new SvelteMap<string, 'toggle' | 'test' | 'remove'>();
   let error = $state('');
   let edit = $state.raw<{ server?: McpServer; preset?: McpPreset } | null>(null);
   let revision = 0;
@@ -64,46 +65,46 @@
 
   async function toggle(server: McpServer): Promise<void> {
     const client = store.client;
-    if (!client || busy[server.id]) return;
-    busy[server.id] = 'toggle';
+    if (!client || busy.has(server.id)) return;
+    busy.set(server.id, 'toggle');
     try { await client.call('mcp.toggle', { id: server.id, enabled: !server.enabled }); }
     catch (cause) { error = errorText(cause); }
-    finally { delete busy[server.id]; }
+    finally { busy.delete(server.id); }
   }
 
   async function test(server: McpServer): Promise<void> {
     const client = store.client;
-    if (!client || busy[server.id]) return;
-    busy[server.id] = 'test';
+    if (!client || busy.has(server.id)) return;
+    busy.set(server.id, 'test');
     try {
-      tests[server.id] = await client.call('mcp.test', { id: server.id });
+      tests.set(server.id, await client.call('mcp.test', { id: server.id }));
     } catch (cause) {
-      tests[server.id] = { ok: false, latencyMs: 0, error: errorText(cause), tools: [] };
-    } finally { delete busy[server.id]; }
+      tests.set(server.id, { ok: false, latencyMs: 0, error: errorText(cause), tools: [] });
+    } finally { busy.delete(server.id); }
   }
 
   async function remove(server: McpServer): Promise<void> {
     const client = store.client;
-    if (!client || busy[server.id]) return;
+    if (!client || busy.has(server.id)) return;
     const accepted = await confirm.ask({
       title: fill(t.removalTitle, { name: server.name }), body: t.removalBody,
       confirmLabel: t.remove, cancelLabel: strings.common.cancel, danger: true,
     });
-    if (!accepted || store.client !== client || busy[server.id]) return;
-    busy[server.id] = 'remove';
+    if (!accepted || store.client !== client || busy.has(server.id)) return;
+    busy.set(server.id, 'remove');
     try {
       await client.call('mcp.remove', { id: server.id });
-      delete tests[server.id];
+      tests.delete(server.id);
       if (edit?.server?.id === server.id) edit = null;
     } catch (cause) { error = errorText(cause); }
-    finally { delete busy[server.id]; }
+    finally { busy.delete(server.id); }
   }
 
   async function save(input: McpServerInput): Promise<void> {
     const client = store.client;
     if (!client) throw new Error(t.missing);
     const saved = await client.call('mcp.save', input);
-    delete tests[saved.id];
+    tests.delete(saved.id);
     edit = null;
   }
 </script>
@@ -121,7 +122,7 @@
           <p class="empty">{t.empty}</p>
         {/if}
         {#each catalog.servers as server (server.id)}
-          {@const result = tests[server.id]}
+          {@const result = tests.get(server.id)}
           <div class="server">
             <div class="server-head">
               <div class="server-icon"><Plug size={17} strokeWidth={1.75} /></div>
@@ -129,17 +130,17 @@
                 <strong>{server.name}</strong>
                 <div class="metadata"><span class="transport">{t[server.transport]}</span><span title={scopeOf(server)}>{scopeOf(server)}</span></div>
               </div>
-              <SettingSwitch aria-label={fill(t.toggle, { name: server.name })} checked={server.enabled} disabled={!!busy[server.id]} onclick={event => { event.preventDefault(); void toggle(server); }} />
+              <SettingSwitch aria-label={fill(t.toggle, { name: server.name })} checked={server.enabled} disabled={busy.has(server.id)} onclick={event => { event.preventDefault(); void toggle(server); }} />
             </div>
             <div class="server-actions">
-              <button type="button" class="ghost" disabled={blocked || !!busy[server.id]} aria-label={fill(t.testServer, { name: server.name })} onclick={() => test(server)}>
-                {#if busy[server.id] === 'test'}<LoaderCircle class="mcp-spinner" size={14} />{t.testing}
+              <button type="button" class="ghost" disabled={blocked || busy.has(server.id)} aria-label={fill(t.testServer, { name: server.name })} onclick={() => test(server)}>
+                {#if busy.get(server.id) === 'test'}<LoaderCircle class="mcp-spinner" size={14} />{t.testing}
                 {:else}<Play size={14} />{t.test}{/if}
               </button>
-              <button type="button" class="ghost" disabled={!!busy[server.id]} onclick={() => open({ server })}><Pencil size={14} />{t.edit}</button>
-              <button type="button" class="ghost remove" disabled={!!busy[server.id]} onclick={() => remove(server)}><Trash2 size={14} />{t.remove}</button>
+              <button type="button" class="ghost" disabled={busy.has(server.id)} onclick={() => open({ server })}><Pencil size={14} />{t.edit}</button>
+              <button type="button" class="ghost remove" disabled={busy.has(server.id)} onclick={() => remove(server)}><Trash2 size={14} />{t.remove}</button>
             </div>
-            {#if result && busy[server.id] !== 'test'}
+            {#if result && busy.get(server.id) !== 'test'}
               {#if result.ok}
                 <details class="probe" data-testid="mcp-probe">
                   <summary><span class="success"><Check size={15} />{result.tools.length === 1 ? t.oneTool : fill(t.toolCount, { count: String(result.tools.length) })}</span><span class="time">{result.latencyMs} ms</span></summary>

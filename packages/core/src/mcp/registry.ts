@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MCP_PRESETS, McpInputError, mcpSecretPatch, normalizeMcpServer, type McpServer, type McpServerInput, type ProjectId } from '@boite/contracts';
+import { MCP_PRESETS, McpInputError, mcpHttpOriginChanged, mcpSecretPatch, normalizeMcpServer, type McpServer, type McpServerInput, type ProjectId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams } from '../errors.ts';
 import type { StdioServer } from './lazy.ts';
+import { probeMcp } from './probe.ts';
 
-export interface HttpServer { url: string; headers: Record<string, string> }
+export interface HttpServer { url: string; headers: Record<string, string>; hasSecretHeaders: boolean }
 export type ManagedServer = { id: string; redact: (text: string) => string } & (StdioServer | HttpServer);
 
 type Credentials = { env: Record<string, string>; headers: Record<string, string> };
@@ -28,6 +29,7 @@ function applyPatch(values: Record<string, string>, patch: Record<string, string
 
 export class McpRegistry {
   readonly #revisions = new Map<string, number>();
+  readonly #probes = new Set<AbortController>();
   #revision = 0;
 
   constructor(readonly core: Core) {}
@@ -56,16 +58,17 @@ export class McpRegistry {
     }
     const previous = this.#readSecrets();
     const stored = input.id === undefined ? emptyCredentials : this.#credentials(next.id, previous);
+    const current = servers.find(server => server.id === next.id);
     const patch = mcpSecretPatch(input);
     const credentials = {
       env: applyPatch(stored.env, patch.env, false),
-      headers: applyPatch(stored.headers, patch.headers, true),
+      headers: applyPatch(mcpHttpOriginChanged(current?.url, next.url) ? {} : stored.headers, patch.headers, true),
     };
     const updated = { ...previous };
     if (Object.keys(credentials.env).length || Object.keys(credentials.headers).length) {
       Object.defineProperty(updated, next.id, { value: credentials, enumerable: true, configurable: true });
     } else delete updated[next.id];
-    this.#write(servers.some(server => server.id === next.id)
+    this.#write(current !== undefined
       ? servers.map(server => server.id === next.id ? next : server)
       : [...servers, next], next.id, previous, updated);
     return next;
@@ -90,10 +93,21 @@ export class McpRegistry {
   }
 
   revokeManaged(): void {
+    const reason = this.core.policy.refusal('mcp');
+    for (const probe of this.#probes) probe.abort(reason);
     for (const server of this.#servers()) {
       this.#revisions.set(server.id, ++this.#revision);
       this.core.lazyMcp.revoke(server.id, false);
     }
+  }
+
+  async test(id: unknown, caller?: AbortSignal) {
+    if (this.core.policy.values.mcp === false) throw this.core.policy.refusal('mcp');
+    const definition = this.get(id);
+    const controller = new AbortController();
+    this.#probes.add(controller);
+    try { return await probeMcp(this.core, definition, controller.signal, caller); }
+    finally { this.#probes.delete(controller); }
   }
 
   #matching(projectId: ProjectId | null): McpServer[] {
@@ -139,7 +153,7 @@ export class McpRegistry {
       return text;
     };
     const base = { id: server.id, redact };
-    if (server.transport === 'http') return { ...base, url: server.url!, headers: { ...server.headers, ...secretHeaders } };
+    if (server.transport === 'http') return { ...base, url: server.url!, headers: { ...server.headers, ...secretHeaders }, hasSecretHeaders: Object.keys(secretHeaders).length > 0 };
     return { ...base, command: server.command!, args: server.args!, env: { ...server.env, ...secretEnv } };
   }
 

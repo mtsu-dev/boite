@@ -27,6 +27,7 @@ export type McpServerInput = Omit<McpServer, 'id' | 'env' | 'headers' | 'envKeys
   headers?: Record<string, string>;
   /** Missing keys keep their value, null deletes a value. */
   secretEnv?: Record<string, string | null>;
+  /** Missing keys keep their value only while the URL origin stays the same. */
   secretHeaders?: Record<string, string | null>;
 };
 

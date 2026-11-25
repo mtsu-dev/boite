@@ -13,6 +13,7 @@ const MOCK_SECRET = 'fixture-value-with-a-quote"';
 const HTTP_CREDENTIAL = 'mock-http-credential';
 const UPSTREAM_SESSION = 'fixture-upstream-session';
 const stdio = (name: string) => ({ ...GLOBAL, projectIds: [], name, transport: 'stdio' as const, command: process.execPath, args: [FIXTURE] });
+const http = (url: string) => ({ ...GLOBAL, projectIds: [], name: 'HTTP fixture', transport: 'http' as const, url });
 const req = (id: number, method: string, params?: unknown) => ({ jsonrpc: '2.0', id, method, params });
 
 let harness: TestCore;
@@ -70,6 +71,40 @@ test('agent and paired device principals cannot list or test the owner credentia
   } finally { phone.close(); agent.close(); }
 });
 
+test('an owner can send credentials only over an encrypted connection', async () => {
+  const plain = await connect(harness.url, harness.token, { headers: { host: 'owner.example' } });
+  try {
+    expect(await thrown(plain.call('mcp.save', { ...stdio('Local tools'), secretEnv: { TOKEN: MOCK_SECRET } }))).toThrow('encrypted link');
+    expect(await thrown(plain.call('mcp.save', { ...http('https://example.test/mcp'), secretHeaders: { Authorization: MOCK_SECRET } }))).toThrow('encrypted link');
+    expect(await plain.call('mcp.save', stdio('Local tools'))).toMatchObject({ secretEnvKeys: [] });
+  } finally { plain.close(); }
+});
+
+test('HTTP credentials require HTTPS except on loopback', async () => {
+  const client = await harness.connect();
+  const secretHeaders = { Authorization: HTTP_CREDENTIAL };
+  expect(await thrown(client.call('mcp.save', { ...http('http://example.test/mcp'), secretHeaders }))).toThrow('HTTPS');
+  const server = await client.call('mcp.save', { ...http('http://example.test/mcp') });
+  for (const url of ['https://example.test/mcp', 'http://127.0.0.1:5000/mcp', 'http://[::1]:5000/mcp', 'http://localhost:5000/mcp']) {
+    expect(await client.call('mcp.save', { ...server, url, secretHeaders })).toMatchObject({ url, secretHeaderKeys: ['Authorization'] });
+  }
+});
+
+test('HTTP credentials stay on the same origin and require explicit replacement on a new origin', async () => {
+  const client = await harness.connect();
+  const original = await client.call('mcp.save', {
+    ...http('https://one.example.test/mcp'), secretHeaders: { Authorization: HTTP_CREDENTIAL, 'X-Custom': MOCK_SECRET },
+  });
+  const same = await client.call('mcp.save', { ...original, url: 'https://one.example.test:443/other' });
+  expect(same.secretHeaderKeys).toEqual(['Authorization', 'X-Custom']);
+  const moved = await client.call('mcp.save', { ...same, url: 'https://two.example.test/mcp', secretHeaders: { Authorization: 'new-origin-value' } });
+  expect(moved.secretHeaderKeys).toEqual(['Authorization']);
+  expect(harness.core.mcp.runtime(moved)).toMatchObject({ headers: { Authorization: 'new-origin-value' } });
+  const cleared = await client.call('mcp.save', { ...moved, url: 'https://two.example.test:8443/mcp' });
+  expect(cleared.secretHeaderKeys).toEqual([]);
+  expect(JSON.parse(readFileSync(join(harness.dataDir, 'mcp-secrets.json'), 'utf8'))).toEqual({});
+});
+
 test('recovery reads the current credential file on either side of the journal commit', async () => {
   const client = await harness.connect();
   const server = await client.call('mcp.save', { ...stdio('Local tools'), secretEnv: { LAZY_MCP_TOOL: 'prior-fixture' } });
@@ -110,12 +145,38 @@ function processExited(pid: number): boolean {
   try { process.kill(pid, 0); return false; } catch { return true; }
 }
 
+test('disabling MCP aborts in-flight stdio and HTTP probes before their tool lists', async () => {
+  const client = await harness.connect();
+  const starts = join(harness.dataDir, 'slow-stdio-starts');
+  const local = await client.call('mcp.save', { ...stdio('Slow stdio'), env: { LAZY_MCP_STARTS: starts, LAZY_MCP_INIT_DELAY_MS: '3000' } });
+  const methods: string[] = [];
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    const rpc = request.method === 'POST' ? await request.json() as { id: number; method: string } : null;
+    methods.push(rpc?.method ?? request.method);
+    if (rpc?.method === 'initialize') return Response.json({
+      jsonrpc: '2.0', id: rpc.id, result: { protocolVersion: INIT.protocolVersion },
+    }, { headers: { 'mcp-session-id': UPSTREAM_SESSION } });
+    return new Response(new ReadableStream(), { headers: { 'content-type': 'text/event-stream' } });
+  } });
+  try {
+    const remote = await client.call('mcp.save', http(upstream.url.href));
+    const pending = Promise.allSettled([local, remote].map(({ id }) => client.call('mcp.test', { id })));
+    await waitFor(() => existsSync(starts) && methods.length === 2);
+    const pid = Number(readFileSync(starts, 'utf8').trim());
+    writeFileSync(join(harness.dataDir, 'no-policy.json'), JSON.stringify({ mcp: false }));
+    await client.call('policy.get', {});
+    await waitFor(() => processExited(pid), 1200);
+    for (const result of await pending) expect(result).toMatchObject({ status: 'fulfilled', value: { ok: false, error: expect.stringContaining('key mcp') } });
+    expect(methods).toEqual(['initialize', 'notifications/initialized']);
+  } finally { await upstream.stop(true); }
+});
+
 test('managed stdio probes and sessions redact reflected secrets and stop their own process', async () => {
   const client = await harness.connect();
   const { threadId } = await echoThread(harness, client);
   const starts = join(harness.dataDir, 'stdio-starts');
   const server = await client.call('mcp.save', {
-    ...stdio('Stdio fixture'), env: { LAZY_MCP_STARTS: starts }, secretEnv: { LAZY_MCP_TOOL: MOCK_SECRET, LAZY_MCP_OWN: MOCK_SECRET },
+    ...stdio('Stdio fixture'), env: { LAZY_MCP_STARTS: starts }, secretEnv: { LAZY_MCP_TOOL: MOCK_SECRET, LAZY_MCP_OWN: 'result' },
   });
   const tested = await client.call('mcp.test', { id: server.id });
   expect(tested).toMatchObject({ ok: true, serverName: 'fixture', tools: [{ name: '[redacted]' }, { name: 'roots' }] });
@@ -137,6 +198,7 @@ test('managed stdio probes and sessions redact reflected secrets and stop their 
   const echo = await (await post(req(3, 'tools/call', { name: 'echo', arguments: {} }), session)).text();
   expect(list).toContain('[redacted]');
   expect(echo).toContain('[redacted]');
+  expect(echo).toContain('"result":');
   expect(list + echo).not.toContain('fixture-value');
   const manifestKey = 'mcp-manifest:managed:' + server.id;
   await waitFor(() => harness.core.journal.getSetting(manifestKey) !== undefined);
@@ -207,6 +269,7 @@ test('HTTP probe and proxy forward the negotiated session and static credentials
     harness.core.lazyMcp.release(registration.id);
     await waitFor(() => seen.length === 7);
     expect(seen.at(-1)?.method).toBe('DELETE');
+    expect(seen.at(-1)?.protocol).toBe(INIT.protocolVersion);
     expect(seen.every(item => item.authorization === 'Bearer ' + HTTP_CREDENTIAL && item.forwarded === null)).toBe(true);
     expect(seen.every(item => item.session === (item.method === 'initialize' ? null : UPSTREAM_SESSION))).toBe(true);
   } finally { await upstream.stop(true); }

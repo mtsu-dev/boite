@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { ExternalLink, Plus, X } from '@lucide/svelte';
+  import { ExternalLink, Plus, TriangleAlert, X } from '@lucide/svelte';
   import { untrack } from 'svelte';
-  import type { McpPreset, McpPresetField, McpScope, McpServer, McpServerInput, McpTransport, Project } from '@boite/contracts';
+  import { mcpHttpOriginChanged, type McpPreset, type McpPresetField, type McpScope, type McpServer, type McpServerInput, type McpTransport, type Project } from '@boite/contracts';
   import { errorText } from '../lib/errors';
   import { projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
+  import Notice from './Notice.svelte';
   import SettingsSection from './SettingsSection.svelte';
   import SettingSwitch from './SettingSwitch.svelte';
 
@@ -35,6 +36,7 @@
   let error = $state('');
   let env = $state(entries('env'));
   let headers = $state(entries('header'));
+  let originChanged = $derived(transport === 'http' && !!start.server?.secretHeaderKeys.length && mcpHttpOriginChanged(start.server.url, url));
   const uid = $props.id();
 
   function entries(target: 'env' | 'header'): Entry[] {
@@ -109,7 +111,9 @@
     error = '';
     try {
       const vars = values(transport === 'stdio' ? env : [], server?.secretEnvKeys ?? [], key => key.toUpperCase());
-      const auth = values(transport === 'http' ? headers : [], server?.secretHeaderKeys ?? [], key => key.toLowerCase());
+      const httpRows = transport === 'http' ? headers : [];
+      const auth = values(originChanged ? httpRows.filter(entry => !entry.savedKey || entry.value !== '' || !entry.secret) : httpRows,
+        originChanged ? [] : server?.secretHeaderKeys ?? [], key => key.toLowerCase());
       const nextArgs = customized
         ? args === '' ? [] : args.split(/\r?\n/)
         : [...argumentsOf, ...fields.filter(field => field.target === 'arg').map(field => presetArgs[field.key] ?? '').filter(Boolean)];
@@ -163,16 +167,17 @@
         </div>
       {:else}
         <label class="input-field"><span>{t.url}</span><input type="url" required bind:value={url} /></label>
+        {#if originChanged}<Notice icon={TriangleAlert} tone="caution" detail={t.originChanged} />{/if}
       {/if}
       <fieldset>
         <legend>{transport === 'stdio' ? t.env : t.headers}</legend>
         {#each activeRows as entry (entry.id)}
           <div class="entry">
             <input aria-label={t.key} placeholder={t.key} required={entry.value !== ''} bind:value={entry.key} />
-            <input aria-label={t.value} placeholder={entry.savedKey && entry.secret ? t.savedValue : t.value}
+            <input aria-label={t.value} placeholder={entry.savedKey && entry.secret && !originChanged ? t.savedValue : t.value}
               type={entry.secret ? 'password' : 'text'} autocomplete="off" bind:value={entry.value} />
             <label class="secret-toggle"><SettingSwitch checked={entry.secret} onchange={event => entry.secret = event.currentTarget.checked} />{t.secret}</label>
-            {#if entry.savedKey && entry.secret && entry.value === ''}<span class="saved">{t.saved}</span>{/if}
+            {#if entry.savedKey && entry.secret && entry.value === '' && !originChanged}<span class="saved">{t.saved}</span>{/if}
             <button type="button" class="icon-button small" aria-label={fill(t.removeEntry, { key: entry.key || t.key })} onclick={() => removeEntry(entry.id)}><X size={15} /></button>
           </div>
         {/each}

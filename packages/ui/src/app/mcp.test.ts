@@ -45,3 +45,33 @@ test('MCP settings follow fake-core changes, render test tools and keep saved cr
   await waitFor(() => !text(installed).includes('GitHub'));
   expect((await store.client!.call('mcp.list', {})).servers).toEqual([]);
 });
+
+test('MCP settings warn when changing origin and handle a server named constructor', async ({ app: _app }) => {
+  store.showSettings('mcp');
+  const client = store.client!;
+  await client.call('mcp.save', {
+    name: 'constructor', enabled: true, scope: 'global', projectIds: [], transport: 'http',
+    url: 'https://one.example.test/mcp', secretHeaders: { Authorization: 'fixture-http-credential' },
+  });
+  await waitFor(() => text(installed).includes('constructor'));
+  const testButton = document.querySelector<HTMLButtonElement>('[aria-label="Test constructor"]')!;
+  expect(testButton.disabled).toBe(false);
+  testButton.click();
+  await waitFor(() => text('[data-testid=mcp-probe]').includes('example_tool'));
+  click(installed + ' .server-actions button:nth-child(2)');
+  await waitFor(() => text(form).includes('Saved'));
+  const url = document.querySelector<HTMLInputElement>(form + ' input[type=url]')!;
+  const setUrl = (value: string) => {
+    url.value = value;
+    url.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+  };
+  setUrl('https://one.example.test/other');
+  expect(text(form)).not.toContain('Saving clears');
+  setUrl('https://one.example.test:8443/other');
+  expect(text(form)).toContain('Saving clears');
+  expect(document.querySelector(form + ' .saved')).toBeNull();
+  click(form + ' button[type=submit]');
+  await waitFor(() => !document.querySelector(form));
+  expect((await client.call('mcp.list', {})).servers[0]).toMatchObject({ url: 'https://one.example.test:8443/other', secretHeaderKeys: [] });
+});

@@ -20,6 +20,7 @@ export const strings = {
     args: 'Arguments',
     argsHint: 'One argument per line.',
     url: 'Server URL',
+    originChanged: 'Saving clears the previous address’s secret headers. Enter the credentials for the new address.',
     env: 'Environment variables',
     headers: 'HTTP headers',
     key: 'Key',

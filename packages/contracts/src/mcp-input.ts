@@ -1,7 +1,7 @@
 import type { McpServer, McpServerInput } from './mcp';
 
 // The core and UI provide URL without needing DOM types in the contracts package.
-declare const URL: new (value: string) => { username: string; password: string; href: string };
+declare const URL: new (value: string) => { username: string; password: string; href: string; origin: string; protocol: string; hostname: string };
 
 export class McpInputError extends Error {
   constructor(readonly field: string, readonly expected: string) {
@@ -13,6 +13,18 @@ const CONTROL = /[\p{Cc}\p{Cs}]/u;
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HEADER_KEY = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const RESERVED_HEADERS = new Set(['accept', 'connection', 'content-length', 'content-type', 'host', 'mcp-session-id', 'mcp-protocol-version', 'transfer-encoding', 'upgrade', 'last-event-id']);
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]', 'localhost']);
+
+export function mcpHttpOriginChanged(previous: string | undefined, next: string | undefined): boolean {
+  if (previous === undefined || next === undefined) return false;
+  try { return new URL(previous).origin !== new URL(next).origin; }
+  catch { return false; }
+}
+
+export function mcpHttpAllowsSecretHeaders(url: string): boolean {
+  const { protocol, hostname } = new URL(url);
+  return protocol === 'https:' || (protocol === 'http:' && LOOPBACK_HOSTS.has(hostname));
+}
 
 function record(value: unknown, field: string): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new McpInputError(field, 'an object');
@@ -61,6 +73,16 @@ function keySet(previous: string[], patch: Record<string, string | null>, normal
   return [...keys.values()];
 }
 
+function httpUrl(value: unknown): string {
+  const raw = valueText(value, 'url', 4096).trim();
+  let url: InstanceType<typeof URL>;
+  try { url = new URL(raw); } catch { throw new McpInputError('url', 'an absolute HTTP or HTTPS URL'); }
+  if (!/^https?:\/\//i.test(raw) || url.username || url.password || raw.includes('#')) {
+    throw new McpInputError('url', 'an absolute HTTP or HTTPS URL without credentials or a fragment');
+  }
+  return url.href;
+}
+
 export function normalizeMcpServer(raw: unknown, servers: readonly McpServer[], hasProject: (id: string) => boolean): McpServer {
   const p = record(raw, 'server');
   const previous = p.id === undefined ? undefined : servers.find(server => server.id === p.id);
@@ -83,8 +105,10 @@ export function normalizeMcpServer(raw: unknown, servers: readonly McpServer[], 
   const patch = mcpSecretPatch(p as unknown as McpServerInput);
   const env = Object.fromEntries(entries(p.env, 'env', false, false)) as Record<string, string>;
   const headers = Object.fromEntries(entries(p.headers, 'headers', true, false)) as Record<string, string>;
+  const url = p.transport === 'http' ? httpUrl(p.url) : undefined;
   const secretEnvKeys = keySet(previous?.secretEnvKeys ?? [], patch.env, key => key.toUpperCase());
-  const secretHeaderKeys = keySet(previous?.secretHeaderKeys ?? [], patch.headers, key => key.toLowerCase());
+  const savedHeaders = mcpHttpOriginChanged(previous?.url, url) ? [] : previous?.secretHeaderKeys ?? [];
+  const secretHeaderKeys = keySet(savedHeaders, patch.headers, key => key.toLowerCase());
   if (secretEnvKeys.some(key => Object.keys(env).some(other => key.toUpperCase() === other.toUpperCase()))) throw new McpInputError('env', 'keys distinct from secretEnv');
   if (secretHeaderKeys.some(key => Object.keys(headers).some(other => key.toLowerCase() === other.toLowerCase()))) throw new McpInputError('headers', 'keys distinct from secretHeaders');
   if (Object.keys(headers).some(key => ['authorization', 'cookie', 'x-api-key'].includes(key.toLowerCase()))) {
@@ -98,11 +122,8 @@ export function normalizeMcpServer(raw: unknown, servers: readonly McpServer[], 
     return { ...base, transport: p.transport, command, args: p.args.map((arg, i) => valueText(arg, `args[${i}]`, 8192, true)) };
   }
   if (base.envKeys.length || secretEnvKeys.length || p.command !== undefined || p.args !== undefined) throw new McpInputError('env', 'empty for HTTP');
-  const rawUrl = valueText(p.url, 'url', 4096).trim();
-  let url: InstanceType<typeof URL>;
-  try { url = new URL(rawUrl); } catch { throw new McpInputError('url', 'an absolute HTTP or HTTPS URL'); }
-  if (!/^https?:\/\//i.test(rawUrl) || url.username || url.password || rawUrl.includes('#')) {
-    throw new McpInputError('url', 'an absolute HTTP or HTTPS URL without credentials or a fragment');
+  if (secretHeaderKeys.length && !mcpHttpAllowsSecretHeaders(url!)) {
+    throw new McpInputError('url', 'HTTPS or loopback HTTP when using secret headers');
   }
-  return { ...base, transport: p.transport, url: url.href };
+  return { ...base, transport: p.transport, url };
 }

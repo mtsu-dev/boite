@@ -22,6 +22,7 @@ export const fr: Translation = {
     args: 'Arguments',
     argsHint: 'Un argument par ligne.',
     url: 'URL du serveur',
+    originChanged: 'L’enregistrement efface les en-têtes secrets de l’ancienne adresse. Saisissez ceux de la nouvelle adresse.',
     env: 'Variables d’environnement',
     headers: 'En-têtes HTTP',
     key: 'Clé',
