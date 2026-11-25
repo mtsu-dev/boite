@@ -61,15 +61,19 @@
     failure = '';
     const selected = { ...options };
     try {
-      const messages = await store.threadExportMessages(thread.id, selected.includeDiffs, controller.signal);
+      const messages = await store.threadExportMessages(thread.id, selected, controller.signal);
       controller.signal.throwIfAborted();
       const project = store.projects.find(entry => entry.id === thread.projectId);
       const model = store.modelsOf(thread.providerId, thread.accountId).find(entry => entry.id === thread.model);
       const meta = { projectName: project ? projectName(project) : null, modelName: model?.name };
       const markdown = selected.format === 'markdown';
       const content = markdown ? exportThreadMarkdown(thread, messages, selected, meta) : exportThreadHtml(thread, messages, selected, meta);
-      if (copy) await store.copy(content);
-      else await downloadExport(exportFilename(thread.title, selected.format), content, `${markdown ? 'text/markdown' : 'text/html'};charset=utf-8`);
+      if (copy) {
+        if (!await store.copy(content, false)) {
+          failure = strings.errors.clipboard;
+          return;
+        }
+      } else await downloadExport(exportFilename(thread.title, selected.format), content, `${markdown ? 'text/markdown' : 'text/html'};charset=utf-8`);
       close();
     } catch (error) {
       if (!controller.signal.aborted) failure = errorText(error);

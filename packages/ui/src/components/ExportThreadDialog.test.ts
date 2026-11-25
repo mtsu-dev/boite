@@ -57,7 +57,7 @@ test('the header menu opens export, downloads the chosen format and restores foc
   const history = vi.spyOn(store, 'threadExportMessages');
   button('Download').click();
   await waitFor(() => filename.endsWith('.html') && !document.querySelector(dialog));
-  expect(history).toHaveBeenCalledWith('t-trace', true, expect.any(AbortSignal));
+  expect(history).toHaveBeenCalledWith('t-trace', { format: 'html', includeTools: true, includeDiffs: true, includeThinking: true }, expect.any(AbortSignal));
   const blob = blobs[0];
   expect(blob).toBeInstanceOf(Blob);
   if (!(blob instanceof Blob)) throw new Error('No export Blob was created');
@@ -70,7 +70,7 @@ test('the palette opens export and copies the Markdown conversation', async ({ a
   onTestFinished(mockDialogMethods());
   onTestFinished(() => { vi.restoreAllMocks(); });
   await store.open('t-trace');
-  const copy = vi.spyOn(store, 'copy').mockResolvedValue();
+  const copy = vi.spyOn(store, 'copy').mockResolvedValue(true);
   store.paletteOpen = true;
   await waitFor(() => !!document.querySelector('[data-testid=palette-input]'));
   const input = query<HTMLInputElement>('[data-testid=palette-input]');
@@ -79,8 +79,34 @@ test('the palette opens export and copies the Markdown conversation', async ({ a
   await waitFor(() => !![...document.querySelectorAll('[role=option]')].find(entry => entry.textContent?.includes('Export conversation')));
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
   await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
+  query<HTMLInputElement>(`${dialog} input[type=checkbox]`).click();
+  const history = vi.spyOn(store, 'threadExportMessages');
   button('Copy Markdown').click();
   await waitFor(() => copy.mock.calls.length === 1 && !document.querySelector(dialog));
+  expect(history).toHaveBeenCalledWith('t-trace', { format: 'markdown', includeTools: true, includeDiffs: false, includeThinking: false }, expect.any(AbortSignal));
   expect(copy.mock.calls[0]?.[0]).toMatch(/^# .+\n/);
   expect(copy.mock.calls[0]?.[0]).not.toContain('<summary>Thinking</summary>');
+});
+
+test('a rejected clipboard write keeps the export dialog open and allows retry', async ({ app: _app }) => {
+  onTestFinished(mockDialogMethods());
+  const writeText = vi.fn().mockRejectedValueOnce(new Error('Denied')).mockResolvedValue(undefined);
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  onTestFinished(() => {
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  });
+  await store.open('t-trace');
+  query<HTMLButtonElement>(trigger).click();
+  const item = '[data-testid=thread-menu-trigger-menu] [data-value=export-thread]';
+  await waitFor(() => !!document.querySelector(item));
+  query<HTMLButtonElement>(item).click();
+  await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
+  button('Copy Markdown').click();
+  await waitFor(() => writeText.mock.calls.length === 1 && document.querySelector(dialog)?.getAttribute('aria-busy') !== 'true');
+  expect(query(dialog).querySelector('[role=alert]')?.textContent).toMatch(/clipboard/i);
+  expect(button('Download').disabled).toBe(false);
+  button('Copy Markdown').click();
+  await waitFor(() => writeText.mock.calls.length === 2 && !document.querySelector(dialog));
 });

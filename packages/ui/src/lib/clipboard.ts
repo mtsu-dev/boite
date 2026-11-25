@@ -7,7 +7,8 @@ export function copyByCommand(text: string): boolean {
   // The field can be selected without opening the phone's keyboard.
   field.readOnly = true;
   field.setAttribute('aria-hidden', 'true');
-  document.body.append(field);
+  const target = before?.closest('dialog[open]') ?? document.body;
+  target.append(field);
   try {
     field.focus({ preventScroll: true });
     field.setSelectionRange(0, text.length);

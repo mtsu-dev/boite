@@ -74,6 +74,47 @@ test('standalone HTML renders Markdown while treating executable markup as text'
   expect(doc.querySelector('details pre')?.textContent).toContain(attack);
 });
 
+test('diff-only export keeps patch lines and leaves surrounding tool logs out', () => {
+  const patch = ['diff --git a/auth.ts b/auth.ts', 'index 123..456 100644', '--- a/auth.ts', '+++ b/auth.ts', '@@ -1 +1 @@', '-old', '+new'].join('\n');
+  const second = '*** Begin Patch\n*** Add File: notes.txt\n+note\n*** End Patch';
+  const message: Message = { ...messages[1]!, parts: [
+    { type: 'tool', toolId: 'shell', name: 'Bash', status: 'done', input: 'git diff', output: `before log\n${patch}\n unrelated log\n${second}\nafter log` },
+  ] };
+  for (const format of [exportThreadMarkdown, exportThreadHtml]) {
+    const diffs = format(thread, [message], { ...clean, includeDiffs: true });
+    expect(diffs).toContain(patch);
+    expect(diffs).toContain(second);
+    expect(diffs).not.toMatch(/log|git diff/);
+    const tools = format(thread, [message], { ...clean, includeTools: true });
+    expect(tools).toContain('unrelated log');
+    expect(tools).not.toContain('+new');
+  }
+});
+
+test('interrupted fences end before the next part or message', () => {
+  const interrupted: Message = { ...messages[1]!, parts: [
+    { type: 'text', text: '````ts\nconst value = "```";' },
+    { type: 'text', text: '~~~sh\necho hi' },
+  ] };
+  const markdown = exportThreadMarkdown(thread, [interrupted, messages[0]!], clean);
+  expect(markdown).toContain('const value = "```";\n````\n\n~~~sh\necho hi\n~~~\n\n## User');
+});
+
+test('question-only messages include the prompt, choices and answer in both formats', () => {
+  const message: Message = { ...messages[1]!, parts: [
+    { type: 'question', questionId: 'policy', text: 'Which policy? <script>', allowText: true, multiple: false,
+      options: [{ id: 'retry', label: 'Retry' }, { id: 'pause', label: 'Pause', description: 'Wait for help' }],
+      answer: { optionIds: ['pause'], text: 'Check the logs first.' } },
+  ] };
+  for (const format of [exportThreadMarkdown, exportThreadHtml]) {
+    const result = format(thread, [message], clean);
+    expect(result).toContain('Which policy? &lt;script&gt;');
+    expect(result).toContain('Retry');
+    expect(result).toContain('Wait for help');
+    expect(result).toMatch(/Answer:[\s\S]*Pause[\s\S]*Check the logs first/);
+  }
+});
+
 test('export reads every page of a long conversation in order for a paired device', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0, long: true });
   client.becomes('session');
@@ -81,6 +122,44 @@ test('export reads every page of a long conversation in order for a paired devic
   const all = await loadAllThreadMessages(client, 't-long');
   expect(all.map(message => message.id)).toEqual(longThread().messages.map(message => message.id));
   expect(call.mock.calls.filter(([method]) => method === 'messages.list')).toHaveLength(1);
+});
+
+test('export reads full prose when a page omitted part of the text', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  const original = client.call.bind(client);
+  const snapshot = await client.call('threads.get', { threadId: 't-trace' });
+  const full: Message = { ...messages[1]!, parts: [{ type: 'text', text: 'Complete answer' }] };
+  const preview: Message = { ...full, parts: [{ type: 'text', text: 'Complete', omitted: 7 }] };
+  const call = vi.spyOn(client, 'call').mockImplementation((method, params) => {
+    if (method === 'threads.get') return Promise.resolve({ ...snapshot, messages: [messages[0]!, preview], messagesBefore: null });
+    if (method === 'messages.list') return Promise.resolve({ messages: [full], before: null });
+    return original(method, params);
+  });
+  const exported = await loadAllThreadMessages(client, 't-trace');
+  expect(exported[1]).toEqual(full);
+  expect(call).toHaveBeenCalledWith('messages.list', expect.objectContaining({ from: 1, limit: 1, compactToolParts: false }));
+});
+
+test('export fetches every deferred tool part without filtering by tool name', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  const original = client.call.bind(client);
+  const tools = Array.from({ length: 26 }, (_, index) => ({
+    type: 'tool' as const, toolId: `tool-${index}`, name: index % 2 ? 'Read' : 'Bash', status: 'done' as const,
+    input: { path: 'preview' }, output: '', inputDeferred: true as const, outputDeferred: true as const, documentsDeferred: true as const,
+  }));
+  const patch = '--- auth.ts\n+++ auth.ts\n@@ -1 +1 @@\n-old\n+new';
+  const snapshot = await client.call('threads.get', { threadId: 't-trace' });
+  const call = vi.spyOn(client, 'call').mockImplementation((method, params) => {
+    if (method === 'threads.get') return Promise.resolve({ ...snapshot, messages: [{ ...messages[1], parts: tools }] });
+    const toolId = 'toolId' in params ? params.toolId : '';
+    if (method === 'messages.toolPart') return Promise.resolve({ part: { type: 'tool', toolId, name: 'Bash', status: 'done', input: { path: 'full' }, output: toolId === 'tool-25' ? patch : `result ${toolId}` } });
+    return original(method, params);
+  });
+  const options = { ...clean, includeDiffs: true };
+  const exported = await loadAllThreadMessages(client, 't-trace', options);
+  expect(call.mock.calls.filter(([method]) => method === 'messages.toolPart')).toHaveLength(26);
+  expect(exported[0]?.parts.at(-1)).toMatchObject({ input: { path: 'full' }, output: patch });
+  expect(exportThreadMarkdown(thread, exported, options)).toContain(patch);
 });
 
 test('a core that returns the same cursor cannot hang or silently export half a conversation', async ({ createClient }) => {

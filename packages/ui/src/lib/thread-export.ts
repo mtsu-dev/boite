@@ -1,10 +1,12 @@
-import { MESSAGE_PAGE_MAX, type Message, type MessagePart, type ThreadSummary } from '@boite/contracts';
+import { MESSAGE_PAGE_MAX, RpcErrorCode, type Message, type MessagePart, type ThreadSummary } from '@boite/contracts';
 import { browserDownload, saveAttachment } from './attachment-save';
 import { escapeHtml } from './chat-links';
-import type { Client } from './client';
+import { RpcFailure, type Client } from './client';
 import { diffRowsOf } from './diff';
+import { closesFence, openFence, type Fence } from './fences';
 import { renderMarkdown } from './markdown';
 import { desktopShell } from './shell-platform';
+import { extractToolPatches } from './thread-export-diffs';
 import { turnDiffs, type TurnDiff } from './turn-files';
 
 export interface ExportOptions {
@@ -20,13 +22,14 @@ interface ExportMeta {
 }
 
 type Tool = Extract<MessagePart, { type: 'tool' }>;
+type Question = Extract<MessagePart, { type: 'question' }>;
 
 const HISTORY_PAGE_LIMIT = 10_000;
-const DIFF_READ_LIMIT = 24;
+const TOOL_READ_CONCURRENCY = 4;
 
 /** Read the current tail, then walk backwards without changing the open subscription. */
-export async function loadAllThreadMessages(client: Client, threadId: string, includeDiffs = false, signal?: AbortSignal): Promise<Message[]> {
-  const flags = { compactImages: true, compactFiles: true, compactTools: true, limit: MESSAGE_PAGE_MAX } as const;
+export async function loadAllThreadMessages(client: Client, threadId: string, options?: ExportOptions, signal?: AbortSignal): Promise<Message[]> {
+  const flags = { compactImages: true, compactFiles: true, compactTools: true, compactToolParts: true, limit: MESSAGE_PAGE_MAX } as const;
   signal?.throwIfAborted();
   const tail = await client.call('threads.get', { threadId, ...flags });
   const pages = [tail.messages];
@@ -41,40 +44,60 @@ export async function loadAllThreadMessages(client: Client, threadId: string, in
     before = page.before;
   }
   const messages = pages.reverse().flat();
-  if (includeDiffs) await loadDeferredDiffs(client, threadId, messages, signal);
+  function omitted(message: Message): boolean {
+    return message.parts.some(part => (part.type === 'text' || part.type === 'thinking' && options?.includeThinking) && !!part.omitted);
+  }
+  for (const [from, message] of messages.entries()) {
+    if (!omitted(message)) continue;
+    signal?.throwIfAborted();
+    const { messages: [full] } = await client.call('messages.list', { threadId, ...flags, from, limit: 1, compactToolParts: false });
+    if (full?.id !== message.id || omitted(full)) throw new Error(`Could not read the complete message ${message.id}`);
+    messages[from] = full;
+  }
+  if (options?.includeTools || options?.includeDiffs) await loadDeferredTools(client, threadId, messages, signal);
   signal?.throwIfAborted();
   return messages;
 }
 
-function patchOutput(value: string | null | undefined): value is string {
-  return !!value && /^(?:diff --git |\*\*\* Begin Patch\r?$|--- [^\r\n]+\r?\n\+\+\+ )/m.test(value);
-}
-
-/** Older edit calls can carry their patch only in output. Prefer journalled diff documents. */
-async function loadDeferredDiffs(client: Client, threadId: string, messages: Message[], signal?: AbortSignal): Promise<void> {
-  let remaining = DIFF_READ_LIMIT;
+function* deferredTools(messages: Message[]) {
   for (const [index, message] of messages.entries()) {
+    let parts: MessagePart[] | undefined;
     for (const [partIndex, part] of message.parts.entries()) {
-      if (!remaining) return;
-      if (part.type !== 'tool' || !part.outputDeferred || turnDiffs([part]).length) continue;
-      if (!patchOutput(part.output) && !/diff|patch|edit|write/i.test(part.name)) continue;
-      signal?.throwIfAborted();
-      remaining--;
-      try {
-        const { output } = await client.call('messages.toolOutput', { threadId, messageId: message.id, toolId: part.toolId });
-        if (!patchOutput(output)) continue;
-        const parts = [...messages[index]!.parts];
-        parts[partIndex] = { ...part, output, outputDeferred: undefined };
-        messages[index] = { ...message, parts };
-      } catch {
-        // A frame can be too large, or an older core may only have the inline preview.
-      }
+      if (part.type !== 'tool' || !part.outputDeferred && !part.inputDeferred && !part.documentsDeferred) continue;
+      if (!parts) messages[index] = { ...message, parts: parts = [...message.parts] };
+      yield { messageId: message.id, parts, partIndex, tool: part };
     }
   }
 }
 
+/** Pages carry previews. Fetch each deferred call independently to stay within the RPC page budget. */
+async function loadDeferredTools(client: Client, threadId: string, messages: Message[], signal?: AbortSignal): Promise<void> {
+  const reads = deferredTools(messages);
+  let failed = false;
+  async function read(): Promise<void> {
+    for (const { messageId, parts, partIndex, tool } of reads) {
+      if (failed) return;
+      signal?.throwIfAborted();
+      const ref = { threadId, messageId, toolId: tool.toolId };
+      try {
+        const { part } = await client.call('messages.toolPart', ref);
+        parts[partIndex] = part;
+      } catch (error) {
+        if (!(error instanceof RpcFailure) || error.code !== RpcErrorCode.MethodNotFound || tool.inputDeferred || tool.documentsDeferred) throw error;
+        signal?.throwIfAborted();
+        const { output } = await client.call('messages.toolOutput', ref);
+        parts[partIndex] = { ...tool, output, outputDeferred: undefined };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: TOOL_READ_CONCURRENCY }, () => read().catch(error => {
+    failed = true;
+    throw error;
+  })));
+}
+
 type Content =
-  | { kind: 'markdown' | 'attachment' | 'diff'; text: string }
+  | { kind: 'markdown' | 'attachment' | 'diff' | 'question'; text: string }
   | { kind: 'details'; title: string; text: string };
 
 function diffText(diff: TurnDiff): string {
@@ -111,20 +134,35 @@ function diffText(diff: TurnDiff): string {
 function toolContent(part: Tool, options: ExportOptions): Content[] {
   if (!options.includeTools && !options.includeDiffs) return [];
   const changes = turnDiffs([part]);
-  const input = part.inputText ?? (typeof part.input === 'string' ? part.input : JSON.stringify(part.input, null, 2));
+  const input = extractToolPatches(part.inputText ?? (typeof part.input === 'string' ? part.input : JSON.stringify(part.input, null, 2)));
+  const output = extractToolPatches(part.output);
   const content: Content[] = [];
   if (options.includeTools) {
     const isEdit = changes.length > 0 || part.documents?.some(document => document.kind === 'diff');
     const details = [part.summary];
-    if (!isEdit && input && !patchOutput(input)) details.push(`Input:\n${input}`);
-    if (part.output && !patchOutput(part.output)) details.push(`Output${part.outputDeferred ? ' (preview)' : ''}:\n${part.output}`);
+    if (!isEdit && input.rest) details.push(`Input:\n${input.rest}`);
+    if (output.rest) details.push(`Output:\n${output.rest}`);
     content.push({ kind: 'details', title: `${part.name} (${part.status})`, text: details.filter(Boolean).join('\n\n') });
   }
   if (options.includeDiffs) {
-    const patches = changes.length ? changes.map(diffText) : [input, part.output].filter(patchOutput);
+    const patches = new Set([...changes.map(diffText), ...input.patches, ...output.patches]);
     for (const patch of patches) if (patch) content.push({ kind: 'diff', text: patch });
   }
   return content;
+}
+
+function questionText(part: Question): string {
+  const lines = [part.text];
+  if (part.options.length) lines.push('', ...part.options.map(option => `- ${option.label}${option.description ? `: ${option.description}` : ''}`));
+  if (part.answer) {
+    const { optionIds, text, attachments, value } = part.answer;
+    const answers = optionIds.map(id => part.options.find(option => option.id === id)?.label ?? id);
+    if (text) answers.push(text);
+    if (value !== undefined && !answers.length) answers.push(JSON.stringify(value));
+    for (const file of attachments ?? []) answers.push(`${file.name || 'Attachment'} (${file.mimeType})`);
+    if (answers.length) lines.push('', `Answer: ${answers.join('\n')}`);
+  }
+  return lines.join('\n');
 }
 
 function contentOf(message: Message, options: ExportOptions): Content[] {
@@ -141,6 +179,7 @@ function contentOf(message: Message, options: ExportOptions): Content[] {
         return [{ kind: 'attachment', text: `${name || 'Attachment'} (${part.mimeType})` }];
       }
       case 'tool': return toolContent(part, options);
+      case 'question': return [{ kind: 'question', text: questionText(part) }];
       case 'thinking': return options.includeThinking ? [{ kind: 'details', title: 'Thinking', text: part.text }] : [];
       default: return [];
     }
@@ -169,9 +208,19 @@ function speaker(message: Message): string {
   return message.role === 'user' ? 'User' : message.role === 'assistant' ? 'Assistant' : 'System';
 }
 
+function closeFence(text: string): string {
+  let fence: Fence | null = null;
+  for (const line of text.split('\n')) {
+    if (!fence) fence = openFence(line);
+    else if (closesFence(line, fence)) fence = null;
+  }
+  return fence ? `${text}${text.endsWith('\n') ? '' : '\n'}${fence.marker}` : text;
+}
+
 function markdownContent(content: Content): string {
   switch (content.kind) {
-    case 'markdown': return content.text;
+    case 'markdown': return closeFence(content.text);
+    case 'question': return `**Question**\n\n${content.text.split('\n').map(line => `> ${markdownLabel(line)}`).join('\n')}`;
     case 'attachment': return `- ${markdownLabel(content.text)}`;
     case 'details': return `<details>\n<summary>${escapeHtml(singleLine(content.title))}</summary>\n<pre>${escapeHtml(content.text)}</pre>\n</details>`;
     case 'diff': {
@@ -196,6 +245,7 @@ export function exportThreadMarkdown(thread: ThreadSummary, messages: readonly M
 function htmlContent(content: Content): string {
   switch (content.kind) {
     case 'markdown': return renderMarkdown(content.text).replace(/<a href="[^#"][^"]*"[^>]*>([\s\S]*?)<\/a>/g, '$1');
+    case 'question': return `<p><strong>Question</strong></p><pre class="question">${escapeHtml(content.text)}</pre>`;
     case 'attachment': return `<p class="attachment">${escapeHtml(content.text)}</p>`;
     case 'details': return `<details><summary>${escapeHtml(content.title)}</summary><pre>${escapeHtml(content.text)}</pre></details>`;
     case 'diff': return `<pre><code class="language-diff">${escapeHtml(content.text)}</code></pre>`;
@@ -232,6 +282,7 @@ export function exportThreadHtml(thread: ThreadSummary, messages: readonly Messa
   pre, details { background: var(--code); border: 1px solid var(--line); border-radius: .5rem; padding: .75rem; }
   details + details { margin-top: .5rem; }
   details pre { padding: 0; border: 0; margin-bottom: 0; white-space: pre-wrap; }
+  .question { white-space: pre-wrap; }
   pre { overflow: auto; }
   table { display: block; overflow: auto; border-collapse: collapse; }
   th, td { border: 1px solid var(--line); padding: .3rem .6rem; }

@@ -13,8 +13,21 @@ use tauri::{Manager, Webview};
 
 /// `ATTACHMENT_MAX_BYTES` in `packages/contracts/src/attachment-limits.ts`.
 const MAX_BYTES: usize = 5 * 1024 * 1024;
+/// Markdown and HTML exports are built in memory by the main webview and can
+/// span many turns. Bound that IPC payload separately from chat attachments.
+const MAX_EXPORT_BYTES: usize = 64 * 1024 * 1024;
 const FALLBACK_NAME: &str = "attachment";
 const MAX_NAME_CHARS: usize = 150;
+
+fn check_save_size(name: &str, open: bool, bytes: usize) -> Result<(), String> {
+    let export = !open && Path::new(name).extension().and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("html"));
+    let limit = if export { MAX_EXPORT_BYTES } else { MAX_BYTES };
+    if bytes > limit {
+        return Err(format!("body: expected at most {limit} bytes, got {bytes}"));
+    }
+    Ok(())
+}
 
 /// Extensions whose default application only displays or plays the file.
 const OPENABLE: &[&str] = &[
@@ -119,12 +132,10 @@ pub async fn save_attachment(webview: Webview, request: Request<'_>) -> Result<S
     let InvokeBody::Raw(bytes) = request.body() else {
         return Err("body: expected the attachment's raw bytes".into());
     };
-    if bytes.len() > MAX_BYTES {
-        return Err(format!("body: expected at most {MAX_BYTES} bytes, got {}", bytes.len()));
-    }
     let name = header(&request, "x-boite-name").ok_or("x-boite-name: expected the file name")?;
     let name = decode(name).ok_or("x-boite-name: expected a percent-encoded UTF-8 name")?;
     let open = header(&request, "x-boite-open") == Some("1");
+    check_save_size(&name, open, bytes.len())?;
     let directory = webview
         .app_handle()
         .path()
@@ -188,6 +199,17 @@ mod tests {
         for name in ["setup.exe", "run.bat", "x.ps1", "page.html", "image.svg", "link.lnk", "noextension"] {
             assert!(!openable(Path::new(name)), "{name} must not open");
         }
+    }
+
+    #[test]
+    fn downloads_accept_an_export_larger_than_an_attachment() {
+        for name in ["conversation.md", "conversation.html"] {
+            assert!(check_save_size(name, false, MAX_BYTES + 1).is_ok());
+            assert!(check_save_size(name, false, MAX_EXPORT_BYTES).is_ok());
+            assert!(check_save_size(name, false, MAX_EXPORT_BYTES + 1).is_err());
+            assert!(check_save_size(name, true, MAX_BYTES + 1).is_err());
+        }
+        assert!(check_save_size("attachment.zip", false, MAX_BYTES + 1).is_err());
     }
 
     #[test]
