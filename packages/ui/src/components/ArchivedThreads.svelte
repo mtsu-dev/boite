@@ -1,19 +1,26 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { ArchiveRestore, Folder, GitMerge, GitPullRequest, GitPullRequestClosed, Puzzle, Trash2 } from '@lucide/svelte';
   import { errorText } from '../lib/errors';
-  import { type ThreadId, type ThreadSummary } from '@boite/contracts';
-  import DoneThread from './DoneThread.svelte';
+  import { DEFAULT_THREAD_DONE_RETENTION_DAYS, type ThreadId, type ThreadSummary } from '@boite/contracts';
+  import SettingsSection from './SettingsSection.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { archivedThreads, archivedTime } from '../lib/archive';
   import { projectThread } from '../lib/thread-rows';
   import { SnapshotReads } from '../lib/store/snapshot-reads';
+  import { canDeleteThread } from '../lib/thread-removal';
   import { ThreadRestore } from '../lib/thread-restore.svelte';
-  import { projectName } from '../lib/format';
+  import { ago, exactTime, projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { archivedFocus, clearArchivedFocus } from '../lib/archived-focus.svelte';
+  import { workspace } from '../lib/workspace.svelte';
+  import { archivedFocus, clearArchivedFocus, holdArchivedFocus } from '../lib/archived-focus.svelte';
 
-  let { store, place = 'list', onopen }: { store: Store; place?: 'phone' | 'list'; onopen?: () => void } = $props();
+  /**
+   * The archive's card in Settings, General on a desktop and a page of its own on a phone: every archived thread
+   * of one machine, with where it was, why it left and when it goes, Restore and Delete in sight on each row.
+   * `eager` reads the list at once (the phone's page, a jump to this card); otherwise it waits for Show.
+   */
+  let { store, eager = true, showTitle = true, onopen }: { store: Store; eager?: boolean; showTitle?: boolean; onopen?: () => void } = $props();
 
   let threads = $state<ThreadSummary[] | null>(null);
   let loading = $state(false);
@@ -79,7 +86,7 @@
   }
 
   $effect(() => {
-    if (asked || store.connection !== 'ready') return;
+    if (asked || !eager || store.connection !== 'ready') return;
     asked = true;
     void load();
   });
@@ -107,16 +114,27 @@
   /** Restored rows stay, their button now Open: a restore is usually followed by reading it. */
   let restored = $state<ThreadId[]>([]);
 
-  function onRestored(summary: ThreadSummary) {
+  async function restore(thread: ThreadSummary) {
+    const summary = await lock.restore(store, thread.id);
+    if (!summary) return;
     threads = threads?.map(row => row.id === summary.id ? summary : row) ?? null;
-    restored = [...restored, summary.id];
+    restored = [...restored, thread.id];
   }
 
-  function onRemoved(removed: ThreadSummary) {
-    threads = threads?.filter(row => row.id !== removed.id) ?? null;
+  async function remove(thread: ThreadSummary) {
+    if (await lock.remove(store, thread)) threads = threads?.filter(row => row.id !== thread.id) ?? null;
   }
 
-  const archive = { lock, restored: onRestored, removed: onRemoved };
+  /** Archived, it opens read-only, its notice offering Restore; restored, it opens as any thread. */
+  function open(thread: ThreadSummary) {
+    if (lock.deleting === thread.id) return;
+    onopen?.();
+    void workspace.select(store, thread.id);
+  }
+
+  function projectOf(thread: ThreadSummary) {
+    return store.projects.find(p => p.id === thread.projectId);
+  }
 
   /** Opened from a project card's menu: that project's threads, until All projects or the archive closes. */
   const focusId = $derived.by(() => {
@@ -129,11 +147,12 @@
     return project ? projectName(project) : '';
   });
   const shown = $derived(threads && focusId ? threads.filter(t => t.projectId === focusId) : threads);
-  onDestroy(() => { if (archivedFocus.store === store && place === 'phone') clearArchivedFocus(); });
+  // Settings left, or the card moved to another machine: the next opening shows every project again.
+  $effect(() => holdArchivedFocus(store));
 
 </script>
 
-<section class={place === 'list' ? 'in-list' : 'card'} data-testid="archived-threads">
+<SettingsSection id="settings-archived" testid="archived-threads" title={showTitle ? strings.settings.archived.heading : undefined} info={strings.settings.archived.intro}>
   {#if focusId && focusName}
     <p class="focus" data-testid="archived-focus">
       <span class="ui-label">{fill(strings.settings.archived.inProject, { project: focusName })}</span>
@@ -141,21 +160,63 @@
     </p>
   {/if}
   {#if shown === null}
-    <button type="button" data-testid="archived-retry" disabled={loading || store.connection !== 'ready'} onclick={() => void load()}>
-      <span class="ui-label">{loading ? strings.app.loading : strings.common.retry}</span>
+    <button type="button" data-testid="archived-show" disabled={loading || store.connection !== 'ready'} onclick={() => void load()}>
+      <span class="ui-label">{loading ? strings.app.loading : strings.settings.archived.show}</span>
     </button>
   {:else if shown.length === 0}
     <p class="muted" data-testid="archived-empty">{focusName ? fill(strings.settings.archived.emptyProject, { project: focusName }) : strings.settings.archived.empty}</p>
   {:else}
+    {@const retention = store.settings?.threadDoneRetentionDays ?? DEFAULT_THREAD_DONE_RETENTION_DAYS}
+    {@const offline = store.connection !== 'ready'}
+    <!-- One row per thread: its title (which opens it) and since when, then where it was, why it left and
+         when it goes, Restore and Delete in sight at the end. -->
     <ul class="archived" data-testid="archived-list">
       {#each shown as thread (thread.id)}
-        <li data-thread-id={thread.id}>
-          <DoneThread owner={store} {thread} now={minuteClock.now} project={focusId ? undefined : store.projects.find(p => p.id === thread.projectId)} {archive} {onopen} />
+        {@const reason = thread.archiveReason}
+        {@const at = reason?.archivedAt ?? archivedTime(thread)}
+        {@const project = focusId ? undefined : projectOf(thread)}
+        {@const back = restored.includes(thread.id)}
+        <li data-thread-id={thread.id} class:back>
+          <span class="headline">
+            <button type="button" class="text title" data-testid="archived-title" title={thread.title} disabled={lock.deleting === thread.id} onclick={() => open(thread)}>{thread.title}</button>
+            <time datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, minuteClock.now)}</time>
+          </span>
+          <span class="context">
+            {#if project}<span class="part" title={project.path}><Folder size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
+            {#if reason?.type === 'pr-merged'}
+              <span class="part archive-reason" data-testid="archive-merged-reason"><GitMerge size={12} /><a href={reason.url} target="_blank" rel="noopener noreferrer">{fill(strings.settings.archived.mergedReason, { number: String(reason.number) })}</a></span>
+            {:else}
+              {#if reason?.type === 'plugin'}
+                <span class="part archive-reason" data-testid="archive-plugin-reason" title={reason.pluginId}><Puzzle size={12} /><span class="ui-label">{fill(strings.sidebar.archivedByPlugin, { name: reason.pluginName })}</span></span>
+              {/if}
+              <!-- The pull request its branch last had, open, merged or closed. -->
+              {#if thread.pullRequest}
+                {@const pr = thread.pullRequest}
+                <a class="part pr {pr.state.toLowerCase()}" data-testid="archived-pr" href={pr.url} target="_blank" rel="noopener noreferrer" title={pr.url}>
+                  {#if pr.state === 'MERGED'}<GitMerge size={12} />{:else if pr.state === 'CLOSED'}<GitPullRequestClosed size={12} />{:else}<GitPullRequest size={12} />{/if}
+                  <span class="ui-label">{fill(pr.state === 'MERGED' ? strings.sidebar.prMerged : pr.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pr.number) })}</span>
+                </a>
+              {/if}
+            {/if}
+            {#if thread.doneAt != null && retention > 0}
+              <span class="part" data-testid="done-expires">{fill(strings.settings.archived.deletesAt, { date: exactTime(thread.doneAt + retention * 86_400_000) })}</span>
+            {/if}
+          </span>
+          <span class="actions">
+            {#if back}
+              <button type="button" class="small" data-testid="archived-open" onclick={() => open(thread)}><span class="ui-label">{strings.common.open}</span></button>
+            {:else}
+              <button type="button" class="small" data-testid="archived-restore" disabled={lock.busy || offline} onclick={() => void restore(thread)}><ArchiveRestore size={14} /><span class="ui-label">{strings.settings.archived.restore}</span></button>
+            {/if}
+            {#if canDeleteThread(thread)}
+              <button type="button" class="ghost small danger" data-testid="archived-delete" disabled={lock.busy || offline} onclick={() => void remove(thread)}><Trash2 size={14} /><span class="ui-label">{strings.common.delete}</span></button>
+            {/if}
+          </span>
         </li>
       {/each}
     </ul>
   {/if}
-</section>
+</SettingsSection>
 
 <style>
   .focus {
@@ -163,12 +224,60 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin: 0 0 6px;
+    margin: 0;
+    padding: var(--space-3) 0;
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
   }
-  .archived { display: flex; flex-direction: column; gap: 2px; list-style: none; margin: 0; padding: 0; }
-  .in-list .focus { padding: 0 2px 0 8px; }
-  .in-list .muted { margin: 0; padding: 12px 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .in-list > button { margin: 4px 8px; }
+  .muted { margin: 0; padding: var(--space-3) 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  [data-testid=archived-show] { margin: var(--space-3) 0; }
+  .archived { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; }
+  /* The card's own rows: a line between every two, as between its settings (styles/settings.css). */
+  .archived li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 12px;
+    padding: var(--space-3) 0;
+  }
+  .archived li + li { border-top: 1px solid var(--color-border); }
+  .headline { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+  .title {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    justify-content: flex-start;
+    text-align: left;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    line-height: 1.45;
+    color: var(--color-foreground);
+  }
+  @media (hover: hover) {
+    .title:hover:not(:disabled) { background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+  }
+  time { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .context {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    min-width: 0;
+    color: var(--color-muted-foreground);
+    font-size: var(--text-xs);
+  }
+  .part { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+  .part :global(svg) { flex: none; }
+  .archive-reason a { color: inherit; text-underline-offset: 3px; }
+  /* The thread rows' colours (DoneThread.svelte): merged and open in the success ink, a closed one softened. */
+  .pr { color: var(--color-success); text-decoration: none; }
+  .pr.closed { color: color-mix(in oklch, var(--color-danger) 60%, var(--color-muted-foreground)); }
+  .pr:hover span, .pr:focus-visible span { text-decoration: underline; text-underline-offset: 3px; }
+  .actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+  @media (max-width: 720px) {
+    .archived li { grid-template-columns: minmax(0, 1fr); }
+    .actions { justify-content: flex-start; }
+    .actions button { min-height: var(--touch-target); }
+    .title { font-size: var(--text-base); }
+  }
 </style>

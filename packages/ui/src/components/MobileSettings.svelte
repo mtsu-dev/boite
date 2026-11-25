@@ -29,7 +29,6 @@
   import PluginsPage from './PluginsPage.svelte';
   import ArchivedThreads from './ArchivedThreads.svelte';
   import DeletedThreads from './DeletedThreads.svelte';
-  import { openArchived } from '../lib/archived-view.svelte';
   import WorktreesCard from './WorktreesCard.svelte';
   import CompactionSettings from './CompactionSettings.svelte';
   import SettingsPageHeader from './SettingsPageHeader.svelte';
@@ -292,7 +291,7 @@
           <div class="rows">
             {@render row('mobile-settings-conversations', strings.settings.conversations, () => store.showSettings('general', 'conversations'), 'conversations')}
             {@render row('mobile-settings-phone', strings.mobile.settingsPhone, () => openLocal('phone'), 'phone')}
-            {@render row('mobile-settings-archived', strings.settings.archived.heading, () => openArchived(store), 'archived')}
+            {@render row('mobile-settings-archived', strings.settings.archived.heading, () => store.showSettings('general', 'archived'), 'archived')}
             <!-- The keys agents ask for live under Providers, the windows agents may see under Machines. -->
             {#if store.owner}
               {@render row('mobile-settings-worktrees', strings.settings.worktrees.heading, () => store.showSettings('general', 'worktrees'), 'worktrees')}
@@ -358,7 +357,7 @@
         <div class="page"><WorktreesCard store={target} showTitle={false} /></div>
       {:else if shown === 'archived'}
         <div class="page archived-page">
-          <ArchivedThreads store={target} place="phone" onopen={onopenthread} />
+          <ArchivedThreads store={target} showTitle={false} onopen={onopenthread} />
           <DeletedThreads store={target} />
         </div>
       {:else}

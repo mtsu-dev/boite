@@ -253,7 +253,7 @@ attaches `boite-server-android-<MAJOR.MINOR.PATCH>.apk` beside the native app's
 APK and lists it in `SHA256SUMS.txt`. `android-server-apk.ts reuse` takes back
 the newest published one when its tag is in the checkout, nothing under
 `apps/android-server` outside `termux/` changed since that tag, and its
-certificate is still the one `assetlinks.json` publishes. Otherwise the job
+certificate is still `APK_CERT_DIGEST` in `android-version.ts`. Otherwise the job
 builds the next patch and signs it with the native app's key (`ANDROID_KEYSTORE`,
 alias `boite`), then checks that certificate the same way: Android refuses an
 update signed with another key.
