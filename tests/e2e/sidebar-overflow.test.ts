@@ -33,3 +33,48 @@ test('a long line that does not wrap inside a project card leaves the thread lis
     await server.close();
   }
 });
+
+test('overflow fades the mochis at the hidden edges and scroll leaves the thread header clear', async () => {
+  const port = await freePort();
+  const server = await startUi(port);
+  let page: BrowserPage | undefined;
+  try {
+    page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&agents=1&working=20`, windowSize: { width: 1100, height: 520 } });
+    const bots = `document.querySelector('[data-testid=app-rail] .bots')`;
+    const threads = `document.querySelector('[data-testid=sidebar] .scroll')`;
+    const header = `document.querySelector('[data-testid=sidebar] .views')`;
+    const fades = `['::before', '::after'].map(edge => {
+      const style = getComputedStyle(${bots}, edge);
+      return style.content !== 'none' && Number(style.opacity) > 0;
+    })`;
+    await page.waitFor(`${bots}?.scrollHeight > ${bots}?.clientHeight && ${threads}?.scrollHeight > ${threads}?.clientHeight`);
+    await page.evaluate(`globalThis.__boiteTest.setTheme('dark')`);
+    await page.evaluate(`${threads}.scrollTop = 140`);
+    await page.waitFor(`${threads}.classList.contains('scrolled')`);
+    await page.settleAnimations();
+    await page.screenshot(join(import.meta.dir, '.artifacts', 'sidebar-scroll-top.png'));
+    expect(await page.evaluate(`({ line: getComputedStyle(${header}).borderBottomColor, fades: ${fades} })`)).toEqual({
+      line: 'rgba(0, 0, 0, 0)', fades: [false, true],
+    });
+
+    await page.evaluate(`${bots}.scrollTop = (${bots}.scrollHeight - ${bots}.clientHeight) / 2`);
+    await page.waitFor(`${fades}.every(Boolean)`);
+    await page.screenshot(join(import.meta.dir, '.artifacts', 'sidebar-scroll-middle.png'));
+
+    await page.evaluate(`${bots}.scrollTop = ${bots}.scrollHeight`);
+    await page.waitFor(`${fades}.join() === 'true,false'`);
+
+    // A small overflow still cuts across a picture. The edge needs its full fade even here.
+    const fitHeight = await page.evaluate<number>(`innerHeight + ${bots}.scrollHeight - ${bots}.clientHeight`);
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: fitHeight - 9, deviceScaleFactor: 1, mobile: false });
+    await page.evaluate(`${bots}.scrollTop = 0`);
+    await page.waitFor(`${bots}.scrollHeight - ${bots}.clientHeight === 9`);
+    await page.waitFor(`Number(getComputedStyle(${bots}, '::after').opacity) === 1`, 2000);
+
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: fitHeight + 1, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(`${bots}.scrollHeight === ${bots}.clientHeight && ${fades}.every(fade => !fade)`);
+  } finally {
+    await page?.close();
+    await server.close();
+  }
+}, 60_000);

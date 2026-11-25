@@ -96,7 +96,7 @@
 
   let resizeFrom = 0;
   let resizeAgentsBefore: number | null = null;
-  /** Rows scrolled under the head: it takes a hairline and the fade deepens, so no sliced row shows below it. */
+  /** Rows scrolled under the head: the fade deepens, and the agents column shows its separator. */
   let scrolled = $state(false);
 
   /** Rows below the foot: the list melts into its edge over a deep fade, and the limits line under it takes a
@@ -261,7 +261,7 @@
     /* Up to the window's top (App.svelte pulls it over the bar's band), its
        head in that band, level with the main column's title. */
     .rail { padding-top: 6px; }
-    .views.scrolled { border-bottom-color: var(--color-border); }
+    .agents-rail .views.scrolled { border-bottom-color: var(--color-border); }
     .rail {
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
       /* One motion with the panel that comes in on the other side: the same duration and curve for the slide and the fade. */

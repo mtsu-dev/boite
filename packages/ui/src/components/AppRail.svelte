@@ -395,7 +395,7 @@
 
   {#if botsOn}
     <span class="separator" aria-hidden="true"></span>
-    <div class="bots" class:reordering={reorder.dragging !== null} role="list" aria-label={strings.app.rail.bots} use:reorder.track onpointerover={(event) => placeName(slotOf(event))} onfocusin={(event) => placeName(slotOf(event))} onscroll={placeShownNames}>
+    <div class="bots" class:scroll-edges={entries.length > 0} class:reordering={reorder.dragging !== null} role="list" aria-label={strings.app.rail.bots} use:reorder.track onpointerover={(event) => placeName(slotOf(event))} onfocusin={(event) => placeName(slotOf(event))} onscroll={placeShownNames}>
       {#each entries as entry (entry.key)}
         {#if entry.kind === 'bot'}
           {@const bot = entry.bot}
@@ -616,7 +616,20 @@
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
   /* 4 px of its own above and below, taken back from the rail's gaps: the scroller clips what passes its edge, and
      the first and last pictures' rings and arcs pass theirs by that much. */
-  .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; padding: 4px 0; margin: -4px 0; overflow-y: auto; scrollbar-width: none; }
+  .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; width: 100%; min-height: 0; padding: 4px 0; margin: -4px 0; overflow-y: auto; scrollbar-width: none; }
+  .bots > .slot + .slot { margin-top: 8px; }
+  /* Match the thread list's deep fade. Paint over the pictures inside the card so their fixed name cards can still escape. */
+  .bots.scroll-edges {
+    --scroll-edge: var(--row);
+    --scroll-edge-top: 4px;
+    --scroll-edge-bottom: 4px;
+    --scroll-edge-stops: var(--rail-ground), color-mix(in srgb, var(--rail-ground) 92%, transparent) 14%, color-mix(in srgb, var(--rail-ground) 66%, transparent) 40%, color-mix(in srgb, var(--rail-ground) 28%, transparent) 70%, transparent;
+    scroll-padding-block: var(--scroll-edge);
+  }
+  .app-rail .bots.scroll-edges::before, .app-rail .bots.scroll-edges::after { margin-inline: calc(var(--frame-gap) + 1px); z-index: 2; }
+  /* Ramp up over the avatar clearance, so a few pixels of overflow still fade the whole edge. */
+  .app-rail .bots.scroll-edges::before { animation-range: 0px var(--scroll-edge-top); }
+  .app-rail .bots.scroll-edges::after { animation-range: calc(100% - var(--scroll-edge-bottom)) 100%; }
   /* A picture held to move: it dims where it will land; the name cards stay away while it moves. */
   .slot.dragging > .bot { opacity: 0.55; }
   .bots.reordering { cursor: grabbing; }

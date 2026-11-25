@@ -6,7 +6,8 @@ projects, and tells you what matters. Teams put a few mochis and you in one
 chat.
 
 On the desktop, each mochi shows as a picture in the app rail, the column down
-the window's left edge, and the phone shows a Mochis tab in its bottom bar.
+the window's left edge. A faded edge means there are more pictures to scroll
+to. The phone shows a Mochis tab in its bottom bar.
 Teams come first; drag a picture up or down to put mochis and teams in your own
 order, which this device keeps. A small mark on a picture says the mochi needs
 you, failed or is at work; a mochi with unread answers shows how many, and a
