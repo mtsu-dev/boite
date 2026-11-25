@@ -6,7 +6,7 @@
   import { lastHeard, machineAway } from '../lib/machine-away';
   import type { CompactionPart } from '../lib/tool-groups';
 
-  let { store, threadId, turn, turns = [], message, messages, pointed = false, tucked = false, steps, memory, compactions, actions, changes, carded = false }: {
+  let { store, threadId, turn, turns = [], message, messages, pointed = false, tucked = false, resting = false, steps, memory, compactions, actions, changes, carded = false }: {
     /** The failure has its own card: the line keeps its time and buttons, not a second failure mark. */
     carded?: boolean;
     store: Store;
@@ -20,6 +20,8 @@
     pointed?: boolean;
     /** A phone's message whose buttons wait for a tap (`TurnSummary`). */
     tucked?: boolean;
+    /** The turn the finished thread ends on: its line is the thread's footer (`TurnSummary`). */
+    resting?: boolean;
     /** A persistent agent's folded steps, counted on the line and opened from it. */
     steps?: SummarySteps;
     /** The memory pass that followed this turn, as a mark on the line. */
@@ -56,6 +58,7 @@
   heard={machineAway(store) && store.openThread?.id === threadId ? lastHeard(store.openThread) : null}
   {pointed}
   {tucked}
+  {resting}
   {steps}
   {memory}
   {compactions}

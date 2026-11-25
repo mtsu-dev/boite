@@ -263,25 +263,29 @@ test('system coordination messages show their display text outside the user bubb
   expect(document.querySelector('.bubble')).toBeNull();
 });
 
-// The thread's closing line was drawn under a new-conversation marker, cutting the turn the marker follows.
-test('a new conversation that ends the thread comes after its closing line, and a later turn takes the line back to the foot', async () => {
-  stubLayout(400);
-  const message = (id: string, turnId: string, role: Message['role'], parts: MessagePart[]): Message => ({ id, threadId: 't-short', turnId, role, state: 'complete', createdAt: 1, parts });
-  const asked = message('m-ask', 'turn-a', 'user', [{ type: 'text', text: 'Check the welcome screen' }]);
-  const answer = message('m-answer', 'turn-a', 'assistant', [{ type: 'text', text: 'It fits in three lines.' }]);
-  const fresh = message('m-fresh', 'turn-a', 'system', [{ type: 'text', text: 'New conversation', newConversation: { by: 'user' } }]);
-  const order = () => [...document.querySelectorAll('[data-testid=timeline] :is(article[data-role=assistant], [data-testid=thread-closing], [data-testid=new-conversation-marker])')]
-    .map(el => el.matches('article') ? 'answer' : el.matches('[data-testid=thread-closing]') ? 'closing' : 'marker');
-  const owner = { ...store, providerOf: () => undefined, messagesAfter: null, loadingNewer: false } as unknown as Store;
-  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-short', messages: [asked, answer, fresh], closing: 'Done · Worked for 2m 00s' } });
+// A finished thread drew its summary line and a second "Done · Worked for" line under it: one footer now, the resting turn's own line.
+test('a finished thread ends on one footer, its last turn\'s summary at rest, a new conversation after it included', async ({ createStore }) => {
+  const { store: owner, client } = createStore({ delayMs: 0 });
+  owner.attach(client); await owner.connect(); await owner.open('t-trace');
+  const thread = owner.openThread!;
+  const done = (id: string, at: number) => ({ ...thread.turns[0]!, id, startedAt: at, finishedAt: at + 120_000, status: 'done' as const });
+  thread.turns = [done('turn-a', 1), done('turn-b', 200_000)];
+  thread.memoryEvents = [];
+  const message = (id: string, turnId: string, role: Message['role'], parts: MessagePart[]): Message => ({ id, threadId: thread.id, turnId, role, state: 'complete', createdAt: 1, parts });
+  thread.messages = [
+    message('m-ask', 'turn-a', 'user', [{ type: 'text', text: 'Check the welcome screen' }]),
+    message('m-answer', 'turn-a', 'assistant', [{ type: 'text', text: 'It fits in three lines.' }]),
+    message('m-next', 'turn-b', 'user', [{ type: 'text', text: 'Now the review' }]),
+    message('m-reply', 'turn-b', 'assistant', [{ type: 'text', text: 'Reviewed.' }]),
+    message('m-fresh', 'turn-b', 'system', [{ type: 'text', text: 'New conversation', newConversation: { by: 'user' } }]),
+  ];
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages, resting: 'turn-b' } });
   flushSync();
-  expect(order()).toEqual(['answer', 'closing', 'marker']);
-  await unmount(running!); running = null;
-  // Once the new conversation has a turn of its own, the line is that turn's again, under it.
-  const next = [asked, answer, fresh, message('m-next', 'turn-b', 'user', [{ type: 'text', text: 'Now the review' }]), message('m-reply', 'turn-b', 'assistant', [{ type: 'text', text: 'Reviewed.' }])];
-  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-short', messages: next, closing: 'Done · Worked for 1m 00s' } });
-  flushSync();
-  expect(order()).toEqual(['answer', 'marker', 'answer', 'closing']);
+  const footers = [...document.querySelectorAll<HTMLElement>('[data-testid=turn-summary]')];
+  expect(footers.map(footer => [footer.closest('article')?.getAttribute('data-turn'), footer.classList.contains('resting')])).toEqual([['turn-a', false], ['turn-b', true]]);
+  expect(footers[1]!.querySelector('[data-testid=turn-elapsed]')?.textContent).toBe('Worked for 2m 00s');
+  expect([...document.querySelectorAll('[data-testid=timeline] *')].filter(node => node.children.length === 0 && /Worked for/.test(node.textContent ?? ''))).toHaveLength(2);
+  expect(document.querySelector('[data-testid=new-conversation-marker]')).not.toBeNull();
 });
 
 test('cache pings are one quiet line between the turns they sit in, with no answer, summary or bubble', () => {

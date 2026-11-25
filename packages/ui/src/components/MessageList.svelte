@@ -33,7 +33,7 @@
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { closingMarkerOf, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
+  import { movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
@@ -63,8 +63,8 @@
   const narrow = new MediaQuery('(max-width: 720px)');
   const reveal = new MessageReveal(() => messages, () => narrow.current);
 
-  /** `closing`: a finished thread's last word (`lib/closing-line.ts`), drawn under the last message and scrolling with it. */
-  let { store, threadId, messages, closing = null }: { store: Store; threadId: string; messages: Message[]; closing?: string | null } = $props();
+  /** `resting`: the turn a finished thread ends on (`lib/resting-turn.ts`), whose summary line is the thread's footer. */
+  let { store, threadId, messages, resting = null }: { store: Store; threadId: string; messages: Message[]; resting?: string | null } = $props();
   const viewer = new ListViewer();
   /** The find bar is its own chunk, fetched the first time it opens. A failed fetch tries again on the next open. */
   let FindBar = $state.raw<typeof import('./FindBar.svelte').default>();
@@ -660,8 +660,7 @@
   });
 
   /** Only once the loaded window reaches the thread's end: newer history still unread is not its last word. */
-  let closingShown = $derived(closing !== null && store.messagesAfter === null && !store.loadingNewer);
-  const closingAt = $derived(closingMarkerOf(timeline)); // A new conversation ending the thread follows its last turn, closing line included.
+  let restingShown = $derived(resting !== null && store.messagesAfter === null && !store.loadingNewer ? resting : null);
   /** A line lands at the foot of a pinned list: the bottom takes it in, like a new message. */
   function followFoot(): void {
     const box = viewport;
@@ -758,7 +757,7 @@
           {:else if group}
             <AgentMessageGroup {store} {group} />
           {:else if movedBy(message)}<MoveMarker notice={movedBy(message)!} />
-          {:else if newConversationOf(message)}<NewConversationMarker {store} {threadId} notice={newConversationOf(message)!} closing={closingShown && closingAt === message.id ? closing : null} />
+          {:else if newConversationOf(message)}<NewConversationMarker {store} {threadId} notice={newConversationOf(message)!} />
           {:else if startedFrom(message)}<SpawnMarker {store} link={startedFrom(message)!} direction="to" />
           {:else if message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id && wakeKind(turn) && (message.role === 'system' || turn?.execution?.operation === 'routine' || turn?.execution?.operation === 'event')}
             <WakeMarker {message} kind={wakeKind(turn)!} />
@@ -777,7 +776,7 @@
             {#if !host && !merged}{@render changes(false)}{/if}
             {@const carded = failureCarded(turn, messages)}<!-- A failure's card holds its cause and its one Retry: the line keeps copy, fork and the background stop; a question at the composer's top is a running turn's status. -->
             {#if !(asking && turn.status === 'running')}
-            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id} tucked={!reveal.shows(message)}
+            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id} tucked={!reveal.shows(message)} resting={restingShown === turn.id}
               {...marks} changes={merged ? onLine : undefined}>
               {#snippet actions()}
                 <MessageActions
@@ -795,7 +794,7 @@
       {/each}
       {#if view.below > 0}<div class="spacer" data-testid="timeline-below" style="height: {view.below}px"></div>{/if}
       {#if store.loadingNewer}<p class="loading-older" data-testid="loading-newer">{strings.chat.loadingNewer}</p>{/if}
-      <TimelineFoot {store} {threadId} pending={!cutBelow && !isSending(timeline.at(-1) ?? { id: '' })} closing={closingShown && !closingAt ? closing : null} onlanded={followFoot} />
+      <TimelineFoot {store} {threadId} pending={!cutBelow && !isSending(timeline.at(-1) ?? { id: '' })} onlanded={followFoot} />
     </div>
     {#if promptRoom > 0}<div class="spacer" data-testid="prompt-room" style:height="{promptRoom}px" aria-hidden="true"></div>{/if}
   </div>

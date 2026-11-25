@@ -19,7 +19,7 @@
   import type { Snippet } from 'svelte';
   import InfoTip from './InfoTip.svelte';
   import Spinner from './Spinner.svelte';
-  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, steps, memory, compactions = [], actions, heard = null, carded = false, changes }: {
+  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, resting = false, steps, memory, compactions = [], actions, heard = null, carded = false, changes }: {
     turn: Turn;
     /** The failure has its own card above (`failureCarded`): the card is its one mark, so the line drops its own. */
     carded?: boolean;
@@ -48,6 +48,11 @@
      * so a settled line with nothing else to say at rest is not drawn, and leaves no band under the answer.
      */
     tucked?: boolean;
+    /**
+     * The turn a finished thread ends on (`lib/resting-turn.ts`): its line is the thread's one footer, so how long
+     * it worked reads at rest under a pointer too, and when it ended, what it spent and the buttons come with the pointer.
+     */
+    resting?: boolean;
     /** A persistent agent's folded steps, counted on the line; the count opens them above the answer. */
     steps?: SummarySteps;
     /** The memory pass that followed this turn: a small mark whose tooltip says what changed. */
@@ -133,7 +138,7 @@
   <span class="metric" class:meta><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
 {#if turn.status !== 'queued' && !(held && !still) && !(running && activeTool && !waiting && !stale && background.length === 0 && !observed && !compacting) && !(tucked && settled && !marked)}
-  <div class="summary" class:compacting class:stale class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
+  <div class="summary" class:compacting class:stale class:settled class:pointed class:marked class:resting class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
     {#if compacting}
       <span class="compaction-icon"><Spinner size={16} paused={hidden || waiting} /></span>
       <div class="compaction-copy">
@@ -226,12 +231,17 @@
   /* Pointed from another message of the turn, its buttons show with it. */
   .summary.settled.pointed :global(.act) { opacity: 1; }
   @media (hover: none) { .summary.settled { opacity: 1; } }
-  .summary.settled.marked { opacity: 1; }
+  .summary.settled.marked, .summary.settled.resting { opacity: 1; }
+  /* The thread's last line keeps its time at rest; when it ended and what it spent come up in place with the pointer. */
+  @media (hover: hover) {
+    .summary.settled.resting .metric.meta { opacity: 0; transition: opacity var(--dur-2); }
+    :global(.message:hover) .summary.settled.resting .metric.meta, .summary.settled.resting.pointed .metric.meta, .summary.settled.resting:focus-within .metric.meta { opacity: 1; }
+  }
   /* A line with nothing shown at rest takes no band of its own on a pointer
      device: it waits inside the gap to the next message, one row tall, so the
      buttons come up right under the answer they belong to and cover nothing. */
   @media (hover: hover) {
-    .summary.settled:not(.marked):has(.tail) { flex-wrap: nowrap; height: var(--chat-message-gap); margin-top: 0; margin-bottom: calc(-1 * var(--chat-message-gap)); }
+    .summary.settled:not(.marked, .resting):has(.tail) { flex-wrap: nowrap; height: var(--chat-message-gap); margin-top: 0; margin-bottom: calc(-1 * var(--chat-message-gap)); }
   }
   /* A settled line keeps what the agent did at rest (its steps, a memory mark) and
      its buttons; how long it took, when and what it spent wait for the pointer. A
@@ -243,6 +253,9 @@
   .summary.settled.marked .marks > .dot:first-child { visibility: hidden; }
   :global(.message:hover) .summary.settled.marked .meta, .summary.settled.marked.pointed .meta, .summary.settled.marked:focus-within .meta { display: inline-flex; }
   :global(.message:hover) .summary.settled.marked .marks > .dot:first-child, .summary.settled.marked.pointed .marks > .dot:first-child, .summary.settled.marked:focus-within .marks > .dot:first-child { visibility: visible; }
+  /* The thread's last line says how long at rest even when it counts steps. */
+  .summary.settled.marked.resting .meta:not(.metric) { display: inline-flex; }
+  .summary.settled.marked.resting .marks > .dot:first-child { visibility: visible; }
   @media (hover: none) {
     .summary.settled .metric.meta { display: none; }
     .summary.settled.marked .meta:not(.metric) { display: inline-flex; }

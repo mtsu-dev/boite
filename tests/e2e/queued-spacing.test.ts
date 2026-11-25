@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp';
 import { startUi } from './lib/ui';
 
-/** What the timeline ends on: its last message, or the closing line under a finished turn. */
-const LAST = `'[data-testid="message"], [data-testid="thread-closing"]'`;
+/** What the timeline ends on: its last message, the finished turn's line inside it. */
+const LAST = `'[data-testid="message"]'`;
 
 /**
  * Resize to `width` can lazily mount `MobileNavigation`'s header (61 px) after
