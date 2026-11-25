@@ -12,7 +12,7 @@
  */
 
 import { Database } from 'bun:sqlite';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ArchivedFailure, ArchivedTranscript } from '@boite/contracts';
 import { blobPath, type ArchiveResult } from './session.ts';
@@ -162,9 +162,24 @@ export class TranscriptStore {
     return { id, file, path: join(this.dir, file) };
   }
 
-  /** The archived session a thread already holds with these records, if any: the same file is not kept twice. */
+  /**
+   * Whether a thread already holds an archive of these records, its file still on disk at its size: the same
+   * file is not kept twice. A row whose file went or changed size is dropped, so the new copy takes its place.
+   */
   sameSession(threadId: string, digest: string): boolean {
-    return this.exists() && this.read.query('SELECT 1 FROM sessions WHERE thread_id = ? AND sha256 = ?').get(threadId, digest) !== null;
+    if (!this.exists()) return false;
+    const rows = this.read.query('SELECT id, file, bytes FROM sessions WHERE thread_id = ? AND sha256 = ?').all(threadId, digest) as { id: string; file: string; bytes: number }[];
+    let held = false;
+    for (const row of rows) {
+      let size = -1;
+      try { size = statSync(join(this.dir, row.file)).size; } catch { /* Gone: the row names nothing. */ }
+      if (size === row.bytes) held = true;
+      else {
+        this.db.query('DELETE FROM sessions WHERE thread_id = ? AND id = ?').run(threadId, row.id);
+        this.db.query('DELETE FROM failures WHERE thread_id = ? AND session_id = ?').run(threadId, row.id);
+      }
+    }
+    return held;
   }
 
   thread(threadId: string): { updatedAt: number | null; deletedAt: number | null; erasedAt: number | null; compactedAt: number } | null {

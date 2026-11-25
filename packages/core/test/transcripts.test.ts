@@ -198,6 +198,9 @@ test('an archive that is gone is an error the caller gets, and reading the index
   const blob = { sha256: 'ab'.repeat(32), bytes: 10, stored: 8, mime: 'image/png', ext: 'png' };
   const archive = { bytes: 1, recordBytes: 1, records: 1, sha256: 'x', firstAt: null, lastAt: null, models: [], failures: [], blobs: [blob], counts: {} };
   for (const id of ['t1', 't2']) store.putSession(id, { id: 's', file: `sessions/${id}/s.jsonl.zst`, source: 'claude', rawBytes: 1 }, { ...archive, sha256: id }, 3);
+  // An archive the index names but whose file is gone is not one the thread holds.
+  expect(store.sameSession('t1', 't1')).toBe(false);
+  expect(store.sessions('t1')).toEqual([]);
   expect(store.threadBytes('t1')).toMatchObject({ imageCount: 0, imageRefs: 1 });
   expect(store.eraseImages('t1', 4)).toEqual({ count: 0, bytes: 0 });
   expect(store.threadBytes('t2')).toMatchObject({ imageCount: 1, imageRefs: 1 });
@@ -514,4 +517,22 @@ test('Storage keeps the files of an open conversation once another mode is appli
   await harness.core.transcripts.run();
   expect(existsSync(file)).toBe(true);
   expect(harness.core.journal.getThread(threadId)).not.toBeNull();
+});
+
+test('a session id two accounts hold is left alone: the journal cannot say whose it is', async () => {
+  await core();
+  const { threadId, file } = await importedThread();
+  const other = await client.call('accounts.add', { providerId: 'claude', label: 'second' });
+  const twin = join(other.isolationDir!, 'projects', 'elsewhere', `${FIXTURE_SESSION_ID}.jsonl`);
+  mkdirSync(join(twin, '..'), { recursive: true });
+  writeFileSync(twin, claudeSessionFixture('/elsewhere'));
+  utimesSync(twin, (Date.now() - 40 * DAY) / 1000, (Date.now() - 40 * DAY) / 1000);
+  await client.call('settings.set', { transcriptStorage: { mode: 'classic' } });
+  await client.call('threads.remove', { threadId });
+  age(threadId, file, 8);
+  await harness.core.transcripts.run();
+  harness.core.transcripts.compactUnlinked(0);
+  await harness.core.transcripts.run();
+  expect(existsSync(twin)).toBe(true);
+  expect(existsSync(file)).toBe(true);
 });

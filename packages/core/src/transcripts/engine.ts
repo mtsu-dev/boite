@@ -179,8 +179,12 @@ export class Transcripts {
     const deleted = new Map<string, RawSession[]>();
     const idleBefore = policy.idleCompactDays === null ? null : now - policy.idleCompactDays * DAY_MS;
     let rawBytes = 0;
+    // The journal names a session by its id alone: one that two accounts hold could be either's, so it is left alone.
+    const holders = new Map<string, number>();
+    for (const raw of raws.values()) holders.set(raw.id, (holders.get(raw.id) ?? 0) + 1);
     for (const raw of raws.values()) {
       rawBytes += raw.bytes;
+      if (holders.get(raw.id)! > 1) continue;
       const naming = owners.get(raw.id);
       if (naming === undefined) {
         if (raw.own) unlinked.push(raw);
@@ -373,6 +377,7 @@ export class Transcripts {
   /** Files an archive under a thread, unless the thread already holds the same records. Answers the bytes it added. */
   #file(threadId: string, target: { id: string; file: string; path: string }, source: string, rawBytes: number, result: ArchiveResult, thread: ArchivedThread): number {
     this.store.putThread(thread, Date.now());
+    // The copy the index names must still be there with its size: a row whose file went is replaced by this one.
     if (this.store.sameSession(threadId, result.sha256)) {
       void rm(target.path, { force: true });
       return 0;

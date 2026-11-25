@@ -106,7 +106,8 @@ conversation are skipped.
 Removal takes the files the scan read, one by one and each checked again
 (the same inode, size, write and change times), then the session's folders
 left empty: a file the archive does not read, or one put in its place, stays
-where it is. Two accounts holding a session of the same id hold two sessions. A
+where it is. A session id two accounts hold is left alone: the journal names
+a session by its id only and cannot say whose it is. A
 deleted family leaves the journal only once every one of its sessions is
 archived; one that is being imported or was written since the scan puts the
 whole family off to the next pass, since the journal is the only thing that
