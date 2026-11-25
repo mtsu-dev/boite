@@ -7,7 +7,7 @@ import { FakeClient } from './fake-client';
 import { WsClient, type SocketLike } from './client';
 import { upsertEnvironment } from './endpoint';
 import * as endpoints from './endpoint';
-import * as appOrigin from './app-origin';
+import * as shellPlatform from './shell-platform';
 import * as draftJournal from './draft-journal';
 import { PROTOCOL_VERSION, RpcErrorCode, type RpcMethodName } from '@boite/contracts';
 
@@ -173,9 +173,9 @@ test.each(['primary', 'secondary'] as const)('a %s pairing persists its reload e
   }
 });
 
-test('on the app\'s own address the first machine added is the page\'s, even after a first add that failed left it detached', async () => {
+test('in the Android app the first machine added is the page\'s, even after a first add that failed left it detached', async () => {
   const { w, a } = await setup();
-  vi.spyOn(appOrigin, 'appPage').mockReturnValue(true);
+  vi.spyOn(shellPlatform, 'mobileApp').mockReturnValue(true);
   a.endpointUrl = null;
   a.localCore = false;
   w.machines = [{ id: 'local', label: 'Local', store: a }];

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ArchiveRestore, Ellipsis, Folder, GitMerge, GitPullRequest, GitPullRequestClosed, Puzzle, Trash2 } from '@lucide/svelte';
-  import { DEFAULT_THREAD_DONE_RETENTION_DAYS, type Project, type ThreadSummary } from '@boite/contracts';
+  import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { archivedTime } from '../lib/archive';
   import { contextMenu } from '../lib/context-menu.svelte';
@@ -20,18 +20,16 @@
    * with, which opens on the forge. The row reads the conversation and its
    * actions keep restoration separate.
    */
-  let { owner, thread, now, machine, project, archive, onopen }: {
+  let { owner, thread, now, machine, project, onopen }: {
     owner: Store;
     thread: ThreadSummary;
     now: number;
     machine?: Machine;
     /** In a list that spans several projects, where the header does not name it already. */
     project?: Project;
-    archive?: { lock: ThreadRestore; restored: (summary: ThreadSummary) => void; removed: (thread: ThreadSummary) => void };
     onopen?: () => void;
   } = $props();
-  const rowLock = new ThreadRestore();
-  const lock = $derived(archive?.lock ?? rowLock);
+  const lock = new ThreadRestore();
   const deleting = $derived(lock.deleting === thread.id);
   const open = $derived(workspace.active === owner && owner.openThread?.id === thread.id);
   const agent = $derived(agentLabel(owner, thread));
@@ -41,31 +39,26 @@
   const pr = $derived(reason?.type === 'pr-merged'
     ? { number: reason.number, url: reason.url, state: 'MERGED' as const }
     : thread.pullRequest ?? null);
-  const prLabel = $derived(pr ? fill(archive && reason?.type === 'pr-merged' ? strings.settings.archived.mergedReason : pr.state === 'MERGED' ? strings.sidebar.prMerged : pr.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pr.number) }) : '');
+  const prLabel = $derived(pr ? fill(pr.state === 'MERGED' ? strings.sidebar.prMerged : pr.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pr.number) }) : '');
   /** The plugin that marked it done (`threads.archive`), so a row that went by itself says why. */
   const plugin = $derived(reason?.type === 'plugin' ? reason : null);
   const byPlugin = $derived(plugin && fill(strings.sidebar.archivedByPlugin, { name: plugin.pluginName }));
-  const retention = $derived(owner.settings?.threadDoneRetentionDays ?? DEFAULT_THREAD_DONE_RETENTION_DAYS);
-  const expires = $derived(archive && thread.doneAt != null && retention > 0 ? thread.doneAt + retention * 86_400_000 : null);
-  const meta = $derived(project || pr || plugin || expires !== null);
+  const meta = $derived(project || pr || plugin);
   const offline = $derived(owner.connection !== 'ready');
-  const restoreLabel = $derived(archive ? strings.settings.archived.restore : strings.sidebar.reopenThread);
   const items = $derived<MenuItem[]>([
     { id: 'open', label: strings.common.open, disabled: deleting },
-    ...(thread.archived ? [{ id: 'restore', label: restoreLabel, glyph: ArchiveRestore, disabled: lock.busy || offline, testid: 'archived-menu-restore' }] : []),
+    ...(thread.archived ? [{ id: 'restore', label: strings.sidebar.reopenThread, glyph: ArchiveRestore, disabled: lock.busy || offline, testid: 'archived-menu-restore' }] : []),
     ...(pr ? [{ id: 'pr', label: prLabel, title: pr.url }] : []),
     { id: 'copy', label: strings.sidebar.copyPath, title: thread.cwd },
     ...(canDeleteThread(thread) ? [separator(), { id: 'delete', label: strings.common.delete, glyph: Trash2, danger: true, disabled: lock.busy || offline, testid: 'archived-delete' }] : [])
   ]);
 
   async function restore(): Promise<void> {
-    const summary = await lock.restore(owner, thread.id);
-    if (summary) archive?.restored(summary);
+    await lock.restore(owner, thread.id);
   }
   /** The row stays until the list reloads, its lock with it. */
   async function remove(): Promise<void> {
-    const removed = thread;
-    if (await lock.remove(owner, removed, !archive)) archive?.removed(removed);
+    await lock.remove(owner, thread, true);
   }
   function select(): void {
     // Being deleted, or gone already: there is no thread left to open.
@@ -83,9 +76,9 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="done-thread" class:open class:archived-list-row={archive !== undefined} data-testid="done-thread" data-thread-id={thread.id} data-machine-id={machine?.id ?? workspace.machines.find(m => m.store === owner)?.id}
+<div class="done-thread" class:open data-testid="done-thread" data-thread-id={thread.id} data-machine-id={machine?.id ?? workspace.machines.find(m => m.store === owner)?.id}
   oncontextmenu={(event) => contextMenu.open(event, items, pick)} use:longPress={(target) => !!target.closest('.row')}>
-  <button type="button" class="ghost row" data-testid={archive ? 'archived-open' : 'done-thread-open'} title="{thread.title} · {agent}" disabled={deleting} onclick={select}>
+  <button type="button" class="ghost row" data-testid="done-thread-open" title="{thread.title} · {agent}" disabled={deleting} onclick={select}>
     <span class="headline">
       {#if machine}
         <span class="machine" title={machine.label} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} /></span>
@@ -101,19 +94,18 @@
     <div class="metadata">
       {#if project}<span class="project-name" title={project.path}><Folder size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
       <!-- The puzzle and the plugin's name; the sentence is for the tooltip and screen readers. -->
-      {#if plugin}<span class="by-plugin" data-testid={archive ? 'archive-plugin-reason' : 'done-thread-plugin'} title={archive ? plugin.pluginId : byPlugin}><Puzzle size={12} /><span class="ui-label" aria-hidden="true">{plugin.pluginName}</span><span class="visually-hidden">{byPlugin}</span></span>{/if}
+      {#if plugin}<span class="by-plugin" data-testid="done-thread-plugin" title={byPlugin}><Puzzle size={12} /><span class="ui-label" aria-hidden="true">{plugin.pluginName}</span><span class="visually-hidden">{byPlugin}</span></span>{/if}
       {#if pr}
-        <span data-testid={archive && reason?.type === 'pr-merged' ? 'archive-merged-reason' : undefined}><a class="pr {pr.state.toLowerCase()}" data-testid="done-thread-pr" data-state={pr.state} href={pr.url} target="_blank" rel="noopener noreferrer" title={pr.url}>
+        <a class="pr {pr.state.toLowerCase()}" data-testid="done-thread-pr" data-state={pr.state} href={pr.url} target="_blank" rel="noopener noreferrer" title={pr.url}>
           {#if pr.state === 'MERGED'}<GitMerge size={12} />{:else if pr.state === 'CLOSED'}<GitPullRequestClosed size={12} />{:else}<GitPullRequest size={12} />{/if}<span class="ui-label">{prLabel}</span>
-        </a></span>
+        </a>
       {/if}
-      {#if expires !== null}<span data-testid="done-expires">{fill(strings.settings.archived.deletesAt, { date: exactTime(expires) })}</span>{/if}
     </div>
   {/if}
   <div class="actions">
-    {#if thread.archived}<button type="button" class="ghost small icon restore" data-testid={archive ? 'archived-restore' : 'done-thread-restore'} title={restoreLabel}
+    {#if thread.archived}<button type="button" class="ghost small icon restore" data-testid="done-thread-restore" title={strings.sidebar.reopenThread}
       aria-label={fill(strings.sidebar.reopenNamedThread, { title: thread.title })} disabled={lock.busy || offline} onclick={() => void restore()}><ArchiveRestore size={14} /></button>{/if}
-    <Menu {items} onpick={pick} label={strings.sidebar.threadMenu} placement="bottom" align="end" variant="ghost" testid={archive ? `archived-menu-${thread.id}` : 'done-thread-menu'}><Ellipsis size={15} /></Menu>
+    <Menu {items} onpick={pick} label={strings.sidebar.threadMenu} placement="bottom" align="end" variant="ghost" testid="done-thread-menu"><Ellipsis size={15} /></Menu>
   </div>
 </div>
 
@@ -194,7 +186,6 @@
   .pr:hover span, .pr:focus-visible span { text-decoration: underline; text-underline-offset: 3px; }
   .actions { position: absolute; display: flex; align-items: center; top: 0; right: 0; opacity: 0; }
   .done-thread:is(:hover, :focus-within) .actions { opacity: 1; }
-  .archived-list-row .title { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
   @media (hover: none), (pointer: coarse) {
     .actions { opacity: 1; }
   }

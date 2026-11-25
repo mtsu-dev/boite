@@ -70,8 +70,6 @@
   import { WsClient } from './lib/client';
   import { watchAbsence, watchWake } from './lib/ws-client-utils';
   import { listenForInstall } from './lib/pwa';
-  import { appPage } from './lib/app-origin';
-  import { localNetwork } from './lib/local-network.svelte';
   import { mobileOverlay } from './lib/mobile-history';
   import { startViewHistory } from './lib/view-history.svelte';
   import { agentAutoLink } from './lib/agent-links.svelte';
@@ -314,8 +312,6 @@
     // The system slept with the page in sight, a laptop closed on the app: every remote socket is checked as after that long away.
     const stopWake = watchWake((slept) => resume(slept, true));
     const offline = () => { for (const machine of workspace.machines) if (machine.store.client instanceof WsClient) machine.store.client.offline(); };
-    // The app's page is public and every machine is on a private address: Chrome lets its sockets through once "Local network" is allowed.
-    const stopLocalNetwork = appPage() ? localNetwork.start(() => resume()) : () => undefined;
     document.addEventListener('visibilitychange', visibility);
     window.addEventListener('online', online);
     window.addEventListener('offline', offline);
@@ -329,7 +325,6 @@
       stopDesktopReport();
       stopInstall();
       stopUpdates();
-      stopLocalNetwork();
       stopWake();
       stopAbsence();
       document.removeEventListener('visibilitychange', visibility);
@@ -694,9 +689,8 @@
 
   <QuitHint {quitHint} />
 
-  <!-- A missing or revoked phone pairing has its own recovery screen; Chrome refuses every socket until "Local network" is allowed, which that screen says too. -->
-  <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired}
-    blocked={mobileRecovery && localNetwork.state === 'denied'} onopen={() => { mobileScreen = 'chat'; }} />
+  <!-- A missing or revoked phone pairing has its own recovery screen. -->
+  <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired} onopen={() => { mobileScreen = 'chat'; }} />
   {#if inShell && store.canForceCoreRestart}
     <div class="toast-slot" use:toastSlot>
       <Notice icon={CircleAlert} tone="danger" floating role="alert" detail={strings.errors.coreUnresponsive} testid="core-recovery">
