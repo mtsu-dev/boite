@@ -101,10 +101,11 @@ export function gradeMessage(text: string, terms: readonly MessageSearchTerm[]):
   if (!best) return null;
   const phrase = terms.flatMap(term => term.words).join(' ');
   const folded = terms.length > 1 ? foldSearch(body) : '';
-  const exact = new RegExp(`(?<![\\p{L}\\p{N}])${phrase}(?![\\p{L}\\p{N}])`, 'u').exec(folded);
+  const exact = new RegExp(`(^|[^\\p{L}\\p{N}])(${phrase})(?![\\p{L}\\p{N}])`, 'u').exec(folded);
   const score = (exact ? 200 : terms.length > 1 && best.width <= 60 ? 100 : 0)
     + [...qualities.values()].reduce((sum, quality) => sum + quality, 0) / terms.length;
-  const span = exact ? originalSearchRange(body, folded, exact.index, exact.index + phrase.length) : best;
+  const exactAt = exact ? exact.index + exact[1]!.length : -1;
+  const span = exactAt < 0 ? best : originalSearchRange(body, folded, exactAt, exactAt + phrase.length);
   const center = (span.start + span.end) / 2;
   const start = Math.max(0, Math.min(body.length - 120, Math.floor(center - 60)));
   const end = Math.min(body.length, start + 120);

@@ -710,10 +710,10 @@ export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
    * with more than a page's count or serialized byte budget behind it, is
    * answered with the full page, without `messagesFrom`.
    *
-   * `around` is the message a reader was last looking at. When more than
-   * `limit` messages were written after it, the answer is the page centred on
-   * it, with `messagesAfter` set; otherwise it is the last page, which holds
-   * it. An `around` the thread does not hold gets the last page; `after` wins
+   * `around` is the message a reader was last looking at. The page always
+   * includes it, even when the byte budget leaves out the newer messages.
+   * `messagesAfter` is set if more messages follow the page. An `around`
+   * the thread does not hold gets the last page; `after` wins
    * over it. `compactImages` defers large images as `compactFiles` defers
    * files. Both need `features.readingPages`. `compactToolParts` leaves long
    * tool inputs and heavy documents on the core as well, and caps each message

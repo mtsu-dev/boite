@@ -1,7 +1,9 @@
 import type { Database } from 'bun:sqlite';
+import { searchableMessageText } from '@boite/contracts';
 import type { Message, MessagePart } from '@boite/contracts';
 import type { Journal } from '../journal.ts';
 import { isNativeAgentPart } from './native-agent-parts.ts';
+import { copyStreamMessageSearch, refreshStreamMessageSearch } from './message-search.ts';
 import { runWrite } from './statements.ts';
 import { copyBlobs, hydratePart, storePart, storeParts } from './part-blobs.ts';
 
@@ -167,6 +169,7 @@ export class StreamBuffer {
           json[index] = storePart(this.#db, entry.message, index, part);
           runWrite(this.#db, UPSERT_SIDE, id, index, threadId, json[index]);
         });
+        refreshStreamMessageSearch(this.#db, id, searchableMessageText(entry.message));
         written.push([entry, json, false]);
       }
       if (hook !== null) committed = hook.write();
@@ -444,8 +447,9 @@ export function foldStreamingParts(db: Database, messageId?: string): number {
 /** The moved values and the streamed parts of `sourceId`, written again for its copy. */
 export function copyStoredParts(db: Database, sourceId: string, copy: Pick<Message, 'id' | 'threadId'>): void {
   copyBlobs(db, sourceId, copy);
-  db.query('INSERT INTO streaming_parts (message_id, part_index, thread_id, json) SELECT ?, part_index, ?, json FROM streaming_parts WHERE message_id = ?')
+  const copied = db.query('INSERT INTO streaming_parts (message_id, part_index, thread_id, json) SELECT ?, part_index, ?, json FROM streaming_parts WHERE message_id = ?')
     .run(copy.id, copy.threadId, sourceId);
+  if (copied.changes > 0) copyStreamMessageSearch(db, sourceId, copy.id);
 }
 
 export function messageOfError(error: unknown): string {

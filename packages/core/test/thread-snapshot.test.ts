@@ -5,6 +5,22 @@ let harness: TestCore;
 beforeEach(async () => { harness = await startTestCore(); });
 afterEach(async () => { await harness.stop(); });
 
+test('opening a search hit in a short archived thread keeps the anchor when the byte budget cuts the page', async () => {
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client);
+  for (const index of [0, 1, 2]) {
+    harness.core.journal.putMessage({ id: `manual${index}`, threadId, turnId: 'search', role: 'assistant',
+      state: 'complete', createdAt: index, parts: [{ type: 'text', text: 'x'.repeat(3000) }] });
+  }
+  await client.call('threads.archive', { threadId, archived: true });
+  const page = await client.call('threads.get', { threadId, around: 'manual0', limit: 40, maxBytes: 4096 });
+  expect(page.messages.map(message => message.id)).toEqual(['manual0']);
+  expect(page.messagesBefore).toBeNull();
+  expect(page.messagesAfter).toBe('manual0');
+  const following = await client.call('messages.list', { threadId, after: page.messagesAfter!, maxBytes: 4096 });
+  expect(following.messages.map(message => message.id)).toEqual(['manual1']);
+});
+
 test('opening subscribes, replaces the previous thread and restores pending cards in one snapshot', async () => {
   const client = await harness.connect();
   const previous = await echoThread(harness, client, 'Previous');

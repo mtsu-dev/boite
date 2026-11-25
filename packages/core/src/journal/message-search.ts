@@ -51,7 +51,8 @@ export function createMessageSearch(db: Database): void {
       ${add('new')}
     END;
     CREATE TRIGGER message_search_update AFTER UPDATE OF parts ON messages
-      WHEN new.role IN ('user', 'assistant') AND old.parts IS NOT new.parts BEGIN
+      WHEN new.role IN ('user', 'assistant') AND (old.parts IS NOT new.parts
+        OR EXISTS (SELECT 1 FROM streaming_parts WHERE message_id = new.id)) BEGIN
       ${remove('old')}
       ${add('new')}
     END;
@@ -62,41 +63,68 @@ export function createMessageSearch(db: Database): void {
   `);
 }
 
-type Candidate = Omit<ThreadMessageMatch, 'snippet' | 'score'> & { body: string };
+const INFIX = "SELECT 1 FROM sqlite_schema WHERE name = 'messages_fts_infix'";
+const SELECT_INDEXED = `SELECT f.rowid, f.body FROM message_search_keys k
+  JOIN messages_fts f ON f.rowid = k.id WHERE k.message_id = ?`;
+
+/** The caller commits this with the side rows, or both roll back together. */
+export function refreshStreamMessageSearch(db: Database, id: string, body: string): void {
+  const held = db.query<{ rowid: number; body: string | null }, [string]>(SELECT_INDEXED).get(id);
+  if (held === null || (held.body ?? '') === body) return;
+  const infix = db.query(INFIX).get() !== null;
+  if (infix) db.query("INSERT INTO messages_fts_infix(messages_fts_infix, rowid, body) VALUES ('delete', ?, ?)").run(held.rowid, held.body);
+  db.query('UPDATE messages_fts SET body = ? WHERE rowid = ?').run(body, held.rowid);
+  if (infix) db.query('INSERT INTO messages_fts_infix(rowid, body) VALUES (?, ?)').run(held.rowid, body);
+}
+
+export function copyStreamMessageSearch(db: Database, from: string, to: string): void {
+  const source = db.query<{ body: string | null }, [string]>(SELECT_INDEXED).get(from);
+  if (source) refreshStreamMessageSearch(db, to, source.body ?? '');
+}
+
+type Candidate = Omit<ThreadMessageMatch, 'snippet' | 'score'> & { body: string; rowid: number };
 
 export function searchThreadMessages(db: Database, query: string, { limit = 20, includeArchived = true }: Omit<RpcParams<'threads.search'>, 'query'> = {}): ThreadMessageMatch[] {
   const terms = messageSearchTerms(query);
   if (!terms.length) return [];
-  const infix = db.query("SELECT 1 FROM sqlite_schema WHERE name = 'messages_fts_infix'").get() !== null;
-  const wordPatterns: string[] = [];
-  const infixPatterns: string[] = [];
+  const wordsOnly: string[] = [];
+  const wordsWithInfix: string[] = [];
+  const infixOnly: string[] = [];
   for (const { words, exact } of terms) {
     const pattern = `"${words.join(' ')}"`;
-    if (exact || words[0]!.length < 4) wordPatterns.push(pattern + (!exact && words[0]!.length === 3 ? '*' : ''));
-    else infixPatterns.push(pattern);
+    const length = Array.from(words[0]!).length;
+    const word = pattern + (!exact && length >= 3 ? '*' : '');
+    if (exact || length < 4) wordsOnly.push(word);
+    else { wordsWithInfix.push(word); infixOnly.push(pattern); }
   }
-  const constraints: string[] = [];
-  const bindings: string[] = [];
-  if (wordPatterns.length) {
-    constraints.push('messages_fts MATCH ?');
-    bindings.push(wordPatterns.join(' AND '));
-  }
-  if (infix && infixPatterns.length) {
-    constraints.push('messages_fts.rowid IN (SELECT rowid FROM messages_fts_infix WHERE messages_fts_infix MATCH ?)');
-    bindings.push(infixPatterns.join(' AND '));
-  }
-  const rows = db.query<Candidate, string[]>(`
-    SELECT message_id AS messageId, thread_id AS threadId, role, messages_fts.created_at AS messageCreatedAt, body
-    FROM messages_fts
+  const select = `SELECT messages_fts.rowid, message_id AS messageId, thread_id AS threadId,
+    role, messages_fts.created_at AS messageCreatedAt, messages_fts.body`;
+  const visible = `
     JOIN threads t ON t.id = messages_fts.thread_id
-    WHERE t.incognito = 0 AND body IS NOT NULL
+    WHERE t.incognito = 0 AND messages_fts.body IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = t.id)
       AND (t.project_id IS NULL OR t.project_id NOT IN (${REMOVED_PROJECTS}))
       ${includeArchived ? '' : 'AND t.archived = 0'}
-      ${constraints.map(clause => `AND ${clause}`).join(' ')}
-  `);
+  `;
+  const cap = Math.max(80, limit * 8);
+  const wordQuery = [...wordsOnly, ...wordsWithInfix].join(' AND ');
+  const words = db.query<Candidate, [string, number]>(`${select} FROM messages_fts ${visible}
+    AND messages_fts MATCH ? ORDER BY messages_fts.rank LIMIT ?`).all(wordQuery, cap);
+  // Evaluate internal substrings only on indexed candidates. A SQLite build
+  // without the accent-folding trigram tokenizer still has the word index.
+  const internal = infixOnly.length > 0 && db.query(INFIX).get() !== null
+    ? db.query<Candidate, [string, ...string[], number]>(`${select} FROM messages_fts_infix
+      CROSS JOIN messages_fts ON messages_fts.rowid = messages_fts_infix.rowid
+      ${visible} AND messages_fts_infix MATCH ?
+      ${wordsOnly.length ? 'AND messages_fts MATCH ?' : ''}
+      ORDER BY messages_fts_infix.rank LIMIT ?`)
+      .all(infixOnly.join(' AND '), ...(wordsOnly.length ? [wordsOnly.join(' AND ')] : []), cap)
+    : [];
   const matches = new Map<string, ThreadMessageMatch>();
-  for (const { body, ...row } of rows.iterate(...bindings)) {
+  const seen = new Set<number>();
+  for (const { rowid, body, ...row } of [...words, ...internal]) {
+    if (seen.has(rowid)) continue;
+    seen.add(rowid);
     const grade = gradeMessage(body, terms);
     if (!grade) continue;
     const hit = { ...row, ...grade };

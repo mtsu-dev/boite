@@ -88,19 +88,20 @@ function positionOf(core: Core, threadId: string, messageId: string | undefined)
 }
 
 /**
- * The last page, unless `around` names a message with more than `limit`
- * written after it: then half a page before it and half from it on. A count
- * on the index decides, so the far case reads no row it does not send.
- * Both halves share `maxBytes` and the requested count; cuts retain the
- * anchor and rewrite cursors to the retained edges.
+ * The last page, unless `around` names a message. Read from that anchor in
+ * both directions so a byte cut cannot replace it with the end of the thread.
  */
 function pageAround(core: Core, threadId: string, around: string | undefined, limit: number, project: Projection, toolPreviews: boolean, maxBytes: number): { messages: Message[]; sent: Message[]; before: string | null; after: string | null } {
   const journal = core.journal;
   const rowid = around === undefined ? null : journal.messageRowid(threadId, around);
-  if (rowid === null || journal.countMessagesFrom(threadId, rowid) <= limit) return { ...journal.listMessagePage(threadId, { limit, project, toolPreviews, maxBytes }), after: null };
-  const half = Math.max(1, Math.floor(limit / 2));
-  const older = journal.listMessagePage(threadId, { beforeRowid: rowid, limit: half, project, toolPreviews, maxBytes });
-  const newer = journal.listMessagesForward(threadId, rowid, Math.max(1, limit - half), project, toolPreviews, maxBytes);
+  if (rowid === null) return { ...journal.listMessagePage(threadId, { limit, project, toolPreviews, maxBytes }), after: null };
+  const following = journal.countMessagesFrom(threadId, rowid);
+  const newerCount = following <= limit ? following : Math.ceil(limit / 2);
+  const olderCount = limit - newerCount;
+  const older = olderCount > 0
+    ? journal.listMessagePage(threadId, { beforeRowid: rowid, limit: olderCount, project, toolPreviews, maxBytes })
+    : { messages: [], sent: [], before: journal.countMessagesBefore(threadId, rowid) > 0 ? around! : null };
+  const newer = journal.listMessagesForward(threadId, rowid, newerCount, project, toolPreviews, maxBytes);
   const messages = [...older.messages, ...newer.messages], sent = [...older.sent, ...newer.sent];
   const { start, end } = boundedMessageWindow(sent, older.messages.length, maxBytes, limit);
   return {

@@ -1,10 +1,11 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { Archive, ArrowDown, ArrowUp, CornerDownRight, Lock, Pause, Reply } from '@lucide/svelte';
-  import { TEAM_OWNER, type AgentProfile, type Message, type TeamParty, type TeamPostRef, type Thread } from '@boite/contracts';
+  import { TEAM_OWNER, messageSearchTerms, type AgentProfile, type Message, type TeamParty, type TeamPostRef, type Thread } from '@boite/contracts';
   import { agentDirectory, followAgentDirectories } from '../../lib/agent-directory.svelte';
   import { experimentOn } from '../../lib/experiments.svelte';
   import { avatarLit } from '../../lib/avatar-lit';
+  import { clearMessageSearch, paintMessageSearch } from '../../lib/find';
   import { dayClock, fullTime } from '../../lib/format';
   import { fill, strings } from '../../lib/strings';
   import type { Store } from '../../lib/store.svelte';
@@ -84,14 +85,36 @@
   function answer(post: Post) {
     reply = { id: post.ref.id, author: post.ref.author, excerpt: excerpt(post.text) };
   }
+  function elementOf(id: string): HTMLElement | undefined {
+    return scroller?.querySelector<HTMLElement>(`[data-post-id="${CSS.escape(id)}"]`) ?? undefined;
+  }
   function jump(id: string) {
-    scroller?.querySelector(`[data-post-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' });
+    elementOf(id)?.scrollIntoView({ block: 'center' });
   }
 
   // The newest post stays in view while the reader is at the bottom; reading higher up, nothing moves.
   let scroller = $state<HTMLElement>();
   let column = $state<HTMLElement>();
   let pinned = true;
+  $effect(() => {
+    const target = store.messageSearchJump;
+    if (!scroller || target?.threadId !== thread.id) return;
+    const post = posts.find(post => post.message.id === target.messageId);
+    if (!post) return;
+    pinned = false;
+    void tick().then(() => {
+      if (store.messageSearchJump !== target || target.threadId !== thread.id) return;
+      const node = elementOf(post.ref.id);
+      if (!node?.isConnected) return;
+      node.scrollIntoView({ block: 'center' });
+      paintMessageSearch(node, messageSearchTerms(target.query), '.said .body');
+      store.messageSearchJump = null;
+    });
+  });
+  $effect(() => {
+    void thread.id;
+    return clearMessageSearch;
+  });
   function measure() {
     if (scroller) pinned = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 64;
   }

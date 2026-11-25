@@ -6,6 +6,7 @@ export const fr: Translation = {
     placeholder: 'Cherchez un fil, un message ou une commande',
     searchAll: 'Tout chercher',
     mentions: 'Mentions dans les messages',
+    searchFailed: 'La recherche a échoué sur une partie des messages.',
     speakers: { user: 'Vous :', assistant: 'Agent :' },
     matchFields: { project: 'Projet :', model: 'Modèle :', branch: 'Branche :', pr: 'Pull request :', machine: 'Machine :', parent: 'Fil parent :' },
     groups: { running: 'En cours', finished: 'Finis', done: 'Terminés', archived: 'Archivés' },

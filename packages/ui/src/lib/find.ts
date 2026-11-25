@@ -84,10 +84,10 @@ export function messageSearchPosition(message: Message, terms: MessageSearchTerm
   }
 }
 
-export function paintMessageSearch(root: HTMLElement, terms: MessageSearchTerm[]): void {
+export function paintMessageSearch(root: HTMLElement, terms: MessageSearchTerm[], selector = '[data-testid="text-part"], .part[data-kind="text"]'): void {
   if (typeof CSS === 'undefined' || !('highlights' in CSS) || typeof Highlight === 'undefined') return;
   const ranges: Range[] = [];
-  for (const part of root.querySelectorAll('[data-testid="text-part"], .part[data-kind="text"]')) {
+  for (const part of root.querySelectorAll(selector)) {
     const nodes: { node: Node; start: number; end: number }[] = [];
     let text = '';
     const walker = document.createTreeWalker(part, NodeFilter.SHOW_TEXT);

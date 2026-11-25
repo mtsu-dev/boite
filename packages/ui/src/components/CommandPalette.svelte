@@ -3,7 +3,8 @@
   import { rowAsks } from '../lib/status-order';
   import { tick, untrack } from 'svelte';
   import { CornerDownRight, MessageSquare, Search, X } from '@lucide/svelte';
-  import { MESSAGE_SEARCH_QUERY_LIMIT, messageMatchRanges, messageSearchTerms, orderMessageMatches, type AgentProfile, type Project, type ProjectId, type SearchRange, type ThreadMessageMatch, type ThreadSummary } from '@boite/contracts';
+  import { MESSAGE_SEARCH_QUERY_LIMIT, RpcErrorCode, messageMatchRanges, messageSearchTerms, orderMessageMatches, type AgentProfile, type Project, type ProjectId, type SearchRange, type ThreadMessageMatch, type ThreadSummary } from '@boite/contracts';
+  import { RpcFailure, type Client } from '../lib/client';
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { appCommands, runCommand } from '../lib/commands.svelte';
@@ -93,6 +94,8 @@
 
   let machines = $derived(workspace.machinesOr(store));
   let mentions = $state.raw<{ machine: Machine; hit: ThreadMessageMatch }[]>([]);
+  let searchFailed = $state(false);
+  const searching = new Map<Client, Promise<void>>();
   const searchTerms = $derived(messageSearchTerms(query.slice(0, MESSAGE_SEARCH_QUERY_LIMIT)));
   $effect(() => {
     if (!store.paletteOpen) return;
@@ -100,17 +103,29 @@
     const owners = machines.filter(machine => machine.store.connection === 'ready' && machine.store.core?.features?.messageSearch);
     const enough = searchTerms.some(term => term.words.some(word => word.length >= 2));
     mentions = [];
+    searchFailed = false;
     if (!enough || owners.length === 0) return;
     let current = true;
     const timer = setTimeout(() => {
-      for (const machine of owners) {
+      for (const machine of owners) void (async () => {
         const client = machine.store.client;
-        void client?.call('threads.search', { query: asked }).then(({ matches }) => {
-          if (!current || machine.store.client !== client) return;
-          // Preserve rows already visible when another machine answers later.
-          mentions = [...mentions, ...matches.toSorted(orderMessageMatches).map(hit => ({ machine, hit }))];
-        }).catch(() => {});
-      }
+        if (!client) return;
+        const wanted = () => current && machine.store.client === client;
+        // Wait behind the only request already sent. Superseded queries stop
+        // here, before entering the core's worker queue.
+        await searching.get(client);
+        if (!wanted()) return;
+        const request = client.call('threads.search', { query: asked }).then(({ matches }) => {
+          if (!wanted()) return;
+          mentions = [...mentions, ...matches.map(hit => ({ machine, hit }))].sort((a, b) =>
+            orderMessageMatches(a.hit, b.hit) || a.machine.id.localeCompare(b.machine.id));
+        }).catch((error: unknown) => {
+          if (wanted() && !(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) searchFailed = true;
+        });
+        searching.set(client, request);
+        await request;
+        if (searching.get(client) === request) searching.delete(client);
+      })();
     }, 120);
     return () => { current = false; clearTimeout(timer); };
   });
@@ -429,6 +444,7 @@
           <p class="empty subtle">{strings.palette.empty}</p>
         {/if}
       </div>
+      {#if searchFailed}<p class="search-hint subtle" role="status" data-testid="palette-search-hint">{strings.palette.searchFailed}</p>{/if}
     </div>
   </div>
 {/if}
@@ -638,6 +654,12 @@
   .empty {
     padding: 14px 10px;
     text-align: center;
+    font-size: var(--text-sm);
+  }
+
+  .search-hint {
+    margin: 0;
+    padding: var(--space-2) calc(var(--overlay-pad) + var(--overlay-row-pad));
     font-size: var(--text-sm);
   }
 

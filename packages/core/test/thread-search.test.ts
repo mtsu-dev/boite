@@ -41,6 +41,7 @@ test('schema 54 indexes old visible messages and tracks replacements, streamed t
     expect(search('"réparer panneau"')).toEqual([]);
     expect(search('pann')).toEqual(['old']);
     expect(search('anne')).toEqual(['old']);
+    expect(search('"réparer le" anne')).toEqual(['old']);
     expect(search('---')).toEqual([]);
 
     journal.db.exec('VACUUM');
@@ -49,10 +50,20 @@ test('schema 54 indexes old visible messages and tracks replacements, streamed t
     expect(search('replace')).toEqual(['old']);
     journal.putMessage({ ...message('live', 'visible', 'Writing an '), role: 'assistant', state: 'streaming' });
     journal.stream.setMessagePart('live', 0, { type: 'text', text: 'Writing an updated sentence' });
+    journal.persistMessages();
+    expect(journal.db.query("SELECT json FROM streaming_parts WHERE message_id = 'live'").get()).not.toBeNull();
+    expect(search('updated sentence')).toEqual(['live']);
     journal.stream.setMessageState('live', 'complete');
     expect(search('updated sentence')).toEqual(['live']);
     const live = journal.db.query<{ rowid: number }, []>("SELECT rowid FROM messages WHERE id = 'live'").get()!;
     journal.truncateMessages('visible', live.rowid);
+    expect(search('updated sentence')).toEqual([]);
+    journal.putMessage({ ...message('revised', 'visible', 'Writing an '), role: 'assistant', state: 'streaming' });
+    journal.stream.setMessagePart('revised', 0, { type: 'text', text: 'Writing an updated sentence' });
+    journal.persistMessages();
+    expect(search('updated sentence')).toEqual(['revised']);
+    journal.stream.setMessagePart('revised', 0, { type: 'text', text: 'Writing an ' });
+    journal.stream.setMessageState('revised', 'complete');
     expect(search('updated sentence')).toEqual([]);
     expect(search('original')).toEqual(['old']);
   } finally {

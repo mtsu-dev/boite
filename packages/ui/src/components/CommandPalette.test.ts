@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
+import { RpcErrorCode } from '@boite/contracts';
 import CommandPalette from './CommandPalette.svelte';
+import { RpcFailure } from '../lib/client';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import * as palette from '../lib/palette';
@@ -25,6 +27,7 @@ afterEach(async () => {
   running = null;
   store.detach();
   client.close();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
   window.localStorage.clear();
@@ -164,6 +167,45 @@ test('metadata and message results coexist and Enter requests a page around the 
   const target = store.messageSearchJump!.messageId;
   expect(call.mock.calls).toContainEqual(['threads.get', expect.objectContaining({ threadId: 't-trace', around: target }), expect.any(Object)]);
   expect(store.openThread?.messages.find(message => message.id === target)?.turnId).toBe(turn.id);
+});
+
+test('message search skips superseded queries while a request is pending and reports only current failures', async () => {
+  vi.useFakeTimers();
+  let rejectFirst!: (error: Error) => void;
+  const first = new Promise<never>((_, reject) => { rejectFirst = reject; });
+  const queries: string[] = [];
+  const call = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
+    if (method !== 'threads.search') return call(method, params);
+    const { query } = params as { query: string };
+    queries.push(query);
+    if (query === 'first search') return first;
+    if (query === 'older core') throw new RpcFailure({ code: RpcErrorCode.MethodNotFound, message: 'missing' });
+    throw new Error('Search failed');
+  });
+  const hint = () => document.querySelector('[data-testid=palette-search-hint]');
+  store.paletteOpen = true;
+  flushSync();
+  await type('first search');
+  await vi.advanceTimersByTimeAsync(119);
+  expect(queries).toEqual([]);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(queries).toEqual(['first search']);
+  await type('superseded search');
+  await vi.advanceTimersByTimeAsync(120);
+  await type('older core');
+  await vi.advanceTimersByTimeAsync(120);
+  expect(queries).toEqual(['first search']);
+  rejectFirst(new Error('Superseded failure'));
+  await vi.advanceTimersByTimeAsync(0);
+  flushSync();
+  expect(queries).toEqual(['first search', 'older core']);
+  expect(hint()).toBeNull();
+  await type('trace');
+  await vi.advanceTimersByTimeAsync(120);
+  flushSync();
+  expect(hint()?.getAttribute('role')).toBe('status');
+  expect(rows()).toContain('thread:t-trace');
 });
 
 test('a command runs: settings opens on the tab asked, and Escape closes without picking', async () => {

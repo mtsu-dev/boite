@@ -40,3 +40,13 @@ test('tolerates one edit or a swap and keeps pull request numbers exact', () => 
   expect(matchThreadFields('#12', fields)).toBeNull();
   expect(matchThreadFields('#124', fields)).toBeNull();
 });
+
+test('matches pasted branch paths and model IDs, including their separators', () => {
+  expect(matchThreadFields('feat/resume', fields)?.matchHint).toEqual({
+    field: 'branch', text: 'feat/résumé', ranges: [{ start: 0, end: 11 }],
+  });
+  expect(matchThreadFields('claude-opus-5-5', fields)?.matchHint).toEqual({
+    field: 'model', text: 'claude-opus-5-5', ranges: [{ start: 0, end: 15 }],
+  });
+  expect(matchThreadFields('feat-resume', fields)?.matchHint?.field).toBe('branch');
+});

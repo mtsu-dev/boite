@@ -26,13 +26,22 @@ function oneEdit(a: string, b: string): boolean {
 
 interface FieldMatch { score: number; range: SearchRange }
 
-function bestWord(needle: string, exact: boolean, text: string, words: Word[]): FieldMatch | null {
-  if (exact) {
-    const folded = foldSearch(text);
-    const literal = folded.indexOf(needle);
-    if (literal < 0) return null;
-    return { score: 115, range: originalSearchRange(text, folded, literal, literal + needle.length) };
-  }
+function matchTerm(needle: string, exact: boolean, tokens: string[], text: string, words: Word[]): FieldMatch | null {
+  if (!exact && tokens.length === 1 && tokens[0] === needle) return bestWord(needle, words);
+  const folded = foldSearch(text);
+  const literal = folded.indexOf(needle);
+  if (literal >= 0) return { score: exact ? 115 : 108, range: originalSearchRange(text, folded, literal, literal + needle.length) };
+  if (exact) return null;
+  const parts = tokens.map(token => bestWord(token, words));
+  if (parts.length === 0 || parts.some(part => part === null)) return null;
+  const matches = parts as FieldMatch[];
+  return {
+    score: Math.min(...matches.map(match => match.score)) - 5,
+    range: { start: Math.min(...matches.map(match => match.range.start)), end: Math.max(...matches.map(match => match.range.end)) },
+  };
+}
+
+function bestWord(needle: string, words: Word[]): FieldMatch | null {
   // A pure number names a PR (or another number) exactly.
   const number = /^\d+$/u.test(needle);
   let best: FieldMatch | null = null;
@@ -71,18 +80,18 @@ export function mergeSearchRanges(ranges: SearchRange[]): SearchRange[] {
 }
 
 export function matchThreadFields(query: string, fields: readonly ThreadField[]): { score: number; titleRanges: SearchRange[]; matchHint?: MatchHint } | null {
-  const terms = Array.from(query.matchAll(/"([^"]*)"|([^\s"]+)/gu), match => ({
-    needle: foldSearch((match[1] ?? match[2] ?? '').trim().replace(/^#(?=\d)/u, '')),
-    exact: match[1] !== undefined,
-  })).filter(term => term.needle.length > 0);
+  const terms = Array.from(query.matchAll(/"([^"]*)"|([^\s"]+)/gu), match => {
+    const raw = (match[1] ?? match[2] ?? '').trim().replace(/^#(?=\d)/u, '');
+    return { needle: foldSearch(raw), exact: match[1] !== undefined, tokens: fieldsOf(raw).map(word => word.value) };
+  }).filter(term => term.needle.length > 0);
   if (!terms.length) return null;
   const prepared = fields.map(field => ({ ...field, words: fieldsOf(field.text) }));
   const titleRanges: SearchRange[] = [];
   let hint: MatchHint | undefined;
   let score = 0;
-  for (const { needle, exact } of terms) {
+  for (const { needle, exact, tokens } of terms) {
     const candidates = prepared.flatMap(({ field, text, words }) => {
-      const match = bestWord(needle, exact, text, words);
+      const match = matchTerm(needle, exact, tokens, text, words);
       return match ? [{ field, text, range: match.range, score: match.score - penalties[field] }] : [];
     }).sort((a, b) => b.score - a.score);
     const best = candidates[0];

@@ -4,6 +4,7 @@ export const strings = {
     placeholder: 'Search threads, messages or commands',
     searchAll: 'Search all',
     mentions: 'Mentions in messages',
+    searchFailed: 'Some messages could not be searched.',
     speakers: { user: 'You:', assistant: 'Agent:' },
     matchFields: { project: 'Project:', model: 'Model:', branch: 'Branch:', pr: 'Pull request:', machine: 'Machine:', parent: 'Parent thread:' },
     /** A heading over threads in one state: at work, a turn that ended, marked done, archived. */
