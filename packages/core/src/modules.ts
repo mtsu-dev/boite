@@ -8,6 +8,7 @@ import { registerHookMethods } from './hooks.ts';
 import { registerSecretMethods } from './secrets/rpc.ts';
 import { registerAgentMethods } from './agent.ts';
 import { registerImportMethods } from './imports.ts';
+import { registerTranscriptMethods } from './transcripts/rpc.ts';
 import { registerKeybindingMethods } from './keybindings.ts';
 import { registerProjectMethods } from './projects.ts';
 import { registerProviderMethods, registerUpdateMethods } from './providers/loader.ts';
@@ -159,6 +160,7 @@ export function registerModules(core: Core): void {
   registerTailscaleMethods(core);
   registerFirewallMethods(core);
   registerImportMethods(core);
+  registerTranscriptMethods(core);
   registerTerminalMethods(core);
   registerWorktreeMethods(core);
   // The agent's own door, and the thread surfaces a client shares with it.

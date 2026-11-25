@@ -86,7 +86,7 @@ function targetOf(parsed: Parsed, env: CliIo['env']): Target {
     if (parsed.core !== undefined) throw new Error(`this CLI speaks for thread ${own} on its own core; --core is for a terminal`);
     return { url, token, threadId: own };
   }
-  const threadId = parsed.thread ?? own ?? (['server', 'logs', 'issue', 'journal-check', 'plugin'].includes(parsed.positional[0] ?? '') || isPluginCommandWord(parsed.positional[0]) || ownerWithoutThread(parsed) ? '' : undefined);
+  const threadId = parsed.thread ?? own ?? (['server', 'logs', 'issue', 'transcripts', 'journal-check', 'plugin'].includes(parsed.positional[0] ?? '') || isPluginCommandWord(parsed.positional[0]) || ownerWithoutThread(parsed) ? '' : undefined);
   if (parsed.core !== undefined) {
     // The token stays out of the command line, where any process listing would show it.
     const remoteToken = env.BOITE_TOKEN || undefined;
@@ -224,6 +224,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     // A global `--level` yields to the command's own `--min-level`, which it would otherwise override.
     logs: async () => (await families()).logsCommand([...(parsed.limit === undefined ? [] : ['--limit', String(parsed.limit)]), ...(parsed.level === undefined || rest.some(entry => entry === '--min-level' || entry.startsWith('--min-level=')) ? [] : ['--level', parsed.level]), ...rest], client, threadId, agentCaller, io.cwd, print),
     issue: async () => (await families()).issueCommand(rest, client, threadId, agentCaller, io.cwd, print),
+    transcripts: async () => (await families()).transcriptsCommand(rest, client, threadId, agentCaller, print),
     server: async () => {
       const action = rest[0] ?? 'check';
       if (!['check', 'update', 'cancel'].includes(action)) throw new Usage('server expects check, update or cancel');

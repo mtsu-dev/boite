@@ -228,6 +228,9 @@ async function retireThere(ctx: FakeContext, rootId: string): Promise<void> {
 
 /** Like the resident core, expire stopped families from their deletion date. */
 export function purgeDeletedThreads(ctx: FakeContext): void {
+  // A storage mode, once picked, decides what becomes of a deleted conversation; Custom with no delay set keeps this one.
+  const storage = ctx.settings.transcriptStorage;
+  if (storage !== undefined && (storage.mode !== 'custom' || storage.custom !== undefined)) return;
   const days = ctx.settings.threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS;
   if (days === 0) return;
   const before = Date.now() - days * 86_400_000;
