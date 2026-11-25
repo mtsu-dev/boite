@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FolderArchive, Moon } from '@lucide/svelte';
+  import { FolderArchive, MessageSquareDashed } from '@lucide/svelte';
   import type { ThreadId } from '@boite/contracts';
   import type { ProjectEntry } from '../lib/project-view.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -8,9 +8,10 @@
   import FoldHeader from './FoldHeader.svelte';
 
   /**
-   * A fold under the project list for projects it does not show as cards: the
-   * idle ones, with nothing to do, or the archived ones, put out of the list
-   * (ProjectShelfRows.svelte draws them). The rows load on their own, a moment
+   * A fold under the project list for projects with no thread to show: the
+   * idle ones, without a single thread, or the archived ones, put out of the
+   * list (ProjectShelfRows.svelte draws them as the cards above, a header each).
+   * Both start closed (PROJECT_FOLDS_OPEN). The rows load on their own, a moment
    * after the list has drawn or at the first opening, so they stay out of the
    * entry chunk and a fold nobody opens loads no project icons.
    */
@@ -25,11 +26,8 @@
     onrows?: (rows: Row[]) => void;
   } = $props();
   const uid = $props.id();
-  const open = $derived(kind === 'idle' ? projectThreadView.shelfOpen : projectThreadView.archivedShelfOpen);
-  function toggle() {
-    if (kind === 'idle') projectThreadView.shelfOpen = !open;
-    else projectThreadView.archivedShelfOpen = !open;
-  }
+  const open = $derived(projectThreadView.foldOpen(kind));
+  const toggle = () => projectThreadView.toggleFold(kind);
   /** Rows render from the first opening on. */
   let visited = $state(false);
   $effect.pre(() => { if (open) visited = true; });
@@ -52,7 +50,7 @@
   <section class="shelf {kind}" data-testid={kind === 'idle' ? 'project-shelf' : 'archived-shelf'}>
     <FoldHeader label={kind === 'idle' ? strings.sidebar.idleProjects : strings.sidebar.archivedProjects} count={projects.length} {open} controls={uid}
       testid={kind === 'idle' ? 'project-shelf-toggle' : 'archived-shelf-toggle'} hint={kind === 'idle' ? strings.sidebar.idleProjectsHint : undefined} beforeReveal={load} onclick={toggle}>
-      {#snippet icon()}{#if kind === 'idle'}<Moon size={14} aria-hidden="true" />{:else}<FolderArchive size={14} aria-hidden="true" />{/if}{/snippet}
+      {#snippet icon()}{#if kind === 'idle'}<MessageSquareDashed size={14} aria-hidden="true" />{:else}<FolderArchive size={14} aria-hidden="true" />{/if}{/snippet}
     </FoldHeader>
     <div id={uid} class="disclosure-fold" class:open inert={!open}><div>
       {#if visited && Rows}<Rows {kind} {projects} {open} {multi} {now} {scrollRoot} {onopen} {onrows} />{/if}

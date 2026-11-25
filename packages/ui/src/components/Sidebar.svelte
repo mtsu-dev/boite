@@ -23,7 +23,7 @@
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectActivity, projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { projectDrag, startProjectDrag } from '../lib/project-drag.svelte';
-  import { activeProject, archiveCount, projectListMap, projectSections, projectThreadView, type ArchiveKind, type ProjectSection } from '../lib/project-threads.svelte';
+  import { activeProject, archiveCount, projectListMap, projectSections, projectThreadView, type ArchiveKind } from '../lib/project-threads.svelte';
   import ProjectViews from './ProjectViews.svelte';
   import SharedProjectThreads from './shared/SharedProjectThreadsLoader.svelte';
   import RecentGroup from './RecentGroup.svelte';
@@ -112,10 +112,10 @@
   let all = $derived(visible.flatMap((machine) => machine.store.projects.map((project) => ({ machine, project }))));
   /** An archived project leaves the list for the fold under it; its threads keep running. */
   let groups = $derived(projectView.sorted(all.filter(({ project }) => project.archived !== true)));
-  /** At work on top when working grouping is on, open, then set aside; idle projects go to their fold. Each stays a card when its grouping is off. */
+  /** At work on top when working grouping is on, open, then paused; idle projects go to their fold. Each stays a card when its grouping is off. */
   let sections = $derived(projectSections(groups, recentPreferences.groupOtherProjects, recentPreferences.groupWorking));
   /** The cards in drawn order, the folded sections included: Alt+digit skips the rows a folded section hides. */
-  let activeGroups = $derived([...sections.working, ...sections.open, ...sections.later]);
+  let activeGroups = $derived([...sections.working, ...sections.open, ...sections.paused]);
   /** The first card drawn, and the first open one: a prompt can lead either, the Working section sitting above the open cards. */
   const leaders = () => [activeGroups[0], sections.open[0]] as const;
   let previousLeaders: ({ key: string; activity: number } | undefined)[] = [];
@@ -199,13 +199,13 @@
     for (const entry of activeGroups) {
       if (rows.length >= 9) break;
       if (entry.machine.store.isCollapsed(entry.project.id)) continue;
-      const later = sections.later.includes(entry);
-      if (later ? !projectThreadView.laterOpen : sections.working.includes(entry) && !projectThreadView.workingOpen) continue;
+      const fold = sections.working.includes(entry) ? 'working' : sections.paused.includes(entry) ? 'paused' : null;
+      if (fold && !projectThreadView.foldOpen(fold)) continue;
       const open = projectThreadView.isOpen(entry, 'working');
       const { lists } = projectLists.get(projectKey(entry))!;
       const { shown } = cardRows(entry, lists.attention);
       for (const thread of open ? [...shown, ...lists.working] : shown) rows.push({ store: entry.machine.store, threadId: thread.id });
-      for (const kind of ['done', 'archived'] as const) if (kind === 'done' ? doneShown(entry) : later) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
+      if (doneShown(entry)) rows.push(...projectDoneRows[JSON.stringify(['done', projectKey(entry)])] ?? []);
     }
     return rows;
   }
@@ -227,9 +227,9 @@
   const loading = $derived(groups.length === 0 && visible.some(machine => machine.store.connection !== 'ready'));
   /**
    * `list` is the section the card sits in: a project moves among its neighbours there, as the sections place it themselves.
-   * The menu also shows or hides the card's archived threads; a set-aside card's body is them already, so there it folds the card.
+   * The menu names the card's archived threads, which open in the archive.
    */
-  function openProjectMenu(event: MouseEvent, machine: Machine, project: Project, list: ProjectEntry[], section: ProjectSection) {
+  function openProjectMenu(event: MouseEvent, machine: Machine, project: Project, list: ProjectEntry[]) {
     const entry = { machine, project };
     const key = projectKey(entry);
     projectMenu(event, machine.store, project, projectView.order === 'manual' ? {
@@ -327,13 +327,11 @@
           <DraftRow owner={machine.store} {entry} />
         {/each}
       {/each}
-      {#snippet card(entry: ProjectEntry, list: ProjectEntry[], section: ProjectSection)}
+      {#snippet card(entry: ProjectEntry, list: ProjectEntry[])}
         {@const { machine, project } = entry}
         {@const owner = machine.store}
         {@const workingOpen = projectThreadView.isOpen(entry, 'working')}
-        {@const later = section === 'later'}
         {@const doneOpen = archiveCount(project, 'done') > 0 && doneShown(entry)}
-        {@const archivedOpen = later && archiveCount(project, 'archived') > 0}
         {@const { lists } = projectLists.get(projectKey(entry))!}
         {@const fold = cardRows(entry, lists.attention)}
         {@const controls = `sidebar-project-${encodeURIComponent(projectKey(entry))}`}
@@ -362,7 +360,7 @@
           aria-label={threadDrag.over === dropKey ? fill(strings.threadMove.dropHere, { project: projectName(project) }) : undefined}
         >
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="head" oncontextmenu={(e) => openProjectMenu(e, machine, project, list, section)}>
+          <div class="head" oncontextmenu={(e) => openProjectMenu(e, machine, project, list)}>
             <button
               class="ghost toggle"
               class:grab={projectView.order === 'manual'}
@@ -386,7 +384,7 @@
               data-testid="project-menu"
               title={strings.sidebar.projectMenu}
               aria-label={strings.sidebar.projectMenu}
-              onclick={(e) => openProjectMenu(e, machine, project, list, section)}><Ellipsis size={15} /></button
+              onclick={(e) => openProjectMenu(e, machine, project, list)}><Ellipsis size={15} /></button
             >
           </div>
           <!-- Offline, said once under the name with its next step; the rows below dim as last seen. A reconnect
@@ -413,28 +411,24 @@
                 <RecentDone entries={[entry]} {scrollRoot} {now} open={doneOpen && !collapsed} header={false} cap={10}
                   onrows={doneObserver(entry, 'done')} />
               </div>
-              <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
-                <RecentDone kind="archived" entries={[entry]} {scrollRoot} {now} open={archivedOpen && !collapsed && (!later || projectThreadView.laterOpen)} header={false} cap={10}
-                  onrows={doneObserver(entry, 'archived')} />
-              </div>
               {#if lists.attention.length === 0 && lists.working.length === 0 && !project.archivedThreads && draftsHere.length === 0}<p class="none">{strings.sidebar.noThreads}</p>{/if}
               </SharedProjectThreads>
             </div>
           </div>
         </section>
       {/snippet}
-      <!-- Idle projects sit as compact rows in their fold below, so Alt+digit and reordering count only the cards. -->
+      <!-- Idle projects sit in their fold below, headers without rows, so Alt+digit and reordering count only the cards above. -->
       {#if sections.working.length > 0}
         <ProjectCardsSection kind="working" count={sections.working.length}>
-          {#each sections.working as entry (projectKey(entry))}{@render card(entry, sections.working, 'working')}{/each}
+          {#each sections.working as entry (projectKey(entry))}{@render card(entry, sections.working)}{/each}
         </ProjectCardsSection>
       {/if}
-      {#each sections.open as entry (projectKey(entry))}{@render card(entry, sections.open, 'open')}{/each}
+      {#each sections.open as entry (projectKey(entry))}{@render card(entry, sections.open)}{/each}
       {#if groups.length > 0 && sections.working.length + sections.open.length === 0}<p class="none">{strings.sidebar.noActiveProjects}</p>{/if}
       <div class="project-folds">
-        {#if sections.later.length > 0}
-          <ProjectCardsSection kind="later" count={sections.later.length}>
-            {#each sections.later as entry (projectKey(entry))}{@render card(entry, sections.later, 'later')}{/each}
+        {#if sections.paused.length > 0}
+          <ProjectCardsSection kind="paused" count={sections.paused.length}>
+            {#each sections.paused as entry (projectKey(entry))}{@render card(entry, sections.paused)}{/each}
           </ProjectCardsSection>
         {/if}
         <ProjectShelf projects={sections.idle} {multi} {now} {scrollRoot} onrows={rows => idleRows = rows} />

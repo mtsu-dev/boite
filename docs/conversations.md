@@ -61,6 +61,13 @@ The conversations already loaded stay available while Boite reloads it.
 Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
 
+In the Projects view, the projects where something needs you come first.
+Below them, Paused gathers the projects where no thread runs and nothing
+waits on you; fold it to hide them. No threads, closed at launch, lists the
+projects without a single thread: choose one to start a thread there. Archived
+projects come last, closed too. Turn off Inactive projects in the Filter menu
+to keep every project in the main list.
+
 A thread with a pull request keeps its last badge on this device. When you
 reopen Boite, the badge can appear as soon as the thread is listed, and Boite
 updates it when it checks again.
@@ -166,7 +173,8 @@ above the message box or the bottom tabs.
   Select a conversation to read it. Restore it from the row or from the open
   conversation before sending a message. Restoring brings back your message
   draft. Its agent starts again with your first message.
-- A project's Done list shows ten rows at a time; scroll it for the rest.
+- A project's Done list opens from the Done count in its heading, on desktop
+  and phone, and shows ten rows at a time; scroll it for the rest.
   The row shows when each conversation was put away. To reveal Restore on
   desktop, point to the row or focus it with the keyboard. Restore is visible
   on touch screens.

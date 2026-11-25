@@ -14,15 +14,15 @@ export const strings = {
     threadListRetrying: 'Reloading conversations from {machine}.',
     projectDoneThreads: '{project}: {count} done',
     projectArchivedThreads: '{project}: {count} archived',
-    /** The fold under the list for projects with no open conversation, and what choosing one does. */
-    idleProjects: 'Idle projects',
+    /** The fold under the list for projects without a single conversation, and what choosing one does. */
+    idleProjects: 'No threads',
     /** The section on top of the Projects view: projects whose every conversation is at work, so nothing there waits on the user. */
     workingProjects: 'Working',
     workingProjectsHint: 'Every conversation in these projects is at work. A project moves down once one needs you.',
-    /** The section under the open projects: nothing open, conversations archived to pick up again. */
-    laterProjects: 'Set aside',
-    laterProjectsHint: 'Conversations you archived to pick up later, in projects with nothing else open.',
-    idleProjectsHint: 'Nothing to do here: no open or set-aside conversation. Choose one to start a thread.',
+    /** The section under the open projects: conversations, none at work and none waiting on the user. */
+    pausedProjects: 'Paused',
+    pausedProjectsHint: 'Nothing runs in these projects and nothing waits on you. A project moves up once a thread starts or needs you.',
+    idleProjectsHint: 'No thread in these projects, running or stopped. Choose one to start a thread.',
     filter: 'Filter',
     /** The Filter menu's group of switches: what the list folds away or shows. */
     filterDisplay: 'Display',
@@ -51,7 +51,7 @@ export const strings = {
     history: 'History', historyBack: 'Back', historyForward: 'Forward',
     displayOrder: 'Sort by',
     groupWorkingRow: 'Working threads',
-    groupIdleRow: 'Idle projects',
+    groupIdleRow: 'Inactive projects',
     showDoneRow: 'Done threads',
     showDoneHint: 'Lists finished threads after the live ones, in Projects and Recent. This device only.',
     autoArchiveMergedPrHint: 'After every PR merges or closes, Boite asks the agent whether the conversation is done. Applies to this project.',

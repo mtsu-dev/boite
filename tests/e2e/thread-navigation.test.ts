@@ -248,6 +248,10 @@ test('projects sink after losing recent threads and the sidebar follows a select
   try {
     await page.waitFor(`${state}.openThread`);
     await page.evaluate(`globalThis.__boiteTest.workspace.view = 'projects'`);
+    // Every project stays an open card, the paused ones included, so their order alone places them.
+    await page.click(id('grouping-options'));
+    await page.click(`${id('grouping-options-menu')} [data-value=other]`);
+    await page.click(id('grouping-options'));
     await page.evaluate(`(async () => {
       const s = ${state}; s.collapsedProjects = s.projects.map(p => p.id);
       for (let i = 0; i < 24; i++) {

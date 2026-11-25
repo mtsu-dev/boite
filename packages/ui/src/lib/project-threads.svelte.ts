@@ -1,14 +1,27 @@
 import type { Project, ThreadSummary } from '@boite/contracts';
 import { projectKey, type ProjectEntry } from './project-view.svelte';
+import type { Store } from './store.svelte';
 import { groupWorkingThread, recentPreferences, workingThread } from './recent.svelte';
 import { threadOrder } from './thread-order';
 import { rowAsks } from './status-order';
+import { threadState } from './thread-state';
+import { hasUnsentDraft } from './composer-queue';
 
 type ProjectThreadKind = 'working' | 'done' | 'archived';
 /** The two kinds of row in the fold under the project list: projects with no open conversation, and projects put out of the list. */
 export type ProjectShelfKind = 'idle' | 'archived';
-/** Where the Projects view lists a project: at work at the top, open, set aside, or in the idle fold. */
-export type ProjectSection = 'working' | 'open' | 'later' | 'idle';
+/**
+ * Where the Projects view lists a project: at work at the top, open, paused (threads, none running, none for the
+ * user) or idle (no thread at all). Archived projects are not a section: they leave the list for their own fold.
+ */
+export type ProjectSection = 'working' | 'open' | 'paused' | 'idle';
+/** Every fold of the Projects view: each section with a header, and the archived projects. */
+export type ProjectFold = Exclude<ProjectSection, 'open'> | 'archived';
+/**
+ * Each fold's state at launch, on desktop and phone alike: what holds work starts open, what holds no thread starts
+ * closed. A header toggles its fold for the session; the next launch starts from here again.
+ */
+export const PROJECT_FOLDS_OPEN: Readonly<Record<ProjectFold, boolean>> = { working: true, paused: true, idle: false, archived: false };
 /** Archived conversations split in two: done ones (marked done, PR merged) leave after a delay, the others wait to be picked up again. */
 export type ArchiveKind = 'done' | 'archived';
 
@@ -28,12 +41,21 @@ class ProjectThreadView {
   working = $state<string[]>([]);
   done = $state<string[]>([]);
   archived = $state<string[]>([]);
-  /** The folds of idle and of archived projects start closed and stay as left, across desktop and phone, for this session. */
-  shelfOpen = $state(false);
-  archivedShelfOpen = $state(false);
-  /** The sections of projects at work and set aside start open, as they hold work. */
-  workingOpen = $state(true);
-  laterOpen = $state(true);
+  /** The Projects view's folds, from PROJECT_FOLDS_OPEN, as left across desktop and phone for this session. */
+  folds = $state<Record<ProjectFold, boolean>>({ ...PROJECT_FOLDS_OPEN });
+
+  foldOpen(fold: ProjectFold): boolean {
+    return this.folds[fold];
+  }
+
+  toggleFold(fold: ProjectFold): void {
+    this.folds[fold] = !this.folds[fold];
+  }
+
+  /** Back to the launch state, for tests. */
+  resetFolds(): void {
+    this.folds = { ...PROJECT_FOLDS_OPEN };
+  }
 
   isOpen(entry: ProjectEntry, kind: ProjectThreadKind): boolean {
     if (kind === 'working' && !recentPreferences.groupWorking) return false;
@@ -69,30 +91,36 @@ export function activeProject(entry: ProjectEntry): boolean {
     || store.draftEntries.some(draft => draft.projectId === entry.project.id);
 }
 
+/** Nothing runs in it and nothing there is for the user: no news, question or failure, no pin, no unsent text. */
+function restingThread(store: Store, thread: ThreadSummary): boolean {
+  if (thread.pinned || hasUnsentDraft(store.composerStates[thread.id])) return false;
+  return threadState(thread, rowAsks(store, thread.id)) === null;
+}
+
 /**
  * Working: every conversation it holds is at work and nothing there holds the user's input (a pin, unsent text in a
  * conversation or in a new draft), so a folded section never hides what waits on the user.
- * Open: any other conversation or draft. Later: nothing open, but conversations archived by hand to pick up again.
- * Idle: none of these, at most a done history.
+ * Paused: conversations, every one at rest (restingThread) and no new draft, so folding it hides nothing either.
+ * Open: any other conversation or draft. Idle: no conversation at all; archived and done ones live in its row's history.
  */
 function projectSection(entry: ProjectEntry): ProjectSection {
   const store = entry.machine.store;
   const threads = store.threadsOf(entry.project.id);
-  if (threads.length > 0 && threads.every(thread => groupWorkingThread(store, thread))
-    && !store.draftEntries.some(draft => draft.projectId === entry.project.id)) return 'working';
-  if (activeProject(entry)) return 'open';
-  return archiveCount(entry.project, 'archived') > 0 ? 'later' : 'idle';
+  const drafting = store.draftEntries.some(draft => draft.projectId === entry.project.id);
+  if (threads.length > 0 && !drafting && threads.every(thread => groupWorkingThread(store, thread))) return 'working';
+  if (threads.length > 0 && !drafting && store.draft?.projectId !== entry.project.id && threads.every(thread => restingThread(store, thread))) return 'paused';
+  return activeProject(entry) ? 'open' : 'idle';
 }
 
 /**
  * The listed projects split by section, each in the order it came in. Without working grouping, projects at work stay
- * open cards; without idle grouping, set-aside and idle projects do too.
+ * open cards; without inactive grouping, paused and idle projects do too.
  */
-export function projectSections(entries: readonly ProjectEntry[], groupIdle: boolean, groupWorking: boolean): Record<ProjectSection, ProjectEntry[]> {
-  const sections: Record<ProjectSection, ProjectEntry[]> = { working: [], open: [], later: [], idle: [] };
+export function projectSections(entries: readonly ProjectEntry[], groupInactive: boolean, groupWorking: boolean): Record<ProjectSection, ProjectEntry[]> {
+  const sections: Record<ProjectSection, ProjectEntry[]> = { working: [], open: [], paused: [], idle: [] };
   for (const entry of entries) {
     const section = projectSection(entry);
-    const grouped = section === 'working' ? groupWorking : groupIdle;
+    const grouped = section === 'open' || (section === 'working' ? groupWorking : groupInactive);
     sections[grouped ? section : 'open'].push(entry);
   }
   return sections;

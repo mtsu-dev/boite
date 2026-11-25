@@ -41,7 +41,7 @@ test('Alt+digit reaches the history unfolded under an idle project, after the li
     expect(sidebarRows.list.map(entry => entry.threadId)).toEqual(drawn());
     await store.open('t-trace');
     await store.archive('t-descriptors', true);
-    projectThreadView.shelfOpen = true;
+    projectThreadView.folds.idle = true;
     const row = '[data-testid=idle-project][data-project-id="p-notes"]';
     await waitFor(() => document.querySelector(`${row} [data-testid$=-toggle]`) !== null);
     query<HTMLButtonElement>(`${row} [data-testid$=-toggle]`).click();
@@ -49,7 +49,7 @@ test('Alt+digit reaches the history unfolded under an idle project, after the li
     await waitFor(() => sidebarRows.list.at(-1)?.threadId === 't-descriptors');
     expect(sidebarRows.list.map(entry => entry.threadId)).toEqual([...store.threadsOf('p-boite').map(() => expect.any(String)), 't-descriptors']);
   } finally {
-    projectThreadView.shelfOpen = false;
+    projectThreadView.folds.idle = false;
     projectThreadView.done = [];
     projectThreadView.archived = [];
   }

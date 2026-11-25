@@ -147,6 +147,14 @@ test('projects follow user activity, then keep a dragged custom order after relo
   await showThreadView(page, 'projects');
   // Back from the phone width, the sidebar draws its cards again.
   await page.waitFor(`document.querySelectorAll('${id('project-menu')}').length > 1`);
+  // The four projects stay in one list, the paused ones included, so their order alone places them.
+  const toggleInactive = async () => {
+    await page.click(id('grouping-options'));
+    await page.click(`${id('grouping-options-menu')} [data-value=other]`);
+    await page.click(id('grouping-options'));
+  };
+  await toggleInactive();
+  await page.waitFor(`!document.querySelector('${id('paused-projects')}')`);
   // The menu ends every header at the same place, whatever counters sit before it.
   const menuEdges = await page.evaluate<number[]>(`Array.from(document.querySelectorAll('${id('project-menu')}')).map(e => Math.round(e.getBoundingClientRect().right))`);
   expect(menuEdges.length).toBeGreaterThan(1);
@@ -190,6 +198,7 @@ test('projects follow user activity, then keep a dragged custom order after relo
   await page.navigate(url);
   await page.waitFor(`document.querySelectorAll('${id('project')}').length === 4`);
   expect(await keys()).toEqual([before[3]!, ...before.slice(0, 3)]);
+  await toggleInactive();
 }, 20_000);
 
 test('phone reorders a project from its group on a short screen and manages no project from its header', async () => {
