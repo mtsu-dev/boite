@@ -1025,12 +1025,16 @@ endpoint path and `hasSecret`. Only `agents.trigger.save` on webhook creation
 and `agents.trigger.rotateSecret` return the secret. Both require the owner
 and an encrypted connection to issue it. The 32-byte hex secret is stored
 under the core data directory in `mochi-trigger-secrets.json`, atomically
-replaced with mode `0600`. It stays out of SQLite. `agents.record` events
-carry only the id and revision. A mochi's own thread may save or remove its
+replaced with mode `0600`. On Windows, access relies on the data directory's
+ACLs, inherited from the user profile by default, as for group and speech
+credentials. The secret stays out of SQLite. `agents.record` events carry
+only the id and revision. A mochi's own thread may save or remove its
 own triggers, with webhook creation restricted to the owner.
 `boite mochi triggers` lists them.
 `agents.trigger.test` is owner-only and keeps a receipt keyed by `requestId`.
 `agents.trigger.remove` also deletes any stored webhook secret.
+Trigger edits accept a revision from before the latest firing outcome, provided
+the trigger's configuration has stayed the same since that revision.
 
 - `POST /hooks/mochi/<triggerId>` accepts `Authorization: Bearer`,
   `X-Boite-Secret`, or `X-Hub-Signature-256: sha256=<hex>` (HMAC-SHA256

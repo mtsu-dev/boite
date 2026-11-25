@@ -515,7 +515,7 @@ function prTriggerTransitions(changes: WatchChange[], detail: WatchDetail, previ
     if (change.kind === 'failed') {
       const failing = new Set(change.checks.map(check => check.name));
       for (const check of detail.checks) if (failing.has(check.name)) {
-        transitions.push({ kind: 'ci_failed', key: JSON.stringify([detail.head, check.name, check.conclusion, check.url, check.started, check.finished]) });
+        transitions.push({ kind: 'ci_failed', key: JSON.stringify([detail.head, check.name, check.conclusion, check.url, check.createdAt ?? check.started, check.finished]) });
       }
     } else if (change.kind === 'base-failed') {
       const { sha, name, conclusion, url } = change.check;

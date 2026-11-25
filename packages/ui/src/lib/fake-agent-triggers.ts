@@ -30,7 +30,12 @@ export class FakeAgentTriggers {
     const previous = params.id === undefined ? null : this.#get(params.id);
     this.#allow(params.threadId, agent.id);
     if (previous && previous.agentId !== agent.id) this.#refuse('agentId: a trigger cannot change owner');
-    if (previous && previous.revision !== params.expectedRevision) this.#refuse('expectedRevision: the trigger changed');
+    if (previous) {
+      const revision = params.expectedRevision ?? 0;
+      if (!Number.isSafeInteger(revision) || revision < (previous.configRevision ?? previous.revision) || revision > previous.revision) {
+        this.#refuse('expectedRevision: the trigger changed');
+      }
+    }
     const webhook = value.source.kind === 'webhook';
     const createsSecret = webhook && previous?.source.kind !== 'webhook';
     if (createsSecret && params.threadId !== undefined) this.#refuse('source.kind: only the owner can create a webhook trigger');
@@ -47,10 +52,11 @@ export class FakeAgentTriggers {
     if (!previous && this.list().filter(trigger => trigger.agentId === agent.id).length >= AGENT_TRIGGERS_MAX) this.#refuse(`trigger: a mochi may have at most ${AGENT_TRIGGERS_MAX} triggers`);
     const now = Date.now();
     const id = previous?.id ?? 'agt_trigger_' + this.#secret().slice(0, 20);
+    const revision = (previous?.revision ?? 0) + 1;
     const trigger: AgentTrigger = {
       agentId: agent.id, name: value.name.trim(), prompt: value.prompt.trim(), enabled: value.enabled, cooldownSeconds: value.cooldownSeconds,
       source: structuredClone(value.source), hasSecret: webhook, webhookPath: webhook ? AGENT_TRIGGER_WEBHOOK_ROUTE + id : null,
-      id, revision: (previous?.revision ?? 0) + 1, createdAt: previous?.createdAt ?? now, updatedAt: now,
+      id, revision, configRevision: revision, createdAt: previous?.createdAt ?? now, updatedAt: now,
       lastFiredAt: previous?.lastFiredAt ?? null, lastOutcome: previous?.lastOutcome === 'queued' ? 'skipped' : previous?.lastOutcome ?? null,
     };
     this.#pending.delete(id);
@@ -107,7 +113,9 @@ export class FakeAgentTriggers {
     const outcome = held ?? (turnId ? 'fired' : 'error');
     if (outcome === 'queued') this.#pending.add(trigger.id);
     else this.#pending.delete(trigger.id);
-    if (trigger.lastOutcome !== outcome || trigger.lastFiredAt !== at) this.#put({ ...trigger, lastFiredAt: at, lastOutcome: outcome, revision: trigger.revision + 1, updatedAt: Date.now() });
+    if (trigger.lastOutcome !== outcome || trigger.lastFiredAt !== at) {
+      this.#put({ ...trigger, lastFiredAt: at, lastOutcome: outcome, revision: trigger.revision + 1, updatedAt: Date.now() });
+    }
     return { outcome, turnId };
   }
 

@@ -127,6 +127,8 @@ export interface WatchCheck {
   job: string;
   /** A commit status a service posted rather than a CI job: one may stay pending as long as it likes. */
   context: boolean;
+  /** When a service posted a commit status. CI jobs use the run times below. */
+  createdAt?: string;
   /** The workflow a CI job belongs to, its start and its end: empty for a commit status or what did not happen yet. */
   workflow: string; started: string; finished: string;
 }
@@ -194,7 +196,7 @@ function checksOf(commit: Row): { check: WatchCheck; at: string }[] {
   const nodes = list(contextsOf(commit).nodes).map(row);
   const runs = new Map<string, { check: WatchCheck; at: string }>();
   for (const node of nodes) {
-    let name: string, job: string, status: CheckStatus, conclusion: string, url: string, at: string, workflow = '', started = '', finished = '';
+    let name: string, job: string, status: CheckStatus, conclusion: string, url: string, at: string, createdAt = '', workflow = '', started = '', finished = '';
     if (node.__typename === 'CheckRun') {
       workflow = text(row(row(row(node.checkSuite).workflowRun).workflow).name, 200);
       job = text(node.name, 200);
@@ -211,10 +213,14 @@ function checksOf(commit: Row): { check: WatchCheck; at: string }[] {
       conclusion = text(node.state, 50);
       status = conclusion === 'PENDING' || conclusion === 'EXPECTED' ? 'pending' : FAILED.has(conclusion) ? 'failed' : 'passed';
       url = safeUrl(node.targetUrl);
-      at = status === 'pending' ? '9999' : text(node.createdAt, 50) || '9999';
+      createdAt = text(node.createdAt, 50);
+      at = status === 'pending' ? '9999' : createdAt || '9999';
     } else continue;
     if (!name) continue;
-    const check: WatchCheck = { name, status, conclusion, required: node.isRequired === true, url, job, context: node.__typename === 'StatusContext', workflow, started, finished };
+    const check: WatchCheck = {
+      name, status, conclusion, required: node.isRequired === true, url, job, context: node.__typename === 'StatusContext', workflow, started, finished,
+      ...(createdAt ? { createdAt } : {}),
+    };
     const held = runs.get(name);
     if (!held || at > held.at) runs.set(name, { check: { ...check, required: check.required || held?.check.required === true }, at });
     else if (check.required) held.check.required = true;

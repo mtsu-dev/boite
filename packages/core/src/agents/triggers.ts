@@ -52,6 +52,14 @@ export class AgentTriggers {
     const previous = params.id === undefined ? null : this.#get(params.id);
     this.#allowOwn(params.threadId, agent.id);
     if (previous && previous.agentId !== agent.id) throw refused('agentId: a trigger cannot change owner');
+    if (previous) {
+      const revision = integer(params.expectedRevision, 'expectedRevision', 1, Number.MAX_SAFE_INTEGER);
+      if (revision < (previous.configRevision ?? previous.revision) || revision > previous.revision) {
+        throw refused(`trigger ${previous.id}: expected revision ${previous.revision}, received ${revision}`, {
+          kind: 'trigger', id: previous.id, expectedRevision: previous.revision,
+        });
+      }
+    }
     const webhook = value.source.kind === 'webhook';
     const createsSecret = webhook && previous?.source.kind !== 'webhook';
     if (createsSecret && params.threadId !== undefined) throw refused('source.kind: only the owner can create a webhook trigger');
@@ -70,6 +78,7 @@ export class AgentTriggers {
     const secret = createsSecret ? newToken() : undefined;
     const record = {
       ...value,
+      configRevision: (previous?.revision ?? 0) + 1,
       hasSecret: webhook,
       webhookPath: webhook ? AGENT_TRIGGER_WEBHOOK_ROUTE + id : null,
       lastFiredAt: previous?.lastFiredAt ?? null,
@@ -77,7 +86,7 @@ export class AgentTriggers {
     };
     const trigger = this.#records.transaction(() => {
       const saved = previous
-        ? this.#records.update('trigger', id, integer(params.expectedRevision, 'expectedRevision', 1, Number.MAX_SAFE_INTEGER), record)
+        ? this.#records.update('trigger', id, previous.revision, record)
         : this.#records.adopt('trigger', id, record);
       if (secret !== undefined) this.#secrets.set(id, secret);
       return saved;
@@ -295,7 +304,9 @@ export class AgentTriggers {
   #outcome(id: string, at: number | null, outcome: TestResult['outcome']): void {
     const current = this.#records.find('trigger', id);
     if (!current) return;
-    this.#records.update('trigger', id, current.revision, { ...current, lastFiredAt: at ?? current.lastFiredAt, lastOutcome: outcome });
+    this.#records.update('trigger', id, current.revision, {
+      ...current, configRevision: current.configRevision ?? current.revision, lastFiredAt: at ?? current.lastFiredAt, lastOutcome: outcome,
+    });
     this.#core.workforce.changed();
   }
 

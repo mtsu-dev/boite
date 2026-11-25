@@ -8,7 +8,7 @@ import AgentTriggers from './AgentTriggers.svelte';
 
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.querySelector<T>(`[data-testid="${id}"]`)!;
 
-test('a file trigger edit keeps brace globs and refuses to overwrite a concurrent edit', async ({ ready }) => {
+test('a file trigger edit keeps brace globs, survives a trigger run, and refuses to overwrite a concurrent edit', async ({ ready }) => {
   const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
   const view = new AgentsView(store);
   await view.refresh();
@@ -29,10 +29,15 @@ test('a file trigger edit keeps brace globs and refuses to overwrite a concurren
   try {
     click('trigger-edit');
     patterns('src/**/*.{ts,tsx}, package.json, src/items[,].txt');
+    await client.call('agents.trigger.test', { triggerId: trigger.id, requestId: 'test-while-editing' });
+    const firedAt = (await snapshotTrigger()).lastFiredAt;
+    expect(firedAt).not.toBeNull();
+    await view.refresh();
     click('trigger-save');
     await vi.waitFor(async () => expect((await snapshotTrigger()).source).toMatchObject({
       patterns: ['src/**/*.{ts,tsx}', 'package.json', 'src/items[,].txt'],
     }));
+    expect((await snapshotTrigger()).lastFiredAt).toBe(firedAt);
     await vi.waitFor(() => expect(element('trigger-form')).toBeNull());
 
     click('trigger-edit');

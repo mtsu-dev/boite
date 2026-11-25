@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { createHmac } from 'node:crypto';
 import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { request, type ClientRequest } from 'node:http';
 import { join } from 'node:path';
 import type { AgentTrigger, AgentTriggerSource } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
@@ -126,6 +127,47 @@ test('malformed signatures leave the body alone and incomplete signed requests c
   }
 });
 
+test('webhooks count two Funnel clients behind loopback under their own addresses', async () => {
+  const { agent } = await makeAgent(h, owner);
+  const first = await save(agent.id, { kind: 'webhook' }, 'First');
+  const second = await save(agent.id, { kind: 'webhook' }, 'Second');
+  const third = await save(agent.id, { kind: 'webhook' }, 'Third');
+  const headers = (address: string, signature: string) => ({
+    'tailscale-funnel-request': '?1', 'x-forwarded-for': address, 'x-hub-signature-256': 'sha256=' + signature,
+  });
+  const held: ClientRequest[] = [];
+  const entered = spyOn(h.core.workforce.triggers, 'http');
+  try {
+    for (const trigger of [first.trigger, first.trigger, second.trigger, second.trigger]) {
+      const url = new URL(trigger.webhookPath!, h.url.replace(/^ws/, 'http'));
+      const req = request(url, { method: 'POST', headers: { ...headers('203.0.113.1', '0'.repeat(64)), 'content-length': '2' } });
+      req.on('error', () => undefined);
+      held.push(req);
+      req.write('{');
+      req.flushHeaders();
+    }
+    await waitFor(() => entered.mock.calls.length === 4);
+    const signature = createHmac('sha256', third.secret!).update('{}').digest('hex');
+    expect((await post(third.trigger, headers('203.0.113.1', signature))).status).toBe(429);
+    expect((await post(third.trigger, headers('203.0.113.2', signature))).status).toBe(202);
+  } finally {
+    for (const req of held) req.destroy();
+    entered.mockRestore();
+  }
+});
+
+test('a trigger edit can use its opening revision after an event updates its outcome', async () => {
+  const { agent, threadId } = await makeAgent(h, owner);
+  const { trigger } = await save(agent.id, { kind: 'webhook' });
+  await owner.call('agents.trigger.test', { triggerId: trigger.id, requestId: 'trigger-edit-1' });
+  await waitFor(() => read(trigger).lastOutcome === 'fired' && settled(h, threadId));
+  const fired = read(trigger);
+  const edit = { id: trigger.id, expectedRevision: trigger.revision, value: { ...trigger, name: 'Updated' } };
+  const saved = await owner.call('agents.trigger.save', edit);
+  expect(saved.trigger).toMatchObject({ name: 'Updated', lastFiredAt: fired.lastFiredAt, lastOutcome: 'fired' });
+  expect(await thrown(owner.call('agents.trigger.save', edit))).toThrow('expected revision');
+});
+
 test('test events are idempotent, queue while working, and respect the core pause', async () => {
   const { agent, threadId } = await makeAgent(h, owner);
   const { trigger } = await save(agent.id, { kind: 'webhook' });
@@ -216,16 +258,20 @@ test('the PR tracker sends matching transitions of a granted project without a s
 
   let state = 'OPEN';
   let moved = false;
+  let status = 'FAILURE';
+  let statusCreatedAt = '2026-11-25T12:00:00Z';
   spyOn(h.core.pullRequests, 'gh').mockImplementation((_thread, args) => {
     const query = args.find(arg => arg.startsWith('query='));
     if (!query) return Promise.resolve(args.at(-1)?.includes('/branches/main') ? '{"protected":false}' : '[]');
-    const check = { __typename: 'CheckRun', name: 'test', status: 'COMPLETED', conclusion: 'FAILURE' };
+    const check = { __typename: 'StatusContext', context: 'test', state: status, targetUrl: 'https://ci.example/test', createdAt: statusCreatedAt };
     const pr = {
       state, baseRefName: 'main', headRefOid: 'head', mergeable: moved ? 'CONFLICTING' : 'MERGEABLE',
       mergedBy: state === 'MERGED' ? { login: 'someone' } : null,
       reviewRequests: { nodes: moved ? [{ id: 'new-request' }] : [] },
       changeReviews: { nodes: moved ? [{ id: 'changes' }] : [] },
-      commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: moved ? [check] : [] } } } }] },
+      commits: { nodes: [{ commit: { statusCheckRollup: { contexts: {
+        nodes: moved ? [check] : [], statusContextCountsByState: moved ? [{ state: status, count: 1 }] : [],
+      } } } }] },
     };
     return Promise.resolve(JSON.stringify({ data: { viewer: { login: 'tracker' }, repository: { pullRequest: pr } } }));
   });
@@ -246,9 +292,19 @@ test('the PR tracker sends matching transitions of a granted project without a s
   await watches.pass();
   expect(turnsOf(h, threadId)).toHaveLength(2);
 
+  status = 'PENDING';
+  statusCreatedAt = '2026-11-25T12:05:00Z';
+  await watches.pass();
+  status = 'FAILURE';
+  statusCreatedAt = '2026-11-25T12:10:00Z';
+  await watches.pass();
+  expect(turnsOf(h, threadId)).toHaveLength(3);
+  await waitFor(() => settled(h, threadId));
+  expect(driver.prompts.get(threadId)!.at(-1)).toContain('ci_failed');
+
   state = 'MERGED';
   await watches.pass();
-  await waitFor(() => (driver.prompts.get(threadId)?.length ?? 0) >= 3 && read(trigger).lastOutcome !== 'queued' && settled(h, threadId));
-  expect(turnsOf(h, threadId)).toHaveLength(3);
+  await waitFor(() => (driver.prompts.get(threadId)?.length ?? 0) >= 4 && read(trigger).lastOutcome !== 'queued' && settled(h, threadId));
+  expect(turnsOf(h, threadId)).toHaveLength(4);
   expect(driver.prompts.get(threadId)!.at(-1)).toContain('merged');
 });

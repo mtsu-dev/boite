@@ -4,7 +4,11 @@ import { newId } from '../ids.ts';
 
 export const WEBHOOK_TRIGGER_ID = /^agt_trigger_[0-9a-z]{20}$/;
 
-/** The core is the only writer. Each replacement gives the complete file owner-only permissions. */
+/**
+ * The core is the only writer. Replacements use mode 0600 on Unix. On Windows,
+ * access relies on the data directory's ACLs, inherited from the user profile
+ * by default, as for group and speech credentials.
+ */
 export class TriggerSecrets {
   readonly #path: string;
   #entries: ReadonlyMap<string, string> | null = null;

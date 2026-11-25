@@ -132,6 +132,8 @@ export interface AgentTriggerConfig {
   source: AgentTriggerSource;
 }
 export interface AgentTrigger extends AgentRecord, AgentTriggerConfig {
+  /** The record revision of the last config save. Older records use their current revision. */
+  configRevision?: number;
   hasSecret: boolean;
   webhookPath: string | null;
   lastFiredAt: number | null;
