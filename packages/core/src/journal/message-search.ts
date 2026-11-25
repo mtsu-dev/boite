@@ -3,8 +3,43 @@ import { gradeMessage, messageSearchTerms, orderMessageMatches, type RpcParams, 
 import { REMOVED_PROJECTS } from './thread-rows.ts';
 
 /** Text parts stay inline. Only tool, file and image fields use part_blobs. */
-const TEXT = "(SELECT group_concat(coalesce(value->>'displayText', value->>'text'), char(10)) FROM json_each(@.parts) WHERE value->>'type' = 'text')";
+const TEXT = "(SELECT group_concat(coalesce(value->>'displayText', value->>'text'), char(10)) FROM json_each(CASE WHEN json_valid(@.parts) AND json_type(@.parts) = 'array' THEN @.parts ELSE '[]' END) WHERE value->>'type' = 'text')";
 const VISIBLE = "@.role IN ('user', 'assistant') AND EXISTS (SELECT 1 FROM threads WHERE id = @.thread_id AND incognito = 0)";
+
+export function ensureMessageSearchTriggers(db: Database): void {
+  const infix = db.query(INFIX).get() !== null;
+  const key = (row: string) => `(SELECT id FROM message_search_keys WHERE message_id = ${row}.id)`;
+  const remove = (row: string) => `
+    ${infix ? `INSERT INTO messages_fts_infix(messages_fts_infix, rowid, body)
+      SELECT 'delete', rowid, body FROM messages_fts WHERE rowid = ${key(row)};` : ''}
+    DELETE FROM messages_fts WHERE rowid = ${key(row)};`;
+  const add = (row: string) => `
+    INSERT INTO message_search_keys(message_id)
+      SELECT ${row}.id WHERE ${VISIBLE.replaceAll('@', row)}
+      ON CONFLICT(message_id) DO NOTHING;
+    INSERT INTO messages_fts(rowid, message_id, thread_id, role, created_at, body)
+      SELECT ${key(row)}, ${row}.id, ${row}.thread_id, ${row}.role, ${row}.created_at, ${TEXT.replaceAll('@', row)}
+      WHERE ${VISIBLE.replaceAll('@', row)};
+    ${infix ? `INSERT INTO messages_fts_infix(rowid, body)
+      SELECT rowid, body FROM messages_fts WHERE rowid = ${key(row)};` : ''}`;
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS message_search_insert AFTER INSERT ON messages
+      WHEN new.role IN ('user', 'assistant') OR ${key('new')} IS NOT NULL BEGIN
+      ${remove('new')}
+      ${add('new')}
+    END;
+    CREATE TRIGGER IF NOT EXISTS message_search_update AFTER UPDATE OF parts ON messages
+      WHEN new.role IN ('user', 'assistant') AND (old.parts IS NOT new.parts
+        OR EXISTS (SELECT 1 FROM streaming_parts WHERE message_id = new.id)) BEGIN
+      ${remove('old')}
+      ${add('new')}
+    END;
+    CREATE TRIGGER IF NOT EXISTS message_search_delete AFTER DELETE ON messages BEGIN
+      ${remove('old')}
+      DELETE FROM message_search_keys WHERE message_id = old.id;
+    END;
+  `);
+}
 
 export function createMessageSearch(db: Database): void {
   // A VACUUM can change messages.rowid. Keep a permanent integer key for FTS.
@@ -23,20 +58,6 @@ export function createMessageSearch(db: Database): void {
     if (!(error instanceof Error) || !error.message.includes('tokenizer')) throw error;
     infix = false;
   }
-  const key = (row: string) => `(SELECT id FROM message_search_keys WHERE message_id = ${row}.id)`;
-  const remove = (row: string) => `
-    ${infix ? `INSERT INTO messages_fts_infix(messages_fts_infix, rowid, body)
-      SELECT 'delete', rowid, body FROM messages_fts WHERE rowid = ${key(row)};` : ''}
-    DELETE FROM messages_fts WHERE rowid = ${key(row)};`;
-  const add = (row: string) => `
-    INSERT INTO message_search_keys(message_id)
-      SELECT ${row}.id WHERE ${VISIBLE.replaceAll('@', row)}
-      ON CONFLICT(message_id) DO NOTHING;
-    INSERT INTO messages_fts(rowid, message_id, thread_id, role, created_at, body)
-      SELECT ${key(row)}, ${row}.id, ${row}.thread_id, ${row}.role, ${row}.created_at, ${TEXT.replaceAll('@', row)}
-      WHERE ${VISIBLE.replaceAll('@', row)};
-    ${infix ? `INSERT INTO messages_fts_infix(rowid, body)
-      SELECT rowid, body FROM messages_fts WHERE rowid = ${key(row)};` : ''}`;
   db.exec(`
     INSERT INTO message_search_keys(message_id)
       SELECT m.id FROM messages m WHERE ${VISIBLE.replaceAll('@', 'm')};
@@ -44,23 +65,8 @@ export function createMessageSearch(db: Database): void {
       SELECT k.id, m.id, m.thread_id, m.role, m.created_at, ${TEXT.replaceAll('@', 'm')}
       FROM message_search_keys k JOIN messages m ON m.id = k.message_id;
     ${infix ? 'INSERT INTO messages_fts_infix(rowid, body) SELECT rowid, body FROM messages_fts;' : ''}
-    -- REPLACE need not fire DELETE triggers, so update any existing postings.
-    CREATE TRIGGER message_search_insert AFTER INSERT ON messages
-      WHEN new.role IN ('user', 'assistant') OR ${key('new')} IS NOT NULL BEGIN
-      ${remove('new')}
-      ${add('new')}
-    END;
-    CREATE TRIGGER message_search_update AFTER UPDATE OF parts ON messages
-      WHEN new.role IN ('user', 'assistant') AND (old.parts IS NOT new.parts
-        OR EXISTS (SELECT 1 FROM streaming_parts WHERE message_id = new.id)) BEGIN
-      ${remove('old')}
-      ${add('new')}
-    END;
-    CREATE TRIGGER message_search_delete AFTER DELETE ON messages BEGIN
-      ${remove('old')}
-      DELETE FROM message_search_keys WHERE message_id = old.id;
-    END;
   `);
+  ensureMessageSearchTriggers(db);
 }
 
 const INFIX = "SELECT 1 FROM sqlite_schema WHERE name = 'messages_fts_infix'";

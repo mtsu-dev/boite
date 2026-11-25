@@ -591,7 +591,7 @@ export class Workspace {
     ++this.#generation;
     this.#moveTo(target);
     target.visible = true;
-    if (threadId) await target.open(threadId, true, options);
+    if (threadId) await (options.match ? target.open(threadId, true, options) : target.open(threadId));
     else if (projectId !== undefined || options.draftId !== undefined) target.startDraft(projectId, options);
     else {
       target.showChat();
