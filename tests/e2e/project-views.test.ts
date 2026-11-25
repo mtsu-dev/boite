@@ -238,8 +238,10 @@ test('phone folds a project from a tap on its header and finds it folded after a
     await page.evaluate(`document.querySelector(${JSON.stringify(`${toggle} ${part}`)}).scrollIntoView({ block: 'center' })`);
     await page.waitFor(screensSettled);
     const at = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector(${JSON.stringify(`${toggle} ${part}`)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    // Nothing floats over the header there, or the finger would land on it instead.
-    expect(await page.evaluate(`document.querySelector(${JSON.stringify(toggle)}).contains(document.elementFromPoint(${at.x}, ${at.y}))`)).toBe(true);
+    // Nothing floats over the header there, or the finger would land on it instead: a sheet still leaving may, for a moment.
+    const covering = `(() => { const hit = document.elementFromPoint(${at.x}, ${at.y}); return document.querySelector(${JSON.stringify(toggle)}).contains(hit) ? '' : hit?.outerHTML.slice(0, 300) ?? 'nothing'; })()`;
+    await page.waitFor(`${covering} === ''`, 5_000).catch(() => {});
+    expect(await page.evaluate<string>(covering)).toBe('');
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, id: 1 }] });
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
