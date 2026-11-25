@@ -230,3 +230,10 @@ test('desktop downloads mark exports and refuse an oversized body before IPC', a
     headers: { 'x-boite-export': '1', 'x-boite-name': 'conversation.md', 'x-boite-open': '0' },
   });
 });
+
+test('exportFilename caps multibyte Unicode titles in UTF-8 bytes below filesystem limits', () => {
+  const title = '𝐀'.repeat(60);
+  const name = exportFilename(title, 'html', new Date('2026-11-25T10:00:00Z'));
+  expect(new TextEncoder().encode(name).byteLength).toBeLessThanOrEqual(200);
+  expect(name.endsWith('-2026-11-25.html')).toBe(true);
+});

@@ -139,3 +139,27 @@ test('copy fallback selects text inside the export dialog after its button loses
   expect(copy).toHaveReturnedWith(true);
   await waitFor(() => !document.querySelector(dialog));
 });
+
+test('retrying clipboard copy reuses the fetched export without re-reading history', async ({ app: _app }) => {
+  onTestFinished(mockDialogMethods());
+  const writeText = vi.fn().mockRejectedValueOnce(new Error('Denied')).mockResolvedValue(undefined);
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  onTestFinished(() => {
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  });
+  await store.open('t-trace');
+  const history = vi.spyOn(store, 'threadExportMessages');
+  query<HTMLButtonElement>(trigger).click();
+  const item = '[data-testid=thread-menu-trigger-menu] [data-value=export-thread]';
+  await waitFor(() => !!document.querySelector(item));
+  query<HTMLButtonElement>(item).click();
+  await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
+  button('Copy Markdown').click();
+  await waitFor(() => writeText.mock.calls.length === 1 && document.querySelector(dialog)?.getAttribute('aria-busy') !== 'true');
+  expect(history).toHaveBeenCalledTimes(1);
+  button('Copy Markdown').click();
+  await waitFor(() => writeText.mock.calls.length === 2 && !document.querySelector(dialog));
+  expect(history).toHaveBeenCalledTimes(1);
+});

@@ -267,8 +267,22 @@ ${sections.join('\n')}
 </html>\n`;
 }
 
+const EXPORT_SLUG_MAX_BYTES = 180;
+
 export function exportFilename(title: string, format: ExportOptions['format'], now = new Date()): string {
-  const slug = Array.from(title.normalize('NFKD').toLowerCase().replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '')).slice(0, 60).join('').replace(/-$/, '');
+  const cleaned = title.normalize('NFKD').toLowerCase().replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
+  const encoder = new TextEncoder();
+  let slug = '';
+  let bytes = 0;
+  let chars = 0;
+  for (const ch of cleaned) {
+    const next = encoder.encode(ch).byteLength;
+    if (chars >= 60 || bytes + next > EXPORT_SLUG_MAX_BYTES) break;
+    slug += ch;
+    bytes += next;
+    chars += 1;
+  }
+  slug = slug.replace(/-$/, '');
   return `${slug || 'conversation'}-${now.toISOString().slice(0, 10)}.${format === 'markdown' ? 'md' : 'html'}`;
 }
 

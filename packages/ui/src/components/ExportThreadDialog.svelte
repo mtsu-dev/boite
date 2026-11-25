@@ -17,6 +17,7 @@
   let options = $state<ExportOptions>({ format: 'markdown', includeTools: false, includeDiffs: false, includeThinking: false });
   let busy = $state(false);
   let failure = $state('');
+  let prepared: { key: string; content: string } | null = null;
   const controller = new AbortController();
   const overlay = new Closing();
   overlay.show();
@@ -55,25 +56,62 @@
     if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) close();
   }
 
+  async function buildContent(selected: ExportOptions): Promise<string> {
+    const key = JSON.stringify(selected);
+    if (prepared?.key === key) return prepared.content;
+    const messages = await store.threadExportMessages(thread.id, selected, controller.signal);
+    controller.signal.throwIfAborted();
+    const project = store.projects.find(entry => entry.id === thread.projectId);
+    const model = store.modelsOf(thread.providerId, thread.accountId).find(entry => entry.id === thread.model);
+    const meta = { projectName: project ? projectName(project) : null, modelName: model?.name };
+    const content = selected.format === 'markdown'
+      ? exportThreadMarkdown(thread, messages, selected, meta)
+      : exportThreadHtml(thread, messages, selected, meta);
+    prepared = { key, content };
+    return content;
+  }
+
   async function exportConversation(copy: boolean): Promise<void> {
     if (busy || controller.signal.aborted) return;
     busy = true;
     failure = '';
     const selected = { ...options };
+    const key = JSON.stringify(selected);
+    const markdown = selected.format === 'markdown';
     try {
-      const messages = await store.threadExportMessages(thread.id, selected, controller.signal);
-      controller.signal.throwIfAborted();
-      const project = store.projects.find(entry => entry.id === thread.projectId);
-      const model = store.modelsOf(thread.providerId, thread.accountId).find(entry => entry.id === thread.model);
-      const meta = { projectName: project ? projectName(project) : null, modelName: model?.name };
-      const markdown = selected.format === 'markdown';
-      const content = markdown ? exportThreadMarkdown(thread, messages, selected, meta) : exportThreadHtml(thread, messages, selected, meta);
       if (copy) {
+        // When already built, copy directly inside this click gesture without re-fetching.
+        if (prepared?.key === key) {
+          if (!await store.copy(prepared.content, { reportFailure: false, within: dialog })) {
+            failure = strings.errors.clipboard;
+            return;
+          }
+          close();
+          return;
+        }
+        const pending = buildContent(selected);
+        // Safari requires clipboard writes to start synchronously during the user gesture.
+        const clipboard = navigator.clipboard;
+        if (typeof ClipboardItem === 'function' && typeof clipboard?.write === 'function') {
+          const item = new ClipboardItem({ 'text/plain': pending.then(text => new Blob([text], { type: 'text/plain' })) });
+          try {
+            await clipboard.write([item]);
+            await pending;
+            close();
+            return;
+          } catch {
+            // Fall through to store.copy once the export text is ready.
+          }
+        }
+        const content = await pending;
         if (!await store.copy(content, { reportFailure: false, within: dialog })) {
           failure = strings.errors.clipboard;
           return;
         }
-      } else await downloadExport(exportFilename(thread.title, selected.format), content, `${markdown ? 'text/markdown' : 'text/html'};charset=utf-8`);
+      } else {
+        const content = await buildContent(selected);
+        await downloadExport(exportFilename(thread.title, selected.format), content, `${markdown ? 'text/markdown' : 'text/html'};charset=utf-8`);
+      }
       close();
     } catch (error) {
       if (!controller.signal.aborted) failure = errorText(error);
