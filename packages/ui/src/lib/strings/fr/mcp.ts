@@ -23,6 +23,7 @@ export const fr: Translation = {
     argsHint: 'Un argument par ligne.',
     url: 'URL du serveur',
     originChanged: 'L’enregistrement efface les en-têtes secrets de l’ancienne adresse. Saisissez ceux de la nouvelle adresse.',
+    plainLinkSecrets: 'Les identifiants ne peuvent être enregistrés que sur une connexion chiffrée (cet ordinateur, Tailscale ou HTTPS).',
     env: 'Variables d’environnement',
     headers: 'En-têtes HTTP',
     key: 'Clé',

@@ -1,7 +1,7 @@
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { store } from '../lib/store.svelte';
-import { test, waitFor } from '../test/app';
+import { mountOnFake, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
@@ -74,4 +74,34 @@ test('MCP settings warn when changing origin and handle a server named construct
   click(form + ' button[type=submit]');
   await waitFor(() => !document.querySelector(form));
   expect((await client.call('mcp.list', {})).servers[0]).toMatchObject({ url: 'https://one.example.test:8443/other', secretHeaderKeys: [] });
+});
+
+test('McpPage refuses to submit secrets over an unencrypted link and fake-client enforces the same refusal', async () => {
+  await mountOnFake('/?fake=1&plainLink=1');
+  const client = store.client!;
+  expect((await client.call('mcp.list', {})).encrypted).toBe(false);
+  await expect(client.call('mcp.save', {
+    name: 'Direct', enabled: true, transport: 'stdio', command: 'npx', args: [], scope: 'global', projectIds: [],
+    env: {}, secretEnv: { TOKEN: 'secret-value' }, headers: {}, secretHeaders: {},
+  })).rejects.toThrow(/encrypted link/);
+  const saves: unknown[] = [];
+  const call = client.call.bind(client);
+  client.call = ((method: string, params: unknown) => {
+    if (method === 'mcp.save') saves.push(params);
+    return call(method as never, params as never);
+  }) as typeof client.call;
+  store.showSettings('mcp');
+  flushSync();
+  await waitFor(() => !!document.querySelector('[data-testid=mcp-catalog]'));
+  click('[aria-label="Add GitHub"]');
+  await waitFor(() => !!document.querySelector(form));
+  expect(text(form)).toContain('encrypted connection');
+  const token = document.querySelector<HTMLInputElement>(form + ' input[type=password]')!;
+  token.value = 'ghp_never_leave_browser';
+  token.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+  click(form + ' button[type=submit]');
+  await waitFor(() => !!document.querySelector(form + ' .error'));
+  expect(text(form + ' .error')).toContain('encrypted connection');
+  expect(saves).toEqual([]);
 });

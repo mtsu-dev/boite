@@ -23,6 +23,7 @@
   let editor = $state<HTMLDivElement>();
   const t = strings.mcp;
   let blocked = $derived(store.policy?.values.mcp === false);
+  let encrypted = $derived(catalog?.encrypted === true);
   const icons: Record<string, typeof Plug> = {
     filesystem: Folder, github: GitBranch, context7: BookOpen, postgresql: Database,
     playwright: Telescope, fetch: Cloud, linear: ListChecks, notion: FileText, sentry: Telescope,
@@ -103,6 +104,9 @@
   async function save(input: McpServerInput): Promise<void> {
     const client = store.client;
     if (!client) throw new Error(t.missing);
+    if (!encrypted && (Object.keys(input.secretEnv ?? {}).length > 0 || Object.keys(input.secretHeaders ?? {}).length > 0)) {
+      throw new Error(t.plainLinkSecrets);
+    }
     const saved = await client.call('mcp.save', input);
     tests.delete(saved.id);
     edit = null;
@@ -161,7 +165,7 @@
       {#if edit}
         <div class="editor" bind:this={editor}>
           {#key edit}
-            <McpForm server={edit.server} preset={edit.preset} {projects} onsave={save} oncancel={() => edit = null} />
+            <McpForm server={edit.server} preset={edit.preset} {projects} {encrypted} onsave={save} oncancel={() => edit = null} />
           {/key}
         </div>
       {/if}

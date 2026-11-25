@@ -9,10 +9,11 @@
   import SettingsSection from './SettingsSection.svelte';
   import SettingSwitch from './SettingSwitch.svelte';
 
-  let { server, preset, projects, onsave, oncancel }: {
+  let { server, preset, projects, encrypted = true, onsave, oncancel }: {
     server?: McpServer;
     preset?: McpPreset;
     projects: Project[];
+    encrypted?: boolean;
     onsave: (input: McpServerInput) => Promise<void>;
     oncancel: () => void;
   } = $props();
@@ -128,6 +129,7 @@
   }
 
   let activeRows = $derived(transport === 'stdio' ? env : headers);
+  let hasSecretRows = $derived(activeRows.some(row => row.secret));
 </script>
 
 <SettingsSection title={server ? fill(t.editServer, { name: server.name }) : preset ? fill(t.addPreset, { name: preset.name }) : t.addCustom} testid="mcp-form">
@@ -204,6 +206,7 @@
       {/if}
     </fieldset>
 
+    {#if !encrypted && hasSecretRows}<Notice icon={TriangleAlert} tone="caution" detail={t.plainLinkSecrets} />{/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
     <div class="actions">
       <button type="button" onclick={oncancel} disabled={pending}>{strings.common.cancel}</button>

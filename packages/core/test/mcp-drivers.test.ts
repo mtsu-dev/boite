@@ -2,7 +2,8 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { AGENT_ENV, TOOL_FREE_CONTEXT } from '@boite/contracts';
 import { sessionMcp } from '../src/drivers/mcp.ts';
-import { museMcpConfig } from '../src/drivers/muse/mcp.ts';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { museMcpConfig, museSupportsMcp } from '../src/drivers/muse/mcp.ts';
 import type { SessionContext } from '../src/drivers/types.ts';
 import { withOpenCodeMcp } from '../src/providers/opencode.ts';
 import { startTestCore, startTurn, testProject, type TestCore } from './harness.ts';
@@ -91,4 +92,20 @@ test('protected and tool-free sessions never register; Muse and OpenCode use the
   expect(Object.values(muse.env)).toEqual([registration.authorization]);
   const config = withOpenCodeMcp({ OPENCODE_CONFIG_CONTENT: '{"model":"fixture/model"}' }, active);
   expect(JSON.parse(config.OPENCODE_CONFIG_CONTENT!)).toMatchObject({ model: 'fixture/model', mcp: { fixture: { type: 'remote', url } } });
+});
+
+test('Muse detects MCP config support via --version when no .muse-version file exists', async () => {
+  const modernDir = join(harness.dataDir, 'muse-modern');
+  const legacyDir = join(harness.dataDir, 'muse-legacy');
+  mkdirSync(modernDir, { recursive: true });
+  mkdirSync(legacyDir, { recursive: true });
+  const modernBin = join(modernDir, 'muse');
+  const legacyBin = join(legacyDir, 'muse');
+  writeFileSync(modernBin, '#!/bin/sh\necho muse 1.4.14\n');
+  writeFileSync(legacyBin, '#!/bin/sh\necho muse 1.3.0\n');
+  let calls = 0;
+  expect(await museSupportsMcp(modernBin, async () => { calls += 1; return 'muse 1.4.14'; })).toBe(true);
+  expect(await museSupportsMcp(modernBin, async () => { calls += 1; return 'muse 1.4.14'; })).toBe(true);
+  expect(calls).toBe(1);
+  expect(await museSupportsMcp(legacyBin, async () => 'muse 1.3.0')).toBe(false);
 });

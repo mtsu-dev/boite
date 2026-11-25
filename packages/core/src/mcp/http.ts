@@ -25,11 +25,26 @@ export function mcpFetch(server: HttpServer, method: string, headers: Headers, s
   return fetch(server.url, { method, headers: outgoing, signal, body, redirect: 'error' });
 }
 
+const MCP_PROTOCOL_KEYS = new Set([
+  'jsonrpc', 'id', 'method', 'params', 'result', 'error', 'code', 'message', 'data',
+  'protocolVersion', 'capabilities', 'serverInfo', 'instructions',
+  'tools', 'resources', 'resourceTemplates', 'prompts', 'nextCursor',
+  'name', 'title', 'description', 'inputSchema', 'outputSchema', 'annotations',
+  'uri', 'uriTemplate', 'mimeType', 'arguments', 'required',
+  'content', 'structuredContent', 'isError', 'type', 'text', 'blob', 'resource',
+  'properties', 'items', 'additionalProperties', 'enum', 'default', '$schema',
+  'version', 'listChanged', 'subscribe', 'logging', 'completions', 'experimental',
+  'ok', 'latencyMs', 'serverName',
+]);
+
 export function redactMcp<T>(value: T, redact: (text: string) => string): T {
   if (typeof value === 'string') return redact(value) as T;
   if (Array.isArray(value)) return value.map(item => redactMcp(item, redact)) as T;
   if (value === null || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactMcp(item, redact)])) as T;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    MCP_PROTOCOL_KEYS.has(key) ? key : redact(key),
+    redactMcp(item, redact),
+  ])) as T;
 }
 
 export function redactMcpMessage<T>(message: T, redact: (text: string) => string): T {

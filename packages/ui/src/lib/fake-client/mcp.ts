@@ -18,8 +18,11 @@ export function mcpMethods(ctx: FakeContext): Pick<FakeMethods, `mcp.${string}` 
     return server;
   }
   return {
-    'mcp.list': async () => structuredClone({ servers, presets: MCP_PRESETS }),
+    'mcp.list': async () => structuredClone({ servers, presets: MCP_PRESETS, encrypted: !ctx.plainLink }),
     'mcp.save': async input => {
+      if (ctx.plainLink && (Object.keys(input?.secretEnv ?? {}).length || Object.keys(input?.secretHeaders ?? {}).length)) {
+        throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'mcp.save: credentials travel only over an encrypted link', data: { field: 'connection', expected: 'loopback, Tailscale or HTTPS' } });
+      }
       let server: McpServer;
       try { server = normalizeMcpServer(input, servers, id => ctx.projects.some(project => project.id === id && !project.archived && project.kind !== 'drafts')); }
       catch (error) {

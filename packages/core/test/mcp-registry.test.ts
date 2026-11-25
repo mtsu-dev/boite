@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { join } from 'node:path';
 import type { McpServerInput } from '@boite/contracts';
 import { connect } from '../src/client.ts';
+import { redactMcpMessage } from '../src/mcp/http.ts';
 import { echoThread, startTestCore, testProject, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
@@ -72,8 +73,11 @@ test('agent and paired device principals cannot list or test the owner credentia
 });
 
 test('an owner can send credentials only over an encrypted connection', async () => {
+  const client = await harness.connect();
   const plain = await connect(harness.url, harness.token, { headers: { host: 'owner.example' } });
   try {
+    expect((await plain.call('mcp.list', {})).encrypted).toBe(false);
+    expect((await client.call('mcp.list', {})).encrypted).toBe(true);
     expect(await thrown(plain.call('mcp.save', { ...stdio('Local tools'), secretEnv: { TOKEN: MOCK_SECRET } }))).toThrow('encrypted link');
     expect(await thrown(plain.call('mcp.save', { ...http('https://example.test/mcp'), secretHeaders: { Authorization: MOCK_SECRET } }))).toThrow('encrypted link');
     expect(await plain.call('mcp.save', stdio('Local tools'))).toMatchObject({ secretEnvKeys: [] });
@@ -203,6 +207,13 @@ test('managed stdio probes and sessions redact reflected secrets and stop their 
   const manifestKey = 'mcp-manifest:managed:' + server.id;
   await waitFor(() => harness.core.journal.getSetting(manifestKey) !== undefined);
   expect(JSON.stringify(harness.core.journal.getSetting(manifestKey))).not.toContain('fixture-value');
+  const redact = harness.core.mcp.resolve(null).get('boite-managed-stdio-fixture')!.redact;
+  const redactedMessage = redactMcpMessage({
+    jsonrpc: '2.0', id: 1,
+    result: { tools: [{ name: 'probe', inputSchema: { type: 'object', properties: { [MOCK_SECRET]: { type: 'string' } } } }], [MOCK_SECRET]: 'leaked' },
+  }, redact);
+  expect(JSON.stringify(redactedMessage)).toContain('"result":');
+  expect(JSON.stringify(redactedMessage)).not.toContain(MOCK_SECRET);
   const pid = pids().at(-1)!;
   expect(processExited(pid)).toBe(false);
   await client.call('mcp.toggle', { id: server.id, enabled: false });

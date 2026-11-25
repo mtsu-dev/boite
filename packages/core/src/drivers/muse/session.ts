@@ -55,7 +55,7 @@ import { endOnClose, releaseChild } from '../session-close.ts';
 import { protectedMuse } from './protected.ts';
 import { MuseControls } from './controls.ts';
 import { sessionMcp } from '../mcp.ts';
-import { museMcpConfig } from './mcp.ts';
+import { museMcpConfig, museSupportsMcp, probeMuseVersion } from './mcp.ts';
 
 /** One question set still open, settled by an answer, a stop or the host itself. */
 interface OpenQuestion {
@@ -357,7 +357,13 @@ export class MuseSession {
     const declared = profileFor(ctx.provider)?.launch?.args ?? [];
     this.#protection = protectedMuse(ctx, () => this.#current ? {ctx: this.#current.ctx, stopped: this.#current.stopped} : null, declared);
     const hostArgs = museHostArgs(executable);
-    this.#mcp = hostArgs.length ? sessionMcp(ctx) : null;
+    const candidateMcp = sessionMcp(ctx);
+    if (candidateMcp !== null && !(await museSupportsMcp(executable, () => probeMuseVersion(ctx, executable)))) {
+      candidateMcp.release();
+      this.#mcp = null;
+    } else {
+      this.#mcp = candidateMcp;
+    }
     const mcpConfig = museMcpConfig(this.#mcp);
     const args = this.#protection?.args ?? [...declared, ...hostArgs, ...posture.flags, ...mcpConfig.args];
     const child = ctx.spawnChild(executable, args, {

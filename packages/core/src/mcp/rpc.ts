@@ -3,7 +3,7 @@ import { refused } from '../errors.ts';
 
 export function registerMcpMethods(core: Core): void {
   // Owner only: a definition can run a command and can send credentials on the core's machine.
-  core.router.register('mcp.list', () => core.mcp.list());
+  core.router.register('mcp.list', (_input, { connection }) => ({ ...core.mcp.list(), encrypted: connection.encrypted === true }));
   core.router.register('mcp.save', (input, { connection }) => {
     if (connection.encrypted !== true && (Object.keys(input?.secretEnv ?? {}).length || Object.keys(input?.secretHeaders ?? {}).length)) {
       throw refused('mcp.save: credentials travel only over an encrypted link', { field: 'connection', expected: 'loopback, Tailscale or HTTPS' });

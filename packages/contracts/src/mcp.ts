@@ -60,7 +60,7 @@ export interface McpProbeResult {
 }
 
 export interface McpRpcMethods {
-  'mcp.list': { params: Record<string, never>; result: { servers: McpServer[]; presets: McpPreset[] } };
+  'mcp.list': { params: Record<string, never>; result: { servers: McpServer[]; presets: McpPreset[]; encrypted: boolean } };
   'mcp.save': { params: McpServerInput; result: McpServer };
   'mcp.remove': { params: { id: string }; result: { removed: true } };
   'mcp.toggle': { params: { id: string; enabled: boolean }; result: McpServer };

@@ -21,6 +21,7 @@ export const strings = {
     argsHint: 'One argument per line.',
     url: 'Server URL',
     originChanged: 'Saving clears the previous address’s secret headers. Enter the credentials for the new address.',
+    plainLinkSecrets: 'Credentials can only be saved over an encrypted connection (this computer, Tailscale, or HTTPS).',
     env: 'Environment variables',
     headers: 'HTTP headers',
     key: 'Key',
