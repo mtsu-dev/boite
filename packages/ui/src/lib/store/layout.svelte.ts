@@ -1,5 +1,5 @@
 import { PLUGIN_ADD_SECTION, parseGroupRelayUrl, type QuotaAlert, type ThreadId } from '@boite/contracts';
-import { appPage } from '../app-origin';
+import { mobileApp } from '../shell-platform';
 import { copyByCommand } from '../clipboard';
 import { servesThisPage } from '../endpoint';
 import {
@@ -335,11 +335,11 @@ export class Layout {
     }).catch(() => undefined);
   }
 
-  /** The shown machine is one this page subscribes on: the one serving it, or any on the phone app's page. */
+  /** The shown machine is one this page subscribes on: the one serving it, or any on the Android app's page. */
   private mayHoldPush(): boolean {
     const s = this.ctx.store;
     const relay = s.endpointUrl === null ? null : parseGroupRelayUrl(s.endpointUrl);
     if (relay !== null && servesThisPage(relay.member)) return false;
-    return appPage() || !s.endpointUrl || servesThisPage(s.endpointUrl);
+    return mobileApp() || !s.endpointUrl || servesThisPage(s.endpointUrl);
   }
 }

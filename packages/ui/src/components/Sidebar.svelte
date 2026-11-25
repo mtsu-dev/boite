@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { tick, untrack, onDestroy } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
-  import { ArrowLeft, ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, PanelRightClose, PanelRightOpen, UserPlus } from '@lucide/svelte';
+  import { ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, PanelRightClose, PanelRightOpen, UserPlus } from '@lucide/svelte';
   import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
@@ -49,11 +49,6 @@
   import { contactsRail, contactsShown } from '../lib/contacts-rail.svelte';
   import { contactsParts } from '../lib/contacts-entry';
   import SideHead from './agents/SideHead.svelte';
-  import InfoTip from './InfoTip.svelte';
-  import { archivedView, closeArchived } from '../lib/archived-view.svelte';
-  import { archivedFocus } from '../lib/archived-focus.svelte';
-  // The archive belongs to this column: a list that comes back opens on its threads.
-  onDestroy(closeArchived);
   let { store }: { store: Store } = $props();
   const mobile = new MediaQuery('(max-width: 720px)');
   let scrollRoot = $state<HTMLDivElement>();
@@ -84,12 +79,6 @@
    * contacts column on the right edge. Its rows load with the page.
    */
   const contactsSide = $derived(!mobile.current && store.page === 'home' && contactsShown(store));
-  /** The archive's list, fetched the first time it opens: it stays out of the app's first load. */
-  let ArchivedThreads = $state<typeof import('./ArchivedThreads.svelte').default>();
-  $effect(() => {
-    if (!archivedView.open || ArchivedThreads) return;
-    void import('./ArchivedThreads.svelte').then(module => { ArchivedThreads = module.default; }).catch(() => {});
-  });
   let ContactRows = $state<typeof import('./home/ContactRows.svelte').default>();
   $effect(() => {
     if (!contactsSide || ContactRows) return;
@@ -107,8 +96,6 @@
   /** The display menu and the rail's machine button set it (machine-filter.svelte.ts). */
   let shownFilter = $derived(machineFilter.shown(machines));
   let visible = $derived(machines.filter((m) => shownFilter === null || m.id === shownFilter));
-  /** The archive of one project lists its own machine only: another machine has no such project to narrow to. */
-  let archiveMachines = $derived(archivedFocus.store && archivedFocus.projectId ? machines.filter((m) => m.store === archivedFocus.store) : visible);
   let all = $derived(visible.flatMap((machine) => machine.store.projects.map((project) => ({ machine, project }))));
   /** An archived project leaves the list for the fold under it; its threads keep running. */
   let groups = $derived(projectView.sorted(all.filter(({ project }) => project.archived !== true)));
@@ -263,25 +250,11 @@
       </SideHead>
     {:else}
       <ProjectViews entries={groups} {store} quiet={groups.length === 0 && needsAnAI(store) && !loading} />
-      {#if showRows && !archivedView.open}<ThreadListNotice machines={visible} />{/if}
+      {#if showRows}<ThreadListNotice machines={visible} />{/if}
     {/if}
   {/snippet}
     {#if contactsSide}
       {#if ContactRows}<div class="contact-rows" data-testid="side-contact-rows"><ContactRows {store} /></div>{/if}
-    {:else if showRows && archivedView.open}
-      <!-- The archive in the list's place (lib/archived-view.svelte.ts): the way back on its first line, then each
-           shown machine's archived threads. -->
-      <div class="archive" data-testid="sidebar-archived">
-        <div class="archive-head">
-          <button type="button" class="ghost small icon" title={strings.sidebar.backToThreads} aria-label={strings.sidebar.backToThreads} data-testid="sidebar-archived-back" onclick={closeArchived}><ArrowLeft size={16} /></button>
-          <h3 class="ui-label">{strings.settings.archived.heading}</h3>
-          <InfoTip topic={strings.settings.archived.heading} text={strings.settings.archived.intro} />
-        </div>
-        {#each archiveMachines as machine (machine.id)}
-          {#if multi && archiveMachines.length > 1}<p class="archive-machine" class:away={machine.store.connection !== 'ready'}><MachineIcon icon={machine.icon} os={machine.store.core?.os} size={14} /><span class="ui-label">{machine.label}</span></p>{/if}
-          {#if ArchivedThreads}<ArchivedThreads store={machine.store} />{/if}
-        {/each}
-      </div>
     {:else if showRows}
     {#if groups.length === 0 && !(needsAnAI(store) && !loading)}
       <div class="empty" data-testid="sidebar-empty" role={loading ? 'status' : undefined}>
@@ -447,14 +420,6 @@
 <style>
   /* `sidebar` is the container RailFrame.svelte declares on the column. */
   .recent-folds { margin-top: auto; padding-top: 12px; }
-  /* The archive in the list's place: its name beside the way back, on the cards' edge, then the rows. */
-  .archive { display: flex; flex-direction: column; gap: 4px; animation: archive-in var(--dur-2) var(--ease-out-quint); }
-  .archive-head { display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 4px 0 2px; }
-  .archive-head h3 { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-title); font-weight: var(--weight-title); letter-spacing: -0.01em; }
-  .archive-machine { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; padding: 0 10px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
-  .archive-machine.away { color: var(--color-subtle); }
-  @keyframes archive-in { from { opacity: 0; transform: translateX(8px); } }
-  @media (prefers-reduced-motion: reduce) { .archive { animation: none; } }
   .contact-rows { display: flex; flex-direction: column; gap: 2px; }
   .recent-done { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border); }
   .project-folds { margin-top: auto; }
@@ -542,7 +507,7 @@
   }
   .project.drop .head { background: transparent; }
   /* The machine's state under the name, its dot on the name's edge: the toggle's 4 px, the 18 px tile and its 8 px gap.
-     A machine out of reach marks its icon and its archive line `away`: this block's padding stays off them. */
+     A machine out of reach marks its icon `away`: this block's padding stays off it. */
   .offline { padding: 0 8px 6px 30px; }
   /* A row passing under it melts into the head instead of being sliced; over the card's own ground it shows nothing. */
   .head::after { content: ''; position: absolute; inset: 100% 0 auto; height: 6px; background: linear-gradient(var(--color-surface), transparent); pointer-events: none; }

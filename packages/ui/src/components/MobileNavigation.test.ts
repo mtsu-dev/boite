@@ -297,15 +297,16 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     expect(count()).toBe('Working');
     expect(rows()).toEqual([parent.id]);
 
-    // The Projects list reads the same store: the same radar there. Back in Recent, the filter holds.
+    // The Projects list reads the same store: the same pulsing subagent chip and clock there. Back in Recent, the filter holds.
     workspace.view = 'projects'; await settle();
     expect(state()?.dataset['state']).toBe('delegating');
-    // The mark describes the work. Its wait line shows the duration once.
-    expect(state()?.querySelector('[data-testid=thread-state-text]')).toBeNull();
+    expect(state()?.closest('[data-testid=mobile-row]')?.querySelector('[data-testid=thread-wait]')).toBeNull();
+    expect(state()?.querySelector('.work-ring')).toBeNull();
+    expect(state()?.querySelector('[data-testid=thread-elapsed]')?.textContent).toMatch(/^1m/);
+    const chipEl = state()?.querySelector<HTMLElement>('[data-testid=thread-subagents]');
+    expect(chipEl?.dataset['count']).toBe('2');
+    expect(chipEl?.classList.contains('pulse')).toBe(true);
     expect(state()?.getAttribute('title')).toContain('Waiting on 2 sub-agents');
-    const wait = state()?.closest('[data-testid=mobile-row]')?.querySelector('[data-testid=thread-wait]');
-    expect(wait?.textContent).toContain('2 subagents');
-    expect(wait?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^1m/);
     workspace.view = 'recent'; await settle();
     expect(count()).toBe('Working');
     expect(rows()).toEqual([parent.id]);

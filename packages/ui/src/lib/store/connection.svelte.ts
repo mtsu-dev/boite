@@ -3,7 +3,6 @@ import { parseGroupRelayUrl, RpcErrorCode, type CoreInfo, type ListCursor, type 
 import { RpcFailure, WsClient, type Client, type ClientState, type ObservableClient } from '../client';
 import { confirm } from '../confirm.svelte';
 import { deviceLabel, noteThisComputer } from '../device';
-import { appPage } from '../app-origin';
 import { deviceKey, dropDeviceKey, heldDeviceKey } from '../device-key';
 import { clearStoredEndpoint, droppedSince, relayKeyFor, rememberDevice, forgetGroupOf, readStoredEndpoint, rememberSession, refreshLocalEnvironment, removeBrought, fromTauri, shellEndpointError, takeShellRestartGeneration, restartTauriCore, parsePairingLink, readEnvironments, removeEnvironment, resolveEndpoint, servesThisPage, storeEndpoint, upsertEnvironment, type Endpoint, type StoredEnvironment } from '../endpoint';
 import { onboardingSeen } from '../onboarding';
@@ -17,7 +16,7 @@ import { heardBuild } from '../experiments';
 import { SETTINGS_TABS, type SettingsTab } from '../settings-tabs';
 import { retainRows } from './snapshot-reads';
 import { applyThreadChanges, readThreadList } from './thread-list';
-import { desktopShell } from '../shell-platform';
+import { desktopShell, mobileApp } from '../shell-platform';
 
 /**
  * The version a paired device reports in `hello` and Settings lists beside it.
@@ -244,8 +243,8 @@ export class Connection {
           // printed, or a start that never answered.
           const refusal = desktopShell() ? shellEndpointError() : null;
           if (refusal) s.error = fill(strings.errors.coreStart, { reason: refusal });
-          // The phone app before any machine: its screen is the way in.
-          if (appPage()) this.pairingRequired = true;
+          // The Android app before any machine: its screen is the way in.
+          if (mobileApp()) this.pairingRequired = true;
           this.booted = true;
           return;
         }
