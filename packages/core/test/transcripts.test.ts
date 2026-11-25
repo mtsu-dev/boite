@@ -8,7 +8,7 @@ import type { CoreClient } from '../src/client.ts';
 import { claudeProjectFolder } from '../src/imports/claude.ts';
 import { FAILED_OUTPUT_CAP, OUTPUT_CAP, sha256, type TranscriptRecord } from '../src/transcripts/records.ts';
 import { scanSessions } from '../src/transcripts/locate.ts';
-import { compactSession, readArchive } from '../src/transcripts/session.ts';
+import { blobPath, compactSession, readArchive } from '../src/transcripts/session.ts';
 import { TranscriptStore } from '../src/transcripts/store.ts';
 import { claudeSessionFixture, FIXTURE_SESSION_ID } from './fixtures/claude-session.ts';
 import { startTestCore, testProject } from './harness.ts';
@@ -251,6 +251,20 @@ test('an agent reads the archive from its own thread and decides nothing about i
 
 let harness: TestCore;
 let client: CoreClient;
+
+test('an image the store holds damaged is written again from the session', async () => {
+  const picture = Buffer.concat([Buffer.from(PNG, 'base64'), Buffer.alloc(2000, 7)]);
+  const file = join(scratch, 'session.jsonl');
+  writeFileSync(file, jsonl([{ type: 'user', timestamp: '2026-09-10T08:00:00.000Z', message: { role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: picture.toString('base64') } }] } }]));
+  const job = { source: 'claude' as const, files: [file], out: join(scratch, 'session.jsonl.zst'), blobs: join(scratch, 'blobs'), keepBlobs: true };
+  const [blob] = (await compactSession(job)).blobs;
+  const stored = blobPath(job.blobs, blob!.sha256, blob!.ext);
+  const whole = readFileSync(stored);
+  // The same size, other bytes.
+  writeFileSync(stored, Buffer.alloc(whole.length, 1));
+  await compactSession(job);
+  expect(readFileSync(stored).equals(whole)).toBe(true);
+});
 
 async function core(): Promise<void> {
   harness = await startTestCore();
@@ -614,4 +628,51 @@ test('a family being compacted without its images keeps them once another mode i
   const db = index();
   expect((db.query('SELECT images_erased_at AS at FROM threads WHERE id = ?').get(threadId) as { at: number | null }).at).toBeNull();
   db.close();
+});
+
+test('a mode that keeps everything, applied during the last look at the files, keeps the family in the journal', async () => {
+  await core();
+  const { threadId, file } = await importedThread();
+  await client.call('settings.set', { transcriptStorage: { mode: 'classic' } });
+  await client.call('threads.remove', { threadId });
+  age(threadId, file, 8);
+  const busy = harness.core.imports.busy.bind(harness.core.imports);
+  let applied = false;
+  harness.core.imports.busy = () => {
+    // Its sessions are archived: this is the look that comes right before the journal lets it go.
+    if (!applied && harness.core.transcripts.store.sessions(threadId).some(session => session.id === FIXTURE_SESSION_ID)) {
+      applied = true;
+      harness.core.settings.set({ transcriptStorage: { mode: 'custom', custom: { idleCompactDays: null, deletedCompactDays: null, deletedEraseDays: null, imagesEraseDays: null } } });
+    }
+    return false;
+  };
+  await harness.core.transcripts.run();
+  harness.core.imports.busy = busy;
+  await harness.core.transcripts.run();
+  expect([applied, harness.core.transcripts.progress().lastError]).toEqual([true, null]);
+  expect((await client.call('threads.deleted', {})).map(thread => thread.id)).toEqual([threadId]);
+  expect(existsSync(file)).toBe(true);
+});
+
+test('a session written to as its conversation is erased is still erased by the next pass', async () => {
+  await core();
+  const { threadId, file } = await importedThread();
+  await client.call('threads.remove', { threadId });
+  age(threadId, file, 8);
+  let wrote = false;
+  const off = harness.core.bus.onCommitted((type, payload) => {
+    if (type !== 'thread.removed' || (payload as { threadId: string }).threadId !== threadId) return;
+    // The journal just let it go and its file changes under the pass, which then leaves it.
+    appendFileSync(file, jsonl([{ type: 'user', timestamp: '2026-11-25T15:00:00.000Z', message: { role: 'user', content: 'a late line' } }]));
+    wrote = true;
+  });
+  // Applying the mode starts a pass; the one asked for here comes after it.
+  await client.call('settings.set', { transcriptStorage: { mode: 'delete' } });
+  await harness.core.transcripts.run();
+  off();
+  await harness.core.transcripts.run();
+  expect([wrote, harness.core.transcripts.progress().lastError]).toEqual([true, null]);
+  expect(await client.call('threads.deleted', {})).toEqual([]);
+  expect(existsSync(file)).toBe(false);
+  expect((await client.call('transcripts.preview', { policy: TRANSCRIPT_PRESETS.delete })).unlinked.sessions).toBe(0);
 });

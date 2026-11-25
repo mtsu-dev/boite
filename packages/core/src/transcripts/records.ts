@@ -124,7 +124,7 @@ export function capOutput(text: string, failed: boolean, sink: Sink): Json {
   let left = ERROR_LINES * scale;
   for (const line of text.slice(HEAD * scale, -TAIL * scale).split('\n')) {
     if (left <= 0) break;
-    const cut = line.slice(0, ERROR_LINE_MAX);
+    const cut = line.slice(0, ERROR_LINE_MAX * scale);
     if (!ERROR_LINE.test(cut)) continue;
     errors.push(cut);
     left -= cut.length + 1;

@@ -11,7 +11,7 @@
  */
 
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { basename, dirname, join } from 'node:path';
 import { constants, createZstdCompress, createZstdDecompress } from 'node:zlib';
@@ -275,18 +275,14 @@ export class ArchiveWriter {
     for (const { sha, data, kind } of queue) {
       const blob = this.#blobs.get(sha)!;
       const dir = this.blobsDir;
-      // The store may hold it already, as it came or as WebP.
-      const found = dir === null ? null : (await Promise.all([...new Set([kind.ext, 'webp'])].map(ext => stat(blobPath(dir, sha, ext)).then(file => ({ ext, size: file.size }), () => null)))).find(file => file !== null) ?? null;
-      if (found !== null) {
-        blob.stored = found.size;
-        blob.ext = found.ext;
-        continue;
-      }
       const shrunk = await shrink(data, kind);
       blob.stored = shrunk.data.length;
       blob.ext = shrunk.ext;
       if (dir === null) continue;
       const target = blobPath(dir, sha, shrunk.ext);
+      // The store may hold it already: kept only when it is these very bytes, written again when it is not.
+      const held = await readFile(target).catch(() => null);
+      if (held !== null && held.equals(shrunk.data)) continue;
       await mkdir(dirname(target), { recursive: true });
       await writeFile(`${target}.partial`, shrunk.data);
       await rename(`${target}.partial`, target);

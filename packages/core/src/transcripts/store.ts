@@ -81,6 +81,12 @@ CREATE TABLE IF NOT EXISTS blob_refs (
   PRIMARY KEY (sha256, thread_id)
 );
 CREATE INDEX IF NOT EXISTS blob_refs_by_thread ON blob_refs (thread_id);
+CREATE TABLE IF NOT EXISTS leftovers (
+  root TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  PRIMARY KEY (root, session_id)
+);
 `;
 
 /** A name safe as a path segment; anything else is filed under its hash. */
@@ -197,6 +203,28 @@ export class TranscriptStore {
     if (!this.exists()) return null;
     const row = this.read.query('SELECT updated_at, deleted_at, erased_at, compacted_at FROM threads WHERE id = ?').get(threadId) as { updated_at: number | null; deleted_at: number | null; erased_at: number | null; compacted_at: number } | null;
     return row === null ? null : { updatedAt: row.updated_at, deletedAt: row.deleted_at, erasedAt: row.erased_at, compactedAt: row.compacted_at };
+  }
+
+  /**
+   * Notes whose a provider session is, right before its conversation leaves the journal: should its files
+   * outlive that (written to at that moment), a later pass still knows them for that conversation's.
+   */
+  leave(threadId: string, sessions: readonly { root: string; id: string }[]): void {
+    const insert = this.db.query('INSERT OR REPLACE INTO leftovers (root, session_id, thread_id) VALUES (?, ?, ?)');
+    this.db.transaction(() => { for (const session of sessions) insert.run(session.root, session.id, threadId); })();
+  }
+
+  /** The files of that session are gone, or a conversation names it again: nothing is left over. */
+  settle(root: string, sessionId: string): void {
+    if (this.exists()) this.db.query('DELETE FROM leftovers WHERE root = ? AND session_id = ?').run(root, sessionId);
+  }
+
+  /** The conversation a session was left over from, as the archive knows it. */
+  leftover(root: string, sessionId: string): (ArchivedThread & { erased: boolean }) | null {
+    if (!this.exists()) return null;
+    const row = this.read.query(`SELECT t.id, t.title, t.project_path, t.provider, t.model, t.created_at, t.updated_at, t.deleted_at, t.erased_at FROM leftovers l JOIN threads t ON t.id = l.thread_id
+      WHERE l.root = ? AND l.session_id = ?`).get(root, sessionId) as { id: string; title: string; project_path: string | null; provider: string | null; model: string | null; created_at: number | null; updated_at: number | null; deleted_at: number | null; erased_at: number | null } | null;
+    return row === null ? null : { id: row.id, title: row.title, projectPath: row.project_path, provider: row.provider, model: row.model, createdAt: row.created_at, updatedAt: row.updated_at, deletedAt: row.deleted_at, erased: row.erased_at !== null };
   }
 
   putThread(thread: ArchivedThread, now: number): void {

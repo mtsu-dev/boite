@@ -44,7 +44,8 @@ its whole input, every error and non-zero exit, in the provider's order with
 its timestamps. It shrinks:
 
 - a tool output past 16 KiB (64 KiB for a failed tool): head, tail and the
-  error lines between them, with the original size and SHA-256;
+  error lines between them (2 KiB of them, each cut at 400 characters; four
+  times both for a failed tool), with the original size and SHA-256;
 - fields a session writes twice (a tool result's second copy, the request
   bodies a session logs beside its messages, repeated usage of one response);
 - base64 payloads: each becomes `{ "$blob": <sha256>, "bytes", "mime" }` and
@@ -68,7 +69,8 @@ Under `<data dir>/transcripts/`:
 - `index.db`: SQLite. `threads` (title, project, model, dates, `erased_at`),
   `sessions` (source, sizes, hash, first and last time), `turns` (status,
   times, usage, error), `failures` (session, line, kind, tool, text),
-  `blobs` and `blob_refs`. It uses a rollback journal, and reads open it
+  `blobs`, `blob_refs` and `leftovers` (a session whose files outlived its
+  conversation's leaving the journal, and whose it was). It uses a rollback journal, and reads open it
   read-only until something is archived: a preview leaves no file beside it.
 
 A record is `{ "k": <kind>, "t": <time>, ... }`: `user`, `assistant`,
@@ -115,7 +117,11 @@ deleted family leaves the journal only once every one of its sessions is
 archived; one that is being imported or was written since the scan puts the
 whole family off to the next pass, since the journal is the only thing that
 says whose session it is; a session archived before a late write keeps that
-archive, and the next pass adds one of the whole file. A pass stops before
+archive, and the next pass adds one of the whole file. A session written to at the moment its family leaves
+the journal keeps its files; the index remembers whose they were, and the
+next pass archives or erases them as the mode says for that conversation. A
+stored image is kept only when it is byte for byte what the pass would write.
+A pass stops before
 its next step, and removes no more files, when the setting it was planned
 for changes.
 
