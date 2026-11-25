@@ -382,7 +382,7 @@
    * A rendered message's real height replaces its estimate. One above what the user reads would push the text down
    * as it lands, so the same delta goes back into `scrollTop` and the viewport does not move.
    */
-  function onMeasured(entries: ResizeObserverEntry[]): { moved: boolean; boxResized: boolean; anchor: RowAnchor | undefined } | null {
+  function onMeasured(entries: ResizeObserverEntry[]): { moved: boolean; restore: boolean; boxResized: boolean; anchor: RowAnchor | undefined } | null {
     const box = viewport;
     const { boxResized, nextViewHeight, gapFixes, deltas } = collectMeasuredEntries(entries, box, viewHeight, rows, slots, heights);
     if (deltas.length === 0 && !boxResized && gapFixes.length === 0) return null;
@@ -391,7 +391,7 @@
     const anchor = anchors.current;
     if (boxResized && box) { viewHeight = nextViewHeight; readEndRoom(box); }
     for (const fix of gapFixes) fix.node.dataset['gap'] = fix.gap;
-    if (deltas.length === 0) return { moved: false, boxResized, anchor };
+    if (deltas.length === 0) return { moved: false, restore: needsAnchor, boxResized, anchor };
     const lastId = rows.at(-1)?.id;
     let shift = 0;
     for (const { id, at, next, previous } of deltas) {
@@ -408,7 +408,7 @@
       scrollTop = box.scrollTop;
       if (lifting) liftFrom += shift;
     }
-    return { moved: needsAnchor, boxResized, anchor };
+    return { moved: true, restore: needsAnchor, boxResized, anchor };
   }
 
   /** The bottom message's height, at most ten times a second: what the pin follows. */
@@ -481,7 +481,7 @@
         if (!result || (!result.moved && !result.boxResized)) return;
         if (pinned) { scrolledGap = 0; return; }
         // A row growing below moves no scroll position: the gap a later notch down is measured against grows with it.
-        void tick().then(() => { restoreAnchor(result.anchor); if (box.scrollTop === scrollTop) scrolledGap = box.scrollHeight - box.scrollTop - box.clientHeight; });
+        void tick().then(() => { if (result.restore) restoreAnchor(result.anchor); if (box.scrollTop === scrollTop) scrolledGap = box.scrollHeight - box.scrollTop - box.clientHeight; });
       });
     });
     boxes = observer;

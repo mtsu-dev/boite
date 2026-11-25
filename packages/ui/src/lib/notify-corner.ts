@@ -83,6 +83,7 @@ function holding(phone: boolean): boolean {
 function place(): void {
   const phone = innerWidth <= 720;
   const held = holding(phone);
+  isHeld = held;
   if (held) {
     for (const node of cards) setData(node, 'held', '');
     for (const node of toasts) setData(node, 'held', '');
@@ -167,17 +168,18 @@ function place(): void {
   }
 }
 
+let isHeld = false;
 let lastScroll = 0;
 const noteScroll = (): void => { lastScroll = performance.now(); };
 
 function poll(): void {
   if (document.hidden || document.querySelector('[data-slide]')) return;
-  if (performance.now() - lastScroll < 250) return;
+  if (!isHeld && performance.now() - lastScroll < 250) return;
   if (pollFrame) return;
   if (typeof requestAnimationFrame === 'function') {
     pollFrame = requestAnimationFrame(() => {
       pollFrame = 0;
-      if (performance.now() - lastScroll < 250) return;
+      if (!isHeld && performance.now() - lastScroll < 250) return;
       place();
     });
   } else {
@@ -207,6 +209,7 @@ function track(list: HTMLElement[], node: HTMLElement): { destroy(): void } {
         if (pollFrame) { cancelAnimationFrame(pollFrame); pollFrame = 0; }
         window.removeEventListener('resize', place);
         window.removeEventListener('scroll', noteScroll, true);
+        isHeld = false;
         reserve(null, 0);
       }
     }

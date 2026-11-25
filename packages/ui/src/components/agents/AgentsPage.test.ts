@@ -232,3 +232,60 @@ test('an empty desk is one centred prompt in the column, the way into its first 
     mochiLayout.load();
   }
 });
+
+test('on a phone, Back during a pending mochi open cancels it so the late response does not reopen detail', async ({ ready }) => {
+  let page: ReturnType<typeof mount> | null = null;
+  const origMatchMedia = window.matchMedia;
+  window.matchMedia = vi.fn((query: string) => ({
+    matches: query.includes('max-width: 720px'),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
+    const rawCall = client.call.bind(client);
+    let releaseOpen!: () => void;
+    vi.spyOn(client, 'call').mockImplementation(async (method: string, params?: unknown) => {
+      if (method === 'agents.open') {
+        await new Promise<void>(resolve => { releaseOpen = resolve; });
+      }
+      return rawCall(method as never, params as never);
+    });
+
+    store.showAgents();
+    page = mount(AgentsPage, { target: document.body, props: { store } });
+    flushSync();
+
+    const row = document.querySelector<HTMLButtonElement>(`[data-testid="agent-entry-${mira.id}"]`)!;
+    expect(row).not.toBeNull();
+    row.click();
+    flushSync();
+    expect(document.documentElement.classList.contains('agents-detail-open')).toBe(true);
+
+    // Go back while agents.open is still in flight.
+    const backBtn = document.querySelector<HTMLButtonElement>('.agent-mobile-back')!;
+    expect(backBtn).not.toBeNull();
+    backBtn.click();
+    flushSync();
+    expect(document.documentElement.classList.contains('agents-detail-open')).toBe(false);
+
+    // Resolving the stale agents.open must not reopen detail or land the bot thread.
+    releaseOpen();
+    await new Promise(resolve => setTimeout(resolve, 40));
+    flushSync();
+    expect(document.documentElement.classList.contains('agents-detail-open')).toBe(false);
+    expect(store.openThread?.agentSessionId).toBeFalsy();
+  } finally {
+    if (page) unmount(page);
+    window.matchMedia = origMatchMedia;
+    document.body.innerHTML = '';
+  }
+});

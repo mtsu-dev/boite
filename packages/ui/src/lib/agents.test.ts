@@ -247,3 +247,34 @@ test('openAgent preloads a known thread from the directory in parallel with agen
   expect(store.error).toBe('refused');
   expect(events).toEqual(['preload:thr_1', 'call:agents.open', 'release:thr_1']);
 });
+
+test('releasing a pointer preload while agents.open is still in flight keeps openAgent\'s shared preload alive', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
+  const knownThreadId = view.snapshot!.sessions.find(s => s.agentId === mira.id)!.threadId;
+  const rawCall = client.call.bind(client);
+  let releaseOpen!: () => void;
+  let gets = 0;
+  let unsubs = 0;
+  vi.spyOn(client, 'call').mockImplementation(async (method: string, params?: unknown) => {
+    if (method === 'threads.get' && (params as { threadId?: string })?.threadId === knownThreadId) gets += 1;
+    if (method === 'threads.unsubscribe' && (params as { threadId?: string })?.threadId === knownThreadId) unsubs += 1;
+    if (method === 'agents.open') {
+      await new Promise<void>(resolve => { releaseOpen = resolve; });
+    }
+    return rawCall(method as never, params as never);
+  });
+
+  // Pointerdown starts the preload; click invokes openAgent which shares it; pointerup grace expires before agents.open returns.
+  const releasePress = store.preload(knownThreadId);
+  const opening = openAgent(store, mira.id);
+  releasePress();
+  await Promise.resolve();
+  releaseOpen();
+  expect(await opening).toBe(knownThreadId);
+  expect(store.openThread?.id).toBe(knownThreadId);
+  expect(gets).toBe(1);
+  expect(unsubs).toBe(0);
+});

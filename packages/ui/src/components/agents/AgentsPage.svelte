@@ -182,7 +182,7 @@
       tried = true;
       focus = null;
       listShown = false;
-      if (target.agentId === agent?.id && thread) { openingAgentId = null; pane = target.pane ?? null; return; }
+      if (target.agentId === agent?.id && thread && (store.connection !== 'ready' || store.subscribedThreadId === thread.id)) { openingAgentId = null; pane = target.pane ?? null; return; }
       wanted = target.pane ? { agentId: target.agentId, pane: target.pane } : null;
       void beginOpen(target.agentId);
     });
@@ -231,7 +231,7 @@
     const target = machine.store;
     if (target !== store) { workspace.showAgents(target, agentId, next); return; }
     focus = null; listShown = false;
-    if (agentId === agent?.id && thread) { openingAgentId = null; pane = next ?? null; return; }
+    if (agentId === agent?.id && thread && (store.connection !== 'ready' || store.subscribedThreadId === thread.id)) { openingAgentId = null; pane = next ?? null; return; }
     pane = null;
     wanted = next ? { agentId, pane: next } : null;
     void beginOpen(agentId);
@@ -251,8 +251,12 @@
   /** One step out: a form, then the conversation, then the list. */
   function back() {
     openingAgentId = null;
+    wanted = null;
     if (focus) focus = null;
-    else listShown = true;
+    else {
+      listShown = true;
+      store.showAgents();
+    }
   }
 </script>
 

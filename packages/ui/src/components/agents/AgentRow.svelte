@@ -29,7 +29,7 @@
    * One signal per state: a coloured mark leads the line under the name (the
    * thread rows' shapes, StatusMark.svelte) and the words stay neutral ink.
    */
-  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wait = null, wake = null, machine, testid, preloadThread = null, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
+  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wait = null, wake = null, machine, machineId, testid, preloadThread = null, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
     title: string;
     /** A bot Boite ships: a small badge after its name. */
     builtin?: boolean;
@@ -54,6 +54,8 @@
     wake?: { at: number; label: string } | null;
     /** The machine it runs on, drawn before the picture once there are two, as on a thread's row. */
     machine?: Machine;
+    /** Owning machine id for press-preload routing even when the machine badge is omitted on the primary machine. */
+    machineId?: string;
     testid?: string;
     /** Thread id to warm on pointerdown before the click opens the agent. */
     preloadThread?: string | null;
@@ -140,7 +142,7 @@
   </span>
 {/snippet}
 
-<div class="agent-row" class:open class:away class:unread={unread > 0 || marked} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
+<div class="agent-row" class:open class:away class:unread={unread > 0 || marked} class:on-machine={!!machine} data-machine-id={machineId ?? machine?.id} data-tone={tone}>
   {#if renaming}
     <div class="row">
       {#snippet field()}

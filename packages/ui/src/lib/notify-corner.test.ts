@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { notifyCorner, toastSlot } from './notify-corner';
 
 function box(testid: string, rect: Partial<DOMRect>): HTMLElement {
@@ -214,4 +214,31 @@ test('on a phone Settings overlay a notice anchors to the viewport bottom instea
     // Placed at the viewport bottom via CSS bottom + 0px lift, never lifted above the hidden composer.
     expect(card.style.getPropertyValue('--corner-lift')).toBe('0px');
   } finally { corner.destroy(); }
+});
+
+test('a toast held while a thread loads un-holds once loading ends even when autoscroll fires scroll events continuously', () => {
+  vi.useFakeTimers();
+  try {
+    window.innerWidth = 1440;
+    window.innerHeight = 768;
+    const loading = box('thread-loading', { top: 48, bottom: 700, left: 300, right: 1300, height: 652, width: 1000 });
+    const toast = document.createElement('div');
+    Object.defineProperty(toast, 'offsetHeight', { value: 40 });
+    document.body.append(toast);
+    const slot = toastSlot(toast);
+    try {
+      expect(toast.dataset.held).toBe('');
+      loading.remove();
+      box('timeline', { top: 48, bottom: 700, left: 300, right: 1300, height: 652, width: 1000 });
+      // Continuous autoscroll ticks faster than the 250ms scroll debounce must not trap a held toast.
+      for (let i = 0; i < 4; i++) {
+        window.dispatchEvent(new Event('scroll'));
+        vi.advanceTimersByTime(100);
+      }
+      expect(toast.dataset.held).toBeUndefined();
+      expect(toast.dataset.slot).toBe('end');
+    } finally { slot.destroy(); }
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -75,9 +75,11 @@ export function watchRowCut(box: HTMLElement, set: (cut: number) => void): () =>
   const scrolled = () => { set(0); rest(140); };
   const resized = new ResizeObserver(() => rest(60));
   const changed = new MutationObserver(() => rest(60));
+  const revealed = new MutationObserver(() => { if (!box.classList.contains('covered')) rest(60); });
   resized.observe(box);
   changed.observe(box, { childList: true, subtree: true });
+  revealed.observe(box, { attributes: true, attributeFilter: ['class'] });
   box.addEventListener('scroll', scrolled, { passive: true });
   rest(0);
-  return () => { resized.disconnect(); changed.disconnect(); box.removeEventListener('scroll', scrolled); clearTimeout(settle); };
+  return () => { resized.disconnect(); changed.disconnect(); revealed.disconnect(); box.removeEventListener('scroll', scrolled); clearTimeout(settle); };
 }
