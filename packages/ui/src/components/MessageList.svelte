@@ -49,7 +49,7 @@
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
   import { glides } from '../lib/motion';
-  import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, timelineEndRoom, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
+  import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, timelineEndRoom, turnOf, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
   import { selectionClicks } from '../lib/selection-clicks';
   import { editWhole, fillShort, pullNewer, pullOlder } from '../lib/reading-window';
   import { ReadingAnchor, type RowAnchor } from '../lib/reading-anchor';
@@ -718,7 +718,7 @@
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- The top fade is sticky inside the padding: it is told the padding a sent prompt's lead adds, or it would hang that far under the header, a dark band across the prompt's lines. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onfocusin={(event) => { focused = pointedTurn(event); }} onfocusout={() => { focused = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onfocusin={(event) => { focused = pointedTurn(event); }} onfocusout={(event) => { focused = turnOf(event.relatedTarget); }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
