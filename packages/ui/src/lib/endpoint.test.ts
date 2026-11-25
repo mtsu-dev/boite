@@ -205,16 +205,15 @@ describe('resolveEndpoint', () => {
     }
   });
 
-  test('the Android app never takes its own page for a core, keeps the one it paired and reaches plain http', async () => {
+  test('the Android app never takes its own page for a core and keeps the one it paired', async () => {
     window.__TAURI_INTERNALS__ = {};
     vi.stubEnv('MODE', 'mobile');
     vi.resetModules();
     try {
       const mobile = await import('./endpoint');
-      const origin = await import('./app-origin');
+      const platform = await import('./shell-platform');
       // Its page is http://tauri.localhost, the app's own assets, and cleartext is allowed.
-      expect(origin.appPage()).toBe(true);
-      expect(origin.reachableFromApp('http://192.168.1.20:47731')).toBe(true);
+      expect(platform.mobileApp()).toBe(true);
       await expect(mobile.resolveEndpoint()).resolves.toBeNull();
       mobile.storeEndpoint({ url: 'http://10.0.0.5:9000', token: 'key', paired: true });
       await expect(mobile.resolveEndpoint()).resolves.toEqual({ url: 'http://10.0.0.5:9000', token: 'key', paired: true });

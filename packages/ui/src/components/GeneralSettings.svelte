@@ -5,7 +5,8 @@
   import ShellSettings from './ShellSettings.svelte';
   import TelemetrySettings from './TelemetrySettings.svelte';
   import DeletedThreads from './DeletedThreads.svelte';
-  import { openArchived } from '../lib/archived-view.svelte';
+  import TranscriptStorage from './TranscriptStorage.svelte';
+  import ArchivedThreads from './ArchivedThreads.svelte';
   import SettingsSection from './SettingsSection.svelte';
   import SettingField from './SettingField.svelte';
   import SettingSwitch from './SettingSwitch.svelte';
@@ -59,10 +60,10 @@
   <!-- Notifications above, the sound and the windows of the machine here: what reaches the person at it. -->
   {#if store.owner}<QuietCard {store} /><AgentsAloneCard {store} />{/if}
   <WorkspaceCard />
-  <SettingsSection id="settings-archived" testid="settings-archived-entry" title={strings.settings.archived.heading} info={strings.settings.archived.intro}>
-    <button type="button" data-testid="archived-show" onclick={() => openArchived(here)}><span class="ui-label">{strings.settings.archived.show}</span></button>
-  </SettingsSection>
+  <!-- The list reads itself once this card is asked for (the palette, a project's menu, the search); else it waits for Show. -->
+  <ArchivedThreads {store} eager={store.settingsSection?.id === 'archived'} />
   <DeletedThreads {store} />
+  <TranscriptStorage {store} />
   <WorktreesCard {store} />
   <!-- The keys agents ask for live under Providers, the windows agents may see under Machines, the browser logins under Browser. -->
 

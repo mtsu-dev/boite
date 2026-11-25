@@ -31,7 +31,6 @@
   import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
   import { feedThread, inbox } from '../lib/inbox.svelte';
   import { activityFeed, readableThreads } from '../lib/activity-feed';
-  import { followActivityReturn } from '../lib/activity-return.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { avatarLit } from '../lib/avatar-lit';
   import MachineStatus, { type MachineLine } from './MachineStatus.svelte';
@@ -69,8 +68,6 @@
 
   // Every machine's bots stay read while the rail is drawn, so their pictures say how each one stands.
   followAgentDirectories(() => stores, () => botsOn);
-  // Acting from Activity opens a thread; this rail lives as long as the desktop frame, so it walks the way back.
-  followActivityReturn();
   const watchedTeams = watchTeams(() => teamsOn ? machines : []);
 
   /** Pinned bots first, then in the order they were made: a picture keeps its place as its bot talks. */

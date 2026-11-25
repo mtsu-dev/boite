@@ -64,6 +64,7 @@ ${CONTROL_HELP}
                                  Boite diagnostics. Use logs help for filters,
                                  logs problems for groups, logs export for a
                                  sanitized report.
+  transcripts list|failures|read  compacted conversations, for audits
   issue draft|submit --title <t> --description <text>
                                  report a Boite bug on GitHub with that export;
                                  show the user the draft before submit
@@ -210,6 +211,7 @@ ${BOT_HELP}
 export const DEFAULT_HELP = new Set(['bot', 'contacts', 'secret', 'team', 'view', 'window', 'workflow']);
 const FAMILY_HELP = {
   browser: 'BROWSER_HELP', contacts: 'CONTACTS_HELP', device: 'DEVICE_HELP', logs: 'LOGS_HELP',
+  transcripts: 'TRANSCRIPTS_HELP',
   secret: 'SECRET_HELP', view: 'VIEW_HELP', window: 'WINDOW_HELP', workflow: 'WORKFLOW_HELP',
 } as const;
 

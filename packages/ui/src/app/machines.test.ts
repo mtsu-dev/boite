@@ -4,7 +4,9 @@ import { type RpcMethodName } from '@boite/contracts';
 import { store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import { machineFilter } from '../lib/machine-filter.svelte';
+import { openArchived } from '../lib/archived-view.svelte';
 import { mountOnFake, query, test, waitFor } from '../test/app';
+import { mockPhoneViewport } from '../test/phone-width';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
@@ -99,6 +101,86 @@ test('background compaction turns on for the machine picked above it, not the wi
   await waitFor(() => remote.store.settings?.backgroundCompaction === true);
   expect(store.settings?.backgroundCompaction ?? false).toBe(false);
   expect(workspace.active).toBe(store);
+});
+
+// One project's archive used to list every machine's threads: another machine has no such project to narrow to.
+test('a project\'s archive opens Settings on that project\'s machine, every project once widened', async () => {
+  const viewport = mockPhoneViewport();
+  await mountOnFake('/?fake=1&machines=1');
+  await waitFor(() => workspace.machines.length === 2 && workspace.machines.every(machine => machine.store.connection === 'ready'));
+  const remote = workspace.machines.find(machine => machine.store !== store)!;
+  await store.archive('t-trace');
+  await remote.store.archive('t-bench');
+  // A request another page overtakes before Settings loads moves no machine: Advanced stays on this one.
+  void openArchived(remote.store, 'p-boite');
+  store.showSettings('advanced');
+  await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null);
+  expect(query('[data-testid=settings-machine]').textContent).not.toContain(remote.label);
+  // The machine dropping between the request and Settings' next update stays the archive's.
+  void openArchived(remote.store, 'p-boite');
+  remote.store.connection = 'closed';
+  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-threads]') !== null);
+  expect(query('[data-testid=settings-machine]').textContent).toContain(remote.label);
+  expect(query('[data-testid=archived-threads]').textContent).not.toContain('Finish the trace tab');
+  remote.store.connection = 'ready';
+  const list = () => document.querySelector('[data-testid=archived-list]')?.textContent ?? '';
+  await waitFor(() => store.page === 'settings' && list().includes('Bench against legacy') && document.querySelector('[data-testid=archived-focus]') !== null, 10_000);
+  // The window stays on its own machine; the page shows the remote one's archive, picked in its bar.
+  expect(workspace.active).toBe(store);
+  expect(list()).not.toContain('Finish the trace tab');
+  // The machine dropping while its archive is read keeps it in the bar, its card offline: never this machine's rows.
+  remote.store.connection = 'closed';
+  flushSync();
+  expect(query('[data-testid=settings-machine]').textContent).toContain(remote.label);
+  expect(query('[data-testid=archived-threads]').textContent).not.toContain('Finish the trace tab');
+  remote.store.connection = 'ready';
+  await waitFor(() => list().includes('Bench against legacy'));
+  // A window narrowed to a phone's width redraws the same archive: the project's focus stays.
+  viewport.resize(true);
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-header]') !== null && list().includes('Bench against legacy'));
+  await Promise.resolve();
+  flushSync();
+  expect(document.querySelector('[data-testid=archived-focus]')).not.toBeNull();
+  viewport.resize(false);
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-header]') === null && document.querySelector('[data-testid=archived-focus]') !== null);
+  viewport.restore();
+  query<HTMLButtonElement>('[data-testid=archived-all]').click();
+  await waitFor(() => document.querySelector('[data-testid=archived-focus]') === null);
+  expect(list()).toContain('Bench against legacy');
+  expect(list()).not.toContain('Finish the trace tab');
+  // The project menu targets Builder in Settings without moving the window to Builder's chat.
+  store.showChat();
+  const view = workspace.view;
+  workspace.view = 'projects';
+  machineFilter.set(remote.id);
+  const projectMenu = '[data-project-id=p-boite] [data-testid=project-menu]';
+  const projectArchive = '[data-testid=context-menu] [data-testid=project-archived-toggle]';
+  await waitFor(() => document.querySelector(projectMenu) !== null);
+  query<HTMLButtonElement>(projectMenu).click();
+  await waitFor(() => document.querySelector(projectArchive) !== null);
+  query<HTMLButtonElement>(projectArchive).click();
+  await waitFor(() => list().includes('Bench against legacy') && document.querySelector('[data-testid=archived-focus]') !== null);
+  expect(query('[data-testid=settings-machine]').textContent).toContain(remote.label);
+  expect(workspace.active).toBe(store);
+  workspace.view = view;
+  // Filter's archive follows the machine the thread list is narrowed to.
+  store.showChat();
+  await waitFor(() => document.querySelector('[data-testid=grouping-options]') !== null);
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=grouping-options-menu] [data-testid$=archived-entry]') !== null);
+  query<HTMLButtonElement>('[data-testid=grouping-options-menu] [data-testid$=archived-entry]').click();
+  await waitFor(() => store.page === 'settings' && list().includes('Bench against legacy'), 10_000);
+  expect(list()).not.toContain('Finish the trace tab');
+  // Settings offers no machine that is away: the window moves to it rather than show this one's archive.
+  store.showChat();
+  remote.store.connection = 'closed';
+  await waitFor(() => document.querySelector('[data-testid=grouping-options]') !== null);
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=grouping-options-menu] [data-testid$=archived-entry]') !== null);
+  query<HTMLButtonElement>('[data-testid=grouping-options-menu] [data-testid$=archived-entry]').click();
+  await waitFor(() => workspace.active === remote.store && remote.store.page === 'settings' && document.querySelector('[data-testid=archived-threads]') !== null);
+  expect(list()).not.toContain('Finish the trace tab');
+  machineFilter.set(null);
 });
 
 test('machines coexist and disconnecting a remote leaves the primary connected', async () => {

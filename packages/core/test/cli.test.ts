@@ -375,7 +375,7 @@ describe('usage', () => {
     expect(help.err).toContain('projects recoveries');
     expect(help.err).toContain('proof <message-id> <output-line> <unchecked> [capture]');
     expect(help.err).toContain('mochi new-session');
-    expect(Buffer.byteLength(help.err)).toBeLessThanOrEqual(18_922);
+    expect(Buffer.byteLength(help.err)).toBeLessThanOrEqual(18_947);
     expect(help.out).toBe('');
     // Help names bots and threads; the old spellings still run but are not shown.
     for (const shown of ['threads find <words>', 'threads send <thread> <text>', 'mochi remember <fact>', 'settings mochi request', 'threads [list] [--project <p>] [--archived]']) expect(help.err).toContain(shown);

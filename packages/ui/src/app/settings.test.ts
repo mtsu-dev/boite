@@ -69,7 +69,7 @@ test('the keybindings file moves a chord, takes one away, and the Keyboard page 
   expect(query('[data-testid=keybindings-path]').textContent).toBe('C:\\Users\\you\\AppData\\Local\\boite2\\keybindings.json');
   expect(query('[data-testid=keybinding-error]').textContent).toContain('"trace": "t" has no modifier');
 
-  query<HTMLButtonElement>('[data-testid=view-threads]').click();
+  query<HTMLButtonElement>('[data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 
@@ -148,7 +148,7 @@ test('the checklist model sits with how agents answer on General, with no experi
     document.getElementById(control.getAttribute('aria-describedby')!)!.click();
     expect(control.checked).toBe(!checked);
   }
-  query<HTMLButtonElement>('[data-testid=view-threads]').click();
+  query<HTMLButtonElement>('[data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 

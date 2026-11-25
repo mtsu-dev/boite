@@ -23,6 +23,8 @@
   import SideHead from './SideHead.svelte';
   import { minuteClock } from '../../lib/clock.svelte';
   import { tabHeader } from '../../lib/tab-header.svelte';
+  import { separator } from '../../lib/menu';
+  import { mochiLayout } from '../../lib/mochi-layout.svelte';
 
   /**
    * The Bots page's column. On a desktop the window's rail lists the bots, so
@@ -196,17 +198,39 @@
       } : null,
     });
   });
+  let addButton = $state<HTMLButtonElement>();
+  const listMode = $derived(phone.current || !mochiLayout.on);
+  function addMenu(anchor: HTMLElement) {
+    const rect = anchor.getBoundingClientRect();
+    contextMenu.show({ x: rect.left, y: rect.bottom + 4 }, [
+      { id: 'bot', label: labels.newAgent },
+      ...(onnewteam && view.store.owner ? [{ id: 'team', label: strings.teamChat.newTeam }] : []),
+      ...(view.store.owner ? [separator('sep-engine'), { id: 'engine', label: labels.engineSettings }] : [])
+    ], id => { if (id === 'bot') oncreate(); else if (id === 'team') newTeam(); else onengine(); }, anchor);
+  }
 </script>
 
-<RailFrame store={view.store} kind="agents-rail" label={phone.current ? labels.heading : agent?.name ?? team?.name ?? labels.heading}>
+<RailFrame store={view.store} kind="agents-rail" label={listMode ? labels.heading : agent?.name ?? team?.name ?? labels.heading}>
   {#snippet head()}
     {#if !phone.current}
-      <SideHead store={view.store} current="agents" />
-      <BotColumnHead {view} {agent} {status} {thread} {team} {onpane} {onengine} onopen={pane => agent && here && onopen(here, agent.id, pane)} />
+      {#if mochiLayout.on}
+        <SideHead store={view.store} current="agents" />
+        <BotColumnHead {view} {agent} {status} {thread} {team} {onpane} {onengine} onopen={pane => agent && here && onopen(here, agent.id, pane)} />
+      {:else}
+        <SideHead store={view.store} current="agents">
+          {#snippet actions()}
+            <button type="button" class="icon-button" title={strings.app.rail.add} aria-label={strings.app.rail.add}
+              aria-haspopup="menu" aria-expanded={contextMenu.current !== null && contextMenu.anchor === addButton}
+              bind:this={addButton} data-testid="agents-rail-add" onclick={(event) => addMenu(event.currentTarget)}>
+              <Plus size={16} />
+            </button>
+          {/snippet}
+        </SideHead>
+      {/if}
     {/if}
   {/snippet}
 
-  {#if !phone.current}
+  {#if !listMode}
     <BotColumn {view} {agent} {team} {conversation}
       onconversation={() => { if (agent && here) onopen(here, agent.id); else if (team && here) onteam(here, team); }}
       onmember={id => here && onopen(here, id)} />
@@ -249,7 +273,7 @@
   {#if teamsShown && teams.length}
     {@render teamsBlock()}
   {/if}
-  {#if teamsShown && rows.length}<h2 class="agents-section section-label" data-testid="agents-bots-heading">{labels.heading}</h2>{/if}
+  {#if teamsShown && rows.length && (phone.current || teams.length > 0)}<h2 class="agents-section section-label" data-testid="agents-bots-heading">{labels.heading}</h2>{/if}
   {#if rows.length}
     <section class="agents-card" aria-label={labels.heading}>
       {#each rows as { machine, view: owner, row } (JSON.stringify([machine.id, row.profile.id]))}
