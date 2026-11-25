@@ -128,10 +128,12 @@
     const measure = () => { frame = 0; more = box.scrollTop + box.clientHeight < box.scrollHeight - 1; };
     const later = () => { if (!frame) frame = requestAnimationFrame(measure); };
     const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(later);
+    const changed = new MutationObserver(later);
     resized?.observe(box);
+    changed.observe(box, { childList: true, subtree: true });
     box.addEventListener('scroll', later, { passive: true });
     measure();
-    return () => { cancelAnimationFrame(frame); resized?.disconnect(); box.removeEventListener('scroll', later); };
+    return () => { cancelAnimationFrame(frame); resized?.disconnect(); changed.disconnect(); box.removeEventListener('scroll', later); };
   });
 
   /**

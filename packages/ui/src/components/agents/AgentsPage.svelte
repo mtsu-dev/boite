@@ -94,10 +94,15 @@
   /** The profile of an agent currently opening before its thread lands, from the snapshot or rail directory. */
   const pendingAgent = $derived.by(() => {
     if (focus || (thread && agent) || teamThread || !openingAgentId) return null;
-    const source = snapshot ?? directory.snapshot;
-    return source?.profiles.find(p => p.id === openingAgentId) ?? null;
+    return snapshot?.profiles.find(p => p.id === openingAgentId)
+      ?? directory.snapshot?.profiles.find(p => p.id === openingAgentId)
+      ?? null;
   });
-  const pendingStatus = $derived(pendingAgent ? statusOf(snapshot ?? directory.snapshot, pendingAgent.id) : null);
+  const pendingStatus = $derived(
+    pendingAgent
+      ? statusOf(snapshot, pendingAgent.id) ?? statusOf(directory.snapshot, pendingAgent.id)
+      : null
+  );
   /** The conversation of an archived agent reads, and takes nothing more. */
   const locked = $derived(agent?.status === 'archived' ? labels.archivedNotice : null);
   const detail = $derived(!!focus || (!!(thread || teamThread || pendingAgent) && !listShown));
@@ -189,7 +194,13 @@
       tried = true;
       focus = null;
       listShown = false;
-      if (target.agentId === agent?.id && thread && (store.connection !== 'ready' || store.subscribedThreadId === thread.id)) { clearOpening(); pane = target.pane ?? null; return; }
+      if (target.agentId === agent?.id && thread && (store.connection !== 'ready' || store.subscribedThreadId === thread.id)) {
+        if (openingAgentId !== null) store.showAgents();
+        clearOpening();
+        wanted = null;
+        pane = target.pane ?? null;
+        return;
+      }
       wanted = target.pane ? { agentId: target.agentId, pane: target.pane } : null;
       void beginOpen(target.agentId);
     });
@@ -239,7 +250,13 @@
     const target = machine.store;
     if (target !== store) { workspace.showAgents(target, agentId, next); return; }
     focus = null; listShown = false;
-    if (agentId === agent?.id && thread && (store.connection !== 'ready' || store.subscribedThreadId === thread.id)) { clearOpening(); pane = next ?? null; return; }
+    if (agentId === agent?.id && thread && (store.connection !== 'ready' || store.subscribedThreadId === thread.id)) {
+      if (openingAgentId !== null) store.showAgents();
+      clearOpening();
+      wanted = null;
+      pane = next ?? null;
+      return;
+    }
     pane = null;
     wanted = next ? { agentId, pane: next } : null;
     void beginOpen(agentId);

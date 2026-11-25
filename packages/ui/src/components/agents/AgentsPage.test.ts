@@ -304,3 +304,44 @@ test('on a phone, Back during a pending mochi open cancels it so the late respon
     document.body.innerHTML = '';
   }
 });
+
+test('re-selecting the already open mochi cancels an in-flight open for a different mochi', async ({ ready }) => {
+  let page: ReturnType<typeof mount> | null = null;
+  try {
+    const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const rows = agentRows(view.snapshot);
+    const first = rows[0]!.profile;
+    const second = rows[1]!.profile;
+    const rawCall = client.call.bind(client);
+    let releaseSecond!: () => void;
+    vi.spyOn(client, 'call').mockImplementation(async (method: string, params?: unknown) => {
+      if (method === 'agents.open' && (params as { agentId?: string })?.agentId === second.id) {
+        await new Promise<void>(resolve => { releaseSecond = resolve; });
+      }
+      return rawCall(method as never, params as never);
+    });
+
+    store.showAgents(first.id);
+    page = mount(AgentsPage, { target: document.body, props: { store } });
+    await vi.waitFor(() => expect(agentOfThread(view.snapshot, store.openThread?.id)?.id).toBe(first.id));
+    flushSync();
+
+    // Start opening a different mochi, then re-select the already open one before the second responds.
+    const secondRow = document.querySelector<HTMLButtonElement>(`[data-testid="agent-entry-${second.id}"]`)!;
+    const firstRow = document.querySelector<HTMLButtonElement>(`[data-testid="agent-entry-${first.id}"]`)!;
+    secondRow.click();
+    flushSync();
+    firstRow.click();
+    flushSync();
+
+    releaseSecond();
+    await new Promise(resolve => setTimeout(resolve, 40));
+    flushSync();
+    expect(agentOfThread(view.snapshot, store.openThread?.id)?.id).toBe(first.id);
+  } finally {
+    if (page) unmount(page);
+    document.body.innerHTML = '';
+  }
+});
