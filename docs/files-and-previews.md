@@ -109,7 +109,7 @@ Answers, plans and Markdown previews draw these blocks:
   line that starts with `* ` stands out in your accent color. Their bar
   switches between Block and Code. Bars only draw when every value is a number
   in units that compare, such as `800 ms` and `4.2 s`; otherwise, like a block
-  with more than 30 lines, it stays code.
+  with more than 30 items, it stays code.
 
 ## Limits
 

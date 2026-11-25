@@ -1,7 +1,7 @@
 # Diagrams and formulas
 
 An answer, a reasoning block, a plan, a side answer, a Markdown file preview
-and the Agents page draw three kinds of blocks the Markdown engine
+and the Agents page draw four kinds of blocks the Markdown engine
 (`packages/ui/src/lib/markdown.ts`) marks: Mermaid diagrams, LaTeX formulas
 and view blocks, small pages of HTML, plus four native blocks drawn from plain
 lines ([native blocks](#native-blocks)). A block holds a placeholder until its
