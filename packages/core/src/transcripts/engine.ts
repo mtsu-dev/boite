@@ -71,7 +71,7 @@ type Step =
   | { kind: 'compact-deleted'; rootId: string; deletedAt: number; threads: { id: string; sessions: RawSession[] }[]; bytes: number; keepImages: boolean }
   | { kind: 'erase-deleted'; rootId: string; deletedAt: number; threadIds: string[]; sessions: RawSession[]; bytes: number }
   | { kind: 'erase-archived'; threadId: string; bytes: number }
-  | { kind: 'leftover'; raw: RawSession; thread: ArchivedThread; erase: boolean; bytes: number }
+  | { kind: 'leftover'; raw: RawSession; thread: ArchivedThread; erase: boolean; keepImages: boolean; bytes: number }
   | { kind: 'images'; threadId: string; bytes: number; count: number };
 
 interface Plan {
@@ -218,7 +218,7 @@ export class Transcripts {
         const owner = named === undefined ? this.store.leftover(raw.root, raw.id) : null;
         if (owner !== null && owner.deletedAt !== null) {
           const erase = owner.erased || due(policy.deletedEraseDays, owner.deletedAt, now);
-          if (erase || due(policy.deletedCompactDays, owner.deletedAt, now)) steps.push({ kind: 'leftover', raw, thread: owner, erase, bytes: raw.bytes });
+          if (erase || due(policy.deletedCompactDays, owner.deletedAt, now)) steps.push({ kind: 'leftover', raw, thread: owner, erase, keepImages: !owner.imagesErased && !due(policy.imagesEraseDays, owner.deletedAt, now), bytes: raw.bytes });
         }
         // A file whose id a conversation names, here or under another account, is never taken for an unnamed one.
         else if (raw.own && named === undefined) unlinked.push(raw);
@@ -450,10 +450,11 @@ export class Transcripts {
 
   /** Removes a session's provider files once more checks pass: still what the setting asks, still as scanned. Answers the bytes that left. */
   async #removeRaw(raw: RawSession): Promise<number> {
-    if (!this.#current() || !(await this.#ready(raw))) return 0;
+    if (!this.#current() || !(await this.#ready(raw)) || !this.#current()) return 0;
     this.#core.imports.removing.add(raw.id);
     try {
-      await removeSession(raw);
+      // A mode applied while the files go stops the removal at the file it is on.
+      await removeSession(raw, () => this.#current() && !this.#halted());
     } finally {
       this.#core.imports.removing.delete(raw.id);
     }
@@ -474,8 +475,9 @@ export class Transcripts {
 
   /** A session left on disk by a conversation already out of the journal: archived with it or erased like it. */
   async #leftover(step: Extract<Step, { kind: 'leftover' }>): Promise<number> {
-    const { erased: _erased, ...thread } = step.thread as ArchivedThread & { erased?: boolean };
-    const freed = step.erase ? await this.#removeRaw(step.raw) : await this.#archiveSession(thread.id, step.raw, true, thread) ?? 0;
+    const { erased: _erased, imagesErased: _images, ...thread } = step.thread as ArchivedThread & { erased?: boolean; imagesErased?: boolean };
+    // Its conversation's images are gone or due: this session's are not stored either.
+    const freed = step.erase ? await this.#removeRaw(step.raw) : await this.#archiveSession(thread.id, step.raw, true, thread, step.keepImages) ?? 0;
     if (!step.raw.files.some(file => existsSync(file))) this.store.settle(step.raw.root, step.raw.id);
     return freed;
   }

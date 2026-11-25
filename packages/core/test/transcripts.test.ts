@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { accessRefusal, TRANSCRIPT_PRESETS, transcriptPolicy } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { claudeProjectFolder } from '../src/imports/claude.ts';
-import { FAILED_OUTPUT_CAP, OUTPUT_CAP, sha256, type TranscriptRecord } from '../src/transcripts/records.ts';
+import { capOutput, FAILED_OUTPUT_CAP, OUTPUT_CAP, sha256, type TranscriptRecord } from '../src/transcripts/records.ts';
 import { scanSessions } from '../src/transcripts/locate.ts';
 import { blobPath, compactSession, readArchive } from '../src/transcripts/session.ts';
 import { TranscriptStore } from '../src/transcripts/store.ts';
@@ -675,4 +675,52 @@ test('a session written to as its conversation is erased is still erased by the 
   expect(await client.call('threads.deleted', {})).toEqual([]);
   expect(existsSync(file)).toBe(false);
   expect((await client.call('transcripts.preview', { policy: TRANSCRIPT_PRESETS.delete })).unlinked.sessions).toBe(0);
+});
+
+test('the cap on a tool output is in bytes, cut between characters', () => {
+  const cut = capOutput(`${'彩'.repeat(60_000)}\nerror: ${'é'.repeat(5000)}\n${'彩'.repeat(60_000)}`, true, { count() {}, blob() { throw new Error('no blob here'); } }) as { head: string; tail: string; errors: string[] };
+  expect(Buffer.byteLength(cut.head + cut.tail + cut.errors.join('\n'))).toBeLessThanOrEqual(FAILED_OUTPUT_CAP);
+  expect([cut.head.includes('\ufffd'), cut.tail.includes('\ufffd'), cut.errors.join('').includes('\ufffd'), cut.errors.length]).toEqual([false, false, false, 1]);
+});
+
+test('Storage keeps the files when a mode that keeps everything is applied during the last look before their removal', async () => {
+  await core();
+  const { threadId, file } = await importedThread();
+  age(threadId, file, 40);
+  const busy = harness.core.imports.busy.bind(harness.core.imports);
+  let applied = false;
+  harness.core.imports.busy = () => {
+    if (!applied && harness.core.transcripts.store.sessions(threadId).some(session => session.id === FIXTURE_SESSION_ID)) {
+      applied = true;
+      harness.core.settings.set({ transcriptStorage: { mode: 'custom', custom: { idleCompactDays: null, deletedCompactDays: null, deletedEraseDays: null, imagesEraseDays: null } } });
+    }
+    return false;
+  };
+  await client.call('settings.set', { transcriptStorage: { mode: 'storage' } });
+  await harness.core.transcripts.run();
+  harness.core.imports.busy = busy;
+  await harness.core.transcripts.run();
+  expect([applied, harness.core.transcripts.progress().lastError, existsSync(file)]).toEqual([true, null, true]);
+});
+
+test('a session left behind by a conversation whose images are gone is archived without its images', async () => {
+  await core();
+  const { threadId, file } = await importedThread();
+  await client.call('threads.remove', { threadId });
+  age(threadId, file, 8);
+  let wrote = false;
+  const off = harness.core.bus.onCommitted((type, payload) => {
+    if (type !== 'thread.removed' || (payload as { threadId: string }).threadId !== threadId) return;
+    appendFileSync(file, jsonl([{ type: 'user', uuid: 'late', timestamp: '2026-11-25T15:00:00.000Z', message: { role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: PNG } }] } }]));
+    wrote = true;
+  });
+  await client.call('settings.set', { transcriptStorage: { mode: 'custom', custom: { idleCompactDays: null, deletedCompactDays: 0, deletedEraseDays: null, imagesEraseDays: 0 } } });
+  await harness.core.transcripts.run();
+  off();
+  await harness.core.transcripts.run();
+  expect([wrote, harness.core.transcripts.progress().lastError, existsSync(file)]).toEqual([true, null, false]);
+  expect(harness.core.transcripts.store.threadBytes(threadId).imageRefs).toBe(0);
+  // The late message is in the archive, its image a reference.
+  const late = await client.call('transcripts.read', { conversation: threadId, sessionId: `${FIXTURE_SESSION_ID}.2`, kinds: ['user'] });
+  expect(JSON.stringify(late.records)).toContain('$blob');
 });

@@ -220,11 +220,11 @@ export class TranscriptStore {
   }
 
   /** The conversation a session was left over from, as the archive knows it. */
-  leftover(root: string, sessionId: string): (ArchivedThread & { erased: boolean }) | null {
+  leftover(root: string, sessionId: string): (ArchivedThread & { erased: boolean; imagesErased: boolean }) | null {
     if (!this.exists()) return null;
-    const row = this.read.query(`SELECT t.id, t.title, t.project_path, t.provider, t.model, t.created_at, t.updated_at, t.deleted_at, t.erased_at FROM leftovers l JOIN threads t ON t.id = l.thread_id
-      WHERE l.root = ? AND l.session_id = ?`).get(root, sessionId) as { id: string; title: string; project_path: string | null; provider: string | null; model: string | null; created_at: number | null; updated_at: number | null; deleted_at: number | null; erased_at: number | null } | null;
-    return row === null ? null : { id: row.id, title: row.title, projectPath: row.project_path, provider: row.provider, model: row.model, createdAt: row.created_at, updatedAt: row.updated_at, deletedAt: row.deleted_at, erased: row.erased_at !== null };
+    const row = this.read.query(`SELECT t.id, t.title, t.project_path, t.provider, t.model, t.created_at, t.updated_at, t.deleted_at, t.erased_at, t.images_erased_at FROM leftovers l JOIN threads t ON t.id = l.thread_id
+      WHERE l.root = ? AND l.session_id = ?`).get(root, sessionId) as { id: string; title: string; project_path: string | null; provider: string | null; model: string | null; created_at: number | null; updated_at: number | null; deleted_at: number | null; erased_at: number | null; images_erased_at: number | null } | null;
+    return row === null ? null : { id: row.id, title: row.title, projectPath: row.project_path, provider: row.provider, model: row.model, createdAt: row.created_at, updatedAt: row.updated_at, deletedAt: row.deleted_at, erased: row.erased_at !== null, imagesErased: row.images_erased_at !== null };
   }
 
   putThread(thread: ArchivedThread, now: number): void {

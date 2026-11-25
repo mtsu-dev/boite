@@ -104,6 +104,13 @@ export function stripBlobs(value: Json | undefined, sink: Sink, bare = true): Js
   return out;
 }
 
+/** The nearest start of a character at or before (`step` -1) or after (`step` 1) byte `at`. */
+function boundary(raw: Buffer, at: number, step: 1 | -1): number {
+  let index = Math.min(Math.max(0, at), raw.length);
+  while (index > 0 && index < raw.length && (raw[index]! & 0xc0) === 0x80) index += step;
+  return index;
+}
+
 /**
  * A tool output under the cap, whole; past it, its head, the error lines of
  * its middle and its tail, with the size and hash of the original. A failed
@@ -117,17 +124,22 @@ export function capOutput(text: string, failed: boolean, sink: Sink): Json {
     sink.count('tool output kept', bytes);
     return text;
   }
+  // Counted in bytes, cut between characters: head, error lines and tail never pass the limit together.
   const scale = limit / OUTPUT_CAP;
-  const head = text.slice(0, HEAD * scale);
-  const tail = text.slice(-TAIL * scale);
+  const raw = Buffer.from(text, 'utf8');
+  const headEnd = boundary(raw, HEAD * scale, -1);
+  const tailStart = Math.max(headEnd, boundary(raw, raw.length - TAIL * scale, 1));
+  const head = raw.toString('utf8', 0, headEnd);
+  const tail = raw.toString('utf8', tailStart);
   const errors: string[] = [];
   let left = ERROR_LINES * scale;
-  for (const line of text.slice(HEAD * scale, -TAIL * scale).split('\n')) {
+  for (const line of raw.toString('utf8', headEnd, tailStart).split('\n')) {
     if (left <= 0) break;
-    const cut = line.slice(0, ERROR_LINE_MAX * scale);
-    if (!ERROR_LINE.test(cut)) continue;
+    if (!ERROR_LINE.test(line.slice(0, ERROR_LINE_MAX * scale))) continue;
+    const bytes = Buffer.from(line, 'utf8');
+    const cut = bytes.toString('utf8', 0, boundary(bytes, Math.min(ERROR_LINE_MAX * scale, left), -1));
     errors.push(cut);
-    left -= cut.length + 1;
+    left -= bytesOf(cut) + 1;
   }
   sink.count('tool output kept', bytesOf(head) + bytesOf(tail) + errors.reduce((sum, line) => sum + bytesOf(line), 0));
   sink.count('tool outputs cut', 1);

@@ -199,9 +199,13 @@ export async function unchanged(raw: RawSession): Promise<boolean> {
  * Removes the files a scan listed, one by one and each checked again as it
  * goes, then the session's own folders that are left empty. A file the scan
  * did not list, one written since or one put in its place stays, and keeps
- * its folder.
+ * its folder. Nothing more goes once `still` says no.
  */
-export async function removeSession(raw: RawSession): Promise<void> {
-  for (const path of [...raw.files, ...raw.toolResults]) if (await same(raw, path)) await rm(path, { force: true });
+export async function removeSession(raw: RawSession, still: () => boolean = () => true): Promise<void> {
+  for (const path of [...raw.files, ...raw.toolResults]) {
+    // `still` is asked after the last look at the file, with no wait before the removal starts.
+    if (await same(raw, path) && still()) await rm(path, { force: true });
+  }
+  if (!still()) return;
   for (const dir of raw.dirs) await rmdir(dir).catch(() => undefined);
 }
