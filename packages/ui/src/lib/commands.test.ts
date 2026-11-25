@@ -60,6 +60,7 @@ test('the list carries every app command, the thread ones only while one is open
     'retitle',
     'find',
     'copy-answer',
+    'export-thread',
     'panel',
     'subagents',
     'changes',
