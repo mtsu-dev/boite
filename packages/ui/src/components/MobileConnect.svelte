@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { Monitor, Network, RefreshCw, ShieldCheck, WifiOff } from '@lucide/svelte';
+  import { Monitor, RefreshCw, ShieldCheck, WifiOff } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
-  import { localNetwork } from '../lib/local-network.svelte';
   import { installed } from '../lib/pwa';
-  import { fill, strings } from '../lib/strings';
+  import { strings } from '../lib/strings';
   import ConnectTroubleshoot from './ConnectTroubleshoot.svelte';
   import PairMachine from './PairMachine.svelte';
 
@@ -12,20 +11,15 @@
     try { return store.endpointUrl ? new URL(store.endpointUrl).hostname : null; }
     catch { return null; }
   });
-  // Chrome keeps the app's public page off the private addresses machines live on until "Local network" is allowed.
-  let blocked = $derived(localNetwork.state === 'denied');
-  let title = $derived(blocked ? strings.mobile.localNetworkTitle : store.pairingRequired ? strings.mobile.pairTitle : strings.mobile.offlineTitle);
-  // The site to allow is this page's own: the app's address, or a fork's.
-  let body = $derived(blocked ? fill(strings.mobile.localNetworkBody, { host: location.host }) : store.pairingRequired ? strings.mobile.pairBody : strings.mobile.offlineBody);
+  let title = $derived(store.pairingRequired ? strings.mobile.pairTitle : strings.mobile.offlineTitle);
+  let body = $derived(store.pairingRequired ? strings.mobile.pairBody : strings.mobile.offlineBody);
 </script>
 
 <div class="connect" data-testid="mobile-connect">
   <div class="intro">
-    <div class="symbol" aria-hidden="true">{#if blocked}<Network size={28} strokeWidth={1.5} />{:else if store.pairingRequired}<Monitor size={28} strokeWidth={1.5} />{:else}<WifiOff size={28} strokeWidth={1.5} />{/if}</div>
+    <div class="symbol" aria-hidden="true">{#if store.pairingRequired}<Monitor size={28} strokeWidth={1.5} />{:else}<WifiOff size={28} strokeWidth={1.5} />{/if}</div>
     <h1>{title}</h1>
-    <p data-testid={blocked ? 'mobile-local-network' : undefined}>{body}</p>
-    <!-- Not asked yet, or the question was closed unanswered: the next attempt asks again, and the answer it needs is said first. -->
-    {#if localNetwork.state === 'prompt'}<p class="ask" data-testid="mobile-local-network-ask">{strings.mobile.localNetworkAsk}</p>{/if}
+    <p>{body}</p>
   </div>
   {#if store.pairingRequired}
     <!-- One way in: the QR code another machine of the group draws. -->
@@ -53,7 +47,6 @@
   /* Already inside this card: the pasted link's form takes no second frame. */
   .pairing :global(.paste-form) { padding: 4px 0 0; margin: 0; border: none; background: none; box-shadow: none; }
   .installed { margin: 0 4px; font-size: var(--text-xs); }
-  .ask { margin-top: 12px; color: var(--color-foreground); }
   .privacy { display: flex; align-items: flex-start; gap: 8px; margin: 18px 4px; font-size: var(--text-xs); }
   .privacy :global(svg) { flex: none; margin-top: 2px; }
   .host { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: var(--text-xs); margin-top: 26px; }

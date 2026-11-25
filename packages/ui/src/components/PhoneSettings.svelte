@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { desktopShell, tauriApp } from '../lib/shell-platform';
+  import { desktopShell, mobileApp, tauriApp } from '../lib/shell-platform';
   import { lockedBy } from '../lib/policy';
   import FirewallNotice from './FirewallNotice.svelte';
   import { errorText } from '../lib/errors';
@@ -17,7 +17,6 @@
   import { pushKinds, readPushHome, sameKinds, writePushHome } from '../lib/notify';
   import { checkSettingsPatch, parseGroupRelayUrl } from '@boite/contracts';
   import { servesThisPage } from '../lib/endpoint';
-  import { appPage } from '../lib/app-origin';
   let { store, showServerSettings = true }: { store: Store; showServerSettings?: boolean } = $props();
   const uid = $props.id();
   const lanLocked = $derived(lockedBy(store.policy, 'network.lan') !== null);
@@ -59,8 +58,8 @@
     const relay = store.endpointUrl === null ? null : parseGroupRelayUrl(store.endpointUrl);
     return relay !== null && servesThisPage(relay.member);
   });
-  // The phone app's page is no machine's: the machine it shows takes its notifications and passes on the others'.
-  let ownOrigin = $derived(appPage() || !store.endpointUrl || servesThisPage(store.endpointUrl));
+  // The Android app's page is no machine's: the machine it shows takes its notifications and passes on the others'.
+  let ownOrigin = $derived(mobileApp() || !store.endpointUrl || servesThisPage(store.endpointUrl));
   let paired = $derived(store.sessions.some(session => session.current));
   // The card reads its own pairing: whichever page holds it, an already paired phone must not be told to pair first.
   $effect(() => { if (store.connection === 'ready') untrack(() => void store.loadSessions()); });
