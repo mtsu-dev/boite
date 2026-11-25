@@ -21,7 +21,6 @@
     "tests/e2e/agents-projects.test.ts": 2.4,
     "tests/e2e/agents-unavailable.test.ts": 7.7,
     "tests/e2e/agents.test.ts": 82.3,
-    "tests/e2e/app-origin.test.ts": 13,
     "tests/e2e/app-updates.test.ts": 27.2,
     "tests/e2e/artifacts.test.ts": 19.2,
     "tests/e2e/attachments.test.ts": 6.8,

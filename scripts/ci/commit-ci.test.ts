@@ -125,7 +125,7 @@ test('a cancelled head with no newer run falls back to the newest older green co
   expect(decide(red, { sha, dryRun: false, follow: true }, fresh)).toMatchObject({ action: 'fail', message: expect.stringContaining('ended cancelled') });
 });
 
-test('without follow, as app.yml deploys its own checkout, or in a dry run, a cancelled run still fails', () => {
+test('without follow, or in a dry run, a cancelled run still fails', () => {
   expect(decide(nightRuns, { sha: night, dryRun: false }, fresh)).toMatchObject({ action: 'fail', message: expect.stringContaining('ended cancelled') });
   const branch = nightRuns.map((each) => ({ ...each, event: 'pull_request', head_branch: 'feature' }));
   expect(decide(branch, { sha: night, dryRun: true, follow: true }, fresh)).toMatchObject({ action: 'fail' });

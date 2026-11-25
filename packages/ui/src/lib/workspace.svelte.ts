@@ -27,11 +27,10 @@ import { onReveal, reveal } from './reveal';
 import { AutoSettingsSync } from './auto-settings-sync.svelte';
 import { GroupLinks } from './group-links.svelte';
 import { limitsMachine, setNotificationCore, setPushHomeClient } from './notify';
-import { appPage } from './app-origin';
 import { pictureSources } from './agent-pictures.svelte';
 import { bootWorkspace, byHand, hostOf, primaryMachine } from './workspace-boot';
 import { machineIcons, namedByUser, PROFILE_KEY, profileKey, profileName, profiles, typedName, type MachineIconName } from './machine-names';
-import { desktopShell } from './shell-platform';
+import { desktopShell, mobileApp } from './shell-platform';
 
 export { machineIcons, type MachineIconName } from './machine-names';
 
@@ -475,9 +474,9 @@ export class Workspace {
     if (existing && existing.store.connection === 'ready') return fail(strings.machines.duplicate);
     // A machine paired by hand at this address stays what it is: the group neither replaces its key nor claims it.
     if (existing && endpoint.ticket !== undefined && existing.coreId !== endpoint.coreId) return false;
-    // The phone app's window opened on no machine: the first one added becomes the one it shows.
+    // The Android app's window opened on no machine: the first one added becomes the one it shows.
     // A first add that failed left it detached and out of the list: the next one takes it again.
-    const adopt = !existing && appPage() && !store.localCore && (store.endpointUrl === null || !this.machines.some((m) => m.store === store));
+    const adopt = !existing && mobileApp() && !store.localCore && (store.endpointUrl === null || !this.machines.some((m) => m.store === store));
     const target = existing?.store ?? (adopt ? store : new Store());
     target.client?.close();
     target.detach();
