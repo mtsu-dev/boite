@@ -273,10 +273,20 @@ const app = agent({ name: 'agy-fake' })
     }
     if (text.includes('scenario:command') || text.includes('scenario:short-command')) {
       const id = `${params.sessionId}:cmd`;
-      await update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Running command', kind: 'execute', status: 'in_progress', rawInput: { CommandLine: 'sleep 600' } });
+      const rawInput = { CommandLine: 'sleep 600' };
+      if (text.includes('scenario:command-late-kind')) {
+        await update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Running command', status: 'in_progress', rawInput });
+        await update({ sessionUpdate: 'tool_call_update', toolCallId: id, kind: 'execute' });
+      } else {
+        await update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Run command?', kind: 'execute', status: 'pending', rawInput });
+        if (!text.includes('scenario:command-pending')) {
+          await update({ sessionUpdate: 'tool_call_update', toolCallId: id, title: 'Running command', status: 'in_progress' });
+        }
+      }
       if (text.includes('scenario:short-command')) {
         setTimeout(() => {
-          void update({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed', rawOutput: { combinedOutput: 'done', exitCode: 0 } });
+          const kind = text.includes('scenario:short-command-other-kind') ? { kind: 'other' } : {};
+          void update({ sessionUpdate: 'tool_call_update', toolCallId: id, ...kind, status: 'completed', rawOutput: { combinedOutput: 'done', exitCode: 0 } });
         }, 300);
       }
     }

@@ -544,12 +544,12 @@ describe('antigravity', () => {
     expect(antigravitySubagentBatch('t:2', 'done', 'Launch readers')).toEqual({ id: 't:2', status: 'running', task: 'Launch readers' });
   }, 30000);
 
-  test('a command that outlived its turn is background work that keeps the process, and Stop ends both', async () => {
+  test.each(['command', 'command-late-kind'])('a command that outlived its turn keeps the process, and Stop ends both (%s)', async (scenario) => {
     // No warm process: only the running command keeps it.
     const client = await startCore({ warmProcessMinutes: 0 });
     const { threadId } = await agyThread(client);
     const background = client.next('thread.background', (event) => event.threadId === threadId && event.tasks.length > 0, 20_000);
-    await runTurn(client, threadId, 'build it scenario:command');
+    await runTurn(client, threadId, `build it scenario:${scenario}`);
     const [command] = (await background).tasks;
     expect(command).toMatchObject({ kind: 'shell', description: 'sleep 600' });
     expect(fakeLog().split('\n').filter((line) => line === 'initialize')).toHaveLength(1);
@@ -567,6 +567,14 @@ describe('antigravity', () => {
     await runTurn(client, threadId, 'again');
     expect(fakeLog().split('\n').filter((line) => line === 'initialize').length).toBeGreaterThan(1);
   }, 40000);
+
+  test('a pending command that never started does not leave the finished turn in background', async () => {
+    const client = await startCore({ warmProcessMinutes: 0 });
+    const { threadId } = await agyThread(client);
+    await runTurn(client, threadId, 'build it scenario:command-pending');
+    expect((await client.call('threads.get', { threadId })).backgroundHistory ?? []).toEqual([]);
+    expect((await client.call('turns.stop', { threadId })).stopped).toBe(false);
+  }, 30000);
 
   test('a swarm worker that outlives the prompt keeps the turn open until the agent answers its report', async () => {
     // No warm process: before, the turn ended with the prompt and its process went with the worker.
@@ -607,12 +615,12 @@ describe('antigravity', () => {
     await waitFor(() => !alive(pid), 10_000);
   }, 30000);
 
-  test('a command that ends after its turn leaves the background list on its own', async () => {
+  test.each(['short-command', 'short-command-other-kind'])('a command that ends after its turn leaves the background list on its own (%s)', async (scenario) => {
     const client = await startCore();
     const { threadId } = await agyThread(client);
     const background = client.next('thread.background', (event) => event.threadId === threadId && event.tasks.length > 0, 20_000);
     const cleared = client.next('thread.background', (event) => event.threadId === threadId && event.tasks.length === 0, 20_000);
-    await runTurn(client, threadId, 'build it scenario:short-command');
+    await runTurn(client, threadId, `build it scenario:${scenario}`);
     await background;
     await cleared;
     const history = (await client.call('threads.get', { threadId })).backgroundHistory ?? [];
