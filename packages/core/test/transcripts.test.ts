@@ -568,6 +568,26 @@ test('a session id two accounts hold goes to the conversation of its account, an
   expect((await client.call('transcripts.list', {})).map(item => item.threadId)).toEqual([threadId]);
 });
 
+test('a session of the same id under another account is not the conversation\'s when its own file is gone', async () => {
+  await core();
+  const { threadId, file, side } = await importedThread();
+  const other = await client.call('accounts.add', { providerId: 'claude', label: 'second' });
+  const twin = join(other.isolationDir!, 'projects', 'elsewhere', `${FIXTURE_SESSION_ID}.jsonl`);
+  mkdirSync(join(twin, '..'), { recursive: true });
+  writeFileSync(twin, claudeSessionFixture('/elsewhere'));
+  utimesSync(twin, (Date.now() - 40 * DAY) / 1000, (Date.now() - 40 * DAY) / 1000);
+  await client.call('settings.set', { transcriptStorage: { mode: 'classic' } });
+  await client.call('threads.remove', { threadId });
+  age(threadId, file, 8);
+  rmSync(file);
+  rmSync(side, { recursive: true });
+  await harness.core.transcripts.run();
+  expect(harness.core.transcripts.progress().lastError).toBeNull();
+  expect(existsSync(twin)).toBe(true);
+  // The conversation is archived from the journal alone.
+  expect((await client.call('transcripts.read', { conversation: threadId, sessionId: 'journal' })).sessions).toEqual(['journal']);
+});
+
 test('a family being compacted without its images keeps them once another mode is applied', async () => {
   await core();
   const { threadId, file } = await importedThread();

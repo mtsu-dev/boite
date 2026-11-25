@@ -206,10 +206,14 @@ export class Transcripts {
       const shared = holders.get(raw.id)!.size > 1;
       const named = owners.get(raw.id);
       if (shared && named?.some(owner => unsure.has(owner.thread.rootId ?? owner.thread.id))) continue;
-      const naming = named?.filter(owner => !shared || rootOf.get(owner.accountId ?? '') === raw.root).map(owner => owner.thread);
+      // An owner whose account keeps its sessions elsewhere names another session of that id, not this file.
+      const naming = named?.filter(owner => {
+        const home = rootOf.get(owner.accountId ?? '');
+        return home === undefined ? !shared : home === raw.root;
+      }).map(owner => owner.thread);
       if (naming === undefined || naming.length === 0) {
-        // One of two sessions sharing an id is never taken for an unnamed one.
-        if (raw.own && !shared) unlinked.push(raw);
+        // A file whose id a conversation names, here or under another account, is never taken for an unnamed one.
+        if (raw.own && named === undefined) unlinked.push(raw);
         continue;
       }
       const open = naming.filter(thread => thread.rootId === null);
