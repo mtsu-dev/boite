@@ -278,3 +278,56 @@ test('releasing a pointer preload while agents.open is still in flight keeps ope
   expect(gets).toBe(1);
   expect(unsubs).toBe(0);
 });
+
+test('reopening a mochi after Back cancels a claimed open reuses the new preload and keeps the core subscribed', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
+  const threadId = view.snapshot!.sessions.find(s => s.agentId === mira.id)!.threadId;
+  const rawCall = client.call.bind(client);
+  const getResolvers: (() => void)[] = [];
+  let releaseSecondOpen!: () => void;
+  let openCalls = 0;
+  let getCalls = 0;
+  let unsubs = 0;
+  vi.spyOn(client, 'call').mockImplementation(async (method: string, params?: unknown) => {
+    if (method === 'threads.get' && (params as { threadId?: string })?.threadId === threadId) {
+      getCalls += 1;
+      await new Promise<void>(resolve => { getResolvers.push(resolve); });
+    }
+    if (method === 'threads.unsubscribe' && (params as { threadId?: string })?.threadId === threadId) {
+      unsubs += 1;
+    }
+    if (method === 'agents.open') {
+      openCalls += 1;
+      if (openCalls === 2) await new Promise<void>(resolve => { releaseSecondOpen = resolve; });
+    }
+    return rawCall(method as never, params as never);
+  });
+
+  // First open claims preload #1 and paints the unloaded bare row while threads.get #1 is still in flight.
+  store.showAgents();
+  const first = openAgent(store, mira.id);
+  await vi.waitFor(() => expect(getResolvers).toHaveLength(1));
+  await vi.waitFor(() => expect(store.openThread?.id).toBe(threadId));
+
+  // Back invalidates open #1, then the user immediately re-opens Mira (preload #2 starts while agents.open #2 waits).
+  store.showAgents();
+  const second = openAgent(store, mira.id);
+  await vi.waitFor(() => expect(getResolvers).toHaveLength(2));
+
+  // Resolving threads.get #1 retires open #1 while preload #2 is waiting: it must not unsubscribe Mira on the core.
+  getResolvers.shift()!();
+  await first;
+
+  // Resolving agents.open #2 and threads.get #2 must claim preload #2 (no 3rd fetch) and stay subscribed on the core.
+  releaseSecondOpen();
+  getResolvers.shift()!();
+  expect(await second).toBe(threadId);
+  expect(store.openThread?.id).toBe(threadId);
+  expect(store.subscribedThreadId).toBe(threadId);
+  expect(getCalls).toBe(2);
+  expect(unsubs).toBe(0);
+  expect(client.coreSubscribers).toContain(threadId);
+});

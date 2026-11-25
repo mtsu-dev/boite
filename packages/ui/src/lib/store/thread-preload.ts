@@ -187,8 +187,18 @@ export class ThreadPreloads {
   /** The first sidebar threads, read ahead once the machine is ready and the page idle. */
   readonly idle: IdlePreloads;
 
-  constructor(private readonly ctx: StoreContext, private readonly opener: ReadAheadSource) {
+  constructor(
+    private readonly ctx: StoreContext,
+    private readonly opener: ReadAheadSource,
+    private readonly unloaded: ReadonlySet<ThreadId>,
+  ) {
     this.idle = new IdlePreloads(ctx, opener, threadId => this.#waiting?.threadId === threadId);
+  }
+
+  /** The loaded page already in memory for `threadId`; a bare row from an interrupted open is not one. */
+  held(threadId: ThreadId): Thread | undefined {
+    const page = this.opener.openThread?.id === threadId ? this.opener.openThread : this.opener.readingThreads.get(threadId);
+    return page && page.messages.length === 0 && this.unloaded.has(threadId) ? undefined : page;
   }
 
   /**
@@ -212,7 +222,7 @@ export class ThreadPreloads {
     // The thread on screen is live already; a machine switched away from keeps
     // its last thread unsubscribed, and a press on it preloads like any other.
     if (!client || this.ctx.store.connection !== 'ready' || this.opener.subscribedThreadId === threadId) return () => {};
-    const held = this.opener.openThread?.id === threadId ? this.opener.openThread : this.opener.readingThreads.get(threadId);
+    const held = this.held(threadId);
     const summaryRead = this.ctx.threadReads.begin(threadId);
     let preload: Preload | null = null;
     const ask = askPage(this.ctx, this.opener, client, threadId, held, { requests: false }, () => preload !== null && this.#claimed === preload);
