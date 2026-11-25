@@ -84,27 +84,28 @@ export function copyStreamMessageSearch(db: Database, from: string, to: string):
 
 type Candidate = Omit<ThreadMessageMatch, 'snippet' | 'score'> & { body: string; rowid: number };
 
-function candidatePage(db: Database, index: 'messages_fts' | 'messages_fts_infix', source: string, queries: string[], cap: number): Candidate[] {
+function candidatePage(db: Database, index: 'messages_fts' | 'messages_fts_infix', source: string, queries: string[], cap: number, offset = 0): Candidate[] {
   // Give each matching thread a first candidate before considering its next.
   // Only carry row IDs and ordering fields through the sort.
-  return db.query<Candidate, [...string[], number]>(`
+  return db.query<Candidate, [...string[], number, number]>(`
     WITH ranked AS (
       SELECT messages_fts.rowid AS id, ${index}.rank AS relevance, messages_fts.created_at AS at,
         row_number() OVER (PARTITION BY messages_fts.thread_id
           ORDER BY ${index}.rank, messages_fts.created_at DESC, messages_fts.message_id) AS position
       ${source}
     ), page AS (
-      SELECT id FROM ranked ORDER BY position, relevance, at DESC, id DESC LIMIT ?
+      SELECT id FROM ranked ORDER BY position, relevance, at DESC, id DESC LIMIT ? OFFSET ?
     )
     SELECT f.rowid, f.message_id AS messageId, f.thread_id AS threadId,
       f.role, f.created_at AS messageCreatedAt, f.body
     FROM page CROSS JOIN messages_fts f ON f.rowid = page.id
-  `).all(...queries, cap);
+  `).all(...queries, cap, offset);
 }
 
 export function searchThreadMessages(db: Database, query: string, { limit = 20, includeArchived = true }: Pick<RpcParams<'threads.search'>, 'limit' | 'includeArchived'> = {}): ThreadMessageMatch[] {
   const terms = messageSearchTerms(query);
   if (!terms.length) return [];
+  const exactWords: string[] = [];
   const wordsOnly: string[] = [];
   const wordsWithInfix: string[] = [];
   const infixOnly: string[] = [];
@@ -112,6 +113,7 @@ export function searchThreadMessages(db: Database, query: string, { limit = 20, 
     const pattern = `"${words.join(' ')}"`;
     const length = Array.from(words[0]!).length;
     const word = pattern + (!exact && length >= 3 ? '*' : '');
+    exactWords.push(pattern);
     if (exact || length < 4) wordsOnly.push(word);
     else { wordsWithInfix.push(word); infixOnly.push(pattern); }
   }
@@ -122,29 +124,43 @@ export function searchThreadMessages(db: Database, query: string, { limit = 20, 
       AND (t.project_id IS NULL OR t.project_id NOT IN (${REMOVED_PROJECTS}))
       ${includeArchived ? '' : 'AND t.archived = 0'}
   `;
-  const cap = Math.max(80, limit * 8);
+  const maxResults = Math.min(limit, 50);
+  const batch = Math.max(80, maxResults * 4);
+  const maxScan = 1600;
+  const matches = new Map<string, ThreadMessageMatch>();
+  const seen = new Set<number>();
+  const collect = (index: 'messages_fts' | 'messages_fts_infix', source: string, queries: string[], targetThreads: number): void => {
+    const accepted = new Set<string>();
+    for (let offset = 0; offset < maxScan; offset += batch) {
+      const rows = candidatePage(db, index, source, queries, batch, offset);
+      for (const { rowid, body, ...row } of rows) {
+        if (seen.has(rowid)) continue;
+        seen.add(rowid);
+        const grade = gradeMessage(body, terms);
+        if (!grade) continue;
+        const hit = { ...row, ...grade };
+        accepted.add(hit.threadId);
+        const previous = matches.get(hit.threadId);
+        if (!previous || orderMessageMatches(hit, previous) < 0) matches.set(hit.threadId, hit);
+      }
+      if (rows.length < batch || accepted.size >= targetThreads) break;
+    }
+  };
+  const exactQuery = exactWords.join(' AND ');
   const wordQuery = [...wordsOnly, ...wordsWithInfix].join(' AND ');
-  const words = candidatePage(db, 'messages_fts', `
-    FROM messages_fts ${visible} AND messages_fts MATCH ?`, [wordQuery], cap);
+  // Query exact whole-word matches before prefix matches so many prefix hits cannot evict exact words.
+  if (exactQuery !== wordQuery) {
+    collect('messages_fts', `FROM messages_fts ${visible} AND messages_fts MATCH ?`, [exactQuery], maxResults);
+  }
+  collect('messages_fts', `FROM messages_fts ${visible} AND messages_fts MATCH ?`, [wordQuery], maxResults * 2);
   // Evaluate internal substrings only on indexed candidates. A SQLite build
   // without the accent-folding trigram tokenizer still has the word index.
-  const internal = infixOnly.length > 0 && db.query(INFIX).get() !== null
-    ? candidatePage(db, 'messages_fts_infix', `FROM messages_fts_infix
+  if (infixOnly.length > 0 && db.query(INFIX).get() !== null) {
+    collect('messages_fts_infix', `FROM messages_fts_infix
       CROSS JOIN messages_fts ON messages_fts.rowid = messages_fts_infix.rowid
       ${visible} AND messages_fts_infix MATCH ?
       ${wordsOnly.length ? 'AND messages_fts MATCH ?' : ''}`,
-      [infixOnly.join(' AND '), ...(wordsOnly.length ? [wordsOnly.join(' AND ')] : [])], cap)
-    : [];
-  const matches = new Map<string, ThreadMessageMatch>();
-  const seen = new Set<number>();
-  for (const { rowid, body, ...row } of [...words, ...internal]) {
-    if (seen.has(rowid)) continue;
-    seen.add(rowid);
-    const grade = gradeMessage(body, terms);
-    if (!grade) continue;
-    const hit = { ...row, ...grade };
-    const previous = matches.get(hit.threadId);
-    if (!previous || orderMessageMatches(hit, previous) < 0) matches.set(hit.threadId, hit);
+      [infixOnly.join(' AND '), ...(wordsOnly.length ? [wordsOnly.join(' AND ')] : [])], maxResults * 2);
   }
-  return [...matches.values()].sort(orderMessageMatches).slice(0, Math.min(limit, 50));
+  return [...matches.values()].sort(orderMessageMatches).slice(0, maxResults);
 }

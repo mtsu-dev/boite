@@ -147,3 +147,30 @@ test('a replacement message search releases the older reader on the same connect
     globalThis.Worker = original;
   }
 });
+
+test('threads.search keeps exact whole words ahead of many prefix hits and scans past hex false positives', async () => {
+  core = await startTestCore();
+  const client = await core.connect();
+  const { threadId: exactThread } = await echoThread(core, client, 'Exact');
+  const { threadId: prefixThread } = await echoThread(core, client, 'Prefix');
+  const { threadId: infixThread } = await echoThread(core, client, 'Infix');
+  const hexThreads: string[] = [];
+  for (let index = 0; index < 85; index++) {
+    hexThreads.push((await echoThread(core, client, `Hex ${index}`)).threadId);
+  }
+  const journal = core.core.journal;
+  journal.db.transaction(() => {
+    journal.putMessage(message('exact-planet', exactThread, 'Observe the planet today', 1));
+    for (let index = 0; index < 200; index++) journal.putMessage(message(`prefix-${index}`, prefixThread, 'Many planets orbit suns', index + 10));
+    for (let index = 0; index < hexThreads.length; index++) {
+      journal.putMessage(message(`hex-${index}`, hexThreads[index]!, `deadbeefabcd${String(index).padStart(4, '0')}`, index + 100));
+    }
+    journal.putMessage(message('real-infix', infixThread, 'Check prefixabcdsuffix here', 1));
+  })();
+
+  const planet = await client.call('threads.search', { query: 'planet', limit: 2 });
+  expect(planet.matches[0]).toMatchObject({ threadId: exactThread, messageId: 'exact-planet' });
+
+  const infix = await client.call('threads.search', { query: 'abcd', limit: 5 });
+  expect(infix.matches.map(hit => hit.messageId)).toEqual(['real-infix']);
+});
