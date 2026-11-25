@@ -199,10 +199,13 @@ export const filesOf = (raw: RawSession, id: string): string[] => [
 ];
 
 /** Whether a listed file is the one the scan found: the same file under its account's folder, same size, no later write or change. */
-async function same(raw: RawSession, path: string): Promise<boolean> {
+async function same(raw: RawSession, path: string): Promise<boolean> { return await sameSize(raw, path) !== null; }
+
+/** The size of a listed file that is still the one the scan found, or null. */
+async function sameSize(raw: RawSession, path: string): Promise<number | null> {
   const stat = await sized(path);
-  if (stat === null || stat.stamp !== raw.stamps.get(path)) return false;
-  try { return (await realpath(path)).startsWith(raw.root + sep); } catch { return false; }
+  if (stat === null || stat.stamp !== raw.stamps.get(path)) return null;
+  try { return (await realpath(path)).startsWith(raw.root + sep) ? stat.bytes : null; } catch { return null; }
 }
 
 /** Whether every file of a session is as a scan found it. */
@@ -215,13 +218,20 @@ export async function unchanged(raw: RawSession): Promise<boolean> {
  * Removes the files a scan listed, one by one and each checked again as it
  * goes, then the session's own folders that are left empty. A file the scan
  * did not list, one written since or one put in its place stays, and keeps
- * its folder. Nothing more goes once `still` says no.
+ * its folder. Nothing more goes once `still` says no. Answers the bytes of the
+ * files that went.
  */
-export async function removeSession(raw: RawSession, still: () => boolean = () => true): Promise<void> {
+export async function removeSession(raw: RawSession, still: () => boolean = () => true): Promise<number> {
+  let removed = 0;
   for (const path of [...raw.files, ...raw.toolResults]) {
+    const bytes = await sameSize(raw, path);
     // `still` is asked after the last look at the file, with no wait before the removal starts.
-    if (await same(raw, path) && still()) await rm(path, { force: true });
+    if (bytes === null) continue;
+    if (!still()) return removed;
+    await rm(path, { force: true });
+    removed += bytes;
   }
-  if (!still()) return;
+  if (!still()) return removed;
   for (const dir of raw.dirs) await rmdir(dir).catch(() => undefined);
+  return removed;
 }
