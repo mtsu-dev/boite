@@ -50,10 +50,8 @@ export class OpenCommands {
     }
     if (command !== undefined) {
       if (update.status === 'in_progress') command.startedAt ??= Date.now();
-      if (!command.shell && update.kind === 'execute') {
-        command.shell = true;
-        command.description = antigravityCommandLine(update.rawInput) ?? command.description;
-      }
+      command.shell ||= update.kind === 'execute';
+      command.description = antigravityCommandLine(update.rawInput) ?? command.description;
       return false;
     }
     if (update.kind !== 'execute' && update.status !== 'in_progress') return false;

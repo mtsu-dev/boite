@@ -278,9 +278,10 @@ const app = agent({ name: 'agy-fake' })
         await update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Running command', status: 'in_progress', rawInput });
         await update({ sessionUpdate: 'tool_call_update', toolCallId: id, kind: 'execute' });
       } else {
-        await update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Run command?', kind: 'execute', status: 'pending', rawInput });
+        const lateInput = text.includes('scenario:command-late-input');
+        await update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Run command?', kind: 'execute', status: 'pending', rawInput: lateInput ? undefined : rawInput });
         if (!text.includes('scenario:command-pending')) {
-          await update({ sessionUpdate: 'tool_call_update', toolCallId: id, title: 'Running command', status: 'in_progress' });
+          await update({ sessionUpdate: 'tool_call_update', toolCallId: id, title: 'Running command', status: 'in_progress', rawInput: lateInput ? rawInput : undefined });
         }
       }
       if (text.includes('scenario:short-command')) {

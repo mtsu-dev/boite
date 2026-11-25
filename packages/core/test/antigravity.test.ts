@@ -544,7 +544,7 @@ describe('antigravity', () => {
     expect(antigravitySubagentBatch('t:2', 'done', 'Launch readers')).toEqual({ id: 't:2', status: 'running', task: 'Launch readers' });
   }, 30000);
 
-  test.each(['command', 'command-late-kind'])('a command that outlived its turn keeps the process, and Stop ends both (%s)', async (scenario) => {
+  test.each(['command', 'command-late-kind', 'command-late-input'])('a command that outlived its turn keeps the process, and Stop ends both (%s)', async (scenario) => {
     // No warm process: only the running command keeps it.
     const client = await startCore({ warmProcessMinutes: 0 });
     const { threadId } = await agyThread(client);
