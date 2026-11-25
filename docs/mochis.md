@@ -13,7 +13,8 @@ picture up or down to put mochis and teams in your own order, which this device
 keeps. A small mark on a picture says the mochi needs you, failed or is at
 work; a mochi with unread answers shows how many, and a team shows a dot. A
 circle runs around the picture while the mochi works. Point at the picture to
-read it in words beside the mochi's name.
+read it in words beside the mochi's name. A faded edge means there are more
+pictures to scroll to.
 
 ## Create a mochi
 
