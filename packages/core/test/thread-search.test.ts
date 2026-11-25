@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { RpcErrorCode, type Message } from '@boite/contracts';
 import { Journal } from '../src/journal.ts';
 import { searchThreadMessages } from '../src/journal/message-search.ts';
-import { echoThread, startTestCore, type TestCore } from './harness.ts';
+import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 let core: TestCore | undefined;
 afterEach(async () => { await core?.stop(); core = undefined; });
@@ -99,4 +99,51 @@ test('threads.search ranks the best message per thread and respects archive and 
   expect(await search()).toEqual(['first', 'second', 'third']);
   expect(await client.call('threads.search', { query, limit: 51 }).catch(error => error))
     .toMatchObject({ rpc: { code: RpcErrorCode.InvalidParams, data: { field: 'limit' } } });
+});
+
+test('threads.search keeps the newest equally relevant message and reserves room for other threads', async () => {
+  core = await startTestCore();
+  const client = await core.connect();
+  const { threadId: busy } = await echoThread(core, client, 'Busy');
+  const { threadId: quiet } = await echoThread(core, client, 'Quiet');
+  const journal = core.core.journal;
+  journal.db.transaction(() => {
+    for (let index = 0; index < 200; index++) journal.putMessage(message(`busy-${index}`, busy, 'Opus', index + 1));
+    journal.putMessage(message('quiet-hit', quiet, 'Opus', 1));
+  })();
+
+  const { matches } = await client.call('threads.search', { query: 'opus', limit: 2 });
+  expect(matches.map(hit => [hit.threadId, hit.messageId])).toEqual([[busy, 'busy-199'], [quiet, 'quiet-hit']]);
+});
+
+test('a replacement message search releases the older reader on the same connection', async () => {
+  core = await startTestCore();
+  const client = await core.connect();
+  const sent = new Map<string, SearchWorker>();
+  class SearchWorker extends EventTarget {
+    onmessage?: (event: MessageEvent) => void;
+    postMessage({ params }: { params: { query: string } }) {
+      sent.set(params.query, this);
+      if (params.query === 'new') this.reply();
+    }
+    reply() { this.onmessage?.(new MessageEvent('message', { data: { hits: [] } })); }
+    terminate() { this.dispatchEvent(new Event('close')); }
+  }
+  const original = globalThis.Worker;
+  globalThis.Worker = SearchWorker as unknown as typeof Worker;
+  const old = client.call('threads.search', { query: 'old', replacePending: true }).catch(error => error);
+  try {
+    await waitFor(() => sent.has('old'));
+    const newest = client.call('threads.search', { query: 'new', replacePending: true });
+    try {
+      await waitFor(() => sent.has('new'), 1000);
+      expect(await old).toMatchObject({ rpc: { code: RpcErrorCode.Unavailable } });
+      expect(await newest).toEqual({ query: 'new', matches: [] });
+    } finally {
+      sent.get('old')?.reply();
+      await newest.catch(() => undefined);
+    }
+  } finally {
+    globalThis.Worker = original;
+  }
 });

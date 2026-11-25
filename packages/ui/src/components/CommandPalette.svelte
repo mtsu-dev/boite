@@ -4,7 +4,7 @@
   import { tick, untrack } from 'svelte';
   import { CornerDownRight, MessageSquare, Search, X } from '@lucide/svelte';
   import { MESSAGE_SEARCH_QUERY_LIMIT, RpcErrorCode, messageMatchRanges, messageSearchTerms, orderMessageMatches, type AgentProfile, type Project, type ProjectId, type SearchRange, type ThreadMessageMatch, type ThreadSummary } from '@boite/contracts';
-  import { RpcFailure, type Client } from '../lib/client';
+  import { RpcFailure } from '../lib/client';
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { appCommands, runCommand } from '../lib/commands.svelte';
@@ -95,7 +95,6 @@
   let machines = $derived(workspace.machinesOr(store));
   let mentions = $state.raw<{ machine: Machine; hit: ThreadMessageMatch }[]>([]);
   let searchFailed = $state(false);
-  const searching = new Map<Client, Promise<void>>();
   const searchTerms = $derived(messageSearchTerms(query.slice(0, MESSAGE_SEARCH_QUERY_LIMIT)));
   $effect(() => {
     if (!store.paletteOpen) return;
@@ -107,25 +106,18 @@
     if (!enough || owners.length === 0) return;
     let current = true;
     const timer = setTimeout(() => {
-      for (const machine of owners) void (async () => {
+      for (const machine of owners) {
         const client = machine.store.client;
-        if (!client) return;
+        if (!client) continue;
         const wanted = () => current && machine.store.client === client;
-        // Wait behind the only request already sent. Superseded queries stop
-        // here, before entering the core's worker queue.
-        await searching.get(client);
-        if (!wanted()) return;
-        const request = client.call('threads.search', { query: asked }).then(({ matches }) => {
+        void client.call('threads.search', { query: asked, replacePending: true }).then(({ matches }) => {
           if (!wanted()) return;
           mentions = [...mentions, ...matches.map(hit => ({ machine, hit }))].sort((a, b) =>
             orderMessageMatches(a.hit, b.hit) || a.machine.id.localeCompare(b.machine.id));
         }).catch((error: unknown) => {
           if (wanted() && !(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) searchFailed = true;
         });
-        searching.set(client, request);
-        await request;
-        if (searching.get(client) === request) searching.delete(client);
-      })();
+      }
     }, 120);
     return () => { current = false; clearTimeout(timer); };
   });

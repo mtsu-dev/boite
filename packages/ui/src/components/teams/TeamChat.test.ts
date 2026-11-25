@@ -215,6 +215,7 @@ test('opening a search mention in a team chat scrolls to its post and highlights
   const hit = matches.find(match => match.threadId === team.threadId)!;
 
   const paint = vi.spyOn(find, 'paintMessageSearch');
+  const clear = vi.spyOn(find, 'clearMessageSearch');
   const scrolled: Element[] = [];
   Element.prototype.scrollIntoView ??= vi.fn();
   vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) { scrolled.push(this); });
@@ -227,6 +228,11 @@ test('opening a search mention in a team chat scrolls to its post and highlights
   expect(scrolled).toContain(matched);
   expect(scrolled).not.toContain(unrelated);
   expect(paint).toHaveBeenCalledWith(matched, [{ words: ['checklist'], exact: false }], '.said .body');
+  expect(clear).not.toHaveBeenCalled();
+  query('[data-testid=team-posts]').dispatchEvent(new WheelEvent('wheel'));
+  expect(clear).toHaveBeenCalledTimes(1);
+  unrelated!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  expect(clear).toHaveBeenCalledTimes(2);
 });
 
 test('a member of another machine of the group carries that machine in the member row, on its posts and in the @ and audience menus; one of this machine says nothing', async () => {

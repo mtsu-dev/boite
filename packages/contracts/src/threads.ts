@@ -609,7 +609,8 @@ export interface ThreadMessageMatch {
 
 export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
   'threads.search': {
-    params: { query: string; limit?: number; includeArchived?: boolean };
+    /** `replacePending` replaces an unfinished search that set this option on the same connection. */
+    params: { query: string; limit?: number; includeArchived?: boolean; replacePending?: boolean };
     result: { query: string; matches: ThreadMessageMatch[] };
   };
   /** Owner-only, private bounded diagnostic history, including earlier runs. */

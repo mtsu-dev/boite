@@ -61,7 +61,7 @@ test('adding a task at the core limit refuses it without changing the list', asy
 test('conversation search returns the best message and follows archive visibility like the core', async () => {
   const client = await fake();
   const query = '"TRACE tab"';
-  const search = () => client.call('threads.search', { query });
+  const search = () => client.call('threads.search', { query, replacePending: true });
   expect(await search()).toEqual({ query, matches: [{
     threadId: 't-trace', messageId: 'm-1', role: 'user', score: 3,
     messageCreatedAt: expect.any(Number), snippet: 'What does the trace tab need from the core?',

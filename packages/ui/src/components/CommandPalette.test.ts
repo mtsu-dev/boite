@@ -169,7 +169,7 @@ test('metadata and message results coexist and Enter requests a page around the 
   expect(store.openThread?.messages.find(message => message.id === target)?.turnId).toBe(turn.id);
 });
 
-test('message search skips superseded queries while a request is pending and reports only current failures', async () => {
+test('message search debounces typing, sends a newer query while an older one waits, and reports only current failures', async () => {
   vi.useFakeTimers();
   let rejectFirst!: (error: Error) => void;
   const first = new Promise<never>((_, reject) => { rejectFirst = reject; });
@@ -192,10 +192,10 @@ test('message search skips superseded queries while a request is pending and rep
   await vi.advanceTimersByTimeAsync(1);
   expect(queries).toEqual(['first search']);
   await type('superseded search');
-  await vi.advanceTimersByTimeAsync(120);
+  await vi.advanceTimersByTimeAsync(119);
   await type('older core');
   await vi.advanceTimersByTimeAsync(120);
-  expect(queries).toEqual(['first search']);
+  expect(queries).toEqual(['first search', 'older core']);
   rejectFirst(new Error('Superseded failure'));
   await vi.advanceTimersByTimeAsync(0);
   flushSync();

@@ -6,6 +6,7 @@ import { toSummary } from './shared';
 export function threadListMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.list' | 'threads.listChanges' | 'threads.search'> {
   const pages = new ThreadListPages();
   return {
+    // This read finishes in one task, so there is no pending worker for replacePending to cancel.
     'threads.search': async ({ query, limit = 20, includeArchived = true }) => {
       const terms = messageSearchTerms(query);
       const matches: ThreadMessageMatch[] = [];

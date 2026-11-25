@@ -11,6 +11,7 @@
   import type { Store } from '../../lib/store.svelte';
   import { botIdOf, followTeams, listNames, teamsOf } from '../../lib/teams.svelte';
   import { pings } from '../../lib/team-pings';
+  import { watchWheel } from '../../lib/timeline-follow';
   import AgentAvatar from '../agents/AgentAvatar.svelte';
   import DayDivider from '../DayDivider.svelte';
   import Prose from '../Prose.svelte';
@@ -89,6 +90,7 @@
     return scroller?.querySelector<HTMLElement>(`[data-post-id="${CSS.escape(id)}"]`) ?? undefined;
   }
   function jump(id: string) {
+    clearMessageSearch();
     elementOf(id)?.scrollIntoView({ block: 'center' });
   }
 
@@ -149,7 +151,9 @@
 </script>
 
 <section class="team-chat" data-testid="team-chat" data-team-id={team?.id}>
-  <div class="scroller" bind:this={scroller} onscroll={measure} data-testid="team-posts">
+  <!-- svelte-ignore a11y_no_static_element_interactions (Reader input clears the search highlight without changing native interaction.) -->
+  <div class="scroller" bind:this={scroller} onscroll={measure} use:watchWheel={clearMessageSearch}
+    onpointerdown={clearMessageSearch} ontouchstart={clearMessageSearch} onkeydown={clearMessageSearch} data-testid="team-posts">
     <div class="column" bind:this={column}>
       {#if team}
         <header class="about" data-testid="team-members">
