@@ -91,7 +91,7 @@ const UNITS = new Map<string, [family: string, scale: number]>([
  * thousands, so `1234,567` matches nothing. The rest is read apart (`UNIT`),
  * after its length: no pattern here can backtrack over a long field.
  */
-const VALUE = /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+,(?:\d{1,2}|\d{4,})|\d+(?:\.\d+)?|\.\d+)\s*([^\d,.].*)?$/u;
+const VALUE = /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+,(?:\d{1,2}|\d{4,})|\d+(?:\.\d+)?|\.\d+)\s*([^\s\d,.].*)?$/u;
 const UNIT_LENGTH = 16;
 /** A unit starts with a letter, `%` or `°`, and may have one `/` or space part (`req/s`). Its classes never overlap. */
 const UNIT = /^[\p{L}%°][^\s\d/]*(?:[\s/][^\s\d/]+)?$/u;

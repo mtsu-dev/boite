@@ -48,7 +48,8 @@ test('a value reads only when the whole field is a number and an optional unit',
   // A long field that is no value is refused in linear time, not after backtracking over it.
   const started = performance.now();
   // The unit pattern this replaced took 330 ms on the first one (2026-11-25).
-  for (const text of [`1 m${'/'.repeat(20000)}1`, `1 m${'/'.repeat(5000)}!`, `${'9'.repeat(20000)}!`, `1 a${' a'.repeat(20000)}1`]) expect(readValue(text)).toBeNull();
+  // A line separator ends `.`, so spaces before it once backtracked too.
+  for (const text of [`1 m${'/'.repeat(20000)}1`, `1 m${'/'.repeat(5000)}!`, `${'9'.repeat(20000)}!`, `1 a${' a'.repeat(20000)}1`, `1${' '.repeat(20000)}a\u2028b`]) expect(readValue(text)).toBeNull();
   expect(performance.now() - started).toBeLessThan(50);
 });
 
