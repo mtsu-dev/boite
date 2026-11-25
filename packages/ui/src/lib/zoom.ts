@@ -41,8 +41,9 @@ export function zoomKey(event: KeyboardEvent): -1 | 0 | 1 | null {
   }
 }
 
-/** The wheel chord the zoom listens for now: null with no chord bound, outside the shell, or while the Keyboard page records one. */
+/** The wheel chord the zoom listens for now: null with no chord bound or outside the shell. */
 let listening: { chord: Chord; mac: boolean } | null = null;
+/** True while the Keyboard page records a wheel chord: `listening` stays set and the zoom takes no wheel. */
 let recording = false;
 
 /** A wheel turned with exactly the bound chord's modifiers: one the zoom takes, so nothing else scrolls with it. */
