@@ -35,29 +35,24 @@ test('an agent entrusted with a project shows on its threads, and opens its conv
   // The header no longer carries a chip: the bot heads the title menu's named group, its row keeping the chip's id.
   const menu = '[data-testid="thread-menu-trigger-menu"]';
   const chip = `${menu} [data-value="thread-resident-chip"]`;
-  const openGroup = async () => {
-    await page.waitFor(`document.querySelector('[data-testid="thread-menu-trigger"]')?.getBoundingClientRect().width > 0`);
-    await page.click('[data-testid="thread-menu-trigger"]');
-    await page.waitFor(`document.querySelector('${menu} [data-value="more"]')`);
-    await page.click(`${menu} [data-value="more"]`);
-    await page.waitFor(`document.querySelector('${chip}')?.getBoundingClientRect().width > 0`);
-  };
   const closeMenu = async () => {
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await page.waitFor(`!document.querySelector('${menu}')`);
   };
-  // The menu lists the bots the directory read when it opened: wait for its reread after the save.
-  await page.evaluate(`(async () => {
-    const { agentDirectory } = await import('/src/lib/agent-directory.svelte.ts');
-    const dir = agentDirectory(window.__boiteTest.workspace.active);
+  const openGroup = async () => {
     const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      if (dir.snapshot?.profiles.some(agent => agent.id === ${JSON.stringify(ids.agent)} && agent.projectIds?.includes('p-boite'))) return;
-      await new Promise(resolve => setTimeout(resolve, 50));
+    while (true) {
+      await page.waitFor(`document.querySelector('[data-testid="thread-menu-trigger"]')?.getBoundingClientRect().width > 0`);
+      await page.click('[data-testid="thread-menu-trigger"]');
+      await page.waitFor(`document.querySelector('${menu} [data-value="more"]')`);
+      await page.click(`${menu} [data-value="more"]`);
+      if (await page.evaluate(`document.querySelector('${chip}')?.getBoundingClientRect().width > 0`)) return;
+      if (Date.now() >= deadline) throw new Error('resident agent row did not appear in thread menu');
+      await closeMenu();
+      await Bun.sleep(250);
     }
-    throw new Error('agent directory did not refresh after profile save');
-  })()`);
+  };
   await openGroup();
   // The row shows what it does, with the bot's name; the sentence stays in its tooltip.
   expect(await page.evaluate(`document.querySelector('${chip}').title`)).toBe(`Looked after by ${ids.name}`);
