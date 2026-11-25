@@ -565,8 +565,9 @@
     if (opening) { releaseNavigation(); pinned = false; leftBottom = true; rememberAnchor(); }
     else if (viewport && viewport.scrollHeight <= viewport.clientHeight + 1) { pinned = true; leftBottom = false; behind = false; }
   }
-  /** The turn whose answer is under the pointer: its summary shows from any of its messages (`pointedTurn`). */
+  /** The turns whose answer is under the pointer and holds the keyboard: the summary shows from any of its messages (`pointedTurn`). */
   let pointed = $state<string | null>(null);
+  let focused = $state<string | null>(null);
   /** Whether the list keeps to the bottom right now: pinned, and nobody is moving it. */
   const following = () => pinned && !navigationTarget && !glide.active && !hold.held;
 
@@ -717,7 +718,7 @@
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- The top fade is sticky inside the padding: it is told the padding a sent prompt's lead adds, or it would hang that far under the header, a dark band across the prompt's lines. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onfocusin={(event) => { focused = pointedTurn(event); }} onfocusout={() => { focused = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
@@ -776,7 +777,7 @@
             {#if !host && !merged}{@render changes(false)}{/if}
             {@const carded = failureCarded(turn, messages)}<!-- A failure's card holds its cause and its one Retry: the line keeps copy, fork and the background stop; a question at the composer's top is a running turn's status. -->
             {#if !(asking && turn.status === 'running')}
-            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id} tucked={!reveal.shows(message)} resting={restingShown === turn.id}
+            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id || focused === turn.id} tucked={!reveal.shows(message)} resting={restingShown === turn.id}
               {...marks} changes={merged ? onLine : undefined}>
               {#snippet actions()}
                 <MessageActions

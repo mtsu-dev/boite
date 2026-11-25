@@ -276,6 +276,7 @@ test('a finished thread ends on one footer, its last turn\'s summary at rest, a 
     message('m-ask', 'turn-a', 'user', [{ type: 'text', text: 'Check the welcome screen' }]),
     message('m-answer', 'turn-a', 'assistant', [{ type: 'text', text: 'It fits in three lines.' }]),
     message('m-next', 'turn-b', 'user', [{ type: 'text', text: 'Now the review' }]),
+    message('m-read', 'turn-b', 'assistant', [{ type: 'text', text: 'Read [the guide](https://example.com/guide).' }]),
     message('m-reply', 'turn-b', 'assistant', [{ type: 'text', text: 'Reviewed.' }]),
     message('m-fresh', 'turn-b', 'system', [{ type: 'text', text: 'New conversation', newConversation: { by: 'user' } }]),
   ];
@@ -286,6 +287,12 @@ test('a finished thread ends on one footer, its last turn\'s summary at rest, a 
   expect(footers[1]!.querySelector('[data-testid=turn-elapsed]')?.textContent).toBe('Worked for 2m 00s');
   expect([...document.querySelectorAll('[data-testid=timeline] *')].filter(node => node.children.length === 0 && /Worked for/.test(node.textContent ?? ''))).toHaveLength(2);
   expect(document.querySelector('[data-testid=new-conversation-marker]')).not.toBeNull();
+  // The keyboard on a link in the turn's first block brings the footer of its last block up, as the pointer does.
+  const link = document.querySelector<HTMLElement>('[data-mid="m-read"] a')!;
+  link.focus(); flushSync();
+  expect(footers[1]!.classList.contains('pointed')).toBe(true);
+  link.blur(); flushSync();
+  expect(footers[1]!.classList.contains('pointed')).toBe(false);
 });
 
 test('cache pings are one quiet line between the turns they sit in, with no answer, summary or bubble', () => {

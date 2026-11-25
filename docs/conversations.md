@@ -21,10 +21,11 @@ outgrows that space, the chat follows the latest text until you scroll up.
 Once the thread is done, its last reply ends on one quiet line, Worked for and
 the time. Point at the reply, or move the keyboard into it, to see when it
 finished, the tokens it spent and its buttons (Copy, and Retry or Fork where
-the reply allows them). Earlier replies show that line only when you point at
-them or move the keyboard into them. On a phone the last reply's line shows its
-time and buttons, and the "i" at its end holds when it finished and the tokens;
-tap an earlier reply to show its line.
+the reply allows them). An earlier reply's line shows at rest only its marks,
+such as a compaction or a memory update; its time, tokens and buttons come when
+you point at the reply, move the keyboard into any part of it or, on a phone,
+tap it. On a phone the last reply's line shows its time and buttons, and the
+"i" at its end holds when it finished and the tokens.
 The conversation header names what it is waiting on and how long the wait has
 lasted when the start time is available. In the thread list, rows waiting on
 sub-agents, pull requests, monitors or background work show a pulsing icon and
