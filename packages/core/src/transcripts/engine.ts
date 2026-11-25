@@ -24,7 +24,7 @@
  * (`threads/deletion-retention.ts`) stays in charge.
  */
 
-import { rm } from 'node:fs/promises';
+import { realpath } from 'node:fs/promises';
 import type { ArchivedFailure, ArchivedTranscript, TranscriptPolicy, TranscriptPreview, TranscriptProgress } from '@boite/contracts';
 import { DEFAULT_THREAD_DELETION_RETENTION_DAYS, TRANSCRIPT_READ_MAX_BYTES, TRANSCRIPT_READ_MAX_RECORDS, transcriptPolicy } from '@boite/contracts';
 import { ownIsolationDir } from '../accounts.ts';
@@ -78,6 +78,8 @@ interface Plan {
   rawBytes: number;
   raws: RawSession[];
   unlinked: RawSession[];
+  /** Blobs several conversations hold, gone once these steps ran. */
+  shared: { images: { count: number; bytes: number }; others: number };
 }
 
 const idle = (): TranscriptProgress => ({ running: false, compacted: 0, erased: 0, freedBytes: 0, remaining: 0, lastError: null, finishedAt: null });
@@ -136,15 +138,17 @@ export class Transcripts {
 
   // -- reading the disk and the journal --------------------------------------
 
-  #roots(): { dir: string; source: TranscriptSource; own: boolean }[] {
-    const roots = new Map<string, { dir: string; source: TranscriptSource; own: boolean }>();
+  #roots(): { dir: string; source: TranscriptSource; own: boolean; accounts: string[] }[] {
+    const roots = new Map<string, { dir: string; source: TranscriptSource; own: boolean; accounts: string[] }>();
     for (const account of this.#core.accounts.list()) {
       const provider = this.#core.providers.get(account.providerId);
       const source = provider?.protocol === 'claude-sdk' ? 'claude' : provider?.protocol === 'codex-appserver' ? 'codex' : null;
       if (provider === undefined || source === null) continue;
       const dir = account.isolationDir ?? this.#core.accounts.defaultLocation(provider);
       if (dir === null) continue;
-      roots.set(`${source}\0${dir}`, { dir, source, own: ownIsolationDir(this.#core.dataDir, account) !== null });
+      const root = roots.get(`${source}\0${dir}`);
+      if (root !== undefined) root.accounts.push(account.id);
+      else roots.set(`${source}\0${dir}`, { dir, source, own: ownIsolationDir(this.#core.dataDir, account) !== null, accounts: [account.id] });
     }
     return [...roots.values()];
   }
@@ -168,10 +172,16 @@ export class Transcripts {
     const raws = await this.#sessions(fresh);
     const { named } = await transcriptJob<Extract<TranscriptReply, { named: unknown }>>({ named: this.#core.journal.db.filename }, this.#core.journal.db);
     const threads = this.#threads();
-    const owners = new Map<string, ThreadInfo[]>();
-    for (const { threadId, sessionId } of named) {
+    const owners = new Map<string, { thread: ThreadInfo; accountId: string | null }[]>();
+    for (const { threadId, sessionId, accountId } of named) {
       const thread = threads.get(threadId);
-      if (thread !== undefined) owners.set(sessionId, [...(owners.get(sessionId) ?? []), thread]);
+      if (thread !== undefined) owners.set(sessionId, [...(owners.get(sessionId) ?? []), { thread, accountId }]);
+    }
+    // Where each account keeps its sessions, as the scan resolved it.
+    const rootOf = new Map<string, string>();
+    for (const root of this.#roots()) {
+      const dir = await realpath(root.dir).catch(() => null);
+      if (dir !== null) for (const accountId of root.accounts) rootOf.set(accountId, dir);
     }
     const steps: Step[] = [];
     const unlinked: RawSession[] = [];
@@ -179,15 +189,27 @@ export class Transcripts {
     const deleted = new Map<string, RawSession[]>();
     const idleBefore = policy.idleCompactDays === null ? null : now - policy.idleCompactDays * DAY_MS;
     let rawBytes = 0;
-    // The journal names a session by its id alone: one that two accounts hold could be either's, so it is left alone.
-    const holders = new Map<string, number>();
-    for (const raw of raws.values()) holders.set(raw.id, (holders.get(raw.id) ?? 0) + 1);
+    // An id two accounts hold is two sessions: each goes to the conversations that ran it under its account. When
+    // the journal cannot say which account one of them used, the id is left alone, and so is every conversation
+    // naming it: none leaves the journal while a session of its own may still be on disk, unarchived.
+    const holders = new Map<string, Set<string>>();
+    for (const raw of raws.values()) holders.set(raw.id, (holders.get(raw.id) ?? new Set()).add(raw.root));
+    const unsure = new Set<string>();
+    for (const [id, roots] of holders) {
+      const naming = owners.get(id) ?? [];
+      if (roots.size > 1 && naming.some(owner => owner.accountId === null || !roots.has(rootOf.get(owner.accountId) ?? ''))) {
+        for (const owner of naming) unsure.add(owner.thread.rootId ?? owner.thread.id);
+      }
+    }
     for (const raw of raws.values()) {
       rawBytes += raw.bytes;
-      if (holders.get(raw.id)! > 1) continue;
-      const naming = owners.get(raw.id);
-      if (naming === undefined) {
-        if (raw.own) unlinked.push(raw);
+      const shared = holders.get(raw.id)!.size > 1;
+      const named = owners.get(raw.id);
+      if (shared && named?.some(owner => unsure.has(owner.thread.rootId ?? owner.thread.id))) continue;
+      const naming = named?.filter(owner => !shared || rootOf.get(owner.accountId ?? '') === raw.root).map(owner => owner.thread);
+      if (naming === undefined || naming.length === 0) {
+        // One of two sessions sharing an id is never taken for an unnamed one.
+        if (raw.own && !shared) unlinked.push(raw);
         continue;
       }
       const open = naming.filter(thread => thread.rootId === null);
@@ -202,6 +224,7 @@ export class Transcripts {
     const families = new Map<string, ThreadInfo[]>();
     for (const thread of threads.values()) if (thread.rootId !== null) families.set(thread.rootId, [...(families.get(thread.rootId) ?? []), thread]);
     for (const [rootId, members] of families) {
+      if (unsure.has(rootId)) continue;
       const deletedAt = members[0]!.deletedAt!;
       const sessions = members.flatMap(thread => deleted.get(thread.id) ?? []);
       const bytes = sessions.reduce((sum, raw) => sum + raw.bytes, 0);
@@ -223,7 +246,11 @@ export class Transcripts {
       // An image two conversations share goes with the second of them: each drops its hold when its own delay is up.
       else if (thread.imagesErasedAt === null && held.imageRefs > 0 && due(policy.imagesEraseDays, thread.deletedAt, now)) steps.push({ kind: 'images', threadId: thread.id, bytes: held.images, count: held.imageCount });
     }
-    return { steps, rawBytes, raws: [...raws.values()], unlinked };
+    // An image several conversations hold goes once the last of them lets go of it: counted here when this plan
+    // takes every hold, since no step alone accounts for it.
+    const erased = steps.flatMap(step => step.kind === 'erase-archived' ? [step.threadId] : step.kind === 'erase-deleted' ? step.threadIds : []);
+    const faded = steps.flatMap(step => step.kind === 'images' ? [step.threadId] : []);
+    return { steps, rawBytes, raws: [...raws.values()], unlinked, shared: this.store.sharedBlobs(erased, faded) };
   }
 
   /** The share of its bytes a provider session keeps once archived, measured on some of this machine's own. */
@@ -266,6 +293,9 @@ export class Transcripts {
       else if (step.kind === 'erase-archived') { erase.threads += 1; erase.bytes += step.bytes; }
       else { images.count += step.count; images.bytes += step.bytes; }
     }
+    images.count += plan.shared.images.count;
+    images.bytes += plan.shared.images.bytes;
+    erase.bytes += plan.shared.others;
     const keptRatio = await this.#keptRatio(plan.raws);
     const archiveBytes = this.store.totalBytes();
     return {
@@ -377,9 +407,10 @@ export class Transcripts {
   /** Files an archive under a thread, unless the thread already holds the same records. Answers the bytes it added. */
   #file(threadId: string, target: { id: string; file: string; path: string }, source: string, rawBytes: number, result: ArchiveResult, thread: ArchivedThread): number {
     this.store.putThread(thread, Date.now());
-    // The copy the index names must still be there with its size: a row whose file went is replaced by this one.
-    if (this.store.sameSession(threadId, result.sha256)) {
-      void rm(target.path, { force: true });
+    // The same records as an archive the thread holds: the copy just written and read back takes that file's
+    // place, so what the index names is a file known to be whole, whatever became of the older one.
+    if (this.store.replaceSession(threadId, result.sha256, target.path, result.bytes)) {
+      this.store.holdBlobs(threadId, result.blobs);
       return 0;
     }
     this.store.putSession(threadId, { id: target.id, file: target.file, source, rawBytes }, result, Date.now());
@@ -445,7 +476,7 @@ export class Transcripts {
     for (const raw of step.threads.flatMap(member => member.sessions)) if (!(await this.#ready(raw))) return 0;
     for (const member of step.threads) {
       const thread = this.#threads(member.id).get(member.id);
-      if (thread === undefined || thread.rootId !== step.rootId || thread.deletedAt !== step.deletedAt) return -added;
+      if (thread === undefined || thread.rootId !== step.rootId || thread.deletedAt !== step.deletedAt || !this.#current()) return -added;
       const archived = this.#archived(thread);
       const target = this.store.sessionPath(thread.id, 'journal');
       const { archive } = await transcriptJob<Extract<TranscriptReply, { archive: unknown }>>(
@@ -460,6 +491,8 @@ export class Transcripts {
         if (freed === null) return -added;
         added -= freed;
       }
+      // Checked here, with no await before the write: a mode applied meanwhile keeps the images.
+      if (!this.#current()) return -added;
       if (!step.keepImages) this.store.eraseImages(thread.id, now);
     }
     if (this.#halted() || !this.#current()) return -added;

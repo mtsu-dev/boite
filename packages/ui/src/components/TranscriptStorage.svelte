@@ -227,7 +227,7 @@
   .step { display: grid; gap: 2px; padding: var(--space-2) var(--space-3); background: var(--color-surface-2); border-radius: var(--radius-md); }
   .when { color: var(--color-subtle); font-size: var(--text-sm); }
   .what { font-weight: 600; }
-  .then { display: flex; color: var(--color-faint); }
+  .then { display: flex; color: var(--color-subtle); }
 
   .gain { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4); }
   .said { flex: 1; min-width: 0; display: grid; gap: 2px; }

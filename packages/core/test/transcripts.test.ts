@@ -142,6 +142,9 @@ test('a Codex event keeps the image its message did not carry, and an old wrappe
     { timestamp: '2026-09-10T08:00:01.000Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'What is on this picture?' }] } },
     { timestamp: '2026-09-10T08:00:01.100Z', type: 'event_msg', payload: { type: 'item_completed', item: { type: 'UserMessage', id: 'i1', content: [{ type: 'text', text: 'What is on this picture?' }, { type: 'image', image_url: picture }] } } },
     // The same words in a later turn, said by an event only, with an image too small to be a file.
+    { timestamp: '2026-09-10T08:00:01.900Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Again' }] } },
+    { timestamp: '2026-09-10T08:00:01.950Z', type: 'turn_context', payload: { turn_id: 'turn-2' } },
+    { timestamp: '2026-09-10T08:00:01.960Z', type: 'event_msg', payload: { type: 'item_completed', item: { type: 'UserMessage', id: 'i3', content: [{ type: 'text', text: 'Again' }] } } },
     { timestamp: '2026-09-10T08:00:02.000Z', type: 'event_msg', payload: { type: 'item_completed', item: { type: 'UserMessage', id: 'i2', content: [{ type: 'text', text: 'What is on this picture?' }, { type: 'image', image_url: `data:image/png;base64,${PNG}` }] } } },
     { timestamp: '2026-09-10T08:00:03.000Z', type: 'response_item', payload: { type: 'function_call', call_id: 'c1', name: 'shell', arguments: '{"command":["make"]}' } },
     { timestamp: '2026-09-10T08:00:04.000Z', type: 'response_item', payload: { type: 'function_call_output', call_id: 'c1', output: JSON.stringify({ output: `${'compiling\n'.repeat(5000)}make: *** [all] Error 9`, metadata: { exit_code: 9, duration_seconds: 4.2 } }) } },
@@ -151,7 +154,9 @@ test('a Codex event keeps the image its message did not carry, and an old wrappe
   const stream = await records(out);
   const item = stream.find(entry => entry.k === 'item')!;
   expect(item.content).toEqual([{ type: 'image', image_url: expect.objectContaining({ mime: 'image/png' }) }]);
-  const again = stream.filter(entry => entry.k === 'item')[1]!;
+  // A message no event repeated in its turn does not hide the same words of the next turn.
+  expect(stream.filter(entry => entry.k === 'item').map(entry => entry.id)).toEqual(['i1', 'i3', 'i2']);
+  const again = stream.filter(entry => entry.k === 'item')[2]!;
   expect(again.content).toEqual([{ type: 'text', text: 'What is on this picture?' }, { type: 'image', image_url: expect.objectContaining({ mime: 'image/png' }) }]);
   expect(result.blobs).toHaveLength(2);
   expect(stream.find(entry => entry.k === 'result')).toMatchObject({ call: 'c1', exit: 9, error: true, info: { exit_code: 9 } });
@@ -198,9 +203,17 @@ test('an archive that is gone is an error the caller gets, and reading the index
   const blob = { sha256: 'ab'.repeat(32), bytes: 10, stored: 8, mime: 'image/png', ext: 'png' };
   const archive = { bytes: 1, recordBytes: 1, records: 1, sha256: 'x', firstAt: null, lastAt: null, models: [], failures: [], blobs: [blob], counts: {} };
   for (const id of ['t1', 't2']) store.putSession(id, { id: 's', file: `sessions/${id}/s.jsonl.zst`, source: 'claude', rawBytes: 1 }, { ...archive, sha256: id }, 3);
-  // An archive the index names but whose file is gone is not one the thread holds.
-  expect(store.sameSession('t1', 't1')).toBe(false);
-  expect(store.sessions('t1')).toEqual([]);
+  // Neither alone frees it, both together do: a preview counts it once.
+  expect(store.sharedBlobs([], ['t1'])).toEqual({ images: { count: 0, bytes: 0 }, others: 0 });
+  expect(store.sharedBlobs(['t2'], ['t1'])).toEqual({ images: { count: 1, bytes: 8 }, others: 0 });
+  // The same records archived again: the copy just verified takes the place of the file the index names, damaged or gone.
+  const held = join(scratch, 'transcripts', 'sessions', 't1', 's.jsonl.zst');
+  mkdirSync(join(held, '..'), { recursive: true });
+  writeFileSync(held, 'damaged');
+  writeFileSync(join(scratch, 'copy.zst'), 'verified');
+  expect(store.replaceSession('t1', 'other records', join(scratch, 'copy.zst'), 8)).toBe(false);
+  expect(store.replaceSession('t1', 't1', join(scratch, 'copy.zst'), 8)).toBe(true);
+  expect([readFileSync(held, 'utf8'), existsSync(join(scratch, 'copy.zst'))]).toEqual(['verified', false]);
   expect(store.threadBytes('t1')).toMatchObject({ imageCount: 0, imageRefs: 1 });
   expect(store.eraseImages('t1', 4)).toEqual({ count: 0, bytes: 0 });
   expect(store.threadBytes('t2')).toMatchObject({ imageCount: 1, imageRefs: 1 });
@@ -519,7 +532,7 @@ test('Storage keeps the files of an open conversation once another mode is appli
   expect(harness.core.journal.getThread(threadId)).not.toBeNull();
 });
 
-test('a session id two accounts hold is left alone: the journal cannot say whose it is', async () => {
+test('a session id two accounts hold goes to the conversation of its account, and is left alone with its family when the journal cannot say', async () => {
   await core();
   const { threadId, file } = await importedThread();
   const other = await client.call('accounts.add', { providerId: 'claude', label: 'second' });
@@ -530,9 +543,55 @@ test('a session id two accounts hold is left alone: the journal cannot say whose
   await client.call('settings.set', { transcriptStorage: { mode: 'classic' } });
   await client.call('threads.remove', { threadId });
   age(threadId, file, 8);
+  // The journal names an account that holds neither file: the conversation stays whole, in the journal.
+  const db = harness.core.journal.db;
+  const { account } = db.query('SELECT account_id AS account FROM threads WHERE id = ?').get(threadId) as { account: string };
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.query('UPDATE threads SET account_id = ? WHERE id = ?').run('gone', threadId);
+  db.query("UPDATE turns SET execution = json_set(execution, '$.accountId', 'gone') WHERE thread_id = ? AND json_valid(execution)").run(threadId);
   await harness.core.transcripts.run();
   harness.core.transcripts.compactUnlinked(0);
   await harness.core.transcripts.run();
-  expect(existsSync(twin)).toBe(true);
+  expect(harness.core.transcripts.progress().lastError).toBeNull();
+  expect([existsSync(twin), existsSync(file)]).toEqual([true, true]);
+  expect((await client.call('threads.deleted', {})).map(thread => thread.id)).toEqual([threadId]);
+
+  // It names its account: its own session is archived with it, the other account's is not touched.
+  db.query('UPDATE threads SET account_id = ? WHERE id = ?').run(account, threadId);
+  db.query("UPDATE turns SET execution = json_set(execution, '$.accountId', ?) WHERE thread_id = ? AND json_valid(execution)").run(account, threadId);
+  db.exec('PRAGMA foreign_keys = ON');
+  await harness.core.transcripts.run();
+  expect(harness.core.transcripts.progress().lastError).toBeNull();
+  expect([existsSync(twin), existsSync(file)]).toEqual([true, false]);
+  expect(await client.call('threads.deleted', {})).toEqual([]);
+  expect((await client.call('transcripts.read', { conversation: threadId, sessionId: 'journal' })).sessions.sort()).toEqual([FIXTURE_SESSION_ID, 'journal'].sort());
+  expect((await client.call('transcripts.list', {})).map(item => item.threadId)).toEqual([threadId]);
+});
+
+test('a family being compacted without its images keeps them once another mode is applied', async () => {
+  await core();
+  const { threadId, file } = await importedThread();
+  await client.call('settings.set', { transcriptStorage: { mode: 'custom', custom: { idleCompactDays: null, deletedCompactDays: 7, deletedEraseDays: null, imagesEraseDays: 7 } } });
+  await client.call('threads.remove', { threadId });
+  age(threadId, file, 8);
+  const busy = harness.core.imports.busy.bind(harness.core.imports);
+  const indexFile = join(harness.dataDir, 'transcripts', 'index.db');
+  let applied = false;
+  harness.core.imports.busy = () => {
+    // The journal's archive is filed and the session is about to be read: another mode is applied now.
+    if (!applied && existsSync(indexFile)) {
+      applied = true;
+      harness.core.settings.set({ transcriptStorage: { mode: 'storage' } });
+    }
+    return false;
+  };
+  await harness.core.transcripts.run();
+  harness.core.imports.busy = busy;
+  await harness.core.transcripts.run();
+  expect([applied, harness.core.transcripts.progress().lastError]).toEqual([true, null]);
+  expect((await client.call('threads.deleted', {})).map(thread => thread.id)).toEqual([threadId]);
   expect(existsSync(file)).toBe(true);
+  const db = index();
+  expect((db.query('SELECT images_erased_at AS at FROM threads WHERE id = ?').get(threadId) as { at: number | null }).at).toBeNull();
+  db.close();
 });

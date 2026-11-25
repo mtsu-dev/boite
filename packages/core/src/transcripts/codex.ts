@@ -45,9 +45,9 @@ function envelope(output: Json | undefined): { output: Json; exit: number | unde
 
 export class CodexNormalizer {
   /**
-   * Parts of messages the stream holds and no event has repeated yet, counted:
-   * an event copy takes one, so the same words said in a later turn are a
-   * message of their own.
+   * Parts of messages the turn holds and no event has repeated yet, counted:
+   * an event copy takes one, and a new turn starts from none, so the same
+   * words said in a later turn are a message of their own.
    */
   readonly #said = new Map<string, number>();
 
@@ -79,6 +79,7 @@ export class CodexNormalizer {
       return;
     }
     const kind = text(payload.type);
+    if (type === 'turn_context' || (type === 'event_msg' && (kind === 'task_started' || kind === 'turn_started'))) this.#said.clear();
     this.sink.count(type === 'event_msg' ? 'in:event_msg' : kind ? `in:${type}/${kind}` : `in:${type}`, bytes);
     const passthrough = payload.internal_chat_message_metadata_passthrough;
     const turn = (object(passthrough) ? text(passthrough.turn_id) : '') || text(payload.turn_id);

@@ -6,7 +6,7 @@
  */
 
 import { Database } from 'bun:sqlite';
-import { namedSessions } from '../threads/native-sessions.ts';
+import { namedSessions, type NamedSession } from '../threads/native-sessions.ts';
 import { journalRecords } from './journal-source.ts';
 import { ArchiveWriter, compactSession, type ArchiveResult, type SessionJob, type SessionResult } from './session.ts';
 
@@ -20,7 +20,7 @@ export interface JournalJob {
 }
 
 export type TranscriptRequest = { transcript: SessionJob } | { journal: JournalJob } | { named: string };
-export type TranscriptReply = { session: SessionResult } | { archive: ArchiveResult } | { named: { threadId: string; sessionId: string }[] } | { error: string };
+export type TranscriptReply = { session: SessionResult } | { archive: ArchiveResult } | { named: NamedSession[] } | { error: string };
 
 export async function archiveJournalThread(db: Database, job: Omit<JournalJob, 'path'>): Promise<ArchiveResult> {
   const writer = new ArchiveWriter(job.out, job.blobs, job.keepBlobs);

@@ -12,7 +12,7 @@
  */
 
 import { Database } from 'bun:sqlite';
-import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ArchivedFailure, ArchivedTranscript } from '@boite/contracts';
 import { blobPath, type ArchiveResult } from './session.ts';
@@ -163,23 +163,34 @@ export class TranscriptStore {
   }
 
   /**
-   * Whether a thread already holds an archive of these records, its file still on disk at its size: the same
-   * file is not kept twice. A row whose file went or changed size is dropped, so the new copy takes its place.
+   * Puts a verified copy in the place of the archive a thread already holds of the same records, and answers
+   * whether it held one: the same file is not kept twice, and the one kept is the one just read back.
    */
-  sameSession(threadId: string, digest: string): boolean {
+  replaceSession(threadId: string, digest: string, copy: string, bytes: number): boolean {
     if (!this.exists()) return false;
-    const rows = this.read.query('SELECT id, file, bytes FROM sessions WHERE thread_id = ? AND sha256 = ?').all(threadId, digest) as { id: string; file: string; bytes: number }[];
-    let held = false;
+    const row = this.read.query('SELECT id, file FROM sessions WHERE thread_id = ? AND sha256 = ? ORDER BY id LIMIT 1').get(threadId, digest) as { id: string; file: string } | null;
+    if (row === null) return false;
+    renameSync(copy, join(this.dir, row.file));
+    this.db.query('UPDATE sessions SET bytes = ? WHERE thread_id = ? AND id = ?').run(bytes, threadId, row.id);
+    return true;
+  }
+
+  /**
+   * Blobs several conversations hold that leave the disk when `erased` drop every hold and `faded` their holds
+   * on images: the images among them, and the bytes of the others.
+   */
+  sharedBlobs(erased: readonly string[], faded: readonly string[]): { images: { count: number; bytes: number }; others: number } {
+    const out = { images: { count: 0, bytes: 0 }, others: 0 };
+    if (!this.exists() || erased.length + faded.length === 0) return out;
+    const rows = this.read.query(`SELECT b.stored, b.mime LIKE 'image/%' AS image FROM blobs b
+      WHERE (SELECT COUNT(*) FROM blob_refs r WHERE r.sha256 = b.sha256) > 1
+        AND NOT EXISTS (SELECT 1 FROM blob_refs r WHERE r.sha256 = b.sha256
+          AND r.thread_id NOT IN (SELECT value FROM json_each(?1))
+          AND NOT (b.mime LIKE 'image/%' AND r.thread_id IN (SELECT value FROM json_each(?2))))`).all(JSON.stringify(erased), JSON.stringify(faded)) as { stored: number; image: number }[];
     for (const row of rows) {
-      let size = -1;
-      try { size = statSync(join(this.dir, row.file)).size; } catch { /* Gone: the row names nothing. */ }
-      if (size === row.bytes) held = true;
-      else {
-        this.db.query('DELETE FROM sessions WHERE thread_id = ? AND id = ?').run(threadId, row.id);
-        this.db.query('DELETE FROM failures WHERE thread_id = ? AND session_id = ?').run(threadId, row.id);
-      }
+      if (row.image === 1) { out.images.count += 1; out.images.bytes += row.stored; } else out.others += row.stored;
     }
-    return held;
+    return out;
   }
 
   thread(threadId: string): { updatedAt: number | null; deletedAt: number | null; erasedAt: number | null; compactedAt: number } | null {
@@ -209,15 +220,20 @@ export class TranscriptStore {
         .run(threadId, session.id, session.source, session.file, session.rawBytes, result.bytes, result.records, result.sha256, result.firstAt, result.lastAt, now);
       const failure = db.query('INSERT INTO failures (thread_id, session_id, line, at, kind, tool, text) VALUES (?, ?, ?, ?, ?, ?, ?)');
       for (const item of result.failures) failure.run(threadId, session.id, item.line, item.at, item.kind, item.tool, item.text);
-      const blob = db.query('INSERT OR IGNORE INTO blobs (sha256, ext, mime, bytes, stored) VALUES (?, ?, ?, ?, ?)');
-      const ref = db.query('INSERT OR IGNORE INTO blob_refs (sha256, thread_id) VALUES (?, ?)');
-      for (const item of result.blobs) {
-        // A blob the job did not store (images already due to go) is referenced by the records only.
-        if (item.stored === 0) continue;
-        blob.run(item.sha256, item.ext, item.mime, item.bytes, item.stored);
-        ref.run(item.sha256, threadId);
-      }
+      this.holdBlobs(threadId, result.blobs);
     })();
+  }
+
+  /** Records the blobs a job stored and the thread's hold on them; also for an archive the thread already had, written again with its images. */
+  holdBlobs(threadId: string, blobs: ArchiveResult['blobs']): void {
+    const blob = this.db.query('INSERT OR IGNORE INTO blobs (sha256, ext, mime, bytes, stored) VALUES (?, ?, ?, ?, ?)');
+    const ref = this.db.query('INSERT OR IGNORE INTO blob_refs (sha256, thread_id) VALUES (?, ?)');
+    for (const item of blobs) {
+      // A blob the job did not store (images already due to go) is referenced by the records only.
+      if (item.stored === 0) continue;
+      blob.run(item.sha256, item.ext, item.mime, item.bytes, item.stored);
+      ref.run(item.sha256, threadId);
+    }
   }
 
   /**

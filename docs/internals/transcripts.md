@@ -106,8 +106,11 @@ conversation are skipped.
 Removal takes the files the scan read, one by one and each checked again
 (the same inode, size, write and change times), then the session's folders
 left empty: a file the archive does not read, or one put in its place, stays
-where it is. A session id two accounts hold is left alone: the journal names
-a session by its id only and cannot say whose it is. A
+where it is. A session id two accounts hold is two sessions: each goes to the
+conversations that ran it under its account. When the journal names an
+account that holds neither, the id is left alone and the conversations naming
+it stay in the journal. The same records archived twice keep one file: the
+copy just read back replaces the one the index named. A
 deleted family leaves the journal only once every one of its sessions is
 archived; one that is being imported or was written since the scan puts the
 whole family off to the next pass, since the journal is the only thing that
@@ -117,7 +120,8 @@ its next step, and removes no more files, when the setting it was planned
 for changes.
 
 `transcripts.preview` runs the same plan for any policy and writes nothing.
-The bytes a step would erase are exact; the bytes compaction frees are the
+The bytes a step would erase are exact, an image several conversations share
+counted once when the plan takes every hold on it; the bytes compaction frees are the
 planned bytes times a ratio measured on up to six of the machine's own
 sessions (64 MiB read at most, cached for an hour).
 
