@@ -177,6 +177,7 @@ export class TurnContexts {
       stopChild: child => this.#core.procs.stopChild(child),
       finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
       lazyMcp: this.#lazyMcpFor(thread),
+      mcpRevision: this.#core.mcp.revision(thread.projectId),
     };
   }
 
@@ -602,6 +603,7 @@ export class TurnContexts {
         stopChild: child => this.#core.procs.stopChild(child),
         finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
         lazyMcp: this.#lazyMcpFor(thread),
+        mcpRevision: this.#core.mcp.revision(thread.projectId),
         killTree: () => {
           this.#core.procs.killTree(threadId);
         },
@@ -615,9 +617,12 @@ export class TurnContexts {
   /** The thread's MCP servers through the core, unless `BOITE_LAZY_MCP=0` turned that off. */
   #lazyMcpFor(thread: ThreadSummary): NonNullable<SessionContext['lazyMcp']> {
     return (env, servers) => {
-      if (!LazyMcp.enabled() || servers.size === 0) return null;
-      const { id, entries } = this.#core.lazyMcp.register(thread.id, thread.cwd, env, servers);
-      return { entries, release: () => this.#core.lazyMcp.release(id) };
+      if (thread.contextMode?.mcp === false) return null;
+      const managed = this.#core.mcp.resolve(thread.projectId);
+      const legacy = LazyMcp.enabled() ? servers : new Map();
+      if (legacy.size === 0 && managed.size === 0) return null;
+      const { id, entries, authorization } = this.#core.lazyMcp.register(thread.id, thread.cwd, env, legacy, managed);
+      return { entries, authorization, release: () => this.#core.lazyMcp.release(id) };
     };
   }
 

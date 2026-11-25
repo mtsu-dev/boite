@@ -43,7 +43,7 @@ export function policyFixture(kind: string | null): PolicyState {
     case 'lan': return fakePolicy({ network: { lan: false } });
     case 'broken': return fakePolicy({ ...MANAGED_POLICY, updates: { ...MANAGED_POLICY.updates, app: 'off' } }, [
       { file: FILE, field: 'updates.app', expected: '"off" or "check" or "auto"', message: `${FILE}: updates.app is "weekly"; expected "off" or "check" or "auto"` },
-      { file: FILE, field: 'telemetry', expected: 'one of analytics, updates, providers, gateway, quotaReads, plugins, issueReports, dictation, previews, agentBrowser, agentDesktop, network, pullRequests, modelPrices', message: `${FILE}: telemetry is an unknown key` }
+      { file: FILE, field: 'telemetry', expected: 'one of analytics, updates, providers, gateway, quotaReads, plugins, mcp, issueReports, dictation, previews, agentBrowser, agentDesktop, network, pullRequests, modelPrices', message: `${FILE}: telemetry is an unknown key` }
     ]);
     case 'closed': return fakePolicy(STRICTEST_POLICY, [
       { file: FILE, field: '(file)', expected: 'a JSON object', message: `${FILE}: not valid JSON (Unexpected token } in JSON at position 212); every policy key takes its strictest value until it is fixed` }
@@ -71,7 +71,7 @@ const SETTING_KEYS: Partial<Record<keyof Settings, PolicyKey>> = {
 const FORBIDS: Record<PolicyKey, string> = {
   analytics: 'Usage analytics', 'updates.app': 'Desktop app updates', 'updates.server': 'Server updates', 'updates.agents': 'Agent updates',
   'providers.allow': 'This provider', 'providers.deny': 'This provider', gateway: 'The subscription gateway', 'gateway.allowedBaseUrls': 'This gateway address',
-  quotaReads: 'Quota reads', 'plugins.install': 'Plugin installs', 'plugins.recommended': 'Recommended plugin checks', issueReports: 'Issue reports',
+  quotaReads: 'Quota reads', 'plugins.install': 'Plugin installs', 'plugins.recommended': 'Recommended plugin checks', mcp: 'Boite-managed MCP servers', issueReports: 'Issue reports',
   dictation: 'Dictation', 'previews.remoteResources': 'Remote resources in previews', agentBrowser: 'The agent browser', 'agentBrowser.searchUrl': 'This search address', agentDesktop: 'The agent desktop',
   'network.lan': 'Listening on the local network', 'network.tailscaleServe': 'Tailscale HTTPS serving', 'network.groups': 'Groups', 'network.contacts': 'Contacts',
   'network.push': 'Push notifications', pullRequests: 'Pull request reads', modelPrices: 'Model price updates'

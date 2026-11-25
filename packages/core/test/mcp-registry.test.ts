@@ -1,0 +1,213 @@
+import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { McpServerInput } from '@boite/contracts';
+import { connect } from '../src/client.ts';
+import { echoThread, startTestCore, testProject, waitFor, type TestCore } from './harness.ts';
+import { thrown } from './settle.ts';
+
+const GLOBAL = { enabled: true, scope: 'global', projectIds: [] } as const;
+const INIT = { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'test', version: '1' } };
+const FIXTURE = join(import.meta.dir, 'fixtures', 'stdio-mcp.ts');
+const MOCK_SECRET = 'fixture-value-with-a-quote"';
+const HTTP_CREDENTIAL = 'mock-http-credential';
+const UPSTREAM_SESSION = 'fixture-upstream-session';
+const stdio = (name: string) => ({ ...GLOBAL, projectIds: [], name, transport: 'stdio' as const, command: process.execPath, args: [FIXTURE] });
+const req = (id: number, method: string, params?: unknown) => ({ jsonrpc: '2.0', id, method, params });
+
+let harness: TestCore;
+beforeEach(async () => { harness = await startTestCore(); });
+afterEach(async () => { await harness.stop(); });
+
+test('owner CRUD emits changes and persists only credential metadata in the journal', async () => {
+  const client = await harness.connect();
+  const project = await testProject(harness, client);
+  const input = { ...stdio('Local tools'), secretEnv: { LAZY_MCP_TOOL: MOCK_SECRET, OTHER_VALUE: 'another-fixture' }, env: { PUBLIC: 'visible' } };
+  const changed = client.next('mcp.changed', () => true, 3000);
+  const server = await client.call('mcp.save', input);
+  expect(await changed).toEqual({});
+  expect(server).toMatchObject({ id: 'local-tools', env: input.env, envKeys: ['PUBLIC'], secretEnvKeys: ['LAZY_MCP_TOOL', 'OTHER_VALUE'] });
+  expect((await client.call('mcp.list', {})).presets).toHaveLength(9);
+  expect(await thrown(client.call('mcp.save', input))).toThrow('unique server name and slug');
+  expect(await thrown(client.call('mcp.save', { ...input, name: 'bad', scope: 'projects', projectIds: ['missing'] }))).toThrow('projectIds');
+  const path = join(harness.dataDir, 'mcp-secrets.json');
+  const onDisk = () => JSON.parse(readFileSync(path, 'utf8'));
+  if (process.platform !== 'win32') expect(statSync(path).mode & 0o777).toBe(0o600);
+  expect(onDisk()).toEqual({ 'local-tools': { env: input.secretEnv, headers: {} } });
+  const patch: McpServerInput = { ...input, id: server.id, name: 'Project tools', scope: 'projects', projectIds: [project.id], secretEnv: { OTHER_VALUE: null } };
+  expect(await client.call('mcp.save', patch)).toMatchObject({ id: server.id, secretEnvKeys: ['LAZY_MCP_TOOL'] });
+  expect(onDisk()).toEqual({ 'local-tools': { env: { LAZY_MCP_TOOL: MOCK_SECRET }, headers: {} } });
+  const otherPath = join(harness.dataDir, 'other');
+  mkdirSync(otherPath);
+  const other = await client.call('projects.add', { name: 'Other', path: otherPath });
+  await client.call('mcp.save', stdio('Global tools'));
+  expect([...harness.core.mcp.resolve(project.id).keys()]).toEqual(['boite-managed-local-tools', 'boite-managed-global-tools']);
+  expect([...harness.core.mcp.resolve(other.id).keys()]).toEqual(['boite-managed-global-tools']);
+  expect([...harness.core.mcp.resolve(null).keys()]).toEqual(['boite-managed-global-tools']);
+  const saved = JSON.stringify(await client.call('mcp.list', {}));
+  const journal = JSON.stringify(harness.core.journal.getSetting('mcp:servers'));
+  for (const text of [saved, journal]) {
+    expect(text).not.toContain('fixture-value');
+    expect(text).not.toContain('another-fixture');
+  }
+  await client.call('mcp.toggle', { id: server.id, enabled: false });
+  expect([...harness.core.mcp.resolve(project.id).keys()]).toEqual(['boite-managed-global-tools']);
+  expect(await client.call('mcp.remove', { id: server.id })).toEqual({ removed: true });
+  expect(onDisk()).toEqual({});
+});
+
+test('agent and paired device principals cannot list or test the owner credentials and servers', async () => {
+  const owner = await harness.connect();
+  const { threadId } = await echoThread(harness, owner);
+  const { grant } = await owner.call('pairing.grant', {});
+  const phone = await connect(harness.url, '', { grant, client: { name: 'pwa', version: 'test' } });
+  const agent = await connect(harness.url, harness.core.agents.tokenFor(threadId));
+  try {
+    for (const client of [phone, agent]) {
+      expect(await thrown(client.call('mcp.list', {}))).toThrow('owner only');
+      expect(await thrown(client.call('mcp.test', { id: 'any' }))).toThrow('owner only');
+    }
+  } finally { phone.close(); agent.close(); }
+});
+
+test('recovery reads the current credential file on either side of the journal commit', async () => {
+  const client = await harness.connect();
+  const server = await client.call('mcp.save', { ...stdio('Local tools'), secretEnv: { LAZY_MCP_TOOL: 'prior-fixture' } });
+  const pending = join(harness.dataDir, 'mcp-secrets.pending.json');
+  writeFileSync(pending, JSON.stringify({ [server.id]: { env: { LAZY_MCP_TOOL: 'updated-fixture' }, headers: {} } }), { mode: 0o600 });
+  const tool = async () => (await client.call('mcp.test', { id: server.id })).tools[0]?.name;
+  const state = () => harness.core.mcp.runtime(server);
+  expect(state()).toMatchObject({ env: { LAZY_MCP_TOOL: 'prior-fixture' } });
+  harness.core.journal.setSetting('mcp:secrets-pending', true);
+  expect(state()).toMatchObject({ env: { LAZY_MCP_TOOL: 'updated-fixture' } });
+  expect(existsSync(pending)).toBe(false);
+  expect(harness.core.journal.getSetting('mcp:secrets-pending')).toBeUndefined();
+  expect(await tool()).toBe('[redacted]');
+});
+
+test('machine policy blocks probes, revokes registrations and refreshes sessions after re-enabling', async () => {
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client);
+  const mcp = harness.core.mcp;
+  const server = await client.call('mcp.save', stdio('Local tools'));
+  const previous = mcp.revision(null);
+  const { authorization, entries } = harness.core.lazyMcp.register(threadId, harness.dataDir, process.env, new Map(), mcp.resolve(null));
+  const url = entries['boite-managed-local-tools']!.url;
+  const policy = join(harness.dataDir, 'no-policy.json');
+  writeFileSync(policy, JSON.stringify({ mcp: false }));
+  await client.call('policy.get', {});
+  expect(await thrown(client.call('mcp.test', { id: server.id }))).toThrow('key mcp');
+  expect(mcp.revision(null)).toBeNull();
+  expect(mcp.resolve(null).size).toBe(0);
+  expect((await fetch(url, { headers: { authorization } })).status).toBe(404);
+  rmSync(policy);
+  await client.call('policy.get', {});
+  expect(mcp.revision(null)).not.toBe(previous);
+  expect(mcp.resolve(null).size).toBe(1);
+});
+
+function processExited(pid: number): boolean {
+  try { process.kill(pid, 0); return false; } catch { return true; }
+}
+
+test('managed stdio probes and sessions redact reflected secrets and stop their own process', async () => {
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client);
+  const starts = join(harness.dataDir, 'stdio-starts');
+  const server = await client.call('mcp.save', {
+    ...stdio('Stdio fixture'), env: { LAZY_MCP_STARTS: starts }, secretEnv: { LAZY_MCP_TOOL: MOCK_SECRET, LAZY_MCP_OWN: MOCK_SECRET },
+  });
+  const tested = await client.call('mcp.test', { id: server.id });
+  expect(tested).toMatchObject({ ok: true, serverName: 'fixture', tools: [{ name: '[redacted]' }, { name: 'roots' }] });
+  const pids = () => readFileSync(starts, 'utf8').trim().split('\n').map(Number);
+  await waitFor(() => pids().every(processExited));
+  const registration = harness.core.lazyMcp.register(threadId, harness.dataDir, process.env, new Map(), harness.core.mcp.resolve(null));
+  const url = registration.entries['boite-managed-stdio-fixture']!.url;
+  const post = (message: unknown, session?: string) => fetch(url, {
+    method: 'POST',
+    headers: { authorization: registration.authorization, 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(session ? { 'mcp-session-id': session } : {}) },
+    body: JSON.stringify(message),
+  });
+  const opened = await post(req(1, 'initialize', INIT));
+  const session = opened.headers.get('mcp-session-id')!;
+  expect(opened.status).toBe(200);
+  await opened.text();
+  expect((await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, session)).status).toBe(202);
+  const list = await (await post(req(2, 'tools/list'), session)).text();
+  const echo = await (await post(req(3, 'tools/call', { name: 'echo', arguments: {} }), session)).text();
+  expect(list).toContain('[redacted]');
+  expect(echo).toContain('[redacted]');
+  expect(list + echo).not.toContain('fixture-value');
+  const manifestKey = 'mcp-manifest:managed:' + server.id;
+  await waitFor(() => harness.core.journal.getSetting(manifestKey) !== undefined);
+  expect(JSON.stringify(harness.core.journal.getSetting(manifestKey))).not.toContain('fixture-value');
+  const pid = pids().at(-1)!;
+  expect(processExited(pid)).toBe(false);
+  await client.call('mcp.toggle', { id: server.id, enabled: false });
+  expect((await post(req(4, 'ping'), session)).status).toBe(404);
+  expect(harness.core.journal.getSetting(manifestKey)).toBeUndefined();
+  await waitFor(() => processExited(pid));
+});
+
+test('HTTP probe and proxy forward the negotiated session and static credentials, redact streamed output, and close upstream', async () => {
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client);
+  const seen: { method: string; session: string | null; authorization: string | null; protocol: string | null; forwarded: string | null }[] = [];
+  const upstream = Bun.serve({
+    hostname: '127.0.0.1', port: 0,
+    async fetch(request) {
+      const body = request.method === 'POST' ? await request.json() as { id?: number; method: string } : null;
+      const method = body?.method ?? request.method;
+      seen.push({ method, session: request.headers.get('mcp-session-id'), authorization: request.headers.get('authorization'), protocol: request.headers.get('mcp-protocol-version'), forwarded: request.headers.get('x-forwarded-for') });
+      if (method === 'DELETE') return new Response(null, { status: 204 });
+      if (method === 'initialize') return Response.json({
+        jsonrpc: '2.0', id: body!.id, result: { protocolVersion: INIT.protocolVersion, serverInfo: { name: 'HTTP fixture', version: '1' }, capabilities: { tools: {} } },
+      }, { headers: { 'mcp-session-id': UPSTREAM_SESSION } });
+      if (method === 'notifications/initialized') return new Response(null, { status: 202 });
+      const event = JSON.stringify({
+        jsonrpc: '2.0', id: body?.id, result: { tools: [{ name: 'lookup', description: HTTP_CREDENTIAL }] },
+      }, null, 2).replace(HTTP_CREDENTIAL, '\\u006d' + HTTP_CREDENTIAL.slice(1));
+      const probe = seen.length < 4;
+      const lineEnd = probe ? '\r' : '\r\n';
+      const payload = event.split('\n').map(line => 'data: ' + line).join(lineEnd) + lineEnd.repeat(2);
+      const stream = new ReadableStream<Uint8Array>({ start(controller) {
+        const encoder = new TextEncoder();
+        controller.enqueue(encoder.encode(payload.slice(0, -1)));
+        controller.enqueue(encoder.encode(payload.slice(-1)));
+        if (!probe) controller.close();
+      } });
+      return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+    },
+  });
+  try {
+    const server = await client.call('mcp.save', {
+      ...GLOBAL, projectIds: [], name: 'HTTP fixture', transport: 'http', url: new URL('/mcp', upstream.url).href,
+      secretHeaders: { Authorization: ` Bearer ${HTTP_CREDENTIAL} ` },
+    });
+    expect(await client.call('mcp.test', { id: server.id })).toMatchObject({
+      ok: true, serverName: 'HTTP fixture', tools: [{ name: 'lookup', description: '[redacted]' }],
+    });
+    await waitFor(() => seen.length === 4);
+    expect(seen.map(item => item.method)).toEqual(['initialize', 'notifications/initialized', 'tools/list', 'DELETE']);
+    expect(seen.slice(1).map(item => item.protocol)).toEqual([INIT.protocolVersion, INIT.protocolVersion, INIT.protocolVersion]);
+    const registration = harness.core.lazyMcp.register(threadId, harness.dataDir, process.env, new Map(), harness.core.mcp.resolve(null));
+    const url = registration.entries['boite-managed-http-fixture']!.url;
+    const post = (message: unknown, session?: string) => fetch(url, { method: 'POST', body: JSON.stringify(message), headers: {
+      authorization: registration.authorization, 'x-forwarded-for': 'must-stay-local', 'mcp-protocol-version': INIT.protocolVersion, ...(session ? { 'mcp-session-id': session } : {}),
+    } });
+    const opened = await post(req(1, 'initialize', INIT));
+    const session = opened.headers.get('mcp-session-id')!;
+    expect(session).toBeTruthy();
+    expect(session).not.toBe(UPSTREAM_SESSION);
+    await opened.text();
+    expect((await post(req(2, 'tools/list'), 'unknown')).status).toBe(404);
+    const answer = await (await post(req(3, 'tools/list'), session)).text();
+    expect(answer).toContain('[redacted]');
+    expect(answer).not.toContain(HTTP_CREDENTIAL);
+    harness.core.lazyMcp.release(registration.id);
+    await waitFor(() => seen.length === 7);
+    expect(seen.at(-1)?.method).toBe('DELETE');
+    expect(seen.every(item => item.authorization === 'Bearer ' + HTTP_CREDENTIAL && item.forwarded === null)).toBe(true);
+    expect(seen.every(item => item.session === (item.method === 'initialize' ? null : UPSTREAM_SESSION))).toBe(true);
+  } finally { await upstream.stop(true); }
+});

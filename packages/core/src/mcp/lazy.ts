@@ -21,6 +21,9 @@ import type { Core } from '../core.ts';
 import { agentEnvOf } from '../agent.ts';
 import type { SpawnedChild } from '../procs.ts';
 import { LineSplitter, STDOUT_LINE_MAX } from '../drivers/lines.ts';
+import { HttpMcpProxy, redactMcp } from './http.ts';
+import type { ManagedServer } from './registry.ts';
+import { managedStdioLaunch } from './stdio.ts';
 
 /** Where the sessions reach the servers: `<route><registration>/<server name>`. */
 export const LAZY_MCP_ROUTE = '/mcp/lazy/';
@@ -31,6 +34,7 @@ const LAZY_MCP_ENV = 'BOITE_LAZY_MCP';
 export interface StdioServer { command: string; args: string[]; env: Record<string, string> }
 /** What the CLI is given in its place. */
 export interface LazyServerEntry { type: 'http'; url: string; headers: Record<string, string> }
+export interface McpRegistration { entries: Record<string, LazyServerEntry>; authorization: string; release(): void }
 
 type Id = string | number;
 interface Message {
@@ -44,6 +48,7 @@ interface Message {
 
 /** What a server answered, kept between sessions under its command line. */
 interface Manifest {
+  fingerprint?: string;
   /** The version the client asked for; another one gets the real server's answer again. */
   protocolVersion: string;
   initialize: Record<string, unknown>;
@@ -133,6 +138,8 @@ interface Registration {
   cwd: string;
   env: Record<string, string | undefined>;
   servers: Map<string, StdioServer>;
+  managed: Map<string, ManagedServer>;
+  proxies: Map<string, HttpMcpProxy>;
 }
 
 interface Session {
@@ -140,6 +147,8 @@ interface Session {
   registration: Registration;
   name: string;
   server: StdioServer;
+  managed?: ManagedServer;
+  manifestKey: string;
   fingerprint: string;
   /** The client's `initialize` parameters, given to the real server when it starts. */
   clientInit: Record<string, unknown> | null;
@@ -225,7 +234,8 @@ function failure(id: Id | null | undefined, code: number, message: string): Mess
 
 /** Why a server did not start, as the session's client reads it: the error's message, never its stack. */
 function startFailure(session: Session, error: unknown): string {
-  return error instanceof Error && error.message ? error.message : `the MCP server ${session.name} did not start`;
+  const reason = error instanceof Error && error.message ? error.message : `the MCP server ${session.name} did not start`;
+  return session.managed?.redact(reason) ?? reason;
 }
 
 function isRequest(message: Message): boolean { return typeof message.method === 'string' && message.id !== undefined && message.id !== null; }
@@ -253,30 +263,48 @@ export class LazyMcp {
    * environment the CLI itself gets; a server started later gets the same,
    * with its own variables on top, as the CLI would have given it.
    */
-  register(threadId: ThreadId, cwd: string, env: Record<string, string | undefined>, servers: Map<string, StdioServer>): { id: string; entries: Record<string, LazyServerEntry> } {
+  register(threadId: ThreadId, cwd: string, env: Record<string, string | undefined>, servers: Map<string, StdioServer>, managed = new Map<string, ManagedServer>()): { id: string; entries: Record<string, LazyServerEntry>; authorization: string } {
     const id = randomUUID();
-    this.#registrations.set(id, { id, threadId, cwd, env, servers });
-    const base = this.#core.baseUrl();
-    const entries: Record<string, LazyServerEntry> = {};
-    for (const name of servers.keys()) {
-      entries[name] = {
-        type: 'http',
-        url: `${base}${LAZY_MCP_ROUTE}${id}/${encodeURIComponent(name)}`,
-        headers: { Authorization: `Bearer \${${AGENT_ENV.token}}` },
-      };
+    const proxies = new Map<string, HttpMcpProxy>();
+    for (const [name, server] of managed) {
+      if ('url' in server) proxies.set(name, new HttpMcpProxy(server));
     }
-    return { id, entries };
+    this.#registrations.set(id, { id, threadId, cwd, env, servers, managed, proxies });
+    const base = this.#core.baseUrl();
+    const entries = Object.fromEntries([...new Set([...servers.keys(), ...managed.keys()])].map(name => [name, {
+      type: 'http' as const,
+      url: `${base}${LAZY_MCP_ROUTE}${id}/${encodeURIComponent(name)}`,
+      headers: { Authorization: `Bearer \${${AGENT_ENV.token}}` },
+    }]));
+    return { id, entries, authorization: `Bearer ${this.#core.agents.tokenFor(threadId)}` };
+  }
+
+  /** Configuration changes revoke only the affected server from every warm session. */
+  revoke(serverId: string, endRemote = true): void {
+    for (const registration of this.#registrations.values()) {
+      for (const [name, server] of registration.managed) {
+        if (server.id !== serverId) continue;
+        registration.managed.delete(name);
+        registration.proxies.get(name)?.close(endRemote);
+        registration.proxies.delete(name);
+        for (const session of this.#sessions.values()) {
+          if (session.registration === registration && session.name === name) this.#end(session);
+        }
+      }
+    }
   }
 
   /** The session that used this registration ended: its servers go with it. */
   release(id: string): void {
-    if (!this.#registrations.delete(id)) return;
-    for (const session of [...this.#sessions.values()]) if (session.registration.id === id) this.#end(session);
+    const registration = this.#registrations.get(id);
+    if (registration === undefined) return;
+    this.#registrations.delete(id);
+    for (const proxy of registration.proxies.values()) proxy.close();
+    for (const session of this.#sessions.values()) if (session.registration === registration) this.#end(session);
   }
 
   close(): void {
-    for (const session of [...this.#sessions.values()]) this.#end(session);
-    this.#registrations.clear();
+    for (const id of this.#registrations.keys()) this.release(id);
   }
 
   /** How many real servers run now, for tests and diagnostics. */
@@ -295,9 +323,12 @@ export class LazyMcp {
     if (registration === undefined || registration.threadId !== threadId) return new Response('this MCP registration ended with its session', { status: 404 });
     let name: string;
     try { name = decodeURIComponent(path.slice(slash + 1)); } catch { return new Response('the server name is not URL-encoded', { status: 400 }); }
-    const server = registration.servers.get(name);
+    const proxy = registration.proxies.get(name);
+    if (proxy !== undefined) return proxy.handle(request);
+    const managed = registration.managed.get(name);
+    const server = managed && 'command' in managed ? managed : registration.servers.get(name);
     if (server === undefined) return new Response(`no MCP server named ${name} in this session`, { status: 404 });
-    if (request.method === 'POST') return this.#post(request, registration, name, server);
+    if (request.method === 'POST') return this.#post(request, registration, name, server, managed);
     const session = this.#session(request, registration, name);
     if (request.method === 'GET') {
       if (session === null) return new Response('unknown or ended MCP session', { status: 404 });
@@ -316,16 +347,16 @@ export class LazyMcp {
     return session !== undefined && session.registration === registration && session.name === name ? session : null;
   }
 
-  async #post(request: Request, registration: Registration, name: string, server: StdioServer): Promise<Response> {
+  async #post(request: Request, registration: Registration, name: string, server: StdioServer, managed?: ManagedServer): Promise<Response> {
     let body: unknown;
     try { body = await request.json(); } catch { return json(failure(null, -32700, 'the body is not JSON'), 400); }
     // The session may have ended while its body came: nothing starts for a released registration.
-    if (this.#registrations.get(registration.id) !== registration) return new Response('this MCP registration ended with its session', { status: 404 });
+    if (this.#registrations.get(registration.id) !== registration || (managed && registration.managed.get(name) !== managed)) return new Response('this MCP registration ended with its session', { status: 404 });
     const messages = (Array.isArray(body) ? body : [body]).filter(isRecord) as Message[];
     if (messages.length === 0) return json(failure(null, -32600, 'expected a JSON-RPC message'), 400);
 
     const init = messages.find((message) => message.method === 'initialize');
-    if (init !== undefined) return this.#initialize(registration, name, server, init);
+    if (init !== undefined) return this.#initialize(registration, name, server, init, managed);
     // The stateless handshake of the 2026 protocol: this proxy speaks the session one, which the client falls back to.
     if (messages.length === 1 && messages[0]!.method === 'server/discover') return json(failure(messages[0]!.id, -32601, 'Method not found'));
 
@@ -354,13 +385,16 @@ export class LazyMcp {
     return stream.response;
   }
 
-  async #initialize(registration: Registration, name: string, server: StdioServer, message: Message): Promise<Response> {
+  async #initialize(registration: Registration, name: string, server: StdioServer, message: Message, managed?: ManagedServer): Promise<Response> {
+    const fingerprint = managed ? createHash('sha256').update(registration.cwd).digest('hex') : fingerprintOf(server);
     const session: Session = {
       id: randomUUID(),
       registration,
       name,
       server,
-      fingerprint: fingerprintOf(server),
+      managed,
+      fingerprint,
+      manifestKey: managed ? `${MANIFEST_KEY}managed:${managed.id}` : MANIFEST_KEY + fingerprint,
       clientInit: isRecord(message.params) ? message.params : {},
       logLevel: undefined,
       upstream: null,
@@ -375,7 +409,7 @@ export class LazyMcp {
     for (const old of [...this.#sessions.values()]) if (old.registration === registration && old.name === name) this.#end(old);
     this.#sessions.set(session.id, session);
     const headers = { 'mcp-session-id': session.id };
-    const manifest = this.#manifest(session.fingerprint);
+    const manifest = this.#manifest(session);
     if (manifest !== null && manifest.protocolVersion === session.clientInit?.protocolVersion) {
       return json({ jsonrpc: '2.0', id: message.id, result: manifest.initialize }, 200, headers);
     }
@@ -399,7 +433,7 @@ export class LazyMcp {
       return { jsonrpc: '2.0', id: message.id!, result: {} };
     }
     if ((LIST_METHODS as readonly string[]).includes(method) && message.params?.cursor === undefined) {
-      const manifest = this.#manifest(session.fingerprint);
+      const manifest = this.#manifest(session);
       const result = manifest?.lists[method as ListMethod];
       if (result === undefined) return null;
       if (method === 'tools/list') session.servedTools = JSON.stringify(result);
@@ -457,14 +491,15 @@ export class LazyMcp {
 
   async #start(session: Session): Promise<Upstream> {
     const { registration, server } = session;
-    const child = this.#core.procs.spawnChild(registration.threadId, server.command, server.args, {
+    const launch = session.managed ? managedStdioLaunch(server) : server;
+    const child = this.#core.procs.spawnChild(registration.threadId, launch.command, launch.args, {
       cwd: registration.cwd,
-      env: agentEnvOf(this.#core, registration.threadId, { ...registration.env, ...server.env }),
+      env: session.managed ? launch.env : agentEnvOf(this.#core, registration.threadId, { ...registration.env, ...server.env }),
       agentRoot: false,
     });
     const upstream: Upstream = { child, exited: false, stderr: '', initialize: null };
     session.upstream = upstream;
-    const gone = (reason = `the MCP server ${session.name} exited${upstream.stderr.trim() ? `: ${upstream.stderr.trim().slice(-500)}` : ''}`): void => {
+    const gone = (reason = `the MCP server ${session.name} exited${upstream.stderr.trim() ? `: ${(session.managed?.redact(upstream.stderr) ?? upstream.stderr).trim().slice(-500)}` : ''}`): void => {
       if (upstream.exited) return;
       upstream.exited = true;
       // A server that failed its start and was replaced leaves its successor's calls alone.
@@ -520,7 +555,7 @@ export class LazyMcp {
       if (answer.error === undefined && isRecord(answer.result) && answer.result.nextCursor === undefined) lists[method] = answer.result;
     }
     const protocolVersion = session.clientInit?.protocolVersion;
-    if (typeof protocolVersion === 'string') this.#save(session.fingerprint, { protocolVersion, initialize, lists });
+    if (typeof protocolVersion === 'string') this.#save(session, { protocolVersion, initialize, lists });
     if (session.servedTools !== null && lists['tools/list'] !== undefined && JSON.stringify(lists['tools/list']) !== session.servedTools) {
       this.#notify(session, { jsonrpc: '2.0', method: 'notifications/tools/list_changed' });
     }
@@ -549,6 +584,7 @@ export class LazyMcp {
   }
 
   #fromServer(session: Session, upstream: Upstream, message: Message): void {
+    if (session.managed) message = redactMcp(message, session.managed.redact);
     if (message.method === undefined && message.id !== undefined && message.id !== null) {
       const waiting = typeof message.id === 'number' ? session.pending.get(message.id) : undefined;
       if (waiting === undefined) return;
@@ -565,11 +601,11 @@ export class LazyMcp {
 
   /** The server's tools changed while it runs: the next sessions get the new list. */
   async #relist(session: Session): Promise<void> {
-    const manifest = this.#manifest(session.fingerprint);
+    const manifest = this.#manifest(session);
     if (manifest === null) return;
     const answer = await this.#call(session, 'tools/list', {});
     if (answer.error === undefined && isRecord(answer.result) && answer.result.nextCursor === undefined) {
-      this.#save(session.fingerprint, { ...manifest, lists: { ...manifest.lists, 'tools/list': answer.result } });
+      this.#save(session, { ...manifest, lists: { ...manifest.lists, 'tools/list': answer.result } });
     }
   }
 
@@ -603,14 +639,15 @@ export class LazyMcp {
     timer.unref?.();
   }
 
-  #manifest(fingerprint: string): Manifest | null {
-    const value = this.#core.journal.getSetting(`${MANIFEST_KEY}${fingerprint}`);
+  #manifest(session: Session): Manifest | null {
+    const value = this.#core.journal.getSetting(session.manifestKey);
     if (!isRecord(value) || typeof value.protocolVersion !== 'string' || !isRecord(value.initialize) || !isRecord(value.lists)) return null;
+    if (session.managed && value.fingerprint !== session.fingerprint) return null;
     return value as unknown as Manifest;
   }
 
-  #save(fingerprint: string, manifest: Manifest): void {
-    if (this.#core.journal.isClosed()) return;
-    this.#core.journal.setSetting(`${MANIFEST_KEY}${fingerprint}`, manifest);
+  #save(session: Session, manifest: Manifest): void {
+    if (this.#core.journal.isClosed() || !this.#sessions.has(session.id)) return;
+    this.#core.journal.setSetting(session.manifestKey, session.managed ? { ...manifest, fingerprint: session.fingerprint } : manifest);
   }
 }
