@@ -16,7 +16,7 @@
 import type { Dirent } from 'node:fs';
 import { lstat, readdir, realpath, rm, rmdir } from 'node:fs/promises';
 import { basename, dirname, join, sep } from 'node:path';
-import { lines, type TranscriptSource } from './session.ts';
+import { lines, type TranscriptSource } from './archive.ts';
 
 export interface RawSession {
   id: string;

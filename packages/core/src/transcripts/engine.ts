@@ -35,7 +35,8 @@ import { sessionReferenced } from '../threads/native-sessions.ts';
 import { transcriptJob } from '../transcript-jobs.ts';
 import type { TranscriptReply } from './jobs.ts';
 import { filesOf, idsOf, removeSession, scanSessions, unchanged, type RawSession } from './locate.ts';
-import { readArchive, type ArchiveResult, type SessionResult, type TranscriptSource } from './session.ts';
+import { readArchive, type TranscriptSource } from './archive.ts';
+import type { ArchiveResult, SessionResult } from './session.ts';
 import { TranscriptStore, type ArchivedThread } from './store.ts';
 
 const DAY_MS = 86_400_000;

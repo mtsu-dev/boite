@@ -10,17 +10,19 @@
  * SHA-256 of their bytes; a PNG or JPEG is stored as WebP when that is smaller.
  */
 
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createWriteStream } from 'node:fs';
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { once } from 'node:events';
-import { basename, dirname, join } from 'node:path';
-import { constants, createZstdCompress, createZstdDecompress } from 'node:zlib';
+import { basename, dirname } from 'node:path';
+import { constants, createZstdCompress } from 'node:zlib';
+import { blobPath, lines, opened, type TranscriptSource } from './archive.ts';
 import { ClaudeNormalizer } from './claude.ts';
 import { CodexNormalizer } from './codex.ts';
 import { capOutput, excerpt, object, sha256, type Json, type Sink, type TranscriptRecord } from './records.ts';
 
 /** Who wrote a session: an agent's own transcript, or Boite's journal for an agent that keeps none Boite reads. */
-export type TranscriptSource = 'claude' | 'codex';
+export type { TranscriptSource } from './archive.ts';
+export { blobPath, lines, readArchive } from './archive.ts';
 
 export interface SessionJob {
   source: TranscriptSource;
@@ -76,7 +78,7 @@ export interface SessionResult {
 /** zstd as high as stays quick to read back; a 16 MiB window reaches the context a long session repeats. */
 const ZSTD = { [constants.ZSTD_c_compressionLevel]: 19, [constants.ZSTD_c_windowLog]: 24, [constants.ZSTD_c_enableLongDistanceMatching]: 1 };
 /** A provider's own `.zst` rollout may use a long window. */
-const UNZSTD = { [constants.ZSTD_d_windowLogMax]: 31 };
+
 /** Failures listed a session; past it the archive still holds them all. */
 const FAILURES_MAX = 2000;
 const WEBP_QUALITY = 80;
@@ -88,45 +90,6 @@ const MAGIC: { mime: string; ext: string; test: (bytes: Uint8Array) => boolean }
   { mime: 'image/gif', ext: 'gif', test: b => b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 },
   { mime: 'application/pdf', ext: 'pdf', test: b => b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 },
 ];
-
-/** Where a blob is filed: two levels keep a directory short. */
-export function blobPath(dir: string, sha: string, ext: string): string {
-  return join(dir, sha.slice(0, 2), `${sha}.${ext}`);
-}
-
-/** A file as a stream, through zstd when its name says so. A read error ends the stream it feeds. */
-function opened(path: string, zstd = path.endsWith('.zst')): AsyncIterable<Buffer> {
-  const file = createReadStream(path, { highWaterMark: 1 << 20 });
-  if (!zstd) return file as AsyncIterable<Buffer>;
-  const plain = createZstdDecompress({ params: UNZSTD });
-  file.once('error', error => plain.destroy(error));
-  plain.once('close', () => file.destroy());
-  return file.pipe(plain) as AsyncIterable<Buffer>;
-}
-
-/** The lines of a session file or of an archive, empty ones left out. */
-export async function* lines(path: string): AsyncGenerator<string> {
-  const source = opened(path);
-  let parts: Buffer[] = [];
-  for await (const chunk of source) {
-    let start = 0;
-    for (;;) {
-      const at = chunk.indexOf(10, start);
-      if (at < 0) break;
-      parts.push(chunk.subarray(start, at));
-      const line = parts.length === 1 ? parts[0]!.toString('utf8') : Buffer.concat(parts).toString('utf8');
-      parts = [];
-      start = at + 1;
-      if (line.length > 0) yield line;
-    }
-    // Copied: the stream reuses nothing, but a subarray would pin the whole chunk.
-    if (start < chunk.length) parts.push(Buffer.from(chunk.subarray(start)));
-  }
-  if (parts.length > 0) {
-    const line = Buffer.concat(parts).toString('utf8');
-    if (line.length > 0) yield line;
-  }
-}
 
 /** A PNG or JPEG as WebP when that is smaller; anything else, and any failure, as it came. */
 async function shrink(data: Buffer, kind: { mime: string; ext: string }): Promise<{ data: Uint8Array; ext: string }> {
@@ -338,16 +301,5 @@ export async function compactSession(job: SessionJob): Promise<SessionResult> {
   } catch (error) {
     await writer.abort();
     throw error;
-  }
-}
-
-/** Reads an archive's records in order; `take` returning false stops the read. */
-export async function readArchive(path: string, take: (entry: TranscriptRecord, line: number) => boolean | void): Promise<void> {
-  let index = 0;
-  for await (const line of lines(path)) {
-    index += 1;
-    let entry: TranscriptRecord;
-    try { entry = JSON.parse(line) as TranscriptRecord; } catch { continue; }
-    if (take(entry, index) === false) return;
   }
 }

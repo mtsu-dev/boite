@@ -15,7 +15,8 @@ import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ArchivedFailure, ArchivedTranscript } from '@boite/contracts';
-import { blobPath, type ArchiveResult } from './session.ts';
+import { blobPath } from './archive.ts';
+import type { ArchiveResult } from './session.ts';
 import { sha256 } from './records.ts';
 
 const SCHEMA = `

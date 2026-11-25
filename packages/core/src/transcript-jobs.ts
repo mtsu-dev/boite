@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { runTranscriptRequest, type TranscriptReply, type TranscriptRequest } from './transcripts/jobs.ts';
+import type { TranscriptReply, TranscriptRequest } from './transcripts/jobs.ts';
 import { workerEntry } from './worker-entry.ts';
 
 /** A session of hundreds of megabytes took 43 s; ten minutes says the worker hangs. */
@@ -12,11 +12,11 @@ let last: Promise<unknown> = Promise.resolve();
  * Runs a transcript request (`transcripts/jobs.ts`) in the journal's reader
  * worker, the one installers already ship, and resolves to its answer. `db`
  * is the journal for a request that reads it: one kept in memory has no file
- * a worker could open, so the request then runs here.
+ * a worker could open, so the request is refused.
  */
 export function transcriptJob<T extends TranscriptReply>(request: TranscriptRequest, db?: Database, timeoutMs = TIMEOUT_MS): Promise<Exclude<T, { error: string }>> {
   const run = async (): Promise<TranscriptReply> => {
-    if (db !== undefined && (!db.filename || db.filename === ':memory:')) return runTranscriptRequest(request, db);
+    if (db !== undefined && (!db.filename || db.filename === ':memory:')) throw new Error('journal: expected a database file, a journal kept in memory cannot be read by the transcript worker');
     return new Promise<TranscriptReply>((resolve, reject) => {
       const worker = new Worker(workerEntry(import.meta.url, 'artifact-retention-worker', './artifact-retention-worker.js'));
       let settled = false;
