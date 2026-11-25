@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { threadWait } from '../lib/background';
-  import WaitLine from './WaitLine.svelte';
   import { tick, type Snippet } from 'svelte';
   import { Check, Ellipsis, Folder, FolderInput } from '@lucide/svelte';
   import { type Project, type ThreadSummary } from '@boite/contracts';
@@ -73,7 +71,6 @@
   } = $props();
   let owner = $derived(machine.store);
   const away = $derived(owner.connection !== 'ready');
-  const wait = $derived(away ? null : threadWait(thread, owner));
   const kind = $derived(thread.archived ? null : threadState(thread, rowAsks(owner, thread.id)));
   const bot = $derived(agentDirectory(owner).rowAgentOf(thread));
   /** "Offline" said once: on the place line, unless the card's head, the place's machine or the row's own state
@@ -170,11 +167,10 @@
     {#if detail}
       <span class="title-line">{#if !lead && stateForm(kind) !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} {open} pullRequest={placePr ? null : pullRequest} offline={away} /></span>
     {:else if classic}
-      <ThreadHeadline {owner} {thread} {now} {open} fit offline={away} elapsedShownSince={wait?.since} />
+      <ThreadHeadline {owner} {thread} {now} {open} fit offline={away} />
     {:else}
-      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} showProvider={bot !== null} pullRequest={placePr ? null : pullRequest} fit offline={away} elapsedShownSince={wait?.since} at={thread.lastUserMessageAt ?? thread.createdAt} />
+      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} showProvider={bot !== null} pullRequest={placePr ? null : pullRequest} fit offline={away} at={thread.lastUserMessageAt ?? thread.createdAt} />
     {/if}
-    {#if wait}<WaitLine {wait} />{/if}
     {#if showPlace && !placePr}{@render placeLine()}{/if}
     {#if pending && !placePr}{@render pendingMove(pending)}{/if}
   </button>

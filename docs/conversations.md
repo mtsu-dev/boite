@@ -18,10 +18,12 @@ The chat shows Starting agent while the agent launches, then Working for once
 it starts working. The startup timer counts the current turn.
 Your message stays near the top while the reply fits below it. When the reply
 outgrows that space, the chat follows the latest text until you scroll up.
-The conversation header and list show what it is waiting on and how long the
-wait has lasted when the start time is available. They show how many sub-agents
-are still working after the conversation's turn ends. When a pull request watch
-pauses, the header gives the reason and the next check time.
+The conversation header names what it is waiting on and how long the wait has
+lasted when the start time is available. In the thread list, rows waiting on
+sub-agents, pull requests, monitors or background work show a pulsing icon and
+the elapsed time (with full details in the tooltip), while rows waiting on your
+answer keep the steady Needs you dot. When a pull request watch pauses, the
+header gives the reason and the next check time.
 
 An agent can warn that something went wrong beside its work while it carries
 on: the disk was full and part of the conversation was not saved, attached
