@@ -114,7 +114,7 @@ export class Layout {
     this.#saveLayout();
   }
 
-  async copy(text: string, reportFailure = true): Promise<boolean> {
+  async copy(text: string, options?: { reportFailure?: boolean; within?: HTMLElement }): Promise<boolean> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;
     const navigation = this.ctx.threads.openGeneration;
@@ -124,11 +124,11 @@ export class Layout {
         await clipboard.writeText(text);
         return true;
       }
-      if (copyByCommand(text)) return true;
+      if (copyByCommand(text, options?.within)) return true;
     } catch {
       // Report the failure below if the view still owns the action.
     }
-    if (reportFailure && this.ctx.client === client && this.ctx.clientGeneration === clientGeneration && this.ctx.threads.openGeneration === navigation)
+    if (options?.reportFailure !== false && this.ctx.client === client && this.ctx.clientGeneration === clientGeneration && this.ctx.threads.openGeneration === navigation)
       this.ctx.store.reportError(strings.errors.clipboard, 'minor');
     return false;
   }

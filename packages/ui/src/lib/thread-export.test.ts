@@ -1,8 +1,9 @@
-import { expect, vi } from 'vitest';
+import { expect, onTestFinished, vi } from 'vitest';
+import MarkdownIt from 'markdown-it';
 import type { Message, ThreadSummary } from '@boite/contracts';
 import { test } from '../test/fake-client';
 import { longThread } from './fake-client/threads-seed';
-import { exportFilename, exportThreadHtml, exportThreadMarkdown, loadAllThreadMessages, type ExportOptions } from './thread-export';
+import { downloadExport, exportFilename, exportThreadHtml, exportThreadMarkdown, loadAllThreadMessages, type ExportOptions } from './thread-export';
 
 const thread: ThreadSummary = { ...longThread(), title: 'Fix auth flow', branch: 'fix/auth' };
 const clean: ExportOptions = { format: 'markdown', includeTools: false, includeDiffs: false };
@@ -91,6 +92,29 @@ test('diff-only export keeps patch lines and leaves surrounding tool logs out', 
   }
 });
 
+test('Codex file changes and shell patches respect the diff option independently of tool details', () => {
+  const patch = '@@ -1 +1 @@\n-old\n+new';
+  const shellPatch = '*** Begin Patch\n*** Add File: notes.txt\n+shell notes\n*** End Patch';
+  const message: Message = { ...messages[1]!, parts: [
+    { type: 'tool', toolId: 'patch', name: 'ApplyPatch', status: 'done', input: { changes: [
+      { path: 'auth.ts', kind: { type: 'update' }, diff: patch },
+      { path: 'readme.md', kind: { type: 'add' }, diff: 'new readme\n' },
+    ] }, output: null },
+    { type: 'tool', toolId: 'shell', name: 'Bash', status: 'done', input: { command: `apply_patch <<'PATCH'\n${shellPatch}\nPATCH`, cwd: '/repo' }, output: 'Succeeded' },
+  ] };
+  for (const format of [exportThreadMarkdown, exportThreadHtml]) {
+    const diffs = format(thread, [message], { ...clean, includeDiffs: true });
+    expect(diffs).toContain(`--- auth.ts\n+++ auth.ts\n${patch}`);
+    expect(diffs).toContain('+new readme');
+    expect(diffs).toContain(shellPatch);
+    expect(diffs).not.toMatch(/Succeeded|apply_patch/);
+    const tools = format(thread, [message], { ...clean, includeTools: true });
+    expect(tools).toContain('auth.ts');
+    expect(tools).toContain('Succeeded');
+    expect(tools).not.toMatch(/-old|\+new|new readme|shell notes/);
+  }
+});
+
 test('interrupted fences end before the next part or message', () => {
   const interrupted: Message = { ...messages[1]!, parts: [
     { type: 'text', text: '````ts\nconst value = "```";' },
@@ -98,6 +122,16 @@ test('interrupted fences end before the next part or message', () => {
   ] };
   const markdown = exportThreadMarkdown(thread, [interrupted, messages[0]!], clean);
   expect(markdown).toContain('const value = "```";\n````\n\n~~~sh\necho hi\n~~~\n\n## User');
+});
+
+test('closed fences in lists and quotes preserve the next message in CommonMark', () => {
+  const md = new MarkdownIt('commonmark');
+  for (const text of ['- ```ts\n  const answer = 1;\n  ```', '> - ```ts\n>   const answer = 1;\n>   ```']) {
+    const message: Message = { ...messages[1]!, parts: [{ type: 'text', text }] };
+    const markdown = exportThreadMarkdown(thread, [message, messages[0]!], clean);
+    expect(md.render(markdown)).toContain('<h2>User ·');
+    expect(markdown).toContain(`${text}\n\n## User`);
+  }
 });
 
 test('question-only messages include the prompt, choices and answer in both formats', () => {
@@ -176,4 +210,23 @@ test('filenames keep readable Unicode, discard path separators and fall back for
   expect(exportFilename(' Fix Auth / Flow ', 'markdown', now)).toBe('fix-auth-flow-2026-11-25.md');
   expect(exportFilename('Résumé\\日本語', 'html', now)).toBe('resume-日本語-2026-11-25.html');
   expect(exportFilename('..\\ /', 'markdown', now)).toBe('conversation-2026-11-25.md');
+});
+
+test('desktop downloads mark exports and refuse an oversized body before IPC', async () => {
+  const invoke = vi.fn().mockResolvedValue({ path: 'conversation.md', opened: false });
+  vi.stubGlobal('__TAURI_INTERNALS__', { invoke });
+  const largeBody = new Uint8Array(0);
+  Object.defineProperty(largeBody, 'byteLength', { value: 64 * 1024 * 1024 + 1 });
+  const encode = TextEncoder.prototype.encode;
+  const encoding = vi.spyOn(TextEncoder.prototype, 'encode').mockImplementation(function (this: TextEncoder, value) {
+    return value === 'oversized export' ? largeBody : encode.call(this, value);
+  });
+  onTestFinished(() => { encoding.mockRestore(); vi.unstubAllGlobals(); });
+
+  await expect(downloadExport('conversation.md', 'oversized export', 'text/markdown')).rejects.toThrow('64 MiB');
+  expect(invoke).not.toHaveBeenCalled();
+  await downloadExport('conversation.md', '# Conversation', 'text/markdown');
+  expect(invoke).toHaveBeenCalledWith('save_attachment', new TextEncoder().encode('# Conversation'), {
+    headers: { 'x-boite-export': '1', 'x-boite-name': 'conversation.md', 'x-boite-open': '0' },
+  });
 });

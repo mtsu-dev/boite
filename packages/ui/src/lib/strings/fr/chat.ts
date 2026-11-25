@@ -15,6 +15,7 @@ export const fr: Translation = {
     download: 'Télécharger',
     loading: 'Lecture de la conversation...',
     failed: 'Impossible d’exporter la conversation',
+    desktopTooLarge: 'Les téléchargements sur le bureau sont limités à {limit} Mio. Téléchargez depuis l’application web, désactivez des options ou copiez le Markdown.',
   },
 
   chat: {

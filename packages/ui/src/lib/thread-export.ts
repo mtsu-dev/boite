@@ -1,13 +1,13 @@
 import { MESSAGE_PAGE_MAX, RpcErrorCode, type Message, type MessagePart, type ThreadSummary } from '@boite/contracts';
+import MarkdownIt from 'markdown-it';
 import { browserDownload, saveAttachment } from './attachment-save';
 import { escapeHtml } from './chat-links';
 import { RpcFailure, type Client } from './client';
-import { diffRowsOf } from './diff';
-import { closesFence, openFence, type Fence } from './fences';
 import { renderMarkdown } from './markdown';
 import { desktopShell } from './shell-platform';
-import { extractToolPatches } from './thread-export-diffs';
-import { turnDiffs, type TurnDiff } from './turn-files';
+import { fill, strings } from './strings';
+import { diffText, extractInputPatches, extractToolPatches } from './thread-export-diffs';
+import { turnDiffs } from './turn-files';
 
 export interface ExportOptions {
   format: 'markdown' | 'html';
@@ -26,6 +26,8 @@ type Question = Extract<MessagePart, { type: 'question' }>;
 
 const HISTORY_PAGE_LIMIT = 10_000;
 const TOOL_READ_CONCURRENCY = 4;
+const DESKTOP_EXPORT_MAX_MIB = 64; // MAX_EXPORT_BYTES in the shell's attachments.rs.
+const markdownBlocks = new MarkdownIt('commonmark').disable('inline');
 
 /** Read the current tail, then walk backwards without changing the open subscription. */
 export async function loadAllThreadMessages(client: Client, threadId: string, options?: ExportOptions, signal?: AbortSignal): Promise<Message[]> {
@@ -100,41 +102,10 @@ type Content =
   | { kind: 'markdown' | 'attachment' | 'diff' | 'question'; text: string }
   | { kind: 'details'; title: string; text: string };
 
-function diffText(diff: TurnDiff): string {
-  const path = singleLine(diff.path);
-  const lines = [`--- ${path}`, `+++ ${path}`];
-  let oldAt = 1;
-  let newAt = 1;
-  let hunk: string[] = [];
-  let removed = 0;
-  let added = 0;
-  function flush(): void {
-    if (!hunk.length) return;
-    lines.push(`@@ -${oldAt - Number(removed === 0)},${removed} +${newAt - Number(added === 0)},${added} @@`, hunk.join('\n'));
-    oldAt += removed;
-    newAt += added;
-    hunk = [];
-    removed = added = 0;
-  }
-  for (const row of diffRowsOf(diff)) {
-    if (row.kind === 'gap') {
-      flush();
-      oldAt += row.hidden;
-      newAt += row.hidden;
-      continue;
-    }
-    hunk.push(`${row.kind === 'context' ? ' ' : row.kind === 'add' ? '+' : '-'}${row.text}`);
-    if (row.kind !== 'add') removed++;
-    if (row.kind !== 'remove') added++;
-  }
-  flush();
-  return lines.length > 2 ? lines.join('\n') : '';
-}
-
 function toolContent(part: Tool, options: ExportOptions): Content[] {
   if (!options.includeTools && !options.includeDiffs) return [];
   const changes = turnDiffs([part]);
-  const input = extractToolPatches(part.inputText ?? (typeof part.input === 'string' ? part.input : JSON.stringify(part.input, null, 2)));
+  const input = extractInputPatches(part.input, part.inputText);
   const output = extractToolPatches(part.output);
   const content: Content[] = [];
   if (options.includeTools) {
@@ -209,12 +180,11 @@ function speaker(message: Message): string {
 }
 
 function closeFence(text: string): string {
-  let fence: Fence | null = null;
-  for (const line of text.split('\n')) {
-    if (!fence) fence = openFence(line);
-    else if (closesFence(line, fence)) fence = null;
-  }
-  return fence ? `${text}${text.endsWith('\n') ? '' : '\n'}${fence.marker}` : text;
+  if (!/^ {0,3}(?:`{3,}|~{3,})/m.test(text)) return text;
+  // An outdented heading ends lists and quotes. Only a fence that consumes it
+  // can also consume the heading of the next exported message.
+  const last = markdownBlocks.parse(`${text}\n\n# Next message`, {}).at(-1);
+  return last?.type === 'fence' && last.level === 0 ? `${text}${text.endsWith('\n') ? '' : '\n'}${last.markup}` : text;
 }
 
 function markdownContent(content: Content): string {
@@ -304,7 +274,11 @@ export function exportFilename(title: string, format: ExportOptions['format'], n
 
 export async function downloadExport(filename: string, content: string, mimeType: string): Promise<void> {
   if (desktopShell()) {
-    await saveAttachment(filename, new TextEncoder().encode(content), false);
+    const bytes = new TextEncoder().encode(content);
+    if (bytes.byteLength > DESKTOP_EXPORT_MAX_MIB * 1024 * 1024) {
+      throw new Error(fill(strings.threadExport.desktopTooLarge, { limit: String(DESKTOP_EXPORT_MAX_MIB) }));
+    }
+    await saveAttachment(filename, bytes, false, { export: true });
     return;
   }
   const url = URL.createObjectURL(new Blob([content], { type: mimeType }));

@@ -69,7 +69,7 @@
       const markdown = selected.format === 'markdown';
       const content = markdown ? exportThreadMarkdown(thread, messages, selected, meta) : exportThreadHtml(thread, messages, selected, meta);
       if (copy) {
-        if (!await store.copy(content, false)) {
+        if (!await store.copy(content, { reportFailure: false, within: dialog })) {
           failure = strings.errors.clipboard;
           return;
         }

@@ -110,3 +110,32 @@ test('a rejected clipboard write keeps the export dialog open and allows retry',
   button('Copy Markdown').click();
   await waitFor(() => writeText.mock.calls.length === 2 && !document.querySelector(dialog));
 });
+
+test('copy fallback selects text inside the export dialog after its button loses focus', async ({ app: _app }) => {
+  onTestFinished(mockDialogMethods());
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  const execCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+  const copy = vi.fn(() => document.activeElement?.closest(dialog) !== null);
+  Object.defineProperty(document, 'execCommand', { configurable: true, value: copy });
+  onTestFinished(() => {
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+    if (execCommand) Object.defineProperty(document, 'execCommand', execCommand);
+    else Reflect.deleteProperty(document, 'execCommand');
+  });
+  await store.open('t-trace');
+  query<HTMLButtonElement>(trigger).click();
+  const item = '[data-testid=thread-menu-trigger-menu] [data-value=export-thread]';
+  await waitFor(() => !!document.querySelector(item));
+  query<HTMLButtonElement>(item).click();
+  await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
+  const buttonToCopy = button('Copy Markdown');
+  buttonToCopy.focus();
+  buttonToCopy.click();
+  buttonToCopy.blur();
+  expect(document.activeElement).toBe(document.body);
+  await waitFor(() => copy.mock.calls.length === 1);
+  expect(copy).toHaveReturnedWith(true);
+  await waitFor(() => !document.querySelector(dialog));
+});

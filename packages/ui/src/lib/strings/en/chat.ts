@@ -13,6 +13,7 @@ export const strings = {
     download: 'Download',
     loading: 'Reading conversation...',
     failed: 'Could not export the conversation',
+    desktopTooLarge: 'Desktop downloads are limited to {limit} MiB. Download from the web app, turn off export options, or copy the Markdown.',
   },
 
   chat: {

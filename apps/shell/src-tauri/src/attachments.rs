@@ -15,14 +15,17 @@ use tauri::{Manager, Webview};
 const MAX_BYTES: usize = 5 * 1024 * 1024;
 /// Markdown and HTML exports are built in memory by the main webview and can
 /// span many turns. Bound that IPC payload separately from chat attachments.
+/// Keep in sync with `DESKTOP_EXPORT_MAX_MIB` in `thread-export.ts`.
 const MAX_EXPORT_BYTES: usize = 64 * 1024 * 1024;
 const FALLBACK_NAME: &str = "attachment";
 const MAX_NAME_CHARS: usize = 150;
 
-fn check_save_size(name: &str, open: bool, bytes: usize) -> Result<(), String> {
-    let export = !open && Path::new(name).extension().and_then(|extension| extension.to_str())
+fn check_save_size(name: &str, open: bool, export: bool, bytes: usize) -> Result<(), String> {
+    let is_export = export && !open && Path::new(name)
+        .extension()
+        .and_then(|extension| extension.to_str())
         .is_some_and(|extension| extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("html"));
-    let limit = if export { MAX_EXPORT_BYTES } else { MAX_BYTES };
+    let limit = if is_export { MAX_EXPORT_BYTES } else { MAX_BYTES };
     if bytes > limit {
         return Err(format!("body: expected at most {limit} bytes, got {bytes}"));
     }
@@ -125,7 +128,8 @@ fn header<'a>(request: &'a Request<'_>, name: &str) -> Option<&'a str> {
 
 /// Body: the raw bytes. Headers: `x-boite-name`, percent-encoded, and
 /// `x-boite-open`, `1` to open the saved file (or show it when its type is not
-/// inert), anything else to only save it.
+/// inert), anything else to only save it. `x-boite-export: 1` allows a larger
+/// body for Markdown and HTML downloads.
 #[tauri::command]
 pub async fn save_attachment(webview: Webview, request: Request<'_>) -> Result<Saved, String> {
     crate::browser::only_main(&webview)?;
@@ -135,7 +139,8 @@ pub async fn save_attachment(webview: Webview, request: Request<'_>) -> Result<S
     let name = header(&request, "x-boite-name").ok_or("x-boite-name: expected the file name")?;
     let name = decode(name).ok_or("x-boite-name: expected a percent-encoded UTF-8 name")?;
     let open = header(&request, "x-boite-open") == Some("1");
-    check_save_size(&name, open, bytes.len())?;
+    let export = header(&request, "x-boite-export") == Some("1");
+    check_save_size(&name, open, export, bytes.len())?;
     let directory = webview
         .app_handle()
         .path()
@@ -204,12 +209,13 @@ mod tests {
     #[test]
     fn downloads_accept_an_export_larger_than_an_attachment() {
         for name in ["conversation.md", "conversation.html"] {
-            assert!(check_save_size(name, false, MAX_BYTES + 1).is_ok());
-            assert!(check_save_size(name, false, MAX_EXPORT_BYTES).is_ok());
-            assert!(check_save_size(name, false, MAX_EXPORT_BYTES + 1).is_err());
-            assert!(check_save_size(name, true, MAX_BYTES + 1).is_err());
+            assert!(check_save_size(name, false, true, MAX_BYTES + 1).is_ok());
+            assert!(check_save_size(name, false, true, MAX_EXPORT_BYTES).is_ok());
+            assert!(check_save_size(name, false, true, MAX_EXPORT_BYTES + 1).is_err());
+            assert!(check_save_size(name, true, true, MAX_BYTES + 1).is_err());
+            assert!(check_save_size(name, false, false, MAX_BYTES + 1).is_err());
         }
-        assert!(check_save_size("attachment.zip", false, MAX_BYTES + 1).is_err());
+        assert!(check_save_size("attachment.zip", false, true, MAX_BYTES + 1).is_err());
     }
 
     #[test]
