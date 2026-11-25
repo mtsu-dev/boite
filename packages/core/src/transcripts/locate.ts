@@ -24,6 +24,8 @@ export interface RawSession {
   /** The session's own file first, then its subagents', in name order. */
   files: string[];
   toolResults: string[];
+  /** A subagent rollout's own id, by file: what a scan names it by once its parent's rollout is gone. */
+  parts: Map<string, string>;
   /** Folders of its own, removed once archived if nothing is left in them, deepest first. */
   dirs: string[];
   /** The account's folder every file must really be under, links resolved. */
@@ -83,7 +85,7 @@ const keyOf = (root: string, id: string): string => `${root}\0${id}`;
 function session(sessions: Map<string, RawSession>, id: string, source: TranscriptSource, own: boolean, folder: string | null, root: string): RawSession {
   let found = sessions.get(keyOf(root, id));
   if (found === undefined) {
-    found = { id, source, files: [], toolResults: [], dirs: [], root, stamps: new Map(), folder, bytes: 0, modifiedAt: 0, own };
+    found = { id, source, files: [], toolResults: [], parts: new Map(), dirs: [], root, stamps: new Map(), folder, bytes: 0, modifiedAt: 0, own };
     sessions.set(keyOf(root, id), found);
   }
   return found;
@@ -169,18 +171,36 @@ async function scanCodex(root: string, own: boolean, sessions: Map<string, RawSe
   // A session's own rollout first, then its subagents', in name order.
   const owner = (rollout: { id: string }): string => top(rollout.id);
   for (const rollout of [...rollouts].sort((a, b) => Number(owner(a) !== a.id) - Number(owner(b) !== b.id) || a.path.localeCompare(b.path))) {
-    await add(session(sessions, owner(rollout), 'codex', own, null, root), rollout.path, 'files');
+    const raw = session(sessions, owner(rollout), 'codex', own, null, root);
+    await add(raw, rollout.path, 'files');
+    if (raw.id !== rollout.id) raw.parts.set(rollout.path, rollout.id);
   }
 }
 
-/** The sessions of one account directory, by account folder and id. A directory that cannot be read holds none. */
-export async function scanSessions(dir: string, source: TranscriptSource, own: boolean, into = new Map<string, RawSession>()): Promise<Map<string, RawSession>> {
+/**
+ * The sessions of one account directory, by account folder and id. A directory that cannot be read holds none.
+ * Tool results whose session file is gone are no session: they go to `remnants`, for a removal to finish.
+ */
+export async function scanSessions(dir: string, source: TranscriptSource, own: boolean, into = new Map<string, RawSession>(), remnants?: Map<string, RawSession>): Promise<Map<string, RawSession>> {
   let root: string;
   try { root = await realpath(dir); } catch { return into; }
   if (source === 'claude') await scanClaude(root, own, into); else await scanCodex(root, own, into);
-  for (const [key, raw] of into) if (raw.files.length === 0) into.delete(key);
+  for (const [key, raw] of into) {
+    if (raw.files.length > 0) continue;
+    into.delete(key);
+    if (raw.toolResults.length > 0) remnants?.set(key, raw);
+  }
   return into;
 }
+
+/** The ids a session's files go by: its own, and each subagent rollout's. */
+export const idsOf = (raw: RawSession): string[] => [...new Set([raw.id, ...raw.parts.values()])];
+
+/** The files a scan listed under one of a session's ids. */
+export const filesOf = (raw: RawSession, id: string): string[] => [
+  ...raw.files.filter(path => (raw.parts.get(path) ?? raw.id) === id),
+  ...(id === raw.id ? raw.toolResults : []),
+];
 
 /** Whether a listed file is the one the scan found: the same file under its account's folder, same size, no later write or change. */
 async function same(raw: RawSession, path: string): Promise<boolean> {

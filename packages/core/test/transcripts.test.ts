@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { accessRefusal, TRANSCRIPT_PRESETS, transcriptPolicy } from '@boite/contracts';
@@ -11,6 +11,7 @@ import { scanSessions } from '../src/transcripts/locate.ts';
 import { blobPath, compactSession, readArchive } from '../src/transcripts/session.ts';
 import { TranscriptStore } from '../src/transcripts/store.ts';
 import { claudeSessionFixture, FIXTURE_SESSION_ID } from './fixtures/claude-session.ts';
+import { CODEX_FIXTURE_SESSION_ID, codexRolloutPath, codexSessionFixture } from './fixtures/codex-session.ts';
 import { startTestCore, testProject } from './harness.ts';
 import { rejection } from './settle.ts';
 import type { TestCore } from './harness.ts';
@@ -723,4 +724,76 @@ test('a session left behind by a conversation whose images are gone is archived 
   // The late message is in the archive, its image a reference.
   const late = await client.call('transcripts.read', { conversation: threadId, sessionId: `${FIXTURE_SESSION_ID}.2`, kinds: ['user'] });
   expect(JSON.stringify(late.records)).toContain('$blob');
+});
+
+test('the tool results a stopped removal left are still erased once the mode is applied again', async () => {
+  await core();
+  const { threadId, file, side } = await importedThread();
+  // Nothing but tool results beside the session's own file.
+  rmSync(join(side, 'subagents'), { recursive: true });
+  mkdirSync(join(side, 'tool-results'));
+  const output = join(side, 'tool-results', 'out.txt');
+  writeFileSync(output, 'a tool output');
+  await client.call('threads.remove', { threadId });
+  const at = Date.now() - 8 * DAY;
+  harness.core.journal.db.query('UPDATE thread_deletions SET deleted_at = ? WHERE root_id = ?').run(at, threadId);
+  utimesSync(file, at / 1000, at / 1000);
+  const keep = { mode: 'custom' as const, custom: { idleCompactDays: null, deletedCompactDays: null, deletedEraseDays: null, imagesEraseDays: null } };
+  const get = harness.core.settings.get.bind(harness.core.settings);
+  let applied = false;
+  harness.core.settings.get = () => {
+    // The session's own file just went: a mode that keeps everything is applied before the next one goes.
+    if (!applied && !existsSync(file)) {
+      applied = true;
+      harness.core.settings.set({ transcriptStorage: keep });
+    }
+    return get();
+  };
+  await client.call('settings.set', { transcriptStorage: { mode: 'delete' } });
+  await harness.core.transcripts.run();
+  harness.core.settings.get = get;
+  expect([applied, existsSync(file), existsSync(output)]).toEqual([true, false, true]);
+  await client.call('settings.set', { transcriptStorage: { mode: 'delete' } });
+  await harness.core.transcripts.run();
+  expect([harness.core.transcripts.progress().lastError, existsSync(output), existsSync(side)]).toEqual([null, false, false]);
+  expect((await client.call('transcripts.preview', { policy: TRANSCRIPT_PRESETS.delete })).unlinked.sessions).toBe(0);
+});
+
+test('a subagent rollout a stopped removal left is still its conversation\'s once the mode is applied again', async () => {
+  await core();
+  const project = await testProject(harness, client);
+  const account = await client.call('accounts.add', { providerId: 'codex', label: 'isolated' });
+  if (account.isolationDir === null) throw new Error('the account must be isolated');
+  const parent = join(account.isolationDir, ...codexRolloutPath());
+  const childId = '01a2b3c4-2222-7aaa-8bbb-0123456789ab';
+  const child = join(account.isolationDir, ...codexRolloutPath(childId));
+  mkdirSync(dirname(parent), { recursive: true });
+  writeFileSync(parent, codexSessionFixture(project.path));
+  writeFileSync(child, codexSessionFixture(project.path, { sessionId: childId, source: { subagent: { thread_spawn: { parent_thread_id: CODEX_FIXTURE_SESSION_ID } } } }));
+  const { id: threadId } = await client.call('imports.run', { projectId: project.id, accountId: account.id, sessionId: CODEX_FIXTURE_SESSION_ID });
+  await client.call('threads.remove', { threadId });
+  const at = Date.now() - 8 * DAY;
+  harness.core.journal.db.query('UPDATE thread_deletions SET deleted_at = ? WHERE root_id = ?').run(at, threadId);
+  for (const file of [parent, child]) utimesSync(file, at / 1000, at / 1000);
+  const keep = { mode: 'custom' as const, custom: { idleCompactDays: null, deletedCompactDays: null, deletedEraseDays: null, imagesEraseDays: null } };
+  const get = harness.core.settings.get.bind(harness.core.settings);
+  let applied = false;
+  harness.core.settings.get = () => {
+    // The parent's rollout just went: a mode that keeps everything is applied before the subagent's goes.
+    if (!applied && !existsSync(parent)) {
+      applied = true;
+      harness.core.settings.set({ transcriptStorage: keep });
+    }
+    return get();
+  };
+  await client.call('settings.set', { transcriptStorage: { mode: 'delete' } });
+  await harness.core.transcripts.run();
+  harness.core.settings.get = get;
+  expect([applied, existsSync(parent), existsSync(child)]).toEqual([true, false, true]);
+  // Alone on disk, the rollout is scanned under its own id: it is not taken for a session nobody names.
+  expect((await client.call('transcripts.preview', { policy: TRANSCRIPT_PRESETS.delete })).unlinked.sessions).toBe(0);
+  await client.call('settings.set', { transcriptStorage: { mode: 'delete' } });
+  await harness.core.transcripts.run();
+  expect([harness.core.transcripts.progress().lastError, existsSync(child)]).toEqual([null, false]);
+  expect(harness.core.transcripts.store.db.query('SELECT count(*) AS count FROM leftovers').get()).toEqual({ count: 0 });
 });

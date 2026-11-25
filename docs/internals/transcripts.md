@@ -70,7 +70,10 @@ Under `<data dir>/transcripts/`:
   `sessions` (source, sizes, hash, first and last time), `turns` (status,
   times, usage, error), `failures` (session, line, kind, tool, text),
   `blobs`, `blob_refs` and `leftovers` (a session whose files outlived its
-  conversation's leaving the journal, and whose it was). It uses a rollback journal, and reads open it
+  conversation's leaving the journal, and whose it was, under each id its
+  files go by: a Codex subagent's rollout is found under its own id once its
+  parent's is gone, and tool results left without their session's file are
+  removed once their conversation is due to be erased). It uses a rollback journal, and reads open it
   read-only until something is archived: a preview leaves no file beside it.
 
 A record is `{ "k": <kind>, "t": <time>, ... }`: `user`, `assistant`,

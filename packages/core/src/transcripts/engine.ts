@@ -34,7 +34,7 @@ import { messageOf, refused } from '../errors.ts';
 import { sessionReferenced } from '../threads/native-sessions.ts';
 import { transcriptJob } from '../transcript-jobs.ts';
 import type { TranscriptReply } from './jobs.ts';
-import { removeSession, scanSessions, unchanged, type RawSession } from './locate.ts';
+import { filesOf, idsOf, removeSession, scanSessions, unchanged, type RawSession } from './locate.ts';
 import { readArchive, type ArchiveResult, type SessionResult, type TranscriptSource } from './session.ts';
 import { TranscriptStore, type ArchivedThread } from './store.ts';
 
@@ -86,6 +86,8 @@ interface Plan {
 
 const idle = (): TranscriptProgress => ({ running: false, compacted: 0, erased: 0, freedBytes: 0, remaining: 0, lastError: null, finishedAt: null });
 const due = (days: number | null, since: number, now: number): boolean => days !== null && now - since >= days * DAY_MS;
+/** A session under each id its files go by: a subagent's rollout is found under its own once its parent's is gone. */
+const each = (sessions: readonly RawSession[]): { root: string; id: string }[] => sessions.flatMap(raw => idsOf(raw).map(id => ({ root: raw.root, id })));
 const pause = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
 
 export class Transcripts {
@@ -94,7 +96,7 @@ export class Transcripts {
   #progress = idle();
   #pass: Promise<void> | null = null;
   #stopped = false;
-  #scan: { at: number; raws: Map<string, RawSession> } | null = null;
+  #scan: { at: number; raws: Map<string, RawSession>; remnants: Map<string, RawSession> } | null = null;
   #ratio: { at: number; value: number | null } | null = null;
   /** The policy the pass under way was planned for; null when it follows none. */
   #planned: string | null = null;
@@ -158,8 +160,9 @@ export class Transcripts {
   async #sessions(fresh: boolean): Promise<Map<string, RawSession>> {
     if (!fresh && this.#scan !== null && Date.now() - this.#scan.at < SCAN_FRESH_MS) return this.#scan.raws;
     const raws = new Map<string, RawSession>();
-    for (const root of this.#roots()) await scanSessions(root.dir, root.source, root.own, raws);
-    this.#scan = { at: Date.now(), raws };
+    const remnants = new Map<string, RawSession>();
+    for (const root of this.#roots()) await scanSessions(root.dir, root.source, root.own, raws, remnants);
+    this.#scan = { at: Date.now(), raws, remnants };
     return raws;
   }
 
@@ -203,6 +206,14 @@ export class Transcripts {
         for (const owner of naming) unsure.add(owner.thread.rootId ?? owner.thread.id);
       }
     }
+    // Tool results a stopped removal left behind their session's file: they go when their conversation is due to be
+    // erased. Nothing can be archived from them alone, so a mode that only compacts leaves them where they are.
+    for (const raw of this.#scan?.remnants.values() ?? []) {
+      const owner = owners.has(raw.id) ? null : this.store.leftover(raw.root, raw.id);
+      if (owner !== null && owner.deletedAt !== null && due(policy.deletedEraseDays, owner.deletedAt, now)) {
+        steps.push({ kind: 'leftover', raw, thread: owner, erase: true, keepImages: false, bytes: raw.bytes });
+      }
+    }
     for (const raw of raws.values()) {
       rawBytes += raw.bytes;
       const shared = holders.get(raw.id)!.size > 1;
@@ -217,7 +228,8 @@ export class Transcripts {
         // Files written to as their conversation left the journal are still that conversation's: they follow it.
         const owner = named === undefined ? this.store.leftover(raw.root, raw.id) : null;
         if (owner !== null && owner.deletedAt !== null) {
-          const erase = owner.erased || due(policy.deletedEraseDays, owner.deletedAt, now);
+          // Only what the mode asks: a conversation erased under an earlier mode does not take its late files with it.
+          const erase = due(policy.deletedEraseDays, owner.deletedAt, now);
           if (erase || due(policy.deletedCompactDays, owner.deletedAt, now)) steps.push({ kind: 'leftover', raw, thread: owner, erase, keepImages: !owner.imagesErased && !due(policy.imagesEraseDays, owner.deletedAt, now), bytes: raw.bytes });
         }
         // A file whose id a conversation names, here or under another account, is never taken for an unnamed one.
@@ -468,9 +480,14 @@ export class Transcripts {
     for (const raw of sessions) {
       const named = sessionReferenced(this.#core.journal.db, raw.id);
       if (!named) freed += await this.#removeRaw(raw);
-      if (named || !raw.files.some(file => existsSync(file))) this.store.settle(raw.root, raw.id);
+      this.#settle(raw, named);
     }
     return freed;
+  }
+
+  /** Forgets whose a session was under each of its ids with no file left, or under all of them. */
+  #settle(raw: RawSession, all: boolean): void {
+    for (const id of idsOf(raw)) if (all || !filesOf(raw, id).some(file => existsSync(file))) this.store.settle(raw.root, id);
   }
 
   /** A session left on disk by a conversation already out of the journal: archived with it or erased like it. */
@@ -478,7 +495,7 @@ export class Transcripts {
     const { erased: _erased, imagesErased: _images, ...thread } = step.thread as ArchivedThread & { erased?: boolean; imagesErased?: boolean };
     // Its conversation's images are gone or due: this session's are not stored either.
     const freed = step.erase ? await this.#removeRaw(step.raw) : await this.#archiveSession(thread.id, step.raw, true, thread, step.keepImages) ?? 0;
-    if (!step.raw.files.some(file => existsSync(file))) this.store.settle(step.raw.root, step.raw.id);
+    this.#settle(step.raw, false);
     return freed;
   }
 
@@ -535,11 +552,11 @@ export class Transcripts {
     for (const raw of step.threads.flatMap(member => member.sessions)) if (!(await this.#ready(raw))) return -added;
     // Asked again after the last wait, with nothing between it and the purge: a mode applied meanwhile keeps the family.
     if (this.#halted() || !this.#current()) return -added;
-    for (const member of step.threads) this.store.leave(member.id, member.sessions);
+    for (const member of step.threads) this.store.leave(member.id, each(member.sessions));
     // Everything is in the archive: the family leaves the journal, unless it was restored meanwhile.
     const purged = this.#core.journal.purgeDeletedFamily(step.rootId, step.deletedAt);
     if (purged.length === 0) {
-      for (const raw of step.threads.flatMap(member => member.sessions)) this.store.settle(raw.root, raw.id);
+      for (const raw of step.threads.flatMap(member => member.sessions)) this.#settle(raw, true);
       return -added;
     }
     for (const threadId of purged) this.#core.bus.emit('thread.removed', { threadId });
@@ -558,11 +575,11 @@ export class Transcripts {
     if (step.sessions.length > 0) {
       // The archive's row comes first: a session that outlives the purge is filed under it.
       const root = members.find(thread => thread.id === step.rootId) ?? members[0];
-      if (root !== undefined) { this.store.putThread(this.#archived(root), now); this.store.leave(root.id, step.sessions); }
+      if (root !== undefined) { this.store.putThread(this.#archived(root), now); this.store.leave(root.id, each(step.sessions)); }
     }
     const purged = this.#core.journal.purgeDeletedFamily(step.rootId, step.deletedAt);
     if (purged.length === 0) {
-      for (const raw of step.sessions) this.store.settle(raw.root, raw.id);
+      for (const raw of step.sessions) this.#settle(raw, true);
       return 0;
     }
     let freed = 0;
