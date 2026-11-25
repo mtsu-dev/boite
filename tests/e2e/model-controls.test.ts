@@ -1,4 +1,4 @@
-import { newMobileThread } from './lib/mobile.ts';
+import { mobileAction, newMobileThread } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
@@ -337,7 +337,7 @@ test('the accent persists, the effort track glows brighter as it rises, and a sp
   await page.click('[data-testid=effort-speed]');
   await page.send('Emulation.setEmulatedMedia', { features: [] });
   await page.send('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:true});
-  await page.click('[data-testid=nav-settings]');
+  await mobileAction(page, 'mobile-settings');
   await page.click('[data-testid=settings-tab-appearance]');
   await capture('appearance-accent-phone.png');
   await page.click('[data-testid=colors-customize]');

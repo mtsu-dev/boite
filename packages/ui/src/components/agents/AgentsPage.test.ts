@@ -6,6 +6,7 @@ import { AgentsView, agentOfThread, agentRows, openAgent } from '../../lib/agent
 import { rightPanel } from '../../lib/right-panel.svelte';
 import { strings } from '../../lib/strings';
 import { newBot } from '../../lib/agents-view.svelte';
+import { mochiLayout } from '../../lib/mochi-layout.svelte';
 import AgentsPage from './AgentsPage.svelte';
 import TitleBar from '../TitleBar.svelte';
 
@@ -152,6 +153,7 @@ test('a default mochi that cannot be opened offers a retry instead of loading fo
 test("a desktop's column is the open mochi's: who it is, its conversation, its threads; the rail's New mochi opens the form here", async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
   let bar: ReturnType<typeof mount> | null = null;
+  mochiLayout.set(true);
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
     const view = AgentsView.of(store);
@@ -201,11 +203,14 @@ test("a desktop's column is the open mochi's: who it is, its conversation, its t
     if (bar) unmount(bar);
     if (page) unmount(page);
     document.body.innerHTML = '';
+    localStorage.clear();
+    mochiLayout.load();
   }
 });
 
 test('an empty desk is one centred prompt in the column, the way into its first task', async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
+  mochiLayout.set(true);
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
     const view = AgentsView.of(store);
@@ -223,5 +228,7 @@ test('an empty desk is one centred prompt in the column, the way into its first 
     expect(document.querySelector('[data-testid=bot-first-task]')).toBeNull();
   } finally {
     if (page) unmount(page);
+    localStorage.clear();
+    mochiLayout.load();
   }
 });

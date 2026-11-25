@@ -52,6 +52,8 @@ export const strings = {
     groupIdleRow: 'Idle projects',
     showDoneRow: 'Done threads',
     showDoneHint: 'Lists finished threads after the live ones, in Projects and Recent. This device only.',
+    mochiLayoutRow: 'Mochi layout',
+    mochiLayoutHint: 'Shows the side rail with your mochis, teams and shortcuts along the left edge. This device only.',
     autoArchiveMergedPrHint: 'After every PR merges or closes, Boite asks the agent whether the conversation is done. Applies to this project.',
     autoRemoveWorktreesHint: 'An hour after every conversation in a worktree is done or archived, Boite deletes the worktree if nothing would be lost: its last commit is on another branch, or a merged pull request has that exact commit. A merged branch goes too. Uncommitted changes always stay. Applies to this project.',
     noActiveProjects: 'No conversations need attention.',

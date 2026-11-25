@@ -19,6 +19,7 @@ import { saveAgent } from './lib/agent-menu';
 import { teamsOf } from './lib/teams.svelte';
 import { botEngine } from './lib/agents-view.svelte';
 import { subagentsAtWork, threadsAtWork } from './lib/work-counts';
+import { MOCHI_LAYOUT_STORAGE_KEY, mochiLayout } from './lib/mochi-layout.svelte';
 
 /**
  * The desktop behaviours the UX audit found broken, on the whole app over the
@@ -44,8 +45,66 @@ afterEach(() => {
   // A panel a test opened stays in memory: the next test starts with none, its thread list in place.
   rightPanel.threads = {};
   work.load();
+  mochiLayout.load();
   workspace.view = 'projects';
   undo.dismiss();
+});
+
+test('Mochi layout starts off with a compact sidebar foot, opens Mochis in the sidebar list, toggles the rail from Filter, and keeps Settings reachable when folded', async () => {
+  writeExperiments(['resident-agents']);
+  await mountOnFake('/?fake=1&agents=1');
+  try {
+    // Default desktop: no vertical AppRail, compact footer holds Activity, Mochis, Limits and Settings.
+    await waitFor(() => document.querySelector('[data-testid=sidebar-foot]') !== null);
+    expect(document.querySelector('[data-testid=app-rail]')).toBeNull();
+    const foot = query('[data-testid=sidebar-foot]');
+    expect(foot.querySelector('[data-testid=nav-activity]')).not.toBeNull();
+    expect(foot.querySelector('[data-testid=nav-agents]')).not.toBeNull();
+    expect(foot.querySelector('[data-testid=nav-limits]')).not.toBeNull();
+    expect(foot.querySelector('[data-testid=nav-settings]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-testid=nav-settings]')).toHaveLength(1);
+
+    // Mochis opens from the foot with the full list in the sidebar and a + menu; Back returns to threads.
+    query<HTMLButtonElement>('[data-testid=nav-agents]').click();
+    await waitFor(() => document.querySelector('[data-testid=agents-rail-add]') !== null && document.querySelector('[data-testid^="agent-entry-"]') !== null);
+    expect(document.querySelector('[data-testid=bot-column-head]')).toBeNull();
+    query<HTMLButtonElement>('[data-testid=side-back]').click();
+    await waitFor(() => store.page === 'chat' && document.querySelector('[data-testid=thread-row]') !== null);
+
+    // Collapsing the sidebar removes the foot and puts the fallback Settings button in the titlebar; status-connection stays mounted.
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
+    store.sidebarCollapsed = true;
+    flushSync();
+    expect(document.querySelector('[data-testid=sidebar-foot]')).toBeNull();
+    expect(document.querySelector('[data-testid=titlebar] [data-testid=nav-settings]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-testid=nav-settings]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
+    expect(query('[data-testid=status-connection]').getAttribute('data-state')).toBe('ready');
+    store.sidebarCollapsed = false;
+    flushSync();
+    expect(document.querySelector('[data-testid=titlebar] [data-testid=nav-settings]')).toBeNull();
+
+    // Filter > Display switches Mochi layout on and persists it on this device; switching back restores the foot.
+    query<HTMLButtonElement>('[data-testid=grouping-options]').click();
+    await waitFor(() => document.querySelector('[data-value=mochi-layout]') !== null);
+    const toggle = () => query<HTMLButtonElement>('[data-value=mochi-layout]');
+    expect(toggle().getAttribute('aria-checked')).toBe('false');
+    toggle().click();
+    await waitFor(() => document.querySelector('[data-testid=app-rail]') !== null);
+    expect(document.querySelector('[data-testid=sidebar-foot]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
+    expect(window.localStorage.getItem(MOCHI_LAYOUT_STORAGE_KEY)).toBe('1');
+    expect(toggle().getAttribute('aria-checked')).toBe('true');
+
+    toggle().click();
+    await waitFor(() => document.querySelector('[data-testid=sidebar-foot]') !== null);
+    expect(document.querySelector('[data-testid=app-rail]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
+    expect(window.localStorage.getItem(MOCHI_LAYOUT_STORAGE_KEY)).toBe('0');
+  } finally {
+    store.sidebarCollapsed = false;
+    store.showChat();
+  }
 });
 
 test('a maximized panel stays with its thread: the Contacts page beside the list is not squeezed to nothing', async () => {
@@ -67,6 +126,7 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
 });
 
 test('contacts are a place at the top of the rail, under Activity and above the bots, never a side of the Mochis column: its head folds the column on the right, a row opens a contact', async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake();
   try {
@@ -192,6 +252,7 @@ test('a docked side panel leaves the list column alone: the thread list beside a
 });
 
 test('the rail puts teams first, and a picture moved with the keyboard keeps its new place on this device', async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   localStorage.removeItem('boite.rail.order');
   await mountOnFake('/?fake=1&agents=1');
@@ -223,6 +284,7 @@ test('the rail puts teams first, and a picture moved with the keyboard keeps its
 });
 
 test("the rail counts the threads and subagents at work and a mochi's unread replies, and the open mochi's working arc follows its squircle", async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1&working=3&team=1');
   try {
@@ -278,6 +340,7 @@ test("the rail counts the threads and subagents at work and a mochi's unread rep
 });
 
 test("a mochi's rail menu opens by keyboard and pointer, returns focus and acts on that mochi", async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {
@@ -318,6 +381,7 @@ test("a mochi's rail menu opens by keyboard and pointer, returns focus and acts 
 });
 
 test("the rail's Add rests out of sight beside the mochis and stays while its menu is open, so the menu keeps it shown", async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {
@@ -344,6 +408,7 @@ test("the rail's Add rests out of sight beside the mochis and stays while its me
 });
 
 test("with no mochi or team in the rail yet, its Add always shows: nothing else there would bring it", async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1');
   await waitFor(() => document.querySelector('[data-testid=rail-add]') !== null);
@@ -352,6 +417,7 @@ test("with no mochi or team in the rail yet, its Add always shows: nothing else 
 });
 
 test("a right click on a team's rail picture opens the team's menu, and its picks reach the team", async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {

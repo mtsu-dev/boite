@@ -52,8 +52,12 @@ the conversation, to keep your text as typed, with no red underline.
 Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: on a desktop, switch between
 Projects and Recent under View in the Filter menu; on a phone, in the list's
-title. The two arrows at the start of the list's head go back and forward
-through the conversations and pages you opened, as a mouse's side buttons do.
+title. Under Display in the desktop Filter menu, Mochi layout turns on the left
+app rail with your mochis, teams and shortcuts along the window's edge; with it
+off, Activity, Contacts, Mochis, machines, updates, limits and Settings sit in
+the compact bar at the foot of the sidebar. The two arrows at the start of the
+list's head go back and forward through the conversations and pages you opened,
+as a mouse's side buttons do.
 
 If a machine's conversation list is incomplete, press Try again in the list.
 The conversations already loaded stay available while Boite reloads it.
@@ -65,16 +69,17 @@ A thread with a pull request keeps its last badge on this device. When you
 reopen Boite, the badge can appear as soon as the thread is listed, and Boite
 updates it when it checks again.
 
-The Threads button in the app rail, and the Threads tab on a phone, show how
-many threads are at work across your machines. When subagents are at work too,
-a second, lighter number counts them: in the rail, under the first, both at
-the rail's edge so the button's icon stays readable; beside it on the phone's tab.
+The Threads button in the app rail (when Mochi layout is on) and the Threads
+tab on a phone show how many threads are at work across your machines. When
+subagents are at work too, a second, lighter number counts them: in the rail,
+under the first, both at the rail's edge so the button's icon stays readable;
+beside it on the phone's tab.
 
-A middle click on the Activity button in the app rail takes the finished
-threads off Activity on every machine, without opening it. Failures, stops,
-questions and permissions stay, and so does the button's number. On a phone,
-or without a middle button, Mark all as read at the top of Activity clears the
-finished threads along with failures and stops.
+A middle click on the Activity button takes the finished threads off Activity
+on every machine, without opening it. Failures, stops, questions and
+permissions stay, and so does the button's number. On a phone, or without a
+middle button, Mark all as read at the top of Activity clears the finished
+threads along with failures and stops.
 
 ## Drafts without a project
 
