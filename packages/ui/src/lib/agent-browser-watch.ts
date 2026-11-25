@@ -1,34 +1,36 @@
 import type { Store } from './store.svelte';
 import { rightPanel } from './right-panel.svelte';
+import { liveViews } from './live-view.svelte';
 
-/**
- * Brings the Agent browser tab forward when the agent opens a page in the
- * conversation, on clients wider than a phone.
- * Tabs already open when the conversation opens do not pull the panel out:
- * only a tab the client had not seen before does. The view stays covered
- * until the user shows it (`AgentBrowserSurface.svelte`). On a phone the
- * user chooses when to leave the chat, including after hiding the viewer.
- */
-export function watchAgentBrowser(store: Store, threadId: string): () => void {
+export function showAgentBrowser(store: Store, threadId: string): void {
+  const key = store.threadKey(threadId);
+  liveViews.show('agent-browser', key);
+  const panel = rightPanel.for(key);
+  const tab = panel.surfaces.find(surface => surface.kind === 'agent-browser');
+  if (tab) panel.activate(tab.id);
+  else panel.open('agent-browser');
+  if (matchMedia('(max-width: 720px)').matches) store.sidebarOpen = false;
+}
+
+/** Reports background activity. An explicit show request opens the live tab. */
+export function watchAgentBrowser(store: Store, threadId: string, onlive: (live: boolean) => void = () => {}, onshow?: () => void): () => void {
   const client = store.client;
   if (!client) return () => {};
-  const panel = rightPanel.for(store.threadKey(threadId));
-  let known: Set<string> | null = null, stopped = false;
+  let received = false, stopped = false;
   let retry: ReturnType<typeof setTimeout> | undefined;
   const off = client.on('browser.remoteChanged', (event) => {
     if (event.threadId !== threadId) return;
-    const before = known ?? new Set<string>();
-    known = new Set(event.tabs.map((tab) => tab.tabId));
-    if (!event.live || !event.tabs.some((tab) => !before.has(tab.tabId))) return;
-    if (window.matchMedia('(max-width: 720px)').matches) return;
-    const tab = panel.surfaces.find((surface) => surface.kind === 'agent-browser');
-    if (tab) panel.activate(tab.id);
-    else panel.open('agent-browser');
+    received = true;
+    onlive(event.live);
+    if (event.show && event.live) {
+      onshow?.();
+      showAgentBrowser(store, threadId);
+    }
   });
   // The subscription to a conversation just opened may still be on its way.
   const ask = (attempt: number) => {
     void client.call('browser.remoteStatus', { threadId }).then(
-      ({ tabs }) => { known ??= new Set(tabs.map((tab) => tab.tabId)); },
+      ({ live }) => { if (!stopped && !received) onlive(live); },
       () => { if (!stopped && attempt < 4) retry = setTimeout(() => ask(attempt + 1), 1000); }
     );
   };

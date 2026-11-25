@@ -3,6 +3,7 @@
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
   import { ArrowLeft, ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, PanelRightClose, PanelRightOpen, UserPlus } from '@lucide/svelte';
+  import BackgroundBrowser from './BackgroundBrowser.svelte';
   import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
@@ -54,7 +55,7 @@
   import { archivedFocus } from '../lib/archived-focus.svelte';
   // The archive belongs to this column: a list that comes back opens on its threads.
   onDestroy(closeArchived);
-  let { store }: { store: Store } = $props();
+  let { store, browserBackground, onbrowser }: { store: Store; browserBackground?: boolean; onbrowser?: () => void } = $props();
   const mobile = new MediaQuery('(max-width: 720px)');
   let scrollRoot = $state<HTMLDivElement>();
   let savedScroll = 0;
@@ -262,6 +263,7 @@
         {/snippet}
       </SideHead>
     {:else}
+      {#if browserBackground}<BackgroundBrowser onclick={onbrowser} />{/if}
       <ProjectViews entries={groups} {store} quiet={groups.length === 0 && needsAnAI(store) && !loading} />
       {#if showRows && !archivedView.open}<ThreadListNotice machines={visible} />{/if}
     {/if}

@@ -5,10 +5,75 @@ import { connect } from '../src/client.ts';
 import { Cdp } from '../src/browser/cdp.ts';
 import { waitForEndpoint } from '../src/browser/chromium.ts';
 import { createBrowserFixture, jpegSize, picture } from './browser/fixture.ts';
+import { waitFor } from './harness.ts';
 import { thrown } from './settle.ts';
 
 const browserFixture = createBrowserFixture();
 const { real, url, evaluate, fakeHost } = browserFixture;
+
+real('switching the cookies reloads the same tab in an isolated profile', async () => {
+  const { owner, agent, threadId } = browserFixture;
+  await owner.call('threads.subscribe', { threadId });
+  await agent.call('browser.command', { threadId, action: { kind: 'profile-add', name: 'Second account' } });
+  const { tabId } = await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });
+  await evaluate("document.cookie = 'account=first; path=/'", tabId);
+  expect(await thrown(agent.call('browser.command', { threadId, tabId, action: { kind: 'profile-switch', profile: 'Second account' } }))).toThrow('owner only');
+  const before = await picture(owner.call('browser.remoteFrame', { threadId, tabId }));
+  await owner.call('browser.command', { threadId, tabId, action: { kind: 'profile-switch', profile: 'Second account' } });
+  expect((await owner.call('browser.remoteStatus', { threadId })).tabs).toEqual([
+    expect.objectContaining({ tabId, profileName: 'Second account', url: url(), active: true }),
+  ]);
+  expect(await evaluate('document.cookie', tabId)).not.toContain('account=first');
+  expect(await thrown(owner.call('browser.remoteInput', {
+    threadId, frameId: before.id, input: { kind: 'reload' },
+  }))).toThrow('refresh the live browser');
+  await evaluate("document.cookie = 'account=second; path=/'", tabId);
+  await owner.call('browser.command', { threadId, tabId, action: { kind: 'profile-switch', profile: 'default' } });
+  expect(await evaluate('document.cookie', tabId)).toBe('account=first');
+}, 150_000);
+
+real('a frame asked for before a profile change cannot reopen the retired screencast', async () => {
+  const { harness, owner, agent, threadId } = browserFixture;
+  await owner.call('threads.subscribe', { threadId });
+  const { tabId } = await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });
+  if (!tabId) throw new Error('no browser tab');
+  harness.core.browser.sleepAfterMs = 40;
+  await evaluate("document.title = 'Old profile'", tabId);
+  await waitFor(() => harness.core.browser.asleep(tabId), 5000);
+  const waking = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+  const send = Cdp.prototype.send;
+  const relay = spyOn(Cdp.prototype, 'send').mockImplementation(async function <T>(this: Cdp, method: string, params: Record<string, unknown> = {}, session?: string, timeoutMs?: number): Promise<T> {
+    if (method === 'Page.setWebLifecycleState' && params.state === 'active') { waking.resolve(); await resume.promise; }
+    return send.call(this, method, params, session, timeoutMs) as Promise<T>;
+  });
+  try {
+    const pending = thrown(owner.call('browser.remoteFrame', { threadId, tabId }));
+    await waking.promise;
+    await owner.call('browser.command', { threadId, tabId, action: { kind: 'profile-switch', profile: 'private' } });
+    resume.resolve();
+    expect(await pending).toThrow('browser tab changed profiles');
+    await Bun.sleep(125);
+    expect(await picture(owner.call('browser.remoteFrame', { threadId, tabId }))).toMatchObject({ tabId, title: 'Fixture' });
+  } finally { resume.resolve(); relay.mockRestore(); }
+}, 60_000);
+
+real('a manual page reports a document refusal and a late script failure independently', async () => {
+  const { owner, agent, threadId } = browserFixture;
+  await owner.call('threads.subscribe', { threadId });
+  const { tabId } = await agent.call('browser.command', { threadId, action: { kind: 'open', url: url('/page-health'), manual: true } });
+  const health = async () => (await owner.call('browser.remoteStatus', { threadId })).tabs.find(tab => tab.tabId === tabId)?.health;
+  const until = async (ready: (value: Awaited<ReturnType<typeof health>>) => boolean) => {
+    const deadline = Date.now() + 5000;
+    let value = await health();
+    while (!ready(value) && Date.now() < deadline) { await Bun.sleep(25); value = await health(); }
+    return value;
+  };
+  expect(await until(value => value?.httpError === 403)).toEqual({ loading: true, httpError: 403, failedScripts: 0 });
+  browserFixture.releaseLaterDialog();
+  expect(await until(value => value?.loading === false)).toEqual({ loading: false, httpError: 403, failedScripts: 1 });
+  await agent.call('browser.command', { threadId, tabId, action: { kind: 'navigate', url: url() } });
+  expect(await until(value => value?.httpError === undefined && value?.loading === false)).toEqual({ loading: false, failedScripts: 0 });
+}, 30_000);
 
 real('a viewer watching while the agent changes the page size never puts the old size back', async () => {
   const { owner, agent, threadId } = browserFixture;
@@ -67,9 +132,18 @@ real('the desktop app on this machine hosts the agent tabs: the core drives them
     await agent.call('browser.command', { threadId, action: { kind: 'click', selector: '#go' } });
     expect(await evaluate('document.title')).toBe('clicked');
     // A viewer elsewhere still gets frames, taken through the host.
+    await evaluate("document.title = 'ready for the viewer'");
     const frame = await picture(owner.call('browser.remoteFrame', { threadId }));
     // Asked for without a width, a frame has every pixel the browser drew: two for each CSS pixel.
     expect(jpegSize(frame.base64)).toEqual({ width: frame.width * 2, height: frame.height * 2 });
+    const calls: string[] = [];
+    const off = host.app.on('browser.hostMessage', ({ message }) => calls.push(JSON.parse(message).method));
+    try {
+      await owner.call('browser.remoteInput', { threadId, frameId: frame.id, input: { kind: 'tap', x: 200 / frame.width, y: 140 / frame.height, width: frame.width, height: frame.height } });
+    } finally { off(); }
+    // Check the frame and look for a select in one trip through the desktop host.
+    expect(calls.filter(method => method === 'Runtime.evaluate')).toEqual(['Runtime.evaluate']);
+    expect(await evaluate('document.title')).toBe('clicked');
     // A reply from a connection that does not host is refused.
     expect(await thrown(owner.call('browser.hostReply', { profile: 'default', messages: ['{}'] }))).toThrow('does not host');
   } finally {
@@ -130,6 +204,7 @@ real('a viewer on another device watches and drives the tab, and hears it come a
     const shown = phone.next('browser.remoteChanged', event => event.threadId === threadId && event.live, 30_000);
     const { tabId } = await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });
     expect((await shown).tabs[0]).toMatchObject({ tabId, profile: 'default', active: true });
+    expect(await thrown(phone.call('browser.command', { threadId, tabId, action: { kind: 'profile-switch', profile: 'private' } }))).toThrow('owner only');
     const frame = await picture(phone.call('browser.remoteFrame', { threadId }));
     expect(frame).toMatchObject({ tabId, title: 'Fixture', url: url() });
     // Asked for without a width, a frame has every pixel the browser drew: two for each CSS pixel.

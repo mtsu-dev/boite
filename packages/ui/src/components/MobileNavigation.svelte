@@ -26,6 +26,7 @@
   import { focusOnMount } from '../lib/actions';
   import { watchRowCut } from '../lib/row-cut';
   import MobileThreadRow from './MobileThreadRow.svelte';
+  import BackgroundBrowser from './BackgroundBrowser.svelte';
   import FoldMore from './FoldMore.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
   import ViewSwitch from './ViewSwitch.svelte';
@@ -67,9 +68,11 @@
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
 
-  let { store, recover = false, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
+  let { store, recover = false, browserBackground, onbrowser, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
     store: Store;
     recover?: boolean;
+    browserBackground?: boolean;
+    onbrowser?: () => void;
     onleavesettings?: () => void;
     screen: 'chat' | 'threads' | 'activity';
     tabbed?: boolean;
@@ -397,6 +400,7 @@
       <!-- Only on screen: kept under a page, its pairing would answer the page's own (Machines) and leave it. -->
       {#if listShown}<MobileConnect {store} onpaired={() => show('threads')} />{/if}
     {:else}
+    {#if browserBackground && listScreen === 'threads'}<BackgroundBrowser onclick={() => { show('chat'); onbrowser?.(); }} />{/if}
     <!-- Recent's filters are the display menu's, counted on its button: the list starts with its rows. -->
     {#snippet threadRow(row: typeof rows[number], grouped = false, helpers: typeof rows = [])}
       <!-- Activity: the row's verb is its own, else the first asking sub-agent's, which opens that sub-agent (ActivityRow.svelte). -->

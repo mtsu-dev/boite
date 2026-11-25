@@ -36,10 +36,11 @@ test.each([-30000, 30000])('remote input uses local frame age despite a server c
 const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };
 beforeEach(() => {
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+  vi.stubGlobal('createImageBitmap', async () => ({ width: 780, height: 600, close() {} }));
 });
 afterEach(async () => {
   if (app) await unmount(app); app = undefined;
-  store?.detach(); client?.close(); vi.useRealTimers(); vi.restoreAllMocks();
+  store?.detach(); client?.close(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   document.body.innerHTML = ''; localStorage.clear();
 });
 
@@ -57,7 +58,7 @@ test('a frame asked for is drawn only once decoded, and the next is asked for wi
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
     if (method !== 'browser.remoteFrame') return original(method as never, params as never);
     requests.push(Date.now());
-    return new Promise<unknown>(resolve => setTimeout(() => resolve({ id: `f${requests.length}`, tabId: 'tab', title: 'Desktop', width: 760, height: 900, at: Date.now(), base64: requests.length === 1 ? 'AAAA' : 'BBBB' }), 400));
+    return new Promise<unknown>(resolve => setTimeout(() => resolve({ id: `f${requests.length}`, tabId: 'tab', title: 'Desktop', width: 760, height: 900, at: Date.now(), base64: requests.length === 1 ? 'AAAA' : 'BBBB', url: 'https://example.test/' + requests.length }), 400));
   }) as typeof client.call);
   const { decodes, drawn } = canvasStub();
   vi.useFakeTimers();
@@ -76,8 +77,11 @@ test('a frame asked for is drawn only once decoded, and the next is asked for wi
     expect(requests).toHaveLength(2);
     await vi.advanceTimersByTimeAsync(400); await settle();
     expect(drawn).toHaveLength(1);
+    const address = document.querySelector<HTMLInputElement>('[data-testid=remote-browser-address]')!;
+    expect(address.value).toBe('https://example.test/1');
     decodes[1]!.done(); await settle();
     expect(drawn).toHaveLength(2);
+    expect(address.value).toBe('https://example.test/2');
   } finally { vi.unstubAllGlobals(); }
 });
 
@@ -489,7 +493,7 @@ test('a phone keeps the text field and gets a copy button for the page selection
   } finally { vi.unstubAllGlobals(); }
 });
 
-test('the page takes the size of the view once per size: a tap or key afterwards leaves the agent its own size', async () => {
+test('the page keeps the agent’s size until the viewer asks explicitly to resize', async () => {
   for (const [name, value] of [['clientWidth', 700], ['clientHeight', 500]] as const) {
     vi.spyOn(HTMLElement.prototype, name, 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('screen-area') ? value : 0; });
   }
@@ -506,7 +510,10 @@ test('the page takes the size of the view once per size: a tap or key afterwards
   app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace' } }); await settle();
   await vi.advanceTimersByTimeAsync(400); await settle();
   const viewports = () => calls.mock.calls.filter(([method, params]) => method === 'browser.remoteInput' && (params as any).input.kind === 'viewport');
-  // Shown: the page takes the view's size once.
+  // Showing a page keeps the agent’s size.
+  expect(viewports()).toHaveLength(0);
+  document.querySelector<HTMLButtonElement>('[data-testid=remote-browser-display]')!.click(); await settle();
+  document.querySelector<HTMLButtonElement>('.display-settings .options button')!.click(); await settle();
   expect(viewports().map(([, params]) => (params as any).input)).toEqual([{ kind: 'viewport', width: 700, height: 500 }]);
   // The agent sets its phone size again; keys in this view do not undo it.
   const enter = [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === 'Enter');
@@ -535,17 +542,11 @@ test('a core that pushes frames is asked for a stream once: its frames are ackno
     expect(calls.mock.calls.filter(([method]) => method === 'browser.remoteStream')).toEqual([['browser.remoteStream', { threadId: 't-trace', tabId }]]);
     expect(calls.mock.calls.some(([method]) => method === 'browser.remoteFrame')).toBe(false);
     expect(opened).toHaveBeenCalledTimes(1);
-    expect(document.querySelector('canvas[data-testid=remote-browser-frame]')).not.toBeNull();
+    expect(document.querySelector('canvas[data-testid=remote-browser-frame]')).toBeNull();
     expect(decodes).toHaveLength(1);
     // Two more frames arrive while the first decodes: only the newest is decoded after it.
-    const enter = [...document.querySelectorAll<HTMLButtonElement>('.keys button')].find(b => b.textContent === 'Enter')!;
-    await client.call('browser.command', { threadId: 't-trace', tabId, action: { kind: 'evaluate', expression: '1' } }).catch(() => {});
-    const page = (await client.call('browser.remoteStatus', { threadId: 't-trace' })).tabs[0]!;
-    expect(page.tabId).toBe(tabId);
-    document.querySelector<HTMLButtonElement>('[aria-label="Scroll down"]')!.click(); await settle();
-    await vi.advanceTimersByTimeAsync(60); await settle();
-    document.querySelector<HTMLButtonElement>('[aria-label="Scroll down"]')!.click(); await settle();
-    await vi.advanceTimersByTimeAsync(60); await settle();
+    opened.mock.results[0]!.value.onmessage(new ArrayBuffer(1));
+    opened.mock.results[0]!.value.onmessage(new ArrayBuffer(2));
     expect(decodes).toHaveLength(1);
     decodes[0]!.done(); await settle();
     expect(drawn).toHaveLength(1);
@@ -555,6 +556,7 @@ test('a core that pushes frames is asked for a stream once: its frames are ackno
     // A page at rest sends nothing, and the page shown is still the page: input lands long after the last frame.
     calls.mockClear();
     await vi.advanceTimersByTimeAsync(20_000); await settle();
+    const enter = [...document.querySelectorAll<HTMLButtonElement>('.keys button')].find(b => b.textContent === 'Enter')!;
     enter.click(); await settle();
     expect(calls.mock.calls.filter(([method]) => method === 'browser.remoteInput')).toHaveLength(1);
     expect(calls.mock.calls.some(([method]) => method === 'browser.remoteStream' || method === 'browser.remoteFrame')).toBe(false);
@@ -581,8 +583,8 @@ test('the picture is never stretched: the box takes the proportions of the pictu
     app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace', tabId } }); await settle();
     await vi.advanceTimersByTimeAsync(60); await settle();
     const box = () => { const screen = document.querySelector<HTMLElement>('.screen')!; return [parseFloat(screen.style.width), parseFloat(screen.style.height)]; };
-    // Nothing painted yet: the page's own proportions.
-    expect(box()).toEqual([700, 437.5]);
+    // The preview takes its proportions from the first decoded image.
+    expect(document.querySelector('.screen')).toBeNull();
     expect(calls).toHaveBeenCalledWith('browser.remoteStream', { threadId: 't-trace', tabId, maxWidth: 700 });
     decodes[0]!.done(); await settle();
     const [width, height] = box();
@@ -684,7 +686,6 @@ test('a tab the desktop app hosts has no stream: the core says so and its frames
   const original = client.call.bind(client);
   const calls = vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => method === 'browser.remoteStream' ? Promise.resolve({ pull: true }) : original(method as never, params as never)) as typeof client.call);
   const opened = vi.spyOn(client, 'frames');
-  canvasStub();
   vi.useFakeTimers();
   try {
     app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace', tabId } }); await settle();

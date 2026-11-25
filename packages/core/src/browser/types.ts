@@ -1,5 +1,5 @@
 // Shared state of Chromium engines and the tabs attached to them.
-import type { BrowserAction, BrowserDiagnostic, BrowserHistoryEntry, BrowserPreset, RemoteBrowserFrame, ThreadId } from '@boite/contracts';
+import type { BrowserAction, BrowserDiagnostic, BrowserHistoryEntry, BrowserPageHealth, BrowserPreset, RemoteBrowserFrame, ThreadId } from '@boite/contracts';
 import type { Cdp } from './cdp.ts';
 import type { BrowserIdentity } from './chromium.ts';
 import type { TabRecorder } from './recorder.ts';
@@ -40,6 +40,7 @@ export interface Tab {
   sessionId: string;
   url: string;
   title: string;
+  health?: () => BrowserPageHealth | undefined;
   preset: BrowserPreset | null;
   orientation: 'portrait' | 'landscape';
   colorScheme: 'system' | 'light' | 'dark';
