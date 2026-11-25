@@ -65,7 +65,7 @@ export function compactPageEvent(method: string, params: Record<string, unknown>
   const call = CALL_TYPES.has(String(params.type));
   const script = params.type === 'Script';
   const document = { frameId: params.frameId, loaderId: params.loaderId, type: params.type };
-  if (method === 'Page.lifecycleEvent' && params.name !== 'load') return null;
+  if (method === 'Page.lifecycleEvent' && params.name !== 'load' && params.name !== 'DOMContentLoaded') return null;
   if (method === 'Network.requestWillBeSent') {
     const request = params.request as { url?: unknown; method?: unknown; headers?: unknown; hasPostData?: unknown; postData?: unknown } | undefined;
     if (!call && !script) return { requestId: params.requestId, request: { url: request?.url } };

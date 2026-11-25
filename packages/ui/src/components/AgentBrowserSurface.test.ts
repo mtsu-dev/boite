@@ -114,6 +114,20 @@ test('the owner opens a page from a new tab, watches it without a cover and clos
   expect(opens()).toHaveLength(before + 2);
 });
 
+test('a show event without a live tab keeps the owner’s new-tab draft', async () => {
+  const subscriptions = vi.spyOn(client, 'on');
+  app = mount(AgentBrowserSurface, { target: document.body, props: { store, threadId: thread } }); await settle();
+  await open('https://example.com/docs'); await settle();
+  query('agent-browser-new')!.click(); await settle();
+  const field = query('agent-browser-start-address') as HTMLInputElement;
+  field.value = 'example.org'; field.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+  const show = subscriptions.mock.calls.find(([event]) => event === 'browser.remoteChanged')![1];
+  show({ threadId: thread, live: false, tabs: [], show: true });
+  await open('https://example.com/next'); await settle();
+  expect(query('agent-browser-draft')).not.toBeNull();
+  expect((query('agent-browser-start-address') as HTMLInputElement).value).toBe('example.org');
+});
+
 test('the desktop of the machine that runs the browser shows the page at once, without a cover', async () => {
   vi.useFakeTimers();
   const calls = vi.spyOn(client, 'call');

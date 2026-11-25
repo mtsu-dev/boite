@@ -123,7 +123,7 @@
       const off = client.on('browser.remoteChanged', (event) => {
         if (stopped || event.threadId !== id) return;
         received = true;
-        if (event.show) { picked = null; drafting = false; }
+        if (event.show && event.live) { picked = null; drafting = false; }
         status = { available: status?.available ?? true, ...(status?.reason ? { reason: status.reason } : {}), live: event.live, tabs: event.tabs };
         failure = '';
       });

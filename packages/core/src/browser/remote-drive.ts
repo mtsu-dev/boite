@@ -7,7 +7,6 @@ import {
 import type { Connection } from '../router.ts';
 import { refused } from '../errors.ts';
 import { captureFrame, ViewerStream, type PageInfo, type StreamOptions } from './frames.ts';
-import { RENDER_SCALE } from './chromium.ts';
 import { DEFAULT_MAX_WIDTH, DEFAULT_QUALITY, MAX_SOCKET_BUFFER_BYTES, PushStream, StreamWire, type Picture, type PushOptions } from './push-stream.ts';
 import { chooseScript, EDITABLE_SCRIPT, KEY_CODES, PAGE_INFO_SCRIPT, selectionScript, tapPickerScript } from './scripts.ts';
 import { press } from './automation.ts';
@@ -60,6 +59,7 @@ interface RemoteDriveContext {
   send(tab: Tab, method: string, params?: Record<string, unknown>): Promise<unknown>;
   /** `strict`: a size change or a read of the page's size, which no capture may overlap. */
   screen<T>(tab: Tab, run: () => Promise<T>, strict?: boolean): Promise<T>;
+  resize(tab: Tab, size: Tab['viewport']): Promise<void>;
   /** Runs `run` on the tab's page awake (`sleep.ts`). */
   use<T>(tab: Tab, run: () => Promise<T>): Promise<T>;
 }
@@ -89,11 +89,20 @@ export class RemoteDrive {
   }
 
   dropTab(id: string): void {
-    for (const viewer of this.#viewers.values()) viewer.frames = viewer.frames.filter(saved => saved.frame.tabId !== id);
-    for (const [key, entry] of this.#streams) if (entry.tabId === id) this.#stopStream(key);
-    for (const viewer of [...this.#pushes.values()]) if (viewer.tab.id === id) this.#endPush(viewer, BrowserStreamClose.TabGone, 'tab closed');
+    this.#retireTarget(id, BrowserStreamClose.TabGone, 'tab closed');
     for (const [ticket, entry] of this.#tickets) if (entry.tabId === id) this.#tickets.delete(ticket);
     for (const [key, shown] of this.#shown) if (shown.tabId === id) this.#shown.delete(key);
+  }
+
+  /** The tab survives a profile change, but its old frames and input do not. */
+  replaceTab(id: string): void {
+    this.#retireTarget(id, BrowserStreamClose.Reconnect, 'reconnect');
+  }
+
+  #retireTarget(id: string, code: number, reason: string): void {
+    for (const viewer of this.#viewers.values()) viewer.frames = viewer.frames.filter(saved => saved.frame.tabId !== id);
+    for (const [key, entry] of this.#streams) if (entry.tabId === id) this.#stopStream(key);
+    for (const viewer of [...this.#pushes.values()]) if (viewer.tab.id === id) this.#endPush(viewer, code, reason);
     for (const [key, held] of this.#held) if (held.tab.id === id) this.#held.delete(key);
   }
 
@@ -256,6 +265,7 @@ export class RemoteDrive {
     let tab: Tab;
     try { this.#viewer(entry.threadId, entry.connection); } catch { peer.close(BrowserStreamClose.Refused, 'not subscribed'); return null; }
     try { tab = this.#context.tabOf(entry.threadId, entry.tabId); } catch { peer.close(BrowserStreamClose.TabGone, 'tab closed'); return null; }
+    if (tab.engine.hosted) { peer.close(BrowserStreamClose.Reconnect, 'reconnect'); return null; }
     const previous = this.#pushes.get(entry.key);
     if (previous) this.#endPush(previous, 1000, 'replaced');
     const stream = new PushStream(tab.engine.cdp, tab.targetId, entry.options, run => this.#context.screen(tab, run));
@@ -442,9 +452,9 @@ export class RemoteDrive {
         return { ok: true };
       }
       case 'viewport':
-        retire(); await this.#context.screen(tab, () => this.#context.send(tab, 'Emulation.setDeviceMetricsOverride', { width: input.width, height: input.height, deviceScaleFactor: RENDER_SCALE, mobile: false }), true);
-        tab.preset = null; this.stale(tab); return { ok: true };
-      case 'reset-viewport': retire(); await this.#context.screen(tab, () => this.#context.send(tab, 'Emulation.clearDeviceMetricsOverride'), true); tab.preset = null; this.stale(tab); return { ok: true };
+        retire(); await this.#context.resize(tab, { width: input.width, height: input.height }); this.stale(tab); return { ok: true };
+      case 'reset-viewport':
+        retire(); await this.#context.resize(tab, null); this.stale(tab); return { ok: true };
       default: break;
     }
     // The size the viewer aimed at is known without the page: a tap on another one is refused before a read of it.

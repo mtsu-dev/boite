@@ -37,7 +37,7 @@ import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { refused } from './errors.ts';
 import { machineName } from './paths.ts';
-import { findChromium, RENDER_SCALE } from './browser/chromium.ts';
+import { findChromium } from './browser/chromium.ts';
 import { PageProbes, PROBE_TIMEOUT_MS, type PageProbe, type ViewCheckOptions } from './browser/probe.ts';
 import { TabRecorder } from './browser/recorder.ts';
 import { freshCalls, watchPage } from './browser/page-events.ts';
@@ -50,6 +50,7 @@ import { shrunkScreenshot } from './browser/shrink.ts';
 import type { Engine, Tab } from './browser/types.ts';
 import { SETTLED_VIEWPORT_SCRIPT } from './browser/scripts.ts';
 import { screenTurns, takeTurn } from './browser/frames.ts';
+import { setAppearance, setViewport } from './browser/view-settings.ts';
 import { automate, awaitDocument, documentToken, PAGE_ACTIONS, settleLoaded } from './browser/automation.ts';
 import { pageFrames } from './browser/page-frames.ts';
 import { readsConsole } from './browser/page-runtime.ts';
@@ -174,6 +175,7 @@ export class AgentBrowser {
       evaluate: (tab, expression, timeoutMs) => this.#evaluate(tab, expression, timeoutMs),
       send: (tab, method, params) => this.#send(tab, method, params),
       screen: (tab, run, strict) => this.#screen(tab, run, strict),
+      resize: (tab, size) => this.#resize(tab, size),
       use: (tab, run) => this.#sleep.use(tab, run),
     });
   }
@@ -287,8 +289,8 @@ export class AgentBrowser {
   async #attach(engine: Engine, threadId: ThreadId, targetId: string, url: string, running: Running | null = null, replacing?: Tab): Promise<Tab> {
     const { sessionId } = await engine.cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true });
     const tab: Tab = {
-      id: replacing?.id ?? `browser:${crypto.randomUUID()}`, threadId, engine, targetId, sessionId, url, title: '',
-      preset: null, orientation: 'portrait', colorScheme: 'system', diagnostics: [], dropped: 0, history: [], requests: new Map(), loading: new Map(), network: null,
+      id: replacing?.id ?? `browser:${crypto.randomUUID()}`, threadId, engine, targetId, sessionId, url, title: replacing?.title ?? '',
+      viewport: null, colorScheme: 'system', diagnostics: [], dropped: 0, history: [], requests: new Map(), loading: new Map(), network: null,
       recorder: null, discarded: false, frame: null, screen: screenTurns(), off: [], frames: new Set(), acting: false, actor: null, stuck: null, sleep: sleepState(!engine.hosted),
       page: {
         session: sessionId,
@@ -306,7 +308,7 @@ export class AgentBrowser {
         tab.url = url;
         if (this.#tabs.get(tab.id) === tab) { this.#remote.stale(tab); this.#changed(threadId); }
         this.#engines.saveCookiesSoon(engine);
-      });
+      }, () => { if (this.#tabs.get(tab.id) === tab) this.#changed(threadId); });
     watchNetwork(() => tab.network, on);
     on('Page.frameAttached', params => { if (tab.frames.size < 500) tab.frames.add(String(params.frameId)); });
     on('Page.frameNavigated', params => { const frame = params.frame as { id: string }; if (tab.frames.size < 500) tab.frames.add(String(frame.id)); });
@@ -321,14 +323,21 @@ export class AgentBrowser {
     ]);
     // A window opened by a page may have navigated before it was attached: its address is read once now.
     const current = await engine.cdp.send<{ targetInfo: { url: string; title: string } }>('Target.getTargetInfo', { targetId }).catch(() => null);
-    if (current) { tab.url = current.targetInfo.url || tab.url; tab.title = current.targetInfo.title.slice(0, 200); }
+    if (current) {
+      tab.url = current.targetInfo.url || tab.url;
+      if (!replacing) tab.title = current.targetInfo.title.slice(0, 200);
+    }
     await frames.runtime?.adopt(tab.url);
     // Every tab counts as focused, so a page waiting for focus or visibility runs.
     await engine.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId).catch(() => {});
     // Given up while it attached: the tab is never the conversation's, and the caller closes its target.
     // Archived while it attached: the same, since the archive closed only the tabs it found.
     try {
-      if (replacing) await this.#navigate(tab, replacing.url || 'about:blank', true);
+      if (replacing) {
+        if (replacing.viewport) await this.#resize(tab, replacing.viewport);
+        if (replacing.colorScheme !== 'system') await setAppearance(tab, replacing.colorScheme);
+        await this.#navigate(tab, replacing.url || 'about:blank', true);
+      }
       this.#require(threadId);
       if (running?.abandoned) throw abandoned(running);
       if (replacing && this.#tabs.get(replacing.id) !== replacing) throw refused('the browser tab closed while changing profiles');
@@ -336,8 +345,11 @@ export class AgentBrowser {
       for (const off of tab.off) off();
       throw error;
     }
-    if (replacing) this.#detachTab(replacing);
     this.#tabs.set(tab.id, tab);
+    if (replacing) {
+      this.#detachTab(replacing);
+      this.#remote.replaceTab(tab.id);
+    }
     engine.tabs.add(tab.id); clearTimeout(engine.idle);
     this.#sleep.schedule(tab);
     const state = this.#thread(threadId);
@@ -379,6 +391,7 @@ export class AgentBrowser {
     if (!tab) return;
     this.#tabs.delete(id);
     this.#detachTab(tab);
+    this.#remote.dropTab(id);
     const state = this.#threads.get(tab.threadId);
     if (state) {
       state.order = state.order.filter(other => other !== id);
@@ -394,7 +407,6 @@ export class AgentBrowser {
     void tab.recorder?.dispose();
     tab.engine.tabs.delete(tab.id);
     this.#engines.idle(tab.engine);
-    this.#remote.dropTab(tab.id);
   }
 
   async #closeTab(tab: Tab): Promise<void> {
@@ -672,6 +684,10 @@ export class AgentBrowser {
 
   #send(tab: Tab, method: string, params: Record<string, unknown> = {}) { return tab.engine.cdp.send(method, params, tab.sessionId); }
 
+  #resize(tab: Tab, size: Tab['viewport']): Promise<void> {
+    return this.#screen(tab, () => setViewport(tab, size), true);
+  }
+
   /** Waits for the page's viewport to hold its size; a page that cannot answer is left as it is. */
   async #settle(tab: Tab): Promise<void> {
     await this.#evaluate(tab, SETTLED_VIEWPORT_SCRIPT, 3000).catch(() => {});
@@ -697,21 +713,21 @@ export class AgentBrowser {
       case 'evaluate': return done(await this.#evaluate(tab, action.expression, 30_000));
       // The page takes a few frames to reach a new size: the next command meets it laid out.
       case 'resize':
-        await this.#screen(tab, () => this.#send(tab, 'Emulation.setDeviceMetricsOverride', { width: action.width, height: action.height, deviceScaleFactor: RENDER_SCALE, mobile: false }), true);
-        tab.preset = null; this.#remote.stale(tab); await this.#settle(tab); return done();
+        await this.#resize(tab, { width: action.width, height: action.height });
+        this.#remote.stale(tab); await this.#settle(tab); return done();
       case 'reset-viewport':
-        await this.#screen(tab, () => this.#send(tab, 'Emulation.clearDeviceMetricsOverride'), true);
-        tab.preset = null; this.#remote.stale(tab); await this.#settle(tab); return done();
+        await this.#resize(tab, null);
+        this.#remote.stale(tab); await this.#settle(tab); return done();
       case 'preset': {
         const size = browserPresetSize(action.preset, action.orientation);
-        await this.#screen(tab, () => this.#send(tab, 'Emulation.setDeviceMetricsOverride', { ...size, deviceScaleFactor: RENDER_SCALE, mobile: false }), true);
-        tab.preset = action.preset; tab.orientation = size.width > size.height ? 'landscape' : 'portrait'; this.#remote.stale(tab);
+        await this.#resize(tab, size);
+        this.#remote.stale(tab);
         await this.#settle(tab);
         return done(size);
       }
       case 'appearance':
-        await this.#send(tab, 'Emulation.setEmulatedMedia', { features: action.colorScheme === 'system' ? [] : [{ name: 'prefers-color-scheme', value: action.colorScheme }] });
-        tab.colorScheme = action.colorScheme; this.#remote.stale(tab); return done();
+        await setAppearance(tab, action.colorScheme);
+        this.#remote.stale(tab); return done();
       case 'screenshot': {
         // The core's own browser draws at `RENDER_SCALE`: its picture is given at the page's size (`shrink.ts`).
         // A page that cannot shrink it gets Chromium's own scaled capture; the desktop app's webview is left as its display draws it.

@@ -17,9 +17,13 @@ real('switching the cookies reloads the same tab in an isolated profile', async 
   await agent.call('browser.command', { threadId, action: { kind: 'profile-add', name: 'Second account' } });
   const { tabId } = await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });
   await evaluate("document.cookie = 'account=first; path=/'", tabId);
+  await agent.call('browser.command', { threadId, tabId, action: { kind: 'preset', preset: 'iphone-15-pro', orientation: 'landscape' } });
+  await agent.call('browser.command', { threadId, tabId, action: { kind: 'appearance', colorScheme: 'dark' } });
   expect(await thrown(agent.call('browser.command', { threadId, tabId, action: { kind: 'profile-switch', profile: 'Second account' } }))).toThrow('owner only');
   const before = await picture(owner.call('browser.remoteFrame', { threadId, tabId }));
-  await owner.call('browser.command', { threadId, tabId, action: { kind: 'profile-switch', profile: 'Second account' } });
+  const switched = await owner.call('browser.command', { threadId, tabId, action: { kind: 'profile-switch', profile: 'Second account' } });
+  expect(await evaluate('[innerWidth, innerHeight, matchMedia("(prefers-color-scheme: dark)").matches]', tabId)).toEqual([852, 393, true]);
+  expect(switched.title).toBe('Fixture');
   expect((await owner.call('browser.remoteStatus', { threadId })).tabs).toEqual([
     expect.objectContaining({ tabId, profileName: 'Second account', url: url(), active: true }),
   ]);
@@ -28,8 +32,11 @@ real('switching the cookies reloads the same tab in an isolated profile', async 
     threadId, frameId: before.id, input: { kind: 'reload' },
   }))).toThrow('refresh the live browser');
   await evaluate("document.cookie = 'account=second; path=/'", tabId);
+  const current = await picture(owner.call('browser.remoteFrame', { threadId, tabId }));
+  await owner.call('browser.remoteInput', { threadId, frameId: current.id, input: { kind: 'viewport', width: 700, height: 500 } });
   await owner.call('browser.command', { threadId, tabId, action: { kind: 'profile-switch', profile: 'default' } });
   expect(await evaluate('document.cookie', tabId)).toBe('account=first');
+  expect(await evaluate('[innerWidth, innerHeight]', tabId)).toEqual([700, 500]);
 }, 150_000);
 
 real('a frame asked for before a profile change cannot reopen the retired screencast', async () => {
@@ -71,6 +78,7 @@ real('a manual page reports a document refusal and a late script failure indepen
   expect(await until(value => value?.httpError === 403)).toEqual({ loading: true, httpError: 403, failedScripts: 0 });
   browserFixture.releaseLaterDialog();
   expect(await until(value => value?.loading === false)).toEqual({ loading: false, httpError: 403, failedScripts: 1 });
+  expect((await owner.call('browser.remoteStatus', { threadId })).tabs).toEqual([expect.objectContaining({ tabId, title: 'Restricted' })]);
   await agent.call('browser.command', { threadId, tabId, action: { kind: 'navigate', url: url() } });
   expect(await until(value => value?.httpError === undefined && value?.loading === false)).toEqual({ loading: false, failedScripts: 0 });
 }, 30_000);

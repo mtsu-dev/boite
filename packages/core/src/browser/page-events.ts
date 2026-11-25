@@ -1,5 +1,5 @@
 import type { BrowserDiagnostic } from '@boite/contracts';
-import type { AgentPage } from './automation.ts';
+import { evaluate, type AgentPage } from './automation.ts';
 
 const DIALOGS_MAX = 20;
 const DIAGNOSTICS_MAX = 200;
@@ -9,6 +9,7 @@ export interface WatchedPage {
   /** An agent command is running: the dialogs it raises follow `page.dialogPolicy`. */
   acting: boolean;
   page: AgentPage;
+  title: string;
   diagnostics: BrowserDiagnostic[];
   dropped: number;
   requests: Map<string, string>;
@@ -47,14 +48,29 @@ export function watchPage(
   on: (method: string, listener: (params: Record<string, unknown>) => void) => void,
   answerDialog: (accept: boolean, promptText?: string) => void,
   navigated: (url: string) => void,
+  titleChanged: () => void,
 ): void {
   const note = (entry: Omit<BrowserDiagnostic, 'at'>) => {
     tab.diagnostics.push({ at: Date.now(), ...entry, text: entry.text.slice(0, 2000) });
     if (tab.diagnostics.length > DIAGNOSTICS_MAX) { tab.diagnostics.shift(); tab.dropped++; }
   };
+  let mainDocument: { id: string; loaderId?: string } | undefined;
   on('Page.frameNavigated', params => {
-    const frame = params.frame as { parentId?: string; url: string };
-    if (!frame.parentId) navigated(frame.url);
+    const frame = params.frame as { id: string; loaderId?: string; parentId?: string; url: string };
+    if (frame.parentId) return;
+    mainDocument = frame;
+    navigated(frame.url);
+  });
+  // A target can still report the URL as its title when manual navigation returns.
+  on('Page.lifecycleEvent', ({ name, frameId, loaderId }) => {
+    const loaded = mainDocument;
+    if (name !== 'DOMContentLoaded' || !loaded || loaded.id !== frameId || loaded.loaderId !== loaderId) return;
+    const previous = tab.title;
+    void evaluate(tab.page, 'document.title', 5000).then(title => {
+      if (mainDocument !== loaded || tab.title !== previous || typeof title !== 'string' || title === previous) return;
+      tab.title = title.slice(0, 200);
+      titleChanged();
+    }).catch(() => {});
   });
   on('Page.javascriptDialogOpening', params => {
     // Nobody can answer a dialog in a headless page. One an agent command raised follows
