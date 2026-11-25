@@ -24,6 +24,7 @@
 
   import TitleBar from './components/TitleBar.svelte';
   import AppRail from './components/AppRail.svelte';
+  import MachineStatus from './components/MachineStatus.svelte';
   import { Closing } from './lib/closing.svelte';
   import { focusComposer } from './lib/focus';
   import { handleAppKey } from './lib/app-keys';
@@ -553,6 +554,8 @@
   // Before the first project the desktop draws no list column (lib/list-absent.ts): it counts as folded, with no toggle.
   let listGone = $derived(store.page !== 'settings' && !(store.page === 'agents' && experimentOn('resident-agents'))
     && listAbsent(workspace.machinesOr(store).map((machine) => machine.store), narrow.current));
+  let footShown = $derived(noRailDesktop && !store.sidebarCollapsed
+    && (store.page === 'agents' ? agentsRailShown : store.page !== 'settings' && !listGone));
   let listFolded = $derived((store.sidebarCollapsed || listGone) && store.page !== 'settings');
   let barLeft = $derived(!desktopReady ? '0px' : listFolded ? 'var(--frame-gap)'
     : `calc(${visibleSidebarWidth({ sidebarWidth: store.sidebarWidth, agentsSidebarWidth: store.agentsSidebarWidth, page: agentsRailShown ? 'agents' : 'chat' })}px + var(--frame-gap))`);
@@ -590,6 +593,7 @@
 
 <div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:railed={railShown} class:mac-edge={macEdge} class:quitting style:--bar-left={barLeft} bind:this={appRoot}>
   {#if railShown}<AppRail {store} />{/if}
+  {#if desktopReady && !railShown && !footShown}<div class="visually-hidden"><MachineStatus {store} /></div>{/if}
   {#if noRailDesktop && contactsAnywhere && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
   {#if !inShell && booted}
     {#if earlyPairing}

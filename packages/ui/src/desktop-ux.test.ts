@@ -71,12 +71,15 @@ test('Mochi layout starts off with a compact sidebar foot, opens Mochis in the s
     query<HTMLButtonElement>('[data-testid=side-back]').click();
     await waitFor(() => store.page === 'chat' && document.querySelector('[data-testid=thread-row]') !== null);
 
-    // Collapsing the sidebar removes the foot and puts the fallback Settings button in the titlebar.
+    // Collapsing the sidebar removes the foot and puts the fallback Settings button in the titlebar; status-connection stays mounted.
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
     store.sidebarCollapsed = true;
     flushSync();
     expect(document.querySelector('[data-testid=sidebar-foot]')).toBeNull();
     expect(document.querySelector('[data-testid=titlebar] [data-testid=nav-settings]')).not.toBeNull();
     expect(document.querySelectorAll('[data-testid=nav-settings]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
+    expect(query('[data-testid=status-connection]').getAttribute('data-state')).toBe('ready');
     store.sidebarCollapsed = false;
     flushSync();
     expect(document.querySelector('[data-testid=titlebar] [data-testid=nav-settings]')).toBeNull();
@@ -89,12 +92,14 @@ test('Mochi layout starts off with a compact sidebar foot, opens Mochis in the s
     toggle().click();
     await waitFor(() => document.querySelector('[data-testid=app-rail]') !== null);
     expect(document.querySelector('[data-testid=sidebar-foot]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
     expect(window.localStorage.getItem(MOCHI_LAYOUT_STORAGE_KEY)).toBe('1');
     expect(toggle().getAttribute('aria-checked')).toBe('true');
 
     toggle().click();
     await waitFor(() => document.querySelector('[data-testid=sidebar-foot]') !== null);
     expect(document.querySelector('[data-testid=app-rail]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
     expect(window.localStorage.getItem(MOCHI_LAYOUT_STORAGE_KEY)).toBe('0');
   } finally {
     store.sidebarCollapsed = false;
