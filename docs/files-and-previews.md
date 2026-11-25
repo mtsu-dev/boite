@@ -91,6 +91,10 @@ Answers, plans and Markdown previews draw these blocks:
 | `$$...$$`, `\[...\]` or a `math` block | A formula on its own line |
 | `\(...\)` | A formula in the line |
 | A `view` fenced block | A small page, as above |
+| A `steps` fenced block | Numbered steps joined by a line |
+| An `options` fenced block | Choice cards, two per row on a wide screen |
+| A `bars` fenced block | Horizontal bars measured against each other |
+| A `stats` fenced block | A grid of figures |
 | `$...$` | Text, so a price or `$PATH` stays as written |
 
 - A diagram has a bar with a copy button, a switch between Diagram and Code,
@@ -100,6 +104,12 @@ Answers, plans and Markdown previews draw these blocks:
 - Copying a selection that holds a diagram or a formula copies its source.
 - A diagram that cannot be read shows its code and the reason. A formula that
   cannot be read stays underlined, with the reason as a tooltip.
+- `steps`, `options`, `bars` and `stats` are drawn in answers from one line per
+  item: `title | detail`, or `label | value | note` for bars and figures. A
+  line that starts with `* ` stands out in your accent color. Their bar
+  switches between Block and Code. Bars only draw when every value is a number
+  in units that compare, such as `800 ms` and `4.2 s`; otherwise, like a block
+  with more than 30 lines, it stays code.
 
 ## Limits
 

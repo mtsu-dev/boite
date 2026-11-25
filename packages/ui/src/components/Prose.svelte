@@ -195,8 +195,8 @@
   });
 
   function hangCopy(pre: HTMLPreElement): void {
-    // A diagram's or a view's code has its own buttons.
-    if (pre.parentElement?.matches('.code-block, .md-mermaid, .md-view')) return;
+    // A diagram's, a view's or a native block's code has its own buttons.
+    if (pre.parentElement?.matches('.code-block, .md-mermaid, .md-view, .md-native')) return;
     const wrap = document.createElement('div');
     wrap.className = 'code-block';
     pre.replaceWith(wrap);

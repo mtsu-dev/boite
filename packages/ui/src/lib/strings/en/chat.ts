@@ -356,6 +356,8 @@ export const strings = {
       label: 'Diagram',
       showCode: 'Code',
       showDiagram: 'Diagram',
+      /** The toggle back to a ```steps, ```options, ```bars or ```stats block from its code. */
+      showBlock: 'Block',
       enlarge: 'Enlarge',
       failed: 'This diagram could not be drawn: {reason}',
       unavailable: 'The diagram could not be drawn here.'

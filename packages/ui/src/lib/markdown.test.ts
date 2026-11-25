@@ -218,6 +218,17 @@ describe('diagrams and formulas', () => {
     expect(renderMarkdown('```view\n<p>Hi')).toBe('<pre data-language="view"><code>&lt;p&gt;Hi</code></pre>');
     expect(renderMarkdown('```html\n<p>Hi</p>\n```')).toBe('<pre data-language="html"><code>&lt;p&gt;Hi&lt;/p&gt;</code></pre>');
   });
+
+  test('a closed steps, options, bars or stats block is marked in rich rendering only; one still being written stays code', () => {
+    for (const kind of ['steps', 'options', 'bars', 'stats']) {
+      expect(renderMarkdown(`\`\`\`${kind}\n* A | <b>1</b>\n\`\`\``, true)).toBe(
+        `<div class="md-native md-native-${kind}" data-kind="${kind}" data-source="* A | &lt;b&gt;1&lt;/b&gt;"><pre data-language="${kind}"><code>* A | &lt;b&gt;1&lt;/b&gt;</code></pre></div>`
+      );
+      expect(renderMarkdown(`\`\`\`${kind}\nA | 1\n\`\`\``)).toBe(`<pre data-language="${kind}"><code>A | 1</code></pre>`);
+      expect(renderMarkdown(`\`\`\`${kind}\nA | 1`, true)).toBe(`<pre data-language="${kind}"><code>A | 1</code></pre>`);
+    }
+    expect(renderMarkdown('```Steps\nA\n```', true)).toContain('data-kind="steps"');
+  });
 });
 
 test('a page of history is rendered in the worker before its rows draw, and here when the worker is missing or slow', async () => {

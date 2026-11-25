@@ -5,9 +5,9 @@ import { selectedSource } from './rich-markdown-draw';
 
 let mounted: { destroy(): void } | null = null;
 
-function show(markdown: string, options?: RichMarkdownOptions): HTMLElement {
+function show(markdown: string, options?: RichMarkdownOptions, rich = false): HTMLElement {
   const host = document.createElement('div');
-  host.innerHTML = renderMarkdown(markdown);
+  host.innerHTML = renderMarkdown(markdown, rich);
   document.body.append(host);
   mounted = richMarkdown(host, options);
   return host;
@@ -197,5 +197,26 @@ describe('richMarkdown', () => {
     const range = document.createRange();
     range.selectNodeContents(host);
     expect(selectedSource(range)).toBe('Look.\n\n```view\n<p>Hi</p>\n```');
+  });
+
+  test('a native block is drawn in place with a code toggle, copies back as its fence, and one that does not fit stays code', async () => {
+    const host = show('Plan.\n\n```steps\n1. Read | the brief\n* 2. Build\n```\n\n```bars\nA | fast\nB | 2 s\n```', undefined, true);
+    const [good, bad] = await vi.waitFor(() => {
+      const blocks = [...host.querySelectorAll<HTMLElement>('.md-native.md-drawn')];
+      if (blocks.length < 2) throw new Error('not drawn yet');
+      return blocks;
+    });
+    expect([...good!.querySelectorAll('.md-native-title')].map(title => title.textContent)).toEqual(['Read', 'Build']);
+    expect(good!.dataset.view).toBe('diagram');
+    good!.querySelector<HTMLButtonElement>('[data-testid="diagram-toggle"]')!.click();
+    expect(good!.dataset.view).toBe('code');
+    expect(good!.querySelector('[data-testid="diagram-toggle"]')!.textContent).toBe('Block');
+    // A bar with no number would draw a misleading chart: its code stays, with a copy button and no error line.
+    expect(bad!.classList.contains('md-source')).toBe(true);
+    expect(bad!.querySelector('[data-testid="native-block"], [data-testid="diagram-error"]')).toBeNull();
+    expect(bad!.querySelector('[data-testid="diagram-copy"]')).not.toBeNull();
+    const range = document.createRange();
+    range.selectNodeContents(host);
+    expect(selectedSource(range)).toBe('Plan.\n\n```steps\n1. Read | the brief\n* 2. Build\n```\n\n```bars\nA | fast\nB | 2 s\n```');
   });
 });

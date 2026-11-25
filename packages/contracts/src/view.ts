@@ -301,6 +301,12 @@ boite view check <file.html> [--script checks.js] [--scheme dark|light]
                                          check and save captures without publishing
 boite view example                        a complete page in the app's look, to start from
 
+A numbered list, a choice, a few bars or figures need no page: write a
+\`\`\`steps, \`\`\`options, \`\`\`bars or \`\`\`stats fence in the answer, one
+\`title | detail\` line per item (\`label | value | note\` for bars and stats),
+a leading \`* \` to highlight one. Bars need numbers in units that compare
+(\`800 ms\` and \`4.2 s\`); a block that does not fit stays code.
+
 Write one HTML file per visual, for instance .boite/views/orbit.html, run
 \`boite view\` on it, then place it in your answer with a line of its own that
 names the file as an image:

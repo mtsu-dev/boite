@@ -10,6 +10,8 @@ import { FenceScan, closesFence, fenceLanguage, openFence } from './fences';
  * A closed ```` ```mermaid ```` or ```` ```view ```` block and math between
  * `$$…$$`, `\[…\]`, `\(…\)` or in a ```` ```math ```` block become marked
  * elements that hold their source (`md-mermaid`, `md-view`, `md-math`);
+ * so do ```` ```steps ````, ```` ```options ````, ```` ```bars ```` and
+ * ```` ```stats ```` in rich rendering (`md-native`).
  * `lib/rich-markdown.ts` draws them once they are in the page. A ```` ```html ````
  * block stays code. A single `$` is never math: prices and `$PATH` stay text.
  */
@@ -239,7 +241,7 @@ export function renderMarkdown(source: string, rich = false): string {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? '';
     // An indented line under an open item belongs to the item, a fence included, as it always has.
-    const fence = list.takes(line) ? null : readFence(lines, index);
+    const fence = list.takes(line) ? null : readFence(lines, index, rich);
     if (fence) {
       flushAll();
       html.push(fence.html);
@@ -314,7 +316,7 @@ export function renderMarkdown(source: string, rich = false): string {
 interface Block { html: string; end: number }
 
 /** A fenced block under the grammar of `lib/fences.ts`, its code shifted left by the opening line's indent. */
-function readFence(lines: string[], start: number): Block | null {
+function readFence(lines: string[], start: number, rich: boolean): Block | null {
   const fence = openFence(lines[start] ?? '');
   if (!fence) return null;
   const outdent = new RegExp(`^ {0,${fence.indent}}`);
@@ -332,8 +334,12 @@ function readFence(lines: string[], start: number): Block | null {
   const language = name ? ` data-language="${escape(name)}"` : '';
   const pre = `<pre${language}><code>${escape(source)}</code></pre>`;
   if (closed && (kind === 'mermaid' || kind === 'view') && source.trim()) return { html: `<div class="md-${kind}" data-source="${escape(source)}">${pre}</div>`, end };
+  if (closed && rich && NATIVE.has(kind) && source.trim()) return { html: `<div class="md-native md-native-${kind}" data-kind="${kind}" data-source="${escape(source)}">${pre}</div>`, end };
   return { html: pre, end };
 }
+
+/** The blocks `lib/native-blocks.ts` draws from plain lines; without rich rendering they stay code. */
+const NATIVE = new Set(['steps', 'options', 'bars', 'stats']);
 
 /**
  * A formula on lines of its own: `$$` or `\[` opens it at the start of a

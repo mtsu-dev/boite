@@ -188,7 +188,7 @@ export class ParagraphScan {
 }
 
 /** The fences `lib/rich-markdown.ts` draws, or a formula on lines of its own (`lib/markdown.ts`). */
-const DRAWN = new Set(['mermaid', 'math', 'view']);
+const DRAWN = new Set(['mermaid', 'math', 'view', 'steps', 'options', 'bars', 'stats']);
 const DISPLAY_MATH = /^(?:\$\$|\\\[)/;
 
 /**

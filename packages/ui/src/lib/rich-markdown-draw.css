@@ -1,4 +1,4 @@
-/* Drawn diagrams, formulas and views of rendered Markdown (lib/rich-markdown-draw.ts).
+/* Drawn diagrams, formulas, views and native blocks of rendered Markdown (lib/rich-markdown-draw.ts).
    Global, because reasoning draws its Markdown outside Prose; loaded with the drawing code. */
 
 /* Pele colors every diagram with these variables: a theme or accent change
@@ -73,7 +73,9 @@
 
 /* A ```view block's page (lib/view-block.ts). The frame reaches past the
    column by the bleed the page is padded with, as a published view's does. */
-.md-view { position: relative; margin: 6px 0 10px; white-space: normal; }
+/* flow-root: the stage's negative bleed margin stays inside the block instead of
+   eating the gap above it, so a view keeps the paragraph rhythm with no spacer. */
+.md-view { position: relative; display: flow-root; margin: 10px 0; white-space: normal; }
 .md-view > pre { margin: 0; }
 .md-view-stage { width: calc(100% + 2 * var(--bleed)); margin: calc(-1 * var(--bleed)); }
 .md-view-frame { display: block; width: 100%; border: 0; background: transparent; }
@@ -111,4 +113,71 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
 .md-math-failed {
   text-decoration: underline dotted var(--color-danger);
   text-underline-offset: 3px;
+}
+
+/* ```steps, ```options, ```bars and ```stats (lib/native-blocks.ts): drawn
+   from their lines with the app's own tokens, no frame of their own. The
+   accent marks the highlighted item only. */
+.md-native { position: relative; margin: 6px 0 10px; white-space: normal; container-type: inline-size; }
+.md-native > pre { margin: 0; }
+.md-native[data-view='diagram'] > pre,
+.md-native[data-view='code'] > .md-native-figure { display: none; }
+.md-native:hover > .md-diagram-bar,
+.md-native:focus-within > .md-diagram-bar { opacity: 1; }
+/* Above Prose's own list spacing, which a drawn block does not take. */
+.md-native.md-drawn > .md-native-figure > :is(ol, ul, dl) { margin: 0; padding: 0; list-style: none; }
+.md-native.md-drawn > .md-native-figure :is(li, dd) { margin: 0; }
+.md-native-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.md-native-title { color: var(--color-foreground); font-weight: 500; overflow-wrap: anywhere; }
+.md-native-detail { color: var(--color-muted-foreground); font-size: var(--text-sm); overflow-wrap: anywhere; }
+
+.md-steps { display: grid; }
+.md-step { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 12px; padding-bottom: 14px; }
+.md-step:last-child { padding-bottom: 0; }
+.md-step:not(:last-child)::before { content: ''; position: absolute; top: 28px; bottom: 4px; left: 12px; width: 1px; background: var(--color-border); }
+.md-step-mark {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-3);
+  color: var(--color-foreground);
+  font: 600 var(--text-xs) / 1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.md-step > .md-native-body { padding-top: 1px; }
+.md-step.md-accent > .md-step-mark { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); }
+
+.md-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.md-option { padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.md-option.md-accent { border-color: var(--color-accent); background: var(--color-accent-soft); }
+.md-option.md-accent .md-native-title { font-weight: 600; }
+
+/* The rows share the block's columns (subgrid), so every track starts and ends at the same place. */
+.md-bars { display: grid; grid-template-columns: minmax(0, 28%) minmax(0, 1fr) auto; column-gap: 12px; row-gap: 10px; }
+.md-bar { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; row-gap: 2px; font-size: var(--text-sm); }
+.md-bar-label { color: var(--color-foreground); overflow-wrap: anywhere; }
+.md-bar-track { height: 8px; overflow: hidden; border-radius: var(--radius-full); background: var(--color-surface-3); }
+.md-bar-fill { display: block; width: var(--share); min-width: 2px; height: 100%; border-radius: inherit; background: var(--color-accent); }
+.md-has-accent > .md-bar:not(.md-accent) .md-bar-fill { background: color-mix(in oklch, var(--color-muted-foreground) 40%, transparent); }
+.md-bar.md-accent > .md-bar-label { font-weight: 600; }
+.md-bar-value { color: var(--color-foreground); font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.md-bar-note { grid-column: 2 / -1; color: var(--color-muted-foreground); font-size: var(--text-xs); }
+
+.md-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
+.md-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.md-stat.md-accent { border-color: var(--color-accent); background: var(--color-accent-soft); }
+.md-stat-label { color: var(--color-muted-foreground); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.md-stat-value { color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.25; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.md-stat-detail { color: var(--color-muted-foreground); font-size: var(--text-xs); }
+
+/* A phone's column: one option per row, a bar's track under its label and value. */
+@container (max-width: 479px) {
+  .md-options { grid-template-columns: minmax(0, 1fr); }
+  .md-bars { grid-template-columns: minmax(0, 1fr) auto; }
+  .md-bar { row-gap: 4px; }
+  .md-bar-track { grid-row: 2; grid-column: 1 / -1; }
+  .md-bar-note { grid-column: 1 / -1; }
 }

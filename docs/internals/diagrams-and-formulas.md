@@ -3,7 +3,8 @@
 An answer, a reasoning block, a plan, a side answer, a Markdown file preview
 and the Agents page draw three kinds of blocks the Markdown engine
 (`packages/ui/src/lib/markdown.ts`) marks: Mermaid diagrams, LaTeX formulas
-and view blocks, small pages of HTML. A block holds a placeholder until its
+and view blocks, small pages of HTML, plus four native blocks drawn from plain
+lines ([native blocks](#native-blocks)). A block holds a placeholder until its
 drawing is ready, and shows its source when the drawing fails or never loads.
 
 ## What is drawn
@@ -14,6 +15,7 @@ drawing is ready, and shows its source when the drawing fails or never loads.
 | `$$…$$`, `\[…\]` or a ```` ```math ```` block | a display formula |
 | `\(…\)` | a formula in the line |
 | ```` ```view ```` fenced block of HTML, SVG, CSS and script | a page in a sandboxed frame ([view blocks](#view-blocks)) |
+| ```` ```steps ````, ```` ```options ````, ```` ```bars ````, ```` ```stats ```` fenced block | elements the client builds ([native blocks](#native-blocks)) |
 | `$…$` | text: a price or `$PATH` stays as written |
 
 `$$` and `\[` open a display formula on a line of their own when the closing
@@ -25,7 +27,7 @@ A streaming answer only hands a paragraph to the engine once a blank line
 closes it outside a fence (`ParagraphScan` in `lib/message-display.ts`), so a
 diagram or formula is drawn once, complete, and the text before it does not
 flicker. The paragraph still being written stops before a drawn block it has
-begun, a ```` ```mermaid ````, ```` ```math ```` or ```` ```view ```` fence or a
+begun, a ```` ```mermaid ````, ```` ```math ````, ```` ```view ```` or native fence or a
 `$$` or `\[` at the start of a line, and a placeholder stands in for the rest
 (`pendingDrawing` in `lib/message-display.ts`): the reader never sees half a
 diagram or the HTML of a page being typed. Once the block closes, the
@@ -34,7 +36,8 @@ at the height its page last had when the block was drawn before.
 
 The engine only marks: `md-mermaid` with the source in `data-source`,
 `md-math` with the TeX in `data-tex` and what was written in `data-source`,
-and `md-view` with the HTML in `data-source`.
+`md-view` with the HTML in `data-source`, and `md-native` with the fence's
+name in `data-kind` and its lines in `data-source`.
 The `richMarkdown` action (`lib/rich-markdown.ts`) watches the nodes that show
 Markdown and hands each marked element to `lib/rich-markdown-draw.ts` as it
 enters the page. Every drawing is cached by source, so a remounted message is
@@ -120,6 +123,41 @@ is up 2 seconds after loading, or leaves its own address. Its bar copies the
 HTML and switches between the page and its code; copying a selection across
 a drawn page gives back its ```` ```view ```` block.
 
+## Native blocks
+
+```` ```steps ````, ```` ```options ````, ```` ```bars ```` and ```` ```stats ````
+cover what an agent otherwise wrote as a view: a numbered list, a choice, a
+comparison, a few figures. The client draws them from their lines
+(`lib/native-blocks.ts`, loaded with `lib/rich-markdown-draw.ts`), with no
+frame, no core round trip and none of the HTML and CSS a view of the same list
+costs in output tokens. They are marked in rich rendering only (answers with
+Chat files and previews on); elsewhere, reasoning included, they stay code.
+
+One grammar serves all four. A line is an item and blank lines are skipped; `|`
+splits its fields and `\|` is a literal pipe; a leading `* ` highlights the
+item in the accent. Fields are escaped inline Markdown (`inline(text, false)` in
+`lib/markdown-inline.ts`): bold, italic, code and web links, never HTML or a
+`javascript:` link. Structure is built with DOM calls only.
+
+| Fence | Line | Drawn as |
+|---|---|---|
+| `steps` | `[* ][1. \| 1) \| - ]title [\| detail]` | an ordered list with number badges joined by a rule |
+| `options` | `[* ]title [\| detail]` | cards in two columns, one under 480 px |
+| `bars` | `[* ]label \| value [\| note]` | a track per row, filled in proportion, value in tabular figures |
+| `stats` | `[* ]label \| value [\| detail]` | a `<dl>` of tiles in an auto-fit grid |
+
+A bar's value is a non-negative number with an optional unit. Time (`ns` to
+`h`), bytes (`B` to `TB`, `KiB` to `TiB`) and magnitudes (`k`, `M`, `bn`, a
+bare `1,250`) are converted, so `800 ms` and `4.2 s` scale against each other;
+a percentage up to 100 scales against 100. Any other unit must be the same on
+every row. With no item, more than 30, a field too many, an empty title or
+value, a bar it cannot read or units that do not compare, the block is not
+drawn: it stays code with its copy button and no error line, since a
+misleading chart is worse than none. A drawn block has the bar of a diagram,
+Copy and a switch between Block and Code; a copied selection gives back its
+fence. Layout follows the block's own width through a container query, so a
+phone's column and a narrow panel get the one-column form.
+
 ## What the agent is told
 
 One line of the session guide (`CHAT_VISUALS` in
@@ -132,7 +170,9 @@ and asks for a picture whenever one explains better than text. It asks for
 quoted `xychart-beta` labels: Pele rejects a bare label with an accent, such
 as `x-axis [Jan, Fév]`. It offers a ```` ```view ```` block of HTML, SVG, CSS
 and script for an interactive or animated piece, and says the page is offline
-and takes the app's look, so it writes no fixed color. Only a larger page, or
+and takes the app's look, so it writes no fixed color. It names the four
+native fences, their `title | detail` and `label | value | note` lines and the
+`* ` highlight, to be preferred to a view. Only a larger page, or
 one to keep as a file, goes to `boite view`
 ([chat files](chat-files.md#what-the-agent-is-told)).
 
