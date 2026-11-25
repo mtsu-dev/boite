@@ -59,7 +59,7 @@ test('limits identify the owning machine in the desktop glance and desktop and p
           const css = getComputedStyle(panel);
           const left = parseFloat(panel.style.left);
           const bottom = parseFloat(panel.style.top) + panel.offsetHeight;
-          return { positiveGap: left > trigger.closest('.app-rail').getBoundingClientRect().right,
+          return { positiveGap: left > trigger.closest('.app-rail, .rail').getBoundingClientRect().right,
             style: [css.borderRadius, css.boxShadow, css.padding], left, width: panel.offsetWidth,
             aligned: Math.abs(bottom - trigger.getBoundingClientRect().bottom) < 1 };
         })()`);

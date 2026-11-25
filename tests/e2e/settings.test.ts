@@ -213,7 +213,8 @@ test('Short answers starts on and saves when flipped', async () => {
 test('the mochis are in the app rail on the desktop and in the phone bar, with no switch', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
   await page.waitFor(`!document.querySelector('${id('mobile-settings-detail')}') && !history.state?.boiteOverlay`);
-  // The agents fixture, so the rail has bots to draw.
+  // The agents fixture with Mochi layout on, so the rail has bots to draw.
+  await page.evaluate(`localStorage.setItem('boite.mochi-layout', '1')`);
   await page.navigate(`${uiUrl}/?fake=1&open=recent&agents=1`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
   // Bots are on in every build, with no switch: the Experiments page lists none for them.
@@ -232,6 +233,7 @@ test('the mochis are in the app rail on the desktop and in the phone bar, with n
   // The rail's Threads button leads back to the threads.
   await page.click(id('view-threads'));
   await page.waitFor(`!document.querySelector('${id('agents-page')}') && document.querySelector('${id('view-threads')}')?.getAttribute('aria-current') === 'page'`);
+  await page.evaluate(`localStorage.removeItem('boite.mochi-layout')`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await toMobileList(page);
   expect(await page.evaluate(`document.querySelector('${id('mobile-agents')}').closest('[data-testid=mobile-tabs]') !== null`)).toBe(true);

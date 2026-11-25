@@ -26,7 +26,7 @@
    * so macOS's traffic lights land on the bar itself.
    */
   /** `listless`: the desktop draws no list column yet (lib/list-absent.ts), so there is nothing to fold. */
-  let { store, edge = false, listless = false }: { store: Store; edge?: boolean; listless?: boolean } = $props();
+  let { store, edge = false, listless = false, noRail = false }: { store: Store; edge?: boolean; listless?: boolean; noRail?: boolean } = $props();
 
   const inShell = desktopShell();
   /** macOS draws its own traffic lights over the window's top left corner, and no caption buttons are drawn here. */
@@ -136,6 +136,11 @@
     <span class="name ui-label">{activity ? strings.mobile.activity : store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading : heading}</span>
   {/if}
   {#if contactNotice && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
+  {#if noRail && !mobile.current && store.booted && store.page !== 'settings' && (listless || store.sidebarCollapsed)}
+    <!-- With the Mochi layout rail off and no sidebar column visible, Settings stays one press away here. -->
+    <button type="button" class="ghost icon edge-settings" title={`${strings.sidebar.settings}${store.keyHint('settings')}`} aria-label={strings.sidebar.settings}
+      data-testid="nav-settings" data-preload-view="settings" onclick={() => store.showSettings()}><Settings size={16} strokeWidth={1.75} /></button>
+  {/if}
   {#if inShell && store.booted && store.page !== 'settings'}
     <!-- A shell window narrower than a phone has no app rail: Settings stays one press away here. -->
     <button type="button" class="ghost icon narrow-settings" title={strings.sidebar.settings} aria-label={strings.sidebar.settings}
@@ -193,6 +198,8 @@
   .titlebar.browser, .titlebar.linux { padding-right: 4px; }
   .titlebar.mac { padding-right: 8px; }
   .sidebar-toggle { flex: none; }
+  .edge-settings { flex: none; color: var(--color-muted-foreground); }
+  .edge-settings:hover:not(:disabled) { color: var(--color-foreground); }
   .narrow-settings { flex: none; display: none; margin-left: auto; }
   .slot-actions { display: flex; flex: none; align-items: center; gap: 4px; margin-left: auto; padding-right: 8px; }
   @media (min-width: 721px) {

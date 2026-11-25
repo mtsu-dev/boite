@@ -48,6 +48,7 @@ afterEach(async () => { await page?.close(); }, 15_000);
 afterAll(async () => { await server?.close(); }, 30_000);
 
 test('the rail\'s foot button and Machines both reach updates, and the foot fits its controls', async () => {
+  await page.evaluate(`localStorage.setItem('boite.mochi-layout', '1')`);
   await page.navigate(`${base}/?fake=1&open=recent&machines=1&appUpdate=ready&appUpdateChannel=nightly`);
   // The machines, updates, limits and Settings stand in the rail's foot, in that order.
   const foot = ['machine-status', 'nav-updates', 'nav-limits', 'nav-settings'];

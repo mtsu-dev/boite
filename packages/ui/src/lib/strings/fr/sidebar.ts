@@ -42,6 +42,8 @@ export const fr: Translation = {
     groupIdleRow: 'Projets inactifs',
     showDoneRow: 'Fils terminés',
     showDoneHint: 'Affiche les fils terminés après les autres, dans Projets et Récent. Cet appareil seulement.',
+    mochiLayoutRow: 'Disposition Mochi',
+    mochiLayoutHint: 'Affiche la barre latérale avec vos mochis, équipes et raccourcis sur le bord gauche. Cet appareil seulement.',
     autoArchiveMergedPrHint: 'Une fois toutes ses PR fusionnées ou fermées, Boite demande à l’agent si le fil est terminé. S’applique à ce projet.',
     autoRemoveWorktreesHint: 'Une heure après que tous les fils d’un worktree sont terminés ou archivés, Boite supprime le worktree si rien ne se perd : son dernier commit est sur une autre branche, ou une pull request fusionnée a exactement ce commit. Une branche fusionnée part aussi. Les modifications non commitées restent toujours. S’applique à ce projet.',
     noActiveProjects: 'Aucun fil à traiter.',

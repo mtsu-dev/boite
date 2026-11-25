@@ -75,6 +75,12 @@
   import { startViewHistory } from './lib/view-history.svelte';
   import { agentAutoLink } from './lib/agent-links.svelte';
   import ThreadPreparation from './components/ThreadPreparation.svelte';
+  import { mochiLayout } from './lib/mochi-layout.svelte';
+  import { followActivityReturn } from './lib/activity-return.svelte';
+  import { followAgentDirectories } from './lib/agent-directory.svelte';
+  import { contactsShownAnywhere } from './lib/contacts-anywhere';
+  import { contactsParts } from './lib/contacts-entry';
+  import { isMac } from './lib/keybindings';
 
   let store = $derived(workspace.active);
   const inShell = desktopShell();
@@ -525,17 +531,30 @@
    * anywhere below restyle the body, right before the list read its layout.
    */
   /**
-   * The desktop's left edge: the app rail on every page, then the list column
-   * (threads, bots, or the Settings pages, which never fold). Both reach the
-   * window's top, so the main column's bar starts right of them.
+   * The desktop's left edge: optionally the Mochi layout app rail on every page,
+   * then the list column (threads, bots, or the Settings pages, which never fold).
+   * Both reach the window's top, so the main column's bar starts right of them.
    */
-  let railShown = $derived(booted && !wideRecovery);
+  let desktopReady = $derived(booted && !wideRecovery);
+  let railShown = $derived(desktopReady && mochiLayout.on);
+  let noRailDesktop = $derived(desktopReady && !railShown && !narrow.current);
+  let macEdge = $derived(desktopReady && !railShown && inShell && isMac());
+  // Acting from Activity opens a thread; the root lives as long as the desktop frame, so it walks the way back.
+  followActivityReturn();
+  // Without AppRail mounted, keep every machine's mochi directory live for the sidebar foot dot and palette search.
+  followAgentDirectories(() => workspace.machinesOr(store).map(machine => machine.store), () => noRailDesktop && experimentOn('resident-agents'));
+  let contactsAnywhere = $derived(contactsShownAnywhere(store));
+  let ContactRequestNotice = $state<typeof import('./components/home/ContactRequestNotice.svelte').default>();
+  $effect(() => {
+    if (!noRailDesktop || !contactsAnywhere || ContactRequestNotice) return;
+    void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+  });
   let agentsRailShown = $derived(store.page === 'agents' && experimentOn('resident-agents') && !(store.connection === 'closed' && !store.core));
   // Before the first project the desktop draws no list column (lib/list-absent.ts): it counts as folded, with no toggle.
   let listGone = $derived(store.page !== 'settings' && !(store.page === 'agents' && experimentOn('resident-agents'))
     && listAbsent(workspace.machinesOr(store).map((machine) => machine.store), narrow.current));
   let listFolded = $derived((store.sidebarCollapsed || listGone) && store.page !== 'settings');
-  let barLeft = $derived(!railShown ? '0px' : listFolded ? 'var(--frame-gap)'
+  let barLeft = $derived(!desktopReady ? '0px' : listFolded ? 'var(--frame-gap)'
     : `calc(${visibleSidebarWidth({ sidebarWidth: store.sidebarWidth, agentsSidebarWidth: store.agentsSidebarWidth, page: agentsRailShown ? 'agents' : 'chat' })}px + var(--frame-gap))`);
   let sidebarFolded = $derived(listFolded && store.booted);
   // A machine with no AI shows its one action first: the tour waits for something to show.
@@ -569,8 +588,9 @@
   <ThreadPreparation {store} visible={documentVisible && (inShell || mobileScreen === 'chat')} />
 {/if}
 
-<div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:railed={railShown} class:quitting style:--bar-left={barLeft} bind:this={appRoot}>
+<div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:railed={railShown} class:mac-edge={macEdge} class:quitting style:--bar-left={barLeft} bind:this={appRoot}>
   {#if railShown}<AppRail {store} />{/if}
+  {#if noRailDesktop && contactsAnywhere && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
   {#if !inShell && booted}
     {#if earlyPairing}
       <MobilePairing {store} screen={mobileScreen} navigate={(screen) => { mobileScreen = screen; }} onpaired={() => { mobileScreen = 'threads'; }} />
@@ -584,7 +604,7 @@
       </p>
     {/if}
   {/if}
-  <TitleBar {store} edge={!railShown} listless={listGone} />
+  <TitleBar {store} edge={!desktopReady || (!railShown && listFolded)} listless={listGone} noRail={desktopReady && !railShown} />
 
   <div class="body" class:under-settings={phoneSettings} class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
     {#if !booted}
@@ -771,6 +791,9 @@
     /* The list column climbs over the bar's band to the window's top; the bar
        starts right of it (`--bar-left`). */
     .body > :global(.rail) { margin-top: calc(-1 * var(--titlebar)); }
+    /* On macOS without the app rail, the traffic lights sit in the top-left corner over the list column or Settings nav. */
+    .app.mac-edge .body > :global(.rail),
+    .app.mac-edge .body :global(.settings > nav) { padding-top: var(--titlebar); }
 
     .body.sidebar-folded {
       padding-left: var(--frame-gap);

@@ -21,6 +21,7 @@
   import ProjectTile from './ProjectTile.svelte';
   import MachineIcon from './MachineIcon.svelte';
   import { closeArchived, openArchived } from '../lib/archived-view.svelte';
+  import { mochiLayout } from '../lib/mochi-layout.svelte';
 
   /**
    * The display menu over the thread list (DisplayOptions.svelte loads it on
@@ -198,6 +199,10 @@
     {#if projects}
       {@render toggle('other', strings.sidebar.groupIdleRow, recentPreferences.groupOtherProjects, strings.settings.groupOtherProjectsHint,
         () => recentPreferences.setGroupOtherProjects(!recentPreferences.groupOtherProjects))}
+    {/if}
+    {#if !compact}
+      {@render toggle('mochi-layout', strings.sidebar.mochiLayoutRow, mochiLayout.on, strings.sidebar.mochiLayoutHint,
+        () => mochiLayout.toggle())}
     {/if}
   </section>
   {#if merged}
