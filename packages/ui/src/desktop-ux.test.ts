@@ -562,18 +562,22 @@ test('the palette and the project menu reach the archive, its list already read'
   expect(document.querySelector('[data-testid=archived-show]')).toBeNull();
   expect(query('[data-testid=archived-list]').textContent).toContain('Finish the trace tab');
 
-  query<HTMLButtonElement>('[data-testid=sidebar-archived-back]').click();
+  // The archive is a card of Settings > General, never the thread list's place: the list stays as it was.
+  expect(store.page === 'settings' && store.settingsTab === 'general').toBe(true);
+  expect(document.querySelector('[data-testid=sidebar] [data-testid=archived-list]')).toBeNull();
+
+  store.showChat();
   await waitFor(() => document.querySelector('[data-testid=project-menu]') !== null);
   query<HTMLButtonElement>('[data-testid=project-menu]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archived]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archived]').click();
-  // A card's menu opens the archive in the list itself, on its project; All projects widens it back to every one.
-  await waitFor(() => store.page === 'chat' && document.querySelector('[data-testid=sidebar-archived] [data-testid=archived-focus]') !== null);
+  // A card's menu opens the archive on its project; All projects widens it back to every one.
+  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-focus]') !== null);
   query<HTMLButtonElement>('[data-testid=archived-all]').click();
-  await waitFor(() => document.querySelector('[data-testid=sidebar-archived] [data-testid=archived-list]')?.textContent?.includes('Finish the trace tab') === true);
-  // The first line gives the threads back.
-  query<HTMLButtonElement>('[data-testid=sidebar-archived-back]').click();
-  await waitFor(() => document.querySelector('[data-testid=sidebar-archived]') === null && document.querySelector('[data-testid=thread-row]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=archived-focus]') === null && document.querySelector('[data-testid=archived-list]')?.textContent?.includes('Finish the trace tab') === true);
+  // Settings left, the focus goes with it: the next opening shows every project.
+  store.showChat();
+  await waitFor(() => document.querySelector('[data-testid=archived-threads]') === null);
 });
 
 test('Ctrl+Shift+T brings back the thread archived last on the machine, from this window or another, and opens it', async () => {

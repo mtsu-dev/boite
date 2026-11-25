@@ -721,7 +721,7 @@ browser profiles. Matrix `fail-fast: false` preserves other shards' results
 after a failure.
 
 The `Build UI` job builds both UIs once on Linux: `bun run build:ui` (artifact
-`ui-dist`, `.well-known` included) and the fake-client bundle
+`ui-dist`) and the fake-client bundle
 (`bun tests/e2e/lib/warm.ts --build-only`, artifact `ui-e2e-fake`). The shards
 and stress download them instead of building about 31 s each on Windows.
 On `6004522f` (2026-10-17), the Linux UI of `app.yml` run 39065496375 and a
@@ -838,8 +838,7 @@ and the night was lost on `ended cancelled` (run 39226757576). The job writes th
 its `sha` output, and every later job checks out, tags and publishes that
 commit, never `github.sha`; the version step runs that commit's `nightly.ts`
 with `GITHUB_SHA` set to it. `desktop.yml`, `android-server.yml`, `mobile.yml`,
-`server.yml` and `server-verify.yml` take it as their `ref` input. `app.yml` deploys its own
-checkout, so it does not follow and a cancelled run still fails it. The whole
+`server.yml` and `server-verify.yml` take it as their `ref` input. The whole
 wait is bounded at two hours: 35 minutes behind the main run ahead, 35 for the
 followed run and 35 for its rerun.
 
@@ -923,18 +922,6 @@ volumes ([server](server.md)). The signed native Android app is required too
 ([Android app](android-native.md)), and so is the Boite Server APK, signed
 with the same key or reused while `apps/android-server` outside `termux/` is
 unchanged ([Android server](android-server.md#publishing-the-app)).
-
-## The phone app's address
-
-`app.yml` builds the UI on `main` when `packages/ui/`, `packages/contracts/` or
-the workflow change, or by hand; from `main` it waits for that commit's CI to
-pass (`scripts/ci/commit-ci.ts`, as the nightly does) and deploys it with
-GitHub Pages to the
-repository's custom domain, `APP_ORIGIN` in the contracts
-([phone](phone.md#the-app-on-its-own-address)). It packs the site itself so
-`/.well-known/assetlinks.json` ships, which `upload-pages-artifact` would leave
-out as a hidden folder. Pages must use GitHub Actions as its source, and the
-domain's DNS names `mtsu-dev.github.io`.
 
 ## Pull request reviews
 

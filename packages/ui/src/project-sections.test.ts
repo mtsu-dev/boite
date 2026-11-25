@@ -1,4 +1,3 @@
-import { closeArchived } from './lib/archived-view.svelte';
 import { afterEach, expect, test, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import type { Project, ThreadSummary } from '@boite/contracts';
@@ -145,10 +144,10 @@ test('a project where nothing runs and nothing waits sits under Inactive; one wi
   const home = document.querySelector<HTMLButtonElement>(item)!;
   expect([home.dataset.value, home.querySelector('.hint')?.textContent]).toEqual(['archived', '1']);
   home.click();
-  await waitFor(() => document.querySelector('[data-testid=sidebar-archived]') !== null);
+  await waitFor(() => store.page === 'settings' && store.settingsSection?.id === 'archived');
   expect([archivedFocus.store === store, archivedFocus.projectId]).toEqual([true, resting.id]);
   clearArchivedFocus();
-  closeArchived();
+  store.showChat();
 
   // Folded, Inactive keeps its header and count and hides the card.
   await waitFor(() => document.querySelector('[data-testid=paused-projects-toggle]') !== null);

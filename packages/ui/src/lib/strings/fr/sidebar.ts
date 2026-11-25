@@ -23,7 +23,6 @@ export const fr: Translation = {
     idleProjectsHint: 'Aucun fil dans ces projets, ni actif ni arrêté. Choisissez-en un pour lancer un fil.',
     filter: 'Filtrer',
     filterDisplay: 'Affichage',
-    backToThreads: 'Retour aux fils',
     filterClear: 'Retirer le filtre {name}',
     filterWorking: 'En cours',
     groupingOptions: "Options d'affichage",
