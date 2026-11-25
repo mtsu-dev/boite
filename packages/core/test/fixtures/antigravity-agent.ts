@@ -34,6 +34,7 @@ import { agent, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/
 
 /** The variables a test asserts on: the isolation, the harness, the browser suppression and where it unpacks. */
 const WATCHED = ['GEMINI_HOME', 'AGY_LLM_GATEWAY_URL', 'AGY_ACP_FORCE_FILE_STORAGE', 'ANTIGRAVITY_HARNESS_PATH', 'BROWSER', 'GEMINI_API_KEY', 'TEMP', 'TMP', 'TMPDIR', 'SSL_CERT_FILE'];
+const TEMPORARY_ACCOUNT_ERROR = 'Agent execution error: Error 0, Message: the Antigravity account that signed this conversation is temporarily unavailable; retry after Retry-After, Status: ';
 
 /**
  * The models 1.4.5 answers `session/new` with (2026-11-04): Gemini for any
@@ -260,6 +261,28 @@ const app = agent({ name: 'agy-fake' })
     if (text.includes('Attached files available on this machine')) log('prompt names a saved file');
     const update = (body: Record<string, unknown>): Promise<void> =>
       client.notify('session/update', { sessionId: params.sessionId, update: body as never });
+    const say = (text: string): Promise<void> => update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } });
+    if (text.includes('scenario:transient-error')) {
+      await update({ sessionUpdate: 'tool_call', toolCallId: `${params.sessionId}:read`, title: 'Read the report', kind: 'read', status: 'completed' });
+      await say(TEMPORARY_ACCOUNT_ERROR);
+      return { stopReason: 'end_turn' as const };
+    }
+    if (text.includes('scenario:other-session-error')) {
+      await client.notify('session/update', {
+        sessionId: 'another-session',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: TEMPORARY_ACCOUNT_ERROR } },
+      });
+    }
+    if (text.includes('scenario:quoted-error')) {
+      await say('The log said:\n```\n');
+      await say(TEMPORARY_ACCOUNT_ERROR);
+      await say('\n```');
+      return { stopReason: 'end_turn' as const };
+    }
+    if (text.includes('scenario:max-tokens')) {
+      await say(TEMPORARY_ACCOUNT_ERROR);
+      return { stopReason: 'max_tokens' as const };
+    }
     if (text.includes('scenario:subagents')) {
       // Captured from 1.1.1: the launch returns its description before any child finished.
       await update({ sessionUpdate: 'tool_call', toolCallId: `${params.sessionId}:2`, title: 'Running start_subagent', kind: 'other', status: 'in_progress', rawInput: {} });
@@ -293,14 +316,19 @@ const app = agent({ name: 'agy-fake' })
           // tool works longer than the quiet that ends a held turn.
           setTimeout(() => {
             writeRecord(params.sessionId, ['messages', 'read.json'], { report: true });
-            const synthesize = () => update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ' synthesis: the disk filled up' } }).then(() => log('synthesized'));
+            if (text.includes('scenario:swarm-error')) {
+              writeRecord(params.sessionId, ['logs', 'transcript.jsonl'], { type: 'SYSTEM_MESSAGE', content: 'The worker reported' });
+              void say(TEMPORARY_ACCOUNT_ERROR);
+              return;
+            }
+            const synthesize = () => say(' synthesis: the disk filled up').then(() => log('synthesized'));
             if (text.includes('scenario:swarm-ask')) {
               // A permission the user answers late, then a reply that takes its time.
-              void client.request('session/request_permission', {
+              void say(TEMPORARY_ACCOUNT_ERROR).then(() => client.request('session/request_permission', {
                 sessionId: params.sessionId,
                 toolCall: { toolCallId: `${params.sessionId}:clean`, title: 'Clean the disk', rawInput: { path: '/tmp' } },
                 options: [{ optionId: 'yes', name: 'Allow once', kind: 'allow_once' }, { optionId: 'no', name: 'Reject once', kind: 'reject_once' }],
-              }).then(() => {
+              })).then(() => {
                 log('permission answered');
                 setTimeout(() => void synthesize(), 2_000);
               });
@@ -315,7 +343,7 @@ const app = agent({ name: 'agy-fake' })
         }, 1_500);
       }
     }
-    await update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'pong' } });
+    await say('pong');
     return { stopReason: 'end_turn' as const };
   });
 

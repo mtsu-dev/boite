@@ -28,6 +28,11 @@ export function isAntigravity(provider: ProviderDescriptor): boolean {
   return provider.quirks?.includes('antigravity') === true;
 }
 
+/** The signed account can serve the conversation again after a wait. The ACP error text gives no Retry-After value. */
+export function isAntigravityAccountUnavailable(text: string): boolean {
+  return /^\s*Agent execution error: Error 0, Message: the Antigravity account that signed this conversation is temporarily unavailable; retry after Retry-After, Status:\s*$/.test(text);
+}
+
 /**
  * The `clientInfo` Antigravity is sent. The agent offers its Claude and GPT
  * models only to clients it allowlists, Zed among them: named `boite`, 1.4.5
