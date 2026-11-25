@@ -26,8 +26,6 @@ export const strings = {
     filter: 'Filter',
     /** The Filter menu's group of switches: what the list folds away or shows. */
     filterDisplay: 'Display',
-    /** The archive in the list column: the way back to the threads. */
-    backToThreads: 'Back to the threads',
     /** A filter on, as a chip under the list's head (FilterChips.svelte): its press removes it. */
     filterClear: 'Remove the {name} filter',
     /** Recent's filter on the rows still at work, named on its chip. */
