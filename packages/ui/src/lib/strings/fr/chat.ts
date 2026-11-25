@@ -2,6 +2,21 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
 
+  threadExport: {
+    menu: 'Exporter...',
+    title: 'Exporter la conversation',
+    format: 'Format du fichier',
+    markdown: 'Markdown (.md)',
+    html: 'HTML (.html)',
+    tools: 'Inclure les appels d’outils',
+    diffs: 'Inclure les diffs',
+    thinking: 'Inclure le raisonnement',
+    copy: 'Copier le Markdown',
+    download: 'Télécharger',
+    loading: 'Lecture de la conversation...',
+    failed: 'Impossible d’exporter la conversation',
+  },
+
   chat: {
     accepted: 'Requête acceptée',
     responseStarted: 'Activité reçue',

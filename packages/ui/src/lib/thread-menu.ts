@@ -1,4 +1,4 @@
-import { Archive, ArrowRightLeft, CircleCheck, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
+import { Archive, ArrowRightLeft, CircleCheck, Copy, Download, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
@@ -9,11 +9,13 @@ import { canMove, moveItems, pickMoveItem } from './thread-move.svelte';
 import { entrustItems, pickEntrustItem } from './thread-entrust';
 import { workspace } from './workspace.svelte';
 import { strings } from './strings';
+import { openThreadExport } from './thread-export-request.svelte';
 
 interface ThreadMenuOptions {
   /** Rows can open their thread; the header is already there. */
   open?: boolean;
   showDone?: boolean;
+  exportConversation?: boolean;
   /** Omitted where pull requests have no manual refresh action. */
   prLoading?: boolean;
   /** The view's own tools (find), first on the menu's first level. */
@@ -24,6 +26,10 @@ interface ThreadMenuOptions {
   place?: MenuItem[];
   /** A phone's menu: the path and the pull request stay on the desktop. */
   phone?: boolean;
+}
+
+export function threadExportItem(): MenuItem {
+  return { id: 'export-thread', label: strings.threadExport.menu, glyph: Download };
 }
 
 /**
@@ -92,7 +98,8 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
   const items: MenuItem[] = [
     ...opening,
     ...own,
-    ...(own.length ? [separator('sep-thread-tools')] : []),
+    ...(options.exportConversation ? [threadExportItem()] : []),
+    ...(own.length || options.exportConversation ? [separator('sep-thread-tools')] : []),
     { id: 'rename', label: strings.common.rename, glyph: PencilLine },
     // The title made again sits with the one typed: both name the thread.
     { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
@@ -135,6 +142,7 @@ export function pickThreadAction(store: Store, thread: ThreadSummary, action: st
     case 'rename': view.rename(); return true;
     case 'retitle': void store.retitle(thread.id); return true;
     case 'copy-thread-id': void store.copy(thread.id); return true;
+    case 'export-thread': openThreadExport(store, thread); return true;
     case 'copy': void store.copy(thread.cwd); return true;
     case 'pr': view.refreshPr?.(); return true;
     case 'delete': void deleteThread(store, thread); return true;

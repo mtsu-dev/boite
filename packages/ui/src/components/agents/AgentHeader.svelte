@@ -19,6 +19,8 @@
   import PanelDoor from '../PanelDoor.svelte';
   import { separator, type MenuItem } from '../../lib/menu';
   import { routeGone } from '../../lib/agent-route';
+  import { threadExportItem } from '../../lib/thread-menu';
+  import { openThreadExport } from '../../lib/thread-export-request.svelte';
   import { tick } from 'svelte';
 
   /**
@@ -79,7 +81,7 @@
 
   /** The thread menu's order: the view's own Find first, then what is done to the bot, its danger last. */
   const menuItems = $derived<MenuItem[]>([
-    ...(thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }, separator('sep-find')] : []),
+    ...(thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }, threadExportItem(), separator('sep-find')] : []),
     { id: 'settings', label: labels.settings, glyph: Settings2 },
     { id: 'brain', label: labels.brain, glyph: Brain },
     ...(store.owner && agent.status !== 'archived' ? agentLifecycleItems(agent, !!thread) : []),
@@ -89,7 +91,8 @@
     if (id === 'find') {
       store.findOpen = true;
       store.findRequest += 1;
-    } else if (id === 'settings' || id === 'brain') onpane(id);
+    } else if (id === 'export-thread' && thread) openThreadExport(store, thread);
+    else if (id === 'settings' || id === 'brain') onpane(id);
     else pickAgentLifecycle(view, agent, id, store);
   }
 </script>

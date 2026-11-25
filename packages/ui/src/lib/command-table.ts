@@ -10,6 +10,7 @@ import { openTour } from './onboarding.svelte';
 import { fill, strings } from './strings';
 import type { Store } from './store.svelte';
 import { setTheme } from './theme';
+import { openThreadExport } from './thread-export-request.svelte';
 
 type CommandDefinition = {
   id: string;
@@ -49,6 +50,7 @@ const commandTable: readonly CommandDefinition[] = [
   { id: 'pin', label: () => strings.keyboard.commands.pin, run: (store) => { const open = store.openThread; if (open) void store.pin(open.id, !open.pinned); } },
   { id: 'rename', label: () => strings.palette.rename, run: (store) => { store.showChat(); store.renameRequested = true; } },
   { id: 'retitle', label: () => strings.palette.retitle, run: (store) => { const open = store.openThread; if (open) void store.retitle(open.id); } },
+  { id: 'export-thread', run: (store) => { const thread = store.openThread; if (thread) openThreadExport(store, thread); } },
   { id: 'trace', label: () => strings.palette.trace, ownerOnly: true, run: (store) => { store.showChat(); store.panel.toggleKind('trace'); } },
   { id: 'appearance', label: () => strings.palette.appearance, run: (store) => { store.showSettings('appearance'); } },
   { id: 'providers', label: () => strings.palette.providers, ownerOnly: true, run: (store) => { store.showSettings('accounts'); } },

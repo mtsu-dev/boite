@@ -1,5 +1,20 @@
 export const strings = {
 
+  threadExport: {
+    menu: 'Export...',
+    title: 'Export conversation',
+    format: 'File format',
+    markdown: 'Markdown (.md)',
+    html: 'HTML (.html)',
+    tools: 'Include tool calls',
+    diffs: 'Include diffs',
+    thinking: 'Include thinking',
+    copy: 'Copy Markdown',
+    download: 'Download',
+    loading: 'Reading conversation...',
+    failed: 'Could not export the conversation',
+  },
+
   chat: {
     accepted: 'Request accepted',
     responseStarted: 'Agent activity received',

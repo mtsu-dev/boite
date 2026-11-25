@@ -647,6 +647,14 @@ export class Store {
     try { await client.call('turns.cancelRetry', { threadId }); } catch (error) { this.#ctx.fail(error); }
   }
   threadCapabilities(...args: Parameters<Threads['capabilities']>) { return this.#ctx.threads.capabilities(...args); }
+  async threadExportMessages(threadId: ThreadId, includeDiffs: boolean, signal: AbortSignal): Promise<Message[]> {
+    const { client, clientGeneration } = this.#ctx;
+    if (!client) throw new Error('Not connected');
+    const { loadAllThreadMessages } = await import('./thread-export');
+    const messages = await loadAllThreadMessages(client, threadId, includeDiffs, signal);
+    if (!this.#ctx.currentClient(client, clientGeneration)) throw new Error('Connection changed while reading the conversation');
+    return messages;
+  }
   previewAccountSwitch(...args: Parameters<Threads['previewAccountSwitch']>) { return this.#ctx.threads.previewAccountSwitch(...args); }
   threadStats(...args: Parameters<Threads['stats']>) { return this.#ctx.threads.stats(...args); }
   /** What the thread's last Claude request carried, read from its transcript on this store's machine. */

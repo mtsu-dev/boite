@@ -152,6 +152,13 @@ replaced.
 - Muse Code, OpenCode, Antigravity, Grok and pi keep the prompt's title under
   Automatic.
 
+## Export a conversation
+
+Open the menu in the conversation header and choose Export. Pick Markdown or
+HTML, then Download. HTML opens offline in a browser. Choose Copy Markdown
+to put the text on the clipboard. Tool calls, diffs and reasoning are optional.
+The export covers the complete conversation and lists attachments by name.
+
 ## Notifications
 
 On a desktop, notifications appear in the top-right corner, under the top bar,
