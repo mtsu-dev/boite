@@ -99,16 +99,16 @@ function restingThread(store: Store, thread: ThreadSummary): boolean {
 
 /**
  * Working: every conversation it holds is at work and nothing there holds the user's input (a pin, unsent text in a
- * conversation or in a new draft), so a folded section never hides what waits on the user.
+ * conversation, a new draft open or holding text), so a folded section never hides what waits on the user.
  * Paused: conversations, every one at rest (restingThread) and no new draft, so folding it hides nothing either.
  * Open: any other conversation or draft. Idle: no conversation at all; archived and done ones live in its row's history.
  */
 function projectSection(entry: ProjectEntry): ProjectSection {
   const store = entry.machine.store;
   const threads = store.threadsOf(entry.project.id);
-  const drafting = store.draftEntries.some(draft => draft.projectId === entry.project.id);
+  const drafting = store.draft?.projectId === entry.project.id || store.draftEntries.some(draft => draft.projectId === entry.project.id);
   if (threads.length > 0 && !drafting && threads.every(thread => groupWorkingThread(store, thread))) return 'working';
-  if (threads.length > 0 && !drafting && store.draft?.projectId !== entry.project.id && threads.every(thread => restingThread(store, thread))) return 'paused';
+  if (threads.length > 0 && !drafting && threads.every(thread => restingThread(store, thread))) return 'paused';
   return activeProject(entry) ? 'open' : 'idle';
 }
 

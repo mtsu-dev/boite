@@ -175,12 +175,12 @@ test('a project where nothing runs and nothing waits sits under Paused; one with
 });
 
 test('an unsent new draft keeps its project among the open ones; without a grouping, its projects stay open cards', () => {
-  const entry = (id: string, threads: Partial<ThreadSummary>[], counts: Partial<Project> = {}, drafts: { projectId: string; text: string }[] = []): ProjectEntry => ({
+  const entry = (id: string, threads: Partial<ThreadSummary>[], counts: Partial<Project> = {}, drafts: { projectId: string; text: string }[] = [], open = false): ProjectEntry => ({
     machine: {
       id: 'local', label: 'local',
       store: {
         threadsOf: () => threads.map((t, i) => ({ id: `${id}-${i}`, status: 'idle', pinned: false, ...t })),
-        subagents: () => null, composerStates: {}, draft: null, draftEntries: drafts
+        subagents: () => null, composerStates: {}, draft: open ? { projectId: id } : null, draftEntries: drafts
       }
     } as never,
     project: { id, name: id, path: `/${id}`, createdAt: 0, ...counts }
@@ -189,13 +189,15 @@ test('an unsent new draft keeps its project among the open ones; without a group
     entry('busy', [{ status: 'running' }]),
     // A prompt typed for a new conversation waits on the user: a folded Working section must not hide it.
     entry('drafting', [{ status: 'running' }], {}, [{ projectId: 'drafting', text: 'Unsent new conversation' }]),
+    // So does the new draft open on screen, before it has text.
+    entry('opened', [{ status: 'running' }], {}, [], true),
     // A reply to read waits on the user; a read one at rest does not.
     entry('news', [{ unread: true }]), entry('resting', [{}]),
     // Without a thread, archived or done history or none, a project has no card.
     entry('archived', [], { archivedThreads: 2 }), entry('quiet', [], { archivedThreads: 1, doneThreads: 1 })
   ];
   const ids = (sections: Record<string, ProjectEntry[]>) => Object.fromEntries(Object.entries(sections).map(([key, list]) => [key, list.map((e) => e.project.id)]));
-  expect(ids(projectSections(entries, true, true))).toEqual({ working: ['busy'], open: ['drafting', 'news'], paused: ['resting'], idle: ['archived', 'quiet'] });
-  expect(ids(projectSections(entries, false, true))).toEqual({ working: ['busy'], open: ['drafting', 'news', 'resting', 'archived', 'quiet'], paused: [], idle: [] });
-  expect(ids(projectSections(entries, true, false))).toEqual({ working: [], open: ['busy', 'drafting', 'news'], paused: ['resting'], idle: ['archived', 'quiet'] });
+  expect(ids(projectSections(entries, true, true))).toEqual({ working: ['busy'], open: ['drafting', 'opened', 'news'], paused: ['resting'], idle: ['archived', 'quiet'] });
+  expect(ids(projectSections(entries, false, true))).toEqual({ working: ['busy'], open: ['drafting', 'opened', 'news', 'resting', 'archived', 'quiet'], paused: [], idle: [] });
+  expect(ids(projectSections(entries, true, false))).toEqual({ working: [], open: ['busy', 'drafting', 'opened', 'news'], paused: ['resting'], idle: ['archived', 'quiet'] });
 });
