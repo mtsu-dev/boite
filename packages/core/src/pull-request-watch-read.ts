@@ -140,6 +140,8 @@ export interface WatchDetail {
   headRepository?: string;
   base: string;
   baseFailure?: PullRequestBaseFailure;
+  /** When the first failing base check was posted or completed. */
+  baseFailureAt?: string;
   /** A draft cannot merge: a required context it never reports does not hold its verdict. */
   draft: boolean;
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
@@ -174,6 +176,7 @@ export function parseDetail(raw: string): WatchDetail {
   const base = baseTip(pr), sha = text(base.oid, 64);
   const first = checksOf(base).filter(({ check }) => check.status === 'failed')
     .sort((a, b) => (a.at || '9999').localeCompare(b.at || '9999'))[0]?.check;
+  const baseFailureAt = first?.createdAt || first?.finished || first?.started;
   const mergeable = String(pr.mergeable);
   const mergeState = typeof pr.mergeStateStatus === 'string' ? pr.mergeStateStatus : 'UNKNOWN';
   return {
@@ -183,6 +186,7 @@ export function parseDetail(raw: string): WatchDetail {
     headRepository: text(row(pr.headRepository).nameWithOwner, 200),
     base: text(pr.baseRefName, 255),
     ...(sha && first ? { baseFailure: { sha, name: first.name, conclusion: first.conclusion, url: first.url } } : {}),
+    ...(sha && baseFailureAt ? { baseFailureAt } : {}),
     draft: pr.isDraft === true,
     mergeable: mergeable === 'MERGEABLE' || mergeable === 'CONFLICTING' ? mergeable : 'UNKNOWN',
     behind: mergeState === 'UNKNOWN' ? null : mergeState === 'BEHIND',

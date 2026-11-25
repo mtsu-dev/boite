@@ -519,7 +519,7 @@ function prTriggerTransitions(changes: WatchChange[], detail: WatchDetail, previ
       }
     } else if (change.kind === 'base-failed') {
       const { sha, name, conclusion, url } = change.check;
-      transitions.push({ kind: 'ci_failed', key: JSON.stringify([sha, name, conclusion, url]) });
+      transitions.push({ kind: 'ci_failed', key: JSON.stringify([sha, name, conclusion, url, ...(detail.baseFailureAt ? [detail.baseFailureAt] : [])]) });
     } else if (change.kind === 'conflict') {
       transitions.push({ kind: 'conflict', key: JSON.stringify([detail.head, current.baseOid, detail.base]) });
     }

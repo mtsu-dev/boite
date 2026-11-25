@@ -260,6 +260,7 @@ test('the PR tracker sends matching transitions of a granted project without a s
   let moved = false;
   let status = 'FAILURE';
   let statusCreatedAt = '2026-11-25T12:00:00Z';
+  let baseCheck: { status: string; completedAt?: string } | null = null;
   spyOn(h.core.pullRequests, 'gh').mockImplementation((_thread, args) => {
     const query = args.find(arg => arg.startsWith('query='));
     if (!query) return Promise.resolve(args.at(-1)?.includes('/branches/main') ? '{"protected":false}' : '[]');
@@ -269,6 +270,10 @@ test('the PR tracker sends matching transitions of a granted project without a s
       mergedBy: state === 'MERGED' ? { login: 'someone' } : null,
       reviewRequests: { nodes: moved ? [{ id: 'new-request' }] : [] },
       changeReviews: { nodes: moved ? [{ id: 'changes' }] : [] },
+      baseRef: { target: { oid: 'base', statusCheckRollup: { contexts: {
+        nodes: baseCheck ? [{ __typename: 'CheckRun', name: 'base CI', conclusion: 'FAILURE', detailsUrl: 'https://ci.example/base', ...baseCheck }] : [],
+        checkRunCountsByState: baseCheck ? [{ state: baseCheck.status, count: 1 }] : [],
+      } } } },
       commits: { nodes: [{ commit: { statusCheckRollup: { contexts: {
         nodes: moved ? [check] : [], statusContextCountsByState: moved ? [{ state: status, count: 1 }] : [],
       } } } }] },
@@ -302,9 +307,21 @@ test('the PR tracker sends matching transitions of a granted project without a s
   await waitFor(() => settled(h, threadId));
   expect(driver.prompts.get(threadId)!.at(-1)).toContain('ci_failed');
 
+  baseCheck = { status: 'COMPLETED', completedAt: '2026-11-25T12:15:00Z' };
+  await watches.pass();
+  expect(turnsOf(h, threadId)).toHaveLength(4);
+  await waitFor(() => settled(h, threadId));
+  baseCheck = { status: 'IN_PROGRESS' };
+  await watches.pass();
+  baseCheck = { status: 'COMPLETED', completedAt: '2026-11-25T12:20:00Z' };
+  await watches.pass();
+  expect(turnsOf(h, threadId)).toHaveLength(5);
+  await waitFor(() => settled(h, threadId));
+  expect(driver.prompts.get(threadId)!.at(-1)).toContain('ci_failed');
+
   state = 'MERGED';
   await watches.pass();
-  await waitFor(() => (driver.prompts.get(threadId)?.length ?? 0) >= 4 && read(trigger).lastOutcome !== 'queued' && settled(h, threadId));
-  expect(turnsOf(h, threadId)).toHaveLength(4);
+  await waitFor(() => (driver.prompts.get(threadId)?.length ?? 0) >= 6 && read(trigger).lastOutcome !== 'queued' && settled(h, threadId));
+  expect(turnsOf(h, threadId)).toHaveLength(6);
   expect(driver.prompts.get(threadId)!.at(-1)).toContain('merged');
 });
