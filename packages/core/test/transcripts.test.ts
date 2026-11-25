@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
@@ -141,6 +141,8 @@ test('a Codex event keeps the image its message did not carry, and an old wrappe
   writeFileSync(file, jsonl([
     { timestamp: '2026-09-10T08:00:01.000Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'What is on this picture?' }] } },
     { timestamp: '2026-09-10T08:00:01.100Z', type: 'event_msg', payload: { type: 'item_completed', item: { type: 'UserMessage', id: 'i1', content: [{ type: 'text', text: 'What is on this picture?' }, { type: 'image', image_url: picture }] } } },
+    // The same words in a later turn, said by an event only, with an image too small to be a file.
+    { timestamp: '2026-09-10T08:00:02.000Z', type: 'event_msg', payload: { type: 'item_completed', item: { type: 'UserMessage', id: 'i2', content: [{ type: 'text', text: 'What is on this picture?' }, { type: 'image', image_url: `data:image/png;base64,${PNG}` }] } } },
     { timestamp: '2026-09-10T08:00:03.000Z', type: 'response_item', payload: { type: 'function_call', call_id: 'c1', name: 'shell', arguments: '{"command":["make"]}' } },
     { timestamp: '2026-09-10T08:00:04.000Z', type: 'response_item', payload: { type: 'function_call_output', call_id: 'c1', output: JSON.stringify({ output: `${'compiling\n'.repeat(5000)}make: *** [all] Error 9`, metadata: { exit_code: 9, duration_seconds: 4.2 } }) } },
   ]));
@@ -149,7 +151,9 @@ test('a Codex event keeps the image its message did not carry, and an old wrappe
   const stream = await records(out);
   const item = stream.find(entry => entry.k === 'item')!;
   expect(item.content).toEqual([{ type: 'image', image_url: expect.objectContaining({ mime: 'image/png' }) }]);
-  expect(result.blobs).toHaveLength(1);
+  const again = stream.filter(entry => entry.k === 'item')[1]!;
+  expect(again.content).toEqual([{ type: 'text', text: 'What is on this picture?' }, { type: 'image', image_url: expect.objectContaining({ mime: 'image/png' }) }]);
+  expect(result.blobs).toHaveLength(2);
   expect(stream.find(entry => entry.k === 'result')).toMatchObject({ call: 'c1', exit: 9, error: true, info: { exit_code: 9 } });
   expect(result.failures).toEqual([expect.objectContaining({ kind: 'tool', tool: 'shell' })]);
 });
@@ -162,8 +166,13 @@ test('a Codex subagent is read with the session that spawned it, and a linked fo
   writeFileSync(join(day, `rollout-2026-09-10T08-00-00-${child}.jsonl`), jsonl([{ type: 'session_meta', payload: { id: child, source: { subagent: { thread_spawn: { parent_thread_id: parent } } } } }]));
   writeFileSync(join(day, `rollout-2026-09-10T09-00-00-${parent}.jsonl`), jsonl([{ type: 'session_meta', payload: { id: parent, source: 'cli' } }]));
   const found = await scanSessions(join(scratch, 'codex'), 'codex', true);
-  expect([...found.keys()]).toEqual([parent]);
-  expect(found.get(parent)!.files.map(path => path.includes(parent))).toEqual([true, false]);
+  expect([...found.values()].map(raw => raw.id)).toEqual([parent]);
+  expect([...found.values()][0]!.files.map(path => path.includes(parent))).toEqual([true, false]);
+  // The same id in another account is a session of its own.
+  mkdirSync(join(scratch, 'other', 'sessions'), { recursive: true });
+  writeFileSync(join(scratch, 'other', 'sessions', `rollout-2026-09-10T09-00-00-${parent}.jsonl`), jsonl([{ type: 'session_meta', payload: { id: parent } }]));
+  await scanSessions(join(scratch, 'other'), 'codex', true, found);
+  expect([...found.values()].map(raw => raw.files.length)).toEqual([2, 1]);
 
   const outside = join(scratch, 'outside', 'folder');
   mkdirSync(outside, { recursive: true });
@@ -183,6 +192,17 @@ test('an archive that is gone is an error the caller gets, and reading the index
   expect(reader.totalBytes()).toBe(0);
   expect(readdirSync(join(scratch, 'transcripts'))).toEqual(['index.db']);
   reader.close();
+
+  // An image two conversations share goes once both dropped their hold on it.
+  const store = new TranscriptStore(scratch);
+  const blob = { sha256: 'ab'.repeat(32), bytes: 10, stored: 8, mime: 'image/png', ext: 'png' };
+  const archive = { bytes: 1, recordBytes: 1, records: 1, sha256: 'x', firstAt: null, lastAt: null, models: [], failures: [], blobs: [blob], counts: {} };
+  for (const id of ['t1', 't2']) store.putSession(id, { id: 's', file: `sessions/${id}/s.jsonl.zst`, source: 'claude', rawBytes: 1 }, { ...archive, sha256: id }, 3);
+  expect(store.threadBytes('t1')).toMatchObject({ imageCount: 0, imageRefs: 1 });
+  expect(store.eraseImages('t1', 4)).toEqual({ count: 0, bytes: 0 });
+  expect(store.threadBytes('t2')).toMatchObject({ imageCount: 1, imageRefs: 1 });
+  expect(store.eraseImages('t2', 5)).toEqual({ count: 1, bytes: 8 });
+  store.close();
 });
 
 test('a measure writes nothing', async () => {
@@ -410,6 +430,30 @@ test('a file the archive does not read stays in its folder, and a session writte
   expect((await client.call('threads.deleted', {})).map(thread => thread.id)).toEqual([threadId]);
   expect(existsSync(file)).toBe(true);
 
+  // Another file put in its place, same size and same date: not the file that was scanned.
+  harness.core.imports.busy = () => {
+    const kept = statSync(file);
+    writeFileSync(`${file}.new`, readFileSync(file));
+    renameSync(`${file}.new`, file);
+    utimesSync(file, kept.atime, kept.mtime);
+    harness.core.imports.busy = busy;
+    return false;
+  };
+  await harness.core.transcripts.run();
+  expect((await client.call('threads.deleted', {})).map(thread => thread.id)).toEqual([threadId]);
+
+  // Written once its archive was made: the archive is older than the file, the family waits.
+  let looks = 0;
+  harness.core.imports.busy = () => {
+    looks += 1;
+    if (looks === 3) appendFileSync(file, jsonl([{ type: 'user', uuid: 'later', timestamp: '2026-09-10T09:30:00.000Z', message: { role: 'user', content: 'After the archive' } }]));
+    return false;
+  };
+  await harness.core.transcripts.run();
+  harness.core.imports.busy = busy;
+  expect(looks).toBe(3);
+  expect((await client.call('threads.deleted', {})).map(thread => thread.id)).toEqual([threadId]);
+
   // Written after the scan, as the pass first looks at the session: the same.
   let written = false;
   harness.core.imports.busy = () => {
@@ -428,8 +472,12 @@ test('a file the archive does not read stays in its folder, and a session writte
   expect(await client.call('threads.deleted', {})).toEqual([]);
   expect(existsSync(file)).toBe(false);
   expect(readdirSync(side)).toEqual(['notes.txt']);
-  const late = await client.call('transcripts.read', { conversation: threadId, sessionId: FIXTURE_SESSION_ID, query: 'One more thing' });
-  expect(late.records).toHaveLength(1);
+  // An archive made before a late write stays; the next one holds the whole file.
+  const { sessions } = await client.call('transcripts.read', { conversation: threadId, sessionId: 'journal' });
+  const last = sessions.filter(id => id.startsWith(FIXTURE_SESSION_ID)).sort().at(-1)!;
+  for (const words of ['After the archive', 'One more thing']) {
+    expect((await client.call('transcripts.read', { conversation: threadId, sessionId: last, query: words })).records).toHaveLength(1);
+  }
 });
 
 test('a pass planned for Delete stops erasing once another mode is applied', async () => {
@@ -449,4 +497,21 @@ test('a pass planned for Delete stops erasing once another mode is applied', asy
   off();
   await harness.core.transcripts.run();
   expect(await client.call('threads.deleted', {})).toHaveLength(1);
+});
+
+test('Storage keeps the files of an open conversation once another mode is applied during its pass', async () => {
+  await core();
+  const { threadId, file } = await importedThread();
+  age(threadId, file, 40);
+  harness.core.settings.set({ transcriptStorage: { mode: 'storage' } });
+  const busy = harness.core.imports.busy.bind(harness.core.imports);
+  harness.core.imports.busy = () => {
+    harness.core.imports.busy = busy;
+    harness.core.settings.set({ transcriptStorage: { mode: 'classic' } });
+    return false;
+  };
+  await harness.core.transcripts.run();
+  await harness.core.transcripts.run();
+  expect(existsSync(file)).toBe(true);
+  expect(harness.core.journal.getThread(threadId)).not.toBeNull();
 });

@@ -44,8 +44,21 @@ function envelope(output: Json | undefined): { output: Json; exit: number | unde
 }
 
 export class CodexNormalizer {
-  /** Texts and other parts already in the stream: an event that repeats them is dropped. */
-  readonly #seen = new Set<string>();
+  /**
+   * Parts of messages the stream holds and no event has repeated yet, counted:
+   * an event copy takes one, so the same words said in a later turn are a
+   * message of their own.
+   */
+  readonly #said = new Map<string, number>();
+
+  /** Whether an event's part repeats a message part not yet repeated; it is then spent. */
+  #repeats(part: Json): boolean {
+    const key = mark(object(part) && typeof part.text === 'string' ? part.text : part);
+    const left = this.#said.get(key) ?? 0;
+    if (left === 0) return false;
+    this.#said.set(key, left - 1);
+    return true;
+  }
 
   constructor(private readonly sink: Sink, private readonly emit: Emit) {}
 
@@ -103,7 +116,7 @@ export class CodexNormalizer {
       }
       const said = texts(content);
       const rest = Array.isArray(content) ? content.filter(item => !(object(item) && typeof item.text === 'string')) : [];
-      for (const item of [...said, ...rest]) this.#seen.add(mark(item));
+      for (const item of [...said, ...rest]) this.#said.set(mark(item), (this.#said.get(mark(item)) ?? 0) + 1);
       this.emit(record({ ...base, k: payload.role === 'assistant' ? 'assistant' : 'user', text: said.join('\n'), parts: rest.length > 0 ? rest : undefined }));
     } else if (kind === 'additional_tools') {
       this.emit(record({ ...base, k: 'context', what: 'tools', tools: payload.tools }));
@@ -140,8 +153,7 @@ export class CodexNormalizer {
       } else if (mirror && MIRROR_FIELDS.has(key)) {
         // Part by part: an image the message did not carry stays even when every text beside it is known.
         const parts = Array.isArray(value) ? value : value === null || value === '' ? [] : [value];
-        const fresh = parts.filter(part => !this.#seen.has(mark(object(part) && typeof part.text === 'string' ? part.text : part)));
-        for (const part of fresh) this.#seen.add(mark(object(part) && typeof part.text === 'string' ? part.text : part));
+        const fresh = parts.filter(part => !this.#repeats(part));
         if (fresh.length > 0) { out[key] = Array.isArray(value) ? fresh : value; said = true; }
       } else out[key] = value;
     }

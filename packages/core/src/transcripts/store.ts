@@ -243,15 +243,20 @@ export class TranscriptStore {
     return images.bytes + sessions.reduce((sum, session) => sum + session.bytes, 0);
   }
 
-  /** Bytes a conversation holds in the archive: its records, the images it alone refers to, and its other blobs. */
-  threadBytes(threadId: string): { records: number; images: number; imageCount: number; others: number } {
-    if (!this.exists()) return { records: 0, images: 0, imageCount: 0, others: 0 };
+  /**
+   * Bytes a conversation holds in the archive: its records, the images it
+   * alone refers to, and its other blobs. `imageRefs` counts every image it
+   * refers to, shared ones included.
+   */
+  threadBytes(threadId: string): { records: number; images: number; imageCount: number; imageRefs: number; others: number } {
+    if (!this.exists()) return { records: 0, images: 0, imageCount: 0, imageRefs: 0, others: 0 };
     const records = (this.read.query('SELECT COALESCE(SUM(bytes), 0) AS bytes FROM sessions WHERE thread_id = ?').get(threadId) as { bytes: number }).bytes;
     const own = this.read.query(`SELECT COALESCE(SUM(b.stored), 0) AS bytes, COUNT(*) AS count FROM blobs b JOIN blob_refs r ON r.sha256 = b.sha256 WHERE r.thread_id = ?1 AND b.mime LIKE ?2
       AND NOT EXISTS (SELECT 1 FROM blob_refs other WHERE other.sha256 = b.sha256 AND other.thread_id != ?1)`);
     const images = own.get(threadId, 'image/%') as { bytes: number; count: number };
     const all = own.get(threadId, '%') as { bytes: number; count: number };
-    return { records, images: images.bytes, imageCount: images.count, others: all.bytes - images.bytes };
+    const imageRefs = (this.read.query("SELECT COUNT(*) AS count FROM blob_refs r JOIN blobs b ON b.sha256 = r.sha256 WHERE r.thread_id = ? AND b.mime LIKE 'image/%'").get(threadId) as { count: number }).count;
+    return { records, images: images.bytes, imageCount: images.count, imageRefs, others: all.bytes - images.bytes };
   }
 
   /** Deleted conversations still in the archive, with what the policy reads of them. */

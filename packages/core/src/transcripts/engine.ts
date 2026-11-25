@@ -216,7 +216,8 @@ export class Transcripts {
       if (threads.has(thread.id)) continue;
       const held = this.store.threadBytes(thread.id);
       if (due(policy.deletedEraseDays, thread.deletedAt, now)) steps.push({ kind: 'erase-archived', threadId: thread.id, bytes: held.records + held.images + held.others });
-      else if (thread.imagesErasedAt === null && held.imageCount > 0 && due(policy.imagesEraseDays, thread.deletedAt, now)) steps.push({ kind: 'images', threadId: thread.id, bytes: held.images, count: held.imageCount });
+      // An image two conversations share goes with the second of them: each drops its hold when its own delay is up.
+      else if (thread.imagesErasedAt === null && held.imageRefs > 0 && due(policy.imagesEraseDays, thread.deletedAt, now)) steps.push({ kind: 'images', threadId: thread.id, bytes: held.images, count: held.imageCount });
     }
     return { steps, rawBytes, raws: [...raws.values()], unlinked };
   }
@@ -397,9 +398,9 @@ export class Transcripts {
     return await this.#removeRaw(raw) - added;
   }
 
-  /** Removes a session's provider files once more checks pass. Answers the bytes that left. */
+  /** Removes a session's provider files once more checks pass: still what the setting asks, still as scanned. Answers the bytes that left. */
   async #removeRaw(raw: RawSession): Promise<number> {
-    if (!(await this.#ready(raw))) return 0;
+    if (!this.#current() || !(await this.#ready(raw))) return 0;
     this.#core.imports.removing.add(raw.id);
     try {
       await removeSession(raw);
@@ -457,6 +458,8 @@ export class Transcripts {
       if (!step.keepImages) this.store.eraseImages(thread.id, now);
     }
     if (this.#halted() || !this.#current()) return -added;
+    // A session written while it was read is newer than its archive: the family stays for the next pass.
+    for (const raw of step.threads.flatMap(member => member.sessions)) if (!(await this.#ready(raw))) return -added;
     // Everything is in the archive: the family leaves the journal, unless it was restored meanwhile.
     const purged = this.#core.journal.purgeDeletedFamily(step.rootId, step.deletedAt);
     if (purged.length === 0) return -added;

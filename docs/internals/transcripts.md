@@ -103,13 +103,17 @@ file is removed, and a source file written to since the scan is left for the
 next pass. A turn in progress, an import under way and an incognito
 conversation are skipped.
 
-Removal takes the files the scan read, one by one, then the session's
-folders left empty: a file the archive does not read stays where it is. A
+Removal takes the files the scan read, one by one and each checked again
+(the same inode, size, write and change times), then the session's folders
+left empty: a file the archive does not read, or one put in its place, stays
+where it is. Two accounts holding a session of the same id hold two sessions. A
 deleted family leaves the journal only once every one of its sessions is
 archived; one that is being imported or was written since the scan puts the
 whole family off to the next pass, since the journal is the only thing that
-says whose session it is. A pass stops before its next step when the setting
-it was planned for changes.
+says whose session it is; a session archived before a late write keeps that
+archive, and the next pass adds one of the whole file. A pass stops before
+its next step, and removes no more files, when the setting it was planned
+for changes.
 
 `transcripts.preview` runs the same plan for any policy and writes nothing.
 The bytes a step would erase are exact; the bytes compaction frees are the

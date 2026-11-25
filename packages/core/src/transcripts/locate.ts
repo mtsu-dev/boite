@@ -28,7 +28,7 @@ export interface RawSession {
   dirs: string[];
   /** The account's folder every file must really be under, links resolved. */
   root: string;
-  /** Each listed file's size and last write as the scan found them. */
+  /** Each listed file as the scan found it: which file it is, its size, its last write and change. */
   stamps: Map<string, string>;
   /** The folder of `projects/` a Claude session is filed under: its working directory, flattened. */
   folder: string | null;
@@ -47,10 +47,13 @@ async function entries(dir: string): Promise<Dirent[]> {
   try { return await readdir(dir, { withFileTypes: true }); } catch { return []; }
 }
 
-async function sized(path: string): Promise<{ bytes: number; modifiedAt: number } | null> {
+interface Sized { bytes: number; modifiedAt: number; stamp: string }
+
+/** A real file's size and last write, with what tells it from another file put in its place. */
+async function sized(path: string): Promise<Sized | null> {
   try {
     const stat = await lstat(path);
-    return stat.isFile() ? { bytes: stat.size, modifiedAt: stat.mtimeMs } : null;
+    return stat.isFile() ? { bytes: stat.size, modifiedAt: stat.mtimeMs, stamp: `${stat.dev}:${stat.ino} ${stat.size} ${stat.mtimeMs} ${stat.ctimeMs}` } : null;
   } catch { return null; }
 }
 
@@ -74,23 +77,24 @@ async function contained(root: string, name: string): Promise<string | null> {
   } catch { return null; }
 }
 
+/** Two accounts may hold a session of the same id: each is a session of its own, under its account's folder. */
+const keyOf = (root: string, id: string): string => `${root}\0${id}`;
+
 function session(sessions: Map<string, RawSession>, id: string, source: TranscriptSource, own: boolean, folder: string | null, root: string): RawSession {
-  let found = sessions.get(id);
+  let found = sessions.get(keyOf(root, id));
   if (found === undefined) {
     found = { id, source, files: [], toolResults: [], dirs: [], root, stamps: new Map(), folder, bytes: 0, modifiedAt: 0, own };
-    sessions.set(id, found);
+    sessions.set(keyOf(root, id), found);
   }
   return found;
 }
-
-const stampOf = (stat: { bytes: number; modifiedAt: number }): string => `${stat.bytes} ${stat.modifiedAt}`;
 
 async function add(raw: RawSession, path: string, list: 'files' | 'toolResults'): Promise<void> {
   const stat = await sized(path);
   if (stat === null) return;
   raw.bytes += stat.bytes;
   raw.modifiedAt = Math.max(raw.modifiedAt, stat.modifiedAt);
-  raw.stamps.set(path, stampOf(stat));
+  raw.stamps.set(path, stat.stamp);
   raw[list].push(path);
 }
 
@@ -169,31 +173,35 @@ async function scanCodex(root: string, own: boolean, sessions: Map<string, RawSe
   }
 }
 
-/** The sessions of one account directory. A directory that cannot be read holds none. */
+/** The sessions of one account directory, by account folder and id. A directory that cannot be read holds none. */
 export async function scanSessions(dir: string, source: TranscriptSource, own: boolean, into = new Map<string, RawSession>()): Promise<Map<string, RawSession>> {
   let root: string;
   try { root = await realpath(dir); } catch { return into; }
   if (source === 'claude') await scanClaude(root, own, into); else await scanCodex(root, own, into);
-  for (const [id, raw] of into) if (raw.files.length === 0) into.delete(id);
+  for (const [key, raw] of into) if (raw.files.length === 0) into.delete(key);
   return into;
 }
 
-/** Whether a session's files are as a scan found them: each still a real file under its account's folder, same size, no later write. */
+/** Whether a listed file is the one the scan found: the same file under its account's folder, same size, no later write or change. */
+async function same(raw: RawSession, path: string): Promise<boolean> {
+  const stat = await sized(path);
+  if (stat === null || stat.stamp !== raw.stamps.get(path)) return false;
+  try { return (await realpath(path)).startsWith(raw.root + sep); } catch { return false; }
+}
+
+/** Whether every file of a session is as a scan found it. */
 export async function unchanged(raw: RawSession): Promise<boolean> {
-  for (const path of [...raw.files, ...raw.toolResults]) {
-    const stat = await sized(path);
-    if (stat === null || stampOf(stat) !== raw.stamps.get(path)) return false;
-    try { if (!(await realpath(path)).startsWith(raw.root + sep)) return false; } catch { return false; }
-  }
+  for (const path of [...raw.files, ...raw.toolResults]) if (!(await same(raw, path))) return false;
   return true;
 }
 
 /**
- * Removes the files a scan listed, one by one, then the session's own folders
- * that are left empty. A file the scan did not list, or one written since,
- * keeps its folder in place.
+ * Removes the files a scan listed, one by one and each checked again as it
+ * goes, then the session's own folders that are left empty. A file the scan
+ * did not list, one written since or one put in its place stays, and keeps
+ * its folder.
  */
 export async function removeSession(raw: RawSession): Promise<void> {
-  for (const path of [...raw.files, ...raw.toolResults]) await rm(path, { force: true });
+  for (const path of [...raw.files, ...raw.toolResults]) if (await same(raw, path)) await rm(path, { force: true });
   for (const dir of raw.dirs) await rmdir(dir).catch(() => undefined);
 }

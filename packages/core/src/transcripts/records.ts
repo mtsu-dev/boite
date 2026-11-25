@@ -59,16 +59,17 @@ function exact(base64: string): boolean {
   return Buffer.from(clean, 'base64').toString('base64') === clean;
 }
 
+/** A data URL whose payload is exact base64. An image is one at any size: its delay must reach it. */
 function dataUrl(text: string): RegExpExecArray | null {
-  if (text.length < BLOB_MIN) return null;
   const url = DATA_URL.exec(text.slice(0, 80));
-  return url !== null && exact(text.slice(url[0].length)) ? url : null;
+  if (url === null || (text.length < BLOB_MIN && !url[1]!.startsWith('image/'))) return null;
+  return text.length > url[0].length && exact(text.slice(url[0].length)) ? url : null;
 }
 
 /** A bare string that is a base64 payload from its first character to its last. */
 function isBlob(text: string): boolean {
-  if (text.length < BLOB_MIN) return false;
   if (dataUrl(text) !== null) return true;
+  if (text.length < BLOB_MIN) return false;
   const head = text.slice(0, 4096);
   if (!BASE64_HEAD.test(head)) return false;
   // Plain words on short lines use the same alphabet: an encoder wraps at 64
