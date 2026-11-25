@@ -36,7 +36,7 @@ const PRESS_HOLD_MS = 8_000;
 
 const views: Record<string, () => Promise<unknown>> = {
   settings: () => import('../components/SettingsShell.svelte'),
-  agents: () => import('../components/agents/AgentsPage.svelte'),
+  agents: () => import('../components/agents/AgentsLayout.svelte').then(({ preloadAgentsPage }) => preloadAgentsPage()),
   home: () => contactsParts.HomePage()
 };
 
@@ -84,13 +84,11 @@ export function startPressPreload(workspace: PreloadWorkspace): () => void {
     const target = event.target instanceof Element ? event.target.closest('[data-preload-thread], [data-preload-view]') : null;
     if (!target) return;
     const view = target.getAttribute('data-preload-view');
-    if (view) {
-      void views[view]?.().catch(() => undefined);
-      return;
-    }
+    if (view) void views[view]?.().catch(() => undefined);
     const threadId = target.getAttribute('data-preload-thread');
+    if (!threadId) return;
     const store = owningStore(workspace, target);
-    if (!threadId || !store) return;
+    if (!store) return;
     settle(0);
     release = store.preload(threadId);
     pointer = event.pointerId;

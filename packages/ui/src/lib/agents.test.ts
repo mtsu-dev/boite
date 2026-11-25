@@ -208,3 +208,42 @@ test('Open on an agent\'s login question shows the page beside its conversation,
   expect(panel.isOpen).toBe(true);
   expect((await client.call('browser.remoteStatus', { threadId })).tabs).toMatchObject([{ url: 'https://dashboard.example.com/login', active: true }]);
 });
+
+test('openAgent preloads a known thread from the directory in parallel with agents.open and releases it on refusal', async () => {
+  const events: string[] = [];
+  let resolveOpen!: (value: { threadId: string }) => void;
+  let rejectOpen!: (reason: Error) => void;
+  const client = {
+    call: vi.fn((method: string) => {
+      events.push(`call:${method}`);
+      return new Promise<{ threadId: string }>((resolve, reject) => { resolveOpen = resolve; rejectOpen = reject; });
+    }),
+    on: vi.fn(() => () => {}),
+  };
+  const store = {
+    client,
+    threads: [],
+    preload: vi.fn((id: string) => { events.push(`preload:${id}`); return () => { events.push(`release:${id}`); }; }),
+    open: vi.fn(async (id: string) => { events.push(`open:${id}`); }),
+  } as unknown as Store;
+  const directory = agentDirectory(store);
+  directory.snapshot = {
+    profiles: [{ id: 'agt_1', name: 'Nova', avatar: '' }],
+    sessions: [{ id: 'ses_1', agentId: 'agt_1', threadId: 'thr_1' }],
+    status: [{ agentId: 'agt_1', threadId: 'thr_1', state: 'idle' }],
+  } as unknown as AgentsSnapshot;
+
+  const first = openAgent(store, 'agt_1');
+  expect(events).toEqual(['preload:thr_1', 'call:agents.open']);
+  resolveOpen({ threadId: 'thr_1' });
+  expect(await first).toBe('thr_1');
+  expect(events).toEqual(['preload:thr_1', 'call:agents.open', 'open:thr_1', 'release:thr_1']);
+
+  events.length = 0;
+  const second = openAgent(store, 'agt_1');
+  expect(events).toEqual(['preload:thr_1', 'call:agents.open']);
+  rejectOpen(new Error('refused'));
+  expect(await second).toBeNull();
+  expect(store.error).toBe('refused');
+  expect(events).toEqual(['preload:thr_1', 'call:agents.open', 'release:thr_1']);
+});

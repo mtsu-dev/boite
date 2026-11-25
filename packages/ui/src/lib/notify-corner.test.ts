@@ -194,3 +194,24 @@ test('desktop corner cards stack under toasts at the top, away from the composer
     expect(card.style.getPropertyValue('--toast-top')).toBe('108px');
   } finally { slot.destroy(); corner.destroy(); }
 });
+
+test('on a phone Settings overlay a notice anchors to the viewport bottom instead of the hidden timeline underneath', () => {
+  window.innerWidth = 390;
+  window.innerHeight = 844;
+  // The chat timeline and composer still sit in the DOM under Settings.
+  const timeline = box('timeline', { top: 56, bottom: 520, left: 0, right: 390, height: 464, width: 390 });
+  box('composer', { top: 520, bottom: 844, left: 0, right: 390, height: 324, width: 390 });
+  const settings = box('settings-layer', { top: 56, bottom: 844, left: 0, right: 390, height: 788, width: 390 });
+  settings.className = 'settings-layer over';
+  const card = document.createElement('div');
+  Object.defineProperty(card, 'offsetHeight', { value: 80 });
+  document.body.append(card);
+  const corner = notifyCorner(card);
+  try {
+    expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
+    expect(card.dataset.slot).toBeUndefined();
+    expect(card.style.getPropertyValue('--toast-top')).toBe('');
+    // Placed at the viewport bottom via CSS bottom + 0px lift, never lifted above the hidden composer.
+    expect(card.style.getPropertyValue('--corner-lift')).toBe('0px');
+  } finally { corner.destroy(); }
+});

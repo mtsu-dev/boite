@@ -28,7 +28,9 @@ export class ReadingAnchor {
   held = false;
   /** The rows on the page by id, kept by the list as it mounts them: an anchor is found without searching every node of the thread. */
   readonly nodes = new Map<string, HTMLElement>();
-  #frame = 0;
+  #timer: ReturnType<typeof setTimeout> | undefined;
+
+  get pending(): boolean { return this.#timer !== undefined; }
 
   constructor(saved: ReadingPosition | undefined) {
     this.current = saved?.anchor ? { id: saved.anchor.row ?? saved.anchor.id, offset: saved.anchor.offset, message: saved.anchor.id } : undefined;
@@ -69,13 +71,15 @@ export class ReadingAnchor {
     }
   }
 
+  /** Wait briefly for active scrolling to pause before forcing a DOM geometry read. */
   schedule(remember: () => void): void {
-    if (!this.#frame) this.#frame = requestAnimationFrame(remember);
+    if (this.#timer !== undefined) clearTimeout(this.#timer);
+    this.#timer = setTimeout(() => { this.#timer = undefined; remember(); }, 120);
   }
 
   cancelPending(): void {
-    if (this.#frame) cancelAnimationFrame(this.#frame);
-    this.#frame = 0;
+    if (this.#timer !== undefined) clearTimeout(this.#timer);
+    this.#timer = undefined;
   }
 
   /** Keeps `anchor` until the reader moves it (`release`). */

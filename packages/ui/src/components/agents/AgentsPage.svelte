@@ -17,6 +17,7 @@
   import { teamsOf } from '../../lib/teams.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import ChatView from '../ChatView.svelte';
+  import ThreadLoading from '../ThreadLoading.svelte';
   import { awaitsFirstTask } from '../../lib/bot-first-task';
   import { focusComposer } from '../../lib/focus';
   import AgentAvatar from './AgentAvatar.svelte';
@@ -51,6 +52,8 @@
   let listShown = $state(false);
   /** The pane a link asked for, opened once its agent's thread is on screen. */
   let wanted: { agentId: string; pane: AgentPane } | null = null;
+  /** The agent currently being opened so its header and skeleton show immediately instead of a blank screen. */
+  let openingAgentId = $state<string | null>(untrack(() => store.agentsTarget?.agentId ?? null));
 
   /**
    * The list shows every connected machine's agents, the way the thread list
@@ -88,13 +91,24 @@
   /** The open agent's id: every snapshot brings a new profile object, the id moves only when another agent opens. */
   const agentId = $derived(agent?.id ?? null);
   const status = $derived(agent ? statusOf(snapshot, agent.id) : null);
+  /** The profile of an agent currently opening before its thread lands, from the snapshot or rail directory. */
+  const pendingAgent = $derived.by(() => {
+    if (focus || (thread && agent) || teamThread || !openingAgentId) return null;
+    const source = snapshot ?? directory.snapshot;
+    return source?.profiles.find(p => p.id === openingAgentId) ?? null;
+  });
+  const pendingStatus = $derived(pendingAgent ? statusOf(snapshot ?? directory.snapshot, pendingAgent.id) : null);
   /** The conversation of an archived agent reads, and takes nothing more. */
   const locked = $derived(agent?.status === 'archived' ? labels.archivedNotice : null);
-  const detail = $derived(!!focus || (!!(thread || teamThread) && !listShown));
+  const detail = $derived(!!focus || (!!(thread || teamThread || pendingAgent) && !listShown));
   /** A bot with nothing yet: its first task is the page's one prompt, centred over the empty conversation. */
   const firstTask = $derived(!!agent && !locked && awaitsFirstTask(store, view, agent.id));
 
-  onMount(() => { view.start(); return () => view.pause(); });
+  onMount(() => {
+    view.primeDesk(store.agentsTarget?.agentId ?? openingAgentId ?? agentId);
+    view.start();
+    return () => view.pause();
+  });
   // The other machines' snapshots load while their rows are listed.
   $effect(() => {
     const shown = others.map(o => o.view);
@@ -102,7 +116,7 @@
     return () => { for (const other of shown) other.pause(); };
   });
   // The snapshot carries the open agent's desk only.
-  $effect(() => { const id = agentId; untrack(() => view.showDesk(id)); });
+  $effect(() => { const id = agentId ?? openingAgentId; untrack(() => view.showDesk(id)); });
   // The directory names the agent of a thread the snapshot does not list yet, a new one.
   $effect(() => { const target = directory; return untrack(() => target.watch()); });
   // A reconnect reads the snapshot again; the first visit already asked in `start`.
@@ -117,7 +131,10 @@
     const id = agentId;
     void threadId;
     untrack(() => {
-      if (id) rememberAgent(store, id);
+      if (id) {
+        rememberAgent(store, id);
+        if (openingAgentId === id) openingAgentId = null;
+      }
       listShown = false;
       pane = wanted && wanted.agentId === id ? wanted.pane : null;
       if (wanted?.agentId === id) wanted = null;
@@ -149,6 +166,12 @@
   let tried = false;
   /** The default agent could not be opened: the card offers a retry instead of loading. */
   let openFailed = $state(false);
+  function beginOpen(id: string): Promise<string | null> {
+    openingAgentId = id;
+    return openAgent(store, id).finally(() => {
+      if (openingAgentId === id) openingAgentId = null;
+    });
+  }
   // A link from elsewhere (a thread an agent runs, a settings card) names the agent to open.
   $effect(() => {
     const target = store.agentsTarget;
@@ -159,9 +182,9 @@
       tried = true;
       focus = null;
       listShown = false;
-      if (target.agentId === agent?.id && thread) { pane = target.pane ?? null; return; }
+      if (target.agentId === agent?.id && thread) { openingAgentId = null; pane = target.pane ?? null; return; }
       wanted = target.pane ? { agentId: target.agentId, pane: target.pane } : null;
-      void openAgent(store, target.agentId);
+      void beginOpen(target.agentId);
     });
   });
   /**
@@ -177,7 +200,8 @@
   function openDefault() {
     openFailed = false;
     const last = lastOpenedAgent(store);
-    void openAgent(store, rows.some(r => r.profile.id === last) ? last! : rows[0]!.profile.id).then(opened => { if (!opened) openFailed = true; });
+    const chosen = rows.some(r => r.profile.id === last) ? last! : rows[0]!.profile.id;
+    void beginOpen(chosen).then(opened => { if (!opened) openFailed = true; });
   }
   // On a phone the open conversation hides the list; the root carries it as a class, as `.app:has(...)` would restyle every node.
   $effect(() => {
@@ -196,7 +220,7 @@
 
   // On a desktop the bot's name and buttons, or the open team's, stand in the window's top bar, not in the card.
   $effect(() => {
-    if (narrow.current || focus || !((thread && agent) || (teamThread && TeamHeader))) return;
+    if (narrow.current || focus || !((thread && agent) || pendingAgent || (teamThread && TeamHeader))) return;
     titleSlot.current = barHead;
     return () => { if (titleSlot.current === barHead) titleSlot.current = null; };
   });
@@ -207,10 +231,10 @@
     const target = machine.store;
     if (target !== store) { workspace.showAgents(target, agentId, next); return; }
     focus = null; listShown = false;
-    if (agentId === agent?.id && thread) { pane = next ?? null; return; }
+    if (agentId === agent?.id && thread) { openingAgentId = null; pane = next ?? null; return; }
     pane = null;
     wanted = next ? { agentId, pane: next } : null;
-    void openAgent(store, agentId);
+    void beginOpen(agentId);
   }
   /** A team's row: its chat, on the machine that holds it. The desktop's default agent gives way to it. */
   function openTeam(machine: Machine, chosen: Team) {
@@ -220,11 +244,13 @@
   /** A team's chat on this page's machine, in place of a form or a pane; `again` selects it even when it is open. */
   function showTeamChat(threadId: string, again = false) {
     tried = true;
+    openingAgentId = null;
     focus = null; pane = null; listShown = false;
     if (again || teamThread?.id !== threadId) void workspace.select(store, threadId);
   }
   /** One step out: a form, then the conversation, then the list. */
   function back() {
+    openingAgentId = null;
     if (focus) focus = null;
     else listShown = true;
   }
@@ -233,13 +259,15 @@
 {#snippet barHead()}
   {#if thread && agent}
     <AgentHeader {store} {view} {agent} {status} {thread} onpane={next => { pane = pane === next ? null : next; }} />
+  {:else if pendingAgent}
+    <AgentHeader {store} {view} agent={pendingAgent} status={pendingStatus} thread={null} onpane={next => { pane = pane === next ? null : next; }} />
   {:else if teamThread && TeamHeader && !focus}
     <TeamHeader {store} {view} {others} thread={teamThread} {team} />
   {/if}
 {/snippet}
 
-<AgentsRail {view} {lists} active={focus ? null : agent?.id ?? null} activeTeam={focus ? null : teamThread?.id ?? null}
-  agent={thread ? agent : null} {status} {thread} team={teamThread ? team : null} conversation={!focus && !pane && !!(thread || teamThread)}
+<AgentsRail {view} {lists} active={focus ? null : (agent?.id ?? openingAgentId)} activeTeam={focus ? null : teamThread?.id ?? null}
+  agent={thread ? agent : pendingAgent} status={thread ? status : pendingStatus} {thread} team={teamThread ? team : null} conversation={!focus && !pane && !!(thread || teamThread || pendingAgent)}
   onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onnewteam={() => { creatingTeam = true; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }}
   onpane={next => { focus = null; pane = pane === next ? null : next; }} />
 
@@ -251,7 +279,7 @@
 {/if}
 
 <main class="agents-main" class:open={detail} data-testid="agents-page">
-  <div class="agents-card framed" class:chat={!focus && !!(thread || teamThread)}>
+  <div class="agents-card framed" class:chat={!focus && !!(thread || teamThread || pendingAgent)}>
     {#if view.error || view.loadError}
       <div class="agent-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error || view.loadError}>
         {#snippet actions()}<button type="button" class="small" onclick={() => { view.error = ''; void view.refresh(); }}>{labels.retry}</button>{/snippet}
@@ -266,7 +294,7 @@
       </header>
       <div class="agents-body">
         {#if focus.kind === 'new'}
-          <AgentEditor {view} ondone={created => { focus = null; void openAgent(store, created.id); }} oncancel={() => { focus = null; }} />
+          <AgentEditor {view} ondone={created => { focus = null; void beginOpen(created.id); }} oncancel={() => { focus = null; }} />
         {:else}
           <AgentEngineSettings {view} />
         {/if}
@@ -293,9 +321,9 @@
     {:else if teamThread}
       {#if TeamHeader && narrow.current}<TeamHeader {store} {view} {others} thread={teamThread} {team} onback={back} />{/if}
       <div class="agents-chat"><ChatView {store} /></div>
-    {:else if !snapshot}
-      <p class="agent-empty">{view.loadError ? labels.offline : strings.app.loading}</p>
-    {:else if !rows.length}
+    {:else if !snapshot && view.loadError}
+      <p class="agent-empty">{labels.offline}</p>
+    {:else if snapshot && !rows.length}
       <!-- The app's one empty view: the house bot, the line, then what a bot is for and the way to make one. -->
       <EmptyState line={elsewhere && here ? fill(labels.noAgentsOn, { machine: here.label }) : labels.noAgents} testid="agents-empty">
         {#snippet action()}
@@ -308,7 +336,8 @@
         {#snippet actions()}<button type="button" class="small" onclick={openDefault} data-testid="agents-open-retry">{labels.retry}</button>{/snippet}
       </Notice></div>
     {:else}
-      <p class="agent-empty">{strings.app.loading}</p>
+      {#if pendingAgent && narrow.current}<AgentHeader {store} {view} agent={pendingAgent} status={pendingStatus} thread={null} onpane={next => { pane = pane === next ? null : next; }} onback={back} />{/if}
+      <div class="agents-chat"><ThreadLoading progress={store.loadingBytes ?? null} /></div>
     {/if}
   </div>
 </main>
