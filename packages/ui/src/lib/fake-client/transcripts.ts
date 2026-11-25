@@ -44,7 +44,7 @@ export function transcriptMethods(ctx: FakeContext): Pick<FakeMethods, Transcrip
   return {
     'transcripts.preview': async ({ policy }) => {
       owner('transcripts.preview');
-      if (!transcriptPolicyValid(policy)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'policy must set each delay, null (never) or a whole number of days' });
+      if (!transcriptPolicyValid(policy)) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'policy must set each delay, null (never) or a whole number of days', data: { field: 'policy' } });
       const p: TranscriptPolicy = policy;
       const compact = { threads: 0, bytes: 0 };
       const erase = { threads: 0, bytes: 0 };
@@ -53,15 +53,16 @@ export function transcriptMethods(ctx: FakeContext): Pick<FakeMethods, Transcrip
         if (due(p.deletedEraseDays, pool.age)) { erase.threads += pool.threads; erase.bytes += pool.bytes; }
         else if (due(p.deletedCompactDays, pool.age)) { compact.threads += pool.threads; compact.bytes += pool.bytes; }
       }
-      const totalBytes = [...DISK.open, ...DISK.deleted].reduce((sum, pool) => sum + pool.bytes, 0) + unlinked.bytes;
+      const totalBytes = [...DISK.open, ...DISK.deleted].reduce((sum, pool) => sum + pool.bytes, 0) + unlinked.bytes + ARCHIVED.bytes;
       return {
         policy: p, totalBytes, archiveBytes: ARCHIVED.bytes, compact, erase, images: { count: 0, bytes: 0 },
         freedBytes: Math.round(compact.bytes * (1 - KEPT)) + erase.bytes, keptRatio: KEPT, unlinked,
       };
     },
     'transcripts.progress': async () => { owner('transcripts.progress'); return progress; },
-    'transcripts.compactUnlinked': async () => {
+    'transcripts.compactUnlinked': async ({ days }) => {
       owner('transcripts.compactUnlinked');
+      if (!Number.isInteger(days) || days < 0) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'days must be a whole number of days, 0 or more', data: { field: 'days' } });
       progress = { running: false, compacted: unlinked.sessions, erased: 0, freedBytes: Math.round(unlinked.bytes * (1 - KEPT)), remaining: 0, lastError: null, finishedAt: Date.now() };
       unlinked = { bytes: 0, sessions: 0 };
       ctx.emit('transcripts.progress', progress);

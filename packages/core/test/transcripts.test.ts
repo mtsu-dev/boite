@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
@@ -7,9 +7,12 @@ import { accessRefusal, TRANSCRIPT_PRESETS, transcriptPolicy } from '@boite/cont
 import type { CoreClient } from '../src/client.ts';
 import { claudeProjectFolder } from '../src/imports/claude.ts';
 import { FAILED_OUTPUT_CAP, OUTPUT_CAP, sha256, type TranscriptRecord } from '../src/transcripts/records.ts';
+import { scanSessions } from '../src/transcripts/locate.ts';
 import { compactSession, readArchive } from '../src/transcripts/session.ts';
+import { TranscriptStore } from '../src/transcripts/store.ts';
 import { claudeSessionFixture, FIXTURE_SESSION_ID } from './fixtures/claude-session.ts';
 import { startTestCore, testProject } from './harness.ts';
+import { rejection } from './settle.ts';
 import type { TestCore } from './harness.ts';
 
 const DAY = 86_400_000;
@@ -104,6 +107,82 @@ test('a Codex rollout keeps its messages, calls and failed commands under the sa
   expect(stream.find(entry => entry.k === 'call')).toMatchObject({ call: 'c1', tool: 'shell' });
   expect(result.failures).toEqual([expect.objectContaining({ kind: 'tool', tool: 'shell', text: 'Exit code: 1\n3 tests failed' })]);
   expect(result.models).toEqual(['gpt-test']);
+});
+
+test('a tool input that only starts like base64 stays whole, and the delay on images leaves a PDF stored', async () => {
+  const lookalike = `${'Ab1+'.repeat(600)} and then plain words`;
+  const encoded = Buffer.from('x'.repeat(3000)).toString('base64');
+  const pdf = Buffer.from(`%PDF-1.7\n${'page '.repeat(400)}`).toString('base64');
+  const file = join(scratch, 's1.jsonl');
+  writeFileSync(file, jsonl([
+    { type: 'user', uuid: 'u1', timestamp: '2026-09-10T08:00:00.000Z', message: { role: 'user', content: [
+      { type: 'text', text: 'Read this' },
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf } },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: PNG } },
+    ] } },
+    { type: 'assistant', uuid: 'a1', timestamp: '2026-09-10T08:00:01.000Z', message: { id: 'm1', role: 'assistant', content: [
+      { type: 'tool_use', id: 'c1', name: 'Write', input: { file_path: '/work/key.txt', content: lookalike, key: encoded } },
+    ] } },
+  ]));
+  const out = join(scratch, 's1.jsonl.zst');
+  const blobs = join(scratch, 'blobs');
+  // Images already due to go: their bytes are not stored, a document's are.
+  const result = await compactSession({ source: 'claude', files: [file], out, blobs, keepBlobs: false });
+  const call = (await records(out)).find(entry => entry.k === 'call')!;
+  expect(call.input).toEqual({ file_path: '/work/key.txt', content: lookalike, key: encoded });
+  const stored = readdirSync(blobs, { recursive: true }).map(String).filter(name => name.includes('.'));
+  expect(stored.map(name => name.split('.').pop())).toEqual(['pdf']);
+  expect(result.blobs.map(blob => [blob.mime, blob.stored > 0]).sort()).toEqual([['application/pdf', true], ['image/png', false]]);
+});
+
+test('a Codex event keeps the image its message did not carry, and an old wrapped output keeps its exit code', async () => {
+  const picture = `data:image/png;base64,${Buffer.concat([Buffer.from(PNG, 'base64'), Buffer.alloc(2000, 7)]).toString('base64')}`;
+  const file = join(scratch, 'rollout-2026-09-10T08-00-00-0f3a9c2e-1111-4bbb-8ccc-0123456789ab.jsonl');
+  writeFileSync(file, jsonl([
+    { timestamp: '2026-09-10T08:00:01.000Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'What is on this picture?' }] } },
+    { timestamp: '2026-09-10T08:00:01.100Z', type: 'event_msg', payload: { type: 'item_completed', item: { type: 'UserMessage', id: 'i1', content: [{ type: 'text', text: 'What is on this picture?' }, { type: 'image', image_url: picture }] } } },
+    { timestamp: '2026-09-10T08:00:03.000Z', type: 'response_item', payload: { type: 'function_call', call_id: 'c1', name: 'shell', arguments: '{"command":["make"]}' } },
+    { timestamp: '2026-09-10T08:00:04.000Z', type: 'response_item', payload: { type: 'function_call_output', call_id: 'c1', output: JSON.stringify({ output: `${'compiling\n'.repeat(5000)}make: *** [all] Error 9`, metadata: { exit_code: 9, duration_seconds: 4.2 } }) } },
+  ]));
+  const out = join(scratch, 'codex.jsonl.zst');
+  const result = await compactSession({ source: 'codex', files: [file], out, blobs: join(scratch, 'blobs'), keepBlobs: true });
+  const stream = await records(out);
+  const item = stream.find(entry => entry.k === 'item')!;
+  expect(item.content).toEqual([{ type: 'image', image_url: expect.objectContaining({ mime: 'image/png' }) }]);
+  expect(result.blobs).toHaveLength(1);
+  expect(stream.find(entry => entry.k === 'result')).toMatchObject({ call: 'c1', exit: 9, error: true, info: { exit_code: 9 } });
+  expect(result.failures).toEqual([expect.objectContaining({ kind: 'tool', tool: 'shell' })]);
+});
+
+test('a Codex subagent is read with the session that spawned it, and a linked folder is not scanned', async () => {
+  const parent = '0f3a9c2e-1111-4bbb-8ccc-0123456789ab';
+  const child = '0f3a9c2e-2222-4bbb-8ccc-0123456789ab';
+  const day = join(scratch, 'codex', 'sessions', '2026', '09', '10');
+  mkdirSync(day, { recursive: true });
+  writeFileSync(join(day, `rollout-2026-09-10T08-00-00-${child}.jsonl`), jsonl([{ type: 'session_meta', payload: { id: child, source: { subagent: { thread_spawn: { parent_thread_id: parent } } } } }]));
+  writeFileSync(join(day, `rollout-2026-09-10T09-00-00-${parent}.jsonl`), jsonl([{ type: 'session_meta', payload: { id: parent, source: 'cli' } }]));
+  const found = await scanSessions(join(scratch, 'codex'), 'codex', true);
+  expect([...found.keys()]).toEqual([parent]);
+  expect(found.get(parent)!.files.map(path => path.includes(parent))).toEqual([true, false]);
+
+  const outside = join(scratch, 'outside', 'folder');
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, `${parent}.jsonl`), claudeSessionFixture('/elsewhere', { sessionId: parent }));
+  mkdirSync(join(scratch, 'claude'));
+  symlinkSync(join(scratch, 'outside'), join(scratch, 'claude', 'projects'));
+  expect((await scanSessions(join(scratch, 'claude'), 'claude', true)).size).toBe(0);
+});
+
+test('an archive that is gone is an error the caller gets, and reading the index leaves no file beside it', async () => {
+  expect(String((await rejection(records(join(scratch, 'gone.jsonl.zst')))).reason)).toContain('ENOENT');
+  const writer = new TranscriptStore(scratch);
+  writer.putThread({ id: 't1', title: 'One', projectPath: null, provider: null, model: null, createdAt: null, updatedAt: null, deletedAt: 1 }, 2);
+  writer.close();
+  const reader = new TranscriptStore(scratch);
+  expect(reader.deleted()).toEqual([{ id: 't1', deletedAt: 1, imagesErasedAt: null }]);
+  expect(reader.totalBytes()).toBe(0);
+  expect(readdirSync(join(scratch, 'transcripts'))).toEqual(['index.db']);
+  reader.close();
 });
 
 test('a measure writes nothing', async () => {
@@ -313,4 +392,61 @@ test('sessions no thread names are archived on request only, and never erased', 
   // Nothing of a mode erases it: it is no deleted conversation.
   await harness.core.transcripts.run();
   expect((await client.call('transcripts.list', {})).length).toBe(1);
+});
+
+test('a file the archive does not read stays in its folder, and a session written during the pass keeps the family in the journal', async () => {
+  await core();
+  const { threadId, file, side } = await importedThread();
+  writeFileSync(join(side, 'notes.txt'), 'kept by hand');
+  await client.call('settings.set', { transcriptStorage: { mode: 'classic' } });
+  await client.call('threads.remove', { threadId });
+  age(threadId, file, 8);
+
+  // An import reads the session: nothing of the family is archived or purged.
+  const busy = harness.core.imports.busy.bind(harness.core.imports);
+  harness.core.imports.busy = () => true;
+  await harness.core.transcripts.run();
+  harness.core.imports.busy = busy;
+  expect((await client.call('threads.deleted', {})).map(thread => thread.id)).toEqual([threadId]);
+  expect(existsSync(file)).toBe(true);
+
+  // Written after the scan, as the pass first looks at the session: the same.
+  let written = false;
+  harness.core.imports.busy = () => {
+    if (!written) appendFileSync(file, jsonl([{ type: 'user', uuid: 'late', timestamp: '2026-09-10T09:00:00.000Z', message: { role: 'user', content: 'One more thing' } }]));
+    written = true;
+    return false;
+  };
+  await harness.core.transcripts.run();
+  harness.core.imports.busy = busy;
+  expect(written).toBe(true);
+  expect((await client.call('threads.deleted', {})).map(thread => thread.id)).toEqual([threadId]);
+  expect(existsSync(file)).toBe(true);
+
+  age(threadId, file, 8);
+  await harness.core.transcripts.run();
+  expect(await client.call('threads.deleted', {})).toEqual([]);
+  expect(existsSync(file)).toBe(false);
+  expect(readdirSync(side)).toEqual(['notes.txt']);
+  const late = await client.call('transcripts.read', { conversation: threadId, sessionId: FIXTURE_SESSION_ID, query: 'One more thing' });
+  expect(late.records).toHaveLength(1);
+});
+
+test('a pass planned for Delete stops erasing once another mode is applied', async () => {
+  await core();
+  const project = await testProject(harness, client);
+  const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+  for (const title of ['First', 'Second']) {
+    const thread = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title });
+    await client.call('threads.remove', { threadId: thread.id });
+  }
+  harness.core.journal.db.query('UPDATE thread_deletions SET deleted_at = ?').run(Date.now() - 8 * DAY);
+  harness.core.settings.set({ transcriptStorage: { mode: 'delete' } });
+  const off = harness.core.bus.onAny(name => {
+    if (name === 'thread.removed' && harness.core.settings.get().transcriptStorage?.mode === 'delete') harness.core.settings.set({ transcriptStorage: { mode: 'storage' } });
+  });
+  await harness.core.transcripts.run();
+  off();
+  await harness.core.transcripts.run();
+  expect(await client.call('threads.deleted', {})).toHaveLength(1);
 });

@@ -32,7 +32,7 @@ export interface SessionJob {
   out: string | null;
   /** The blob store's directory; null with `out` null. */
   blobs: string | null;
-  /** False once the thread's images are due to go: references stay, bytes are not stored. */
+  /** False once the thread's images are due to go: their references stay, their bytes are not stored. */
   keepBlobs: boolean;
 }
 
@@ -94,11 +94,21 @@ export function blobPath(dir: string, sha: string, ext: string): string {
   return join(dir, sha.slice(0, 2), `${sha}.${ext}`);
 }
 
-async function* lines(path: string): AsyncGenerator<string> {
+/** A file as a stream, through zstd when its name says so. A read error ends the stream it feeds. */
+function opened(path: string, zstd = path.endsWith('.zst')): AsyncIterable<Buffer> {
   const file = createReadStream(path, { highWaterMark: 1 << 20 });
-  const source = path.endsWith('.zst') ? file.pipe(createZstdDecompress({ params: UNZSTD })) : file;
+  if (!zstd) return file as AsyncIterable<Buffer>;
+  const plain = createZstdDecompress({ params: UNZSTD });
+  file.once('error', error => plain.destroy(error));
+  plain.once('close', () => file.destroy());
+  return file.pipe(plain) as AsyncIterable<Buffer>;
+}
+
+/** The lines of a session file or of an archive, empty ones left out. */
+export async function* lines(path: string): AsyncGenerator<string> {
+  const source = opened(path);
   let parts: Buffer[] = [];
-  for await (const chunk of source as AsyncIterable<Buffer>) {
+  for await (const chunk of source) {
     let start = 0;
     for (;;) {
       const at = chunk.indexOf(10, start);
@@ -132,8 +142,7 @@ async function shrink(data: Buffer, kind: { mime: string; ext: string }): Promis
 async function hashOf(path: string): Promise<{ sha256: string; lines: number }> {
   const hasher = new Bun.CryptoHasher('sha256');
   let count = 0;
-  const source = createReadStream(path).pipe(createZstdDecompress());
-  for await (const chunk of source as AsyncIterable<Buffer>) {
+  for await (const chunk of opened(path, true)) {
     hasher.update(chunk);
     for (let at = chunk.indexOf(10); at >= 0; at = chunk.indexOf(10, at + 1)) count += 1;
   }
@@ -212,7 +221,8 @@ export class ArchiveWriter {
         counts['blob in'] = (counts['blob in'] ?? 0) + base64.length;
         if (!blobs.has(sha)) {
           blobs.set(sha, { sha256: sha, bytes: data.length, stored: 0, mime: kind.mime, ext: kind.ext });
-          if (keepBlobs) queue({ sha, data, kind });
+          // The delay on images is on images: a PDF or any other binary is always stored.
+          if (keepBlobs || !kind.mime.startsWith('image/')) queue({ sha, data, kind });
         }
         return { $blob: sha, bytes: data.length, mime: kind.mime };
       },

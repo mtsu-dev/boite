@@ -117,6 +117,7 @@ interface ThreadRow {
 export class TranscriptStore {
   readonly dir: string;
   #db: Database | null = null;
+  #reader: Database | null = null;
 
   constructor(dataDir: string) {
     this.dir = join(dataDir, 'transcripts');
@@ -128,24 +129,33 @@ export class TranscriptStore {
   /** Whether anything was ever archived: a read never creates the archive. */
   exists(): boolean { return this.#db !== null || existsSync(this.indexPath); }
 
+  /** The index to write to, made at the first write. A rollback journal, not a WAL: a reader leaves no file beside it. */
   get db(): Database {
     if (this.#db !== null) return this.#db;
     mkdirSync(this.dir, { recursive: true });
     const db = new Database(this.indexPath, { create: true });
-    db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
     db.exec(SCHEMA);
+    this.#reader?.close();
+    this.#reader = null;
     this.#db = db;
     return db;
   }
 
+  /** The index to read from: opened read-only until something is written, so a preview changes nothing on disk. Call after `exists()`. */
+  get read(): Database {
+    return this.#db ?? (this.#reader ??= new Database(this.indexPath, { readonly: true }));
+  }
+
   close(): void {
     this.#db?.close();
+    this.#reader?.close();
     this.#db = null;
+    this.#reader = null;
   }
 
   /** Where a session's archive goes; a session archived again takes the next free name. */
   sessionPath(threadId: string, sessionId: string): { id: string; file: string; path: string } {
-    const taken = this.exists() ? new Set((this.db.query('SELECT id FROM sessions WHERE thread_id = ?').all(threadId) as { id: string }[]).map(row => row.id)) : new Set<string>();
+    const taken = this.exists() ? new Set((this.read.query('SELECT id FROM sessions WHERE thread_id = ?').all(threadId) as { id: string }[]).map(row => row.id)) : new Set<string>();
     let id = sessionId;
     for (let round = 2; taken.has(id); round += 1) id = `${sessionId}.${round}`;
     const file = join('sessions', segment(threadId), `${segment(id)}.jsonl.zst`);
@@ -154,12 +164,12 @@ export class TranscriptStore {
 
   /** The archived session a thread already holds with these records, if any: the same file is not kept twice. */
   sameSession(threadId: string, digest: string): boolean {
-    return this.exists() && this.db.query('SELECT 1 FROM sessions WHERE thread_id = ? AND sha256 = ?').get(threadId, digest) !== null;
+    return this.exists() && this.read.query('SELECT 1 FROM sessions WHERE thread_id = ? AND sha256 = ?').get(threadId, digest) !== null;
   }
 
   thread(threadId: string): { updatedAt: number | null; deletedAt: number | null; erasedAt: number | null; compactedAt: number } | null {
     if (!this.exists()) return null;
-    const row = this.db.query('SELECT updated_at, deleted_at, erased_at, compacted_at FROM threads WHERE id = ?').get(threadId) as { updated_at: number | null; deleted_at: number | null; erased_at: number | null; compacted_at: number } | null;
+    const row = this.read.query('SELECT updated_at, deleted_at, erased_at, compacted_at FROM threads WHERE id = ?').get(threadId) as { updated_at: number | null; deleted_at: number | null; erased_at: number | null; compacted_at: number } | null;
     return row === null ? null : { updatedAt: row.updated_at, deletedAt: row.deleted_at, erasedAt: row.erased_at, compactedAt: row.compacted_at };
   }
 
@@ -195,14 +205,19 @@ export class TranscriptStore {
     })();
   }
 
-  /** Drops a thread's hold on its blobs and removes those nothing else refers to. Answers what left the disk. */
-  eraseImages(threadId: string, now: number): { count: number; bytes: number } {
+  /**
+   * Drops a thread's hold on its images and removes those nothing else refers
+   * to; with `all`, on every blob, as an erased conversation does. A PDF or
+   * another binary is no image. Answers what left the disk.
+   */
+  eraseImages(threadId: string, now: number, all = false): { count: number; bytes: number } {
     if (!this.exists()) return { count: 0, bytes: 0 };
     const db = this.db;
+    const kinds = all ? '%' : 'image/%';
     const gone = db.transaction(() => {
-      const orphans = db.query(`SELECT b.sha256, b.ext, b.stored FROM blobs b JOIN blob_refs r ON r.sha256 = b.sha256 WHERE r.thread_id = ?1
-        AND NOT EXISTS (SELECT 1 FROM blob_refs other WHERE other.sha256 = b.sha256 AND other.thread_id != ?1)`).all(threadId) as { sha256: string; ext: string; stored: number }[];
-      db.query('DELETE FROM blob_refs WHERE thread_id = ?').run(threadId);
+      const orphans = db.query(`SELECT b.sha256, b.ext, b.stored FROM blobs b JOIN blob_refs r ON r.sha256 = b.sha256 WHERE r.thread_id = ?1 AND b.mime LIKE ?2
+        AND NOT EXISTS (SELECT 1 FROM blob_refs other WHERE other.sha256 = b.sha256 AND other.thread_id != ?1)`).all(threadId, kinds) as { sha256: string; ext: string; stored: number }[];
+      db.query('DELETE FROM blob_refs WHERE thread_id = ?1 AND sha256 IN (SELECT sha256 FROM blobs WHERE mime LIKE ?2)').run(threadId, kinds);
       const remove = db.query('DELETE FROM blobs WHERE sha256 = ?');
       for (const blob of orphans) remove.run(blob.sha256);
       db.query('UPDATE threads SET images_erased_at = ? WHERE id = ?').run(now, threadId);
@@ -216,7 +231,7 @@ export class TranscriptStore {
   eraseThread(threadId: string, now: number): number {
     if (!this.exists()) return 0;
     const db = this.db;
-    const images = this.eraseImages(threadId, now);
+    const images = this.eraseImages(threadId, now, true);
     const sessions = db.query('SELECT file, bytes FROM sessions WHERE thread_id = ?').all(threadId) as { file: string; bytes: number }[];
     db.transaction(() => {
       db.query('DELETE FROM sessions WHERE thread_id = ?').run(threadId);
@@ -228,32 +243,34 @@ export class TranscriptStore {
     return images.bytes + sessions.reduce((sum, session) => sum + session.bytes, 0);
   }
 
-  /** Bytes a conversation holds in the archive: its records, and the blobs it alone refers to. */
-  threadBytes(threadId: string): { records: number; images: number; imageCount: number } {
-    if (!this.exists()) return { records: 0, images: 0, imageCount: 0 };
-    const records = (this.db.query('SELECT COALESCE(SUM(bytes), 0) AS bytes FROM sessions WHERE thread_id = ?').get(threadId) as { bytes: number }).bytes;
-    const images = this.db.query(`SELECT COALESCE(SUM(b.stored), 0) AS bytes, COUNT(*) AS count FROM blobs b JOIN blob_refs r ON r.sha256 = b.sha256 WHERE r.thread_id = ?1
-      AND NOT EXISTS (SELECT 1 FROM blob_refs other WHERE other.sha256 = b.sha256 AND other.thread_id != ?1)`).get(threadId) as { bytes: number; count: number };
-    return { records, images: images.bytes, imageCount: images.count };
+  /** Bytes a conversation holds in the archive: its records, the images it alone refers to, and its other blobs. */
+  threadBytes(threadId: string): { records: number; images: number; imageCount: number; others: number } {
+    if (!this.exists()) return { records: 0, images: 0, imageCount: 0, others: 0 };
+    const records = (this.read.query('SELECT COALESCE(SUM(bytes), 0) AS bytes FROM sessions WHERE thread_id = ?').get(threadId) as { bytes: number }).bytes;
+    const own = this.read.query(`SELECT COALESCE(SUM(b.stored), 0) AS bytes, COUNT(*) AS count FROM blobs b JOIN blob_refs r ON r.sha256 = b.sha256 WHERE r.thread_id = ?1 AND b.mime LIKE ?2
+      AND NOT EXISTS (SELECT 1 FROM blob_refs other WHERE other.sha256 = b.sha256 AND other.thread_id != ?1)`);
+    const images = own.get(threadId, 'image/%') as { bytes: number; count: number };
+    const all = own.get(threadId, '%') as { bytes: number; count: number };
+    return { records, images: images.bytes, imageCount: images.count, others: all.bytes - images.bytes };
   }
 
   /** Deleted conversations still in the archive, with what the policy reads of them. */
   deleted(): { id: string; deletedAt: number; imagesErasedAt: number | null }[] {
     if (!this.exists()) return [];
-    return (this.db.query('SELECT id, deleted_at, images_erased_at FROM threads WHERE deleted_at IS NOT NULL AND erased_at IS NULL').all() as { id: string; deleted_at: number; images_erased_at: number | null }[])
+    return (this.read.query('SELECT id, deleted_at, images_erased_at FROM threads WHERE deleted_at IS NOT NULL AND erased_at IS NULL').all() as { id: string; deleted_at: number; images_erased_at: number | null }[])
       .map(row => ({ id: row.id, deletedAt: row.deleted_at, imagesErasedAt: row.images_erased_at }));
   }
 
   totalBytes(): number {
     if (!this.exists()) return 0;
-    const row = this.db.query('SELECT (SELECT COALESCE(SUM(bytes), 0) FROM sessions) + (SELECT COALESCE(SUM(stored), 0) FROM blobs) AS bytes').get() as { bytes: number };
+    const row = this.read.query('SELECT (SELECT COALESCE(SUM(bytes), 0) FROM sessions) + (SELECT COALESCE(SUM(stored), 0) FROM blobs) AS bytes').get() as { bytes: number };
     return row.bytes;
   }
 
   list(query: string | undefined, limit: number): ArchivedTranscript[] {
     if (!this.exists()) return [];
     const like = `%${(query ?? '').replace(/[\\%_]/g, char => `\\${char}`)}%`;
-    const rows = this.db.query(`SELECT t.*, COUNT(s.id) AS sessions, COALESCE(SUM(s.records), 0) AS records, COALESCE(SUM(s.bytes), 0) AS bytes,
+    const rows = this.read.query(`SELECT t.*, COUNT(s.id) AS sessions, COALESCE(SUM(s.records), 0) AS records, COALESCE(SUM(s.bytes), 0) AS bytes,
         (SELECT COUNT(*) FROM failures f WHERE f.thread_id = t.id) AS failures
       FROM threads t JOIN sessions s ON s.thread_id = t.id
       WHERE t.erased_at IS NULL AND (t.title LIKE ?1 ESCAPE '\\' OR COALESCE(t.project_path, '') LIKE ?1 ESCAPE '\\' OR t.id = ?2)
@@ -268,7 +285,7 @@ export class TranscriptStore {
   failures(params: { threadId?: string | undefined; query?: string | undefined }, limit: number): ArchivedFailure[] {
     if (!this.exists()) return [];
     const like = `%${(params.query ?? '').replace(/[\\%_]/g, char => `\\${char}`)}%`;
-    const rows = this.db.query(`SELECT thread_id, session_id, line, at, kind, tool, text FROM failures
+    const rows = this.read.query(`SELECT thread_id, session_id, line, at, kind, tool, text FROM failures
       WHERE (?1 IS NULL OR thread_id = ?1) AND (text LIKE ?2 ESCAPE '\\' OR COALESCE(tool, '') LIKE ?2 ESCAPE '\\' OR kind LIKE ?2 ESCAPE '\\')
       ORDER BY at DESC LIMIT ?3`).all(params.threadId ?? null, like, limit) as { thread_id: string; session_id: string; line: number; at: number | null; kind: string; tool: string | null; text: string }[];
     return rows.map(row => ({ threadId: row.thread_id, sessionId: row.session_id, line: row.line, at: row.at, kind: row.kind, tool: row.tool, text: row.text }));
@@ -277,7 +294,7 @@ export class TranscriptStore {
   /** A conversation's archived sessions, oldest first, with where each file is. */
   sessions(threadId: string): { id: string; path: string }[] {
     if (!this.exists()) return [];
-    return (this.db.query('SELECT id, file FROM sessions WHERE thread_id = ? ORDER BY COALESCE(first_at, compacted_at), id').all(threadId) as { id: string; file: string }[])
+    return (this.read.query('SELECT id, file FROM sessions WHERE thread_id = ? ORDER BY COALESCE(first_at, compacted_at), id').all(threadId) as { id: string; file: string }[])
       .map(row => ({ id: row.id, path: join(this.dir, row.file) }));
   }
 }

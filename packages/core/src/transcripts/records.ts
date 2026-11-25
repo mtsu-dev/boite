@@ -33,7 +33,7 @@ const ERROR_LINE_MAX = 400;
 /** What an error line looks like in a tool's output. */
 const ERROR_LINE = /\b(error|fail(ed|ure)?|panic|exception|traceback|fatal|denied|refused|timed? ?out|exit (code|status) [1-9]|not found|cannot|unable)\b/i;
 
-/** A base64 payload: long, one unbroken run of the alphabet. */
+/** How a base64 payload starts: long, one unbroken run of the alphabet. */
 const BASE64_HEAD = /^[A-Za-z0-9+/\r\n]{1024,}={0,2}$/;
 const DATA_URL = /^data:([a-z]+\/[a-z0-9.+-]+);base64,/;
 const BLOB_MIN = 1024;
@@ -52,16 +52,30 @@ export function sha256(data: string | Uint8Array): string {
   return new Bun.CryptoHasher('sha256').update(data).digest('hex');
 }
 
+/** The payload of a base64 text, when it decodes and encodes back to the same characters: nothing is lost by filing it. */
+function exact(base64: string): boolean {
+  const clean = base64.includes('\n') ? base64.replace(/[\r\n]/g, '') : base64;
+  if (clean.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(clean)) return false;
+  return Buffer.from(clean, 'base64').toString('base64') === clean;
+}
+
+function dataUrl(text: string): RegExpExecArray | null {
+  if (text.length < BLOB_MIN) return null;
+  const url = DATA_URL.exec(text.slice(0, 80));
+  return url !== null && exact(text.slice(url[0].length)) ? url : null;
+}
+
+/** A bare string that is a base64 payload from its first character to its last. */
 function isBlob(text: string): boolean {
   if (text.length < BLOB_MIN) return false;
+  if (dataUrl(text) !== null) return true;
   const head = text.slice(0, 4096);
-  if (DATA_URL.test(head.slice(0, 80))) return true;
   if (!BASE64_HEAD.test(head)) return false;
   // Plain words on short lines use the same alphabet: an encoder wraps at 64
   // characters or more, and its output mixes cases and digits.
   const lines = head.split(/\r?\n/);
   if (lines.slice(0, -1).some(line => line.length < 64)) return false;
-  return /[A-Z]/.test(head) && /[a-z]/.test(head) && /[0-9]/.test(head);
+  return /[A-Z]/.test(head) && /[a-z]/.test(head) && /[0-9]/.test(head) && exact(text);
 }
 
 function blobOf(text: string, mime: string | null, sink: Sink): Obj {
@@ -69,18 +83,23 @@ function blobOf(text: string, mime: string | null, sink: Sink): Obj {
   return sink.blob(url ? text.slice(url[0].length) : text, mime ?? url?.[1] ?? null);
 }
 
-/** Every base64 payload of a value becomes a reference to the blob store. */
-export function stripBlobs(value: Json | undefined, sink: Sink): Json {
+/**
+ * Every base64 payload of a value becomes a reference to the blob store: an
+ * image or document part, a data URL, and with `bare` a string that is base64
+ * and nothing else. A tool's input passes `bare` false: only what names itself
+ * a binary leaves it.
+ */
+export function stripBlobs(value: Json | undefined, sink: Sink, bare = true): Json {
   if (value === undefined) return null;
-  if (typeof value === 'string') return isBlob(value) ? blobOf(value, null, sink) : value;
-  if (Array.isArray(value)) return value.map(item => stripBlobs(item, sink));
+  if (typeof value === 'string') return (bare ? isBlob(value) : dataUrl(value) !== null) ? blobOf(value, null, sink) : value;
+  if (Array.isArray(value)) return value.map(item => stripBlobs(item, sink, bare));
   if (!object(value)) return value;
   const source = value.source;
-  if ((value.type === 'image' || value.type === 'document') && object(source) && typeof source.data === 'string') {
+  if ((value.type === 'image' || value.type === 'document') && object(source) && typeof source.data === 'string' && exact(source.data)) {
     return blobOf(source.data, typeof source.media_type === 'string' ? source.media_type : null, sink);
   }
   const out: Obj = {};
-  for (const [key, item] of Object.entries(value)) out[key] = stripBlobs(item, sink);
+  for (const [key, item] of Object.entries(value)) out[key] = stripBlobs(item, sink, bare);
   return out;
 }
 

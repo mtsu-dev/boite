@@ -128,7 +128,7 @@ export class ClaudeNormalizer {
         this.emit(record({ ...base, k: 'reasoning', text: this.#said(text(part.thinking)), sealed: part.type === 'redacted_thinking' ? true : undefined }));
       } else if (part.type === 'tool_use' || part.type === 'server_tool_use') {
         this.#tools.add(`call:${text(part.id)}`);
-        this.emit(record({ ...base, k: 'call', call: part.id, tool: part.name, input: stripBlobs(part.input, this.sink) }));
+        this.emit(record({ ...base, k: 'call', call: part.id, tool: part.name, input: stripBlobs(part.input, this.sink, false) }));
       } else this.emit(record({ ...base, k: 'assistant', part: stripBlobs(part, this.sink) }));
     }
     // A response is written as one line a content block: its usage is said once.

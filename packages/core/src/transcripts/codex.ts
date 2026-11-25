@@ -7,7 +7,7 @@
  * copy: it is the only record of what ran inside, and stays with its exit code.
  */
 
-import { capContent, capOutput, object, record, sha256, stripBlobs, type Json, type Obj, type Sink, type TranscriptRecord } from './records.ts';
+import { capContent, capOutput, object, record, scalars, sha256, stripBlobs, type Json, type Obj, type Sink, type TranscriptRecord } from './records.ts';
 
 type Emit = (record: TranscriptRecord) => void;
 
@@ -25,9 +25,27 @@ const texts = (value: Json | undefined): string[] => Array.isArray(value)
   ? value.flatMap(item => object(item) && typeof item.text === 'string' ? [item.text] : [])
   : [];
 
+/** What names a part of a message: its text, or the part itself. */
+const mark = (part: Json): string => sha256(typeof part === 'string' ? part : JSON.stringify(part));
+
+/**
+ * The output older rollouts wrap as JSON text, `{"output": "...", "metadata": {"exit_code": 9}}`:
+ * the exit code is read from the structure, wherever a long output would have pushed it.
+ */
+function envelope(output: Json | undefined): { output: Json; exit: number | undefined; info: Obj | undefined } | null {
+  if (typeof output !== 'string' || !output.startsWith('{')) return null;
+  let parsed: Json;
+  try { parsed = JSON.parse(output) as Json; } catch { return null; }
+  if (!object(parsed) || !('output' in parsed) || !object(parsed.metadata)) return null;
+  const { output: inner, metadata, ...rest } = parsed;
+  if (Object.keys(rest).length > 0) return null;
+  const info = scalars(metadata);
+  return { output: inner ?? '', exit: typeof metadata.exit_code === 'number' ? metadata.exit_code : undefined, info: info !== null && Object.keys(info).length > 0 ? info : undefined };
+}
+
 export class CodexNormalizer {
-  /** Texts already in the stream: an event that repeats them is dropped. */
-  readonly #texts = new Set<string>();
+  /** Texts and other parts already in the stream: an event that repeats them is dropped. */
+  readonly #seen = new Set<string>();
 
   constructor(private readonly sink: Sink, private readonly emit: Emit) {}
 
@@ -65,12 +83,14 @@ export class CodexNormalizer {
   #response(kind: string, payload: Obj, base: { [key: string]: Json | undefined }): void {
     const status = payload.status !== undefined && payload.status !== null && payload.status !== 'completed' ? payload.status : undefined;
     if (OUTPUTS.has(kind)) {
-      const output = payload.output;
-      const failed = typeof output === 'string' && FAILED_OUTPUT.test(output.slice(0, 400));
-      this.emit(record({ ...base, k: 'result', call: payload.call_id, out: capContent(output, failed, this.sink), error: failed ? true : undefined, status }));
+      const wrapped = envelope(payload.output);
+      const output = wrapped?.output ?? payload.output;
+      const exit = wrapped?.exit;
+      const failed = exit !== undefined ? exit !== 0 : typeof output === 'string' && FAILED_OUTPUT.test(output.slice(0, 400));
+      this.emit(record({ ...base, k: 'result', call: payload.call_id, out: capContent(output, failed, this.sink), exit, error: failed ? true : undefined, info: wrapped?.info, status }));
     } else if (CALLS.has(kind)) {
       const input = payload.arguments ?? payload.input ?? payload.action;
-      this.emit(record({ ...base, k: 'call', call: payload.call_id ?? payload.id, tool: payload.name ?? kind, input: stripBlobs(input, this.sink), status }));
+      this.emit(record({ ...base, k: 'call', call: payload.call_id ?? payload.id, tool: payload.name ?? kind, input: stripBlobs(input, this.sink, false), status }));
     } else if (kind === 'reasoning') {
       const sealed = text(payload.encrypted_content).length;
       this.sink.count('dropped: encrypted reasoning', sealed);
@@ -82,8 +102,8 @@ export class CodexNormalizer {
         return;
       }
       const said = texts(content);
-      for (const item of said) this.#texts.add(sha256(item));
       const rest = Array.isArray(content) ? content.filter(item => !(object(item) && typeof item.text === 'string')) : [];
+      for (const item of [...said, ...rest]) this.#seen.add(mark(item));
       this.emit(record({ ...base, k: payload.role === 'assistant' ? 'assistant' : 'user', text: said.join('\n'), parts: rest.length > 0 ? rest : undefined }));
     } else if (kind === 'additional_tools') {
       this.emit(record({ ...base, k: 'context', what: 'tools', tools: payload.tools }));
@@ -118,11 +138,11 @@ export class CodexNormalizer {
         out[key] = object(value) && '$blob' in value ? value : capOutput(typeof value === 'string' ? value : JSON.stringify(value), failed, this.sink);
         said = true;
       } else if (mirror && MIRROR_FIELDS.has(key)) {
-        const parts = texts(value);
-        const known = parts.length > 0 && parts.every(part => this.#texts.has(sha256(part)));
-        if (known) continue;
-        for (const part of parts) this.#texts.add(sha256(part));
-        if (value !== null && !(Array.isArray(value) && value.length === 0)) { out[key] = value; said = true; }
+        // Part by part: an image the message did not carry stays even when every text beside it is known.
+        const parts = Array.isArray(value) ? value : value === null || value === '' ? [] : [value];
+        const fresh = parts.filter(part => !this.#seen.has(mark(object(part) && typeof part.text === 'string' ? part.text : part)));
+        for (const part of fresh) this.#seen.add(mark(object(part) && typeof part.text === 'string' ? part.text : part));
+        if (fresh.length > 0) { out[key] = Array.isArray(value) ? fresh : value; said = true; }
       } else out[key] = value;
     }
     if (mirror && !said) return null;

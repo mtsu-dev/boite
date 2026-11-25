@@ -82,7 +82,9 @@
     if (picked === null) return;
     saving = true;
     try {
-      if (await store.saveSettings({ transcriptStorage: picked === 'custom' ? { mode: 'custom', custom } : { mode: picked } })) { chosen = null; edited = null; }
+      // A preset keeps the custom delays saved before: picking Custom again finds them.
+      const kept = saved?.custom === undefined ? {} : { custom: saved.custom };
+      if (await store.saveSettings({ transcriptStorage: picked === 'custom' ? { mode: 'custom', custom } : { mode: picked, ...kept } })) { chosen = null; edited = null; }
     } finally { saving = false; }
   }
 
@@ -111,7 +113,7 @@
 
 {#if store.owner}
   <SettingsSection id="settings-transcripts" testid="transcript-storage" title={words.heading} info={words.info}>
-    {#snippet actions()}{#if preview}<span class="used" data-testid="transcript-total">{bytes(preview.totalBytes + preview.archiveBytes)}</span>{/if}{/snippet}
+    {#snippet actions()}{#if preview}<span class="used" data-testid="transcript-total">{bytes(preview.totalBytes)}</span>{/if}{/snippet}
 
     <!-- One child for the card: its own spacing, no rule between the parts. -->
     <div class="body">

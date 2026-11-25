@@ -15,7 +15,11 @@
  *   images of a compacted family     the blobs it alone refers to go
  *
  * A provider file is removed only after its archive was written, read back
- * and compared (`session.ts`), and only if nothing wrote to it meanwhile.
+ * and compared (`session.ts`), only if nothing wrote to it meanwhile, and one
+ * listed file at a time (`locate.ts`). A deleted family leaves the journal
+ * only once every one of its sessions is archived: one that is being read or
+ * was written since the scan puts the family off to the next pass. A pass
+ * stops as soon as the setting it was planned for changes.
  * With no mode picked this module does nothing: the deletion delay of before
  * (`threads/deletion-retention.ts`) stays in charge.
  */
@@ -29,7 +33,7 @@ import { messageOf, refused } from '../errors.ts';
 import { sessionReferenced } from '../threads/native-sessions.ts';
 import { transcriptJob } from '../transcript-jobs.ts';
 import type { TranscriptReply } from './jobs.ts';
-import { scanSessions, unchanged, type RawSession } from './locate.ts';
+import { removeSession, scanSessions, unchanged, type RawSession } from './locate.ts';
 import { readArchive, type ArchiveResult, type SessionResult, type TranscriptSource } from './session.ts';
 import { TranscriptStore, type ArchivedThread } from './store.ts';
 
@@ -88,6 +92,8 @@ export class Transcripts {
   #stopped = false;
   #scan: { at: number; raws: Map<string, RawSession> } | null = null;
   #ratio: { at: number; value: number | null } | null = null;
+  /** The policy the pass under way was planned for; null when it follows none. */
+  #planned: string | null = null;
 
   constructor(core: Core) {
     this.#core = core;
@@ -196,7 +202,7 @@ export class Transcripts {
       const sessions = members.flatMap(thread => deleted.get(thread.id) ?? []);
       const bytes = sessions.reduce((sum, raw) => sum + raw.bytes, 0);
       if (due(policy.deletedEraseDays, deletedAt, now)) {
-        const archived = members.reduce((sum, thread) => { const held = this.store.threadBytes(thread.id); return sum + held.records + held.images; }, 0);
+        const archived = members.reduce((sum, thread) => { const held = this.store.threadBytes(thread.id); return sum + held.records + held.images + held.others; }, 0);
         steps.push({ kind: 'erase-deleted', rootId, deletedAt, threadIds: members.map(thread => thread.id), sessions, bytes: bytes + archived });
       } else if (due(policy.deletedCompactDays, deletedAt, now)) {
         steps.push({
@@ -209,7 +215,7 @@ export class Transcripts {
       // A family still in the journal is handled above, with its rows.
       if (threads.has(thread.id)) continue;
       const held = this.store.threadBytes(thread.id);
-      if (due(policy.deletedEraseDays, thread.deletedAt, now)) steps.push({ kind: 'erase-archived', threadId: thread.id, bytes: held.records + held.images });
+      if (due(policy.deletedEraseDays, thread.deletedAt, now)) steps.push({ kind: 'erase-archived', threadId: thread.id, bytes: held.records + held.images + held.others });
       else if (thread.imagesErasedAt === null && held.imageCount > 0 && due(policy.imagesEraseDays, thread.deletedAt, now)) steps.push({ kind: 'images', threadId: thread.id, bytes: held.images, count: held.imageCount });
     }
     return { steps, rawBytes, raws: [...raws.values()], unlinked };
@@ -272,7 +278,8 @@ export class Transcripts {
       const policy = this.policy();
       if (policy === null) return;
       const plan = await this.#plan(policy, Date.now(), true);
-      await this.#apply(plan.steps);
+      this.#planned = JSON.stringify(policy);
+      try { await this.#apply(plan.steps); } finally { this.#planned = null; }
     });
   }
 
@@ -291,16 +298,22 @@ export class Transcripts {
       this.#progress = { ...idle(), running: true, remaining: sessions.length };
       for (const raw of sessions) {
         if (this.#halted()) break;
-        await this.#step(() => this.#archiveSession(`session:${raw.id}`, raw, true, {
+        await this.#step(async () => await this.#archiveSession(`session:${raw.id}`, raw, true, {
           id: `session:${raw.id}`, title: raw.folder ?? raw.id, projectPath: raw.folder, provider: raw.source, model: null,
           createdAt: null, updatedAt: Math.round(raw.modifiedAt), deletedAt: null,
-        }));
+        }) ?? 0);
       }
     });
     return this.progress();
   }
 
   #halted(): boolean { return this.#stopped || this.#core.stopping || this.#core.journal.isClosed(); }
+
+  /** Whether the setting still asks for what the pass was planned for: a mode picked meanwhile ends it before its next step. */
+  #current(): boolean { return this.#planned === null || this.#planned === JSON.stringify(this.policy()); }
+
+  /** Whether a session can be archived now: no import reads it and nothing wrote to it since the scan. */
+  async #ready(raw: RawSession): Promise<boolean> { return !this.#core.imports.busy(raw.id) && await unchanged(raw); }
 
   #exclusive(work: () => Promise<void>): Promise<void> {
     const after = this.#pass ?? Promise.resolve();
@@ -340,7 +353,7 @@ export class Transcripts {
   async #apply(steps: readonly Step[]): Promise<void> {
     this.#progress.remaining = steps.length;
     for (const step of steps) {
-      if (this.#halted()) return;
+      if (this.#halted() || !this.#current()) return;
       await this.#step(async () => {
         if (step.kind === 'compact-live') return this.#compactLive(step);
         if (step.kind === 'compact-deleted') return this.#compactDeleted(step);
@@ -368,9 +381,12 @@ export class Transcripts {
     return result.bytes;
   }
 
-  /** Archives one provider session under `threadId`, then removes its files when `remove` and nothing wrote to them. Answers the bytes freed. */
-  async #archiveSession(threadId: string, raw: RawSession, remove: boolean, thread: ArchivedThread, keepImages = true): Promise<number> {
-    if (this.#core.imports.busy(raw.id) || !(await unchanged(raw))) return 0;
+  /**
+   * Archives one provider session under `threadId`, then removes its files when `remove` and nothing wrote to them.
+   * Answers the bytes freed, or null when the session could not be read now and nothing was archived.
+   */
+  async #archiveSession(threadId: string, raw: RawSession, remove: boolean, thread: ArchivedThread, keepImages = true): Promise<number | null> {
+    if (!(await this.#ready(raw))) return null;
     const target = this.store.sessionPath(threadId, raw.id);
     const { session } = await transcriptJob<Extract<TranscriptReply, { session: unknown }>>({
       transcript: { source: raw.source, files: raw.files, toolResults: raw.toolResults, out: target.path, blobs: this.store.blobsDir, keepBlobs: keepImages },
@@ -383,10 +399,10 @@ export class Transcripts {
 
   /** Removes a session's provider files once more checks pass. Answers the bytes that left. */
   async #removeRaw(raw: RawSession): Promise<number> {
-    if (this.#core.imports.busy(raw.id) || !(await unchanged(raw))) return 0;
+    if (!(await this.#ready(raw))) return 0;
     this.#core.imports.removing.add(raw.id);
     try {
-      for (const path of raw.paths) await rm(path, { recursive: true, force: true });
+      await removeSession(raw);
     } finally {
       this.#core.imports.removing.delete(raw.id);
     }
@@ -402,7 +418,7 @@ export class Transcripts {
       if (thread === undefined || thread.rootId !== null || !QUIET.has(thread.status) || this.#halted()) return freed;
       const before = thread.updatedAt;
       const target = this.store.sessionPath(thread.id, raw.id);
-      if (this.#core.imports.busy(raw.id) || !(await unchanged(raw))) continue;
+      if (!(await this.#ready(raw))) continue;
       const { session } = await transcriptJob<Extract<TranscriptReply, { session: unknown }>>({
         transcript: { source: raw.source, files: raw.files, toolResults: raw.toolResults, out: target.path, blobs: this.store.blobsDir, keepBlobs: true },
       });
@@ -419,6 +435,8 @@ export class Transcripts {
     const db = this.#core.journal.db;
     const now = Date.now();
     let added = 0;
+    // Every session of the family, or none: the journal is the only thing that says whose they are.
+    for (const raw of step.threads.flatMap(member => member.sessions)) if (!(await this.#ready(raw))) return 0;
     for (const member of step.threads) {
       const thread = this.#threads(member.id).get(member.id);
       if (thread === undefined || thread.rootId !== step.rootId || thread.deletedAt !== step.deletedAt) return -added;
@@ -430,9 +448,15 @@ export class Transcripts {
       this.store.putTurns(thread.id, this.#core.journal.listTurns(thread.id).map(turn => ({
         id: turn.id, status: turn.status, queuedAt: turn.queuedAt, startedAt: turn.startedAt, finishedAt: turn.finishedAt, usage: turn.usage, error: turn.error,
       })));
-      for (const raw of member.sessions) added -= await this.#archiveSession(thread.id, raw, false, archived, step.keepImages);
+      for (const raw of member.sessions) {
+        const freed = await this.#archiveSession(thread.id, raw, false, archived, step.keepImages);
+        // What is archived stays; the family is planned again at the next pass.
+        if (freed === null) return -added;
+        added -= freed;
+      }
       if (!step.keepImages) this.store.eraseImages(thread.id, now);
     }
+    if (this.#halted() || !this.#current()) return -added;
     // Everything is in the archive: the family leaves the journal, unless it was restored meanwhile.
     const purged = this.#core.journal.purgeDeletedFamily(step.rootId, step.deletedAt);
     if (purged.length === 0) return -added;
@@ -450,6 +474,9 @@ export class Transcripts {
     const now = Date.now();
     const threads = this.#threads();
     const members = step.threadIds.flatMap(id => threads.get(id) ?? []);
+    // A session being read or written is not erased under its reader: the family waits for the next pass.
+    for (const raw of step.sessions) if (!(await this.#ready(raw))) return 0;
+    if (!this.#current()) return 0;
     const turns = new Map(members.map(thread => [thread.id, this.#core.journal.listTurns(thread.id)]));
     const purged = this.#core.journal.purgeDeletedFamily(step.rootId, step.deletedAt);
     if (purged.length === 0) return 0;

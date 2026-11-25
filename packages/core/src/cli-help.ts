@@ -64,10 +64,7 @@ ${CONTROL_HELP}
                                  Boite diagnostics. Use logs help for filters,
                                  logs problems for groups, logs export for a
                                  sanitized report.
-  transcripts [list|failures|read <conversation>]
-                                 compacted conversations kept for audits: their
-                                 records, tool calls and failures. Use
-                                 transcripts help for filters.
+  transcripts list|failures|read  compacted conversations, for audits
   issue draft|submit --title <t> --description <text>
                                  report a Boite bug on GitHub with that export;
                                  show the user the draft before submit
