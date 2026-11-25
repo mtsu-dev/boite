@@ -19,7 +19,8 @@ async function capture(name: string) {
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
-  url = `http://127.0.0.1:${port}/?fake=1&open=recent&machines=1`;
+  // `contactNotice=0`: the seeded contact request would float its card over the list, and a tap aimed at a project header lands on it.
+  url = `http://127.0.0.1:${port}/?fake=1&open=recent&machines=1&contactNotice=0`;
   page = await BrowserPage.launch({ url, windowSize: { width: 1300, height: 850 } });
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
 }, 30_000);
@@ -237,6 +238,8 @@ test('phone folds a project from a tap on its header and finds it folded after a
     await page.evaluate(`document.querySelector(${JSON.stringify(`${toggle} ${part}`)}).scrollIntoView({ block: 'center' })`);
     await page.waitFor(screensSettled);
     const at = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector(${JSON.stringify(`${toggle} ${part}`)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    // Nothing floats over the header there, or the finger would land on it instead.
+    expect(await page.evaluate(`document.querySelector(${JSON.stringify(toggle)}).contains(document.elementFromPoint(${at.x}, ${at.y}))`)).toBe(true);
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, id: 1 }] });
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
