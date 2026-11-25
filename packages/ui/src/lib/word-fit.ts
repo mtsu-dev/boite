@@ -12,15 +12,13 @@ const ELLIPSIS = '\u2026';
 const SLACK = 1;
 
 const texts = new WeakMap<Element, string>();
-type FitState = { text: string; width: number; shown: string };
+type FitState = { text: string; width: number; shown: string; font: string; letterSpacing: string; lines: number };
 const fitted = new WeakMap<Element, FitState>();
 const live = new Set<HTMLElement>();
-const dirty = new Set<HTMLElement>();
 const cutCache = new Map<string, string>();
 const CUT_CACHE_MAX = 2000;
 let observer: ResizeObserver | undefined;
 let pen: CanvasRenderingContext2D | null | undefined;
-let flushFrame = 0;
 
 /** Words with their trailing spaces. A match, not a lookbehind split: Safari 15.4 has no lookbehind (docs/phone.md). */
 function words(text: string): string[] {
@@ -100,7 +98,7 @@ function cachedCut(pen: CanvasRenderingContext2D, font: string, letterSpacing: s
   return shown;
 }
 
-type PendingWrite = { node: HTMLElement; text: string; width: number; shown: string };
+type PendingWrite = { node: HTMLElement; state: FitState };
 
 /**
  * Two-phase batch: read every node's style and measure on canvas before writing any DOM,
@@ -115,43 +113,25 @@ function fitBatch(items: Array<{ node: HTMLElement; width: number }>, force = fa
     const prev = fitted.get(node);
     if (!force && prev && prev.text === text && Math.abs(prev.width - width) < 0.5) continue;
     let shown = text;
+    let font = '';
+    let letterSpacing = '0px';
+    let lines = Infinity;
     if (ctx && width > 0) {
       const style = getComputedStyle(node);
       const clamp = Number.parseInt(style.getPropertyValue('-webkit-line-clamp'), 10);
-      const lines = Number.isFinite(clamp) && clamp > 0 ? clamp : style.whiteSpace === 'nowrap' ? 1 : Infinity;
+      lines = Number.isFinite(clamp) && clamp > 0 ? clamp : style.whiteSpace === 'nowrap' ? 1 : Infinity;
       if (lines !== Infinity) {
-        const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-        const letterSpacing = style.letterSpacing === 'normal' ? '0px' : style.letterSpacing;
+        font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+        letterSpacing = style.letterSpacing === 'normal' ? '0px' : style.letterSpacing;
         shown = cachedCut(ctx, font, letterSpacing, lines, width, text);
       }
     }
-    writes.push({ node, text, width, shown });
+    writes.push({ node, state: { text, width, shown, font, letterSpacing, lines } });
   }
-  for (const { node, text, width, shown } of writes) {
+  for (const { node, state } of writes) {
     const prev = fitted.get(node);
-    fitted.set(node, { text, width, shown });
-    if (!prev || prev.shown !== shown || prev.text !== text) show(node, text, shown);
-  }
-}
-
-function flushDirty(): void {
-  flushFrame = 0;
-  if (dirty.size === 0) return;
-  const items: Array<{ node: HTMLElement; width: number }> = [];
-  for (const node of dirty) {
-    if (node.isConnected) items.push({ node, width: node.clientWidth });
-  }
-  dirty.clear();
-  if (items.length > 0) fitBatch(items, true);
-}
-
-function scheduleRefit(node: HTMLElement): void {
-  dirty.add(node);
-  if (flushFrame) return;
-  if (typeof requestAnimationFrame === 'function') {
-    flushFrame = requestAnimationFrame(flushDirty);
-  } else {
-    flushDirty();
+    fitted.set(node, state);
+    if (!prev || prev.shown !== state.shown || prev.text !== state.text) show(node, state.text, state.shown);
   }
 }
 
@@ -172,11 +152,7 @@ export function wordFit(node: HTMLElement, text: string): { update(text: string)
   if (!observer) {
     observer = new ResizeObserver((entries) => {
       const items: Array<{ node: HTMLElement; width: number }> = [];
-      for (const entry of entries) {
-        const target = entry.target as HTMLElement;
-        dirty.delete(target);
-        items.push({ node: target, width: entry.contentRect.width });
-      }
+      for (const entry of entries) items.push({ node: entry.target as HTMLElement, width: entry.contentRect.width });
       if (items.length > 0) fitBatch(items);
     });
     // A web font that lands after the first fit changes every width.
@@ -188,12 +164,20 @@ export function wordFit(node: HTMLElement, text: string): { update(text: string)
     update(next) {
       if (next === texts.get(node)) return;
       texts.set(node, next);
-      scheduleRefit(node);
+      const prev = fitted.get(node);
+      const ctx = canvas();
+      if (ctx && prev && prev.width > 0 && prev.lines !== Infinity) {
+        const shown = cachedCut(ctx, prev.font, prev.letterSpacing, prev.lines, prev.width, next);
+        fitted.set(node, { ...prev, text: next, shown });
+        if (prev.shown !== shown || prev.text !== next) show(node, next, shown);
+      } else {
+        if (prev) fitted.set(node, { ...prev, text: next, shown: next });
+        show(node, next, next);
+      }
     },
     destroy() {
       observer?.unobserve(node);
       live.delete(node);
-      dirty.delete(node);
       fitted.delete(node);
     }
   };
