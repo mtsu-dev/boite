@@ -162,11 +162,12 @@ real('desktop and phone reveal background browser tabs, and their taps reach the
         // The agent can explicitly display a new tab while the phone shows the conversation list.
         await page.click(id('mobile-back'));
         await page.waitFor(`document.querySelector('${background}')?.getBoundingClientRect().width > 0`);
-        await owner.call('panel.open', { threadId: thread.id, surface: { kind: 'browser', url: site.url.href } });
+        const revealed = new URL('/revealed', site.url).href;
+        await owner.call('panel.open', { threadId: thread.id, surface: { kind: 'browser', url: revealed } });
         await page.waitFor(`document.querySelector('.app.phone-chat') && !document.querySelector('.body.mobile-covered')`);
         await page.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 3`);
-        await page.waitFor(frameShown(true), 20_000);
         await page.settleAnimations();
+        await page.waitFor(`document.querySelector('${id('remote-browser-address')}')?.value === ${JSON.stringify(revealed)} && ${frameShown(true)}`, 20_000);
         const nextBefore = await button();
         await tapFrame(page, true, true);
         const nextDeadline = Date.now() + 10_000;

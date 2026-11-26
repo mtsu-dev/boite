@@ -644,30 +644,49 @@ test.each([false, true])('rounded pictures keep their proportions without changi
   } finally { vi.unstubAllGlobals(); Object.defineProperty(window, 'devicePixelRatio', { configurable: true, writable: true, value: pixelRatio }); }
 });
 
-test('a stream that closes is opened again with a growing pause, a hidden page closes it, and a closed tab says so', async () => {
+test('a stream that closes keeps its picture read-only until its replacement is painted', async () => {
   const tabId = await streamed();
   const calls = vi.spyOn(client, 'call');
   const sockets: ReturnType<FakeClient['frames']>[] = [], open = client.frames.bind(client);
   let closed = 0;
   vi.spyOn(client, 'frames').mockImplementation((path) => { const socket = open(path), close = socket.close; socket.close = () => { closed++; close(); }; sockets.push(socket); return socket; });
   const streams = () => calls.mock.calls.filter(([method]) => method === 'browser.remoteStream').length;
-  canvasStub();
+  const { decodes } = canvasStub();
   vi.useFakeTimers();
   try {
     app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace', tabId } }); await settle();
     await vi.advanceTimersByTimeAsync(60); await settle();
     expect(streams()).toBe(1);
+    decodes[0]!.done(); await settle();
+    const screen = document.querySelector<HTMLButtonElement>('.screen')!;
+    expect(screen.disabled).toBe(false);
+    const canvas = screen.querySelector('canvas')!;
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 380, 450));
+    const pointer = (type: string) => screen.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: 190, clientY: 225 }));
+    pointer('pointerdown');
     // The core restarts the stream (1012): asked again after half a second, not before.
     sockets[0]!.onclose!(1012); await settle();
+    expect(screen.disabled).toBe(true);
     await vi.advanceTimersByTimeAsync(450); await settle();
     expect(streams()).toBe(1);
     await vi.advanceTimersByTimeAsync(100); await settle();
     expect(streams()).toBe(2);
     await vi.advanceTimersByTimeAsync(60); await settle();
+    // The replacement sent its metadata and JPEG; the old picture is still on screen.
+    expect(document.querySelector('.screen')).toBe(screen);
+    expect(screen.disabled).toBe(true);
+    decodes[1]!.done(); await settle();
+    expect(screen.disabled).toBe(false);
+    const inputs = () => calls.mock.calls.filter(([method]) => method === 'browser.remoteInput');
+    pointer('pointerup'); await settle();
+    expect(inputs()).toHaveLength(0);
+    pointer('pointerdown'); pointer('pointerup'); await settle();
+    expect(inputs()).toHaveLength(1);
     // Nobody looks at a hidden page: the socket closes, and opens again when the page is back.
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     document.dispatchEvent(new Event('visibilitychange')); await settle();
     expect(closed).toBe(1);
+    expect(screen.disabled).toBe(true);
     await vi.advanceTimersByTimeAsync(5000); await settle();
     expect(streams()).toBe(2);
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);

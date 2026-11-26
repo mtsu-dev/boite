@@ -20,9 +20,10 @@
   let { store, threadId, tabId }: { store: Store; threadId: string; tabId?: string } = $props();
   let paused = $state(false), busy = $state(false), error = $state(''), text = $state('');
   let frame = $state.raw<RemoteBrowserFrame | null>(null), picture = $state<HTMLCanvasElement>();
-  // Core timestamps use another device's clock. Retain local age for each frame,
-  // including one held by an in-progress pointer gesture.
-  const receivedAt = new WeakMap<RemoteBrowserFrame, number>();
+  // Input must name a frame from the current stream. Use local time for its
+  // age, including when a pointer gesture still holds an earlier frame.
+  let streamGeneration = $state(0);
+  const received = new WeakMap<RemoteBrowserFrame, { at: number; generation: number }>();
   let alive = true, generation = 0, timer: ReturnType<typeof setTimeout> | undefined;
   /**
    * A core that announces `browserStream` pushes the tab's frames on a socket of
@@ -70,15 +71,22 @@
   // The screen's density, which changes when the window moves to another screen or the page is zoomed.
   let pixelRatio = $state(window.devicePixelRatio || 1);
   const validSize = $derived([viewportWidth, viewportHeight].every(n => typeof n === 'number' && Number.isInteger(n) && n >= 240 && n <= 3840));
-  const usable = $derived(!!frame && frameClient === store.client && !paused && !busy && !error && store.connection === 'ready');
-  function stop() { generation++; clearTimeout(timer); stream?.stop(); stream = null; painter.cancel(); }
+  const fromCurrentStream = (target: RemoteBrowserFrame) => received.get(target)?.generation === streamGeneration;
+  const usable = $derived(!!frame && fromCurrentStream(frame) && frameClient === store.client && !paused && !busy && !error && store.connection === 'ready');
+  function stop() {
+    generation++; clearTimeout(timer);
+    if (stream) { stream.stop(); stream = null; streamGeneration++; fresh = false; }
+    painter.cancel();
+  }
   function blank() { frame = null; frameClient = null; painter.clear(); }
   /** Whether input may still name `target`: the page a live stream shows is the page; any other frame is good for five seconds. */
-  const aged = (target: RemoteBrowserFrame) => !(stream?.live && target === frame) && performance.now() - (receivedAt.get(target) ?? -Infinity) > 5000;
+  const aged = (target: RemoteBrowserFrame) => !fromCurrentStream(target) ||
+    (!(stream?.live && target === frame) && performance.now() - (received.get(target)?.at ?? -Infinity) > 5000);
   const widest = () => frameMaxWidth(requestWidth, pixelRatio);
   function showFrame(next: RemoteBrowserFrame, client: NonNullable<Store['client']>) {
-    if (frame) receivedAt.set(frame, performance.now());
-    receivedAt.set(next, performance.now());
+    const receipt = { at: performance.now(), generation: streamGeneration };
+    if (frame && fromCurrentStream(frame)) received.set(frame, receipt);
+    received.set(next, receipt);
     frameClient = client; frame = next; error = ''; fresh = true;
     if (!editingAddress) address = next.url ?? '';
   }
@@ -87,7 +95,7 @@
     if (!client || client.state !== 'ready') { error = strings.remoteBrowser.reconnecting; return; }
     const mine = () => alive && run === generation;
     const swapped = () => { if (client === store.client) return false; stop(); blank(); error = strings.remoteBrowser.reconnecting; return true; };
-    let next: RemoteBrowserFrame | null = null, connection = 0;
+    let next: RemoteBrowserFrame | null = null;
     stream = frameStream({
       client, threadId, ...(tabId ? { tabId } : {}), maxWidth: widest,
       page: (page) => {
@@ -96,10 +104,10 @@
       },
       frame: (jpeg) => {
         if (!mine() || swapped() || !next) return;
-        const page = next, from = connection;
-        painter.paint(jpeg, () => { if (mine() && from === connection && !swapped()) showFrame(page, client); });
+        const page = next, from = streamGeneration;
+        painter.paint(jpeg, () => { if (mine() && from === streamGeneration && !swapped()) showFrame(page, client); });
       },
-      lost: () => { connection++; next = null; if (mine()) { painter.cancel(); if (frame) receivedAt.set(frame, performance.now()); fresh = false; } },
+      lost: () => { next = null; if (mine()) { streamGeneration++; painter.cancel(); fresh = false; } },
       failed: (reason) => { if (mine() && !swapped()) error = reason; },
       pull: () => { if (mine()) { pullOnly = true; resume(); } },
     });
@@ -120,7 +128,7 @@
       if (!client || client.state !== 'ready') throw new Error(strings.remoteBrowser.reconnecting);
       const maxWidth = widest(), quality = frameQuality(roundTrip);
       // The frame shown: the core answers with a newer one, or that the page drew nothing new within a second.
-      const after = frame && frameClient === client ? frame.id : undefined;
+      const after = frame && fromCurrentStream(frame) && frameClient === client ? frame.id : undefined;
       const next = await client.call('browser.remoteFrame', { threadId, ...(tabId ? { tabId } : {}), ...(maxWidth ? { maxWidth } : {}), ...(quality !== 55 ? { quality } : {}), ...(after ? { after } : {}) });
       const changed = 'unchanged' in next ? null : next;
       if (!alive || run !== generation) return;
@@ -130,7 +138,7 @@
         roundTrip = Math.max(0, performance.now() - started - (next.waitedMs ?? 0)); failures = 0;
         if (!changed) {
           // The frame shown is still the page, and input aimed at it is still valid.
-          if (frame && next.id === frame.id) { unchanged++; receivedAt.set(frame, performance.now()); error = ''; fresh = true; }
+          if (frame && next.id === frame.id) { unchanged++; received.set(frame, { at: performance.now(), generation: streamGeneration }); error = ''; fresh = true; }
         } else {
           // A core from before `after` sends every frame again: identical ones count as unchanged.
           unchanged = frame && changed.base64 === frame.base64 && changed.width === frame.width && changed.height === frame.height ? unchanged + 1 : 0;
