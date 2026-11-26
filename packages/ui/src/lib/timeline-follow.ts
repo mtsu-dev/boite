@@ -157,13 +157,28 @@ export class BottomGlide {
   }
 }
 
+/** The turn of the answer, steering prompt or turn summary holding `target`, or null outside every answer. */
+export function turnOf(target: EventTarget | null): string | null {
+  const element = target as Element | null;
+  const article = element?.closest?.('[data-testid="turn-summary"]')?.closest?.('article.message')
+    ?? element?.closest?.('article.message:not(.user), article.message[data-steered]');
+  return article?.getAttribute('data-turn') ?? null;
+}
+
 /**
  * The turn of the answer under the pointer, or null off every answer. A Claude
  * turn is many messages and only the last one carries the summary with the
  * time it finished: the list shows that summary while any of them is pointed at.
  */
 export function pointedTurn(event: Event): string | null {
-  return (event.target as Element | null)?.closest?.('article.message:not(.user)')?.getAttribute('data-turn') ?? null;
+  return turnOf(event.target);
+}
+
+/** Clear focus state when focus lands outside `box`, e.g. after an in-place unmount skipped `focusout`. */
+export function watchOutsideFocus(box: HTMLElement | undefined, onLeave: () => void): () => void {
+  const away = (event: FocusEvent) => { if (!(event.target instanceof Node) || !box?.contains(event.target)) onLeave(); };
+  window.addEventListener('focusin', away, true);
+  return () => window.removeEventListener('focusin', away, true);
 }
 
 /**

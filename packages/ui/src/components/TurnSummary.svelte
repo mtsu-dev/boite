@@ -19,7 +19,7 @@
   import type { Snippet } from 'svelte';
   import InfoTip from './InfoTip.svelte';
   import Spinner from './Spinner.svelte';
-  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, steps, memory, compactions = [], actions, heard = null, carded = false, changes }: {
+  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, resting = false, steps, memory, compactions = [], actions, heard = null, carded = false, changes }: {
     turn: Turn;
     /** The failure has its own card above (`failureCarded`): the card is its one mark, so the line drops its own. */
     carded?: boolean;
@@ -48,6 +48,11 @@
      * so a settled line with nothing else to say at rest is not drawn, and leaves no band under the answer.
      */
     tucked?: boolean;
+    /**
+     * The turn a finished thread ends on (`lib/resting-turn.ts`): its line is the thread's one footer, so how long
+     * it worked reads at rest under a pointer too, and when it ended, what it spent and the buttons come with the pointer.
+     */
+    resting?: boolean;
     /** A persistent agent's folded steps, counted on the line; the count opens them above the answer. */
     steps?: SummarySteps;
     /** The memory pass that followed this turn: a small mark whose tooltip says what changed. */
@@ -58,7 +63,7 @@
      * The turn's change count and its diff, on this line when it already counts the steps that made the changes
      * (`TurnFiles`, inline): one line says what was done and what it changed, never a card and a line.
      */
-    changes?: Snippet;
+    changes?: Snippet<[Snippet?, Snippet?]>;
     /** The turn's own buttons (copy, retry, fork), at the end of the line. */
     actions?: Snippet;
     /**
@@ -133,7 +138,7 @@
   <span class="metric" class:meta><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
 {#if turn.status !== 'queued' && !(held && !still) && !(running && activeTool && !waiting && !stale && background.length === 0 && !observed && !compacting) && !(tucked && settled && !marked)}
-  <div class="summary" class:compacting class:stale class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
+  <div class="summary" class:compacting class:stale class:settled class:pointed class:marked class:resting class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} data-tucked={tucked ? '' : undefined} data-reveal={`turn:${turn.id}`} role="status" aria-label={label} title={label}>
     {#if compacting}
       <span class="compaction-icon"><Spinner size={16} paused={hidden || waiting} /></span>
       <div class="compaction-copy">
@@ -181,28 +186,32 @@
         {/if}
       </span>
     {/if}
-    {#if changes && steps && !running}{@render changes()}{/if}
-    {#if !running}
-      {#each compactions as part, at (at)}{@render metric('turn-compaction', compactionMark(part), compactionText(part), true)}{/each}
-    {/if}
-    {#if total > 0}
-      {@render metric('turn-tokens', tokensLabel, breakdown, false, true)}
-    {/if}
-    {#if still}
-      <span class="metric">
-        <span class="dot ui-label" aria-hidden="true">·</span>
-        <span class="background" data-testid="turn-background" title={background.map((task) => task.description).join('\n')}>
-          <span class="pulse" aria-hidden="true"></span><span class="ui-label">{still}</span>
+    {#snippet afterChanges()}
+      {#if !running}
+        {#each compactions as part, at (at)}{@render metric('turn-compaction', compactionMark(part), compactionText(part), true)}{/each}
+      {/if}
+      {#if total > 0}
+        {@render metric('turn-tokens', tokensLabel, breakdown, false, true)}
+      {/if}
+      {#if still}
+        <span class="metric">
+          <span class="dot ui-label" aria-hidden="true">·</span>
+          <span class="background" data-testid="turn-background" title={background.map((task) => task.description).join('\n')}>
+            <span class="pulse" aria-hidden="true"></span><span class="ui-label">{still}</span>
+          </span>
+          {#if stop && !running}
+            <button type="button" class="stop-background" data-testid="turn-background-stop" title={strings.chat.backgroundStop} aria-label={strings.chat.backgroundStop} onclick={stop}>
+              <Square size={10} />
+            </button>
+          {/if}
         </span>
-        {#if stop && !running}
-          <button type="button" class="stop-background" data-testid="turn-background-stop" title={strings.chat.backgroundStop} aria-label={strings.chat.backgroundStop} onclick={stop}>
-            <Square size={10} />
-          </button>
-        {/if}
-      </span>
-    {/if}
-    {#if actions && !running}<span class="tail">{@render actions()}</span>{/if}
-    {#if settled && details}<span class="details"><InfoTip text={details} topic={strings.chat.turnDetails} testid="turn-details" /></span>{/if}
+      {/if}
+      {#if actions && !running}<span class="tail">{@render actions()}</span>{/if}
+    {/snippet}
+    {#snippet endOfLine()}
+      {#if settled && details}<span class="details"><InfoTip text={details} topic={strings.chat.turnDetails} testid="turn-details" /></span>{/if}
+    {/snippet}
+    {#if changes && steps && !running}{@render changes(afterChanges, endOfLine)}{:else}{@render afterChanges()}{@render endOfLine()}{/if}
     {/if}
   </div>
 {/if}
@@ -222,16 +231,27 @@
   .summary.stale { order: -1; margin-top: 0; margin-bottom: var(--chat-block-gap); color: var(--color-foreground); }
   /* Read on demand: the message under the pointer or the keyboard shows it, a finger always does. */
   .summary.settled { opacity: 0; transition: opacity var(--dur-2); }
-  :global(.message:hover) .summary.settled, .summary.settled.pointed, .summary.settled:focus-within, .summary.settled:not(:has(.tail)) { opacity: 1; }
+  :global(.message:hover) .summary.settled, .summary.settled.pointed, .summary.settled:has(:focus-visible), .summary.settled:not(:has(.tail)) { opacity: 1; }
   /* Pointed from another message of the turn, its buttons show with it. */
   .summary.settled.pointed :global(.act) { opacity: 1; }
   @media (hover: none) { .summary.settled { opacity: 1; } }
-  .summary.settled.marked { opacity: 1; }
+  .summary.settled.marked, .summary.settled.resting { opacity: 1; }
+  /* The thread's last line keeps its time at rest. When it ended and what it spent stay in the flow, faded, after
+     everything else and before the buttons: a pointer or a focus anywhere in the answer brings them and the buttons
+     up in place, and nothing on the line moves. */
+  @media (hover: hover) {
+    .summary.settled.resting .metric.meta { display: inline-flex; order: 1; opacity: 0; transition: opacity var(--dur-2); }
+    .summary.settled.resting .tail { order: 2; }
+    .summary.settled.resting :global(:is(.turn-files.inline :is(.expand, .tools), .expand.inline, .tools.inline)) { order: 3; }
+    .summary.settled.resting :global(.turn-files.inline :is(.tree, .diffs)) { order: 4; }
+    :global(.message:hover) .summary.settled.resting .metric.meta, .summary.settled.resting:is(.pointed, :has(:focus-visible)) .metric.meta { opacity: 1; }
+    .summary.settled.resting:has(:focus-visible) :global(.act) { opacity: 1; }
+  }
   /* A line with nothing shown at rest takes no band of its own on a pointer
      device: it waits inside the gap to the next message, one row tall, so the
      buttons come up right under the answer they belong to and cover nothing. */
   @media (hover: hover) {
-    .summary.settled:not(.marked):has(.tail) { flex-wrap: nowrap; height: var(--chat-message-gap); margin-top: 0; margin-bottom: calc(-1 * var(--chat-message-gap)); }
+    .summary.settled:not(.marked, .resting):has(.tail) { flex-wrap: nowrap; height: var(--chat-message-gap); margin-top: 0; margin-bottom: calc(-1 * var(--chat-message-gap)); }
   }
   /* A settled line keeps what the agent did at rest (its steps, a memory mark) and
      its buttons; how long it took, when and what it spent wait for the pointer. A
@@ -241,8 +261,11 @@
   /* The count's dot hides but keeps its room: taken out, the count opened the line under the clip and lost its number. */
   .summary.settled.marked .meta { display: none; }
   .summary.settled.marked .marks > .dot:first-child { visibility: hidden; }
-  :global(.message:hover) .summary.settled.marked .meta, .summary.settled.marked.pointed .meta, .summary.settled.marked:focus-within .meta { display: inline-flex; }
-  :global(.message:hover) .summary.settled.marked .marks > .dot:first-child, .summary.settled.marked.pointed .marks > .dot:first-child, .summary.settled.marked:focus-within .marks > .dot:first-child { visibility: visible; }
+  :global(.message:hover) .summary.settled.marked .meta, .summary.settled.marked.pointed .meta, .summary.settled.marked:has(:focus-visible) .meta { display: inline-flex; }
+  :global(.message:hover) .summary.settled.marked .marks > .dot:first-child, .summary.settled.marked.pointed .marks > .dot:first-child, .summary.settled.marked:has(:focus-visible) .marks > .dot:first-child { visibility: visible; }
+  /* The thread's last line says how long at rest even when it counts steps. */
+  .summary.settled.marked.resting .meta:not(.metric) { display: inline-flex; }
+  .summary.settled.marked.resting .marks > .dot:first-child { visibility: visible; }
   @media (hover: none) {
     .summary.settled .metric.meta { display: none; }
     .summary.settled.marked .meta:not(.metric) { display: inline-flex; }
@@ -253,7 +276,7 @@
   }
   /* The turn's changes on the line: the count right after the steps, its diff button at the line's end, the list
      and the diff under the line at its text's start (the clip hides what starts further left). */
-  .summary :global(.turn-files.inline .fold) { margin-left: 0; }
+  .summary :global(:is(.turn-files.inline .fold, .fold.inline)) { margin-left: 0; }
   .summary :global(.turn-files.inline :is(.tree, .diffs)) { flex-basis: calc(100% - var(--lead)); margin-left: var(--lead); }
   /* The step count and the memory mark: text buttons on the line, no box, the foreground on hover. */
   .mark { position: relative; display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 2px; margin: -2px 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font-size: inherit; font-variant-numeric: inherit; cursor: pointer; transition: color var(--dur-2) var(--ease-out-quint); }
