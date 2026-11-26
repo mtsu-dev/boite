@@ -1,6 +1,7 @@
 import { expect, vi } from 'vitest';
 import { store } from '../lib/store.svelte';
-import { setExperiment } from '../lib/experiments';
+import { followsDesktop, isExperimentEnabled, setExperiment } from '../lib/experiments';
+import type { FakeClient } from '../lib/fake-client';
 import { mountOnFake, press, query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
@@ -100,4 +101,24 @@ test('a shared transcript asks for its account, supports menu keys, and imports 
   } finally {
     imported.mockRestore();
   }
+});
+
+test('the desktop turning session import off closes its dialog, which then holds no key', async () => {
+  await mountOnFake();
+  const palette = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', ctrlKey: true, cancelable: true }));
+  expect(followsDesktop()).toBe(true);
+  const client = store.client as FakeClient;
+  client.reportDesktopExperiments(['session-import']);
+  await waitFor(() => isExperimentEnabled('session-import'));
+  await store.openImports('p-boite');
+  await waitFor(() => document.querySelectorAll('[data-testid=import-row]').length === 3);
+  palette();
+  expect(store.paletteOpen).toBe(false);
+
+  client.reportDesktopExperiments([]);
+  await waitFor(() => document.querySelector('[data-testid=import-dialog]') === null);
+  expect(store.imports).toBeNull();
+  palette();
+  expect(store.paletteOpen).toBe(true);
+  store.paletteOpen = false;
 });

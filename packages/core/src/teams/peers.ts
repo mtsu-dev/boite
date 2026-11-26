@@ -19,7 +19,7 @@ import { MAX_BODY, PeerGone, PeerRefusal, type TeamOperation } from '../coordina
 import { invalidParams, messageOf, refused, unavailable } from '../errors.ts';
 import { foldMachine, memberNamed } from '../threads/group-spawn.ts';
 import { TeamMirror } from './mirror.ts';
-import { TeamRecordPeers, fields, OK, teamPeerFailure, tooOld, type Fields } from './record-peers.ts';
+import { TeamRecordPeers, fields, OK, teamPeerFailure, teamsHeld, tooOld, type Fields } from './record-peers.ts';
 import type { TeamPeerReport } from './records.ts';
 import type { TeamBot, TeamStore } from './store.ts';
 
@@ -224,10 +224,12 @@ export class TeamPeers {
         return;
       }
       if (error instanceof PeerRefusal) {
-        // It answers and says no: trying sooner would only ask the same again. Hearing from it changes nothing, so no attempt is kept.
+        // It answers and says no: trying sooner would only ask the same again. Hearing from it changes nothing, so no attempt is kept,
+        // unless its build held Teams off: speaking again, it may run a Nightly.
         this.#core.log('warn', `teams toward ${peer.name}: ${error.message}`);
         this.#mirror.unreachable(coreId, `${peer.name} refused: ${error.message}`);
-        this.#attempts.delete(coreId);
+        if (teamsHeld(error)) this.#attempts.set(coreId, RETRY_MS.length - 1);
+        else this.#attempts.delete(coreId);
         this.#schedule(coreId, LAST_RETRY_MS);
         return;
       }
@@ -241,7 +243,7 @@ export class TeamPeers {
     }
   }
 
-  /** Oldest first, one at a time, each kept until taken. A refusal is final for that row; a core too old for it may yet be updated. */
+  /** Oldest first, one at a time, each kept until taken. A refusal is final for that row; a core too old for it, or holding Teams off, may yet be updated. */
   async #sendOutbox(peer: CoordinationPeer): Promise<void> {
     for (;;) {
       const row = this.#db.query('SELECT * FROM team_outbox WHERE core_id = ? ORDER BY id LIMIT 1').get(peer.coreId) as OutboxRow | null;
@@ -249,7 +251,7 @@ export class TeamPeers {
       try {
         await this.#core.coordination.request(peer, row.operation, JSON.parse(row.payload));
       } catch (error) {
-        if (!(error instanceof PeerRefusal) || tooOld(error)) throw error;
+        if (!(error instanceof PeerRefusal) || tooOld(error) || teamsHeld(error)) throw error;
         this.#core.log('warn', `teams: ${peer.name} refused ${row.operation}: ${error.message}`);
       }
       if (this.#stopped) return;

@@ -62,6 +62,7 @@ export class TeamStore extends StoredTeams {
    */
   recover(): void {
     this.snapshots.releaseOrphans();
+    this.#followMoves();
     this.repair();
     this.snapshots.replayAnswers();
     this.peers.start();
@@ -202,6 +203,24 @@ export class TeamStore extends StoredTeams {
     // Resumed: the letters it held go now, not at the next sweep.
     if (!params.paused) this.kickMembers(saved);
     return saved;
+  }
+
+  /**
+   * Moves made while this machine held Teams off (a Release): a mochi that
+   * left still sits here in its teams. Each team follows it now, the one held
+   * here and the one held elsewhere (`team.moved`); a move already taken
+   * changes nothing on the machine holding the team.
+   */
+  #followMoves(): void {
+    const gone = new Map<string, string>();
+    for (const team of this.all()) {
+      for (const member of team.members) {
+        if (member.coreId !== this.self || gone.has(member.botId) || this.core.workforce.records.find('profile', member.botId) !== null) continue;
+        const to = this.core.workforce.moves.movedTo(member.botId);
+        if (to !== null && to !== this.self) gone.set(member.botId, to);
+      }
+    }
+    for (const [botId, to] of gone) this.memberMoved(botId, to);
   }
 
   /**

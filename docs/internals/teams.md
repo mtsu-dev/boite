@@ -209,7 +209,11 @@ dropped at the next start.
 **A Release core.** A Release core refuses new team work from peers with
 `experiment-off`. This includes resolving one of its mochis to add them to a
 team. Authenticated peers can still read already stored posts and remove their
-own members.
+own members. What a peer's outbox sends there and gets `experiment-off` for
+stays in that outbox, and goes once the machine runs a Nightly again and
+answers. A mochi moved off a machine while it ran a Release stays in its teams
+there; the next Nightly start of that machine moves each team after it, the one
+it holds and, through its holder, the others.
 
 **Versions.** Every machine of a team needs a version with this feature. An
 older machine answers that it does not know the operation, and the command says

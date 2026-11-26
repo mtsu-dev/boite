@@ -396,3 +396,71 @@ test('a member moves with its team: its key stays, what waited for it waits on i
   expect(stored(away, team)).toEqual([]);
   expect(host.core.teams.get(team.id)!.members.every(member => member.coreId === hostId)).toBe(true);
 }, 180_000);
+
+/* A machine that runs a Release holds Teams off (`docs/internals/experiments.md`): a move made there, or refused there, still reaches the team once it runs a Nightly again. */
+const NIGHTLY = '2.0.1-nightly.20261126.1';
+const RELEASE = '2.0.0';
+
+async function versioned(version: string, previous?: TestCore): Promise<TestCore> {
+  const dataDir = previous?.dataDir ?? mkdtempSync(joinPath(tmpdir(), 'boite-teams-'));
+  if (!previous) dirs.push(dataDir);
+  const core = await startTestCore({ dataDir, version, ...(previous && { port: Number(new URL(previous.url).port) }) });
+  cores.push(core);
+  return core;
+}
+const coreIdOf = (core: TestCore) => core.core.coordination.card().coreId;
+
+test('a mochi moved while its machine ran a Release takes its team along once that machine runs a Nightly again', async () => {
+  const nightly = await versioned(NIGHTLY);
+  const owner = await nightly.connect();
+  const ada = await makeAgent(nightly, owner, { name: 'Ada' });
+  const team = await owner.call('teams.create', { name: 'Crew', members: [ada.agent.id] });
+  await nightly.stop();
+  const release = await versioned(RELEASE, nightly);
+  const target = await versioned(NIGHTLY);
+  await release.core.group.create('Test group');
+  await join(target, release);
+  await (await release.connect()).call('agents.move', { agentId: ada.agent.id, machine: coreIdOf(target) });
+  expect(release.core.workforce.moves.movedTo(ada.agent.id)).toBe(coreIdOf(target));
+  // The Release only keeps the record: the team still names the machine Ada left.
+  expect(release.core.teams.get(team.id)?.members[0]?.coreId).toBe(coreIdOf(release));
+  await release.stop();
+
+  const reopened = await versioned(NIGHTLY, release);
+  expect(reopened.core.teams.get(team.id)?.members[0]?.coreId).toBe(coreIdOf(target));
+  await waitFor(() => target.core.teams.get(team.id)?.members[0]?.coreId === coreIdOf(target));
+});
+
+test('a move a Release holder refuses waits in the outbox and reaches it once it runs a Nightly again', async () => {
+  const host = await versioned(NIGHTLY);
+  const away = await versioned(NIGHTLY);
+  const hostOwner = await host.connect();
+  const awayOwner = await away.connect();
+  await host.core.group.create('Test group');
+  await join(away, host);
+  const ada = await makeAgent(host, hostOwner, { name: 'Ada' });
+  const bob = await makeAgent(away, awayOwner, { name: 'Bob' });
+  const team = await hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, `${coreIdOf(away)}/Bob`] });
+  await waitFor(() => away.core.teams.get(team.id) !== null);
+  await host.stop();
+  const release = await versioned(RELEASE, host);
+  const refusals: string[] = [];
+  const request = away.core.coordination.request.bind(away.core.coordination);
+  away.core.coordination.request = async (peer, operation, payload) => {
+    try { return await request(peer, operation, payload); } catch (error) {
+      if (operation === 'team.moved') refusals.push((error as Error).message);
+      throw error;
+    }
+  };
+  await awayOwner.call('agents.move', { agentId: bob.agent.id, machine: coreIdOf(release) });
+  await waitFor(() => refusals.length > 0);
+  expect(refusals[0]).toStartWith('experiment.teams ');
+  // Refused for now, not forgotten.
+  expect(away.core.journal.db.query("SELECT 1 FROM team_outbox WHERE operation = 'team.moved'").get()).not.toBeNull();
+  await release.stop();
+
+  const reopened = await versioned(NIGHTLY, release);
+  // The holder speaks again: what waited for it goes now.
+  away.core.teams.peers.heard(coreIdOf(reopened));
+  await waitFor(() => reopened.core.teams.get(team.id)?.members.find(member => member.botId === bob.agent.id)?.coreId === coreIdOf(reopened));
+});

@@ -19,12 +19,14 @@ export function fields(value: unknown, field: string): Fields {
 
 /** A core that does not know the operation refuses it by name. */
 export const tooOld = (error: unknown): boolean => error instanceof PeerRefusal && error.message.startsWith('operation: expected');
+/** A machine whose build holds Teams off refuses what would start something; it may run a Nightly again. */
+export const teamsHeld = (error: unknown): boolean => error instanceof PeerRefusal && error.message.startsWith('experiment.teams ');
 
 export function teamPeerFailure(peer: CoordinationPeer, error: unknown, away: string): RpcFailure {
   if (error instanceof PeerGone) return refused(`${peer.name} removed this machine from its group`, { reason: 'removed' });
   if (tooOld(error)) return refused(`Boite on ${peer.name} is too old for teams across machines; update it first`, { reason: 'peer-too-old' });
   if (error instanceof PeerRefusal) {
-    const experimentOff = error.message.startsWith('experiment.teams ') || error.message.includes('Teams experiment');
+    const experimentOff = teamsHeld(error) || error.message.includes('Teams experiment');
     return refused(`${peer.name}: ${error.message}`, { reason: experimentOff ? 'experiment-off' : 'peer-refused' });
   }
   return unavailable(`${peer.name} did not answer (${messageOf(error)}); ${away}`, { reason: 'unreachable' });

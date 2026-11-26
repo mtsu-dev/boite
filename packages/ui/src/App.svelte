@@ -265,7 +265,7 @@
     if (boardShown) need('BoardDrawer');
     if (store.paletteOpen) need('CommandPalette');
     if (store.projectPickerOpen) need('ProjectPicker');
-    if (store.imports && experimentOn('session-import')) need('ImportDialog');
+    if (store.imports) { if (experimentOn('session-import')) need('ImportDialog'); else store.closeImports(); } // turned off from the desktop: closed, no key held
     if (threadExport.request) need('ExportThreadDialog');
     if (store.connectDialog) need('ConnectFlow');
     if (tour) need('Onboarding');
