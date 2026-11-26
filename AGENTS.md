@@ -181,6 +181,8 @@ and assertions when making the suite faster.
 - [Devices](docs/internals/devices.md): SDK detection, `boite device` and the Device panel.
 - [Windows](docs/internals/windows.md): `boite window` captures of desktop windows, consent,
   exclusions, the Window panel and the backend on each OS.
+- [Discord rich presence](docs/internals/presence.md): the experiment that shows
+  "Playing Boite" in the chat apps of this computer, its IPC protocol and clients.
 - [Virtual desktop](docs/internals/desktop.md): `boite desktop`, a private Linux desktop
   in memory where agent-desktop drives GUI apps, its stack, security and lifetime.
 - [Admin policy](docs/internals/enterprise.md) and [network flows](docs/internals/network.md): the

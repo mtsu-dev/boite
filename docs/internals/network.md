@@ -60,6 +60,7 @@ the OpenCode server, protected bridges, health checks).
 | 45 | agent-desktop download | `registry.npmjs.org`, the pinned `agent-desktop` release | A conversation's first virtual desktop or `boite desktop` command on a core without it | GET, IP | On; on Linux, with the desktop tools | None | `agentDesktop: false` |
 | 46 | Worktree default branch lookup | The selected Git remote of the project | Making a worktree that starts from the project's default branch | Git HEAD lookup and, if the commit is missing, a fetch using the repository's Git configuration | Only for repositories with a remote | Use a project without a remote to work locally | None: initiated by creating a worktree in a project with a configured remote |
 | 47 | Model prices | `models.dev/api.json` | The first price lookup when the cached rates are missing or a day old; a lookup of an unknown model, at most once an hour and once per model; an hour after a failure | GET with the user agent `boite` and the stored ETag, IP | On | None | `modelPrices: false` |
+| 48 | Discord rich presence | The chat apps on this computer (Discord, Vesktop and other arRPC clients, a bridge to Fluxer), through local sockets `discord-ipc-N`; each publishes it to its own service, and Discord fetches the logo asset from its CDN | While the `discord-presence` experiment is on and the desktop app runs | Discord application id, `Playing Boite`, the number of agents at work, their models, how many wait, the start time; project names only when Show project names is on | No: an experiment, off by default, absent from a Release | Settings > Experiments: Discord rich presence off | None yet: experimental, cut from a Release build |
 
 ## Flows with no user switch
 
@@ -82,3 +83,5 @@ Each one is either blocked by a policy key or started by the user:
   decision and installing it is the user's.
 - Rows 31, 37, 44 and 46: user-initiated toward a destination the user chose, as
   the table says.
+- Row 48, the Discord rich presence: off by default and cut from a Release;
+  it needs a policy key before it leaves the experiments.

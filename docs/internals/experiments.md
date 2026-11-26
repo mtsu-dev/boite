@@ -4,9 +4,10 @@ An experiment is unfinished work behind a switch in Settings > Experiments.
 Every feature has a tag, `release`, `nightly` or `dev`, and exists only in the
 builds at or above it: a Release has none of the unfinished ones.
 
-One experiment exists today, the [new thread background](#new-thread-background)
-(`draft-backdrop`, tagged `nightly`): a Nightly and a Dev build list its
-switch, a Release has no Experiments page.
+Two experiments exist today, the [new thread background](#new-thread-background)
+(`draft-backdrop`) and the [Discord rich presence](presence.md)
+(`discord-presence`), both tagged `nightly`: a Nightly and a Dev build list
+their switches, a Release has no Experiments page.
 
 ## Tags
 
@@ -16,7 +17,7 @@ Every feature has one tag, in `EXPERIMENT_STAGES`
 | Tag | Meaning | Ids |
 | --- | --- | --- |
 | `release` | Finished. On in every build, with no switch on the Experiments page. | `resident-agents` (Mochis) |
-| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `draft-backdrop` (New thread background) |
+| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `draft-backdrop` (New thread background), `discord-presence` (Discord rich presence) |
 | `dev` | Being built. A switch in a Dev build only, absent from a Nightly and from a Release. | none today |
 
 The ten finished ids `theme-grain`, `session-import`, `prompt-cache`,
@@ -156,15 +157,15 @@ page it belongs to, as [chat files and previews](chat-files.md),
 ## Out of the build
 
 A build below a feature's tag does not ship the feature's code. Refusing at
-run time is not enough: the bundler has to drop the modules. One feature is
+run time is not enough: the bundler has to drop the modules. Two features are
 cut today (`FEATURE_CUTS`): the new thread background, from the UI bundle of
-a Release. The Whip, the Council, Contacts, Teams and Automatic goals were,
+a Release, and the Discord rich presence, from its UI and core bundles. The Whip, the Council, Contacts, Teams and Automatic goals were,
 and are finished, so every build holds them.
 
 A packaged build knows its kind when it is compiled. `featureDefines(version)`
 turns the stamped version into `__BOITE_BUILD_KIND__`, the one constant, and
 one boolean per feature not tagged `release`, derived from it and from
-`EXPERIMENT_STAGES` (`__BOITE_HAS_<ID>__`; today `__BOITE_HAS_DRAFT_BACKDROP__`). Three builds receive
+`EXPERIMENT_STAGES` (`__BOITE_HAS_<ID>__`; today `__BOITE_HAS_DRAFT_BACKDROP__` and `__BOITE_HAS_DISCORD_PRESENCE__`). Three builds receive
 them:
 
 - the UI, through Vite's `define` (`packages/ui/vite.config.ts`), from the
