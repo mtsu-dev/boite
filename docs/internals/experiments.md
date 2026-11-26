@@ -4,9 +4,12 @@ An experiment is unfinished work behind a switch in Settings > Experiments.
 Every feature has a tag, `release`, `nightly` or `dev`, and exists only in the
 builds at or above it: a Release has none of the unfinished ones.
 
-One experiment exists today, the [new thread background](#new-thread-background)
-(`draft-backdrop`, tagged `nightly`): a Nightly and a Dev build list its
-switch, a Release has no Experiments page.
+Seven experiments exist today, all tagged `nightly`: a Nightly and a Dev
+build list their switches, a Release has no Experiments page. They are the
+[new thread background](#new-thread-background) (`draft-backdrop`) and six
+features released on 2026-11-20 (#1176) before they had run in real use and
+tagged `nightly` again on 2026-11-26: `contacts`, `teams`, `auto-goal`,
+`session-import`, `background-compaction` and `device-stream`.
 
 ## Tags
 
@@ -16,12 +19,12 @@ Every feature has one tag, in `EXPERIMENT_STAGES`
 | Tag | Meaning | Ids |
 | --- | --- | --- |
 | `release` | Finished. On in every build, with no switch on the Experiments page. | `resident-agents` (Mochis) |
-| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `draft-backdrop` (New thread background) |
+| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `draft-backdrop` (New thread background), `contacts`, `teams`, `auto-goal`, `session-import`, `background-compaction`, `device-stream` |
 | `dev` | Being built. A switch in a Dev build only, absent from a Nightly and from a Release. | none today |
 
-The ten finished ids `theme-grain`, `session-import`, `prompt-cache`,
-`recording-indicators`, `pinned-quotas`, `whip`, `contacts`, `auto-goal`,
-`teams` and `debates` (Council) left the list once nothing read them. An
+The six finished ids `theme-grain`, `prompt-cache`, `recording-indicators`,
+`pinned-quotas`, `whip` and `debates` (Council) left the list once nothing
+read them (`FINISHED_EXPERIMENT_IDS`). An
 older app may still report them in `client.preferences`, a device may still
 hold them in `boite.experiments`, and an older core may still send them in
 `client.desktopExperiments`: each side drops an id it does not know, and
@@ -63,16 +66,35 @@ In a Dev build the Experiments page lists the features of two tags, so each
 switch shows its own beside its name ("Nightly", "Dev only"), on the desktop
 and on a phone. A Nightly lists one tag and shows none.
 
-The three core settings that used to be experiments,
+## Setting experiments
+
+Four experiments are switched by a machine setting the core stores, not by
+the list an app reports (`EXPERIMENT_SETTINGS`): `contacts` by `contacts`,
+`auto-goal` by `autoGoals`, `background-compaction` by
+`backgroundCompaction` and `device-stream` by `deviceStream`. The core reads
+them itself, so a restart or an app that has not connected yet changes
+nothing. In a build below their tag:
+
+- `SettingsStore.get()` reads each as `false`, and the per-type
+  `backgroundCompaction` of `compactionByType` too
+  (`holdExperimentalSettings`); the stored value is kept, so a machine that
+  goes back to a Nightly finds it again. `settings.get` with `stored: true`
+  and the settings home's copy read it as saved (`unheld()`).
+- `settings.set` and a settings card refuse to turn one on, naming the builds
+  that have it (`experimentalSettingRefusal`); a save that hands back the
+  held `false` leaves the stored value alone
+  (`keepStoredExperimentalSettings`). The fake client does the same
+  (`settingsInForce`).
+
+The Experiments page shows them beside the app's switches and writes the
+setting on the machine picked above the page, as System does. `teams`,
+`session-import` and `draft-backdrop` stay an app's choice; the core gates
+its side of `teams` and `session-import` on its own version (`featureRuns`),
+whatever an app reports.
+
 [Keep the prompt cache warm](prompt-cache.md#keeping-the-cache-warm)
-(`cacheKeepalive`), [Background compaction](context.md#background-compaction)
-(`backgroundCompaction`) and [Device live stream](devices.md#live-stream)
-(`deviceStream`), are ordinary owner settings now, off by default, in
-Settings > System on the desktop and on a phone. The core reads them as
-stored in every build, and an agent may ask for any of them with a settings
-card (`REQUESTABLE_SETTINGS`). A card asked while background compaction or
-the stream was an experiment still names the Experiments page: its button
-and its trail lead to System (`settingPlace` in `lib/setting-requests.ts`).
+(`cacheKeepalive`) stays an ordinary owner setting, off by default, in
+Settings > System.
 
 ## Who decides
 
