@@ -241,7 +241,13 @@ test('phone folds a project from a tap on its header and finds it folded after a
     // Nothing floats over the header there, or the finger would land on it instead: a sheet still leaving may, for a moment.
     const covering = `(() => { const hit = document.elementFromPoint(${at.x}, ${at.y}); return document.querySelector(${JSON.stringify(toggle)}).contains(hit) ? '' : hit?.outerHTML.slice(0, 300) ?? 'nothing'; })()`;
     await page.waitFor(`${covering} === ''`, 5_000).catch(() => {});
-    expect(await page.evaluate<string>(covering)).toBe('');
+    const covered = await page.evaluate<string>(covering);
+    if (covered) {
+      // A sheet's backdrop names nothing: the open popovers say whose it is.
+      const open = await page.evaluate<string>(`JSON.stringify(Array.from(document.querySelectorAll(':popover-open')).map(e => ({ class: e.className, testid: e.dataset.testid ?? e.closest('[data-testid]')?.dataset.testid ?? null, sheet: e.dataset.mobileSheet ?? null, visible: e.checkVisibility(), text: e.textContent.trim().slice(0, 80) })))`);
+      await capture('project-fold-covered.png');
+      expect({ covered, open }).toEqual({ covered: '', open: '[]' });
+    }
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, id: 1 }] });
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
