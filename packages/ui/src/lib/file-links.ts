@@ -124,6 +124,8 @@ export function markCollisions(root: ParentNode): void {
     chip.classList.toggle('collide', shown !== undefined);
     const dir = chip.querySelector('.file-chip-dir');
     const parts = folders(chip.dataset.filePath ?? '');
-    if (dir && parts.length) dir.textContent = `${parts.slice(-(shown ?? 1)).join('/')}/`;
+    const label = `${parts.slice(-(shown ?? 1)).join('/')}/`;
+    // Writing the same text is still a mutation, which would wake the observer that called this.
+    if (dir && parts.length && dir.textContent !== label) dir.textContent = label;
   }
 }

@@ -41,3 +41,16 @@ test('two chips of one name and different folders show their folder, the same fi
   // One folder is not enough when both sit in a `src`: as many show as tell them apart.
   expect(chips.map(chip => chip.querySelector('.file-chip-dir')?.textContent)).toEqual(['src/', 'test/', 'lib/', 'lib/', 'app/src/', 'web/src/']);
 });
+
+test('drawing the same labels again changes nothing, so the observer that redraws them stays asleep', async () => {
+  const host = document.createElement('div');
+  host.innerHTML = fileChipHtml('src/index.ts', 'src/index.ts', 'src/index.ts', undefined);
+  markCollisions(host);
+  const seen: MutationRecord[] = [];
+  const observer = new MutationObserver(records => seen.push(...records));
+  observer.observe(host, { childList: true, subtree: true, characterData: true });
+  markCollisions(host);
+  await Promise.resolve();
+  observer.disconnect();
+  expect(seen).toEqual([]);
+});

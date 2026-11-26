@@ -85,7 +85,8 @@ its `data-source` (`lib/selection-copy.ts`), so the clipboard carries the path.
 it comes near the screen and its file is not found. Only the owner checks,
 since `files.locate` is owner only. Answers are cached per store and path, a
 found file for 60 s and a missing one for 15 s; a click asks again, and every
-answer reaches the chips of that path, so a file written since lights up.
+answer reaches the chips of that path, so a file written since lights up; an
+older look that a click replaced is dropped.
 
 ### What a click does
 
@@ -108,8 +109,9 @@ answer reaches the chips of that path, so a file written since lights up.
 4. Otherwise a file inside the thread's folder opens in the right panel's
    Files tab at its line (`panel.openFile`), a folder in its tree
    (`panel.openFiles`), and a picture or a video in the media viewer through
-   `files.read`. A name without a dot (`docs`, `glossary`) is a folder only
-   when its parent's `files.list` says `dir`. The panel is the open thread's,
+   `files.read`. Without a trailing slash, a name is a folder only when its
+   parent's `files.list` says `dir` (`glossary` is a file, `v1.2` may be a
+   folder); the name's look decides only when that listing fails. The panel is the open thread's,
    so a click whose thread was left while the core looked opens nothing. A
    paired phone does the same without `files.locate`, which it may not call.
 5. Anything else shows `FileLinkToast`: where the file was looked for (this
@@ -143,7 +145,8 @@ RPCs cannot invoke them:
   list (text, data, office files, pictures, sound, video) without an execute
   bit; a macOS bundle counts as a program, and so does every other file. A
   link counts by both its own name and its resolved target, so `notes.txt`
-  linked to a program is a program.
+  linked to a program is a program, and the opener gets that resolved
+  target in its usual spelling, never Windows' `\\?\` form.
 - `open_client_path(path, confirmed)` opens the path with the system's
   handler, a program only with `confirmed`.
 - `reveal_client_path(path)` selects the path in the file manager.

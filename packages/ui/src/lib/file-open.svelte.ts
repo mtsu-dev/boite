@@ -77,8 +77,10 @@ export function locate(store: Store, threadId: string, written: string, fresh = 
   byStore.set(key, entry);
   answer.then(where => {
     entry.at = Date.now() + (where.at === 'missing' ? MISSING_MS : FOUND_MS);
+    // A later look (a click) replaced this one: its answer is the chip's, not this older one.
+    if (byStore.get(key) !== entry) return;
     located.dispatchEvent(new CustomEvent('located', { detail: { store, threadId, written, missing: where.at === 'missing' } }));
-  }, () => byStore.delete(key));
+  }, () => { if (byStore.get(key) === entry) byStore.delete(key); });
   return answer;
 }
 
@@ -145,16 +147,17 @@ function mediaItem(ctx: LinkContext, path: string): MediaItem | null {
 }
 
 /**
- * Whether a path of the project is a folder. A trailing slash says so; a name
- * without a dot may be either (`docs`, `glossary`), so its parent's listing decides.
+ * Whether a path of the project is a folder. A trailing slash says so; any
+ * other name may be either (`glossary`, `v1.2`), so its parent's listing
+ * decides, and the name's look only when the listing fails.
  */
 async function isFolder(ctx: LinkContext, relative: string): Promise<boolean> {
   if (/[\\/]$/.test(relative)) return true;
-  if (fileKind(relative) !== 'folder') return false;
   const path = relative.replaceAll('\\', '/').replace(/^\.\//, '');
   const slash = path.lastIndexOf('/');
   const listing = await ctx.store.listFiles(ctx.threadId, slash > 0 ? path.slice(0, slash) : undefined);
-  return listing.ok && listing.value.some(entry => entry.path === path && entry.kind === 'dir');
+  if (!listing.ok) return fileKind(relative) === 'folder';
+  return listing.value.some(entry => entry.path === path && entry.kind === 'dir');
 }
 
 /**
@@ -253,8 +256,10 @@ export function fileChecks(node: HTMLElement, read: () => { store?: Store; threa
     const { store, threadId } = read();
     const written = chip.dataset.filePath;
     if (!store?.owner || !threadId || !written) return;
-    void locate(store, threadId, written).then(where => {
-      chip.toggleAttribute('data-missing', where.at === 'missing');
+    // A kept answer greys a new chip at once; one a newer look (a click) replaced is dropped.
+    const answer = locate(store, threadId, written);
+    void answer.then(where => {
+      if (checks.get(store)?.get(`${threadId}\n${written}`)?.answer === answer) chip.toggleAttribute('data-missing', where.at === 'missing');
     }, () => chip.removeAttribute('data-missing'));
   };
   const near = typeof IntersectionObserver === 'function'

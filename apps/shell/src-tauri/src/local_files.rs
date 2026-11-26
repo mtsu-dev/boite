@@ -58,35 +58,53 @@ fn client_target(path: &str) -> Result<PathBuf, String> {
 /// to a program is a program. A drive that does not answer (an unplugged NAS)
 /// reads as missing.
 fn classify(path: &Path) -> ClientPathKind {
-    let Ok(resolved) = path.canonicalize() else { return ClientPathKind::Missing };
-    let Ok(meta) = std::fs::metadata(&resolved) else { return ClientPathKind::Missing };
+    resolve(path).0
+}
+
+/// What `path` is, and the file it leads to, which is what then opens: the
+/// target classified is the one launched, whatever the link points at later.
+fn resolve(path: &Path) -> (ClientPathKind, PathBuf) {
+    let Ok(resolved) = path.canonicalize() else { return (ClientPathKind::Missing, path.to_path_buf()) };
+    let Ok(meta) = std::fs::metadata(&resolved) else { return (ClientPathKind::Missing, path.to_path_buf()) };
     let kinds = [extension(path), extension(&resolved)];
-    if meta.is_dir() {
+    let kind = if meta.is_dir() {
         let bundle = kinds.iter().any(|kind| BUNDLE_FOLDERS.contains(&kind.as_str()));
-        return if bundle { ClientPathKind::Program } else { ClientPathKind::Folder };
+        if bundle { ClientPathKind::Program } else { ClientPathKind::Folder }
+    } else if meta.is_file() && kinds.iter().all(|kind| CHAT_DOCUMENTS.contains(&kind.as_str())) && !runs(&meta) {
+        ClientPathKind::Document
+    } else {
+        ClientPathKind::Program
+    };
+    (kind, plain(resolved))
+}
+
+/// Windows' canonical form, `\\?\C:\x` or `\\?\UNC\server\share\x`, written
+/// as the file manager and the default apps take it.
+fn plain(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy().into_owned();
+    if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{share}"));
     }
-    if meta.is_file() && kinds.iter().all(|kind| CHAT_DOCUMENTS.contains(&kind.as_str())) && !runs(&meta) {
-        return ClientPathKind::Document;
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
     }
-    ClientPathKind::Program
 }
 
 /// The click's action once the path is known: a program needs the confirmation the UI asked for.
 fn open_target(path: &str, confirmed: bool) -> Result<PathBuf, String> {
-    let target = client_target(path)?;
-    match classify(&target) {
-        ClientPathKind::Missing => Err(format!("path {path}: not found on this computer")),
-        ClientPathKind::Program if !confirmed => Err(format!("path {path}: a program or a file that may run one opens only once the user confirmed it")),
-        _ => Ok(target),
+    match resolve(&client_target(path)?) {
+        (ClientPathKind::Missing, _) => Err(format!("path {path}: not found on this computer")),
+        (ClientPathKind::Program, _) if !confirmed => Err(format!("path {path}: a program or a file that may run one opens only once the user confirmed it")),
+        (_, target) => Ok(target),
     }
 }
 
 fn reveal_target(path: &str) -> Result<PathBuf, String> {
-    let target = client_target(path)?;
-    if classify(&target) == ClientPathKind::Missing {
-        return Err(format!("path {path}: not found on this computer"));
+    match resolve(&client_target(path)?) {
+        (ClientPathKind::Missing, _) => Err(format!("path {path}: not found on this computer")),
+        (_, target) => Ok(target),
     }
-    Ok(target)
 }
 
 /// A network drive can take seconds to answer: the check runs off the command thread.
@@ -144,7 +162,9 @@ mod tests {
             assert!(refused.contains("confirmed"), "{name}: {refused}");
             assert!(open_target(&path(name), true).is_ok(), "{name}");
         }
-        assert!(open_target(&path("notes.txt"), false).is_ok());
+        // The opener gets the file as the user writes it, never Windows' `\\?\` form.
+        assert_eq!(open_target(&path("notes.txt"), false).unwrap(), plain(root.join("notes.txt").canonicalize().unwrap()));
+        assert!(!open_target(&path("notes.txt"), false).unwrap().to_string_lossy().starts_with(r"\\?\"));
         assert!(open_target(&path("docs"), false).is_ok());
         assert!(open_target(&path("missing.txt"), true).unwrap_err().contains("not found"));
         assert!(reveal_target(&path("game.exe")).is_ok());
@@ -160,8 +180,18 @@ mod tests {
             assert_eq!(kind("readme.txt"), ClientPathKind::Program);
             assert!(open_target(&path("readme.txt"), false).unwrap_err().contains("confirmed"));
             assert_eq!(kind("Tool"), ClientPathKind::Program);
+            // What opens is the file classified, never the link's own path.
+            assert_eq!(open_target(&path("readme.txt"), true).unwrap(), root.join("game.exe").canonicalize().unwrap());
         }
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_canonical_windows_path_opens_in_its_usual_spelling() {
+        assert_eq!(plain(PathBuf::from(r"\\?\C:\dev\game.exe")), PathBuf::from(r"C:\dev\game.exe"));
+        assert_eq!(plain(PathBuf::from(r"\\?\UNC\nas\dev\game.exe")), PathBuf::from(r"\\nas\dev\game.exe"));
+        assert_eq!(plain(PathBuf::from(r"\\?\Volume{abc}\x")), PathBuf::from(r"\\?\Volume{abc}\x"));
+        assert_eq!(plain(PathBuf::from("/srv/game")), PathBuf::from("/srv/game"));
     }
 
     #[test]
