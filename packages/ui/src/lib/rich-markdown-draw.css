@@ -61,14 +61,15 @@
   border-radius: var(--radius-sm);
   background: var(--color-code-background);
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--dur-2) var(--ease-out-quint);
 }
 
 .md-mermaid:hover > .md-diagram-bar,
-.md-mermaid:focus-within > .md-diagram-bar { opacity: 1; }
+.md-mermaid:focus-within > .md-diagram-bar { opacity: 1; pointer-events: auto; }
 /* A touch screen has no hover to reveal it: the bar sits above the diagram rather than over it. */
 @media (hover: none) {
-  .md-diagram-bar { position: static; justify-content: flex-end; margin-bottom: 4px; padding: 0; background: none; opacity: 1; }
+  .md-diagram-bar { position: static; justify-content: flex-end; margin-bottom: 4px; padding: 0; background: none; opacity: 1; pointer-events: auto; }
 }
 
 /* A ```view block's page (lib/view-block.ts). The frame reaches past the
@@ -84,7 +85,7 @@
 .md-view[data-view='diagram'] > pre,
 .md-view[data-view='code'] > .md-view-stage { display: none; }
 .md-view:hover > .md-diagram-bar,
-.md-view:focus-within > .md-diagram-bar { opacity: 1; }
+.md-view:focus-within > .md-diagram-bar { opacity: 1; pointer-events: auto; }
 
 .md-diagram-error {
   margin: 4px 0 0;
@@ -126,7 +127,20 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
 .md-native[data-view='diagram'] > pre,
 .md-native[data-view='code'] > .md-native-figure { display: none; }
 .md-native:hover > .md-diagram-bar,
-.md-native:focus-within > .md-diagram-bar { opacity: 1; }
+.md-native:focus-within > .md-diagram-bar { opacity: 1; pointer-events: auto; }
+/* A drawn native block has no outer box: sit its hover bar right above its top
+   edge so it never hides the first bar's value, its tooltip or the top-right card. */
+@media (hover: hover) {
+  .md-native[data-view='diagram'] > .md-diagram-bar {
+    top: auto;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 0;
+    padding: 2px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+}
 /* Above Prose's own list spacing, which a drawn block does not take. */
 .md-native.md-drawn > .md-native-figure > :is(ol, ul, dl) { margin: 0; padding: 0; list-style: none; }
 .md-native.md-drawn > .md-native-figure :is(li, dd) { margin: 0; }
@@ -152,6 +166,7 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
 }
 .md-step > .md-native-body { padding-top: 1px; }
 .md-step.md-accent > .md-step-mark { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); }
+.md-step.md-accent .md-native-title { font-weight: 600; }
 
 .md-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px; }
 .md-option { padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
@@ -171,14 +186,20 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
 .md-has-accent > .md-bar:not(.md-accent) .md-bar-fill { background: color-mix(in oklch, var(--color-muted-foreground) 40%, transparent); }
 .md-bar.md-accent > .md-bar-label { font-weight: 600; }
 .md-bar-value { color: var(--color-foreground); font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; min-width: var(--md-bar-value, auto); max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }
-.md-bar-note { grid-column: 2 / -1; color: var(--color-muted-foreground); font-size: var(--text-xs); }
+.md-bar-note { grid-column: 2 / -1; color: var(--color-muted-foreground); font-size: var(--text-xs); overflow-wrap: anywhere; }
 
 .md-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
 .md-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
 .md-stat.md-accent { border-color: var(--color-accent); background: var(--color-accent-soft); }
 .md-stat-label { color: var(--color-muted-foreground); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .md-stat-value { color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.25; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.md-stat-detail { color: var(--color-muted-foreground); font-size: var(--text-xs); }
+.md-stat-detail { color: var(--color-muted-foreground); font-size: var(--text-xs); overflow-wrap: anywhere; }
+
+@media (forced-colors: active) {
+  .md-step.md-accent > .md-step-mark,
+  .md-option.md-accent,
+  .md-stat.md-accent { outline: 2px solid Highlight; }
+}
 
 /* A phone's column: a bar's track goes under its label and value. Options
    and stats wrap on their own (auto-fit). */

@@ -218,5 +218,17 @@ describe('richMarkdown', () => {
     const range = document.createRange();
     range.selectNodeContents(host);
     expect(selectedSource(range)).toBe('Plan.\n\n```steps\n1. Read | the brief\n* 2. Build\n```\n\n```bars\nA | fast\nB | 2 s\n```');
+
+    // A tilde-fenced block containing triple backticks copies back with tildes, and selecting inside nested math takes the whole native block.
+    mounted?.destroy();
+    document.body.replaceChildren();
+    const nested = show('~~~steps\n1. Use \\(x^2\\) | ```\n~~~', undefined, true);
+    await vi.waitFor(() => {
+      if (!nested.querySelector('.md-native.md-drawn .md-math.md-drawn math')) throw new Error('not drawn yet');
+    });
+    const insideMath = document.createRange();
+    insideMath.setStart(nested.querySelector('math')!, 0);
+    insideMath.setEnd(nested.querySelector('math')!, 1);
+    expect(selectedSource(insideMath)).toBe('~~~steps\n1. Use \\(x^2\\) | ```\n~~~');
   });
 });

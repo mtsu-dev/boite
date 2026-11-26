@@ -235,10 +235,14 @@ function drawingLine(lines: string[], rich: boolean): number {
   return -1;
 }
 
+const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+\S/;
+const LIST_CONT = /^\s{2,}\S/;
+
 /** Each contiguous quote is its own document, including its own nested fences. */
 class DrawingScan {
   #fences = new FenceScan();
   #quote: DrawingScan | null = null;
+  #inList = false;
   readonly #rich: boolean;
 
   constructor(rich: boolean) { this.#rich = rich; }
@@ -250,17 +254,29 @@ class DrawingScan {
       if (complete) this.#fences.line(line);
       return false;
     }
-    const fence = openFence(line);
+    if (!line.trim()) {
+      if (complete) { this.#quote = null; this.#inList = false; }
+      return false;
+    }
+    // Matches `renderMarkdown`: an indented line under an open list item belongs to the item, not a fence.
+    const fence = this.#inList && LIST_CONT.test(line) ? null : openFence(line);
     if (fence) {
-      if (complete) { this.#fences.line(line); this.#quote = null; }
+      if (complete) { this.#fences.line(line); this.#quote = null; this.#inList = false; }
       const kind = fenceLanguage(fence).toLowerCase();
       return DRAWN.has(kind) || (this.#rich && DRAWN_RICH.has(kind));
     }
     if (DISPLAY_MATH.test(line.trim())) return true;
     const quote = QUOTE.exec(line);
-    if (!quote) { if (complete) this.#quote = null; return false; }
+    if (!quote) {
+      if (complete) {
+        this.#quote = null;
+        if (LIST_ITEM.test(line)) this.#inList = true;
+        else if (!(this.#inList && LIST_CONT.test(line))) this.#inList = false;
+      }
+      return false;
+    }
     const inner = this.#quote ?? new DrawingScan(this.#rich);
-    if (complete) this.#quote = inner;
+    if (complete) { this.#quote = inner; this.#inList = false; }
     return inner.line(quote[1]!, complete);
   }
 }

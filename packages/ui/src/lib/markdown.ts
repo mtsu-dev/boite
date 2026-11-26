@@ -333,8 +333,9 @@ function readFence(lines: string[], start: number, rich: boolean): Block | null 
   }
   const language = name ? ` data-language="${escape(name)}"` : '';
   const pre = `<pre${language}><code>${escape(source)}</code></pre>`;
-  if (closed && (kind === 'mermaid' || kind === 'view') && source.trim()) return { html: `<div class="md-${kind}" data-source="${escape(source)}">${pre}</div>`, end };
-  if (closed && rich && NATIVE.has(kind) && source.trim()) return { html: `<div class="md-native md-native-${kind}" data-kind="${kind}" data-source="${escape(source)}">${pre}</div>`, end };
+  const mark = fence.marker === '```' ? '' : ` data-fence="${escape(fence.marker)}"`;
+  if (closed && (kind === 'mermaid' || kind === 'view') && source.trim()) return { html: `<div class="md-${kind}"${mark} data-source="${escape(source)}">${pre}</div>`, end };
+  if (closed && rich && NATIVE.has(kind) && source.trim()) return { html: `<div class="md-native md-native-${kind}" data-kind="${kind}"${mark} data-source="${escape(source)}">${pre}</div>`, end };
   return { html: pre, end };
 }
 

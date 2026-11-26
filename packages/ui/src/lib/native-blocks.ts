@@ -76,47 +76,118 @@ function split(line: string): string[] {
   return fields;
 }
 
-/** Units that compare across rows: each family's scale to its base. Any other unit must be the same on every row. */
+/**
+ * Units that compare across rows: each family's scale to its base. Case is
+ * preserved so `b`/`B` (bits vs bytes, 1:8) and `m`/`M` (meters vs millions)
+ * never collide. Any other unit must be the same on every row.
+ */
 const UNITS = new Map<string, [family: string, scale: number]>([
-  ['ns', ['time', 1e-9]], ['us', ['time', 1e-6]], ['µs', ['time', 1e-6]], ['ms', ['time', 1e-3]], ['s', ['time', 1]], ['sec', ['time', 1]], ['min', ['time', 60]], ['h', ['time', 3600]],
-  ['b', ['bytes', 1]], ['kb', ['bytes', 1e3]], ['mb', ['bytes', 1e6]], ['gb', ['bytes', 1e9]], ['tb', ['bytes', 1e12]],
-  ['kib', ['bytes', 1024]], ['mib', ['bytes', 1024 ** 2]], ['gib', ['bytes', 1024 ** 3]], ['tib', ['bytes', 1024 ** 4]],
-  ['', ['count', 1]], ['k', ['count', 1e3]], ['m', ['count', 1e6]], ['bn', ['count', 1e9]],
+  ['ns', ['time', 1e-9]], ['us', ['time', 1e-6]], ['µs', ['time', 1e-6]], ['μs', ['time', 1e-6]], ['ms', ['time', 1e-3]], ['s', ['time', 1]], ['sec', ['time', 1]], ['min', ['time', 60]], ['h', ['time', 3600]],
+  ['b', ['bytes', 1]], ['kb', ['bytes', 1e3]], ['Kb', ['bytes', 1e3]], ['Mb', ['bytes', 1e6]], ['Gb', ['bytes', 1e9]], ['Tb', ['bytes', 1e12]],
+  ['Kib', ['bytes', 1024]], ['Mib', ['bytes', 1024 ** 2]], ['Gib', ['bytes', 1024 ** 3]], ['Tib', ['bytes', 1024 ** 4]],
+  ['B', ['bytes', 8]], ['kB', ['bytes', 8e3]], ['KB', ['bytes', 8e3]], ['MB', ['bytes', 8e6]], ['GB', ['bytes', 8e9]], ['TB', ['bytes', 8e12]],
+  ['KiB', ['bytes', 8 * 1024]], ['MiB', ['bytes', 8 * 1024 ** 2]], ['GiB', ['bytes', 8 * 1024 ** 3]], ['TiB', ['bytes', 8 * 1024 ** 4]],
+  ['', ['count', 1]], ['k', ['count', 1e3]], ['K', ['count', 1e3]], ['M', ['count', 1e6]], ['bn', ['count', 1e9]], ['Bn', ['count', 1e9]],
   ['%', ['percent', 1]]
 ]);
+const MAGNITUDES = new Map<string, number>([['k', 1e3], ['K', 1e3], ['M', 1e6], ['bn', 1e9], ['Bn', 1e9]]);
 /**
- * A number, then what follows it. The number is grouped by thousands
- * (`1,250`, `12,500.5`), plain (`42`, `4.2`, `.5`) or a decimal comma that
- * cannot read as a group (`4,2`, `4,25`); a comma before three digits groups
- * thousands, so `1234,567` matches nothing. The rest is read apart (`UNIT`),
- * after its length: no pattern here can backtrack over a long field.
+ * An optional leading currency symbol, a number, then what follows it. The
+ * number is space-grouped (`1 250`, `1 250,5`), comma-grouped (`1,250`,
+ * `12,500.5`), a decimal comma (`0,125`, `4,2`, `4,25`) or plain (`42`, `4.2`,
+ * `.5`). A leading zero never groups thousands (`0,125` is 0.125). The rest is
+ * checked apart (`UNIT`), after its length: no pattern here backtracks over a
+ * long field.
  */
-const VALUE = /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+,(?:\d{1,2}|\d{4,})|\d+(?:\.\d+)?|\.\d+)\s*([^\s\d,.].*)?$/u;
+const VALUE = /^(?:(\p{Sc})[ \t\u00A0\u202F]*)?([1-9]\d{0,2}(?:[ \u00A0\u202F]\d{3})+(?:[.,]\d+)?|[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?|0,\d+|[1-9]\d*,(?:\d{1,2}|\d{4,})|\d+(?:\.\d+)?|\.\d+)(?:[ \t\u00A0\u202F]*(\S[\s\S]*))?$/u;
 const UNIT_LENGTH = 16;
-/** A unit starts with a letter, `%` or `°`, and may have one `/` or space part (`req/s`). Its classes never overlap. */
-const UNIT = /^[\p{L}%°][^\s\d/]*(?:[\s/][^\s\d/]+)?$/u;
+/** A unit starts with a letter, currency symbol, `%` or `°`, and may have one `/` or space part (`req/s`, `$/mo`). */
+const UNIT = /^[\p{L}\p{Sc}%°][^\s\d/]*(?:[ \t/][^\s\d/]+)?$/u;
+const CURRENCY = /^\p{Sc}$/u;
+const MAG_CURRENCY = /^([kKM]|bn|Bn)[ \t\u00A0\u202F]*(\p{Sc})$/u;
+const PER_SUFFIX = /^\/[^\s\d/]+$/u;
+const SPACE_GROUP = /[ \u00A0\u202F]/;
+const AMBIGUOUS_COMMA = /^[1-9]\d{0,2},\d{3}$/;
 
-/** A value as a number in its family's base unit, or null when it is not a finite, non-negative measure. */
-export function readValue(text: string): { family: string; amount: number } | null {
-  const match = VALUE.exec(text.trim());
-  if (!match) return null;
-  const number = match[1]!;
-  const digits = /,\d{3}(?:\D|$)/.test(number) ? number.replaceAll(',', '') : number.replace(',', '.');
-  const unit = match[2] ?? '';
-  if (unit.length > UNIT_LENGTH || (unit && !UNIT.test(unit))) return null;
-  // Case does not matter: `M` and `m` are a million, so time spells out `min`.
-  const [family, scale] = UNITS.get(unit.toLowerCase()) ?? [`unit:${unit}`, 1];
-  const amount = Number(digits) * scale;
-  return Number.isFinite(amount) ? { family, amount } : null;
+type CommaStyle = 'decimal' | 'english' | 'ambiguous' | 'neutral';
+
+interface ParsedValue {
+  family: string;
+  amount: number;
+  style: CommaStyle;
 }
 
-/** Sets each bar's share: against 100 for percentages up to 100, else against the longest bar. False when rows do not compare. */
+function classify(number: string): CommaStyle {
+  if (SPACE_GROUP.test(number)) return number.includes(',') ? 'decimal' : number.includes('.') ? 'english' : 'neutral';
+  if (AMBIGUOUS_COMMA.test(number)) return 'ambiguous';
+  if (number.includes('.')) return 'english';
+  if (!number.includes(',')) return 'neutral';
+  // Multiple commas (1,000,000) group thousands; a single comma here is 0,\d+ or non-3-digit fractional.
+  return number.indexOf(',') !== number.lastIndexOf(',') ? 'english' : 'decimal';
+}
+
+function parseNumber(number: string, style: CommaStyle, commaDecimal: boolean): number {
+  const clean = number.replace(/[ \u00A0\u202F]/g, '');
+  const asDecimal = style === 'decimal' || (style === 'ambiguous' && commaDecimal);
+  const digits = asDecimal ? clean.replace(',', '.') : clean.replaceAll(',', '');
+  return Number(digits);
+}
+
+function resolveUnit(prefix: string, tail: string): [family: string, scale: number] | null {
+  if (tail.length > UNIT_LENGTH) return null;
+  if (prefix) {
+    if (!tail) return [`currency:${prefix}`, 1];
+    const magnitude = MAGNITUDES.get(tail);
+    if (magnitude !== undefined) return [`currency:${prefix}`, magnitude];
+    if (PER_SUFFIX.test(tail)) return [`unit:${prefix}${tail}`, 1];
+    return null;
+  }
+  if (!tail) return ['count', 1];
+  if (CURRENCY.test(tail)) return [`currency:${tail}`, 1];
+  const priced = MAG_CURRENCY.exec(tail);
+  if (priced) return [`currency:${priced[2]!}`, MAGNITUDES.get(priced[1]!)!];
+  if (!UNIT.test(tail)) return null;
+  return UNITS.get(tail) ?? [`unit:${tail}`, 1];
+}
+
+function readParsed(text: string, commaDecimal: boolean): ParsedValue | null {
+  const match = VALUE.exec(text.trim());
+  if (!match) return null;
+  const prefix = match[1] ?? '';
+  const number = match[2]!;
+  const tail = match[3] ?? '';
+  const resolved = resolveUnit(prefix, tail);
+  if (!resolved) return null;
+  const style = classify(number);
+  const amount = parseNumber(number, style, commaDecimal) * resolved[1];
+  return Number.isFinite(amount) ? { family: resolved[0], amount, style } : null;
+}
+
+/** A value as a number in its family's base unit, or null when it is not a finite, non-negative measure. */
+export function readValue(text: string, commaDecimal = false): { family: string; amount: number } | null {
+  const parsed = readParsed(text, commaDecimal);
+  return parsed ? { family: parsed.family, amount: parsed.amount } : null;
+}
+
+/**
+ * Sets each bar's share: against 100 for percentages up to 100, else against
+ * the longest bar. False when rows do not compare or mix conflicting decimal
+ * conventions (`2,5` with `4.2` or `1,250.5`).
+ */
 function measure(items: NativeItem[]): boolean {
-  const values = items.map(item => readValue(item.value ?? ''));
-  if (values.some(value => !value)) return false;
+  const initial = items.map(item => readParsed(item.value ?? '', false));
+  if (initial.some(value => !value)) return false;
+  const parsed = initial as ParsedValue[];
+  const hasDecimalComma = parsed.some(value => value.style === 'decimal');
+  const hasEnglish = parsed.some(value => value.style === 'english');
+  if (hasDecimalComma && hasEnglish) return false;
+  // When any row uses a decimal comma (`0,750`, `2,5`), ambiguous `1,500` rows in the same block follow it.
+  const values = hasDecimalComma && parsed.some(value => value.style === 'ambiguous')
+    ? items.map(item => readParsed(item.value ?? '', true)!)
+    : parsed;
   const family = values[0]!.family;
-  if (values.some(value => value!.family !== family)) return false;
-  const longest = Math.max(...values.map(value => value!.amount));
+  if (values.some(value => value.family !== family)) return false;
+  const longest = Math.max(...values.map(value => value.amount));
   const scale = family === 'percent' && longest <= 100 ? 100 : longest;
   if (!Number.isFinite(scale)) return false;
   items.forEach((item, index) => { item.share = scale > 0 ? values[index]!.amount / scale : 0; });
@@ -130,13 +201,18 @@ const VALUE_CH = 14;
 export function drawNative(kind: NativeKind, items: NativeItem[]): HTMLElement {
   const list = document.createElement(kind === 'steps' ? 'ol' : kind === 'stats' ? 'dl' : 'ul');
   list.className = `md-${kind}`;
+  // `list-style: none` removes implicit list semantics in WebKit/VoiceOver.
+  if (kind !== 'stats') list.setAttribute('role', 'list');
   if (items.some(item => item.accent)) list.classList.add('md-has-accent');
   // Every bar's value column is as wide as the longest value, so the tracks line up without a subgrid.
   if (kind === 'bars') list.style.setProperty('--md-bar-value', `${Math.min(VALUE_CH, Math.max(...items.map(item => item.value?.length ?? 0)))}ch`);
   for (const [index, item] of items.entries()) {
     const row = document.createElement(kind === 'stats' ? 'div' : 'li');
     row.className = `md-${kind.slice(0, -1)}`;
-    if (item.accent) row.classList.add('md-accent');
+    if (item.accent) {
+      row.classList.add('md-accent');
+      row.setAttribute('aria-current', kind === 'steps' ? 'step' : 'true');
+    }
     if (kind === 'steps') {
       const mark = part('span', 'md-step-mark', String(index + 1), true);
       mark.setAttribute('aria-hidden', 'true');
@@ -145,6 +221,7 @@ export function drawNative(kind: NativeKind, items: NativeItem[]): HTMLElement {
     else if (kind === 'options') row.append(body(item));
     else if (kind === 'bars') {
       const track = part('span', 'md-bar-track', '');
+      track.setAttribute('aria-hidden', 'true');
       const fill = part('span', 'md-bar-fill', '');
       const share = Math.round((item.share ?? 0) * 1000) / 10;
       fill.style.setProperty('--share', `${share}%`);
@@ -177,6 +254,10 @@ function part(tag: string, className: string, text: string, plain = false): HTML
   const element = document.createElement(tag);
   element.className = className;
   if (plain) element.textContent = text;
-  else if (text) element.innerHTML = inline(text, false);
+  else if (text) {
+    element.innerHTML = inline(text, false);
+    // Formulas inside a block's inline fields stay inline instead of claiming a 48px display box.
+    for (const math of element.querySelectorAll('.md-math[data-display]')) math.removeAttribute('data-display');
+  }
   return element;
 }

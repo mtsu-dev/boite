@@ -96,4 +96,8 @@ test('a paragraph being written stops where a diagram, a formula or a view opens
   // A quote is drawn as a document of its own, so a view opened in it is held back from its first line.
   expect(pendingDrawing('Look:\n> Here:\n> ```view\n> <svg')).toEqual({ text: 'Look:\n> Here:', drawing: true });
   expect(renderMarkdown('> ```view\n> <p>Hi</p>\n> ```')).toContain('md-view');
+  // An indented fence under an open list item continues the item in `renderMarkdown`, so streaming holds nothing back.
+  const underItem = '- item\n  ```bars\n  A | 1 s\n  ```';
+  expect(pendingDrawing(underItem, true)).toEqual({ text: underItem, drawing: false });
+  expect(renderMarkdown(underItem, true)).not.toContain('md-native');
 });

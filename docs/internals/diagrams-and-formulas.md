@@ -1,10 +1,11 @@
 # Diagrams and formulas
 
-An answer, a reasoning block, a plan, a side answer, a Markdown file preview
-and the Agents page draw four kinds of blocks the Markdown engine
+An answer, a reasoning block, a plan, a side answer, a Markdown preview
+and the Agents page draw the blocks the Markdown engine
 (`packages/ui/src/lib/markdown.ts`) marks: Mermaid diagrams, LaTeX formulas
-and view blocks, small pages of HTML, plus four native blocks drawn from plain
-lines ([native blocks](#native-blocks)). A block holds a placeholder until its
+and view blocks everywhere, plus four native blocks drawn from plain
+lines in rich `Prose` rendering ([native blocks](#native-blocks); in reasoning
+they stay code). A block holds a placeholder until its
 drawing is ready, and shows its source when the drawing fails or never loads.
 
 ## What is drawn
@@ -132,35 +133,47 @@ cover what an agent otherwise wrote as a view: a numbered list, a choice, a
 comparison, a few figures. The client draws them from their lines
 (`lib/native-blocks.ts`, loaded with `lib/rich-markdown-draw.ts`), with no
 frame, no core round trip and none of the HTML and CSS a view of the same list
-costs in output tokens. They are marked in rich rendering only (answers with
-Chat files and previews on); elsewhere, reasoning included, they stay code.
+costs in output tokens. They are marked in rich `Prose` rendering (answers,
+plans, side answers, tool Markdown previews, council and team chat, when Chat
+files and previews or direct links is on); elsewhere, reasoning included, they
+stay code.
 
 One grammar serves all four. A line is an item and blank lines are skipped; `|`
 splits its fields and `\|` is a literal pipe; a leading `* ` highlights the
-item in the accent. Fields are escaped inline Markdown (`inline(text, false)` in
-`lib/markdown-inline.ts`): bold, italic, code and web links, never HTML or a
-`javascript:` link. Structure is built with DOM calls only.
+item in the accent and sets `aria-current` (`step` on steps, `true` elsewhere).
+Fields are escaped inline Markdown (`inline(text, false)` in
+`lib/markdown-inline.ts`): bold, italic, code, inline math and web links, never
+HTML or a `javascript:` link. Structure is built with DOM calls only, with
+`role="list"` on `<ol>` and `<ul>` so WebKit keeps list semantics under
+`list-style: none`.
 
 | Fence | Line | Drawn as |
 |---|---|---|
 | `steps` | `[* ][1. \| 1) \| - ]title [\| detail]` | an ordered list with number badges joined by a rule |
-| `options` | `[* ]title [\| detail]` | cards in two columns, one under 480 px |
+| `options` | `[* ]title [\| detail]` | cards in an auto-fit grid (`minmax(240px, 1fr)`) |
 | `bars` | `[* ]label \| value [\| note]` | a track per row, filled in proportion, value in tabular figures |
 | `stats` | `[* ]label \| value [\| detail]` | a `<dl>` of tiles in an auto-fit grid |
 
-A bar's value is a non-negative number with an optional unit. Time (`ns` to
-`h`), bytes (`B` to `TB`, `KiB` to `TiB`) and magnitudes (`k`, `M`, `bn`, a
-bare `1,250`) are converted, so `800 ms` and `4.2 s` scale against each other;
-a percentage up to 100 scales against 100. Any other unit must be the same on
-every row. With no item, more than 30, a field too many, an empty title or
-value, a bar it cannot read or units that do not compare, the block is not
-drawn: it stays code with its copy button and no error line, since a
-misleading chart is worse than none. A drawn block has the bar of a diagram,
-Copy and a switch between Block and Code; a copied selection gives back its
-fence. A bubble or a run of text that holds a block takes the column's width.
-Options and stats are cards that wrap on their own (an auto-fit grid); under
-720px a bar's track goes below its label and value, and a value is drawn at
-most 14 characters wide, cut with an ellipsis, its whole text in a tooltip.
+A bar's value is a non-negative number with an optional unit or currency symbol.
+Time (`ns` to `h`, including both `µs` and Greek `μs`), bits and bytes (`b` to
+`Tb`, `B` to `TB`, `Kib` to `Tib`, `KiB` to `TiB`, preserving the 1:8 `b`/`B`
+ratio), magnitudes (`k`, `K`, `M`, `bn`), currencies (`120 €`, `€80`, `$1.2M`,
+`12k €`), space-grouped thousands (`1 250`) and decimal commas (`0,750`, `2,5`)
+are converted; a percentage up to 100 scales against 100. Any other unit must
+match in case on every row (so `m` stays meters and `mW` never merges with `MW`).
+When any row uses an unambiguous decimal comma, single-comma three-digit rows
+(`1,500`) in the same block follow it; mixing decimal commas with dot decimals
+or English thousands keeps the block as code. With no item, more than 30, a
+field too many, an empty title or value, a bar it cannot read or units that do
+not compare, the block is not drawn: it stays code with its copy button and no
+error line, since a misleading chart is worse than none. A drawn block has Copy
+and a switch between Block and Code, floating just above its top-right edge on
+desktop hover so it never hides the first bar or card; a copied selection gives
+back its original fence delimiter (`data-fence` when not three backticks). A
+bubble or a run of text that holds a block takes the column's width. Options and
+stats are cards that wrap on their own (an auto-fit grid); under 720px a bar's
+track goes below its label and value, and a value is drawn at most 14 characters
+wide, cut with an ellipsis, its whole text in a tooltip.
 
 ## What the agent is told
 

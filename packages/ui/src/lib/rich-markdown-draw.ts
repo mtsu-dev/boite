@@ -136,9 +136,10 @@ function drawDiagram(element: HTMLElement, options: () => RichMarkdownOptions): 
  */
 export function drawNativeBlock(element: HTMLElement): void {
   const source = element.dataset.source ?? '';
-  const kind = element.dataset.kind ?? '';
-  const items = isNativeKind(kind) ? parseNative(kind, source) : null;
-  if (!items || !isNativeKind(kind)) {
+  const raw = element.dataset.kind ?? '';
+  const kind = isNativeKind(raw) ? raw : null;
+  const items = kind ? parseNative(kind, source) : null;
+  if (!kind || !items) {
     const bar = document.createElement('div');
     bar.className = 'md-diagram-bar';
     bar.append(copyButton(source));
@@ -150,6 +151,10 @@ export function drawNativeBlock(element: HTMLElement): void {
   figure.className = 'md-native-figure';
   figure.dataset.testid = 'native-block';
   figure.append(drawNative(kind, items));
+  for (const math of figure.querySelectorAll<HTMLElement>('.md-math:not([data-drawn])')) {
+    math.dataset.drawn = '';
+    drawMath(math);
+  }
   element.querySelector(':scope > pre')?.before(figure);
   element.prepend(drawnBar(element, source, strings.chat.diagram.showBlock));
   element.classList.add('md-drawn');
@@ -295,9 +300,12 @@ export function selectedSource(range: Range): string {
   if (end) whole.setEndAfter(end);
   const fragment = whole.cloneContents();
   for (const element of fragment.querySelectorAll<HTMLElement>(DRAWINGS)) {
+    // An enclosing drawing (for instance a native block holding inline math) already replaced its subtree.
+    if (!element.parentNode) continue;
     const source = element.dataset.source ?? '';
     const fence = element.classList.contains('md-mermaid') ? 'mermaid' : element.classList.contains('md-view') ? 'view' : element.dataset.kind ?? '';
-    const text = fence ? `\`\`\`${fence}\n${source}\n\`\`\`` : source;
+    const mark = element.dataset.fence || '```';
+    const text = fence ? `${mark}${fence}\n${source}\n${mark}` : source;
     element.replaceWith(element.localName === 'div' ? blockOf(text) : document.createTextNode(text));
   }
   return plainText(fragment).replace(/\n{3,}/g, '\n\n').trim();
@@ -310,9 +318,11 @@ function blockOf(text: string): HTMLParagraphElement {
   return paragraph;
 }
 
+/** Outermost drawing containing `at`: a formula inside a native block belongs to that block's source. */
 function drawingOf(at: Node): Element | null {
-  const element = at instanceof Element ? at : at.parentElement;
-  return element?.closest(DRAWINGS) ?? null;
+  let found: Element | null = null;
+  for (let current = (at instanceof Element ? at : at.parentElement)?.closest(DRAWINGS) ?? null; current; current = current.parentElement?.closest(DRAWINGS) ?? null) found = current;
+  return found;
 }
 
 /** Text with the line breaks its blocks imply: `textContent` would run two paragraphs together. */

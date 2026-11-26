@@ -228,6 +228,12 @@ describe('diagrams and formulas', () => {
       expect(renderMarkdown(`\`\`\`${kind}\nA | 1`, true)).toBe(`<pre data-language="${kind}"><code>A | 1</code></pre>`);
     }
     expect(renderMarkdown('```Steps\nA\n```', true)).toContain('data-kind="steps"');
+    expect(renderMarkdown('~~~steps\n1. Run | ```\n~~~', true)).toContain('data-fence="~~~"');
+    // Unclosed inline math delimiters finish in linear time rather than rescanning the tail.
+    const started = performance.now();
+    expect(renderMarkdown('$$ '.repeat(10_000))).not.toContain('md-math');
+    expect(renderMarkdown(`${'\\( '.repeat(10_000)}\n\\)`)).not.toContain('md-math');
+    expect(performance.now() - started).toBeLessThan(200);
   });
 });
 
