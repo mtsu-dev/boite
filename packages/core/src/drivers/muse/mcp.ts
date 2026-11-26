@@ -2,7 +2,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { McpRegistration } from '../../mcp/lazy.ts';
 import { agentEnv } from '../../providers/resolve.ts';
-import { knownVersion, readVersion } from '../../providers/versions.ts';
+import { knownVersion } from '../../providers/versions.ts';
 import type { SessionContext } from '../types.ts';
 
 const AUTH = 'BOITE_MCP_AUTHORIZATION';
@@ -10,13 +10,13 @@ const MCP_CONFIG_SINCE = [1, 4, 13] as const;
 const PROBE_TIMEOUT_MS = 2_000;
 const PROBE_MAX_BYTES = 4_096;
 
-interface ProbedVersion {
+interface ProbedSupport {
   mtimeMs: number;
   size: number;
-  version: string;
+  supported: boolean;
 }
 
-const probed = new Map<string, ProbedVersion>();
+const probed = new Map<string, ProbedSupport>();
 
 export function museVersionSupportsMcp(version: string | null): boolean {
   if (version === null) return false;
@@ -29,7 +29,8 @@ export function museVersionSupportsMcp(version: string | null): boolean {
 /**
  * Checks whether a Muse binary accepts `-c mcp_servers.<name>=...` config flags:
  * reads `.muse-version` when Boite installed it, falls back to the cached provider
- * version, and otherwise caches a successful `--version` per binary revision.
+ * version, and otherwise caches the support decision from a nonempty
+ * successful `--version` per binary revision.
  * Null leaves support undetermined so a later host can probe again.
  */
 export async function museMcpSupport(executable: string, probeVersion: () => Promise<string | null>): Promise<boolean | null> {
@@ -44,13 +45,13 @@ export async function museMcpSupport(executable: string, probeVersion: () => Pro
   try { stat = statSync(executable); } catch { return null; }
   const kept = probed.get(executable);
   if (kept !== undefined && kept.mtimeMs === stat.mtimeMs && kept.size === stat.size) {
-    return museVersionSupportsMcp(kept.version);
+    return kept.supported;
   }
   const output = await probeVersion().catch(() => null);
-  const version = output === null ? null : readVersion(output);
-  if (version === null) return null;
-  probed.set(executable, { mtimeMs: stat.mtimeMs, size: stat.size, version });
-  return museVersionSupportsMcp(version);
+  if (output === null || output.trim() === '') return null;
+  const supported = museVersionSupportsMcp(output);
+  probed.set(executable, { mtimeMs: stat.mtimeMs, size: stat.size, supported });
+  return supported;
 }
 
 export function probeMuseVersion(ctx: SessionContext, executable: string): Promise<string | null> {

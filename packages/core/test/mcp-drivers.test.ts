@@ -105,10 +105,15 @@ test('Muse detects MCP config support via --version when no .muse-version file e
   writeFileSync(legacyBin, '#!/bin/sh\necho muse 1.3.0\n');
   expect(await museMcpSupport(modernBin, async () => { throw new Error('fixture spawn failure'); })).toBeNull();
   expect(await museMcpSupport(modernBin, async () => null)).toBeNull();
-  expect(await museMcpSupport(modernBin, async () => 'fixture without a version')).toBeNull();
+  expect(await museMcpSupport(modernBin, async () => '')).toBeNull();
+  expect(await museMcpSupport(modernBin, async () => 'fixture without a version')).toBe(false);
   let calls = 0;
-  expect(await museMcpSupport(modernBin, async () => { calls += 1; return 'muse 1.4.14'; })).toBe(true);
-  expect(await museMcpSupport(modernBin, async () => { calls += 1; return 'muse 1.4.14'; })).toBe(true);
+  const probeModern = async () => { calls += 1; return 'muse 1.4.14'; };
+  expect(await museMcpSupport(modernBin, probeModern)).toBe(false);
+  expect(calls).toBe(0);
+  writeFileSync(modernBin, '#!/bin/sh\necho muse version 1.4.14\n');
+  expect(await museMcpSupport(modernBin, probeModern)).toBe(true);
+  expect(await museMcpSupport(modernBin, probeModern)).toBe(true);
   expect(calls).toBe(1);
   expect(await museMcpSupport(legacyBin, async () => 'muse 1.3.0')).toBe(false);
   expect(await museMcpSupport(legacyBin, async () => 'muse 1.4.14')).toBe(false);
