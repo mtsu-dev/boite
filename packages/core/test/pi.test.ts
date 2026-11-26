@@ -8,6 +8,7 @@ import type { CoreClient } from '../src/client.ts';
 import { forgetProbes, getDriver } from '../src/drivers/index.ts';
 import { setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
+import { USER_ORIGIN } from '../src/threads/turn-origin.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { rejection } from './settle.ts';
@@ -132,6 +133,22 @@ test('a text-only pi model refuses images on start and steer and still accepts f
   await waitFor(() => fakeLog().includes('waiting for abort'));
   expect(harness!.core.journal.listMessages(threadId).find(message => message.role === 'user')?.parts).toContainEqual({ type: 'file', name: file.name, mimeType: file.mimeType, data: file.data });
   expect((await rejection(client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'Use this', attachments: [image], clientRequestId: 'pi_text_only' }))).reason).toMatchObject(refusal);
+  await client.call('turns.stop', { threadId });
+});
+
+test('input steered into a turn is checked against the model that turn runs on', async () => {
+  const { client, threadId } = await startThread(undefined, 'fake-a/smart');
+  const accountId = harness!.core.threads.require(threadId).accountId;
+  // A queued prompt keeps the model it was sent with while the thread shows another.
+  const turn = harness!.core.threads.startTurn(threadId, '[slow] Read this', USER_ORIGIN, {
+    choice: { providerId: 'pi-fake', accountId, permissionMode: 'yolo', model: 'fake-b/plain', effort: null },
+  });
+  await waitFor(() => fakeLog().includes('waiting for abort'));
+  expect(harness!.core.journal.getTurn(turn.id)?.execution?.model).toBe('fake-b/plain');
+  expect(harness!.core.threads.require(threadId).model).toBe('fake-a/smart');
+  const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+  expect((await rejection(client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'Use this', attachments: [image], clientRequestId: 'pi_steer_queued' }))).reason)
+    .toMatchObject({ rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } });
   await client.call('turns.stop', { threadId });
 });
 

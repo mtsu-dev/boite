@@ -7,10 +7,9 @@ export { EXIT_GRACE_MS } from '../exit.ts';
 export const PROBE_TIMEOUT_MS = 30_000;
 /** Where a thread's pi transcript lives, under the account's own directory. */
 export const SESSION_ROOT = 'pi-sessions';
-/** The model id that means "the agent keeps the one it is configured with". */
 /** The `api` of pi's virtual models (pi 1.6.1 core/virtual-models.js). */
 export const VIRTUAL_API = 'pi-virtual';
-
+/** The model id that means "the agent keeps the one it is configured with". */
 export const AGENT_OWN_MODEL = 'default';
 /** The four `extension_ui_request` methods that block until the client answers. */
 export const UI_DIALOGS = new Set(['select', 'confirm', 'input', 'editor']);

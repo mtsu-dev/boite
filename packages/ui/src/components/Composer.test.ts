@@ -2128,7 +2128,7 @@ test('pi default on an open thread follows the model its session resumes on', as
   // pi starts new sessions on its text-only demo model; the core reads that this session resumes on one that reads images.
   const capabilities = store.threadCapabilities.bind(store);
   let sessionImages = true;
-  vi.spyOn(store, 'threadCapabilities').mockImplementation(async (threadId) => {
+  const asked = vi.spyOn(store, 'threadCapabilities').mockImplementation(async (threadId) => {
     const value = await capabilities(threadId);
     return value && { ...value, images: { supported: sessionImages, available: sessionImages, reason: sessionImages ? null : 'unsupported' } };
   });
@@ -2143,11 +2143,29 @@ test('pi default on an open thread follows the model its session resumes on', as
   await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
   expect(store.error).toBeNull();
   expect(document.querySelector('[data-testid=composer-image-warning]')).toBeNull();
-  // A new catalog for the account can change what the core reads for the session: the composer asks again.
+  // A turn that ends may leave the session on another model: the composer asks again.
   sessionImages = false;
+  query<HTMLButtonElement>('[data-testid=composer-attachment-remove]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') === null);
+  // Sent as a client without a picker would, so the thread stays on pi's own model.
+  await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Another turn' });
+  await waitFor(() => store.openThread?.status === 'running');
+  await waitFor(() => store.openThread?.status === 'idle' && store.openThread.model === 'default');
+  paste(pngFile());
+  await waitFor(() => store.error !== null);
+  expect(document.querySelector('[data-testid=composer-attachment]')).toBeNull();
+  // So does a new catalog for the account, which the core reads the session's model in.
+  sessionImages = true;
+  store.error = null;
   const key = `pi::${account.id}`;
+  const calls = asked.mock.calls.length;
   store.probedModels = { ...store.probedModels, [key]: [...store.probedModels[key]!, { id: 'pi-new', name: 'pi new model' }] };
-  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') !== null);
+  await waitFor(() => asked.mock.calls.length > calls);
+  await asked.mock.results.at(-1)!.value;
+  flushSync();
+  paste(pngFile());
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
+  expect(store.error).toBeNull();
 });
 
 test('switching a draft to a text-only pi model blocks its image but keeps file attachments', async ({ app: _app }) => {

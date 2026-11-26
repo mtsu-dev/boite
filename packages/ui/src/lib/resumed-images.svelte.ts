@@ -5,7 +5,7 @@ import type { Choice, Store } from './store.svelte';
 /**
  * pi's own model on an open thread is the one its session resumes on, which
  * only the core reads (`threads.capabilities`). The key changes when that can:
- * another session or selection, a new catalog for the account (the core reads
+ * another session, selection or turn, a new catalog for the account (the core reads
  * the session's model in it), a reconnection.
  */
 function resumedImagesKey(store: Store, thread: Thread | null, choice: Choice | null): string | null {
@@ -14,7 +14,8 @@ function resumedImagesKey(store: Store, thread: Thread | null, choice: Choice | 
   // A model picked for the next prompt is not the one the session resumes on.
   if (choice.model !== null && choice.model !== 'default' && choice.model !== chipChoice(store, thread)?.model) return null;
   const catalog = store.modelsOf(thread.providerId, thread.accountId).map(model => `${model.id}${model.images === false ? '-' : '+'}${model.virtual ? 'v' : ''}`).join(',');
-  return [thread.id, thread.sessionId, thread.selectionVersion ?? 0, store.connection, catalog].join('\n');
+  // A finished turn may have left the session on another model: a queued prompt keeps its own.
+  return [thread.id, thread.sessionId, thread.selectionVersion ?? 0, thread.status, store.connection, catalog].join('\n');
 }
 
 /** Whether the open thread's resumed pi session reads images, once the core answered for the current key. */

@@ -40,10 +40,13 @@ export async function steerUser(core: Core, threads: ThreadStore, params: RpcPar
   checkAttachmentArray(attachments);
   const referenceError = previewReferencesError(references, prompt);
   if (referenceError) throw refused(referenceError);
-  const provider = core.providers.require(thread.providerId);
   const previous = core.journal.turnRequest(threadId, clientRequestId);
+  // The input joins the active turn, so its images go to that turn's model, which a queued prompt may have picked.
+  const active = core.journal.getTurn(turnId);
+  const runs = active?.threadId === threadId && active.execution ? { ...active.execution, id: threadId } : thread;
+  const provider = core.providers.require(runs.providerId);
   // A receipt belongs to the turn that accepted it, even after the model changes.
-  checkAttachments(attachments, provider, previous ? undefined : () => imageInputModel(core, provider, thread));
+  checkAttachments(attachments, provider, previous ? undefined : () => imageInputModel(core, provider, runs));
   const fingerprint = createHash('sha256').update(JSON.stringify([turnId, prompt, attachments, references])).digest('hex');
   if (previous) {
     if (!previous.fingerprint.endsWith(`:${fingerprint}`)) throw refused('clientRequestId was already used for different content');
