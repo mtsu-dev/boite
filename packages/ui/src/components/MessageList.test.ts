@@ -1926,11 +1926,11 @@ test('on a phone, a turn whose summary sits under a steering prompt keeps its bu
     { ...base, id: 'turn-next', startedAt: 100_000, finishedAt: null, status: 'running' as const },
   ];
   thread.memoryEvents = [];
-  const msg = (id: string, turnId: string, role: Message['role'], text: string): Message => ({ id, threadId: thread.id, turnId, role, state: 'complete', createdAt: 1, parts: [{ type: 'text', text }] });
+  const msg = (id: string, turnId: string, role: Message['role'], text: string, extra: Message['parts'] = []): Message => ({ id, threadId: thread.id, turnId, role, state: 'complete', createdAt: 1, parts: [{ type: 'text', text }, ...extra] });
   thread.messages = [
     msg('m-e0', 'turn-early-steered', 'user', 'Earlier task'),
     msg('m-e1', 'turn-early-steered', 'assistant', 'See [early link](https://example.com/early).'),
-    msg('m-e2', 'turn-early-steered', 'user', 'Steer early'),
+    msg('m-e2', 'turn-early-steered', 'user', 'Steer early', [{ type: 'file', mimeType: 'text/plain', data: 'aGVsbG8=', name: 'note.txt' }]),
     msg('m-u1', 'turn-steered', 'user', 'Start task'),
     msg('m-a1', 'turn-steered', 'assistant', 'Working on it.'),
     msg('m-steer', 'turn-steered', 'user', 'Actually skip step 2'),
@@ -1986,22 +1986,26 @@ test('on a phone, a turn whose summary sits under a steering prompt keeps its bu
   document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })); flushSync();
   expect(earlySummary()).toBeNull();
 
-  // Keyboard focus inside the earlier steering prompt's own controls keeps its turn summary mounted.
-  const steerPromptCopy = earlySteer.closest('article')?.querySelector<HTMLButtonElement>('[data-testid=message-receipts] [data-testid=message-copy]');
-  expect(steerPromptCopy).not.toBeNull();
+  // Keyboard focus on a visible attachment link inside the earlier steering prompt keeps its turn summary mounted.
+  const steerAttachment = earlySteer.querySelector<HTMLAnchorElement>('a');
+  expect(steerAttachment).not.toBeNull();
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-  steerPromptCopy!.focus(); flushSync();
+  steerAttachment!.focus(); flushSync();
   expect(earlySummary()).not.toBeNull();
-  steerPromptCopy!.blur(); flushSync();
+  steerAttachment!.blur(); flushSync();
   expect(earlySummary()).toBeNull();
 
-  // Once the running next turn streams assistant activity (still no actions), the previous settled steered turn keeps its buttons.
+  // Once the running next turn streams thinking and even if it stops before answering, the previous settled steered turn keeps its buttons.
   thread.messages.push({ id: 'm-next-tool', threadId: thread.id, turnId: 'turn-next', role: 'assistant', state: 'streaming', createdAt: 2, parts: [{ type: 'thinking', text: 'checking' }] });
   flushSync();
-  const settledAfterStream = document.querySelector<HTMLElement>('[data-mid="m-steer"]')?.closest('article')?.querySelector<HTMLElement>('[data-testid=turn-summary]');
-  expect(settledAfterStream).not.toBeNull();
-  expect(settledAfterStream?.hasAttribute('data-tucked')).toBe(false);
-  expect(settledAfterStream?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+  const settledAfterStream = () => document.querySelector<HTMLElement>('[data-mid="m-steer"]')?.closest('article')?.querySelector<HTMLElement>('[data-testid=turn-summary]');
+  expect(settledAfterStream()).not.toBeNull();
+  expect(settledAfterStream()?.hasAttribute('data-tucked')).toBe(false);
+  expect(settledAfterStream()?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+  thread.turns = thread.turns.map(current => current.id === 'turn-next' ? { ...current, status: 'stopped', finishedAt: 105_000 } : current);
+  flushSync();
+  expect(settledAfterStream()?.hasAttribute('data-tucked')).toBe(false);
+  expect(settledAfterStream()?.querySelector('[data-testid=message-actions]')).not.toBeNull();
 });
 
 test('a row counts at the height it is drawn, fractions included, so rows measured above the reader move the view by what they weigh', async () => {

@@ -33,7 +33,7 @@
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { lastAnswerTurn, lastLined, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
+  import { isSteeringMessage, lastAnswerTurn, lastLined, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
@@ -743,7 +743,7 @@
           data-seam={joined} style:content-visibility={isSlice(row) ? 'auto' : undefined} style:overflow-clip-margin={isSlice(row) ? 'var(--chat-block-gap)' : undefined} style:contain-intrinsic-size={sliceBox(row, heights.get(row.id) ?? slots.estimateOf(row), slotGap(joined, !row.first))}
           style:margin-top={joined && 'calc(var(--chat-block-gap) - var(--chat-message-gap))'}
           data-testid={row.first ? 'message' : 'message-rest'}
-          data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId} data-steered={message.role === 'user' && firstInTurn.get(message.turnId) !== message.id ? '' : undefined}
+          data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId} data-steered={isSteeringMessage(message, firstInTurn.get(message.turnId), (store.messagesBefore !== null && message.id === timeline[0]?.id) || Boolean(rows[view.start + index - 1]?.gap), closes, turn) ? '' : undefined}
         >
           {#if row.first && days.has(message.id)}<DayDivider at={days.get(message.id)!} />{/if}
           {#if row.first && turn?.switched && message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id}<SwitchMarker names={store} shown={turn.switched} />{/if}

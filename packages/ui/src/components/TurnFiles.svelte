@@ -45,6 +45,7 @@
     place(anchor);
     return { update: place, destroy() { if (moved) node.remove(); } };
   }
+  const uid = $props.id();
   let diffToggled = $state<boolean | null>(null);
   let showDiff = $derived(diffToggled ?? chatPrefs.expandDiffs);
   /** Folded by default: the count and the lines added and removed say enough until the list is wanted. */
@@ -126,9 +127,9 @@
   }
 </script>
 
-<section class="turn-files" class:inline data-testid="turn-files" aria-label={strings.chat.turnFiles}>
+<section class="turn-files" class:inline data-testid="turn-files" aria-label={beforeAnchor ? undefined : strings.chat.turnFiles}>
   <header>
-    <button type="button" class="ghost small fold" class:inline use:slotBefore={beforeAnchor} data-testid="turn-files-toggle" aria-expanded={open} title={`${strings.chat.turnFiles}: ${changeText(total)}`} onclick={() => (open = !open)}>
+    <button type="button" class="ghost small fold" class:inline use:slotBefore={beforeAnchor} data-testid="turn-files-toggle" aria-expanded={open} aria-controls={open ? `${uid}-tree` : undefined} title={`${strings.chat.turnFiles}: ${changeText(total)}`} onclick={() => (open = !open)}>
       <!-- On the tool line the count is the opener: the run's own caret is just before it. -->
       {#if !inline}<ChevronRight size={14} class={open ? 'fold-caret open' : 'fold-caret'} /><span class="ui-label">{strings.chat.turnFiles}</span>{/if}
       <!-- "1 file, +7 −2": the one count of changes (lib/change-count.ts). On the tool line, whose words already count the files, the lines alone when known. -->
@@ -147,7 +148,7 @@
       <!-- One action: the answer's own diff, the same rows its counts are read from. The folder's whole change set is offered under it. -->
       {#if diffs.length > 0 || deferred.length > 0}
         <span class="tools" class:inline>
-          <button type="button" class="ghost small" data-testid="turn-diff-toggle" aria-expanded={showDiff} onclick={() => { if (!showDiff) { attempt += 1; loadError = null; } diffToggled = !showDiff; }}>
+          <button type="button" class="ghost small" data-testid="turn-diff-toggle" aria-expanded={showDiff} aria-controls={showDiff ? `${uid}-diff` : undefined} onclick={() => { if (!showDiff) { attempt += 1; loadError = null; } diffToggled = !showDiff; }}>
             <FileDiff size={14} /><span class="ui-label">{showDiff ? strings.chat.hideTurnDiff : strings.chat.showTurnDiff}</span>
           </button>
         </span>
@@ -157,9 +158,9 @@
     </span>
     {@render after?.()}
   </header>
-  {#if open}<div class="tree" data-testid="turn-files-tree">{@render branch(tree, 0)}</div>{/if}
+  {#if open}<div class="tree" id={`${uid}-tree`} data-testid="turn-files-tree">{@render branch(tree, 0)}</div>{/if}
   {#if showDiff}
-    <div class="diffs" data-testid="turn-diff">
+    <div class="diffs" id={`${uid}-diff`} data-testid="turn-diff">
       {#if loading}<p data-testid="turn-diff-loading">{strings.app.loading}</p>{/if}
       {#if loadError}<p role="alert">{loadError}</p>{/if}
       {#each diffs as doc, index (index)}

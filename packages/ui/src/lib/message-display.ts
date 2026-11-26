@@ -258,9 +258,28 @@ export function newConversationOf(message: Message): NewConversationNotice | nul
 }
 
 /**
+ * Whether a user row steered an in-progress turn rather than opening it.
+ * When older rows are cut above (`cutAbove`), a turn's opening prompt can sit off-page,
+ * so a leading user row that closes its turn or arrived after `turn.startedAt` is steered.
+ */
+export function isSteeringMessage(
+  message: Pick<Message, 'id' | 'role' | 'createdAt'>,
+  firstInTurnId: string | undefined,
+  cutAbove: boolean,
+  closes: boolean,
+  turn: Pick<Turn, 'startedAt'> | undefined,
+): boolean {
+  if (message.role !== 'user') return false;
+  if (firstInTurnId !== undefined && firstInTurnId !== message.id) return true;
+  return cutAbove && (closes || (turn?.startedAt != null && message.createdAt > turn.startedAt));
+}
+
+/**
  * The last non-user row's settled turn in `timeline` that carries a summary line, past
- * new-conversation markers, folded wakes (`folds`), cache pings and queued or running turns:
- * an in-progress or unanswered prompt leaves the previous settled answer's buttons on a phone.
+ * new-conversation markers, folded wakes (`folds`), cache pings, queued or running turns,
+ * and failed or stopped turns with no answer text: an in-progress or interrupted prompt
+ * without an answer leaves the previous settled answer's buttons on a phone, while done
+ * tool-only wakes still match `lastLined`.
  */
 export function lastAnswerTurn(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
   for (let index = timeline.length - 1; index >= 0; index--) {
@@ -268,6 +287,7 @@ export function lastAnswerTurn(timeline: readonly Message[], folds: ReadonlyMap<
     if (message.role === 'user' || newConversationOf(message) || folds.has(message.id)) continue;
     const turn = turns.find(current => current.id === message.turnId);
     if (!turn || turn.execution?.operation === 'keepalive' || turn.status === 'queued' || turn.status === 'running') continue;
+    if (turn.status !== 'done' && !turnAnswer(timeline, turn.id)) continue;
     return turn.id;
   }
   return null;
