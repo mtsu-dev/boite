@@ -52,7 +52,9 @@ async function resolveExpectedRealPath(folder: string): Promise<string | null> {
         const info = await lstat(current);
         if (info.isSymbolicLink()) {
           if (++links > 16) return null;
-          current = resolvePath(dirname(current), await readlink(current));
+          const parentDir = dirname(current);
+          const parentReal = await realpath(parentDir).catch(() => parentDir);
+          current = resolvePath(parentReal, await readlink(current));
           continue;
         }
       } catch { /* Missing segment; walk up to its parent directory. */ }

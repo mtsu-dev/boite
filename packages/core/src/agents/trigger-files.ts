@@ -238,6 +238,15 @@ export function watchTriggerFiles(
   }
 
   async function scan(directory: string, reportNew: boolean, watcher: FSWatcher, recheckExisting = false) {
+    const prefix = directory ? directory + '/' : '';
+    const existingChildren = recheckExisting ? new Map<string, { watcher: FSWatcher; dev: bigint; ino: bigint }>() : undefined;
+    if (existingChildren) {
+      for (const [watched, entry] of watches) {
+        if (watched && watched !== directory && watched.startsWith(prefix) && !watched.slice(prefix.length).includes('/')) {
+          existingChildren.set(watched, entry);
+        }
+      }
+    }
     let entries;
     try { entries = await readdir(join(folder, directory), { withFileTypes: true }); }
     catch (error) {
@@ -271,11 +280,9 @@ export function watchTriggerFiles(
         if (lookups.get(relative)?.parent?.watcher !== watcher) await addTree(relative, reportNew, parent);
       } else if (reportNew && entry.isFile()) record(relative);
     }
-    if (seenDirs && watches.get(directory)?.watcher === watcher) {
-      const prefix = directory ? directory + '/' : '';
-      for (const watched of [...watches.keys()]) {
-        if (!watched || watched === directory || !watched.startsWith(prefix)) continue;
-        if (!watched.slice(prefix.length).includes('/') && !seenDirs.has(watched)) removeTree(watched);
+    if (seenDirs && existingChildren && watches.get(directory)?.watcher === watcher) {
+      for (const [watched, entry] of existingChildren) {
+        if (!seenDirs.has(watched) && watches.get(watched) === entry) removeTree(watched);
       }
     }
   }

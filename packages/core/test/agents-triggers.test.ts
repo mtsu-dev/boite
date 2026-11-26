@@ -1370,7 +1370,7 @@ test('a nameless rename reopens a replaced subdirectory with a new inode and pru
   const { agent, threadId } = await makeAgent(h, owner, { projectIds: [project.id] });
   const { listeners, restore } = controlFileEvents(folder);
   try {
-    const { trigger } = await save(agent.id, { kind: 'file', projectId: project.id, patterns: ['src/*.txt'], debounceMs: 50 });
+    const { trigger } = await save(agent.id, { kind: 'file', projectId: project.id, patterns: ['{src,lib}/*.txt'], debounceMs: 50 });
     await waitFor(() => listeners.has(folder) && listeners.has(child));
     const rootEvent = listeners.get(folder)!;
     const oldChildListener = listeners.get(child)!;
@@ -1386,10 +1386,34 @@ test('a nameless rename reopens a replaced subdirectory with a new inode and pru
     await waitFor(() => driver.prompts.get(threadId)?.at(-1)?.includes('src/reopened.txt') === true && settled(h, threadId));
     expect(read(trigger).lastOutcome).toBe('fired');
 
-    // Deleting src before a nameless rename prunes its watcher entry instead of leaking it.
-    fs.rmSync(child, { recursive: true });
-    rootEvent('rename', null);
-    await waitFor(() => !listeners.has(child));
+    // Deleting src before a nameless rename prunes its watcher entry instead of leaking it,
+    // while a sibling directory created during the rescan stays watched.
+    const sibling = join(folder, 'lib');
+    const realReaddir = files.readdir;
+    const holdScan = Promise.withResolvers<void>();
+    let pausedScan = false;
+    const readdirSpy = spyOn(files, 'readdir').mockImplementation((async (path: fs.PathLike, options?: object) => {
+      const result = await realReaddir(path, options as never);
+      if (path === folder && !pausedScan) {
+        pausedScan = true;
+        await holdScan.promise;
+      }
+      return result;
+    }) as typeof files.readdir);
+    try {
+      fs.rmSync(child, { recursive: true });
+      rootEvent('rename', null);
+      await waitFor(() => pausedScan);
+      mkdirSync(sibling);
+      rootEvent('rename', 'lib');
+      await waitFor(() => listeners.has(sibling));
+      holdScan.resolve();
+      await waitFor(() => !listeners.has(child));
+      expect(listeners.has(sibling)).toBe(true);
+    } finally {
+      holdScan.resolve();
+      readdirSpy.mockRestore();
+    }
   } finally {
     restore();
   }
