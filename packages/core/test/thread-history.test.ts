@@ -287,7 +287,7 @@ test('messages.toolPart with diffsOnly and messages.list with omitThinking keep 
           { type: 'tool', toolId: 'raw-edit', name: 'Edit', status: 'done', input: { file_path: 'raw.ts', old_string: 'before', new_string: 'after', note: 'drop me' }, output: 'ok' },
           { type: 'tool', toolId: 'raw-write', name: 'Write', status: 'done', input: { file_path: 'new.ts', content: 'export const x = 1;\n', note: 'drop me' }, output: 'ok' },
           { type: 'tool', toolId: 'custom-cmd', name: 'RunScript', status: 'done', input: { command: 'echo ok', path: 'notes.txt', content: 'not a write' }, output: 'ok' },
-          { type: 'tool', toolId: 'codex-patch', name: 'ApplyPatch', status: 'done', input: { changes: [{ path: 'c.ts', kind: { type: 'update' }, diff: '@@ -1 +1 @@\n-a\n+b' }], meta: 'drop me' }, output: null },
+          { type: 'tool', toolId: 'codex-patch', name: 'ApplyPatch', status: 'done', input: { changes: [{ path: 'c.ts', kind: { type: 'update' }, diff: '@@ -1 +1 @@\n-a\n+b' }, { path: 'empty.txt', kind: { type: 'add' }, diff: '' }], meta: 'drop me' }, output: null },
         ],
       });
       harness.core.journal.putMessage({
@@ -315,7 +315,7 @@ test('messages.toolPart with diffsOnly and messages.list with omitThinking keep 
     expect(customCmd.part).toMatchObject({ toolId: 'custom-cmd', input: null, output: null });
     expect(customCmd.part.documents).toBeUndefined();
     const codexPatch = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'codex-patch', diffsOnly: true });
-    expect(codexPatch.part.input).toEqual({ changes: [{ path: 'c.ts', kind: { type: 'update' }, diff: '@@ -1 +1 @@\n-a\n+b' }] });
+    expect(codexPatch.part.input).toEqual({ changes: [{ path: 'c.ts', kind: { type: 'update' }, diff: '@@ -1 +1 @@\n-a\n+b' }, { path: 'empty.txt', kind: { type: 'add' }, diff: '' }] });
 
     const light = { compactTools: true, compactToolParts: true } as const;
     expect(await thrown(client.call('messages.list', { threadId, from: basePos + 1, limit: 1, ...light, fullText: true }))).toThrow('message huge-thinking');

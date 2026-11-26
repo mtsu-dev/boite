@@ -411,14 +411,14 @@ test('patch extraction stays linear on unclosed Begin Patch headers, ignores unc
 
   // git diff --binary preserves its GIT binary patch hunks and trailing blank line separator across projection and exports.
   const binaryPatch = `${[
-    'diff --git a/logo.png b/logo.png',
-    'index 1234567..89abcdef 100644',
+    'diff --git a/logo.bin b/logo.bin',
+    'index c84ef0b602461e6265e2a21915ffa7036c70ba2f..fd5673d796cfef2e1e59ae46b18dea7b11c4e1c8 100644',
     'GIT binary patch',
-    'literal 12',
-    'TcmZQzU|<0R002M$0001K0RR91',
+    'literal 9',
+    'QcmZQzWJ><eB_gK*00=Yz$^ZZW',
     '',
-    'literal 0',
-    'HcmV?d00001',
+    'literal 8',
+    'PcmZQzWMcl$B_am^1d0Jd',
   ].join('\n')}\n\n`;
   const binOut = extractToolPatches(`before\n${binaryPatch}trailing diagnostic`);
   expect(binOut.patches).toEqual([binaryPatch]);
@@ -438,22 +438,54 @@ test('patch extraction stays linear on unclosed Begin Patch headers, ignores unc
   const htmlCode = new DOMParser().parseFromString(binHtml, 'text/html').querySelector('code.language-diff');
   expect(htmlCode?.textContent).toBe(binaryPatch);
 
-  // A GIT binary patch whose trailing newlines were trimmed at EOF is preserved with its terminating blank line restored,
-  // while a binary block interrupted by non-base85 log text like `Diagnostic` is rejected.
+  // A complete GIT binary patch whose trailing newlines were trimmed at EOF is preserved with its blank line restored,
+  // while truncated streams or log lines (even base85-shaped ones) are rejected.
   const trimmedBin = binaryPatch.trimEnd();
   expect(extractToolPatches(`before\n${trimmedBin}`).patches).toEqual([binaryPatch]);
   expect(projectToolDiffs({ ...binTool, output: `before\n${trimmedBin}` }).output).toBe(binaryPatch);
-  const incompleteBinWithLog = [
-    'diff --git a/logo.png b/logo.png',
-    'index 1234567..89abcdef 100644',
+  const truncatedBinAtEof = [
+    'diff --git a/logo.bin b/logo.bin',
+    'index c84ef0b..fd5673d 100644',
     'GIT binary patch',
-    'literal 12',
-    'TcmZQzU|<0R002M$0001K0RR91',
+    'literal 100',
+    'QcmZQzWJ><eB_gK*00=Yz$^ZZW',
+  ].join('\n');
+  expect(extractToolPatches(truncatedBinAtEof).patches).toEqual([]);
+  expect(projectToolDiffs({ ...binTool, output: truncatedBinAtEof }).output).toBeNull();
+  const incompleteBinWithLog = [
+    'diff --git a/logo.bin b/logo.bin',
+    'index c84ef0b..fd5673d 100644',
+    'GIT binary patch',
+    'literal 9',
+    'QcmZQzWJ><eB_gK*00=Yz$^ZZW',
     'Diagnostic',
     '',
   ].join('\n');
   expect(extractToolPatches(incompleteBinWithLog).patches).toEqual([]);
   expect(projectToolDiffs({ ...binTool, output: incompleteBinWithLog }).output).toBeNull();
+  const fakeBase85Log = incompleteBinWithLog.replace('Diagnostic', 'Abcdef');
+  expect(extractToolPatches(fakeBase85Log).patches).toEqual([]);
+
+  // Codex add/delete changes preserve empty files and files whose contents begin with `@@` directly and after diffsOnly projection.
+  const codexTool: Extract<Message['parts'][number], { type: 'tool' }> = {
+    type: 'tool', toolId: 't-codex-add-del', name: 'ApplyPatch', status: 'done',
+    input: {
+      changes: [
+        { path: 'empty-new.txt', kind: { type: 'add' }, diff: '' },
+        { path: 'empty-old.txt', kind: { type: 'delete' }, diff: '' },
+        { path: 'at-header.txt', kind: { type: 'add' }, diff: '@@ literal heading\nbody\n' },
+        { path: 'at-removed.txt', kind: { type: 'delete' }, diff: '@@ old heading\n' },
+      ],
+    },
+    output: null,
+  };
+  const codexDirectMd = exportThreadMarkdown(thread, [{ ...messages[1]!, id: 'm-codex', parts: [codexTool] }], { ...clean, includeDiffs: true });
+  const codexProjectedMd = exportThreadMarkdown(thread, [{ ...messages[1]!, id: 'm-codex', parts: [projectToolDiffs(codexTool)] }], { ...clean, includeDiffs: true });
+  expect(codexProjectedMd).toBe(codexDirectMd);
+  expect(codexDirectMd).toContain('diff --git a/empty-new.txt b/empty-new.txt\nnew file mode 100644');
+  expect(codexDirectMd).toContain('diff --git a/empty-old.txt b/empty-old.txt\ndeleted file mode 100644');
+  expect(codexDirectMd).toContain('--- at-header.txt\n+++ at-header.txt\n@@ -0,0 +1,2 @@\n+@@ literal heading\n+body');
+  expect(codexDirectMd).toContain('--- at-removed.txt\n+++ at-removed.txt\n@@ -1,1 +0,0 @@\n-@@ old heading');
 
   // CRLF-to-LF git diffs preserve carriage returns across projection, Markdown, and parsed standalone HTML.
   const crlfToLf = 'diff --git a/win.txt b/win.txt\nindex 17f2fc0..fbbee86 100644\n--- a/win.txt\n+++ b/win.txt\n@@ -1,2 +1,2 @@\n-alpha\r\n-beta\r\n+alpha\n+beta';

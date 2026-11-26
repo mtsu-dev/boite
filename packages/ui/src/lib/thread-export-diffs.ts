@@ -103,14 +103,18 @@ function record(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-/** Codex updates can carry just the hunks, and adds/deletes can carry file contents. */
+/** Codex updates carry hunks or patches, while adds and deletes carry the file's raw contents (possibly empty). */
 function codexPatch(path: string, diff: string, kind: unknown): string {
-  if (diff.startsWith('@@')) return `${diffHeader(path)}\n${diff}`;
-  if (patchEndOffset(diff, 0) > 0) return diff;
   const type = record(kind)?.['type'] ?? kind;
   if (type === 'add' || type === 'delete') {
+    if (!diff) {
+      const display = path.replace(/[\r\n]+/g, ' ');
+      return `diff --git a/${display} b/${display}\n${type === 'add' ? 'new' : 'deleted'} file mode 100644`;
+    }
     return diffText({ kind: 'diff', path, oldText: type === 'delete' ? diff : '', newText: type === 'add' ? diff : '' });
   }
+  if (diff.startsWith('@@')) return `${diffHeader(path)}\n${diff}`;
+  if (patchEndOffset(diff, 0) > 0) return diff;
   return diff;
 }
 
@@ -129,7 +133,9 @@ export function extractInputPatches(input: unknown, inputText: string | null | u
         const change = record(entry);
         if (!change) return entry;
         const { path, diff, kind, ...metadata } = change;
-        if (typeof path !== 'string' || typeof diff !== 'string' || !diff) return entry;
+        if (typeof path !== 'string' || !path || typeof diff !== 'string') return entry;
+        const type = record(kind)?.['type'] ?? kind;
+        if (!diff && type !== 'add' && type !== 'delete') return entry;
         patches.push(codexPatch(path, diff, kind));
         return { path, kind, ...metadata };
       });

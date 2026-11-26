@@ -1,4 +1,5 @@
 import type { Message, MessagePart, ToolDocument } from './index';
+import { isCompleteGitBinaryHunk, isGitBase85Line } from './git-binary';
 
 type ToolPart = Extract<MessagePart, { type: 'tool' }>;
 
@@ -159,8 +160,7 @@ export function previewToolOutputs(messages: readonly Message[]): Message[] {
 const DIFF_HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 const DIFF_NO_NEWLINE = '\\ No newline at end of file';
 const DIFF_GIT_HEADER = /^(?:index [\da-f]+\.\.[\da-f]+(?: \d+)?|(?:(?:old|new|new file|deleted file) mode) \d+|(?:dis)?similarity index \d+%|(?:rename|copy) (?:from|to) .+|Binary files .+ differ)$/;
-const GIT_BINARY_HEADER = /^(?:literal|delta) \d+$/;
-const GIT_BASE85_CHARS = /^[0-9A-Za-z!#$%&()*+\-;<=>?@^_`{|}~]+$/;
+const GIT_BINARY_HEADER = /^(?:literal|delta) (\d+)$/;
 const APPLY_FILE_HEADER = /^\*\*\* (?:Add|Delete|Update) File: .+$/;
 const PATCH_START = /^(?:diff --git |--- |\*\*\* Begin Patch\r?$)/gm;
 const PATCH_MARKER = /^\*\*\* (?:Begin|End) Patch\r?$/gm;
@@ -255,16 +255,6 @@ function hunkEndOffset(value: string, start: number): number {
   return pos;
 }
 
-function isGitBase85Line(text: string): boolean {
-  if (text.length < 6) return false;
-  const code = text.charCodeAt(0);
-  const bytes = code >= 65 && code <= 90 ? code - 64
-    : code >= 97 && code <= 122 ? code - 96 + 26
-    : 0;
-  if (bytes === 0) return false;
-  return text.length === 1 + Math.ceil(bytes / 4) * 5 && GIT_BASE85_CHARS.test(text.slice(1));
-}
-
 /** Consume a `GIT binary patch` section (forward and optional reverse base85 hunks). */
 function binaryPatchEndOffset(value: string, start: number): number {
   const head = lineAt(value, start);
@@ -273,20 +263,21 @@ function binaryPatchEndOffset(value: string, start: number): number {
   let lastValid = start;
   for (let sections = 0; sections < 2; sections++) {
     const section = lineAt(value, pos);
-    if (!section || !GIT_BINARY_HEADER.test(section.text)) break;
+    const header = section ? GIT_BINARY_HEADER.exec(section.text) : null;
+    if (!section || !header) break;
+    const expectedSize = Number(header[1]);
     let cur = section.next;
-    let sawData = false;
+    const lines: string[] = [];
     let terminated = false;
     for (; ;) {
       const line = lineAt(value, cur);
       if (!line) break;
       if (line.text === '') { cur = line.next; terminated = true; break; }
       if (!isGitBase85Line(line.text)) return start;
-      sawData = true;
+      lines.push(line.text);
       cur = line.next;
     }
-    // Each binary hunk requires valid base85 lines ended by a blank line (or EOF when trailing newlines were trimmed).
-    if (!sawData || (!terminated && cur < value.length)) return start;
+    if (!lines.length || !isCompleteGitBinaryHunk(lines, expectedSize, terminated)) return start;
     lastValid = cur;
     pos = cur;
     if (!terminated) break;
@@ -437,10 +428,11 @@ function extractPatches(value: string | null | undefined, keepRest: boolean): { 
     let slice: string;
     if (kind === 'binary') {
       // Preserve or restore the terminating blank line required by `git apply` for binary hunks.
+      const eol = raw.includes('\r\n') ? '\r\n' : '\n';
       slice = raw.endsWith('\n\n') || raw.endsWith('\r\n\r\n') ? raw
         : raw.endsWith('\r\n') ? `${raw}\r\n`
         : raw.endsWith('\n') ? `${raw}\n`
-        : `${raw}\n\n`;
+        : `${raw}${eol}${eol}`;
     } else if (kind === 'apply') {
       slice = raw.replace(/\r?\n$/, '');
     } else {
@@ -476,7 +468,9 @@ function diffOnlyInput(part: ToolPart): unknown {
     if (Array.isArray(fields['changes'])) {
       const changes = fields['changes'].flatMap(entry => {
         const change = recordOf(entry);
-        if (!change || typeof change['path'] !== 'string' || typeof change['diff'] !== 'string' || !change['diff']) return [];
+        if (!change || typeof change['path'] !== 'string' || !change['path'] || typeof change['diff'] !== 'string') return [];
+        const kindType = recordOf(change['kind'])?.['type'] ?? change['kind'];
+        if (!change['diff'] && kindType !== 'add' && kindType !== 'delete') return [];
         return [{ path: change['path'], diff: change['diff'], ...(change['kind'] !== undefined ? { kind: change['kind'] } : {}) }];
       });
       if (changes.length) kept['changes'] = changes;
