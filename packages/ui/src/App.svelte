@@ -532,7 +532,8 @@
    * Both reach the window's top, so the main column's bar starts right of them.
    */
   let desktopReady = $derived(booted && !wideRecovery);
-  let railShown = $derived(desktopReady && mochiLayout.on);
+  // A phone-width window never mounts the rail: CSS hides it there, but it would still load teams and contacts.
+  let railShown = $derived(desktopReady && mochiLayout.on && !narrow.current);
   let noRailDesktop = $derived(desktopReady && !railShown && !narrow.current);
   let macEdge = $derived(desktopReady && !railShown && inShell && isMac());
   // Acting from Activity opens a thread; the root lives as long as the desktop frame, so it walks the way back.

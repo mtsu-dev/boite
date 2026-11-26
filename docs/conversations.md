@@ -52,10 +52,10 @@ the conversation, to keep your text as typed, with no red underline.
 Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: on a desktop, switch between
 Projects and Recent under View in the Filter menu; on a phone, in the list's
-title. Under Display in the desktop Filter menu, Mochi layout turns on the left
-app rail with your mochis, teams and shortcuts along the window's edge; with it
-off, Activity, Contacts, Mochis, machines, updates, limits and Settings sit in
-the compact bar at the foot of the sidebar. The two arrows at the start of the
+title. On a desktop, the left app rail shows your mochis, teams and shortcuts
+along the window's edge. Turn off Mochi layout under Display in the Filter menu
+to hide it: Activity, Contacts, Mochis, machines, updates, limits and Settings
+then sit in a compact bar at the foot of the sidebar. The two arrows at the start of the
 list's head go back and forward through the conversations and pages you opened,
 as a mouse's side buttons do.
 
