@@ -8,9 +8,12 @@
   let loading = $state.raw(import('./TurnFiles.svelte'));
 </script>
 
-{#await loading then module}
+{#await loading}
+  {@render props.between?.()}
+{:then module}
   <module.default {...props} />
 {:catch reason}
+  {@render props.between?.()}
   <p role="alert">{errorText(reason)}</p>
   <button class="ghost small" onclick={() => loading = import('./TurnFiles.svelte')}>{strings.common.refresh}</button>
 {/await}

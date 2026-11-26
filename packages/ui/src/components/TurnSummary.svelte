@@ -63,7 +63,7 @@
      * The turn's change count and its diff, on this line when it already counts the steps that made the changes
      * (`TurnFiles`, inline): one line says what was done and what it changed, never a card and a line.
      */
-    changes?: Snippet;
+    changes?: Snippet<[Snippet?]>;
     /** The turn's own buttons (copy, retry, fork), at the end of the line. */
     actions?: Snippet;
     /**
@@ -138,7 +138,7 @@
   <span class="metric" class:meta><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
 {#if turn.status !== 'queued' && !(held && !still) && !(running && activeTool && !waiting && !stale && background.length === 0 && !observed && !compacting) && !(tucked && settled && !marked)}
-  <div class="summary" class:compacting class:stale class:settled class:pointed class:marked class:resting class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
+  <div class="summary" class:compacting class:stale class:settled class:pointed class:marked class:resting class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} data-tucked={tucked ? '' : undefined} role="status" aria-label={label} title={label}>
     {#if compacting}
       <span class="compaction-icon"><Spinner size={16} paused={hidden || waiting} /></span>
       <div class="compaction-copy">
@@ -186,28 +186,30 @@
         {/if}
       </span>
     {/if}
-    {#if changes && steps && !running}{@render changes()}{/if}
-    {#if !running}
-      {#each compactions as part, at (at)}{@render metric('turn-compaction', compactionMark(part), compactionText(part), true)}{/each}
-    {/if}
-    {#if total > 0}
-      {@render metric('turn-tokens', tokensLabel, breakdown, false, true)}
-    {/if}
-    {#if still}
-      <span class="metric">
-        <span class="dot ui-label" aria-hidden="true">·</span>
-        <span class="background" data-testid="turn-background" title={background.map((task) => task.description).join('\n')}>
-          <span class="pulse" aria-hidden="true"></span><span class="ui-label">{still}</span>
+    {#snippet afterChanges()}
+      {#if !running}
+        {#each compactions as part, at (at)}{@render metric('turn-compaction', compactionMark(part), compactionText(part), true)}{/each}
+      {/if}
+      {#if total > 0}
+        {@render metric('turn-tokens', tokensLabel, breakdown, false, true)}
+      {/if}
+      {#if still}
+        <span class="metric">
+          <span class="dot ui-label" aria-hidden="true">·</span>
+          <span class="background" data-testid="turn-background" title={background.map((task) => task.description).join('\n')}>
+            <span class="pulse" aria-hidden="true"></span><span class="ui-label">{still}</span>
+          </span>
+          {#if stop && !running}
+            <button type="button" class="stop-background" data-testid="turn-background-stop" title={strings.chat.backgroundStop} aria-label={strings.chat.backgroundStop} onclick={stop}>
+              <Square size={10} />
+            </button>
+          {/if}
         </span>
-        {#if stop && !running}
-          <button type="button" class="stop-background" data-testid="turn-background-stop" title={strings.chat.backgroundStop} aria-label={strings.chat.backgroundStop} onclick={stop}>
-            <Square size={10} />
-          </button>
-        {/if}
-      </span>
-    {/if}
-    {#if actions && !running}<span class="tail">{@render actions()}</span>{/if}
-    {#if settled && details}<span class="details"><InfoTip text={details} topic={strings.chat.turnDetails} testid="turn-details" /></span>{/if}
+      {/if}
+      {#if actions && !running}<span class="tail">{@render actions()}</span>{/if}
+      {#if settled && details}<span class="details"><InfoTip text={details} topic={strings.chat.turnDetails} testid="turn-details" /></span>{/if}
+    {/snippet}
+    {#if changes && steps && !running}{@render changes(afterChanges)}{:else}{@render afterChanges()}{/if}
     {/if}
   </div>
 {/if}
@@ -240,8 +242,8 @@
     .summary.settled.resting .tail { order: 2; }
     .summary.settled.resting :global(.turn-files.inline :is(.expand, .tools)) { order: 3; }
     .summary.settled.resting :global(.turn-files.inline :is(.tree, .diffs)) { order: 4; }
-    :global(.message:hover) .summary.settled.resting .metric.meta, .summary.settled.resting:is(.pointed, :focus-within) .metric.meta { opacity: 1; }
-    .summary.settled.resting:focus-within :global(.act) { opacity: 1; }
+    :global(.message:hover) .summary.settled.resting .metric.meta, .summary.settled.resting:is(.pointed, :has(:focus-visible)) .metric.meta { opacity: 1; }
+    .summary.settled.resting:has(:focus-visible) :global(.act) { opacity: 1; }
   }
   /* A line with nothing shown at rest takes no band of its own on a pointer
      device: it waits inside the gap to the next message, one row tall, so the

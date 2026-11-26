@@ -56,6 +56,11 @@ export class MessageReveal {
     return !this.#phone() || this.#latest(message) || this.#shown(message, this.key(message));
   }
 
+  /** Whether a turn's summary line shows on a phone, independent of whether its closing row is a steering prompt. */
+  showsTurn(turnId: string): boolean {
+    return !this.#phone() || turnId === this.#lastAnswer() || this.revealed === `turn:${turnId}` || this.#focused() === turnId;
+  }
+
   /** A tap in the timeline: on a message it shows or hides that message's row. A selection is being read, not tapped. */
   tap = (event: MouseEvent): void => {
     if (!this.#phone() || !(event.target instanceof Element)) return;

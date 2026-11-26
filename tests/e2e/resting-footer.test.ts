@@ -80,7 +80,17 @@ test('a finished thread ends on one footer that keeps its time at rest and revea
     expect(viaKeyboard).toMatchObject({ finished: 1, tokens: 1, button: 1 });
     expect(viaKeyboard.marks).toEqual(rest.marks);
 
-    // Inline file changes on a resting turn with folded steps keep meta and actions on the summary row, before Show diff and above the opened file list.
+    // Clicking Copy in the resting footer and moving the pointer away returns finished time and tokens to rest.
+    const copyBox = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('${FOOTER} [data-testid=message-copy]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...copyBox });
+    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...copyBox });
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...copyBox });
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 790 });
+    await page.waitFor(`(${READ}).tokens === 0`);
+    const afterCopyClick = await page.evaluate<Record<string, unknown>>(READ);
+    expect(afterCopyClick).toMatchObject({ elapsed: 1, finished: 0, tokens: 0 });
+
+    // Inline file changes on a resting turn with folded steps keep meta and actions on the summary row, before Show diff and above the opened file list, in matching DOM Tab order.
     await page.evaluate(`(() => {
       const thread = ${STORE}.openThread, last = thread.turns.at(-1), at = (last.finishedAt ?? Date.now()) + 1000;
       thread.turns.push({ ...last, id: 'turn-folded-edit', queuedAt: at, startedAt: at, finishedAt: at + 30_000, status: 'done',
@@ -96,7 +106,7 @@ test('a finished thread ends on one footer that keeps its time at rest and revea
     await page.waitFor(`document.querySelector('${FOOTER} [data-testid=turn-files-toggle]')`);
     await page.evaluate(`document.querySelector('${FOOTER} [data-testid=turn-files-toggle]').click()`);
     await page.waitFor(`document.querySelector('${FOOTER} .tree')`);
-    const inlineOrder = await page.evaluate<{ sameRow: boolean; leftToRight: boolean; treeBelow: boolean }>(`(() => {
+    const inlineOrder = await page.evaluate<{ sameRow: boolean; leftToRight: boolean; treeBelow: boolean; domTabOrder: boolean }>(`(() => {
       const f = document.querySelector('${FOOTER}');
       const box = (sel) => f.querySelector(sel).getBoundingClientRect();
       const finished = box('[data-testid=turn-finished-at]');
@@ -104,13 +114,17 @@ test('a finished thread ends on one footer that keeps its time at rest and revea
       const tail = box('.tail');
       const diff = box('[data-testid=turn-diff-toggle]');
       const tree = box('.tree');
+      const copyEl = f.querySelector('[data-testid=message-copy]');
+      const diffEl = f.querySelector('[data-testid=turn-diff-toggle]');
+      const treeEl = f.querySelector('.tree');
       return {
         sameRow: Math.abs(finished.top - tokens.top) <= 6 && Math.abs(tokens.top - tail.top) <= 6 && Math.abs(tail.top - diff.top) <= 6,
         leftToRight: finished.left < tokens.left && tokens.left < tail.left && tail.left < diff.left,
         treeBelow: tree.top >= Math.max(finished.bottom, tokens.bottom, tail.bottom, diff.bottom) - 1,
+        domTabOrder: Boolean(copyEl.compareDocumentPosition(diffEl) & Node.DOCUMENT_POSITION_FOLLOWING) && Boolean(diffEl.compareDocumentPosition(treeEl) & Node.DOCUMENT_POSITION_FOLLOWING),
       };
     })()`);
-    expect(inlineOrder).toEqual({ sameRow: true, leftToRight: true, treeBelow: true });
+    expect(inlineOrder).toEqual({ sameRow: true, leftToRight: true, treeBelow: true, domTabOrder: true });
     expect(page.errors()).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, untrack } from 'svelte';
+  import { onDestroy, untrack, type Snippet } from 'svelte';
   import type { ToolDisclosure } from '../lib/store/deferred-parts';
   // The files one finished answer made or changed, at its end. A row opens the
   // file in the side panel, which already reads text, shows pictures and offers
@@ -23,7 +23,7 @@
    * Changes panel, one click away for whoever can read the repository.
    */
   type Source = { messageId: string; toolId: string };
-  let { store, files, diffs = [], cwd, deferred = [], sources = [], acquireDiff, loadDiffs, inline = false }: {
+  let { store, files, diffs = [], cwd, deferred = [], sources = [], acquireDiff, loadDiffs, inline = false, between }: {
     store: Store; files: TurnFile[]; diffs?: TurnDiff[];
     /** The directory `files` were read against. */ cwd: string;
     deferred?: Source[]; sources?: Source[];
@@ -31,6 +31,8 @@
     loadDiffs?: () => Promise<void>;
     /** On the tool line of the turn's last change (ToolGroup), which already names the files: the lines it adds, no title or card of its own. */
     inline?: boolean;
+    /** Inline summary items placed between the change count and the diff controls so DOM Tab order matches visual order. */
+    between?: Snippet;
   } = $props();
   let diffToggled = $state<boolean | null>(null);
   let showDiff = $derived(diffToggled ?? chatPrefs.expandDiffs);
@@ -121,6 +123,7 @@
       <!-- "1 file, +7 −2": the one count of changes (lib/change-count.ts). On the tool line, whose words already count the files, the lines alone when known. -->
       <span class="count"><ChangeCount files={inline && diffs.length > 0 ? null : files.length} added={diffs.length > 0 ? lines.total.added : null} removed={diffs.length > 0 ? lines.total.removed : null} testid="turn-lines" /></span>
     </button>
+    {@render between?.()}
     {#if open && hasFolders}
       <button type="button" class="ghost small icon expand" data-testid="turn-files-expand"
         title={allExpanded ? strings.chat.collapseFileFolders : strings.chat.expandFileFolders}

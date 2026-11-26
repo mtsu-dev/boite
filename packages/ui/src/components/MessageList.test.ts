@@ -1864,9 +1864,20 @@ test('at phone width, keyboard focus inside an earlier unmarked answer mounts it
   document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
   link.focus(); flushSync();
   expect(summaryOf('turn-a')).toBeNull();
-  link.blur(); flushSync();
+
+  // Switching to keyboard on the already-focused link (no new focusin) reveals its summary,
+  // and clicking while it stays focused clears it again.
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  flushSync();
+  expect(summaryOf('turn-a')).not.toBeNull();
+  expect(summaryOf('turn-a')?.classList.contains('pointed')).toBe(true);
+  expect(document.querySelector('[data-mid="m-a2"]')?.closest('article')?.hasAttribute('data-revealed')).toBe(true);
+  document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  flushSync();
+  expect(summaryOf('turn-a')).toBeNull();
 
   // Keyboard navigation mounts the summary and sets data-revealed.
+  link.blur(); flushSync();
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
   link.focus(); flushSync();
   expect(summaryOf('turn-a')).not.toBeNull();
@@ -1892,6 +1903,37 @@ test('at phone width, keyboard focus inside an earlier unmarked answer mounts it
   flushSync();
   expect(document.querySelector('[data-mid="m-a1b"]')).toBeNull();
   expect(summaryOf('turn-a')).toBeNull();
+});
+
+test('on a phone, a turn whose summary sits under a steering prompt keeps its buttons visible when a newer prompt has not answered yet', async ({ createStore }) => {
+  window.localStorage.clear();
+  vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
+  onTestFinished(() => { vi.unstubAllGlobals(); });
+  const { store: owner, client } = createStore({ delayMs: 0 });
+  owner.attach(client); await owner.connect(); await owner.open('t-trace');
+  const thread = owner.openThread!;
+  const base = thread.turns[0]!;
+  thread.turns = [
+    { ...base, id: 'turn-steered', startedAt: 1, finishedAt: 60_000, status: 'done' as const },
+    { ...base, id: 'turn-next', startedAt: 100_000, finishedAt: null, status: 'running' as const },
+  ];
+  thread.memoryEvents = [];
+  const msg = (id: string, turnId: string, role: Message['role'], text: string): Message => ({ id, threadId: thread.id, turnId, role, state: 'complete', createdAt: 1, parts: [{ type: 'text', text }] });
+  thread.messages = [
+    msg('m-u1', 'turn-steered', 'user', 'Start task'),
+    msg('m-a1', 'turn-steered', 'assistant', 'Working on it.'),
+    msg('m-steer', 'turn-steered', 'user', 'Actually skip step 2'),
+    msg('m-u2', 'turn-next', 'user', 'Next question'),
+  ];
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages, resting: null } });
+  flushSync();
+
+  const steerArticle = document.querySelector<HTMLElement>('[data-mid="m-steer"]')?.closest('article');
+  const summary = steerArticle?.querySelector<HTMLElement>('[data-testid=turn-summary]');
+  expect(steerArticle?.hasAttribute('data-latest')).toBe(false);
+  expect(summary).not.toBeNull();
+  expect(summary?.hasAttribute('data-tucked')).toBe(false);
+  expect(summary?.querySelector('[data-testid=message-actions]')).not.toBeNull();
 });
 
 test('a row counts at the height it is drawn, fractions included, so rows measured above the reader move the view by what they weigh', async () => {
