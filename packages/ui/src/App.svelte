@@ -10,6 +10,7 @@
   import { watchWindows } from './lib/window-watch';
   import { browserProfiles } from './lib/browser-profiles.svelte';
   import UndoToast from './components/UndoToast.svelte';
+  import FileLinkToast from './components/FileLinkToast.svelte';
   import { closeThreadExport, threadExport } from './lib/thread-export-request.svelte';
   import ErrorToast from './components/ErrorToast.svelte';
   import Notice from './components/Notice.svelte';
@@ -712,6 +713,7 @@
     </div>
   {/if}
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
+  <FileLinkToast />
   {#if (store.page === 'chat' || store.memoryStop) && appViews.MemoryCorner.current}{@const MemoryCorner = appViews.MemoryCorner.current}<MemoryCorner {store} chat={store.page === 'chat'} />{/if}
   {#if store.booted && featureOn('whip') && whipEntry.overlay}{@const WhipOverlay = whipEntry.overlay}
     <WhipOverlay onerror={(error) => (store.error = errorText(error))} />

@@ -4,8 +4,8 @@ export const fr: Translation = {
 
   /** Finished features, each switched from the Settings page it belongs to. */
   features: {
-    chatArtifacts: { title: 'Fichiers et aperçus dans le chat', hint: 'Ouvrir les liens de fichiers et afficher les fichiers envoyés par un agent dans le fil' },
-    openChatLinks: { title: 'Ouvrir les liens du chat dans leurs applications', hint: 'Sur ce bureau, un clic sur un document ou un dossier du dossier de la conversation l\'ouvre dans son application. Les programmes, scripts et raccourcis ne sont jamais ouverts : ils s\'affichent dans l\'aperçu. Seuls les liens de cet ordinateur sont ouverts.' },
+    chatArtifacts: { title: 'Fichiers et aperçus dans le chat', hint: 'Afficher les chemins de fichiers des réponses en puces qui ouvrent le fichier, et les fichiers envoyés par un agent dans le fil' },
+    openChatLinks: { title: 'Ouvrir les liens du chat dans leurs applications', hint: 'Sur ce bureau, un clic sur un document ou un dossier d\'une conversation de cet ordinateur l\'ouvre dans son application au lieu du panneau latéral. Un programme demande toujours avant.' },
     previewComments: { title: 'Commentaires sur les aperçus', hint: 'Sélectionner un élément dans le navigateur intégré et l’ajouter au brouillon du fil' },
     edgeScrollbars: {
       title: 'Masquer les barres de défilement loin du pointeur',

@@ -381,6 +381,18 @@ export const strings = {
     openLink: 'Open',
     copyPath: 'Copy path',
     copyThreadAddress: 'Copy thread address',
+    /** A chat file link's click and menu (lib/file-open.svelte.ts). {machine} is a machine's name. */
+    fileLink: {
+      reveal: 'Show in folder',
+      copyRelative: 'Copy relative path',
+      notFoundOn: 'Not found on {machine}',
+      notFoundHere: 'Not found on this computer',
+      outside: 'Outside the project on {machine}',
+      elsewhere: 'Only the computer that holds this file can open it',
+      launchTitle: 'Launch {name}?',
+      launchBody: '{path} is a program: it runs on this computer with your rights. Launch it only if you trust where it comes from.',
+      launch: 'Launch'
+    },
     editMessage: 'Edit and send again from here',
     retry: 'Retry this answer',
     fork: 'Fork from here',

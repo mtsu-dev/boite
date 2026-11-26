@@ -56,21 +56,72 @@ With the switch on, or Open chat links in their apps, answers recognize
 Markdown links, bare URLs, absolute paths, `file:///` links and inline-code file
 paths. Use angle brackets for spaces, such as `<reports/review one.pdf>`, and
 `:line` or `#Lline` for source locations. Files resolve through the message's
-owning thread and machine; preview paths stay inside its working directory.
-To deliver media across machines, publish it with `boite attach` using a path
-on the conversation's machine. A mapped NAS drive on the viewing desktop does
-not give a remote core access to that path.
+owning thread and machine. To deliver media across machines, publish it with
+`boite attach` using a path on the conversation's machine.
 A relative path that is not there as written is looked up by its tail
 (`files.locate`, owner only): `core.md` opens `.local/core.md`, the shallowest
 match wins, ignored folders count but `.git`, `.boite` and `node_modules` do
 not, and two matches at the same depth are reported instead of guessed.
-The local desktop's explicit open action follows the rules in
-[Open chat links in their apps](#open-chat-links-in-their-apps).
 
 Captures: [chat media on desktop](../images/chat-media-desktop.png) · [chat media on a phone](../images/chat-media-phone.png)
 Remote images are links, so reading an answer does not fetch a tracking image.
 Executable URL schemes are not rendered, and HTML in an answer's text stays
 text. A page runs only as an inline view, below.
+
+### File chips
+
+`fileChipHtml` (`packages/ui/src/lib/file-links.ts`) draws a file link as an
+`a.file-chip`: `data-kind` picks a Lucide icon drawn as a CSS mask in
+`Prose.svelte` (file, code, doc, image, video, audio, archive, program,
+folder), the text is the base name and its line, and `title` holds the path as
+written. A path in code or bare also carries `data-source`, the written path,
+and a hidden `.file-chip-dir` with its parent folder; `markCollisions` shows
+it when two chips of one answer share a name with different paths, with as many
+trailing folders as tell them apart (`app/src/` and `web/src/`). A copied
+selection replaces chips that carry `data-source` with that value
+(`lib/selection-copy.ts`). A Markdown link with its own label keeps it.
+
+`fileChecks` in `lib/file-open.svelte.ts` greys a chip (`data-missing`) when
+it comes near the screen and its file is not found. Only the owner checks,
+since `files.locate` is owner only. The store caches each thread and written
+path for 60 s when found and 15 s when missing. A click checks again. The
+latest answer updates the chips for that thread and path, so a newly written
+file lights up.
+
+### What a click does
+
+`openLink` in `lib/file-open.svelte.ts` decides from where the file is:
+
+1. A drive path (`N:\dev\game.exe`) in a thread whose core runs on Linux or
+   macOS cannot be on that machine (`foreignPath`). In the desktop app the
+   shell's `client_path_info` says what it names on this computer: missing,
+   document, folder or program. Any other path asks the thread's core first
+   (`files.locate`), and an absolute path the core does not have is then asked
+   of this computer too, when the core is remote.
+2. A file of this computer opens with `open_client_path`. A program never
+   opens on a click: `confirm.choose` shows Launch, Show in folder and Cancel,
+   and only Launch calls `open_client_path` with `confirmed: true`. The shell
+   command is restricted to the main webview. It classifies the path again
+   and requires `confirmed: true` if the target is now a program.
+3. A file of the thread on a local core opens on this computer when it is a
+   program (with the same confirmation), when Open chat links in their apps is
+   on, or when it is outside the thread's folder, which the panel cannot read.
+4. Otherwise a file inside the thread's folder opens in the right panel's
+   Files tab at its line (`panel.openFile`), a folder in its tree
+   (`panel.openFiles`), and a picture or a video in the media viewer through
+   `files.read`. Without a trailing slash, a name is a folder only when its
+   parent's `files.list` says `dir`: `glossary` may be a file, and `v1.2` or
+   `takes.mp4` a folder, which opens in the tree, never the viewer. The name's
+   look decides only when that listing fails. The panel is the open thread's,
+   so a click whose thread was left while the core looked opens nothing. A
+   paired phone does the same without `files.locate`, which it may not call.
+5. Anything else shows `FileLinkToast`: where the file was looked for (this
+   computer, or the thread's machine by name) and the whole path, with Copy
+   path. The panel shows a missing file the same way instead of the raw error.
+
+The chip's menu (right-click, or a long press on a phone) has Open, Show in
+folder (desktop app, owner, and a local core or an absolute path), Copy path
+and Copy relative path (a file inside the thread's folder).
 
 ## Open chat links in their apps
 
@@ -81,27 +132,35 @@ Chat files and previews: Markdown file links, bare web URLs, absolute paths,
 `file:///` links and paths inside inline code. Either switch enables this
 parsing; enabling both adds no further link types.
 
-On the owning local desktop, this switch also makes an explicit click open a
-folder, or a document inside the thread's folder, in its associated application
-instead of Boite's preview. The shell's `open_chat_file` resolves the link inside
-that folder, links included, and opens only the document types its
-`CHAT_DOCUMENTS` list names (text, data, office files, pictures, sound, video),
-never a file with an execute bit or a macOS bundle. A program, script, shortcut
-(`.lnk`, `.url`, `.desktop`) or a path outside the folder is refused, and the
-answer shows it in the preview instead. A click on a link to `.exe`, `.com`,
-`.bat`, `.cmd`, `.msi` or `.AppImage`, or its menu's Open, shows the preview
-too, with or without the switch, and never reaches the shell. Only the
-preview's visible Open button launches it, with `open_local_file`; the
-program's name beside it does nothing. Another file's name in the preview goes
-through `open_chat_file`, so it opens only what a direct click would (a folder
-or a document inside the thread's folder) and shows the shell's refusal for the
-rest; the Open button stays the explicit launch. On a remote
-machine or phone, links still use the inline preview and its existing owner
-and working-directory checks. They never open a file on the device displaying
-the conversation.
+On a local core, this switch also makes a click open a document or a folder of
+the thread in its associated application instead of the panel.
 
-Pages in the integrated browser and agent RPCs cannot invoke the native action.
-Network and device paths are refused before and after path resolution.
+### The shell's commands
+
+`apps/shell/src-tauri/src/local_files.rs` has three commands, allowed in the
+main window only (`only_main`), so pages in the integrated browser and agent
+RPCs cannot invoke them:
+
+- `client_path_info(path)` answers `missing`, `document`, `folder` or
+  `program`. A document is a file whose extension is on the `CHAT_DOCUMENTS`
+  list (text, data, office files, pictures, sound, video) without an execute
+  bit; a macOS bundle counts as a program, and so does every other file. A
+  link counts by both its own name and its resolved target, so `notes.txt`
+  linked to a program is a program, and the opener gets that resolved
+  target in its usual spelling, never Windows' `\\?\` form.
+- `open_client_path(path, confirmed)` opens the path with the system's
+  handler, a program only with `confirmed`.
+- `reveal_client_path(path)` selects the path in the file manager.
+
+Each path must be absolute on this computer (`require_client_path` in
+`platform/local_paths.rs`): on Windows a drive letter, mapped network drives
+included, and never a UNC share, a device path or a drive-relative path;
+elsewhere a path from the root that does not start with `//`. Empty paths and
+control characters are refused. The same rule holds for where a path leads:
+`leaves` reads each link on the way with `read_link` before anything follows
+it, and refuses one that names a share or a device, or that it cannot read.
+After `canonicalize`, a UNC target passes only when it lies on the share the
+path's own mapped drive stands for. A refused link reads as missing.
 
 ## Inline views
 
