@@ -320,12 +320,13 @@ test('phone exposes project filtering and custom-order controls without overflow
   expect(page.errors()).toEqual([]);
 }, 20_000);
 
-test('changing to phone Conversations during the grouping menu exit leaves project headers tappable', async () => {
+test.each(['no-preference', 'reduce'])('changing to phone Conversations while closing the grouping menu leaves project headers tappable (%s)', async motion => {
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: motion }] });
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1300, height: 850, deviceScaleFactor: 1, mobile: false });
   await page.navigate(url);
   await showThreadView(page, 'projects');
   await openDisplayOptions(page);
-  await capture('grouping-menu-exit-desktop.png');
+  if (motion === 'no-preference') await capture('grouping-menu-exit-desktop.png');
 
   const menu = `document.querySelector('${id('grouping-options-menu')}')`;
   await page.evaluate(`(() => {
@@ -337,19 +338,20 @@ test('changing to phone Conversations during the grouping menu exit leaves proje
     panel.style.setProperty('animation-duration', '60s', 'important');
   })()`);
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-  await page.waitFor(`${menu}?.classList.contains('closing')`);
-  expect(await page.evaluate(`document.activeElement?.matches('${id('grouping-options')}')`)).toBe(true);
+  if (motion === 'no-preference') await page.waitFor(`${menu}?.classList.contains('closing')`);
+  await page.waitFor(`document.activeElement?.matches('${id('grouping-options')}')`);
 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
-  await page.waitFor(`${menu}?.getAnimations().some(animation => animation.animationName === 'sheet-down')`);
+  if (motion === 'no-preference') await page.waitFor(`${menu}?.getAnimations().some(animation => animation.animationName === 'sheet-down')`);
   await mobileAction(page, 'mobile-conversations');
   await showThreadView(page, 'projects', 'mobile-');
   const header = `document.querySelector('${id('mobile-project-toggle')}')`;
-  await page.waitFor(`globalThis.groupingExitCancelled && ${header}`);
+  await page.waitFor(motion === 'no-preference' ? `globalThis.groupingExitCancelled && ${header}` : header);
   await page.settleAnimations();
   const backdropCleared = await page.evaluate(`!document.querySelector('.mobile-sheet-backdrop')`);
-  await page.screenshot(join(import.meta.dir, '.artifacts', backdropCleared ? 'grouping-menu-exit-phone.png' : 'grouping-menu-exit-phone-covered.png'));
+  const captureName = `grouping-menu-exit-phone${motion === 'reduce' ? '-reduced' : ''}${backdropCleared ? '' : '-covered'}.png`;
+  await page.screenshot(join(import.meta.dir, '.artifacts', captureName));
 
   expect(await page.evaluate(`${header}.getAttribute('aria-expanded')`)).toBe('true');
   const at = await page.evaluate<{ x: number; y: number }>(`(() => {
@@ -363,4 +365,6 @@ test('changing to phone Conversations during the grouping menu exit leaves proje
     menuCleared: await page.evaluate(`!${menu}`),
     expanded: await page.evaluate(`${header}.getAttribute('aria-expanded')`),
   }).toEqual({ backdropCleared: true, menuCleared: true, expanded: 'false' });
+  await page.click(id('mobile-project-toggle'));
+  await page.waitFor(`${header}.getAttribute('aria-expanded') === 'true'`);
 }, 20_000);

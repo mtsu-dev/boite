@@ -320,7 +320,13 @@
   .filter :global(.trigger:hover) { background: var(--color-active); }
   .filter :global(.trigger .ui-label) { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .filter :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
-  @media (prefers-reduced-motion: reduce) { .row, .switch, .switch::after { transition: none; } }
+  /* Close in the same tick on desktop and mobile when motion is reduced. A desktop exit must not
+     survive long enough to acquire a sheet backdrop after the viewport changes. */
+  @media (prefers-reduced-motion: reduce) {
+    .panel.closing { animation: none !important; }
+    .row, .switch, .switch::after { transition: none; }
+  }
+  :global(html[data-motion='reduced']) .panel.closing { animation: none !important; }
   @media (max-width: 720px) {
     .panel { width: auto; padding: 8px 6px max(8px, env(safe-area-inset-bottom)); }
     .row, .filter :global(.trigger) { height: var(--touch-target); }
