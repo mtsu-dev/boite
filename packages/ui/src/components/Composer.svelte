@@ -1,7 +1,7 @@
 <script lang="ts">
   import { desktopShell } from '../lib/shell-platform';
   import { tick, untrack, type Snippet } from 'svelte';
-  import { supportsSideQuestions, type AgentSelection, type Attachment, type PreviewReference } from '@boite/contracts';
+  import { imageAttachmentBlocker, resolveModelSelection, supportsSideQuestions, type AgentSelection, type Attachment, type PreviewReference } from '@boite/contracts';
   import { restorePreviewMentions } from '../lib/preview-mentions';
   import { runCommand } from '../lib/commands.svelte';
   import { agentSlashItems, boiteSlashItems, skillSlashItems, slashCompletion, listKey, mentionQueryOf, slashQueryOf, type ChipCommand } from '../lib/composer-menus';
@@ -153,12 +153,19 @@
    * (`lib/question-reply.svelte.ts`). Editing a sent message takes precedence.
    */
   let reply = $derived(replyTarget(store));
+  // An answer's files reach the agent as paths, so it takes images whatever the model reads.
+  let imageBlocker = $derived(!reply && provider && choice
+    ? imageAttachmentBlocker(provider, resolveModelSelection(store.modelsOf(choice.providerId, choice.accountId), choice.model)?.model)
+    : null);
+  let imageRefusal = $derived(imageBlocker ? fill(strings.composer.attachNoImages, { name: imageBlocker.name }) : null);
+  let imageWarning = $derived(imageRefusal !== null && attachments.some(item => item.kind === 'image') ? imageRefusal : null);
   /** The open thread's first page is still on its way: the field says so and Send waits (ChatView draws the shapes meanwhile). */
   let loadingThread = $derived(!!thread && store.loadingThreadId === thread.id && thread.messages.length === 0);
   // An answer counts the card's picks, needs no model and cannot wait in the outbox.
   let sendable = $derived(
     (text.trim().length > 0 || attachments.length > 0 || (reply ? !!repliesOf(store).picks[reply.id]?.length : previewReferences.length > 0)) &&
       recallRead === null &&
+      imageWarning === null &&
       !attachments.some(unresolvedAssetId) &&
       (reply !== null || choice !== null) &&
       (store.connection === 'ready' || (offline && !reply)) &&
@@ -384,9 +391,9 @@
     requestAnimationFrame(grow);
   }
 
-  /** What the composer's own edits write to (`lib/composer-editing.ts`). An answer's files reach the agent as paths, so it takes images whatever the provider reads. */
+  /** What the composer's own edits write to (`lib/composer-editing.ts`). */
   function editing(): EditingHost {
-    return { store, key, box, state: stateForInput(), provider: reply ? null : provider,
+    return { store, key, box, state: stateForInput(), imageRefusal,
       moved: (at) => { caret = at; recall = null; if (!sizesItself) grow(); else syncInput(); }, shown: () => key };
   }
 
@@ -412,7 +419,7 @@
   }
 
   async function submit(nextDraft = false) {
-    if (stopped) return;
+    if (stopped || imageWarning !== null) return;
     if (attachments.some(unresolvedAssetId)) { store.error = strings.errors.draftAttachment; return; }
     if (loadingFiles) { if (sendable) sendWhenLoaded = { store, key, state: stateForInput(), shape: sendShape(text, attachments), nextDraft }; return; }
     if (reply) {
@@ -482,9 +489,8 @@
   function take(files: File[]) {
     if (files.length === 0) return;
     track();
-    // An answer's files reach the agent as paths, so it takes images whatever the provider reads.
     const taken = stateForInput();
-    void takeFiles(store, taken, files, reply ? null : provider, () => { if (sendWhenLoaded?.state === taken) sendWhenLoaded = null; });
+    void takeFiles(store, taken, files, imageRefusal, () => { if (sendWhenLoaded?.state === taken) sendWhenLoaded = null; });
   }
 
   function onpaste(event: ClipboardEvent) {
@@ -787,6 +793,7 @@
     {#if attachments.length > 0}
       {#key composer}<ComposerAttachments bind:this={attachmentStrip} {attachments} highlighted={highlightedImage} onremove={removeAttachment} onfocus={() => focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]'))} />{/key}
     {/if}
+    {#if imageWarning}<p class="image-warning" role="status" data-testid="composer-image-warning">{imageWarning}</p>{/if}
 
     <ComposerField bind:box {store} {key} {text} {highlighted} {keywords} command={commandToken} references={previewReferences} {attachments}
       gutter={inputGutter} scroll={inputScroll} {placeholder} disabled={stopped || accountGone} suggest={boxEmpty && !composer?.sending && !composer?.editing && recall === null && !reply && !permission && !offline ? thread : null}
@@ -865,6 +872,13 @@
 
   /* A card the script focused for a touch screen shows no ring: only a key lights it. */
   .composer:not(.keys):focus-visible { outline: none; }
+
+  .image-warning {
+    margin: 0;
+    padding: 4px 12px 0;
+    color: var(--color-danger);
+    font-size: var(--text-meta);
+  }
 
   /* The gap between the card's blocks (ComposerDeck), and the row form of a question in it (ThreadDecision): height, icon box, type. */
   .composer-wrap { --deck-gap: 6px; --dock-row: 28px; --dock-icon: 16px; --dock-type: var(--text-meta); }

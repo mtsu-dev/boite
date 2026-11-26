@@ -3,13 +3,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { TOOL_FREE_CONTEXT } from '@boite/contracts';
-import type { MessagePart, RpcEvents, Settings } from '@boite/contracts';
+import type { FileAttachment, ImageAttachment, MessagePart, RpcEvents, RpcParams, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
-import { getDriver } from '../src/drivers/index.ts';
+import { forgetProbes, getDriver } from '../src/drivers/index.ts';
 import { setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
+import { rejection } from './settle.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
 
 /** The fake pi in RPC mode: a real JSON-lines process over stdio, run by bun. */
@@ -31,15 +32,16 @@ test('pi subagent extension calls reach the native team through the real protoco
 });
 
 test('coordination steers a running pi turn over its RPC connection', async () => {
-  const { client, threadId } = await startThread();
+  const { client, threadId } = await startThread(undefined, 'fake-a/smart');
   await client.call('turns.start', { threadId, prompt: '[slow] Deploy' });
   await waitFor(() => fakeLog().includes('waiting for abort'));
   await waitFor(() => harness!.core.journal.listMessages(threadId).some(m => m.role === 'assistant'));
   expect(await harness!.core.threads.steer(threadId, 'Boite agent coordination. Wait for the VM.')).toBe(true);
   expect(fakeLog()).toContain('steering Boite agent coordination');
   const turn = harness!.core.journal.listTurns(threadId)[0]!;
-  expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'User correction [steer-delta]',
-    attachments: [{ kind: 'image', mimeType: 'image/png', data: 'aGVsbG8=', name: 'sample.png' }], clientRequestId: 'pi_steer_01' })).toEqual({ accepted: true });
+  const correction: RpcParams<'turns.steer'> = { threadId, turnId: turn.id, prompt: 'User correction [steer-delta]',
+    attachments: [{ kind: 'image', mimeType: 'image/png', data: 'aGVsbG8=', name: 'sample.png' }], clientRequestId: 'pi_steer_01' };
+  expect(await client.call('turns.steer', correction)).toEqual({ accepted: true });
   expect(fakeLog()).toContain('steering User correction');
   expect(fakeLog()).toContain('steer-image image/png 8');
   expect(harness!.core.journal.listTurns(threadId)).toHaveLength(1);
@@ -49,6 +51,27 @@ test('coordination steers a running pi turn over its RPC connection', async () =
   await client.call('turns.stop', { threadId });
   await waitFor(() => fakeLog().includes('clear_queue\nabort'));
   expect(fakeLog()).toContain('clear_queue\nabort');
+  await waitFor(() => harness!.core.journal.getTurn(turn.id)?.status === 'stopped');
+  await client.call('threads.update', { threadId, model: 'fake-b/plain' });
+  expect(await client.call('turns.steer', correction)).toEqual({ accepted: true });
+});
+
+test('a text-only pi model refuses images on start and steer and still accepts files', async () => {
+  const { client, threadId } = await startThread(undefined, 'fake-b/plain');
+  const prompt = '[slow] Read this';
+  const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+  const file: FileAttachment = { kind: 'file', name: 'notes.txt', mimeType: 'text/plain', data: 'aGVsbG8=' };
+  const refusal = { rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } };
+  expect((await rejection(client.call('turns.start', { threadId, prompt, attachments: [image] }))).reason).toMatchObject(refusal);
+  // A direct client can send after a core restart without opening a picker first.
+  forgetProbes({ providerId: 'pi-fake', accountId: harness!.core.threads.require(threadId).accountId });
+  expect((await rejection(client.call('turns.start', { threadId, prompt, attachments: [image] }))).reason).toMatchObject(refusal);
+  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ available: false, reason: 'unsupported' });
+  const turn = await client.call('turns.start', { threadId, prompt, attachments: [file] });
+  await waitFor(() => fakeLog().includes('waiting for abort'));
+  expect(harness!.core.journal.listMessages(threadId).find(message => message.role === 'user')?.parts).toContainEqual({ type: 'file', name: file.name, mimeType: file.mimeType, data: file.data });
+  expect((await rejection(client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'Use this', attachments: [image], clientRequestId: 'pi_text_only' }))).reason).toMatchObject(refusal);
+  await client.call('turns.stop', { threadId });
 });
 
 let harness: TestCore | null = null;
@@ -645,6 +668,7 @@ describe('pi driver', () => {
     ]);
     expect(result.models[0]).toEqual({ id: 'default', name: 'pi default', default: false });
     expect(result.models[1]?.name).toBe('Fake-a / Fake Smart');
+    expect(result.models.map((model) => model.images)).toEqual([undefined, undefined, undefined, false]);
     // pi reports one model as current; that is the one the picker opens on.
     expect(result.models.find((model) => model.default === true)?.id).toBe('fake-a/smart');
 

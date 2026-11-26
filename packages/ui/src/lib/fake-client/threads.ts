@@ -20,7 +20,7 @@ import { writeTitle } from './titles';
 import { DATA_DIR, fakeWorktree, refusal, toSummary } from './shared';
 import { closeThreadTerminals } from './terminals';
 import { announceProject } from './project-archive';
-import { modelsOf, checkSpeed, discoverSelection } from './provider-catalog';
+import { modelsOf, checkSpeed, discoverSelection, threadModel } from './provider-catalog';
 import { delegationConfig, stopDelegation } from './delegation';
 import { fakeCore } from './coordination';
 import type { FakeContext, FakeMethods } from './context';
@@ -751,7 +751,7 @@ export function threadMethods(ctx: FakeContext) {
       }
       // As the core: echo in default mode keeps its tool-free route.
       if (thread.contactHold && !(provider.protocol === 'echo' && thread.permissionMode === 'default')) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'shared file policy: this tool has no enforceable shared execution boundary' });
-      const error = attachmentError(params.attachments ?? [], provider);
+      const error = attachmentError(params.attachments ?? [], provider, threadModel(ctx, thread));
       if (error) throw new RpcFailure({ code: RpcErrorCode.Refused, ...error });
       const rootId = thread.parentThreadId;
       if (rootId) {

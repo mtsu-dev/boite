@@ -1,5 +1,5 @@
 /** The provider list, its reload and dry run, and the model catalog a probe reads. */
-import { RpcErrorCode, checkLocalAcpCommand, providerEnabled, resolveModelSelection, threadActive, type Account, type ModelInfo, type RpcResult } from '@boite/contracts';
+import { RpcErrorCode, checkLocalAcpCommand, providerEnabled, resolveModelSelection, threadActive, type Account, type ModelInfo, type RpcResult, type Thread } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { CLAUDE_MODELS } from './accounts-seed';
 import { MUSE_EFFORT, PI_EFFORT, PROBE_MS, PROBED_MODELS, UPDATABLE_ID } from './providers';
@@ -18,6 +18,11 @@ export function modelsOf(ctx: FakeContext, providerId: string, accountId: string
   if (probed === undefined) return described;
   const known = new Set(probed.map((model) => model.id));
   return [...probed, ...described.filter((model) => !known.has(model.id))];
+}
+
+export function threadModel(ctx: FakeContext, thread: Pick<Thread, 'providerId' | 'accountId' | 'model'>): ModelInfo | undefined {
+  if (!thread.model) return undefined;
+  return resolveModelSelection(modelsOf(ctx, thread.providerId, thread.accountId), thread.model)?.model;
 }
 
 export function checkSpeed(ctx: FakeContext, providerId: string, accountId: string, model: string | null, speed: string | null): void {
@@ -65,7 +70,7 @@ export async function probe(ctx: FakeContext, providerId: string, accountId: str
   if (dynamic) {
     models = provider.protocol === 'claude-sdk' ? structuredClone(CLAUDE_MODELS) : provider.id === UPDATABLE_ID ? structuredClone(PROBED_MODELS) : [
       ...models,
-      { id: `${provider.id}-demo`, name: `${provider.name} demo model`, default: false, ...(provider.protocol === 'codex-appserver' ? { effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }], default: 'high' }, speeds: [{ id: 'fast', label: 'Fast' }, { id: 'ultrafast', label: 'Ultrafast' }] } : provider.protocol === 'muse' ? { effort: MUSE_EFFORT } : provider.protocol === 'pi' ? { effort: PI_EFFORT } : {}) }
+      { id: `${provider.id}-demo`, name: `${provider.name} demo model`, default: false, ...(provider.protocol === 'codex-appserver' ? { effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }], default: 'high' }, speeds: [{ id: 'fast', label: 'Fast' }, { id: 'ultrafast', label: 'Ultrafast' }] } : provider.protocol === 'muse' ? { effort: MUSE_EFFORT } : provider.protocol === 'pi' ? { effort: PI_EFFORT, images: false } : {}) }
     ];
     await new Promise((resolve) => setTimeout(resolve, PROBE_MS));
   }

@@ -105,6 +105,7 @@ function modelsFrom(provider: ProviderDescriptor, listing: PiListing): ModelInfo
       id: full,
       name: `${providerLabel(providerId)} / ${entry.name ?? id}`,
       default: full === listing.current,
+      ...(Array.isArray(entry.input) && !entry.input.includes('image') ? { images: false as const } : {}),
       ...(effort === null ? {} : { effort }),
     });
   }

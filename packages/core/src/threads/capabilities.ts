@@ -1,6 +1,7 @@
 import { acpSteeringKind, deriveThreadCapabilities, providerSupportsSteering, threadActive, type ThreadCapabilities, type ThreadCapabilityReason } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, getDriver } from '../drivers/index.ts';
+import { imageInputModel } from './selection.ts';
 import { userSteeringUnavailable } from './user-steering.ts';
 
 /** Reads registered lazy wrappers and existing journal/runtime facts; never probes or prepares. */
@@ -35,9 +36,10 @@ export function threadCapabilities(core: Core, threadId: string): ThreadCapabili
   // Metadata existence checks must not decode old images or large tool output.
   const hasForkHistory = core.journal.db.query("SELECT 1 FROM messages WHERE thread_id = ? AND state != 'streaming' LIMIT 1").get(threadId) !== null;
   const hasRewindHistory = core.journal.db.query("SELECT 1 FROM messages WHERE thread_id = ? AND role = 'user' LIMIT 1").get(threadId) !== null;
+  const model = provider && imageInputModel(core, provider, thread);
   const capabilities = deriveThreadCapabilities({
     threadId, providerId: thread.providerId, protocol, selectionVersion: thread.selectionVersion ?? 0,
-    providerCapabilities: provider?.capabilities ?? null, runtimeReason,
+    providerCapabilities: provider?.capabilities ?? null, modelImages: model?.images, runtimeReason,
     conversationReason: conversationReason ?? (thread.projectId === null && !thread.agentSessionId ? 'agent-session' : null),
     busy: threadActive(thread.status) || Boolean(handle), steeringSupported, steeringReason, compactionReason,
     preparationSupported: protocol !== null && getDriver(protocol).prepare !== undefined,

@@ -1,4 +1,4 @@
-import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, type Attachment, type ProviderSummary } from '@boite/contracts';
+import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, type Attachment } from '@boite/contracts';
 import { acceptAttachments, attachedBytes, decodedBytes, isImageMimeType, keepSource, readAttachmentFile } from './attachments';
 import { checkpoint, replaceInHistory } from './composer-history';
 import { closeDraftUndo } from './composer-editing';
@@ -15,16 +15,13 @@ import type { Store } from './store.svelte';
 /** Files dropped on the shell window, wherever they land (`lib/native-drop.ts`). */
 export { receiveDroppedFiles } from './native-drop';
 
-/** Null when images go anywhere; else the provider that takes none, named in the refusal. */
-type NoImages = { provider: string } | null;
-
 /** Why a file cannot even start: `stop` when no later file can either. */
-function admission(file: File, held: Attachment[], noImages: NoImages): { refused: string; stop: boolean } | null {
+function admission(file: File, held: Attachment[], imageRefusal: string | null): { refused: string; stop: boolean } | null {
   if (held.length >= ATTACHMENTS_PER_TURN) {
     return { refused: fill(strings.composer.attachTooMany, { name: file.name, max: String(ATTACHMENTS_PER_TURN) }), stop: true };
   }
-  if (noImages !== null && isImageMimeType(file.type)) {
-    return { refused: fill(strings.composer.attachNoImages, { provider: noImages.provider }), stop: false };
+  if (imageRefusal !== null && isImageMimeType(file.type)) {
+    return { refused: imageRefusal, stop: false };
   }
   return null;
 }
@@ -35,10 +32,10 @@ function admission(file: File, held: Attachment[], noImages: NoImages): { refuse
  * against `held`. The byte total is left to the caller, which fits the turn
  * when the file passes it (`lib/turn-fit.ts`).
  */
-async function readFile(file: File, held: () => Attachment[], noImages: NoImages, codec?: ImageCodec): Promise<{ attachment: Attachment } | { refused: string }> {
+async function readFile(file: File, held: () => Attachment[], images: boolean, codec?: ImageCodec): Promise<{ attachment: Attachment } | { refused: string }> {
   // Without image input nothing becomes an image: a HEIC, BMP or TIFF goes as the file it is.
   let ready = file;
-  if (noImages === null && isReducible(file)) {
+  if (images && isReducible(file)) {
     const prepared = await prepareImageAway(file, codec);
     if (prepared.kind === 'tooLarge') return { refused: fill(strings.media.sourceTooLarge, { name: file.name, size: bytes(file.size), max: bytes(IMAGE_SOURCE_MAX_BYTES) }) };
     ready = prepared.file;
@@ -127,10 +124,10 @@ export function receiveFiles(
   store: Store,
   files: File[],
   receiver: Receiver,
-  attachmentProvider: ProviderSummary | null | undefined,
+  imageRefusal: string | null,
   codec?: ImageCodec
 ): Promise<void> {
-  const noImages = attachmentProvider && !attachmentProvider.capabilities.images ? { provider: attachmentProvider.name } : null;
+  const images = imageRefusal === null;
   let refused = false;
   const refuse = (message: string): void => {
     if (refused) return;
@@ -142,10 +139,10 @@ export function receiveFiles(
   const over: File[] = [];
   /** False while the box is full. */
   const admit = (file: File): boolean => {
-    const denied = admission(file, receiver.attachments, noImages);
+    const denied = admission(file, receiver.attachments, imageRefusal);
     if (denied?.stop) return false;
     if (denied) { refuse(denied.refused); return true; }
-    const image = noImages === null && (isImageMimeType(file.type) || isReducible(file));
+    const image = images && (isImageMimeType(file.type) || isReducible(file));
     // A HEIC shows as a picture before it is one: the type is the source's until the read replaces it.
     const placeholder = { kind: image ? 'image' : 'file', mimeType: file.type || 'application/octet-stream', name: file.name || null, data: '', loading: true } as DraftAttachment;
     receiver.attachments = [...receiver.attachments, placeholder];
@@ -187,7 +184,7 @@ export function receiveFiles(
       for (; next < waiting.length; next++) {
         const [file, placeholder] = waiting[next]!;
         // A read that throws still settles its placeholder: no tile waits forever.
-        const result = await readFile(file, () => others(placeholder), noImages, codec)
+        const result = await readFile(file, () => others(placeholder), images, codec)
           .catch(() => ({ refused: fill(strings.composer.attachReadError, { name: file.name }) }));
         if ('refused' in result) {
           refuse(result.refused);
@@ -216,7 +213,7 @@ export function receiveFiles(
  * pictures already in for lighter copies under the same tiles, in the box
  * and in its undo steps.
  */
-export function takeFiles(store: Store, state: ComposerState, files: File[], attachmentProvider: ProviderSummary | null | undefined, refused: () => void, codec?: ImageCodec): Promise<void> {
+export function takeFiles(store: Store, state: ComposerState, files: File[], imageRefusal: string | null, refused: () => void, codec?: ImageCodec): Promise<void> {
   const keyOf = () => Object.keys(store.composerStates).find(name => store.composerStates[name] === state);
   return receiveFiles(store, files, {
     input: state,
@@ -253,5 +250,5 @@ export function takeFiles(store: Store, state: ComposerState, files: File[], att
         replaceInHistory(state, item, landed);
       });
     }
-  }, attachmentProvider, codec);
+  }, imageRefusal, codec);
 }

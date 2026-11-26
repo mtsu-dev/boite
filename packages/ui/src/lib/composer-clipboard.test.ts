@@ -54,7 +54,7 @@ describe('pasting a copy whose pictures are all refused', () => {
     box.setSelectionRange(0, 4);
     const store = { error: null as string | null, editComposerText: (_key: string, value: string) => { state.text = value; } };
     const event = { clipboardData: clipboard, preventDefault() {} } as unknown as ClipboardEvent;
-    expect(pasteImages({ store: store as never, key: 'k', box, state, provider: { name: 'Text only', capabilities: { images: false } }, moved: () => {} }, event)).toBe(true);
+    expect(pasteImages({ store: store as never, key: 'k', box, state, imageRefusal: 'Text only takes no images', moved: () => {} }, event)).toBe(true);
     expect(state.text).toBe('keep these words');
     expect(box.value).toBe('keep these words');
     expect(store.error).toContain('Text only');

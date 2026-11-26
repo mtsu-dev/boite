@@ -1,5 +1,6 @@
 import { deriveThreadCapabilities, providerSupportsSteering, providerEnabled, threadActive } from '@boite/contracts';
 import type { FakeContext, FakeMethods } from './context';
+import { threadModel } from './provider-catalog';
 
 /** The fixture reports its implemented controls through the same pure mapping as the core. */
 export function capabilityMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.capabilities'> {
@@ -21,7 +22,7 @@ export function capabilityMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.
         : pendingApprovals || pendingQuestions.some(item => !item.request.async) ? 'awaiting-input' : null;
       return deriveThreadCapabilities({
         threadId, providerId: thread.providerId, protocol, selectionVersion: thread.selectionVersion ?? 0,
-        providerCapabilities: provider?.capabilities ?? null,
+        providerCapabilities: provider?.capabilities ?? null, modelImages: threadModel(ctx, thread)?.images,
         runtimeReason: !provider ? 'provider-unavailable' : !providerEnabled(provider) ? 'provider-disabled' : !provider.available ? 'provider-unavailable' : !account || account.providerId !== thread.providerId || account.status === 'unauthenticated' ? 'account-unavailable' : null,
         // A persistent agent's own thread takes the user's messages like any thread; only a projectless one of no agent has no conversation.
         conversationReason: thread.archived ? 'archived' : !thread.agentSessionId && thread.projectId === null ? 'agent-session' : null,
