@@ -258,19 +258,28 @@ export function newConversationOf(message: Message): NewConversationNotice | nul
 }
 
 /**
+ * The last turn in `timeline` that carries a summary line (`TurnSummary`), past
+ * new-conversation markers, folded wakes (`folds`), cache pings and queued turns.
+ */
+export function lastSummaryTurn(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): Pick<Turn, 'id' | 'status' | 'execution'> | null {
+  for (let index = timeline.length - 1; index >= 0; index--) {
+    const message = timeline[index]!;
+    if (newConversationOf(message) || folds.has(message.id)) continue;
+    const turn = turns.find(current => current.id === message.turnId);
+    if (!turn || turn.execution?.operation === 'keepalive' || turn.status === 'queued') continue;
+    return turn;
+  }
+  return null;
+}
+
+/**
  * The done turn whose summary line ends `timeline`, past new-conversation markers, folded wakes (`folds`) and cache
  * pings, which draw none; null when the last line drawn is not a done turn's. `lib/resting-turn.ts` says whether
  * the thread rests at all.
  */
 export function lastLined(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
-  for (let index = timeline.length - 1; index >= 0; index--) {
-    const message = timeline[index]!;
-    if (newConversationOf(message) || folds.has(message.id)) continue;
-    const turn = turns.find(current => current.id === message.turnId);
-    if (!turn || turn.execution?.operation === 'keepalive') continue;
-    return turn.status === 'done' ? turn.id : null;
-  }
-  return null;
+  const turn = lastSummaryTurn(timeline, folds, turns);
+  return turn?.status === 'done' ? turn.id : null;
 }
 
 /** The core's line for a thread the agent started (`boite thread new`). */

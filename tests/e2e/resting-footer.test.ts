@@ -79,6 +79,38 @@ test('a finished thread ends on one footer that keeps its time at rest and revea
     const viaKeyboard = await page.evaluate<Record<string, unknown>>(READ);
     expect(viaKeyboard).toMatchObject({ finished: 1, tokens: 1, button: 1 });
     expect(viaKeyboard.marks).toEqual(rest.marks);
+
+    // Inline file changes on a resting turn with folded steps keep meta and actions on the summary row, before Show diff and above the opened file list.
+    await page.evaluate(`(() => {
+      const thread = ${STORE}.openThread, last = thread.turns.at(-1), at = (last.finishedAt ?? Date.now()) + 1000;
+      thread.turns.push({ ...last, id: 'turn-folded-edit', queuedAt: at, startedAt: at, finishedAt: at + 30_000, status: 'done',
+        usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        execution: { ...(last.execution ?? {}), operation: 'routine', opensRequest: true } });
+      thread.messages.push(
+        { id: 'm-fe-open', threadId: thread.id, turnId: 'turn-folded-edit', role: 'system', state: 'complete', createdAt: at, parts: [{ type: 'text', text: 'Routine edit' }] },
+        { id: 'm-fe-ans', threadId: thread.id, turnId: 'turn-folded-edit', role: 'assistant', state: 'complete', createdAt: at + 1, parts: [
+          { type: 'tool', toolId: 'tf-1', name: 'Edit', input: { file_path: 'src/a.ts', old_string: 'old', new_string: 'new' }, output: 'Updated src/a.ts', status: 'done' },
+          { type: 'text', text: 'Updated the file.' },
+        ] });
+    })()`);
+    await page.waitFor(`document.querySelector('${FOOTER} [data-testid=turn-files-toggle]')`);
+    await page.evaluate(`document.querySelector('${FOOTER} [data-testid=turn-files-toggle]').click()`);
+    await page.waitFor(`document.querySelector('${FOOTER} .tree')`);
+    const inlineOrder = await page.evaluate<{ sameRow: boolean; leftToRight: boolean; treeBelow: boolean }>(`(() => {
+      const f = document.querySelector('${FOOTER}');
+      const box = (sel) => f.querySelector(sel).getBoundingClientRect();
+      const finished = box('[data-testid=turn-finished-at]');
+      const tokens = box('[data-testid=turn-tokens]');
+      const tail = box('.tail');
+      const diff = box('[data-testid=turn-diff-toggle]');
+      const tree = box('.tree');
+      return {
+        sameRow: Math.abs(finished.top - tokens.top) <= 6 && Math.abs(tokens.top - tail.top) <= 6 && Math.abs(tail.top - diff.top) <= 6,
+        leftToRight: finished.left < tokens.left && tokens.left < tail.left && tail.left < diff.left,
+        treeBelow: tree.top >= Math.max(finished.bottom, tokens.bottom, tail.bottom, diff.bottom) - 1,
+      };
+    })()`);
+    expect(inlineOrder).toEqual({ sameRow: true, leftToRight: true, treeBelow: true });
     expect(page.errors()).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);

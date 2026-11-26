@@ -157,15 +157,16 @@ export class BottomGlide {
   }
 }
 
+/** The turn of the non-user message holding `target`, or null outside every answer. */
+export function turnOf(target: EventTarget | null): string | null {
+  return (target as Element | null)?.closest?.('article.message:not(.user)')?.getAttribute('data-turn') ?? null;
+}
+
 /**
  * The turn of the answer under the pointer, or null off every answer. A Claude
  * turn is many messages and only the last one carries the summary with the
  * time it finished: the list shows that summary while any of them is pointed at.
  */
-export function turnOf(target: EventTarget | null): string | null {
-  return (target as Element | null)?.closest?.('article.message:not(.user)')?.getAttribute('data-turn') ?? null;
-}
-
 export function pointedTurn(event: Event): string | null {
   return turnOf(event.target);
 }

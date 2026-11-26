@@ -33,7 +33,7 @@
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { lastLined, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
+  import { lastLined, lastSummaryTurn, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
@@ -61,9 +61,9 @@
 
   /** A phone has no room left of the bubbles for the outline rail: it is not drawn there. */
   const narrow = new MediaQuery('(max-width: 720px)');
-  const reveal = new MessageReveal(() => messages, () => narrow.current, () => timeline);
+  const reveal = new MessageReveal(() => messages, () => narrow.current, () => lastSummary, () => focused);
 
-  /** `resting`: the turn a finished thread ends on (`lib/resting-turn.ts`), whose summary line is the thread's footer. */
+  /** `resting`: non-null when the thread is at rest (`lib/resting-turn.ts`); `lastLined` picks the drawn line it ends on. */
   let { store, threadId, messages, resting = null }: { store: Store; threadId: string; messages: Message[]; resting?: string | null } = $props();
   const viewer = new ListViewer();
   /** The find bar is its own chunk, fetched the first time it opens. A failed fetch tries again on the next open. */
@@ -561,7 +561,8 @@
   }
   /** The turns whose answer is under the pointer and holds the keyboard: the summary shows from any of its messages (`pointedTurn`). */
   let pointed = $state<string | null>(null);
-  let focused = $state<string | null>(null);
+  let focused = $state<string | null>(null), focusedNode: Element | null = null;
+  $effect(() => { void rendered; if (focused !== null && (!focusedNode?.isConnected || !viewport?.contains(focusedNode))) { focused = null; focusedNode = null; } });
   /** Whether the list keeps to the bottom right now: pinned, and nobody is moving it. */
   const following = () => pinned && !navigationTarget && !glide.active && !hold.held;
 
@@ -654,6 +655,8 @@
     }
   });
 
+  /** The last turn with a summary line, so a phone's buttons and the resting footer pick the same row. */
+  const lastSummary = $derived(lastSummaryTurn(timeline, shaped.folds, shownTurns)?.id ?? (shownTurns.length === 0 ? timeline.findLast((message) => message.role === 'assistant')?.turnId ?? null : null));
   /** Only once the loaded window reaches the thread's end: newer history still unread is not its last word. */
   let restingShown = $derived(resting !== null && store.messagesAfter === null && !store.loadingNewer ? lastLined(timeline, shaped.folds, shownTurns) : null);
   /** A line lands at the foot of a pinned list: the bottom takes it in, like a new message. */
@@ -712,7 +715,7 @@
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- The top fade is sticky inside the padding: it is told the padding a sent prompt's lead adds, or it would hang that far under the header, a dark band across the prompt's lines. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onfocusin={(event) => { focused = pointedTurn(event); }} onfocusout={(event) => { focused = turnOf(event.relatedTarget); }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onfocusin={(event) => { focused = pointedTurn(event); focusedNode = event.target instanceof Element ? event.target : null; }} onfocusout={(event) => { focused = turnOf(event.relatedTarget); focusedNode = event.relatedTarget instanceof Element && viewport?.contains(event.relatedTarget) ? event.relatedTarget : null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}

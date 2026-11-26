@@ -1804,6 +1804,74 @@ test.for(HIDDEN_AFTER)('%s after the last answer leaves that answer\'s buttons a
   expect(row?.querySelector('[data-testid=turn-summary]')?.classList.contains('resting')).toBe(true);
 });
 
+test('a tool-only wake on a phone keeps its resting line and buttons on the same row', async ({ ready }) => {
+  window.localStorage.clear();
+  vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
+  onTestFinished(() => { vi.unstubAllGlobals(); });
+  const { store: live } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(live);
+  await view.refresh();
+  const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
+  await openAgent(live, mira.id);
+  const thread = live.openThread!;
+  const answer = thread.messages.findLast((message) => message.role === 'assistant')!;
+  const at = Date.now();
+  thread.turns.push({
+    id: 'turn-tool-wake', threadId: thread.id, status: 'done', queuedAt: at, startedAt: at, finishedAt: at + 5_000, usage: null, error: null,
+    execution: { providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, operation: 'routine', opensRequest: true },
+  } as Turn);
+  thread.messages.push(
+    { id: 'm-wake-open', threadId: thread.id, turnId: 'turn-tool-wake', role: 'system', state: 'complete', createdAt: at, parts: [{ type: 'text', text: 'Routine check' }] },
+    { id: 'm-wake-tool', threadId: thread.id, turnId: 'turn-tool-wake', role: 'assistant', state: 'complete', createdAt: at + 1, parts: [{ type: 'tool', toolId: 't-1', name: 'Bash', input: { command: 'ls' }, output: 'ok', status: 'done' }] },
+  );
+  stubLayout(thread.messages.length * ESTIMATE);
+  running = mount(MessageList, { target: document.body, props: { store: live, threadId: thread.id, messages: thread.messages, resting: 'turn-tool-wake' } });
+  await settle();
+
+  const wakeRow = document.querySelector<HTMLElement>('article[data-turn="turn-tool-wake"]');
+  const priorRow = document.querySelector<HTMLElement>(`[data-mid="${answer.id}"]`)?.closest('article');
+  expect(wakeRow?.hasAttribute('data-latest')).toBe(true);
+  expect(wakeRow?.querySelector('[data-testid=turn-summary]')?.classList.contains('resting')).toBe(true);
+  expect(wakeRow?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+  expect(priorRow?.hasAttribute('data-latest')).toBe(false);
+});
+
+test('at phone width, keyboard focus inside an earlier unmarked answer mounts its summary and clears when the focused row unmounts', async ({ createStore }) => {
+  window.localStorage.clear();
+  vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
+  onTestFinished(() => { vi.unstubAllGlobals(); });
+  const { store: owner, client } = createStore({ delayMs: 0 });
+  owner.attach(client); await owner.connect(); await owner.open('t-trace');
+  const thread = owner.openThread!;
+  const done = (id: string, at: number) => ({ ...thread.turns[0]!, id, startedAt: at, finishedAt: at + 60_000, status: 'done' as const });
+  thread.turns = [done('turn-a', 1), done('turn-b', 100_000)];
+  thread.memoryEvents = [];
+  const msg = (id: string, turnId: string, role: Message['role'], text: string): Message => ({ id, threadId: thread.id, turnId, role, state: 'complete', createdAt: 1, parts: [{ type: 'text', text }] });
+  thread.messages = [
+    msg('m-u1', 'turn-a', 'user', 'First question'),
+    msg('m-a1', 'turn-a', 'assistant', 'See [earlier doc](https://example.com/a).'),
+    msg('m-a2', 'turn-a', 'assistant', 'Done with first.'),
+    msg('m-u2', 'turn-b', 'user', 'Second question'),
+    msg('m-b1', 'turn-b', 'assistant', 'Latest answer.'),
+  ];
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages, resting: 'turn-b' } });
+  flushSync();
+
+  const summaryOf = (turnId: string) => document.querySelector<HTMLElement>(`article[data-turn="${turnId}"] [data-testid=turn-summary]`);
+  expect(summaryOf('turn-a')).toBeNull();
+  const link = document.querySelector<HTMLElement>('[data-mid="m-a1"] a')!;
+  link.focus(); flushSync();
+  expect(summaryOf('turn-a')).not.toBeNull();
+  expect(summaryOf('turn-a')?.classList.contains('pointed')).toBe(true);
+  expect(document.querySelector('[data-mid="m-a2"]')?.closest('article')?.hasAttribute('data-revealed')).toBe(true);
+
+  // Removing the focused message without a focusout event still clears the stale focus state.
+  thread.messages.splice(1, 1);
+  flushSync();
+  expect(document.querySelector('[data-mid="m-a1"]')).toBeNull();
+  expect(summaryOf('turn-a')).toBeNull();
+});
+
 test('a row counts at the height it is drawn, fractions included, so rows measured above the reader move the view by what they weigh', async () => {
   const messages = thread(200);
   stubLayout(messages.length * ESTIMATE);

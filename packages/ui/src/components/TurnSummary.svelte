@@ -271,7 +271,8 @@
   /* The turn's changes on the line: the count right after the steps, its diff button at the line's end, the list
      and the diff under the line at its text's start (the clip hides what starts further left). */
   .summary :global(.turn-files.inline .fold) { margin-left: 0; }
-  .summary :global(.turn-files.inline :is(.tree, .diffs)) { flex-basis: calc(100% - var(--lead)); margin-left: var(--lead); }
+  .summary :global(.turn-files.inline :is(.expand, .tools)) { order: 3; }
+  .summary :global(.turn-files.inline :is(.tree, .diffs)) { order: 4; flex-basis: calc(100% - var(--lead)); margin-left: var(--lead); }
   /* The step count and the memory mark: text buttons on the line, no box, the foreground on hover. */
   .mark { position: relative; display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 2px; margin: -2px 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font-size: inherit; font-variant-numeric: inherit; cursor: pointer; transition: color var(--dur-2) var(--ease-out-quint); }
   /* The line stays 18 px; the target reaches 28 px, a pointer's least, over the gap around it. */
