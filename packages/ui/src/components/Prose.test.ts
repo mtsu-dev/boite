@@ -500,3 +500,27 @@ test('a media chip replacing a standalone diagram releases the diagram URL', asy
     Object.assign(URL, original);
   }
 });
+
+test('file link lookups keep the newest entries within the per-store cache bound without evicting in-flight checks', async () => {
+  const { locate } = await import('../lib/file-open.svelte');
+  let finishSlow!: (value: { ok: true; value: string[] }) => void;
+  const { store } = storeOf({
+    locateFile: async (_thread, path) => path === 'slow-missing.ts'
+      ? new Promise(resolve => { finishSlow = resolve; })
+      : { ok: true, value: [path] },
+  });
+  show('Check `slow-missing.ts` while browsing.', store);
+  await vi.waitFor(() => expect(finishSlow).toBeTypeOf('function'));
+  for (let index = 0; index < 520; index++) {
+    await locate(store, 'thread-1', `src/file-${index}.ts`);
+  }
+  expect(store.locateFile).toHaveBeenCalledTimes(521);
+  // The newest settled lookup stays cached; the earliest settled one was evicted past the 512 cap.
+  await locate(store, 'thread-1', 'src/file-519.ts');
+  expect(store.locateFile).toHaveBeenCalledTimes(521);
+  await locate(store, 'thread-1', 'src/file-0.ts');
+  expect(store.locateFile).toHaveBeenCalledTimes(522);
+  // The slow in-flight lookup was not evicted and still greys its chip when it settles.
+  finishSlow({ ok: true, value: [] });
+  await vi.waitFor(() => expect(query<HTMLAnchorElement>('a.file-chip').hasAttribute('data-missing')).toBe(true));
+});
