@@ -10,6 +10,7 @@
   import { watchWindows } from './lib/window-watch';
   import { browserProfiles } from './lib/browser-profiles.svelte';
   import UndoToast from './components/UndoToast.svelte';
+  import { closeThreadExport, threadExport } from './lib/thread-export-request.svelte';
   import ErrorToast from './components/ErrorToast.svelte';
   import Notice from './components/Notice.svelte';
   import { CircleAlert } from '@lucide/svelte';
@@ -206,6 +207,7 @@
         requested.delete(name);
         if (name === 'ProjectPicker' && store.projectPickerOpen) store.projectPickerOpen = false;
         else if (name === 'ImportDialog' && store.imports) store.closeImports();
+        else if (name === 'ExportThreadDialog' && threadExport.request) closeThreadExport();
         else if (name === 'ConnectFlow' && store.connectDialog) store.closeConnect();
         else if (name === 'CommandPalette' && store.paletteOpen) store.paletteOpen = false;
         else return;
@@ -264,6 +266,7 @@
     if (store.paletteOpen) need('CommandPalette');
     if (store.projectPickerOpen) need('ProjectPicker');
     if (store.imports) need('ImportDialog');
+    if (threadExport.request) need('ExportThreadDialog');
     if (store.connectDialog) need('ConnectFlow');
     if (tour) need('Onboarding');
   });
@@ -553,7 +556,7 @@
    * it. The tour counts once it is drawn: offline with a cold cache it never is,
    * and the keyboard must not stay held for it.
    */
-  let modal = $derived((tour && appViews.Onboarding.current !== undefined) || confirm.current !== null || store.imports !== null || store.projectPickerOpen || (store.connectDialog !== null && appViews.ConnectFlow.current !== undefined));
+  let modal = $derived((tour && appViews.Onboarding.current !== undefined) || confirm.current !== null || store.imports !== null || threadExport.request !== null || store.projectPickerOpen || (store.connectDialog !== null && appViews.ConnectFlow.current !== undefined));
 
   /**
    * Every app chord goes through the keyboard table (`lib/keybindings.ts`,
@@ -734,6 +737,12 @@
 {#if appViews.ProjectPicker.current}{@const ProjectPicker = appViews.ProjectPicker.current}<ProjectPicker {store} />{:else if store.projectPickerOpen}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
 <ConfirmDialog />
 {#if appViews.ImportDialog.current}{@const ImportDialog = appViews.ImportDialog.current}<ImportDialog {store} />{:else if store.imports}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
+{#if threadExport.request && appViews.ExportThreadDialog.current}
+  {@const ExportThreadDialog = appViews.ExportThreadDialog.current}
+  {#key threadExport.request}<ExportThreadDialog {...threadExport.request} onclose={closeThreadExport} />{/key}
+{:else if threadExport.request}
+  <div class="cold-overlay">{@render loadingFrame()}</div>
+{/if}
 {#if appViews.ConnectFlow.current}{@const ConnectFlow = appViews.ConnectFlow.current}<ConnectFlow {store} />{:else if store.connectDialog}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
 {#if appViews.CommandPalette.current}{@const CommandPalette = appViews.CommandPalette.current}<CommandPalette {store} />{:else if store.paletteOpen}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
 

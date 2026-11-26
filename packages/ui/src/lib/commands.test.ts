@@ -60,6 +60,7 @@ test('the list carries every app command, the thread ones only while one is open
     'retitle',
     'find',
     'copy-answer',
+    'export-thread',
     'panel',
     'subagents',
     'changes',
@@ -135,4 +136,17 @@ test('slashName reads the word a row completes to', () => {
   expect(slashName({ id: 'agent:shout', kind: 'command', label: '/shout' })).toBe('shout');
   expect(slashName({ id: 'theme-dark', kind: 'command', label: '/theme-dark' })).toBe('theme-dark');
   expect(isAgentCommand({ id: 'agent:shout', kind: 'command', label: '/shout' })).toBe(true);
+});
+
+test('council threads omit conversation export from both the palette and thread menu', async ({ store }) => {
+  const { threadMenuItems, pickThreadAction } = await import('./thread-menu');
+  const { threadExport } = await import('./thread-export-request.svelte');
+  await store.open('t-descriptors');
+  const open = store.openThread!;
+  open.councilId = 'cnl_test';
+  expect(ids(store)).not.toContain('export-thread');
+  expect(threadMenuItems(store, open, { exportConversation: true }).map(item => item.id)).not.toContain('export-thread');
+  runCommand(store, 'export-thread', false);
+  pickThreadAction(store, open, 'export-thread', { rename: () => {} });
+  expect(threadExport.request).toBeNull();
 });
