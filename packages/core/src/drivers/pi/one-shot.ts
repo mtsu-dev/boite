@@ -22,6 +22,12 @@ const VALUE_FLAGS = new Set([
   '--system-prompt', '--append-system-prompt',
 ]);
 const SESSION_FLAGS = new Set(['--no-session', '--continue', '-c', '--resume', '-r', '--print', '-p']);
+/**
+ * A side question on a session copy keeps pi's read-only tools: its history
+ * holds tool calls, and Anthropic's Messages API refuses `tool_use` blocks in a
+ * request that defines no tools, which `--no-tools` would send (pi 1.6.1).
+ */
+const READ_ONLY_TOOLS = 'read,grep,find,ls';
 
 async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, model: string | null, signal: AbortSignal, sessionFile?: string): Promise<string> {
   signal.throwIfAborted();
@@ -35,7 +41,8 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
     if (VALUE_FLAGS.has(arg)) i++;
     else if (!SESSION_FLAGS.has(arg)) args.push(arg);
   }
-  args.push('--mode', 'rpc', ...contextArgs(TOOL_FREE_CONTEXT), '--no-mcp');
+  const context = contextArgs(TOOL_FREE_CONTEXT);
+  args.push('--mode', 'rpc', ...(sessionFile ? context.flatMap(arg => arg === '--no-tools' ? ['--tools', READ_ONLY_TOOLS] : [arg]) : context), '--no-mcp');
   args.push(...(sessionFile ? ['--session', sessionFile] : ['--no-session']));
   if (model !== null && model !== AGENT_OWN_MODEL) args.push('--model', model);
   const effort = 'signal' in ctx ? ctx.thread.effort : 'low';
@@ -95,7 +102,7 @@ export async function sideQuestion(ctx: SideQuestionContext): Promise<string> {
     }
     const prompt = sessionFile === undefined ? ctx.prompt : [
       'Answer this side question briefly in the user\'s language using the conversation above as context.',
-      'Do not perform actions, resume the main task or ask follow-up questions. Say when the context does not contain the answer.',
+      'Do not change anything, resume the main task or ask follow-up questions. Say when the context does not contain the answer.',
       '<side-question>', ctx.question, '</side-question>',
     ].join('\n');
     const answer = await ask(ctx, prompt, ctx.thread.model, ctx.signal, sessionFile);

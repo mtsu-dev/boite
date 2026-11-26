@@ -865,8 +865,8 @@ and says when earlier context was omitted. This is a separate request, so native
 is not guaranteed. Neither the question nor its answer enters the conversation,
 changes its native session or updates the main context meter.
 
-pi uses a tool-free RPC process on a temporary copy at the latest matching
-settled checkpoint. Active conversations and older sessions without a matching
+pi uses an RPC process limited to its read-only tools on a temporary copy at
+the latest matching settled checkpoint. Active conversations and older sessions without a matching
 checkpoint use the same text snapshot as Claude. The temporary file, when used,
 is deleted after the request.
 

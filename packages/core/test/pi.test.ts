@@ -312,6 +312,9 @@ test('pi answers /btw from a disposable session copy and leaves the source intac
   const invocation = fakeLog().split('\n').find(line => line.startsWith('one-shot [') && line.includes('"--session"'))!;
   const args = JSON.parse(invocation.slice('one-shot '.length)) as string[];
   const copy = args[args.indexOf('--session') + 1]!;
+  // The copy's tool calls need tools defined on Anthropic: read-only ones, never none or all.
+  expect(args).not.toContain('--no-tools');
+  expect(args[args.indexOf('--tools') + 1]).toBe('read,grep,find,ls');
   expect(copy).not.toBe(source);
   expect(existsSync(copy)).toBe(false);
   expect(readFileSync(source, 'utf8')).toBe(before);
