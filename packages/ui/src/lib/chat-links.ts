@@ -269,7 +269,11 @@ export function* linkTokens(text: string): Generator<LinkToken> {
         tokens.lastIndex = match.index + 1;
         continue;
       }
-      if (match[2] === undefined || match.index === 0 || !/[\w:]/.test(text[match.index - 1]!)) return { index: match.index, text: match[0], auto: match[1] };
+      const before = match.index === 0 ? '' : text[match.index - 1]!;
+      // An absolute path starts a word: `image/png`, `cwd/project` and `` `a`/`b` `` name no root.
+      const rooted = match[1] === undefined && match[2] === undefined && !/^https?:/i.test(match[0]);
+      if (rooted && /[\w`.)\]}-]/.test(before)) { tokens.lastIndex = match.index + 1; continue; }
+      if (match[2] === undefined || !before || !/[\w:]/.test(before)) return { index: match.index, text: match[0], auto: match[1] };
       absoluteAt.lastIndex = match.index;
       const absolute = absoluteAt.exec(text);
       if (absolute) return { index: absolute.index, text: absolute[0] };

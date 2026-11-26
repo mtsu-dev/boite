@@ -36,6 +36,17 @@ test('rich markdown supports local paths, spaces, line numbers, file URIs and ba
   expect(renderMarkdown('# Project files\n\n[Jump](#project-files)', true)).toContain('id="project-files"');
 });
 
+test('a slash inside a word starts no absolute path, so the text reads as written', () => {
+  for (const text of ['[image image/png, 329 bytes]', 'shows cwd/project/branch.', '(state/completion/pause/archive)', 'Task/shared only', '`--max`/`--crop`']) {
+    const html = renderMarkdown(text, true);
+    expect(html, text).not.toContain('data-file-path');
+  }
+  // A real absolute path after a space, a quote or a bracket stays a chip.
+  for (const text of ['open /etc/hosts', 'open "/etc/hosts"', '(/etc/hosts)', 'run C:\\dev\\game.exe']) {
+    expect(renderMarkdown(text, true), text).toContain('data-file-path');
+  }
+});
+
 test('a bare local address with its port opens in the browser instead of naming a file', () => {
   expect(chatLink('192.168.1.117:7337')).toEqual({ kind: 'web', target: 'http://192.168.1.117:7337/' });
   expect(chatLink('localhost:3000/admin/#quotas')).toEqual({ kind: 'web', target: 'http://localhost:3000/admin/#quotas' });
