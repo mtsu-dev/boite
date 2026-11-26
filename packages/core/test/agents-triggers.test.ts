@@ -1038,7 +1038,7 @@ test('a file rename observed during a file-trigger turn stays suppressed even wh
   const { agent, threadId } = await makeAgent(h, owner, { projectIds: [project.id] });
   const { listeners, restore } = controlFileEvents(folder);
   const realLstat = files.lstat;
-  const heldLstat = Promise.withResolvers<fs.Stats>();
+  const heldLstat = Promise.withResolvers<fs.BigIntStats>();
   let lstatSpy: ReturnType<typeof spyOn> | undefined;
   try {
     const { trigger } = await save(agent.id, { kind: 'file', projectId: project.id, patterns: ['*.txt'], debounceMs: 50 });
@@ -1052,7 +1052,7 @@ test('a file rename observed during a file-trigger turn stays suppressed even wh
     writeFileSync(selfPath, '');
     let intercepted = false;
     lstatSpy = spyOn(files, 'lstat').mockImplementation(((path: fs.PathLike, options?: object) => {
-      if (path === selfPath && !options) {
+      if (path === selfPath) {
         intercepted = true;
         return heldLstat.promise;
       }
@@ -1063,7 +1063,7 @@ test('a file rename observed during a file-trigger turn stays suppressed even wh
     await waitFor(() => intercepted);
     driver.release();
     await waitFor(() => settled(h, threadId));
-    heldLstat.resolve(fs.lstatSync(selfPath));
+    heldLstat.resolve(fs.lstatSync(selfPath, { bigint: true }));
     await Bun.sleep(120);
     expect(turnsOf(h, threadId)).toHaveLength(2);
     expect(read(trigger).lastOutcome).toBe('fired');
@@ -1244,4 +1244,126 @@ test('repeated scheduler ticks while queued do not bump trigger revision, and we
   await waitFor(() => read(trigger).lastOutcome === 'fired' && settled(h, threadId));
 });
 
+test('a queued test across restart never locks out real webhooks, and a test never shortens a real webhook cooldown', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-trigger-wh-cooldown-'));
+  let first: TestCore | undefined;
+  let second: TestCore | undefined;
+  let testDriver: ReturnType<typeof scripted> | undefined;
+  try {
+    first = await startTestCore({ dataDir });
+    const client = await first.connect();
+    testDriver = scripted(ctx => ({ text: '[quiet] done', hold: ctx.prompt.endsWith('manual hold') }));
+    const { agent, threadId } = await makeAgent(first, client);
+    const { trigger, secret } = await client.call('agents.trigger.save', {
+      value: { agentId: agent.id, source: { kind: 'webhook' }, name: 'Hook', prompt: 'Handle.', enabled: true, cooldownSeconds: 60 },
+    });
+    // Hold the mochi busy, queue a Test event, then restart the core so start() marks it skipped.
+    await client.call('turns.start', { threadId, prompt: 'manual hold' });
+    await waitFor(() => testDriver!.held.length === 1);
+    expect(await client.call('agents.trigger.test', { triggerId: trigger.id, requestId: 'queued-before-restart' })).toEqual({ outcome: 'queued', turnId: null });
+    testDriver.release();
+    testDriver.restore();
+    testDriver = undefined;
+    await first.stop();
+    first = undefined;
 
+    second = await startTestCore({ dataDir });
+    const client2 = await second.connect();
+    const afterRestart = second.core.workforce.records.get('trigger', trigger.id);
+    expect(afterRestart.lastOutcome).toBe('skipped');
+    const url = new URL(trigger.webhookPath!, second.url.replace(/^ws/, 'http'));
+    const post = (body: string) => fetch(url, { method: 'POST', headers: { 'x-boite-secret': secret! }, body });
+    // Real webhook must NOT be rate-limited by the skipped queued test.
+    expect((await post('{"step":"after-restart-test"}')).status).toBe(202);
+    await waitFor(() => second!.core.workforce.records.get('trigger', trigger.id).lastOutcome === 'fired');
+
+    // Clear cooldown, pause the mochi, send a real webhook (skipped), then run a standalone Test:
+    // the real webhook cooldown must still return 429 afterwards.
+    const current = second.core.workforce.records.get('trigger', trigger.id);
+    second.core.workforce.records.update('trigger', trigger.id, current.revision, { ...current, lastFiredAt: Date.now() - 120_000 });
+    const prof = second.core.workforce.records.get('profile', agent.id);
+    await client2.call('agents.profile.save', { id: agent.id, expectedRevision: prof.revision, value: { ...prof, status: 'paused' } });
+    expect((await post('{"step":"paused-real"}')).status).toBe(202);
+    expect(await client2.call('agents.trigger.test', { triggerId: trigger.id, requestId: 'test-while-paused' })).toEqual({ outcome: 'skipped', turnId: null });
+    expect((await post('{"step":"after-test-still-429"}')).status).toBe(429);
+  } finally {
+    testDriver?.release();
+    testDriver?.restore();
+    await first?.stop();
+    await second?.stop();
+    await removeDir(dataDir);
+  }
+});
+
+test.skipIf(process.platform === 'win32')('a file trigger saved while its folder is missing rejects symlinks across restarts and opens once a real directory appears', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-trigger-missing-anchor-'));
+  const holder = join(dataDir, 'holder');
+  const folder = join(holder, 'missing-project');
+  const outside = join(dataDir, 'outside');
+  mkdirSync(holder);
+  mkdirSync(folder);
+  mkdirSync(outside);
+  let first: TestCore | undefined;
+  let second: TestCore | undefined;
+  try {
+    first = await startTestCore({ dataDir });
+    const client = await first.connect();
+    const project = await client.call('projects.add', { path: folder, name: 'Missing' });
+    const { agent } = await makeAgent(first, client, { projectIds: [project.id] });
+    // Remove the project folder before saving the file trigger.
+    fs.rmSync(folder, { recursive: true });
+    const { trigger } = await client.call('agents.trigger.save', {
+      value: { agentId: agent.id, source: { kind: 'file', projectId: project.id, patterns: ['*.txt'], debounceMs: 50 }, name: 'MissingRoot', prompt: 'Watch.', enabled: true, cooldownSeconds: 60 },
+    });
+    await waitFor(() => first!.core.workforce.records.get('trigger', trigger.id).watchUnavailable === true);
+    await first.stop();
+    first = undefined;
+
+    // Replace the missing folder with a symlink to outside while stopped, then restart: must stay rejected.
+    symlinkSync(outside, folder);
+    second = await startTestCore({ dataDir });
+    await waitFor(() => second!.core.workforce.records.get('trigger', trigger.id).watchUnavailable === true);
+    await Bun.sleep(100);
+    expect(second.core.workforce.records.get('trigger', trigger.id).watchUnavailable).toBe(true);
+
+    // Replace the symlink with a real directory at the granted path: retry recovers.
+    fs.unlinkSync(folder);
+    mkdirSync(folder);
+    await waitFor(() => {
+      second!.core.workforce.triggers.tick();
+      return !second!.core.workforce.records.get('trigger', trigger.id).watchUnavailable;
+    }, 6000);
+  } finally {
+    await first?.stop();
+    await second?.stop();
+    await removeDir(dataDir);
+  }
+});
+
+test('a nameless rename reopens a replaced subdirectory with a new inode', async () => {
+  const folder = join(h.dataDir, 'project');
+  const child = join(folder, 'src');
+  mkdirSync(child, { recursive: true });
+  const project = await owner.call('projects.add', { path: folder, name: 'Project' });
+  const { agent, threadId } = await makeAgent(h, owner, { projectIds: [project.id] });
+  const { listeners, restore } = controlFileEvents(folder);
+  try {
+    const { trigger } = await save(agent.id, { kind: 'file', projectId: project.id, patterns: ['src/*.txt'], debounceMs: 50 });
+    await waitFor(() => listeners.has(folder) && listeners.has(child));
+    const rootEvent = listeners.get(folder)!;
+    const oldChildListener = listeners.get(child)!;
+
+    // Swap src for a brand-new directory inode and emit a nameless rename on the parent.
+    renameSync(child, join(h.dataDir, 'old-src'));
+    mkdirSync(child);
+    rootEvent('rename', null);
+    await waitFor(() => listeners.has(child) && listeners.get(child) !== oldChildListener);
+
+    const newChildListener = listeners.get(child)!;
+    newChildListener('change', 'reopened.txt');
+    await waitFor(() => driver.prompts.get(threadId)?.at(-1)?.includes('src/reopened.txt') === true && settled(h, threadId));
+    expect(read(trigger).lastOutcome).toBe('fired');
+  } finally {
+    restore();
+  }
+});

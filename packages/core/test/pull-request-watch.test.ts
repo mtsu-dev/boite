@@ -364,7 +364,7 @@ function fakeGitHub(): FakeGitHub {
 async function answer(github: FakeGitHub, args: string[]): Promise<string> {
   const query = args.find(arg => arg.startsWith('query='));
   const path = args.at(-1)!;
-  github.calls.push(query ? (query.includes('mergedBy') ? 'closer' : query.includes('viewer') ? 'detail' : 'fingerprint') : path.replace(/^repos\/example\/repo\//, ''));
+  github.calls.push(query ? (query.includes('mergedBy') ? 'closer' : query.includes('after:$after') ? 'contexts' : query.includes('viewer') ? 'detail' : 'fingerprint') : path.replace(/^repos\/example\/repo\//, ''));
   if (github.failure) throw new Error(github.failure);
   if (query?.includes('mergedBy')) {
     const failure = github.closerFailure;
@@ -375,6 +375,17 @@ async function answer(github: FakeGitHub, args: string[]): Promise<string> {
     return JSON.stringify({ data: { viewer: { login: 'meetsu' }, repository: { pullRequest: { state, closedAt: github.closedAt, mergedBy: state === 'MERGED' ? by : null,
       timelineItems: { nodes: state === 'CLOSED' ? [{ actor: by }] : [] } } } } });
   }
+  if (query?.includes('after:$after')) {
+    const start = Number(args.find(arg => arg.startsWith('after='))?.slice(6) ?? 0);
+    const slice = github.runs.slice(start, start + 100);
+    const hasNextPage = start + 100 < github.runs.length;
+    return JSON.stringify({ data: { repository: { pullRequest: {
+      commits: { nodes: [{ commit: { oid: github.head, statusCheckRollup: { contexts: {
+        pageInfo: { hasNextPage, endCursor: hasNextPage ? String(start + 100) : null },
+        nodes: slice.map(checkRun),
+      } } } }] },
+    } } } });
+  }
   const mergeQueueEntry = github.queue === null ? null : { position: github.queue };
   const checkCounts = (runs: Run[]) => {
     const counts = new Map<string, number>();
@@ -382,8 +393,20 @@ async function answer(github: FakeGitHub, args: string[]): Promise<string> {
     return { checkRunCountsByState: [...counts].map(([state, count]) => ({ state, count })), statusContextCountsByState: [] };
   };
   const baseRef = github.baseHead ? { target: { oid: github.baseHead, statusCheckRollup: { contexts: { ...checkCounts(github.baseRuns ?? []), nodes: (github.baseRuns ?? []).map(checkRun) } } } } : null;
-  if (query?.includes('viewer')) return detailJson(github.runs, { state: github.detailState ?? github.state, mergeable: github.mergeable, mergeStateStatus: github.mergeState, headRefOid: github.head, mergeQueueEntry, baseRef,
-    ...(github.headRef ? { headRefName: github.headRef, headRepository: { nameWithOwner: github.headRepository } } : {}) });
+  if (query?.includes('viewer')) {
+    if (github.runs.length > 200) {
+      return JSON.stringify({ data: { viewer: { login: 'meetsu' }, repository: { pullRequest: {
+        url: URL, state: github.detailState ?? github.state, mergeable: github.mergeable, mergeStateStatus: github.mergeState, headRefOid: github.head, baseRefName: 'main', mergeQueueEntry, baseRef,
+        ...(github.headRef ? { headRefName: github.headRef, headRepository: { nameWithOwner: github.headRepository } } : {}),
+        commits: { nodes: [{ commit: { oid: github.head, statusCheckRollup: {
+          contexts: { totalCount: github.runs.length, pageInfo: { hasNextPage: true, endCursor: '100' }, nodes: github.runs.slice(0, 100).map(checkRun) },
+          latestContexts: { nodes: github.runs.slice(-100).map(checkRun) },
+        } } }] },
+      } } } });
+    }
+    return detailJson(github.runs, { state: github.detailState ?? github.state, mergeable: github.mergeable, mergeStateStatus: github.mergeState, headRefOid: github.head, mergeQueueEntry, baseRef,
+      ...(github.headRef ? { headRefName: github.headRef, headRepository: { nameWithOwner: github.headRepository } } : {}) });
+  }
   if (query) {
     return JSON.stringify({ data: { repository: { pullRequest: { state: github.state, mergeable: github.mergeable, mergeStateStatus: github.mergeState, headRefOid: github.head, updatedAt: github.updatedAt, mergeQueueEntry, baseRef,
       comments: { totalCount: github.comments.length, nodes: [] }, reviews: { totalCount: github.reviews.length, nodes: [] }, reviewThreads: { totalCount: 0 },
@@ -1165,3 +1188,26 @@ test('archive ends the watches and their saved state, and a merged pull request 
   github.state = 'MERGED';
   expect(await thrown(owner.call('threads.watchPullRequest', { threadId }))).toThrow('is merged');
 });
+
+test('a pull request with over 200 check contexts paginates to find a required check outside the first and last 100', async () => {
+  const { owner, threadId, github, watches, drive } = await watchedThread();
+  github.rules = ['middle-gate'];
+  const makeRuns = (gateStatus: 'IN_PROGRESS' | 'COMPLETED'): Run[] => Array.from({ length: 250 }, (_, index) => (
+    index === 140
+      ? { name: 'middle-gate', status: gateStatus, conclusion: gateStatus === 'COMPLETED' ? 'SUCCESS' : '', required: true }
+      : { name: `job-${index}` }
+  ));
+  github.runs = makeRuns('IN_PROGRESS');
+  await owner.call('threads.watchPullRequest', { threadId });
+  expect(github.calls.filter(call => call === 'contexts')).toHaveLength(1);
+  expect(watches.of(threadId)[0]!.seen?.checks).toEqual({ total: 250, running: 1, failed: 0 });
+
+  github.calls = [];
+  github.runs = makeRuns('COMPLETED');
+  await drive();
+  await settled(threadId);
+  expect(github.calls.filter(call => call === 'contexts')).toHaveLength(1);
+  expect(wakes(threadId)).toHaveLength(1);
+  expect(wakeText(threadId, wakes(threadId)[0]!.id)).toContain('All 1 required check passed on aaaaaaa.');
+});
+

@@ -3,7 +3,7 @@ import type { PrTriggerTransition } from './agents/triggers.ts';
 import type { Core } from './core.ts';
 import { messageOf, refused } from './errors.ts';
 import {
-  CLOSER_QUERY, DETAIL_QUERY, FINGERPRINT_QUERY, REMARK_PAGES, evaluate, initialMemory, mergeChanges, parseCloser, stillTrue, parseDetail, parseFingerprint, parseRemarks,
+  CLOSER_QUERY, CONTEXT_PAGE_QUERY, DETAIL_QUERY, FINGERPRINT_QUERY, REMARK_PAGES, evaluate, initialMemory, mergeChanges, mergeWatchChecks, parseCloser, parseContextPage, stillTrue, parseDetail, parseFingerprint, parseRemarks,
   rateLimited, remarkPath, wakeMessage, type Fingerprint, type Remark, type RemarkKind, type WatchChange, type WatchDetail, type WatchMemory,
 } from './pull-request-watch-read.ts';
 import { resendQuietResult } from './delegation/results.ts';
@@ -17,6 +17,8 @@ const MIN_PASS_GAP_MS = 1_000;
 const WATCH_LIMIT = 10;
 /** GitHub's `closedAt` counts whole seconds: a merge that close to a turn's edge is the agent's. */
 const CLOCK_SLACK_MS = 1_000;
+/** Maximum follow-up context pages read when a PR has over 200 check contexts and a required check is still missing. */
+const MAX_CONTEXT_PAGES = 5;
 
 export interface WatchTiming {
   /** Between two fingerprint reads of one pull request. */
@@ -250,13 +252,18 @@ export class PullRequestWatches {
         return 'OPEN';
       }
       // Rules alone expired: the checks already read are judged against them, with no detail read.
-      const read = statusMoved || remarksDue || !kept ? await this.#shared(memo, `detail ${record.url}`, () => this.#graphql(threadId, record, DETAIL_QUERY).then(parseDetail)) : kept;
+      let read = statusMoved || remarksDue || !kept ? await this.#shared(memo, `detail ${record.url}`, () => this.#graphql(threadId, record, DETAIL_QUERY).then(parseDetail)) : kept;
       // Merged or closed between the two reads: that is the news, not leaving the queue.
       if (read.state !== 'OPEN') {
         if (!baseline) await this.#end(threadId, record, runtime, memo, read.state);
         return read.state;
       }
-      const detail = withRequired(read, await this.#requiredOf(threadId, record, read.base));
+      const required = await this.#requiredOf(threadId, record, read.base);
+      let detail = withRequired(read, required);
+      if (read.contextsCursor && detail.checks.some(check => check.required && check.conclusion === 'EXPECTED')) {
+        read = await this.#shared(memo, `detail-more ${record.url}`, () => this.#fillRequiredContexts(threadId, record, read, required));
+        detail = withRequired(read, required);
+      }
       const remarks = remarksDue ? await this.#shared(memo, `remarks ${record.url}`, () => this.#remarks(threadId, record)) : null;
       // A stop or an unwatch that landed during the reads wins.
       if (this.#find(threadId, record.url) !== record) return 'OPEN';
@@ -367,9 +374,23 @@ export class PullRequestWatches {
     return held;
   }
 
-  #graphql(threadId: ThreadId, record: WatchRecord, query: string): Promise<string> {
+  #graphql(threadId: ThreadId, record: WatchRecord, query: string, extra: string[] = []): Promise<string> {
     const [owner, name] = record.repository.split('/');
-    return this.gh(threadId, ['api', 'graphql', '--hostname', record.host, '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${record.number}`]);
+    return this.gh(threadId, ['api', 'graphql', '--hostname', record.host, '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${record.number}`, ...extra]);
+  }
+
+  /** Reads follow-up pages of statusCheckRollup contexts when >200 exist and a required check is still EXPECTED. */
+  async #fillRequiredContexts(threadId: ThreadId, record: WatchRecord, read: WatchDetail, required: string[] | null): Promise<WatchDetail> {
+    let cursor: string | null = read.contextsCursor ?? null;
+    let checks = read.checks;
+    for (let page = 0; page < MAX_CONTEXT_PAGES && cursor; page++) {
+      const next = parseContextPage(await this.#graphql(threadId, record, CONTEXT_PAGE_QUERY, ['-f', `after=${cursor}`]));
+      if (next.head && read.head && next.head !== read.head) break;
+      checks = mergeWatchChecks(checks, next.checks);
+      cursor = next.cursor;
+      if (!withRequired({ ...read, checks }, required).checks.some(check => check.required && check.conclusion === 'EXPECTED')) break;
+    }
+    return { ...read, checks, contextsCursor: undefined };
   }
 
   /** What the base branch requires, cached per repository and base: a failed read logs and keeps what was known, a rate limit throws. */

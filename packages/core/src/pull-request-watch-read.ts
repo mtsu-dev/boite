@@ -43,16 +43,22 @@ const CHECK_FIELDS = `nodes{__typename
 ... on StatusContext{context state targetUrl createdAt %REQ%}
 }`;
 
-const CHECK_NODES = (required: string) => {
+const CHECK_NODES = (required: string, paged = false) => {
   const fields = CHECK_FIELDS.replaceAll('%REQ%', required);
-  return `contexts(first:100){${fields}} latestContexts:contexts(last:100){${fields}}`;
+  const page = paged ? 'totalCount pageInfo{hasNextPage endCursor} ' : '';
+  return `contexts(first:100){${page}${fields}} latestContexts:contexts(last:100){${fields}}`;
 };
 
 /** The detailed read, made only when the fingerprint moved: the checks one by one, with whether the base branch requires each. */
 export const DETAIL_QUERY = `query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){pullRequest(number:$number){
 url state isDraft mergeable mergeStateStatus headRefOid headRefName headRepository{nameWithOwner} baseRefName mergeQueueEntry{position}
 baseRef{target{... on Commit{oid statusCheckRollup{${CHECK_NODES('')}}}}}
-commits(last:1){nodes{commit{oid statusCheckRollup{${CHECK_NODES('isRequired(pullRequestNumber:$number)')}}}}}
+commits(last:1){nodes{commit{oid statusCheckRollup{${CHECK_NODES('isRequired(pullRequestNumber:$number)', true)}}}}}
+}}}`;
+
+/** Follow-up page read only when a pull request has over 200 check contexts and a required check is still missing. */
+export const CONTEXT_PAGE_QUERY = `query($owner:String!,$name:String!,$number:Int!,$after:String!){repository(owner:$owner,name:$name){pullRequest(number:$number){
+commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100,after:$after){pageInfo{hasNextPage endCursor} ${CHECK_FIELDS.replaceAll('%REQ%', 'isRequired(pullRequestNumber:$number)')}}}}}}
 }}}`;
 
 export interface Fingerprint {
@@ -157,6 +163,8 @@ export interface WatchDetail {
   /** Its place in the merge queue, 1 next to merge; null out of it. Its checks run on the queue's merge group, not on the head. */
   queue: number | null;
   checks: WatchCheck[];
+  /** Cursor for follow-up context pages when a commit has more than 200 check contexts and a required check may sit in the middle. */
+  contextsCursor?: string;
   /** The account `gh` signs in as: what it writes is the agent's own. */
   viewer: string;
 }
@@ -180,6 +188,10 @@ export function parseDetail(raw: string): WatchDetail {
   const data = graphqlData(raw);
   const pr = pullRequestOf(data);
   const commit = row(row(list(row(pr.commits).nodes)[0]).commit);
+  const firstContexts = contextsOf(commit);
+  const pageInfo = row(firstContexts.pageInfo);
+  const endCursor = text(pageInfo.endCursor, 256);
+  const contextsCursor = Number(firstContexts.totalCount) > 200 && pageInfo.hasNextPage === true && endCursor ? endCursor : undefined;
   const base = baseTip(pr), sha = text(base.oid, 64);
   const first = checksOf(base).filter(({ check }) => check.status === 'failed')
     .sort((a, b) => (a.at || '9999').localeCompare(b.at || '9999'))[0]?.check;
@@ -199,8 +211,35 @@ export function parseDetail(raw: string): WatchDetail {
     behind: mergeState === 'UNKNOWN' ? null : mergeState === 'BEHIND',
     queue: queuePosition(pr),
     checks: checksOf(commit).map(({ check }) => check),
+    ...(contextsCursor ? { contextsCursor } : {}),
     viewer: text(row(data.viewer).login, 100),
   };
+}
+
+export function parseContextPage(raw: string): { head: string; checks: WatchCheck[]; cursor: string | null } {
+  const commit = row(row(list(row(pullRequestOf(graphqlData(raw)).commits).nodes)[0]).commit);
+  const contexts = contextsOf(commit);
+  const pageInfo = row(contexts.pageInfo);
+  const endCursor = text(pageInfo.endCursor, 256);
+  return {
+    head: text(commit.oid, 64),
+    checks: checksOf(commit).map(({ check }) => check),
+    cursor: pageInfo.hasNextPage === true && endCursor ? endCursor : null,
+  };
+}
+
+const checkAt = (check: WatchCheck): string =>
+  check.status === 'pending' ? '9999' : check.context ? (check.createdAt || '9999') : check.finished;
+
+export function mergeWatchChecks(existing: WatchCheck[], incoming: WatchCheck[]): WatchCheck[] {
+  const runs = new Map<string, { check: WatchCheck; at: string }>();
+  for (const check of [...existing, ...incoming]) {
+    const at = checkAt(check);
+    const held = runs.get(check.name);
+    if (!held || at > held.at) runs.set(check.name, { check: { ...check, required: check.required || held?.check.required === true }, at });
+    else if (check.required) held.check.required = true;
+  }
+  return [...runs.values()].map(({ check }) => check);
 }
 
 function checksOf(commit: Row): { check: WatchCheck; at: string }[] {

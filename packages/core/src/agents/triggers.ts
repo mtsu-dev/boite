@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { realpathSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import {
   AGENT_TRIGGERS_MAX, AGENT_TRIGGER_WEBHOOK_ROUTE, pullRequestAddress,
   type AgentProfile, type AgentTrigger, type AgentTriggerEvent, type AgentTriggerPrEvent, type RpcParams, type RpcResult, type ThreadId, type Turn,
@@ -20,11 +21,12 @@ const MAX_COALESCED_PRS = 20;
 const WATCH_RETRY_MS = 2000;
 const WATCH_RETRY_MAX_MS = 60_000;
 const TEST_AT_KEY = 'agents:trigger-test-at:';
+const WEBHOOK_AT_KEY = 'agents:trigger-webhook-at:';
 const ANCHOR_KEY = 'agents:trigger-anchor:';
 export type PrTriggerTransition = { kind: AgentTriggerPrEvent; key: string };
 type TestResult = RpcResult<'agents.trigger.test'>;
 type TestStamp = { testAt: number; realAt: number | null };
-type WatchAnchor = { folder: string; realPath: string };
+type WatchAnchor = { folder: string; realPath: string | null };
 type FileWatch = { folder: string } & ReturnType<typeof watchTriggerFiles>;
 type PendingWake = {
   event: AgentTriggerEvent;
@@ -33,6 +35,25 @@ type PendingWake = {
   deferred?: true;
   test?: true;
 };
+
+/** Resolves a folder's canonical path, walking up missing tail segments so a missing project folder still anchors against symlinks. */
+async function resolveExpectedRealPath(folder: string): Promise<string | null> {
+  const missing: string[] = [];
+  let current = folder;
+  while (true) {
+    try {
+      const base = await realpath(current);
+      return missing.length ? join(base, ...missing.reverse()) : base;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') return null;
+      const parent = dirname(current);
+      if (parent === current) return null;
+      missing.push(basename(current));
+      current = parent;
+    }
+  }
+}
 
 const SAMPLE_EVENT = {
   webhook: { kind: 'webhook', eventName: 'test', summary: '{"test":true}' },
@@ -49,6 +70,7 @@ export class AgentTriggers {
   readonly #pending = new Map<string, PendingWake>();
   readonly #pendingTests = new Map<string, PendingWake>();
   readonly #testFiredAt = new Map<string, TestStamp | null>();
+  readonly #webhookAt = new Map<string, number | null>();
   readonly #activeFileTurns = new Map<string, { agentId: string; projectId: string }>();
   readonly #seenDigests = new Map<string, number>();
   readonly #shutdown = new AbortController();
@@ -71,8 +93,7 @@ export class AgentTriggers {
 
   get #records() { return this.#core.workforce.records; }
 
-  save(params: RpcParams<'agents.trigger.save'>, encrypted: boolean): RpcResult<'agents.trigger.save'> {
-    const value = triggerConfig(params.value);
+  #validateSave(params: RpcParams<'agents.trigger.save'>, value: ReturnType<typeof triggerConfig>, encrypted: boolean) {
     const agent = this.#records.get('profile', value.agentId);
     const previous = params.id === undefined ? null : this.#get(params.id);
     if (previous && previous.agentId !== agent.id) throw refused('agentId: a trigger cannot change owner');
@@ -97,48 +118,73 @@ export class AgentTriggers {
     if (!previous && this.#records.list('trigger').filter(t => t.agentId === agent.id).length >= AGENT_TRIGGERS_MAX) {
       throw refused(`trigger: a mochi may have at most ${AGENT_TRIGGERS_MAX} triggers`);
     }
-    const id = previous?.id ?? newId('agt_trigger_');
-    const secret = createsSecret ? newToken() : undefined;
-    const sameFileProject = previous?.source.kind === 'file' && value.source.kind === 'file'
-      && previous.source.projectId === value.source.projectId;
-    let nextAnchor: WatchAnchor | null | undefined;
-    if (value.source.kind !== 'file') {
-      nextAnchor = null;
-    } else if (!sameFileProject) {
-      nextAnchor = null;
+    return { agent, previous, webhook, createsSecret };
+  }
+
+  async save(params: RpcParams<'agents.trigger.save'>, encrypted: boolean): Promise<RpcResult<'agents.trigger.save'>> {
+    const value = triggerConfig(params.value);
+    const checked = this.#validateSave(params, value, encrypted);
+    const preSameFile = checked.previous?.source.kind === 'file' && value.source.kind === 'file'
+      && checked.previous.source.projectId === value.source.projectId;
+    let prefetchedAnchor: WatchAnchor | undefined;
+    if (value.source.kind === 'file' && !preSameFile) {
       const project = this.#core.journal.getProject(value.source.projectId);
       if (project) {
-        try { nextAnchor = { folder: project.path, realPath: realpathSync(project.path) }; }
-        catch { /* Folder may not exist yet; the first non-retry open will anchor it. */ }
+        prefetchedAnchor = { folder: project.path, realPath: await resolveExpectedRealPath(project.path) };
       }
     }
-    const record = {
-      ...value,
-      configRevision: (previous?.revision ?? 0) + 1,
-      hasSecret: webhook,
-      webhookPath: webhook ? AGENT_TRIGGER_WEBHOOK_ROUTE + id : null,
-      lastFiredAt: previous?.lastFiredAt ?? null,
-      lastOutcome: previous?.lastOutcome === 'queued' ? 'skipped' as const : previous?.lastOutcome ?? null,
-      lastOutcomeAt: previous?.lastOutcome === 'queued' ? Date.now() : previous?.lastOutcomeAt ?? null,
-    };
+    let agent!: AgentProfile;
+    let webhook = false;
+    let hadSecret = false;
+    let secret: string | undefined;
+    let nextAnchor: WatchAnchor | null | undefined;
     const trigger = this.#records.transaction(() => {
+      const fresh = this.#validateSave(params, value, encrypted);
+      agent = fresh.agent;
+      const previous = fresh.previous;
+      webhook = fresh.webhook;
+      hadSecret = previous?.hasSecret === true;
+      const id = previous?.id ?? newId('agt_trigger_');
+      secret = fresh.createsSecret ? newToken() : undefined;
+      const sameFileProject = previous?.source.kind === 'file' && value.source.kind === 'file'
+        && previous.source.projectId === value.source.projectId;
+      if (value.source.kind !== 'file') {
+        nextAnchor = null;
+      } else if (!sameFileProject) {
+        const project = this.#core.journal.getProject(value.source.projectId);
+        nextAnchor = project
+          ? prefetchedAnchor?.folder === project.path ? prefetchedAnchor : { folder: project.path, realPath: null }
+          : null;
+      }
+      const record = {
+        ...value,
+        configRevision: (previous?.revision ?? 0) + 1,
+        hasSecret: webhook,
+        webhookPath: webhook ? AGENT_TRIGGER_WEBHOOK_ROUTE + id : null,
+        lastFiredAt: previous?.lastFiredAt ?? null,
+        lastOutcome: previous?.lastOutcome === 'queued' ? 'skipped' as const : previous?.lastOutcome ?? null,
+        lastOutcomeAt: previous?.lastOutcome === 'queued' ? Date.now() : previous?.lastOutcomeAt ?? null,
+      };
       const saved = previous
         ? this.#records.update('trigger', id, previous.revision, record)
         : this.#records.adopt('trigger', id, record);
       if (nextAnchor === null) this.#core.journal.deleteSetting(ANCHOR_KEY + id);
       else if (nextAnchor !== undefined) this.#core.journal.setSetting(ANCHOR_KEY + id, nextAnchor);
+      if (!webhook) this.#core.journal.deleteSetting(WEBHOOK_AT_KEY + id);
       if (secret !== undefined) this.#secrets.set(id, secret);
       return saved;
     });
+    const id = trigger.id;
     this.#core.bus.whenCommitted(() => {
       this.#pending.delete(id);
       this.#pendingTests.delete(id);
       if (nextAnchor === null) this.#watchAnchors.delete(id);
       else if (nextAnchor !== undefined) this.#watchAnchors.set(id, nextAnchor);
+      if (!webhook) this.#webhookAt.delete(id);
       this.#stopWatch(id);
       this.#syncWatch(trigger, agent);
       this.#core.workforce.changed();
-      if (previous?.hasSecret && !webhook) this.#secrets.set(id, undefined);
+      if (hadSecret && !webhook) this.#secrets.set(id, undefined);
     });
     return secret === undefined ? { trigger } : { trigger, secret };
   }
@@ -148,12 +194,14 @@ export class AgentTriggers {
     this.#records.transaction(() => {
       this.#records.remove('trigger', trigger.id);
       this.#core.journal.deleteSetting(TEST_AT_KEY + trigger.id);
+      this.#core.journal.deleteSetting(WEBHOOK_AT_KEY + trigger.id);
       this.#core.journal.deleteSetting(ANCHOR_KEY + trigger.id);
     });
     this.#core.bus.whenCommitted(() => {
       this.#pending.delete(trigger.id);
       this.#pendingTests.delete(trigger.id);
       this.#testFiredAt.delete(trigger.id);
+      this.#webhookAt.delete(trigger.id);
       this.#watchAnchors.delete(trigger.id);
       this.#stopWatch(trigger.id);
       this.#core.workforce.changed();
@@ -335,8 +383,8 @@ export class AgentTriggers {
         failed,
         suppressed: () => this.#hasActiveFileTurn(trigger.agentId, projectId),
       }, undefined, {
-        realPath: anchor?.realPath,
-        allowInitialLink: !fromRetry && !anchor,
+        realPath: anchor?.realPath ?? undefined,
+        allowInitialLink: !fromRetry && anchor === null,
         onAnchor: realPath => { this.#writeAnchor(trigger.id, { folder: project.path, realPath }); },
       });
       this.#watches.set(trigger.id, { folder: project.path, ...watch });
@@ -385,7 +433,7 @@ export class AgentTriggers {
   #readAnchor(id: string): WatchAnchor | null {
     if (this.#watchAnchors.has(id)) return this.#watchAnchors.get(id) ?? null;
     const stored = this.#core.journal.getSetting(ANCHOR_KEY + id) as Partial<WatchAnchor> | undefined;
-    const valid: WatchAnchor | null = stored && typeof stored.folder === 'string' && typeof stored.realPath === 'string'
+    const valid: WatchAnchor | null = stored && typeof stored.folder === 'string' && (stored.realPath === null || typeof stored.realPath === 'string')
       ? { folder: stored.folder, realPath: stored.realPath } : null;
     this.#watchAnchors.set(id, valid);
     return valid;
@@ -423,6 +471,24 @@ export class AgentTriggers {
     this.#core.journal.deleteSetting(TEST_AT_KEY + id);
   }
 
+  #readWebhookAt(id: string): number | null {
+    if (this.#webhookAt.has(id)) return this.#webhookAt.get(id) ?? null;
+    const stored = this.#core.journal.getSetting(WEBHOOK_AT_KEY + id);
+    const valid = typeof stored === 'number' && Number.isFinite(stored) ? stored : null;
+    this.#webhookAt.set(id, valid);
+    return valid;
+  }
+
+  #recordWebhookAt(id: string, at: number): void {
+    this.#webhookAt.set(id, at);
+    this.#core.journal.setSetting(WEBHOOK_AT_KEY + id, at);
+  }
+
+  #clearWebhookAt(id: string): void {
+    this.#webhookAt.set(id, null);
+    this.#core.journal.deleteSetting(WEBHOOK_AT_KEY + id);
+  }
+
   #cooldown(trigger: AgentTrigger, now = Date.now()): number {
     let base = trigger.lastFiredAt;
     const tested = this.#readTestAt(trigger.id);
@@ -432,12 +498,9 @@ export class AgentTriggers {
 
   #webhookCooldown(trigger: AgentTrigger, now: number): number {
     const firedWait = this.#cooldown(trigger, now);
-    if (trigger.lastOutcome === 'fired' || trigger.lastOutcome === null) return firedWait;
-    let outcomeBase = trigger.lastOutcomeAt ?? null;
-    const tested = this.#readTestAt(trigger.id);
-    if (outcomeBase !== null && tested && outcomeBase === tested.testAt) outcomeBase = null;
-    const outcomeWait = outcomeBase === null ? 0 : outcomeBase + trigger.cooldownSeconds * 1000 - now;
-    return Math.max(firedWait, outcomeWait);
+    const attemptBase = this.#readWebhookAt(trigger.id);
+    const attemptWait = attemptBase === null ? 0 : attemptBase + trigger.cooldownSeconds * 1000 - now;
+    return Math.max(firedWait, attemptWait);
   }
 
   #webhook(id: string): AgentTrigger | null {
@@ -524,6 +587,7 @@ export class AgentTriggers {
     const queue = wake.test ? this.#pendingTests : this.#pending;
     if (held === 'busy' || held === 'off') {
       queue.set(trigger.id, wake.deferred ? { ...wake, deferred: undefined } : wake);
+      if (!wake.test && wake.event.kind === 'webhook' && !fromTick && at !== null) this.#recordWebhookAt(trigger.id, at);
       if (wake.test && at !== null) {
         this.#recordTestAt(trigger, at);
         this.#outcome(trigger.id, at, 'queued', at);
@@ -542,7 +606,12 @@ export class AgentTriggers {
     const stamp = turnId ? now : (wake.test ? at : null);
     if (stamp !== null) {
       if (wake.test) this.#recordTestAt(trigger, stamp);
-      else this.#clearTestAt(trigger.id);
+      else {
+        this.#clearTestAt(trigger.id);
+        if (wake.event.kind === 'webhook') this.#clearWebhookAt(trigger.id);
+      }
+    } else if (!wake.test && wake.event.kind === 'webhook' && !fromTick) {
+      this.#recordWebhookAt(trigger.id, now);
     }
     this.#outcome(trigger.id, stamp, outcome, now);
     return { outcome, turnId };
@@ -603,6 +672,8 @@ export class AgentTriggers {
     for (const id of this.#watches.keys()) this.#stopWatch(id);
     this.#watchRetries.clear();
     this.#watchAnchors.clear();
+    this.#testFiredAt.clear();
+    this.#webhookAt.clear();
     this.#pending.clear();
     this.#pendingTests.clear();
     this.#activeFileTurns.clear();

@@ -61,7 +61,7 @@
     <div class="segmented" role="group" aria-label={t.source}>
       {#each kinds as { id, icon: Icon } (id)}
         <button type="button" class:on={kind === id} aria-pressed={kind === id} onclick={() => { kind = id; }} data-testid="trigger-kind-{id}">
-          <Icon size={14} strokeWidth={1.75} />{t.kinds[id]}
+          <Icon size={14} strokeWidth={1.75} /><span class="seg-label">{t.kinds[id]}</span>
         </button>
       {/each}
     </div>
@@ -111,12 +111,16 @@
   fieldset { border: 0; padding: 0; margin: 0; }
   .segmented { width: fit-content; max-width: 100%; flex-wrap: wrap; }
   .segmented button { display: inline-flex; align-items: center; gap: 5px; }
+  .segmented button :global(svg) { flex: none; }
+  .seg-label { min-width: 0; }
   .agent-field input[type='number'] { width: 8ch; }
   .agent-field textarea { min-height: 64px; }
   .event-filters { display: flex; flex-wrap: wrap; gap: 8px 16px; }
   .event-filters label { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
   @media (max-width: 480px) {
     .agent-schedule .segmented { display: flex; width: 100%; flex-wrap: nowrap; }
-    .agent-schedule .segmented button { flex: 1 1 auto; min-width: 0; justify-content: center; padding: 0 6px; gap: 4px; font-size: var(--text-xs); white-space: nowrap; }
+    .agent-schedule .segmented button { flex: 1 1 auto; min-width: 0; justify-content: center; padding: 0 6px; gap: 4px; font-size: var(--text-xs); }
+    .agent-schedule .segmented button :global(svg) { display: none; }
+    .seg-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   }
 </style>

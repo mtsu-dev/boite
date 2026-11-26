@@ -1035,7 +1035,8 @@ are owner-only; a mochi's own thread can list its triggers through
 receipt keyed by `requestId`, queues in its own slot so it never overwrites a
 real pending event, and persists its test-only timestamp (`agents:trigger-test-at:<id>`)
 so a test turn does not trigger cooldown for real events even across a restart.
-`agents.trigger.remove` deletes the trigger record, test stamp and persisted
+`agents.trigger.remove` deletes the trigger record, test stamp, real webhook
+timestamp and persisted
 root anchor inside one SQLite transaction, then removes any stored webhook
 secret after commit.
 Trigger edits accept a revision from before the latest firing outcome, provided
@@ -1046,8 +1047,10 @@ the trigger's configuration has stayed the same since that revision.
   of the exact request body). Comparison is constant-time. A missing or
   disabled route returns 404, failed authentication 401, a body over 1 MiB
   (`WEBHOOK_MAX_BODY_BYTES`) 413, cooldown 429 with a decaying `Retry-After`
-  (tracked from `lastFiredAt` and `lastOutcomeAt` so paused,
-  failing or busy mochis stay throttled even across restarts), an already pending real wake
+  (tracked from `lastFiredAt` and a separate durable real-attempt stamp
+  `agents:trigger-webhook-at:<id>` so paused, failing or busy mochis stay
+  throttled across restarts while tests, edits and restart queue resets never
+  interfere), an already pending real wake
   past cooldown 503 with `Retry-After: 10`, and a replayed delivery 409.
   Duplicate `X-GitHub-Delivery`
   or `Idempotency-Key` values are rejected via durable receipts, and every
@@ -1066,7 +1069,8 @@ the trigger's configuration has stayed the same since that revision.
   quoted payload excerpt and untrusted `X-GitHub-Event` label reach the mochi.
   Use HTTPS when exposing the route.
 - File triggers attach non-recursive `fs.watch` listeners to directories in
-  the local granted project, skipping symlinks, unreadable subdirectories
+  the local granted project (tracking each watched directory's device and inode
+  so nameless rename rescans reopen replaced subdirectories), skipping symlinks, unreadable subdirectories
   (`EACCES`, `EPERM`, `ELOOP`), `.gitignore` plain folder names (read from the
   resolved root with `O_NOFOLLOW`, rejecting symlinked or non-file `.gitignore`
   and capping reads at 64 KiB), `.git`,
@@ -1086,10 +1090,12 @@ the trigger's configuration has stayed the same since that revision.
   asynchronous lookup, debounce or root probe) so a mochi does not wake itself
   in a loop while pre-turn edits remain intact. Boite checks the root's
   resolved `realpath`, device and inode asynchronously (`lstat` + `realpath`),
-  with one metadata read in flight per path. Saving a file trigger (or its
-  first open if the folder was absent at save) anchors it to the granted
-  project's resolved `realpath` in SQLite (`agents:trigger-anchor:<id>`),
-  preserved across restarts, disables and edits on the same project. That
+  with one metadata read in flight per path. Saving a file trigger resolves the
+  project's `realpath` asynchronously and anchors it in SQLite
+  (`agents:trigger-anchor:<id>`), preserved across restarts, disables and edits
+  on the same project; if the folder is absent at save, Boite persists an
+  unresolved anchor (`realPath: null`) so initial open refuses symlinks even
+  after a restart until a real directory is anchored. That
   allows retry recovery if a symlinked project is temporarily absent at
   startup while rejecting any redirection of the root or an ancestor directory
   even across restarts. File wakes wait
@@ -1106,9 +1112,9 @@ the trigger's configuration has stayed the same since that revision.
   and retries opening it with backoff.
 - PR triggers reuse the existing PR tracker and its GitHub reads (the
   fingerprint query reads `contexts(last:100)` alongside aggregate state counts,
-  and the detail query merges both `contexts(first:100)` and `contexts(last:100)`
-  so older passed required checks are not evicted on pull requests with more
-  than 100 check runs). An open
+  and the detail query merges `contexts(first:100)` and `contexts(last:100)`,
+  paginating additional middle pages via `CONTEXT_PAGE_QUERY` when a pull
+  request exceeds 200 check runs and a required check is still missing). An open
   watch establishes a baseline, then forwards new CI failures (including
   repeated failed runs of the same check name on the same commit when no
   intermediate pending poll occurred), review requests, requests for changes,
