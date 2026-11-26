@@ -19,18 +19,21 @@ const read = new Map<string, { stamp: string; model: SessionModel | null }>();
  * The model pi resumes a session on when no `--model` is given (pi 1.6.1
  * `getBranchSelection` in core/virtual-models.js, used by `createAgentSession`
  * only when the branch holds a message). Null without a readable session or a
- * model in it. The answer is kept until the file changes.
+ * model in it, or when two files claim the session, as `copySession` refuses
+ * them too. The answer is kept until the file changes.
  */
 export function sessionModelOf(dir: string, sessionId: string): SessionModel | null {
   try {
-    const name = readdirSync(dir).find(entry => entry.endsWith(`_${sessionId}.jsonl`));
-    if (name === undefined) return null;
-    const path = join(dir, name);
+    const names = readdirSync(dir).filter(entry => entry.endsWith(`_${sessionId}.jsonl`));
+    if (names.length !== 1) return null;
+    const path = join(dir, names[0]!);
     const stat = statSync(path);
     const stamp = `${stat.size}:${stat.mtimeMs}`;
     const known = read.get(path);
     if (known?.stamp === stamp) return known.model;
-    const model = branchModel(branchOf(readFileSync(path, 'utf8')));
+    const text = readFileSync(path, 'utf8');
+    const header: unknown = JSON.parse(text.split('\n', 1)[0]!);
+    const model = isRecord(header) && header['type'] === 'session' && header['id'] === sessionId ? branchModel(branchOf(text)) : null;
     read.delete(path);
     read.set(path, { stamp, model });
     if (read.size > READ_LIMIT) read.delete(read.keys().next().value!);

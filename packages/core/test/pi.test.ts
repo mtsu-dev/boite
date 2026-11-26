@@ -79,6 +79,10 @@ test('pi default follows the model a resumed session restores, not the one pi st
       .toMatchObject({ rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } });
     expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ available: false, reason: 'unsupported' });
   }
+  // Two files for one session: Boite cannot tell which one pi resumes, so it reads the model pi starts on.
+  const file = piSessionFile(threadId);
+  writeFileSync(join(file, '..', `2020-01-01T00-00-00-000Z_${harness!.core.threads.require(threadId).sessionId}.jsonl`), readFileSync(file, 'utf8'));
+  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
 });
 
 test('pi default on a session holds a registered router over the models it answered through, and yields to a profile --model', async () => {
