@@ -122,7 +122,7 @@ export type AgentTriggerSource =
 export type AgentTriggerEvent =
   | { kind: 'webhook'; summary: string; eventName?: string }
   | { kind: 'file'; paths: string[]; more?: number }
-  | { kind: 'pr'; events: AgentTriggerPrEvent[]; url: string };
+  | { kind: 'pr'; events: AgentTriggerPrEvent[]; url: string; additional?: { events: AgentTriggerPrEvent[]; url: string }[] };
 export interface AgentTriggerConfig {
   agentId: string;
   name: string;
@@ -138,6 +138,8 @@ export interface AgentTrigger extends AgentRecord, AgentTriggerConfig {
   webhookPath: string | null;
   /** An enabled file trigger could not watch its project and will retry. */
   watchUnavailable?: true;
+  /** Why a file trigger could not be watched when more specific than a missing folder. */
+  watchUnavailableReason?: 'limit';
   lastFiredAt: number | null;
   lastOutcome: 'fired' | 'queued' | 'skipped' | 'error' | null;
 }

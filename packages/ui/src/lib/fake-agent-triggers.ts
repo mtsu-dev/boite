@@ -74,14 +74,16 @@ export class FakeAgentTriggers {
     }
     if (normalizedSource.kind === 'pr' && (!normalizedSource.events.length || new Set(normalizedSource.events).size !== normalizedSource.events.length
       || normalizedSource.events.some(event => !AGENT_TRIGGER_PR_EVENTS.includes(event)))) this.#refuse('source.events: expected pull request events');
-    if (!value.name.trim() || value.name.length > 80 || !value.prompt.trim() || value.prompt.length > 4000
+    const name = value.name.trim();
+    const prompt = value.prompt.trim();
+    if (!name || name.length > 80 || !prompt || prompt.length > 4000
       || typeof value.enabled !== 'boolean' || !Number.isInteger(value.cooldownSeconds) || value.cooldownSeconds < 1 || value.cooldownSeconds > 86_400) this.#refuse('trigger: check its name, instructions, enabled status and cooldown');
     if (!previous && this.list().filter(trigger => trigger.agentId === agent.id).length >= AGENT_TRIGGERS_MAX) this.#refuse(`trigger: a mochi may have at most ${AGENT_TRIGGERS_MAX} triggers`);
     const now = Date.now();
     const id = previous?.id ?? 'agt_trigger_' + this.#secret().slice(0, 20);
     const revision = (previous?.revision ?? 0) + 1;
     const trigger: AgentTrigger = {
-      agentId: agent.id, name: value.name.trim(), prompt: value.prompt.trim(), enabled: value.enabled, cooldownSeconds: value.cooldownSeconds,
+      agentId: agent.id, name, prompt, enabled: value.enabled, cooldownSeconds: value.cooldownSeconds,
       source: normalizedSource, hasSecret: webhook, webhookPath: webhook ? AGENT_TRIGGER_WEBHOOK_ROUTE + id : null,
       id, revision, configRevision: revision, createdAt: previous?.createdAt ?? now, updatedAt: now,
       lastFiredAt: previous?.lastFiredAt ?? null, lastOutcome: previous?.lastOutcome === 'queued' ? 'skipped' : previous?.lastOutcome ?? null,

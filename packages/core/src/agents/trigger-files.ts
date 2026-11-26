@@ -1,30 +1,56 @@
-import { watch, type BigIntStats, type FSWatcher } from 'node:fs';
-import { lstat, readdir, readFile } from 'node:fs/promises';
+import { constants, watch, type BigIntStats, type FSWatcher } from 'node:fs';
+import { lstat, open as openFile, readdir, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, join, sep } from 'node:path';
 import { ignoredNames } from '../files.ts';
 
 const ALWAYS_IGNORED = new Set(['.git', 'node_modules', '.boite']);
 const DEFAULT_IGNORED = new Set([...ALWAYS_IGNORED, 'dist', 'target', '.venv', 'venv', '__pycache__', '.next', '.nuxt', 'build', 'coverage']);
+const GITIGNORE_MAX_BYTES = 64 * 1024;
 export const PATHS_PER_EVENT = 50;
 export const MAX_WATCH_DIRS = 512;
+
+export class WatchLimitError extends Error {}
 
 type WatchCallbacks = {
   publish: (paths: string[], more: number) => void;
   ready: () => void;
   failed: (error: unknown) => void;
+  suppressed?: () => boolean;
+};
+type RootAnchor = {
+  realPath?: string;
+  allowInitialLink?: boolean;
+  onAnchor?: (realPath: string) => void;
 };
 type WatchedDirectory = { directory: string; watcher: FSWatcher };
+type RootSample = { stats: BigIntStats; realPath: string; isLink: boolean };
 
-type RootResult = { root: BigIntStats } | { error: unknown };
+type RootResult = { root: RootSample } | { error: unknown };
 type RootReceivers = Set<(result: RootResult) => void>;
 type RootRead = { waiting: RootReceivers; active?: RootReceivers; invalidated: boolean };
 
 const rootKey = (folder: string) => process.platform === 'win32' ? folder.toLowerCase() : folder;
 
+async function readGitignore(root: string): Promise<string> {
+  const path = join(root, '.gitignore');
+  const info = await lstat(path);
+  if (info.isSymbolicLink() || !info.isFile()) return '';
+  const handle = await openFile(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile()) return '';
+    const buf = Buffer.allocUnsafe(Math.min(Math.max(opened.size, 0), GITIGNORE_MAX_BYTES));
+    const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+    return buf.subarray(0, bytesRead).toString('utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
 export class TriggerRootProbes {
   readonly #reads = new Map<string, RootRead>();
 
-  probe(folder: string, signal: AbortSignal): Promise<BigIntStats> {
+  probe(folder: string, signal: AbortSignal): Promise<RootSample> {
     if (signal.aborted) return Promise.reject(signal.reason);
     const key = rootKey(folder);
     let read = this.#reads.get(key);
@@ -64,9 +90,12 @@ export class TriggerRootProbes {
       read.waiting = new Set();
       read.invalidated = false;
       let result: RootResult;
-      // lstat rejects symlinks and Windows junctions so a replaced root cannot escape the granted folder.
-      try { result = { root: await lstat(folder, { bigint: true }) }; }
-      catch (error) { result = { error }; }
+      try {
+        const link = await lstat(folder, { bigint: true });
+        const realPath = await realpath(folder);
+        const stats = link.isSymbolicLink() ? await stat(realPath, { bigint: true }) : link;
+        result = { root: { stats, realPath, isLink: link.isSymbolicLink() } };
+      } catch (error) { result = { error }; }
       // A root rename observed during the read may postdate the sample.
       if (read.invalidated) {
         for (const receive of active) read.waiting.add(receive);
@@ -84,9 +113,10 @@ export function watchTriggerFiles(
   patterns: string[],
   debounceMs: number,
   roots: TriggerRootProbes,
-  { publish, ready, failed }: WatchCallbacks,
+  { publish, ready, failed, suppressed }: WatchCallbacks,
   maxWatchDirs = MAX_WATCH_DIRS,
-): { close: () => void; checkRoot: (validated?: () => void) => void; discardPending: () => void } {
+  anchor?: RootAnchor,
+): { close: () => void; checkRoot: (validated?: () => void) => void } {
   const globs = patterns.map(pattern => new Bun.Glob(pattern));
   const patternParts = patterns.map(pattern => pattern.split('/'));
   const explicitSegments = new Set(
@@ -104,18 +134,10 @@ export function watchTriggerFiles(
   let parentWatch: FSWatcher | undefined;
   let refreshParent = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let root: BigIntStats | undefined;
+  let root: RootSample | undefined;
   let checking = false;
   let due = false;
   let overflow = 0;
-
-  function discardPending() {
-    clearTimeout(timer);
-    timer = undefined;
-    changed.clear();
-    overflow = 0;
-    due = false;
-  }
 
   function close() {
     stop.abort();
@@ -124,12 +146,19 @@ export function watchTriggerFiles(
     for (const watcher of watches.values()) watcher.close();
     watches.clear();
     lookups.clear();
-    discardPending();
+    clearTimeout(timer);
+    timer = undefined;
+    changed.clear();
+    overflow = 0;
+    due = false;
   }
 
-  async function assertRoot(expected: BigIntStats) {
+  async function assertRoot(expected: RootSample) {
     const current = await roots.probe(folder, signal);
-    if (!current.isDirectory() || current.dev !== expected.dev || current.ino !== expected.ino) {
+    if (!current.stats.isDirectory()
+      || rootKey(current.realPath) !== rootKey(expected.realPath)
+      || current.stats.dev !== expected.stats.dev
+      || current.stats.ino !== expected.stats.ino) {
       throw new Error(`project root was replaced: ${folder}`);
     }
     if (refreshParent && !signal.aborted) {
@@ -157,6 +186,7 @@ export function watchTriggerFiles(
   }
 
   function record(relative: string) {
+    if (suppressed?.()) return;
     if (patterns.length && !patterns.some((pattern, index) => relative === pattern || relative.startsWith(pattern + '/') || globs[index]!.match(relative))) return;
     if (!changed.has(relative)) {
       if (changed.size < PATHS_PER_EVENT) changed.add(relative);
@@ -185,7 +215,8 @@ export function watchTriggerFiles(
         const segment = pParts[i]!;
         if (segment.includes('**') || segment.includes('{') || segment.includes('}')) return true;
         if (/[*?[\]]/.test(segment)) {
-          if (!new Bun.Glob(segment).match(parts[i]!)) return false;
+          try { if (!new Bun.Glob(segment).match(parts[i]!)) return false; }
+          catch { return true; }
         } else if (segment !== parts[i]) return false;
       }
       return true;
@@ -226,22 +257,23 @@ export function watchTriggerFiles(
 
   async function changedIn(directory: string, watcher: FSWatcher, event: string, name: string | null) {
     if (watches.get(directory) !== watcher) return;
+    const wasSuppressed = suppressed?.() ?? false;
     // A readable project can have an unwatchable parent. Be conservative there.
     if (!directory && !parentWatch && parentFolder !== folder
       && (name === null || (event === 'rename' && rootKey(name) === rootName))) {
       roots.invalidate(folder);
     }
     if (name === null) {
-      await scan(directory, true, watcher);
+      await scan(directory, !wasSuppressed, watcher);
       return;
     }
     if (ignored(name)) return;
     const relative = childOf(directory, name);
     if (event === 'rename') {
       if (watches.has(relative)) removeTree(relative);
-      if (mayMatch(relative) && !await addTree(relative, true, { directory, watcher })) return;
+      if (mayMatch(relative) && !await addTree(relative, !wasSuppressed, { directory, watcher })) return;
     }
-    if (watches.get(directory) === watcher) record(relative);
+    if (!wasSuppressed && watches.get(directory) === watcher) record(relative);
   }
 
   function failure(error: unknown) {
@@ -253,10 +285,6 @@ export function watchTriggerFiles(
   async function addTree(directory: string, reportNew: boolean, parent?: WatchedDirectory): Promise<boolean> {
     const parentIsCurrent = () => !signal.aborted && (!parent || watches.get(parent.directory) === parent.watcher);
     if (!parentIsCurrent() || watches.has(directory)) return false;
-    if (watches.size >= maxWatchDirs) {
-      failure(new Error(`project has more than ${maxWatchDirs} watchable directories; narrow the trigger patterns`));
-      return false;
-    }
     // Each rename supersedes the lookup for that path, even when it finds a file.
     const lookup = { parent };
     lookups.set(directory, lookup);
@@ -267,7 +295,7 @@ export function watchTriggerFiles(
       if (directory && !(await lstat(path)).isDirectory()) return isCurrent();
       if (!isCurrent()) return false;
       if (watches.size >= maxWatchDirs) {
-        failure(new Error(`project has more than ${maxWatchDirs} watchable directories; narrow the trigger patterns`));
+        failure(new WatchLimitError(`project has more than ${maxWatchDirs} watchable directories; narrow the trigger patterns`));
         return false;
       }
       watcher = watch(path, { persistent: false }, (event, name) => {
@@ -323,9 +351,19 @@ export function watchTriggerFiles(
   async function open() {
     const initial = await roots.probe(folder, signal);
     if (signal.aborted) return;
-    if (!initial.isDirectory()) throw new Error(`project root is not a directory: ${folder}`);
+    if (!initial.stats.isDirectory()) throw new Error(`project root is not a directory: ${folder}`);
+    if (anchor?.realPath !== undefined) {
+      if (rootKey(initial.realPath) !== rootKey(anchor.realPath)) {
+        throw new Error(`project root escaped granted path: ${folder}`);
+      }
+    } else {
+      if (initial.isLink && !anchor?.allowInitialLink) {
+        throw new Error(`project root is a symbolic link: ${folder}`);
+      }
+      anchor?.onAnchor?.(initial.realPath);
+    }
     try {
-      const extra = ignoredNames(await readFile(join(folder, '.gitignore'), 'utf8'));
+      const extra = ignoredNames(await readGitignore(initial.realPath));
       if (extra.size > 0) {
         const merged = new Set(ignoredSet);
         for (const name of extra) {
@@ -350,5 +388,6 @@ export function watchTriggerFiles(
   }
 
   void open().catch(failure);
-  return { close, checkRoot, discardPending };
+
+  return { close, checkRoot };
 }

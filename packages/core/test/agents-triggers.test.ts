@@ -1,19 +1,20 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { createHmac } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { chmodSync, mkdirSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import * as fs from 'node:fs';
 import * as files from 'node:fs/promises';
 import { request, type ClientRequest } from 'node:http';
+import { tmpdir } from 'node:os';
 import { basename, dirname, join, sep } from 'node:path';
 import type { AgentTrigger, AgentTriggerSource } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { botCommand } from '../src/agents/cli.ts';
-import { PATHS_PER_EVENT, TriggerRootProbes, watchTriggerFiles } from '../src/agents/trigger-files.ts';
+import { PATHS_PER_EVENT, TriggerRootProbes, WatchLimitError, watchTriggerFiles } from '../src/agents/trigger-files.ts';
 import { TriggerSecrets } from '../src/agents/trigger-secrets.ts';
 import { WEBHOOK_MAX_BODY_BYTES } from '../src/agents/trigger-webhook.ts';
 import { makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
-import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
+import { echoThread, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
 let h: TestCore;
@@ -152,8 +153,9 @@ test('a webhook authenticates three ways, streams up to 1 MiB, blocks replays, r
   expect((await post(trigger, {
     'x-hub-signature-256': `sha256=${signature}`, 'x-github-delivery': 'delivery-1',
   }, body)).status).toBe(409);
-  // Even without X-GitHub-Delivery, replaying the exact signed body within the window returns 409.
+  // Even without X-GitHub-Delivery or with a forged delivery header, replaying the signed body within the window returns 409.
   expect((await post(trigger, { 'x-hub-signature-256': `sha256=${signature}` }, body)).status).toBe(409);
+  expect((await post(trigger, { 'x-hub-signature-256': `sha256=${signature}`, 'x-github-delivery': 'delivery-forged' }, body)).status).toBe(409);
 
   const rotated = await owner.call('agents.trigger.rotateSecret', { triggerId: trigger.id });
   expect(rotated.secret).not.toBe(secret);
@@ -944,4 +946,201 @@ test('writes during a mochi\'s own file-trigger turn do not re-wake that trigger
   expect(turnsOf(h, threadId)).toHaveLength(2);
   expect(read(trigger).lastOutcome).toBe('fired');
 });
+
+test('file triggers anchor symlinked project roots, reject ancestor symlink escape, and ignore symlinked .gitignore', async () => {
+  const realRoot = join(h.dataDir, 'real-root');
+  const linkedRoot = join(h.dataDir, 'linked-root');
+  mkdirSync(realRoot);
+  symlinkSync(realRoot, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir');
+  const linkedProject = await owner.call('projects.add', { path: linkedRoot, name: 'Linked' });
+  const { agent: linkedAgent, threadId: linkedThread } = await makeAgent(h, owner, { projectIds: [linkedProject.id] });
+  const { trigger: linkedTrigger } = await saveWatching(linkedRoot, linkedAgent.id, {
+    kind: 'file', projectId: linkedProject.id, patterns: ['*.txt'], debounceMs: 50,
+  });
+  expect(read(linkedTrigger).watchUnavailable).toBeUndefined();
+  writeFileSync(join(realRoot, 'hello.txt'), '');
+  await waitFor(() => driver.prompts.get(linkedThread)?.length === 2 && settled(h, linkedThread));
+  expect(driver.prompts.get(linkedThread)!.at(-1)).toContain('hello.txt');
+
+  const outside = join(h.dataDir, 'outside-ancestor');
+  const outsideIgnore = join(h.dataDir, 'outside-gitignore');
+  writeFileSync(outsideIgnore, 'must-watch/\n');
+  const ancestor = join(h.dataDir, 'ancestor');
+  const folder = join(ancestor, 'sub', 'project');
+  mkdirSync(join(folder, 'must-watch'), { recursive: true });
+  mkdirSync(join(outside, 'sub', 'project'), { recursive: true });
+  symlinkSync(outsideIgnore, join(folder, '.gitignore'), 'file');
+  const project = await owner.call('projects.add', { path: folder, name: 'Ancestor' });
+  const { agent, threadId } = await makeAgent(h, owner, { projectIds: [project.id] });
+  const { listeners, restore } = controlFileEvents(folder);
+  try {
+    const { trigger } = await save(agent.id, { kind: 'file', projectId: project.id, patterns: ['**/*.txt'], debounceMs: 50 });
+    await waitFor(() => listeners.has(join(folder, 'must-watch')));
+    expect(read(trigger).watchUnavailable).toBeUndefined();
+
+    // Redirecting an ancestor directory via symlink escapes the anchored realPath.
+    renameSync(ancestor, ancestor + '-original');
+    symlinkSync(outside, ancestor, process.platform === 'win32' ? 'junction' : 'dir');
+    h.core.workforce.triggers.tick();
+    await waitFor(() => read(trigger).watchUnavailable === true);
+    h.core.workforce.triggers.tick();
+    await Bun.sleep(100);
+    expect(read(trigger).watchUnavailable).toBe(true);
+    expect(listeners.has(folder)).toBe(false);
+    expect(turnsOf(h, threadId)).toHaveLength(1);
+  } finally { restore(); }
+});
+
+test('file watch allows file renames at the directory cap and reports WatchLimitError when adding a directory', async () => {
+  const folder = join(h.dataDir, 'cap-project');
+  mkdirSync(folder);
+  const { listeners, restore } = controlFileEvents(folder);
+  const batches: Array<{ paths: string[]; more: number }> = [];
+  let failureError: unknown;
+  const roots = new TriggerRootProbes();
+  let watch: ReturnType<typeof watchTriggerFiles> | undefined;
+  try {
+    watch = watchTriggerFiles(
+      folder,
+      ['**/*.txt'],
+      40,
+      roots,
+      {
+        publish: (paths, more) => { batches.push({ paths, more }); },
+        ready: () => undefined,
+        failed: error => { failureError = error; },
+      },
+      1,
+    );
+    await waitFor(() => listeners.has(folder));
+    writeFileSync(join(folder, 'at-cap.txt'), '');
+    listeners.get(folder)!('rename', 'at-cap.txt');
+    await waitFor(() => batches.length === 1);
+    expect(batches[0]!.paths).toEqual(['at-cap.txt']);
+    expect(failureError).toBeUndefined();
+
+    mkdirSync(join(folder, 'over-cap'));
+    listeners.get(folder)!('rename', 'over-cap');
+    await waitFor(() => failureError !== undefined);
+    expect(failureError).toBeInstanceOf(WatchLimitError);
+  } finally {
+    watch?.close();
+    restore();
+  }
+});
+
+test('a file rename observed during a file-trigger turn stays suppressed even when its lstat finishes after turn end', async () => {
+  driver.restore();
+  driver = scripted(ctx => ({ text: '[quiet] tested', hold: ctx.prompt.includes('first.txt') }));
+  const folder = join(h.dataDir, 'async-suppress');
+  mkdirSync(folder);
+  const project = await owner.call('projects.add', { path: folder, name: 'Project' });
+  const { agent, threadId } = await makeAgent(h, owner, { projectIds: [project.id] });
+  const { listeners, restore } = controlFileEvents(folder);
+  const realLstat = files.lstat;
+  const heldLstat = Promise.withResolvers<fs.Stats>();
+  let lstatSpy: ReturnType<typeof spyOn> | undefined;
+  try {
+    const { trigger } = await save(agent.id, { kind: 'file', projectId: project.id, patterns: ['*.txt'], debounceMs: 50 });
+    await waitFor(() => listeners.has(folder));
+    writeFileSync(join(folder, 'first.txt'), '');
+    listeners.get(folder)!('change', 'first.txt');
+    await waitFor(() => driver.held.length === 1);
+    oldEnough(trigger);
+
+    const selfPath = join(folder, 'self-created.txt');
+    writeFileSync(selfPath, '');
+    let intercepted = false;
+    lstatSpy = spyOn(files, 'lstat').mockImplementation(((path: fs.PathLike, options?: object) => {
+      if (path === selfPath && !options) {
+        intercepted = true;
+        return heldLstat.promise;
+      }
+      return realLstat(path, options as never);
+    }) as typeof files.lstat);
+
+    listeners.get(folder)!('rename', 'self-created.txt');
+    await waitFor(() => intercepted);
+    driver.release();
+    await waitFor(() => settled(h, threadId));
+    heldLstat.resolve(fs.lstatSync(selfPath));
+    await Bun.sleep(120);
+    expect(turnsOf(h, threadId)).toHaveLength(2);
+    expect(read(trigger).lastOutcome).toBe('fired');
+  } finally {
+    lstatSpy?.mockRestore();
+    restore();
+  }
+});
+
+test('busy-queued file and PR triggers coalesce without stalling on cooldown and stamp cooldown when fired', async () => {
+  const folder = join(h.dataDir, 'busy-coalesce');
+  mkdirSync(folder);
+  const project = await owner.call('projects.add', { path: folder, name: 'Project' });
+  const { agent, threadId } = await makeAgent(h, owner, { projectIds: [project.id] });
+  const { trigger: fileTrigger } = await saveWatching(folder, agent.id, {
+    kind: 'file', projectId: project.id, patterns: ['*.txt'], debounceMs: 50,
+  });
+  const { trigger: prTrigger } = await save(agent.id, { kind: 'pr', projectId: project.id, events: ['ci_failed', 'merged'] }, 'Multi PR');
+  const prThread = await owner.call('threads.create', {
+    projectId: project.id, providerId: 'echo', accountId: h.core.accounts.list()[0]!.id, title: 'PR thread',
+  });
+
+  await owner.call('turns.start', { threadId, prompt: 'manual hold' });
+  await waitFor(() => driver.held.length === 1);
+
+  writeFileSync(join(folder, 'a.txt'), '');
+  await waitFor(() => read(fileTrigger).lastOutcome === 'queued');
+  expect(read(fileTrigger).lastFiredAt).toBeNull();
+  writeFileSync(join(folder, 'b.txt'), '');
+  await Bun.sleep(100);
+
+  h.core.workforce.triggers.pullRequest(prThread.id, 'https://github.com/example/boite/pull/10', [{ kind: 'ci_failed', key: 'k10' }]);
+  h.core.workforce.triggers.pullRequest(prThread.id, 'https://github.com/example/boite/pull/11', [{ kind: 'merged', key: 'k11' }]);
+  expect(read(prTrigger).lastOutcome).toBe('queued');
+
+  driver.release();
+  await waitFor(() => read(fileTrigger).lastOutcome === 'fired' && read(prTrigger).lastOutcome === 'fired' && settled(h, threadId));
+  const prompts = driver.prompts.get(threadId)!;
+  const filePrompt = prompts.find(p => p.includes('a.txt'))!;
+  expect(filePrompt).toContain('b.txt');
+  const prPrompt = prompts.find(p => p.includes('pull/10'))!;
+  expect(prPrompt).toContain('pull/11');
+  expect(prPrompt).toContain('additional');
+
+  // Cooldown is stamped at actual fire time, so a file change right after enters cooldown.
+  expect(read(fileTrigger).lastFiredAt).not.toBeNull();
+  writeFileSync(join(folder, 'c.txt'), '');
+  await waitFor(() => read(fileTrigger).lastOutcome === 'queued');
+});
+
+test('a persisted test timestamp does not block a real webhook after core restart', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-trigger-restart-'));
+  let first: TestCore | undefined;
+  let second: TestCore | undefined;
+  try {
+    first = await startTestCore({ dataDir });
+    const client = await first.connect();
+    const { agent, threadId } = await makeAgent(first, client);
+    const { trigger, secret } = await client.call('agents.trigger.save', {
+      value: { agentId: agent.id, source: { kind: 'webhook' }, name: 'Restart hook', prompt: 'Check hook.', enabled: true, cooldownSeconds: 60 },
+    });
+    const tested = await client.call('agents.trigger.test', { triggerId: trigger.id, requestId: 'pre-restart-test' });
+    expect(tested.outcome).toBe('fired');
+    await waitFor(() => settled(first!, threadId));
+    await first.stop();
+    first = undefined;
+
+    second = await startTestCore({ dataDir });
+    const res = await fetch(new URL(trigger.webhookPath!, second.url.replace(/^ws/, 'http')), {
+      method: 'POST', headers: { 'x-boite-secret': secret! }, body: '{"after":"restart"}',
+    });
+    expect(res.status).toBe(202);
+  } finally {
+    await first?.stop();
+    await second?.stop();
+    await removeDir(dataDir);
+  }
+});
+
 

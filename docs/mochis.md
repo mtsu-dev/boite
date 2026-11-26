@@ -109,8 +109,9 @@ the event that should wake it and say what to do when it wakes.
   machine. Enter comma-separated paths or patterns such as `src/**/*.{ts,tsx}`,
   or leave them blank for all source paths. Boite groups changes before
   waking the mochi, skips ignored, dependency, build and Git folders, and
-  ignores changes made while that trigger's own turn is running.
-  The trigger shows when Boite cannot watch the project and is retrying.
+  ignores changes in that project while that trigger's own turn is running.
+  The trigger shows when Boite cannot watch the project (for example, if it
+  has more than 512 watchable folders) and is retrying.
 - **Pull requests** listens to pull requests that Boite already watches in a
   granted project. Choose failed CI, review requests, requests for changes,
   merge conflicts or merges.
@@ -119,8 +120,8 @@ Use **Test** to send a sample event without affecting real events or cooldowns.
 The trigger shows when it received an event and whether the mochi woke, waited
 or skipped it. A cooldown limits how often a trigger wakes it: project file
 and pull request changes that arrive during cooldown wait and combine until it
-ends, while webhooks receive a retry delay. A busy mochi takes the latest
-waiting event for each trigger after its turn. Paused or archived mochis and
+ends, while webhooks receive a retry delay. A busy mochi takes the waiting
+event for each trigger after its turn. Paused or archived mochis and
 mochis over their daily budget do not wake. Triggers stay owner-only, belong
 to their machine and are removed when a mochi moves to another one.
 

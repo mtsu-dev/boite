@@ -65,7 +65,7 @@
     <div class="routine-text">
       <strong title={trigger.name}>{trigger.name}</strong>
       <span class="routine-when">{t.kinds[trigger.source.kind]}{#if project}{' · '}{project.name}{/if}</span>
-      {#if trigger.watchUnavailable}<span class="trigger-last failed">{t.watchUnavailable}</span>{/if}
+      {#if trigger.watchUnavailable}<span class="trigger-last failed">{trigger.watchUnavailableReason === 'limit' ? t.watchLimit : t.watchUnavailable}</span>{/if}
       {#if last}<span class="trigger-last" class:failed={trigger.lastOutcome === 'error'}>{last}</span>{/if}
     </div>
     {#if canEdit}

@@ -78,3 +78,23 @@ test('a relayed mochi copies its own webhook address or shows only the path when
   expect(triggerWebhookUrl(path, endpoint, null, null, 'https://page.example')).toBeNull();
   expect(triggerWebhookUrl(path, 'ws://127.0.0.1:8777', null, null, 'https://page.example')).toBe('http://127.0.0.1:8777' + path);
 });
+
+test('a file trigger over the watch limit shows the actionable folder-cap warning', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = new AgentsView(store);
+  await view.refresh();
+  const agent = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
+  const source = { kind: 'file' as const, projectId: agent.projectIds![0]!, patterns: [], debounceMs: 100 };
+  const { trigger } = await client.call('agents.trigger.save', { value: {
+    agentId: agent.id, source, name: 'Huge tree', prompt: 'Watch files.', enabled: true, cooldownSeconds: 60,
+  } });
+  await view.refresh();
+  const row = view.snapshot!.triggers!.find(item => item.id === trigger.id)!;
+  row.watchUnavailable = true;
+  row.watchUnavailableReason = 'limit';
+  const component = mount(AgentTriggers, { target: document.body, props: { view, agentId: agent.id } });
+  try {
+    expect(document.body.textContent).toContain('Too many folders to watch (over 512)');
+  } finally { await unmount(component); view.close(); }
+});
+

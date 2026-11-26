@@ -38,7 +38,7 @@ baseRef{target{... on Commit{oid statusCheckRollup{contexts(last:100){checkRunCo
 commits(last:1){nodes{commit{statusCheckRollup{state contexts(last:100){checkRunCountsByState{state count} statusContextCountsByState{state count} nodes{... on CheckRun{completedAt} ... on StatusContext{createdAt}}}}}}}
 }}}`;
 
-const CHECK_NODES = (required: string) => `contexts(first:100){nodes{__typename
+const CHECK_NODES = (required: string) => `contexts(last:100){nodes{__typename
 ... on CheckRun{name status conclusion detailsUrl startedAt completedAt ${required} checkSuite{workflowRun{workflow{name}}}}
 ... on StatusContext{context state targetUrl createdAt ${required}}
 }}`;

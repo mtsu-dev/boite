@@ -22,6 +22,7 @@ export const fr: Translation = {
       outcomes: { fired: 'Mochi réveillé', queued: 'En attente', skipped: 'Ignoré', error: 'Impossible de réveiller le mochi' },
       last: '{state} à {when}',
       watchUnavailable: 'Surveillance des fichiers impossible. Nouvelle tentative en cours.',
+      watchLimit: 'Trop de dossiers à surveiller (plus de 512). Affinez les motifs ou ignorez les dossiers volumineux.',
       test: 'Tester',
       endpoint: 'URL du webhook',
       endpointPath: 'Chemin du webhook sur la machine de ce mochi',
