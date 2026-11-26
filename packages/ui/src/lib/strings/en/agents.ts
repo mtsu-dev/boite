@@ -19,6 +19,7 @@ export const strings = {
       inactive: 'Disabled',
       outcomes: { fired: 'Mochi woken', queued: 'Queued', skipped: 'Skipped', error: 'Could not wake the mochi' },
       last: '{state} at {when}',
+      watchUnavailable: 'Could not watch project files. Retrying.',
       test: 'Test',
       endpoint: 'Webhook URL',
       endpointPath: 'Webhook path on this mochi’s machine',

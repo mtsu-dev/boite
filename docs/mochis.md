@@ -105,6 +105,7 @@ the event that should wake it and say what to do when it wakes.
   machine. Enter comma-separated paths or patterns such as `src/**/*.{ts,tsx}`,
   or leave them blank for all source paths. Boite groups changes before
   waking the mochi and skips common dependency, build and Git folders.
+  The trigger shows when Boite cannot watch the project and is retrying.
 - **Pull requests** listens to pull requests that Boite already watches in a
   granted project. Choose failed CI, review requests, requests for changes,
   merge conflicts or merges.

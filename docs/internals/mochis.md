@@ -1049,7 +1049,19 @@ the trigger's configuration has stayed the same since that revision.
   `node_modules`, `.boite`, `dist` and `target`. They group matching
   relative paths into a debounced batch. Editing or disabling a trigger,
   removing its project grant, or stopping the core closes the file watch
-  and drops its pending batch.
+  and drops its pending batch. Boite checks the root's device and inode
+  asynchronously, with one metadata read in flight per path. File wakes wait
+  for validation. A separate non-recursive watch on the parent invalidates
+  a probe when the project's directory entry is renamed during that probe.
+  This keeps ordinary child renames from invalidating the root check. If a
+  notification indicates that the parent may have moved, Boite closes its
+  watch and tries to reopen it after validating the project root. If the
+  parent cannot be watched (for example, Linux allows traversal without read
+  permission), Boite treats ambiguous rename notices from the root watch
+  conservatively and can delay wakes until a fresh read completes. If the
+  directory disappears or is replaced, Boite drops the old
+  batch and any queued wake from that watch, reports the watch unavailable,
+  and retries opening it with backoff.
 - PR triggers reuse the existing PR tracker and its GitHub reads. An open
   watch establishes a baseline, then forwards new CI failures, review
   requests, requests for changes, conflicts and merges for its conversation's

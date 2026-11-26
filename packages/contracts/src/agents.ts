@@ -136,6 +136,8 @@ export interface AgentTrigger extends AgentRecord, AgentTriggerConfig {
   configRevision?: number;
   hasSecret: boolean;
   webhookPath: string | null;
+  /** An enabled file trigger could not watch its project and will retry. */
+  watchUnavailable?: true;
   lastFiredAt: number | null;
   lastOutcome: 'fired' | 'queued' | 'skipped' | 'error' | null;
 }
