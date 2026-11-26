@@ -1,5 +1,5 @@
-import type { Attachment, PreviewReference } from '@boite/contracts';
-import type { Store } from './store.svelte';
+import { imageAttachmentBlocker, resolveModelSelection, type Attachment, type PreviewReference } from '@boite/contracts';
+import type { Choice, Store } from './store.svelte';
 import type { ComposerState } from './composer-queue';
 import { tileKey } from './draft-attachments';
 import { editPreviewMentions } from './preview-mentions';
@@ -20,6 +20,14 @@ export function trackImageSend(state: ComposerState, prompt: string, sentImages:
     state.selection = { start: state.text.length, end: state.text.length };
     state.mentionInsertion = (state.mentionInsertion ?? 0) + 1;
   };
+}
+
+/** Why the picked model takes no image, or null. An answer's files reach the agent as paths, so it takes images whatever the model reads. */
+export function imageRefusalOf(store: Store, choice: Choice | null, answering: boolean): string | null {
+  const provider = choice && !answering ? store.providerOf(choice.providerId) : null;
+  if (!provider || !choice) return null;
+  const blocker = imageAttachmentBlocker(provider, resolveModelSelection(store.modelsOf(choice.providerId, choice.accountId), choice.model)?.model);
+  return blocker ? fill(strings.composer.attachNoImages, { name: blocker.name }) : null;
 }
 
 export function imageLabel(number: number): string {

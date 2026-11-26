@@ -259,7 +259,7 @@
               <p class="muted">{strings.connect.signInNote}</p>
             {:else if step === 'signing-in' && loginAccount && store.loginTerminals.includes(loginAccount.id)}
               {@const terminalAccount = loginAccount}
-              <p class="muted">{provider.id === 'pi' ? strings.accounts.piTerminalHint : strings.accounts.terminalHint}</p>
+              <p class="muted">{provider.protocol === 'pi' ? strings.accounts.piTerminalHint : strings.accounts.terminalHint}</p>
               <div class="screen" data-testid="connect-login-terminal">
                 {#await terminalView() then { default: TerminalView }}
                   <TerminalView

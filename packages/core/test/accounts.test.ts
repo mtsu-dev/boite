@@ -405,7 +405,8 @@ describe('accounts', () => {
     } finally {
       if (originalDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = originalDir;
-      process.env.BOITE_HOST_AGENTS = hostAgents;
+      if (hostAgents === undefined) delete process.env.BOITE_HOST_AGENTS;
+      else process.env.BOITE_HOST_AGENTS = hostAgents;
     }
   });
 

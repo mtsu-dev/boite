@@ -1,7 +1,7 @@
 <script lang="ts">
   import { desktopShell } from '../lib/shell-platform';
   import { tick, untrack, type Snippet } from 'svelte';
-  import { imageAttachmentBlocker, resolveModelSelection, supportsSideQuestions, type AgentSelection, type Attachment, type PreviewReference } from '@boite/contracts';
+  import { supportsSideQuestions, type AgentSelection, type Attachment, type PreviewReference } from '@boite/contracts';
   import { restorePreviewMentions } from '../lib/preview-mentions';
   import { runCommand } from '../lib/commands.svelte';
   import { agentSlashItems, boiteSlashItems, skillSlashItems, slashCompletion, listKey, mentionQueryOf, slashQueryOf, type ChipCommand } from '../lib/composer-menus';
@@ -12,7 +12,7 @@
   import { rewindComposerEdit } from '../lib/composer-edit';
   import { editWhole } from '../lib/reading-window';
   import { fitHeight, selfSizing } from '../lib/composer-size';
-  import { editComposerInput, removeImageReferences, sameSend, sendShape, touchesImageReference, trackImageSend, type SendShape } from '../lib/composer-images';
+  import { editComposerInput, imageRefusalOf, removeImageReferences, sameSend, sendShape, touchesImageReference, trackImageSend, type SendShape } from '../lib/composer-images';
   import { checkpoint, editKind, recordEdit, resetHistory, settled } from '../lib/composer-history';
   import { boxSelection, closeDraftUndo, copySelection, offerDraftUndo, pasteImages, travel, type EditingHost } from '../lib/composer-editing';
   import { ComposerMentions } from '../lib/composer-mentions.svelte';
@@ -153,11 +153,7 @@
    * (`lib/question-reply.svelte.ts`). Editing a sent message takes precedence.
    */
   let reply = $derived(replyTarget(store));
-  // An answer's files reach the agent as paths, so it takes images whatever the model reads.
-  let imageBlocker = $derived(!reply && provider && choice
-    ? imageAttachmentBlocker(provider, resolveModelSelection(store.modelsOf(choice.providerId, choice.accountId), choice.model)?.model)
-    : null);
-  let imageRefusal = $derived(imageBlocker ? fill(strings.composer.attachNoImages, { name: imageBlocker.name }) : null);
+  let imageRefusal = $derived(imageRefusalOf(store, choice, reply !== null));
   let imageWarning = $derived(imageRefusal !== null && attachments.some(item => item.kind === 'image') ? imageRefusal : null);
   /** The open thread's first page is still on its way: the field says so and Send waits (ChatView draws the shapes meanwhile). */
   let loadingThread = $derived(!!thread && store.loadingThreadId === thread.id && thread.messages.length === 0);
@@ -791,9 +787,8 @@
 
     {#if side.current && side.current.threadId === thread?.id}<SideAnswer {...side.current} {store} onclose={() => { side.clear(); focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]')); }} />{/if}
     {#if attachments.length > 0}
-      {#key composer}<ComposerAttachments bind:this={attachmentStrip} {attachments} highlighted={highlightedImage} onremove={removeAttachment} onfocus={() => focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]'))} />{/key}
+      {#key composer}<ComposerAttachments bind:this={attachmentStrip} {attachments} highlighted={highlightedImage} warning={imageWarning} onremove={removeAttachment} onfocus={() => focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]'))} />{/key}
     {/if}
-    {#if imageWarning}<p class="image-warning" role="status" data-testid="composer-image-warning">{imageWarning}</p>{/if}
 
     <ComposerField bind:box {store} {key} {text} {highlighted} {keywords} command={commandToken} references={previewReferences} {attachments}
       gutter={inputGutter} scroll={inputScroll} {placeholder} disabled={stopped || accountGone} suggest={boxEmpty && !composer?.sending && !composer?.editing && recall === null && !reply && !permission && !offline ? thread : null}
@@ -872,13 +867,6 @@
 
   /* A card the script focused for a touch screen shows no ring: only a key lights it. */
   .composer:not(.keys):focus-visible { outline: none; }
-
-  .image-warning {
-    margin: 0;
-    padding: 4px 12px 0;
-    color: var(--color-danger);
-    font-size: var(--text-meta);
-  }
 
   /* The gap between the card's blocks (ComposerDeck), and the row form of a question in it (ThreadDecision): height, icon box, type. */
   .composer-wrap { --deck-gap: 6px; --dock-row: 28px; --dock-icon: 16px; --dock-type: var(--text-meta); }
