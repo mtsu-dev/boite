@@ -225,6 +225,18 @@ test.each([false, true])('a thread on this computer opens a program only once co
   else await vi.waitFor(() => expect(panel.openFile).toHaveBeenCalledWith('notes.txt', undefined));
 });
 
+test('a shell refusal for a file of the local thread shows the notice with its path', async () => {
+  const { invoke, calls } = shell();
+  invoke.mockRejectedValue(new Error('shell refused path'));
+  const { store } = storeOf({ os: 'windows', localCore: true, cwd: 'C:/project' });
+  setFeature('open-chat-links', true);
+  show('`notes.txt`', store);
+  query<HTMLAnchorElement>('a.file-chip').click();
+  await vi.waitFor(() => expect(fileNotice.current).toMatchObject({ title: 'Not found on this computer', path: 'C:\\project\\notes.txt' }));
+  expect(store.reportError).not.toHaveBeenCalled();
+  expect(calls('open_client_path')).toEqual([]);
+});
+
 test('dragging across a program link opens nothing, the next click asks first', async () => {
   const { calls } = shell({ 'C:\\project\\build\\game.exe': 'program' });
   const { store } = storeOf({ os: 'windows', localCore: true, cwd: 'C:/project' });
@@ -415,6 +427,18 @@ test('a file link\'s menu copies the whole or the relative path, shows it in its
   contextMenu.close();
 });
 
+test('show in folder for a file found on another computer names the found path', async () => {
+  const { calls } = shell();
+  const { store } = storeOf({ locateFile: async () => ({ ok: true, value: ['docs/notes.txt'] }) });
+  show('`/srv/project/notes.txt`', store);
+  query<HTMLAnchorElement>('a.file-chip').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  expect(contextMenu.current?.items.some(item => item.id === 'reveal')).toBe(true);
+  contextMenu.current!.onpick('reveal');
+  contextMenu.close();
+  await vi.waitFor(() => expect(fileNotice.current).toMatchObject({ title: 'Only the computer that holds this file can open it', path: '/srv/project/docs/notes.txt' }));
+  expect(calls('reveal_client_path')).toEqual([]);
+});
+
 test('a phone\'s menu has no folder to show, and a copied selection carries a chip\'s whole path', async () => {
   const { store } = storeOf({ owner: false });
   show('Edit `src/lib/app.ts:12` now.', store);
@@ -453,6 +477,26 @@ test('unmount releases the standalone diagram URL while its viewer chunk is stil
     expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:diagram-unmount');
   } finally {
     load.mockRestore();
+    Object.assign(URL, original);
+  }
+});
+
+test('a media chip replacing a standalone diagram releases the diagram URL', async () => {
+  const original = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
+  const revoke = vi.fn();
+  Object.assign(URL, { createObjectURL: () => 'blob:diagram-replacement', revokeObjectURL: revoke });
+  try {
+    const { store } = storeOf();
+    vi.mocked(store.readFile).mockResolvedValue({ ok: true, value: { kind: 'image', path: 'notes.png', bytes: 4, modifiedAt: 0, mime: 'image/png', url: '/file/test' } });
+    show('```mermaid\nflowchart LR\n  A --> B\n```\n\n`notes.png`', store);
+    await vi.waitFor(() => expect(document.querySelector('[data-testid=diagram-enlarge]')).not.toBeNull(), { timeout: 10_000 });
+    query<HTMLButtonElement>('[data-testid=diagram-enlarge]').click();
+    await vi.waitFor(() => expect(query('[data-testid=image-viewer]').getAttribute('aria-label')).toBe('Diagram.svg'));
+    expect(revoke).not.toHaveBeenCalled();
+    query<HTMLAnchorElement>('a.file-chip').click();
+    await vi.waitFor(() => expect(query('[data-testid=image-viewer]').getAttribute('aria-label')).toBe('notes.png'));
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:diagram-replacement');
+  } finally {
     Object.assign(URL, original);
   }
 });

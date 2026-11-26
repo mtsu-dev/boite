@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use tauri::Webview;
 
 /// What a chat link names on this computer, which decides what a click may do
@@ -63,9 +63,13 @@ fn classify(path: &Path) -> ClientPathKind {
 
 /// What `path` is, and the file it leads to, which is what then opens: the
 /// target classified is the one launched, whatever the link points at later.
+/// A link that leads to a share or a device reads as missing.
 fn resolve(path: &Path) -> (ClientPathKind, PathBuf) {
-    let Ok(resolved) = path.canonicalize() else { return (ClientPathKind::Missing, path.to_path_buf()) };
-    let Ok(meta) = std::fs::metadata(&resolved) else { return (ClientPathKind::Missing, path.to_path_buf()) };
+    let missing = (ClientPathKind::Missing, path.to_path_buf());
+    if leaves(path, 0) { return missing; }
+    let Ok(resolved) = path.canonicalize() else { return missing };
+    if !reached(path, &plain(resolved.clone())) { return missing; }
+    let Ok(meta) = std::fs::metadata(&resolved) else { return missing };
     let kinds = [extension(path), extension(&resolved)];
     let kind = if meta.is_dir() {
         let bundle = kinds.iter().any(|kind| BUNDLE_FOLDERS.contains(&kind.as_str()));
@@ -76,6 +80,36 @@ fn resolve(path: &Path) -> (ClientPathKind, PathBuf) {
         ClientPathKind::Program
     };
     (kind, plain(resolved))
+}
+
+/// Whether a link on the way to `path` names a spelling `require_client_path`
+/// refuses (`\\server\share`, a device), read with `read_link` before anything
+/// follows it: following it would already reach that server. A chain of links
+/// is followed the same way, and one too long to follow counts as leaving.
+fn leaves(path: &Path, hops: usize) -> bool {
+    if hops > 32 { return true; }
+    let mut walked = PathBuf::new();
+    let mut parts = path.components();
+    while let Some(part) = parts.next() {
+        walked.push(part);
+        if !matches!(part, Component::Normal(_)) { continue; }
+        let Ok(meta) = std::fs::symlink_metadata(&walked) else { return false };
+        if !meta.file_type().is_symlink() { continue; }
+        // A link it cannot read (a reparse point of another kind) is not followed either.
+        let Ok(link) = std::fs::read_link(&walked) else { return true };
+        let target = walked.parent().map_or_else(|| link.clone(), |parent| parent.join(&link));
+        if crate::platform::require_client_path(&target).is_err() { return true; }
+        return leaves(&target.join(parts.as_path()), hops + 1);
+    }
+    false
+}
+
+/// The file a path leads to stays a path of this computer, or lies on the share
+/// the path's own mapped drive stands for (`N:\` is `\\nas\dev` once canonical).
+fn reached(path: &Path, target: &Path) -> bool {
+    if crate::platform::require_client_path(target).is_ok() { return true; }
+    let root: PathBuf = path.components().take_while(|part| matches!(part, Component::Prefix(_) | Component::RootDir)).collect();
+    root.canonicalize().map(plain).is_ok_and(|share| target.starts_with(share))
 }
 
 /// Windows' canonical form, `\\?\C:\x` or `\\?\UNC\server\share\x`, written
@@ -182,6 +216,14 @@ mod tests {
             assert_eq!(kind("Tool"), ClientPathKind::Program);
             // What opens is the file classified, never the link's own path.
             assert_eq!(open_target(&path("readme.txt"), true).unwrap(), root.join("game.exe").canonicalize().unwrap());
+            // A link to a share spelling (`//tmp/...` is one) is never followed, even behind another link.
+            std::os::unix::fs::symlink(format!("/{}", root.join("docs").display()), root.join("share")).unwrap();
+            std::os::unix::fs::symlink(root.join("share"), root.join("hop")).unwrap();
+            for name in ["share", "hop"] {
+                assert_eq!(kind(name), ClientPathKind::Missing, "{name}");
+                assert!(open_target(&path(name), true).unwrap_err().contains("not found"), "{name}");
+                assert!(reveal_target(&path(name)).is_err(), "{name}");
+            }
         }
         std::fs::remove_dir_all(root).unwrap();
     }

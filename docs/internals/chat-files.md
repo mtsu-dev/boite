@@ -77,16 +77,16 @@ folder), the text is the base name and its line, and `title` holds the path as
 written. A path in code or bare also carries `data-source`, the written path,
 and a hidden `.file-chip-dir` with its parent folder; `markCollisions` shows
 it when two chips of one answer share a name with different paths, with as many
-trailing folders as tell them apart (`app/src/` and `web/src/`). A
-Markdown link keeps its own label. A copied selection replaces each chip with
-its `data-source` (`lib/selection-copy.ts`), so the clipboard carries the path.
+trailing folders as tell them apart (`app/src/` and `web/src/`). A copied
+selection replaces chips that carry `data-source` with that value
+(`lib/selection-copy.ts`). A Markdown link with its own label keeps it.
 
 `fileChecks` in `lib/file-open.svelte.ts` greys a chip (`data-missing`) when
 it comes near the screen and its file is not found. Only the owner checks,
-since `files.locate` is owner only. Answers are cached per store and path, a
-found file for 60 s and a missing one for 15 s; a click asks again, and every
-answer reaches the chips of that path, so a file written since lights up; an
-older look that a click replaced is dropped.
+since `files.locate` is owner only. The store caches each thread and written
+path for 60 s when found and 15 s when missing. A click checks again. The
+latest answer updates the chips for that thread and path, so a newly written
+file lights up.
 
 ### What a click does
 
@@ -101,8 +101,8 @@ older look that a click replaced is dropped.
 2. A file of this computer opens with `open_client_path`. A program never
    opens on a click: `confirm.choose` shows Launch, Show in folder and Cancel,
    and only Launch calls `open_client_path` with `confirmed: true`. The shell
-   classifies the path again and refuses a program without it, so a page that
-   reached the command still cannot start one.
+   command is restricted to the main webview. It classifies the path again
+   and requires `confirmed: true` if the target is now a program.
 3. A file of the thread on a local core opens on this computer when it is a
    program (with the same confirmation), when Open chat links in their apps is
    on, or when it is outside the thread's folder, which the panel cannot read.
@@ -156,7 +156,11 @@ Each path must be absolute on this computer (`require_client_path` in
 `platform/local_paths.rs`): on Windows a drive letter, mapped network drives
 included, and never a UNC share, a device path or a drive-relative path;
 elsewhere a path from the root that does not start with `//`. Empty paths and
-control characters are refused.
+control characters are refused. The same rule holds for where a path leads:
+`leaves` reads each link on the way with `read_link` before anything follows
+it, and refuses one that names a share or a device, or that it cannot read.
+After `canonicalize`, a UNC target passes only when it lies on the share the
+path's own mapped drive stands for. A refused link reads as missing.
 
 ## Inline views
 

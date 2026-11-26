@@ -57,8 +57,7 @@
   /** What a file link's click and menu need: the Store and thread it belongs to, and the viewer. */
   function linkContext(): LinkContext | null {
     if (!store || !threadId) return null;
-    // The item loads its own address; there is no object URL to give back.
-    return { store, threadId, directLinks, show: item => { if (viewers) viewers.open({ items: [item], index: 0 }); else viewing = { items: [item], index: 0 }; } };
+    return { store, threadId, directLinks, show: showMedia };
   }
   function openFile(written: string, line: string | undefined): void {
     const context = linkContext();
@@ -141,26 +140,32 @@
   let host = $state<HTMLDivElement>();
 
   /**
-   * A drawn diagram opens in the timeline's viewer, or in one of its own where
-   * there is none (a file preview, a plan). Its picture is an object URL the
-   * viewer gives back once closed.
+   * A diagram or file opens in the timeline's viewer, or in one of its own
+   * (a file preview, a plan). Diagrams have an object URL to give back, while
+   * media links load their URL when the viewer opens.
    */
   const viewers = viewerHost();
   /** Who the chips of this answer ask whether their file is there (`fileChecks`). */
   const chipOwner = () => ({ store, threadId });
   let viewing = $state<Gallery | null>(null);
-  function enlarge(item: MediaItem): void {
-    if (viewers) { viewers.open({ items: [item], index: 0 }); viewers.release(item.src); return; }
-    if (viewing) URL.revokeObjectURL(viewing.items[0]!.src);
-    viewing = { items: [item], index: 0 };
+  function showMedia(item: MediaItem): void {
+    const gallery = { items: [item], index: 0 };
+    if (viewers) {
+      viewers.open(gallery);
+      if (item.src) viewers.release(item.src);
+      return;
+    }
+    closeViewer();
+    viewing = gallery;
   }
   /** A ```view block opens as a page the conversation's machine serves. */
   const drawing = $derived.by((): RichMarkdownOptions => {
     const owner = store;
-    return { onenlarge: enlarge, viewBlock: owner ? html => owner.viewBlock(html) : undefined };
+    return { onenlarge: showMedia, viewBlock: owner ? html => owner.viewBlock(html) : undefined };
   });
   function closeViewer(): void {
-    if (viewing) URL.revokeObjectURL(viewing.items[0]!.src);
+    const src = viewing?.items[0]?.src;
+    if (src) URL.revokeObjectURL(src);
     viewing = null;
   }
   onDestroy(closeViewer);

@@ -63,7 +63,8 @@ dashed when the file is not there.
 - A relative path that is not found as written is looked up by its end, so
   `core.md` can open `.local/core.md`. When two files match, Boite names both
   instead of guessing.
-- Copying a selection keeps each chip as the path the agent wrote.
+- Copying a selection keeps paths as the agent wrote them. A Markdown link
+  with its own label keeps that label. To get its path, use Copy path.
 - An image hosted on the web stays a link, so reading an answer contacts no
   site.
 

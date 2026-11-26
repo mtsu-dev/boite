@@ -85,6 +85,10 @@ export function locate(store: Store, threadId: string, written: string, fresh = 
   return answer;
 }
 
+function clientKind(path: string): Promise<ClientPathKind> {
+  return clientPathInfo(path).catch((): ClientPathKind => 'missing');
+}
+
 async function find(store: Store, threadId: string, written: string): Promise<Where> {
   if (!store.owner) return { at: 'unknown' };
   if (!foreignPath(written, store.core?.os)) {
@@ -95,7 +99,7 @@ async function find(store: Store, threadId: string, written: string): Promise<Wh
   // The thread's machine is this computer: it has already answered.
   if (!desktopShell() || store.localCore || !absolutePath(written)) return { at: 'missing', client: false };
   const path = fullPath(written, null);
-  const kind = await clientPathInfo(path).catch((): ClientPathKind => 'missing');
+  const kind = await clientKind(path);
   return kind === 'missing' ? { at: 'missing', client: true } : { at: 'client', path, kind };
 }
 
@@ -196,7 +200,7 @@ export async function openLink(ctx: LinkContext, written: string, line: number |
   // and a file outside the project opens there too, since Boite's panel reads only the project.
   if (where.at === 'thread' && localFileDirectory(store, threadId)) {
     const full = fullPath(path, cwd);
-    if (fileKind(path) === 'program' || ctx.directLinks || relative === null) return openOnClient(full, await clientPathInfo(full));
+    if (fileKind(path) === 'program' || ctx.directLinks || relative === null) return openOnClient(full, await clientKind(full));
   }
   // `relativeTo` drops a trailing slash, the one sure sign of a folder.
   if (relative !== null) return showInProject(ctx, /[\\/]$/.test(path) && !relative.endsWith('/') ? `${relative}/` : relative, line);
@@ -209,8 +213,13 @@ async function reveal(ctx: LinkContext, written: string): Promise<void> {
   const { store, threadId } = ctx;
   const where = await locate(store, threadId, written, true);
   if (where.at === 'client') return revealClientPath(where.path);
-  if (where.at === 'thread' && store.localCore) return revealClientPath(fullPath(where.path, cwdOf(store, threadId)));
-  fileNotice.show(notFoundTitle(store, where.at === 'missing' && where.client), fullPath(written, cwdOf(store, threadId)));
+  const cwd = cwdOf(store, threadId);
+  if (where.at === 'thread') {
+    const path = fullPath(where.path, cwd);
+    if (store.localCore) return revealClientPath(path);
+    return fileNotice.show(strings.chat.fileLink.elsewhere, path);
+  }
+  fileNotice.show(notFoundTitle(store, where.at === 'missing' && where.client), fullPath(written, cwd));
 }
 
 /** The path as it goes on the clipboard: the file the core found, whole, or relative to the project. */
