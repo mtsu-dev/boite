@@ -1,6 +1,6 @@
 /**
  * Draws the diagrams, formulas and views `lib/markdown.ts` marked
- * (`.md-mermaid`, `.md-math`, `.md-view`) in a node that shows rendered
+ * (`.md-mermaid`, `.md-math`, `.md-view`, `.md-native`) in a node that shows rendered
  * Markdown, as they arrive in it: the node is watched, so a block an answer
  * completes is drawn on its own.
  *
@@ -27,7 +27,7 @@ export interface RichMarkdownOptions {
   viewBlock?: (html: string) => Promise<{ ok: true; value: string } | { ok: false; error: string }>;
 }
 
-const PENDING = '.md-math:not([data-drawn]), .md-mermaid:not([data-drawn]), .md-view:not([data-drawn])';
+const PENDING = '.md-math:not([data-drawn]), .md-mermaid:not([data-drawn]), .md-view:not([data-drawn]), .md-native:not([data-drawn])';
 
 let drawing: Drawing | null = null;
 let loading: Promise<Drawing> | null = null;
@@ -61,7 +61,8 @@ export function richMarkdown(node: HTMLElement, options: RichMarkdownOptions = {
     for (const element of node.querySelectorAll<HTMLElement>(PENDING)) {
       element.dataset.drawn = '';
       element.classList.add('md-source');
-      if (element.classList.contains('md-math')) continue;
+      // A formula's TeX and a native block's lines read as they are.
+      if (element.classList.contains('md-math') || element.classList.contains('md-native')) continue;
       const line = document.createElement('p');
       line.className = 'md-diagram-error';
       line.dataset.testid = 'diagram-error';
