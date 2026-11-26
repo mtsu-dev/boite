@@ -70,7 +70,7 @@ import {
   type Turn,
   type Usage,
 } from '@boite/contracts';
-import { effectiveExperiments } from '@boite/contracts';
+import { effectiveExperiments, holdExperimentalSettings } from '@boite/contracts';
 import { CLOSED_AGENT_DEFAULTS, OPEN_AGENT_DEFAULTS } from '@boite/contracts';
 
 /** `?agents=closed`: the two agent settings and contacts as a new install holds them. */
@@ -377,9 +377,9 @@ export class FakeContext {
   experimentsInForce(): ExperimentId[] {
     return effectiveExperiments(this.desktopExperiments ?? this.clientPreferences?.experiments ?? [], this.core.version);
   }
-  /** The settings in force, as the core's `SettingsStore.get`: what is stored, read as is in every build. */
+  /** The settings in force, as the core's `SettingsStore.get`: a setting whose experiment this build lacks reads as off (`holdExperimentalSettings`). */
   settingsInForce(): Settings {
-    return { ...this.settings };
+    return holdExperimentalSettings({ ...this.settings }, this.core.version);
   }
 
   speech: SpeechConfig = { engine: 'local', language: '', apiProvider: 'groq', fallback: false, executable: '', modelPath: '', model: SPEECH_DEFAULT_MODEL };

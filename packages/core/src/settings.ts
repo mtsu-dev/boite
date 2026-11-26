@@ -1,7 +1,7 @@
-import { agentDefaultsToWrite, browserUserAgentIsWhole, contactsDefaultToWrite, checkSettingsPatch, defaultSettings, followedPatch, keepLaterFavorites, readSettings, MACHINE_SETTINGS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
+import { agentDefaultsToWrite, browserUserAgentIsWhole, contactsDefaultToWrite, checkSettingsPatch, defaultSettings, experimentalSettingRefusal, followedPatch, holdExperimentalSettings, keepLaterFavorites, keepStoredExperimentalSettings, readSettings, MACHINE_SETTINGS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { writesTitles } from './drivers/index.ts';
-import { invalidParams } from './errors.ts';
+import { invalidParams, refused } from './errors.ts';
 import { DOUANE_PLUGIN } from './plugins/gateway.ts';
 import { prepareLocalProxyKey } from './subscription-proxy-auth.ts';
 import { announceMachineSetting } from './threads/group-spawn.ts';
@@ -24,9 +24,23 @@ export class SettingsStore {
     this.#core = core;
   }
 
-  /** The settings in force: the user's, with what the admin policy locks read over them. */
+  /**
+   * The settings in force: the user's, with what the admin policy locks read
+   * over them, and the ones that are experiments off in a Release
+   * (`holdExperimentalSettings`).
+   */
   get(): Settings {
     return this.#overlay(this.stored());
+  }
+
+  /**
+   * The settings in force with the experiments as saved: what a following
+   * machine compares the home's values with, and what the home hands the copy
+   * (`settings.get` with `stored`), so a Release never passes its "off" on.
+   */
+  unheld(): Settings {
+    const saved = this.stored();
+    return { ...saved, ...this.#core.policy.lockedSettings(saved) };
   }
 
   /** The user's own choices as saved; a policy that goes away gives them back untouched. */
@@ -75,17 +89,21 @@ export class SettingsStore {
 
   #overlay(settings: Settings): Settings {
     const locked = this.#core.policy.lockedSettings(settings);
-    return Object.keys(locked).length === 0 ? settings : { ...settings, ...locked };
+    return holdExperimentalSettings(Object.keys(locked).length === 0 ? settings : { ...settings, ...locked }, this.#core.version);
   }
 
   /**
    * The patch as `set` would store it, or the refusal `set` would throw. A
-   * settings card checks its proposed value here before it is drawn.
+   * settings card checks its proposed value here before it is drawn. A patch
+   * `followed` from the group's settings home may hold an experiment a Release
+   * keeps off: it is saved as the home has it and read as off here.
    */
-  normalize(patch: Partial<Settings>): Partial<Settings> {
+  normalize(patch: Partial<Settings>, followed = false): Partial<Settings> {
     // Shared with the in-memory client: a pasted address is stored as its bare origin.
     const checked = checkSettingsPatch(patch);
     if (!checked.ok) throw invalidParams(checked.message, { field: checked.field });
+    const experiment = followed ? null : experimentalSettingRefusal(checked.patch, this.#core.version);
+    if (experiment !== null) throw refused(experiment.message, { field: experiment.key });
     const locked = this.#core.policy.settingsRefusal(checked.patch, this.get());
     if (locked !== null) throw locked;
     const storage = checked.patch.worktreeStorage;
@@ -125,10 +143,12 @@ export class SettingsStore {
     if (next.baseUrl !== proxy.baseUrl || next.dashboardUrl !== proxy.dashboardUrl || next.kind !== proxy.kind) this.set({ subscriptionProxy: next });
   }
 
-  set(patch: Partial<Settings>, persistPrivate?: () => void): Settings {
+  set(patch: Partial<Settings>, persistPrivate?: () => void, followed = false): Settings {
     const saved = this.stored();
     const previous = this.#overlay(saved);
-    const checked = keepLaterFavorites(previous, this.normalize(patch));
+    const normalized = this.normalize(patch, followed);
+    // A Release only shows the experiments as off: a save that hands that back is not a choice, the copy from the settings home is.
+    const checked = keepLaterFavorites(previous, followed ? normalized : keepStoredExperimentalSettings(saved, normalized, this.#core.version));
     const kept: Settings = { ...saved, ...this.#withoutHeld(saved, checked) };
     const next = this.#overlay(kept);
     const raw = this.#core.journal.getSetting('settings');
@@ -192,7 +212,7 @@ export class SettingsStore {
   /** The admin policy changed what it locks: everything that follows a setting hears of the new value. */
   policyChanged(before: AdminPolicy): void {
     const saved = this.stored();
-    const previous = { ...saved, ...this.#core.policy.lockedSettings(saved, before) };
+    const previous = holdExperimentalSettings({ ...saved, ...this.#core.policy.lockedSettings(saved, before) }, this.#core.version);
     const next = this.get();
     if (JSON.stringify(previous) === JSON.stringify(next)) return;
     this.#core.scheduler.onSettingsChanged();
@@ -215,8 +235,7 @@ export function localProxy(proxy: SubscriptionProxy, port: number): Subscription
 }
 
 export function registerSettingsMethods(core: Core): void {
-  // `stored` asked a core that read some settings as off in a Release for them as saved; none is read so any more, and the answer is the same.
-  core.router.register('settings.get', () => core.settings.get());
+  core.router.register('settings.get', (params) => params?.stored === true ? core.settings.unheld() : core.settings.get());
   core.router.register('settings.set', async (params) => {
     core.settings.set(params);
     if (params.subscriptionProxy !== undefined) await prepareLocalProxyKey(core);
@@ -226,8 +245,9 @@ export function registerSettingsMethods(core: Core): void {
   core.router.register('settings.follow', (params) => {
     const patch: unknown = params?.patch;
     if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) throw invalidParams('patch: expected an object of settings', { field: 'patch' });
-    const followed = followedPatch(core.settings.get(), patch);
-    return Object.keys(followed).length === 0 ? core.settings.get() : core.settings.set(followed);
+    // Against the experiments as saved: a Release reads them as off, and would otherwise take the home's value again at every copy.
+    const followed = followedPatch(core.settings.unheld(), patch);
+    return Object.keys(followed).length === 0 ? core.settings.get() : core.settings.set(followed, undefined, true);
   });
   core.router.register('agent.settings', () => ({ app: core.clients.app(), settings: readSettings(core.settings.get(), core.clients.current(), core.version) }));
   core.router.register('client.preferences', (params, ctx) => {
