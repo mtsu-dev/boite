@@ -386,6 +386,9 @@ test('edit metadata, trailing-newline diffs, failed tool diffs, errors and stand
 });
 
 test('patch extraction stays linear on unclosed Begin Patch headers, ignores unclosed blocks before valid patches, and separates header-only git diffs', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-11-25T10:00:00Z'));
+  onTestFinished(() => vi.useRealTimers());
   const realPatch = '--- ok.ts\n+++ ok.ts\n@@ -1 +1 @@\n-old\n+new';
   const unclosed = `${'*** Begin Patch\nnoise line\n'.repeat(10_000)}${realPatch}`;
   const extracted = extractToolPatches(unclosed);
