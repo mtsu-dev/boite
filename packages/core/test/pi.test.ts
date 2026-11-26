@@ -302,6 +302,12 @@ test('pi titles a new thread with a tool-free request on its chosen model', asyn
 
 test('pi answers /btw from a disposable session copy and leaves the source intact', async () => {
   const { client, threadId } = await startThread();
+  // Tool flags the profile declares are the conversation's, never the side question's.
+  const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+  const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
+  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--tools', 'bash', '--no-tools');
+  writeFileSync(descriptorFile, JSON.stringify(descriptor));
+  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
   expect((await (await startTurn(client, threadId, 'The release color is amber.')).finished).status).toBe('done');
   expect((await client.call('threads.capabilities', { threadId })).btw).toMatchObject({ available: true });
   const source = piSessionFile(threadId);
@@ -314,6 +320,7 @@ test('pi answers /btw from a disposable session copy and leaves the source intac
   const copy = args[args.indexOf('--session') + 1]!;
   // The copy's tool calls need tools defined on Anthropic: read-only ones, never none or all.
   expect(args).not.toContain('--no-tools');
+  expect(args.filter(arg => arg === '--tools')).toHaveLength(1);
   expect(args[args.indexOf('--tools') + 1]).toBe('read,grep,find,ls');
   expect(copy).not.toBe(source);
   expect(existsSync(copy)).toBe(false);

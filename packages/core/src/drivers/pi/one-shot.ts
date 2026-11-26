@@ -15,13 +15,13 @@ import { PiPeer } from './rpc.ts';
 import { copySession } from './session-files.ts';
 
 // Explicit resources still load with discovery disabled. Keep launcher arguments
-// (such as a script path), and own the one-shot model, session and resources.
+// (such as a script path), and own the one-shot model, session, tools and resources.
 const VALUE_FLAGS = new Set([
   '--extension', '-e', '--skill', '--prompt-template', '--mode', '--model', '--provider',
   '--session', '--session-id', '--session-dir', '--fork', '--thinking',
-  '--system-prompt', '--append-system-prompt',
+  '--system-prompt', '--append-system-prompt', '--tools',
 ]);
-const SESSION_FLAGS = new Set(['--no-session', '--continue', '-c', '--resume', '-r', '--print', '-p']);
+const OWNED_SWITCHES = new Set(['--no-session', '--continue', '-c', '--resume', '-r', '--print', '-p', '--no-tools']);
 /**
  * A side question on a session copy keeps pi's read-only tools: its history
  * holds tool calls, and Anthropic's Messages API refuses `tool_use` blocks in a
@@ -39,7 +39,7 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   for (let i = 0; i < declared.length; i++) {
     const arg = declared[i]!;
     if (VALUE_FLAGS.has(arg)) i++;
-    else if (!SESSION_FLAGS.has(arg)) args.push(arg);
+    else if (!OWNED_SWITCHES.has(arg)) args.push(arg);
   }
   const context = contextArgs(TOOL_FREE_CONTEXT);
   args.push('--mode', 'rpc', ...(sessionFile ? context.flatMap(arg => arg === '--no-tools' ? ['--tools', READ_ONLY_TOOLS] : [arg]) : context), '--no-mcp');
@@ -109,6 +109,7 @@ export async function sideQuestion(ctx: SideQuestionContext): Promise<string> {
     if (!answer) throw new Error('pi wrote no side answer');
     return answer;
   } finally {
-    if (directory) await rm(directory, { recursive: true, force: true, maxRetries: 3 });
+    // A copy left behind in the temp folder must not cost the answer.
+    if (directory) await rm(directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {});
   }
 }
