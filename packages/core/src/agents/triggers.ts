@@ -289,8 +289,6 @@ export class AgentTriggers {
       if (digestKey && ((this.#seenDigests.get(digestKey) ?? 0) > now || pending?.digestKey === digestKey)) {
         return new Response(null, { status: 409, headers: { 'cache-control': 'no-store' } });
       }
-      const cooldownWait = this.#webhookCooldown(current, now);
-      if (cooldownWait > 0) return new Response(null, { status: 429, headers: { 'retry-after': String(Math.ceil(cooldownWait / 1000)) } });
       const rawDelivery = (request.headers.get('x-github-delivery') ?? request.headers.get('idempotency-key'))?.trim() ?? null;
       const deliveryId = rawDelivery && /^[A-Za-z0-9_.:-]{1,128}$/.test(rawDelivery) ? rawDelivery : null;
       const receiptId = deliveryId ? createHash('sha256').update(JSON.stringify([id, deliveryId])).digest('hex') : null;
@@ -298,6 +296,8 @@ export class AgentTriggers {
         || this.#core.journal.db.query('SELECT 1 FROM agent_requests WHERE actor = ? AND request_id = ?').get('trigger-webhook-delivery', receiptId))) {
         return new Response(null, { status: 409, headers: { 'cache-control': 'no-store' } });
       }
+      const cooldownWait = this.#webhookCooldown(current, now);
+      if (cooldownWait > 0) return new Response(null, { status: 429, headers: { 'retry-after': String(Math.ceil(cooldownWait / 1000)) } });
       if (pending) return new Response(null, { status: 503, headers: { 'retry-after': '10' } });
       const payload = new TextDecoder().decode(body.preview).replaceAll(secret, '[redacted]');
       const eventName = request.headers.get('x-github-event');

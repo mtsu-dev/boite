@@ -148,6 +148,8 @@ test('a webhook authenticates three ways, streams up to 1 MiB, blocks replays, r
   const limited = await post(trigger, { authorization: `Bearer ${secret}` });
   expect(limited.status).toBe(429);
   expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+  // Duplicate delivery IDs still report 409 during cooldown, matching HMAC digest dedupe.
+  expect((await post(trigger, { authorization: `Bearer ${secret}`, 'x-github-delivery': 'delivery-1' }, '{"retry":true}')).status).toBe(409);
 
   oldEnough(trigger);
   expect((await post(trigger, {
@@ -235,6 +237,14 @@ test('webhooks count two Funnel clients behind loopback under their own addresse
     const signature = createHmac('sha256', third.secret!).update('{}').digest('hex');
     expect((await post(third.trigger, headers('203.0.113.1', signature))).status).toBe(429);
     expect((await post(third.trigger, headers('203.0.113.2', signature))).status).toBe(202);
+    // Authenticated cooldown 429 responses must not exhaust the per-source Refusals budget (60/min).
+    for (let i = 0; i < 61; i++) {
+      const res = await post(third.trigger, {
+        'tailscale-funnel-request': '?1', 'x-forwarded-for': '203.0.113.2', authorization: `Bearer ${third.secret}`,
+      });
+      expect(res.status).toBe(429);
+      expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(0);
+    }
   } finally {
     for (const req of held) req.destroy();
     entered.mockRestore();

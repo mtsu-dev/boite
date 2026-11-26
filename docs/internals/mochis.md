@@ -1070,7 +1070,8 @@ the trigger's configuration has stayed the same since that revision.
   reverse proxy forwarding untrusted traffic to loopback must strip
   `Tailscale-Funnel-Request`. Remote and Funnel requests also share the
   server's per-source refusal budget (`Refusals`, counting 400, 401, 404, 405,
-  408, 413 and 429 responses) and are tracked in
+  408, 413 and unauthenticated reader-limit 429 responses; authenticated
+  cooldown 429 responses do not consume it) and are tracked in
   `peerRequests` so core shutdown drains in-flight deliveries cleanly. Only a
   bounded, quoted payload excerpt and untrusted `X-GitHub-Event` label reach
   the mochi. Use HTTPS when exposing the route.

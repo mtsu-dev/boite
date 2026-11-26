@@ -476,7 +476,9 @@ export function startServer(options: ServerOptions): RunningServer {
         const answered = stranger === null ? () => undefined : refusals.begin(stranger);
         if (answered === null) return new Response('too many refused requests from this address', { status: 429 });
         const response = core.workforce.triggers.http(request, url.pathname.slice(AGENT_TRIGGER_WEBHOOK_ROUTE.length), stranger ?? peer ?? 'unknown').then((answer) => {
-          answered(answer.status === 400 || answer.status === 401 || answer.status === 404 || answer.status === 405 || answer.status === 408 || answer.status === 413 ? 403 : answer.status);
+          answered(answer.status === 400 || answer.status === 401 || answer.status === 404 || answer.status === 405 || answer.status === 408 || answer.status === 413
+            ? 403
+            : answer.status === 429 && answer.headers.has('retry-after') ? 200 : answer.status);
           return answer;
         }, (error: unknown) => {
           answered(403);
