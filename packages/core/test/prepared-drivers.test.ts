@@ -47,6 +47,8 @@ async function setup(entry: typeof cases[number]) {
   const project = await client.call('projects.add', { path: harness.dataDir, name: 'Prepared fixture' });
   const account = await client.call('accounts.add', { providerId: 'prepared-fake', label: 'Fixture', useDefaultLocation: true });
   const thread = await client.call('threads.create', { projectId: project.id, providerId: 'prepared-fake', accountId: account.id, title: 'Lifecycle', model: 'default' });
+  // A pinned title: a driver that writes titles would otherwise start one more process after the first turn.
+  await client.call('threads.update', { threadId: thread.id, title: 'Lifecycle' });
   await client.call('threads.subscribe', { threadId: thread.id });
   const core = harness.core;
   const ctx = core.threads.contexts.makeSessionContext(core.threads.get(thread.id), core.providers.require('prepared-fake'), core.accounts.require(account.id));
