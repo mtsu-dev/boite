@@ -14,7 +14,7 @@
 
 import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Account, AccountId, ImportableSession, Project, ProjectId, ProviderDescriptor, ThreadSummary } from '@boite/contracts';
+import { experimentStartRefusal, type Account, type AccountId, type ImportableSession, type Project, type ProjectId, type ProviderDescriptor, type ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { notFound, refused } from './errors.ts';
 import { claudeProjectFolder, listTranscript, readTranscript } from './imports/claude.ts';
@@ -94,6 +94,8 @@ export class ImportStore {
   }
 
   list(projectId: ProjectId): Promise<ImportableSession[]> {
+    const refusal = experimentStartRefusal('session-import', this.core.version);
+    if (refusal !== null) return Promise.reject(refused(refusal, { reason: 'experiment-off' }));
     const running = this.listing.get(projectId);
     if (running !== undefined) return running;
     const scan = this.scan(projectId).finally(() => this.listing.delete(projectId));
@@ -181,6 +183,8 @@ export class ImportStore {
   }
 
   async run(params: { projectId: ProjectId; accountId: AccountId; sessionId: string }): Promise<ThreadSummary> {
+    const refusal = experimentStartRefusal('session-import', this.core.version);
+    if (refusal !== null) throw refused(refusal, { reason: 'experiment-off' });
     const project = this.core.projects.require(params.projectId);
     const account = this.core.accounts.require(params.accountId);
     const provider = this.core.providers.require(account.providerId);

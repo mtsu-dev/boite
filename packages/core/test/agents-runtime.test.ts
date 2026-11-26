@@ -45,10 +45,11 @@ const read = (routineId: string) => h.core.workforce.records.get('routine', rout
 const lines = (threadId: string) => h.core.journal.listMessages(threadId).filter(m => m.role === 'system').flatMap(m => m.parts.flatMap(p => p.type === 'text' ? [p.text] : []));
 
 test('a mochi\'s Boite guide is the thread guide less the project-bound commands, ending with the mochi section; its block carries that section only with the guide off', async () => {
-  const bot = agentGuide(true, false, [], true);
+  const bot = agentGuide(true, false, [], true, false, [], false, true);
   const thread = agentGuide(true, false, [], false);
   // A bot also learns its teams: where its answer goes, group or private, when to propose one.
   expect(bot).toEndWith(`${BOT_GUIDE}\n${TEAM_GUIDE}\n\n`);
+  expect(agentGuide(true, false, [], true)).toEndWith(`${BOT_GUIDE}\n\n`);
   expect(agentGuide(true, false, [], false)).not.toContain(TEAM_GUIDE);
   for (const team of ['[quiet]', 'boite team say', 'boite team dm', 'boite team propose', 'Go private only']) expect(TEAM_GUIDE).toContain(team);
   expect(TEAM_GUIDE).not.toMatch(/question/i);

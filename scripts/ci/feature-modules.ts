@@ -55,15 +55,38 @@ export const FEATURE_MODULES: Partial<Record<ExperimentId, { ui: string[]; core:
     ui: ['packages/ui/src/components/AutoGoalSetting.svelte'],
     core: ['packages/core/src/auto-goal.ts'],
   },
+  teams: {
+    ui: [
+      'packages/ui/src/components/TeamCard.svelte',
+      'packages/ui/src/components/teams/TeamChat.svelte',
+      'packages/ui/src/components/teams/TeamComposer.svelte',
+      'packages/ui/src/components/teams/TeamDialog.svelte',
+      'packages/ui/src/components/teams/TeamHeader.svelte',
+      'packages/ui/src/lib/team-draft.ts',
+    ],
+    core: [
+      'packages/core/src/teams/mirror.ts',
+      'packages/core/src/teams/peers.ts',
+      'packages/core/src/teams/prompt.ts',
+      'packages/core/src/teams/rpc.ts',
+      'packages/core/src/teams/snapshots.ts',
+      'packages/core/src/teams/store.ts',
+      'packages/core/src/team-cli.ts',
+    ],
+  },
 };
 
 /** The directories that belong to one feature: a new file there must be listed above, or below with its reason. */
 export const FEATURE_DIRECTORIES: Partial<Record<ExperimentId, string[]>> = {
   contacts: ['packages/ui/src/components/home', 'packages/ui/src/components/shared'],
   'draft-backdrop': ['packages/ui/src/components/backdrop', 'packages/ui/src/lib/backdrop'],
+  teams: ['packages/ui/src/components/teams', 'packages/core/src/teams'],
 };
 
 /** Files of those directories that every build holds. */
 export const STAYS: Record<string, string> = {
   'packages/ui/src/components/shared/SharedProjectThreadsLoader.svelte': 'renders local threads even when the shared rows are absent',
+  'packages/core/src/teams/journal.ts': 'the tables, created in every build by journal/schema.ts',
+  'packages/core/src/teams/records.ts': 'existing records can be read and removed in a Release',
+  'packages/core/src/teams/record-peers.ts': 'authenticated group reads and removals of existing records',
 };

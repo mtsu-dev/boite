@@ -1,7 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { FakeClient } from '../../lib/fake-client';
-import { Store } from '../../lib/store.svelte';
+import { Store, store as primaryStore } from '../../lib/store.svelte';
+import { followDesktopOf, setExperiment, writeExperiments } from '../../lib/experiments';
 import { workspace } from '../../lib/workspace.svelte';
 import { mochiLayout } from '../../lib/mochi-layout.svelte';
 import MobileNavigation from '../MobileNavigation.svelte';
@@ -16,6 +17,8 @@ afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component);
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
+  followDesktopOf(primaryStore);
+  writeExperiments([]);
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
   mochiLayout.load();
   document.documentElement.classList.remove('agents-detail-open');
@@ -38,10 +41,11 @@ const all = (selector: string) => [...document.querySelectorAll<HTMLElement>(sel
 async function skollheim() {
   const client = new FakeClient({ delayMs: 0 });
   const store = new Store();
+  followDesktopOf(store);
   store.attach(client);
   closers.push(() => { store.detach(); client.close(); });
   await store.connect();
-  client.reportDesktopExperiments([]);
+  setExperiment('teams', true);
   const bot = (name: string) => client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
     selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } });
   const huginn = await bot('Huginn (Réseaux)');
@@ -164,15 +168,15 @@ test("a phone's Mochis list holds the teams, a team's chat opens full screen ove
   expect(store.openThread?.id).toBe(team.threadId);
 });
 
-test('a device whose old Teams switch is off still lists its teams on the Mochis page, and a team chat opens there', async () => {
+test('turning off Teams hides existing teams and opens their threads for reading', async () => {
   const { store, team, huginn } = await skollheim();
+  setExperiment('teams', false);
   botsPage(store, true);
   await vi.waitFor(() => query(`[data-testid="agent-entry-${huginn.id}"]`));
   await settle();
-  // Teams are on in every build: the switch left in storage no longer hides them.
-  expect(query('[data-testid=agents-teams]').textContent).toContain('Skollheim');
+  expect(document.querySelector('[data-testid=agents-teams]')).toBeNull();
   await store.open(team.threadId);
-  expect(store.page).toBe('agents');
+  expect(store.page).toBe('chat');
 });
 
 test('the team chat draws each post with its author, a private post with its recipient, and who each post woke', async () => {
@@ -219,7 +223,7 @@ test('a member of another machine of the group carries that machine in the membe
   const distant = await firebat.call('agents.profile.save', { value: { name: 'Munin', domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
     selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } });
 
-  // Teams are on in every build: the other machine takes its bot in whatever its desktop reported.
+  // The other core runs Teams even before its desktop reports any preferences.
   const team = await client.call('teams.create', { name: 'Across', members: [huginn.id, 'Firebat/Munin'] });
   expect(team.members[1]).toMatchObject({ key: `firebat/${distant.id}`, coreId: 'firebat', botId: distant.id, machine: 'Firebat' });
   await client.call('teams.post', { teamId: team.id, id: 'to-munin', text: '@Munin hello' });

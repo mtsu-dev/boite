@@ -61,7 +61,7 @@
   /** A bot's name card says its machine once there are two. */
   const several = $derived(machines.length > 1);
   const botsOn = $derived(experimentOn('resident-agents'));
-  const teamsOn = $derived(botsOn);
+  const teamsOn = $derived(botsOn && experimentOn('teams'));
   const contactsOn = $derived(contactsShown(store));
   /** A request waits on the machine that holds the contact, which may not be the one in view. */
   const contactsAnywhere = $derived(contactsShownAnywhere(store));
@@ -201,6 +201,7 @@
    * before it waits for it, unless a newer click, key or menu takes over meanwhile.
    */
   function teamMenu(event: MouseEvent, row: TeamRow) {
+    if (!teamsParts) return;
     const ask = ++teamMenuAsk;
     if (teamMenuModule) { contextMenu.open(event, teamMenuItemsOf(teamMenuModule, row), action => pickTeam(teamMenuModule!, row, action)); return; }
     event.preventDefault();
@@ -227,7 +228,7 @@
   /** The last team menu asked for: an older one still loading gives way. */
   let teamMenuAsk = 0;
   $effect(() => {
-    if (teams.length && !teamMenuModule) void teamsParts.teamMenu().then(module => { teamMenuModule = module; }).catch(() => {});
+    if (teams.length && !teamMenuModule && teamsParts) void teamsParts.teamMenu().then(module => { teamMenuModule = module; }).catch(() => {});
   });
   function teamMenuItemsOf(module: TeamMenuModule, row: TeamRow): MenuItem[] {
     return [{ id: 'open', label: strings.common.open, glyph: MessageSquare }, separator('sep-open'), ...module.teamMenuItems(row.machine.store, row.team)];

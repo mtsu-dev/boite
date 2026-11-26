@@ -36,5 +36,5 @@ export function experimentOn(id: ExperimentId): boolean {
  * chat. With Bots off, every thread opens in the chat.
  */
 export function onBotsPage(thread: { agentSessionId?: string; teamId?: string } | null | undefined): boolean {
-  return !!thread && experimentOn('resident-agents') && (!!thread.agentSessionId || !!thread.teamId);
+  return !!thread && experimentOn('resident-agents') && (!!thread.agentSessionId || (!!thread.teamId && experimentOn('teams')));
 }

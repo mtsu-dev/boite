@@ -10,7 +10,8 @@
   import { isNamedModel } from '../lib/model-order';
   import { planOf, writtenPlan as isWrittenPlan } from '../lib/plan';
   import Deferred from './Deferred.svelte';
-  import { parts } from '../lib/deferred-parts';
+  import { lazyTeamCard, parts } from '../lib/deferred-parts';
+  import { experimentOn } from '../lib/experiments.svelte';
   import { planPart } from '../lib/plan-part';
   import { openQuestionPage } from '../lib/question-page';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
@@ -248,9 +249,9 @@
           pending={store.pendingQuestions.some((q) => q.id === part.questionId)}
           respond={(optionId) => store.answerQuestion(message.threadId, part.questionId, [optionId])}
         />
-      {:else if part.type === 'question' && part.team}
+      {:else if part.type === 'question' && part.team && lazyTeamCard && experimentOn('teams')}
         {@const team = part.team}
-        <Deferred part={parts.TeamCard}>{#snippet children(TeamCard)}<TeamCard
+        <Deferred part={lazyTeamCard}>{#snippet children(TeamCard)}<TeamCard
           {store}
           questionId={part.questionId}
           text={part.text}

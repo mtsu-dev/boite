@@ -1,3 +1,8 @@
+<script module lang="ts">
+  import { markFeature } from '@boite/contracts';
+  markFeature('boite-feature:teams');
+</script>
+
 <script lang="ts">
   import { ArrowLeft, ChevronDown, Ellipsis } from '@lucide/svelte';
   import type { AgentProfile, Team, Thread } from '@boite/contracts';

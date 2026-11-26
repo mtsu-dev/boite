@@ -1,4 +1,4 @@
-import { TEAM_LETTER_BYTES, TEAM_OWNER, type TeamParty, type TeamPost } from '@boite/contracts';
+import { markFeature, TEAM_LETTER_BYTES, TEAM_OWNER, type TeamParty, type TeamPost } from '@boite/contracts';
 
 /** Where a wake's final answer goes: the group of one team, or one author privately. */
 export interface TeamChannel {
@@ -85,3 +85,5 @@ export function teamPrompt(input: { team: string; you: TeamParty; plan: TeamLett
   lines.push(replyLine(team, input.channel, name));
   return lines.join('\n\n');
 }
+
+markFeature('boite-feature:teams');

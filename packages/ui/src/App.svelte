@@ -265,7 +265,7 @@
     if (boardShown) need('BoardDrawer');
     if (store.paletteOpen) need('CommandPalette');
     if (store.projectPickerOpen) need('ProjectPicker');
-    if (store.imports) need('ImportDialog');
+    if (store.imports && experimentOn('session-import')) need('ImportDialog');
     if (threadExport.request) need('ExportThreadDialog');
     if (store.connectDialog) need('ConnectFlow');
     if (tour) need('Onboarding');
@@ -736,7 +736,9 @@
 {#if appViews.PluginUiHost.current}{@const PluginUiHost = appViews.PluginUiHost.current}<PluginUiHost />{/if}
 {#if appViews.ProjectPicker.current}{@const ProjectPicker = appViews.ProjectPicker.current}<ProjectPicker {store} />{:else if store.projectPickerOpen}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
 <ConfirmDialog />
-{#if appViews.ImportDialog.current}{@const ImportDialog = appViews.ImportDialog.current}<ImportDialog {store} />{:else if store.imports}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
+{#if store.imports && experimentOn('session-import')}
+  {#if appViews.ImportDialog.current}{@const ImportDialog = appViews.ImportDialog.current}<ImportDialog {store} />{:else}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
+{/if}
 {#if threadExport.request && appViews.ExportThreadDialog.current}
   {@const ExportThreadDialog = appViews.ExportThreadDialog.current}
   {#key threadExport.request}<ExportThreadDialog {...threadExport.request} onclose={closeThreadExport} />{/key}

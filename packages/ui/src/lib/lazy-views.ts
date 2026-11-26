@@ -7,7 +7,7 @@ import { settingsShell as lazySettingsShell, agentsLayout as lazyAgentsLayout, h
 const intentViews: Record<string, readonly { load(): Promise<unknown> }[]> = {
   settings: [lazySettingsShell],
   agents: [lazyAgentsLayout, lazyAgentsPage],
-  team: [lazyAgentsLayout, lazyAgentsPage, lazyTeamChat],
+  team: [lazyAgentsLayout, lazyAgentsPage, ...(lazyTeamChat ? [lazyTeamChat] : [])],
   council: [appViews.RightPanel, lazyCouncilSalon],
   home: lazyHomePage && lazyContactsRail ? [lazyHomePage, lazyContactsRail] : [],
   panel: [appViews.RightPanel],

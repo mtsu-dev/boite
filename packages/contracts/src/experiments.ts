@@ -154,6 +154,7 @@ declare global {
   const __BOITE_HAS_DRAFT_BACKDROP__: boolean | undefined;
   const __BOITE_HAS_AUTO_GOAL__: boolean | undefined;
   const __BOITE_HAS_CONTACTS__: boolean | undefined;
+  const __BOITE_HAS_TEAMS__: boolean | undefined;
 }
 
 /** The kind this bundle was compiled as, or null when it runs from source. */
@@ -190,6 +191,7 @@ export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boo
   'draft-backdrop': { ui: true, core: false },
   'auto-goal': { ui: true, core: true },
   contacts: { ui: true, core: false },
+  teams: { ui: true, core: true },
 };
 
 const MARKED: string[] = [];

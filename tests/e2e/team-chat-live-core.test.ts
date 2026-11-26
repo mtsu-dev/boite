@@ -51,7 +51,7 @@ test('the owner finds a team on the Mochis page on a desktop and a phone, reads 
     const jeuxThread = await conversation(jeux.id);
 
     // Teams are finished: the core takes them whatever the app reports.
-    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: [], locale: 'fr', windowSize: { width: 1440, height: 900 } });
+    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['teams'], locale: 'fr', windowSize: { width: 1440, height: 900 } });
     await page.waitFor(`document.documentElement.lang === 'fr'`);
 
     const team = await owner.call('teams.create', { name: 'Skollheim', brief: 'Les réseaux et les jeux ensemble.', members: [huginn.id, jeux.id] });

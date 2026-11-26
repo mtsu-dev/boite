@@ -130,10 +130,11 @@ what Boite ran itself.
 
 ## From the UI
 
-The import was an experiment and is now on in every build, with no switch
-(its old id `session-import` left `EXPERIMENT_STAGES`,
-[experiments](experiments.md)): the project menu has the row, the palette the
-command, and the `import-session` chord runs it.
+Session import is a Nightly experiment ([experiments](experiments.md)). In
+Nightly and Dev, its switch in Settings > Experiments enables the project menu
+row and the palette command. The core uses its own version to decide whether
+to accept `imports.list` and `imports.run`. In a Release both refuse with
+`experiment-off`, and imported conversations remain ordinary threads.
 
 `Import a session` sits in a project's menu (right click, or the
 dots beside its name) and in the palette, where it takes the open thread's

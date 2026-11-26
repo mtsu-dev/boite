@@ -1,13 +1,14 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { FakeClient } from '../../lib/fake-client';
-import { Store } from '../../lib/store.svelte';
+import { Store, store as primaryStore } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
 import AgentsPage from '../agents/AgentsPage.svelte';
 import MobileNavigation from '../MobileNavigation.svelte';
 import ConfirmDialog from '../ConfirmDialog.svelte';
 import type { AgentsView } from '../../lib/agents.svelte';
 import { strings } from '../../lib/strings';
+import { followDesktopOf, heardBuild, setExperiment } from '../../lib/experiments';
 import TeamDialog from './TeamDialog.svelte';
 
 const mounted: ReturnType<typeof mount>[] = [];
@@ -18,6 +19,7 @@ afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component);
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
+  followDesktopOf(primaryStore);
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
   document.documentElement.classList.remove('agents-detail-open');
 });
@@ -34,7 +36,7 @@ function query<T extends Element>(selector: string): T {
 const all = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)];
 const text = (selector: string) => document.querySelector(selector)?.textContent?.trim() ?? null;
 
-async function machine(names: string[], at: { coreId?: string; coreName?: string; publicUrl?: string } = {}) {
+async function machine(names: string[], at: { coreId?: string; coreName?: string; publicUrl?: string; version?: string } = {}) {
   const client = new FakeClient({ delayMs: 0, ...at });
   const store = new Store();
   store.attach(client);
@@ -48,8 +50,8 @@ async function machine(names: string[], at: { coreId?: string; coreName?: string
 }
 
 /** This computer with three bots and no team yet. */
-async function computer() {
-  const local = await machine(['Huginn', 'Jeux', 'Muninn']);
+async function computer(version = '2.0.0-test.0') {
+  const local = await machine(['Huginn', 'Jeux', 'Muninn'], { version });
   workspace.machines = [{ id: 'local', label: 'Local', store: local.store }]; workspace.active = local.store;
   return local;
 }
@@ -61,6 +63,9 @@ function phone() {
 }
 /** The Bots page as a phone draws it, under the header that holds its "+": a desktop's bots and teams are in the window's rail, the page's column is the open one's. */
 function page(store: Store) {
+  followDesktopOf(store);
+  heardBuild(store, store.core?.version);
+  setExperiment('teams', true);
   phone();
   store.showAgents();
   mounted.push(mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } }));
@@ -91,6 +96,16 @@ async function openDialog() {
   (await newTeam()).click();
   return dialogShown();
 }
+
+test('a Release hides the Teams list and creation action on the phone', async () => {
+  const { store, bots } = await computer('2.0.0');
+  page(store);
+  await vi.waitFor(() => query(`[data-testid="agent-entry-${bots[0]!.id}"]`));
+  expect(document.querySelector('[data-testid=agents-teams], [data-testid=agents-teams-empty]')).toBeNull();
+  query<HTMLButtonElement>('[data-testid=agents-create]').click();
+  await settle();
+  expect(document.querySelector('[data-testid=agents-new-team]')).toBeNull();
+});
 
 test('with no team yet the Mochis list shows the mochis first, then the Teams heading with New team and one line', async () => {
   const { store, bots } = await computer();

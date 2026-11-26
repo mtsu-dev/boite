@@ -223,6 +223,9 @@ above the message box or the bottom tabs.
 
 ## Import a Claude Code or Codex session
 
+In Nightly and Dev, turn on Session import in Settings > Experiments.
+Conversations you've already imported stay available in a Release.
+
 1. Open a project's menu (right click, or the dots beside its name), then
    Manage project, Import a session.
 2. Pick a session started in that folder. One already imported shows
