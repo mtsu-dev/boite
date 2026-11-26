@@ -20,7 +20,7 @@
   import { confirm } from '../lib/confirm.svelte';
   import { bytes, percent } from '../lib/format';
   import { providerGroups, type ProviderRow } from '../lib/provider-family';
-  import { connected, nextAccountLabel, setupStep, signInTarget, type SetupStep } from '../lib/provider-setup';
+  import { connected, nextAccountLabel, preferCurrentProviders, setupStep, signInTarget, type SetupStep } from '../lib/provider-setup';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
@@ -94,12 +94,10 @@
     return setupStep(provider, store.installOf(provider.id), store.accountsOf(provider.id), loggingIn);
   }
 
-  /** Prefer a signed-in member, with current versions first, then the first available setup step. */
+  /** The member a row speaks for, current versions before obsolete ones: one signed in, else one turned on with a step Boite can take, else the first turned on, else the head. */
   function leadOf(row: ProviderRow): ProviderSummary {
-    const on = row.members.filter((member) => providerEnabled(member));
-    const signedIn = on.filter((member) => connected(member, store.accountsOf(member.id)));
-    return signedIn.find((member) => !member.deprecated)
-      ?? signedIn[0]
+    const on = preferCurrentProviders(row.members.filter((member) => providerEnabled(member)));
+    return on.find((member) => connected(member, store.accountsOf(member.id)))
       ?? on.find((member) => stepOf(member) !== 'manual')
       ?? on[0]
       ?? row.members[0]!;

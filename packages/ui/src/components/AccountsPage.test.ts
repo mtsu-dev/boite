@@ -200,7 +200,7 @@ test('the switch turns a provider off through providers.setEnabled and its row m
   expect(call).toHaveBeenLastCalledWith('providers.setEnabled', { providerId: 'claude', enabled: true });
 });
 
-test('OpenCode shows its replacement and leads with it when both versions are connected', async ({ ready }) => {
+test('OpenCode shows its replacement and leads with it unless only the obsolete version is signed in', async ({ ready }) => {
   const { store } = await ready();
   mounted = mount(AccountsPage, { target: document.body, props: { store } });
   flushSync();
@@ -219,6 +219,11 @@ test('OpenCode shows its replacement and leads with it when both versions are co
   store.accounts = store.accounts.filter((entry) => entry.providerId !== 'opencode-v2');
   flushSync();
   expect(members().map((member) => member.dataset.providerId)).toEqual(['opencode', 'opencode-v2']);
+
+  // Neither signed in: the row offers the current version's sign-in, not the obsolete one's.
+  store.accounts = store.accounts.filter((entry) => entry.providerId !== 'opencode');
+  flushSync();
+  expect(members().map((member) => member.dataset.providerId)).toEqual(['opencode-v2', 'opencode']);
 });
 
 
