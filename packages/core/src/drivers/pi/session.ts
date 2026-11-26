@@ -47,8 +47,6 @@ let stopDeadlineMs = STOP_DEADLINE_MS;
 const READ_DEADLINE_MS = 5_000;
 let readDeadlineMs = READ_DEADLINE_MS;
 
-/** pi's refusal of a manual compact when no entry is old enough to summarize (`agent-session.js`). */
-
 type PiCompactResult = { tokensBefore?: unknown; estimatedTokensAfter?: unknown; usage?: PiUsage };
 
 /**

@@ -9,7 +9,7 @@ import { assertDriverRunnable } from './drivers/index.ts';
 import type { ChildRoute } from './delegation/routes.ts';
 import { GoalTracker, modelRead, newChecklist } from './goal-tracker.ts';
 import type { ProviderProbe } from './providers/probe.ts';
-import { needsModelDiscovery } from './threads/selection.ts';
+import { imageInputModel, needsModelDiscovery } from './threads/selection.ts';
 import { backgroundWork } from './threads/background-work.ts';
 import { unlinkGoalCards } from './todos.ts';
 import { autoGoalCode } from './auto-goal-entry.ts';
@@ -192,7 +192,12 @@ export class ActivityStore {
     if (!thread || thread.archived) throw refused('activity requires an existing, unarchived thread');
     const attachments = params.attachments ?? [];
     checkAttachmentArray(attachments);
-    if (attachments.length) checkAttachments(attachments, this.#core.providers.require(thread.providerId));
+    if (attachments.length) {
+      // The goal or loop runs on the composer's choice when one came with it, as a sent turn would.
+      const runs = executionChoice ?? thread;
+      const provider = this.#core.providers.require(runs.providerId);
+      checkAttachments(attachments, provider, () => imageInputModel(this.#core, provider, runs));
+    }
     if (attachments.length && Number(!!params.goal) + Number(!!params.loop) !== 1) throw invalidParams('attachments require exactly one new goal or loop');
     const state = this.get(params.threadId);
     if (params.goal !== undefined) {

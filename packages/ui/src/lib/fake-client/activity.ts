@@ -6,6 +6,7 @@ import { refusal } from './shared';
 import { workflowAnswer, workflowChild } from './delegation';
 import type { FakeContext, FakeMethods } from './context';
 import { checking, checkTurn, startChecklist, stopChecklist } from './checklist';
+import { threadModel } from './provider-catalog';
 
 /**
  * The in-memory reviewer of a `/goal2`: a child conversation that answers
@@ -164,7 +165,7 @@ function activityAttachments(ctx: FakeContext, thread: Thread, params: ActivityS
   if (attachments.length) {
     const provider = ctx.providers.find(provider => provider.id === thread.providerId);
     if (!provider) throw ctx.notFound('provider', thread.providerId);
-    const error = attachmentError(attachments, provider);
+    const error = attachmentError(attachments, provider, threadModel(ctx, thread));
     if (error) throw new RpcFailure({ code: RpcErrorCode.Refused, ...error });
   }
   if (attachments.length && Number(!!params.goal) + Number(!!params.loop) !== 1) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'attachments require exactly one new goal or loop' });

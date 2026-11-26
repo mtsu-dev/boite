@@ -67,6 +67,9 @@ test('a text-only pi model refuses images on start and steer and still accepts f
   forgetProbes({ providerId: 'pi-fake', accountId: harness!.core.threads.require(threadId).accountId });
   expect((await rejection(client.call('turns.start', { threadId, prompt, attachments: [image] }))).reason).toMatchObject(refusal);
   expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ available: false, reason: 'unsupported' });
+  // A goal started with an image is refused up front, not paused after its first run fails.
+  expect((await rejection(client.call('threads.activity.set', { threadId, goal: { objective: 'Read this' }, attachments: [image] }))).reason).toMatchObject(refusal);
+  expect(harness!.core.activity.get(threadId).goal ?? null).toBeNull();
   const turn = await client.call('turns.start', { threadId, prompt, attachments: [file] });
   await waitFor(() => fakeLog().includes('waiting for abort'));
   expect(harness!.core.journal.listMessages(threadId).find(message => message.role === 'user')?.parts).toContainEqual({ type: 'file', name: file.name, mimeType: file.mimeType, data: file.data });
