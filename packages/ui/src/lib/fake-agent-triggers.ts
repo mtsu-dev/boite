@@ -145,7 +145,7 @@ export class FakeAgentTriggers {
     if (outcome === 'queued') this.#pendingTests.add(trigger.id);
     else this.#pendingTests.delete(trigger.id);
     const now = Date.now();
-    const nextFiredAt = outcome === 'fired' ? (at ?? now) : (at ?? trigger.lastFiredAt);
+    const nextFiredAt = outcome === 'fired' ? (at ?? now) : trigger.lastFiredAt;
     const nextOutcomeAt = outcome === 'queued' && at === null && trigger.lastOutcome === 'queued'
       ? (trigger.lastOutcomeAt ?? trigger.lastFiredAt ?? now)
       : (at ?? now);

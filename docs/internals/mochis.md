@@ -1066,7 +1066,8 @@ the trigger's configuration has stayed the same since that revision.
   read only on loopback connections from a local Funnel proxy; any other local
   reverse proxy forwarding untrusted traffic to loopback must strip
   `Tailscale-Funnel-Request`. Remote and Funnel requests also share the
-  server's per-source refusal budget (`Refusals`) and are tracked in
+  server's per-source refusal budget (`Refusals`, counting 400, 401, 404, 405,
+  408 and 413 responses) and are tracked in
   `peerRequests` so core shutdown drains in-flight deliveries cleanly. Only a
   bounded, quoted payload excerpt and untrusted `X-GitHub-Event` label reach
   the mochi. Use HTTPS when exposing the route.
@@ -1117,8 +1118,9 @@ the trigger's configuration has stayed the same since that revision.
 - PR triggers reuse the existing PR tracker and its GitHub reads (the
   fingerprint query reads `contexts(last:100)` alongside aggregate state counts,
   and the detail query merges `contexts(first:100)` and `contexts(last:100)`,
-  paginating additional middle pages via `CONTEXT_PAGE_QUERY` when a pull
-  request exceeds 200 check runs and a required check is still missing). An open
+  paginating additional middle pages via `CONTEXT_PAGE_QUERY` up to
+  `MAX_CONTEXT_PAGES` whenever `totalCount > 200` and stopping once the middle
+  contexts before the trailing 100 are read). An open
   watch establishes a baseline, then forwards new CI failures (including
   repeated failed runs of the same check name on the same commit when no
   intermediate pending poll occurred), review requests, requests for changes,
@@ -1136,7 +1138,7 @@ general `eventWakes` setting. File and PR events that arrive during a
 trigger's cooldown coalesce in memory (`lastOutcome: 'queued'`) without
 overwriting `lastFiredAt` and dispatch once cooldown expires. A busy mochi
 queues its pending event per trigger in memory without stamping `lastFiredAt`
-until the turn actually starts, coalescing further file or PR events into the
+until a turn actually starts (including test wakes), coalescing further file or PR events into the
 waiting wake without deferring it for cooldown and avoiding redundant SQLite
 writes on scheduler ticks while the wake stays queued. `lastOutcomeAt` tracks
 when any outcome (`fired`, `queued`, `skipped` or `error`) was recorded so the

@@ -237,7 +237,7 @@ export class AgentTriggers {
   test(params: RpcParams<'agents.trigger.test'>): TestResult {
     const triggerId = text(params.triggerId, 'triggerId', 160);
     const requestId = text(params.requestId, 'requestId', 100);
-    if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw invalidParams('requestId: expected 8 to 128 letters, numbers, underscores or hyphens');
+    if (!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) throw invalidParams('requestId: expected 8 to 100 letters, numbers, underscores or hyphens');
     const fingerprint = createHash('sha256').update(JSON.stringify({ triggerId })).digest('hex');
     const held = this.#core.journal.db.query('SELECT fingerprint, result FROM agent_requests WHERE actor = ? AND request_id = ?')
       .get('trigger-test', requestId) as { fingerprint: string; result: string } | null;
@@ -607,10 +607,7 @@ export class AgentTriggers {
     if (held === 'busy' || held === 'off') {
       queue.set(trigger.id, wake.deferred ? { ...wake, deferred: undefined } : wake);
       if (!wake.test && wake.event.kind === 'webhook' && !fromTick && at !== null) this.#recordWebhookAt(trigger.id, at);
-      if (wake.test && at !== null) {
-        this.#recordTestAt(trigger, at);
-        this.#outcome(trigger.id, at, 'queued', at);
-      } else if (!fromTick || trigger.lastOutcome !== 'queued') {
+      if (!fromTick || trigger.lastOutcome !== 'queued') {
         this.#outcome(trigger.id, null, 'queued', at ?? Date.now());
       }
       return { outcome: 'queued', turnId: null };
@@ -622,7 +619,7 @@ export class AgentTriggers {
       this.#activeFileTurns.set(turnId, { agentId: trigger.agentId, projectId: trigger.source.projectId });
     }
     const now = at ?? Date.now();
-    const stamp = turnId ? now : (wake.test ? at : null);
+    const stamp = turnId ? now : null;
     if (stamp !== null) {
       if (wake.test) this.#recordTestAt(trigger, stamp);
       else {

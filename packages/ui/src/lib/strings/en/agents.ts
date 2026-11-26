@@ -21,6 +21,7 @@ export const strings = {
       last: '{state} · {when}',
       watchUnavailable: 'Could not watch project files. Retrying.',
       watchLimit: 'Too many folders to watch (over 512). Narrow the file patterns or ignore large folders.',
+      projectUnavailable: 'Project is archived, removed or no longer granted to this mochi.',
       test: 'Test',
       endpoint: 'Webhook URL',
       endpointPath: 'Webhook path on this mochi\'s machine',

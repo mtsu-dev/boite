@@ -26,9 +26,15 @@
   const sheet = new Closing();
   /** What the sheet shows while it plays its exit: the pane it had. */
   let shown = $state<AgentPane>('settings');
+  let activeAgentId = '';
   $effect(() => {
     const next = pane;
-    untrack(() => { if (next) { shown = next; sheet.show(); } else sheet.hide(); });
+    const id = agent.id;
+    untrack(() => {
+      if (activeAgentId && activeAgentId !== id) view.error = '';
+      activeAgentId = id;
+      if (next) { shown = next; sheet.show(); } else { view.error = ''; sheet.hide(); }
+    });
   });
   let body = $state<HTMLElement>();
   $effect(() => { if (sheet.open) body?.focus({ preventScroll: true }); });
@@ -45,8 +51,10 @@
       <h2>{fill(shown === 'brain' ? labels.brainOf : labels.settingsOf, { name: agent.name })}</h2>
       <button type="button" class="ghost icon" aria-label={strings.common.close} title={strings.common.close} onclick={onclose} data-testid="agent-sheet-close"><X size={16} strokeWidth={1.75} /></button>
     </header>
+    {#if view.error}
+      <div class="agent-sheet-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} ondismiss={() => { view.error = ''; }} /></div>
+    {/if}
     <div class="agent-sheet-body">
-      {#if view.error}<Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} />{/if}
       {#key `${agent.id}:${shown}:${session}`}
         {#if shown === 'brain'}
           <AgentBrainEditor {view} agentId={agent.id} />

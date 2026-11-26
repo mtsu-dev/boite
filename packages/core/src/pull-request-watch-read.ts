@@ -56,7 +56,7 @@ baseRef{target{... on Commit{oid statusCheckRollup{${CHECK_NODES('')}}}}}
 commits(last:1){nodes{commit{oid statusCheckRollup{${CHECK_NODES('isRequired(pullRequestNumber:$number)', true)}}}}}
 }}}`;
 
-/** Follow-up page read only when a pull request has over 200 check contexts and a required check is still missing. */
+/** Follow-up page read when a pull request has over 200 check contexts so middle-page checks are not missed. */
 export const CONTEXT_PAGE_QUERY = `query($owner:String!,$name:String!,$number:Int!,$after:String!){repository(owner:$owner,name:$name){pullRequest(number:$number){
 commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100,after:$after){pageInfo{hasNextPage endCursor} ${CHECK_FIELDS.replaceAll('%REQ%', 'isRequired(pullRequestNumber:$number)')}}}}}}
 }}}`;
@@ -153,7 +153,7 @@ export interface WatchDetail {
   headRepository?: string;
   base: string;
   baseFailure?: PullRequestBaseFailure;
-  /** When the first failing base check was posted or completed. */
+  /** When the first failing base CI check started or finished. Omitted for commit statuses so unchanged reposts do not re-wake. */
   baseFailureAt?: string;
   /** A draft cannot merge: a required context it never reports does not hold its verdict. */
   draft: boolean;
@@ -163,8 +163,10 @@ export interface WatchDetail {
   /** Its place in the merge queue, 1 next to merge; null out of it. Its checks run on the queue's merge group, not on the head. */
   queue: number | null;
   checks: WatchCheck[];
-  /** Cursor for follow-up context pages when a commit has more than 200 check contexts and a required check may sit in the middle. */
+  /** Cursor for follow-up context pages when a commit has more than 200 check contexts. */
   contextsCursor?: string;
+  /** Total reported check contexts when over 200, used to stop pagination before re-reading the trailing 100. */
+  contextsTotal?: number;
   /** The account `gh` signs in as: what it writes is the agent's own. */
   viewer: string;
 }
@@ -191,11 +193,12 @@ export function parseDetail(raw: string): WatchDetail {
   const firstContexts = contextsOf(commit);
   const pageInfo = row(firstContexts.pageInfo);
   const endCursor = text(pageInfo.endCursor, 256);
-  const contextsCursor = Number(firstContexts.totalCount) > 200 && pageInfo.hasNextPage === true && endCursor ? endCursor : undefined;
+  const totalCount = Number(firstContexts.totalCount);
+  const contextsCursor = totalCount > 200 && pageInfo.hasNextPage === true && endCursor ? endCursor : undefined;
   const base = baseTip(pr), sha = text(base.oid, 64);
   const first = checksOf(base).filter(({ check }) => check.status === 'failed')
     .sort((a, b) => (a.at || '9999').localeCompare(b.at || '9999'))[0]?.check;
-  const baseFailureAt = first?.createdAt || first?.finished || first?.started;
+  const baseFailureAt = first && !first.context ? (first.finished || first.started || first.createdAt || undefined) : undefined;
   const mergeable = String(pr.mergeable);
   const mergeState = typeof pr.mergeStateStatus === 'string' ? pr.mergeStateStatus : 'UNKNOWN';
   return {
@@ -211,12 +214,12 @@ export function parseDetail(raw: string): WatchDetail {
     behind: mergeState === 'UNKNOWN' ? null : mergeState === 'BEHIND',
     queue: queuePosition(pr),
     checks: checksOf(commit).map(({ check }) => check),
-    ...(contextsCursor ? { contextsCursor } : {}),
+    ...(contextsCursor ? { contextsCursor, contextsTotal: totalCount } : {}),
     viewer: text(row(data.viewer).login, 100),
   };
 }
 
-export function parseContextPage(raw: string): { head: string; checks: WatchCheck[]; cursor: string | null } {
+export function parseContextPage(raw: string): { head: string; checks: WatchCheck[]; count: number; cursor: string | null } {
   const commit = row(row(list(row(pullRequestOf(graphqlData(raw)).commits).nodes)[0]).commit);
   const contexts = contextsOf(commit);
   const pageInfo = row(contexts.pageInfo);
@@ -224,6 +227,7 @@ export function parseContextPage(raw: string): { head: string; checks: WatchChec
   return {
     head: text(commit.oid, 64),
     checks: checksOf(commit).map(({ check }) => check),
+    count: list(contexts.nodes).length,
     cursor: pageInfo.hasNextPage === true && endCursor ? endCursor : null,
   };
 }

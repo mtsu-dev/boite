@@ -31,6 +31,8 @@
     : null);
   const projectId = $derived(trigger.source.kind === 'webhook' ? null : trigger.source.projectId);
   const project = $derived(view.store.projects.find(candidate => candidate.id === projectId));
+  const agent = $derived(view.snapshot?.profiles.find(candidate => candidate.id === trigger.agentId));
+  const projectUnavailable = $derived(projectId !== null && trigger.enabled && (!project || project.archived || !agent?.projectIds?.includes(projectId)));
   const endpoint = $derived(trigger.webhookPath
     ? triggerWebhookUrl(trigger.webhookPath, view.store.endpointUrl, view.store.settings?.publicUrl ?? null, view.store.group, location.origin)
     : null);
@@ -70,6 +72,7 @@
       <strong title={trigger.name}>{trigger.name}</strong>
       <span class="routine-when">{t.kinds[trigger.source.kind]}{#if project}{' · '}{project.name}{/if}</span>
       {#if trigger.watchUnavailable}<span class="trigger-last failed">{trigger.watchUnavailableReason === 'limit' ? t.watchLimit : t.watchUnavailable}</span>{/if}
+      {#if projectUnavailable}<span class="trigger-last failed">{t.projectUnavailable}</span>{/if}
       {#if last}<span class="trigger-last" class:failed={trigger.lastOutcome === 'error'}>{last}</span>{/if}
     </div>
     {#if canEdit}

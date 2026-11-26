@@ -32,14 +32,16 @@ test('a file trigger edit keeps brace globs, survives a trigger run, and refuses
     click('trigger-edit');
     patterns('src/**/*.{ts,tsx}, package.json, src/items[,].txt');
     await client.call('agents.trigger.test', { triggerId: trigger.id, requestId: 'test-while-editing' });
-    const firedAt = (await snapshotTrigger()).lastFiredAt;
-    expect(firedAt).not.toBeNull();
+    const afterTest = await snapshotTrigger();
+    expect(afterTest.lastOutcome).toBe('queued');
+    expect(afterTest.lastOutcomeAt).not.toBeNull();
+    expect(afterTest.lastFiredAt).toBeNull();
     await view.refresh();
     click('trigger-save');
     await vi.waitFor(async () => expect((await snapshotTrigger()).source).toMatchObject({
       patterns: ['src/**/*.{ts,tsx}', 'package.json', 'src/items[,].txt'],
     }));
-    expect((await snapshotTrigger()).lastFiredAt).toBe(firedAt);
+    expect((await snapshotTrigger())).toMatchObject({ lastOutcome: 'skipped', lastFiredAt: null });
     await vi.waitFor(() => expect(element('trigger-form')).toBeNull());
 
     click('trigger-edit');
@@ -124,17 +126,52 @@ test('a compact webhook card shows the local-only warning, renders non-firing ou
   } finally { await unmount(component); view.close(); }
 });
 
-test('AgentSheet surfaces view.error inside the settings sheet', async ({ ready }) => {
+test('AgentSheet pins view.error, dismisses it, and clears it on close or agent switch', async ({ ready }) => {
   const { store } = await ready({ delayMs: 0, agentsDemo: true });
   const view = new AgentsView(store);
   await view.refresh();
-  const agent = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
-  const component = mount(AgentSheet, { target: document.body, props: { view, agent, pane: 'settings', onclose: () => {} } });
+  const nova = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
+  const mira = view.snapshot!.profiles.find(profile => profile.name === 'Mira')!;
+  const props = $state({ view, agent: nova, pane: 'settings' as const, onclose: () => {} });
+  const component = mount(AgentSheet, { target: document.body, props });
   try {
     flushSync();
     view.error = 'This trigger changed elsewhere. Reopen it to see the latest settings.';
     flushSync();
     const sheet = element('agent-sheet');
     expect(sheet.textContent).toContain('This trigger changed elsewhere. Reopen it to see the latest settings.');
+    expect(sheet.querySelector('.agent-sheet-error')).not.toBeNull();
+    flushSync(() => sheet.querySelector<HTMLButtonElement>('.agent-sheet-error button')?.click());
+    expect(view.error).toBe('');
+    view.error = 'Stale error';
+    flushSync();
+    props.agent = mira;
+    flushSync();
+    expect(view.error).toBe('');
+  } finally { await unmount(component); view.close(); }
+});
+
+test('an enabled file trigger warns when its project is archived or ungranted, and switching agent closes an open form', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = new AgentsView(store);
+  await view.refresh();
+  const nova = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
+  const mira = view.snapshot!.profiles.find(profile => profile.name === 'Mira')!;
+  const projectId = nova.projectIds![0]!;
+  const { trigger } = await client.call('agents.trigger.save', { value: {
+    agentId: nova.id, source: { kind: 'file', projectId, patterns: [], debounceMs: 100 },
+    name: 'Watch project', prompt: 'Inspect edits.', enabled: true, cooldownSeconds: 60,
+  } });
+  await client.call('projects.archive', { projectId });
+  await view.refresh();
+  const props = $state({ view, agentId: nova.id });
+  const component = mount(AgentTriggers, { target: document.body, props });
+  try {
+    expect(element(`trigger-${trigger.id}`).textContent).toContain('Project is archived, removed or no longer granted to this mochi.');
+    flushSync(() => element('trigger-edit').click());
+    expect(element('trigger-form')).not.toBeNull();
+    props.agentId = mira.id;
+    flushSync();
+    expect(element('trigger-form')).toBeNull();
   } finally { await unmount(component); view.close(); }
 });

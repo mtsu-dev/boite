@@ -159,7 +159,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
  * reason is worth saying.
  */
 export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
-  { name: 'agents.trigger.', reason: 'a mochi and its owner configure what wakes it; webhook credentials are issued to the owner' },
+  { name: 'agents.trigger.', reason: 'only the owner configures a mochi\'s triggers and receives webhook credentials' },
   { name: 'accounts.', reason: 'the agents\' sign-ins and their settings are the owner\'s' },
   { name: 'quotas.alert', reason: 'an account\'s alert thresholds are the owner\'s account settings' },
   { name: 'providers.probe', reason: 'it starts an agent with the owner\'s login' },

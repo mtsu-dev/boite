@@ -46,7 +46,7 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // Paired apps share the owner's composer and its validated, content-addressed attachments.
   'composer.list', 'composer.put', 'composer.asset.put', 'composer.asset.get',
   'composer.listPage', 'composer.get', // Bounded and individual reads of the same composer records.
-  // A paired phone lists the owner's agents with their state, desk and routines; talking to one is
+  // A paired phone lists the owner's agents with their state, desk, routines and triggers; talking to one is
   // `turns.start` on its thread, which the device already reaches.
   'agents.snapshot',
   // The agent's own thread, created again if it was lost: a thread the phone then opens like any other.

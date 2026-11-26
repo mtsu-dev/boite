@@ -1189,7 +1189,7 @@ test('archive ends the watches and their saved state, and a merged pull request 
   expect(await thrown(owner.call('threads.watchPullRequest', { threadId }))).toThrow('is merged');
 });
 
-test('a pull request with over 200 check contexts paginates to find middle-page required checks and failures', async () => {
+test('a pull request with over 200 check contexts paginates only middle pages to find required checks and failures', async () => {
   const { owner, threadId, github, watches, drive } = await watchedThread();
   github.rules = ['middle-gate'];
   const makeRuns = (gateStatus: 'IN_PROGRESS' | 'COMPLETED', middleFailed = false): Run[] => Array.from({ length: 250 }, (_, index) => (
@@ -1201,19 +1201,19 @@ test('a pull request with over 200 check contexts paginates to find middle-page 
   ));
   github.runs = makeRuns('IN_PROGRESS');
   await owner.call('threads.watchPullRequest', { threadId });
-  expect(github.calls.filter(call => call === 'contexts')).toHaveLength(2);
+  expect(github.calls.filter(call => call === 'contexts')).toHaveLength(1);
   expect(watches.of(threadId)[0]!.seen?.checks).toEqual({ total: 250, running: 1, failed: 0 });
 
   github.calls = [];
   github.runs = makeRuns('COMPLETED', true);
   await drive();
   await settled(threadId);
-  expect(github.calls.filter(call => call === 'contexts')).toHaveLength(2);
+  expect(github.calls.filter(call => call === 'contexts')).toHaveLength(1);
   expect(wakes(threadId)).toHaveLength(1);
   expect(wakeText(threadId, wakes(threadId)[0]!.id)).toContain('middle-lint');
 });
 
-test('a StatusContext reposting the same failure with a newer createdAt does not wake again', () => {
+test('a StatusContext reposting the same failure with a newer createdAt does not wake again and omits baseFailureAt', () => {
   const statusCheck = (createdAt: string): WatchDetail => ({
     ...detail([]),
     checks: [{ name: 'cla/bot', job: 'cla/bot', workflow: '', status: 'failed', conclusion: 'FAILURE', url: 'https://cla.example/1', required: false, context: true, started: '', finished: '', createdAt }],
@@ -1222,5 +1222,13 @@ test('a StatusContext reposting the same failure with a newer createdAt does not
   expect(first.changes).toHaveLength(1);
   const repost = evaluate(first.next, statusCheck('2026-10-15T09:35:00Z'), null);
   expect(repost.changes).toEqual([]);
+
+  const baseTarget = (run: Run) => ({ baseRef: { target: { oid: 'b'.repeat(40), statusCheckRollup: { contexts: { nodes: [checkRun(run)] } } } } });
+  const baseStatus = parseDetail(detailJson([], baseTarget({ name: 'cla/bot', context: true, status: 'FAILURE', completedAt: '2026-10-15T10:05:00Z' })));
+  expect(baseStatus.baseFailure?.name).toBe('cla/bot');
+  expect(baseStatus.baseFailureAt).toBeUndefined();
+  const baseRun = parseDetail(detailJson([], baseTarget({ name: 'build', conclusion: 'FAILURE', completedAt: '2026-10-15T10:05:00Z' })));
+  expect(baseRun.baseFailure?.name).toBe('CI / build');
+  expect(baseRun.baseFailureAt).toBe('2026-10-15T10:05:00Z');
 });
 

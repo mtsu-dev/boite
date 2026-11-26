@@ -23,6 +23,7 @@ export const fr: Translation = {
       last: '{state} · {when}',
       watchUnavailable: 'Surveillance des fichiers impossible. Nouvelle tentative en cours.',
       watchLimit: 'Trop de dossiers à surveiller (plus de 512). Affinez les motifs ou ignorez les dossiers volumineux.',
+      projectUnavailable: 'Ce projet est archivé, supprimé ou n’est plus confié à ce mochi.',
       test: 'Tester',
       endpoint: 'URL du webhook',
       endpointPath: 'Chemin du webhook sur la machine de ce mochi',

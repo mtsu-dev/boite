@@ -17,7 +17,7 @@ const MIN_PASS_GAP_MS = 1_000;
 const WATCH_LIMIT = 10;
 /** GitHub's `closedAt` counts whole seconds: a merge that close to a turn's edge is the agent's. */
 const CLOCK_SLACK_MS = 1_000;
-/** Maximum follow-up context pages read when a PR has over 200 check contexts and a required check is still missing. */
+/** Maximum follow-up context pages read when a PR has over 200 check contexts. */
 const MAX_CONTEXT_PAGES = 5;
 
 export interface WatchTiming {
@@ -382,13 +382,17 @@ export class PullRequestWatches {
   async #fillContexts(threadId: ThreadId, record: WatchRecord, read: WatchDetail): Promise<WatchDetail> {
     let cursor: string | null = read.contextsCursor ?? null;
     let checks = read.checks;
-    for (let page = 0; page < MAX_CONTEXT_PAGES && cursor; page++) {
+    const needed = Math.max(0, (read.contextsTotal ?? 0) - 200);
+    let fetched = 0;
+    for (let page = 0; page < MAX_CONTEXT_PAGES && cursor && (!needed || fetched < needed); page++) {
       const next = parseContextPage(await this.#graphql(threadId, record, CONTEXT_PAGE_QUERY, ['-f', `after=${cursor}`]));
       if (next.head && read.head && next.head !== read.head) break;
       checks = mergeWatchChecks(checks, next.checks);
+      fetched += next.count;
       cursor = next.cursor;
+      if (next.count === 0) break;
     }
-    return { ...read, checks, contextsCursor: cursor ?? undefined };
+    return { ...read, checks, contextsCursor: !needed || fetched < needed ? (cursor ?? undefined) : undefined };
   }
 
   /** What the base branch requires, cached per repository and base: a failed read logs and keeps what was known, a rate limit throws. */
@@ -534,7 +538,8 @@ function prTriggerTransitions(changes: WatchChange[], detail: WatchDetail, previ
     if (change.kind === 'failed') {
       const failing = new Set(change.checks.map(check => check.name));
       for (const check of detail.checks) if (failing.has(check.name)) {
-        transitions.push({ kind: 'ci_failed', key: JSON.stringify([detail.head, check.name, check.conclusion, check.url, check.createdAt ?? check.started, check.finished]) });
+        const runPart = check.context ? [] : [check.createdAt ?? check.started, check.finished];
+        transitions.push({ kind: 'ci_failed', key: JSON.stringify([detail.head, check.name, check.conclusion, check.url, ...runPart]) });
       }
     } else if (change.kind === 'base-failed') {
       const { sha, name, conclusion, url } = change.check;

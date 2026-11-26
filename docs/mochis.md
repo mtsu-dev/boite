@@ -105,6 +105,9 @@ the event that should wake it and say what to do when it wakes.
   you create the trigger. **Rotate secret** gives you a new one and disables
   the old one immediately. Use the local app or an encrypted connection to
   create or rotate it. Use HTTPS when sending events over the internet.
+  Boite's built-in Tailscale Funnel routes expose contacts and coordination
+  only; to receive webhooks from the internet, configure a public URL or a
+  Tailscale Funnel route to Boite's server.
 - **Project files** watches a project you granted to the mochi on this
   machine. Enter comma-separated paths or patterns such as `src/**/*.{ts,tsx}`,
   or leave them blank for all source paths. Boite groups changes before
@@ -124,7 +127,9 @@ and pull request changes that arrive during cooldown wait and combine until it
 ends, while webhooks receive a retry delay (a webhook received while the mochi
 is paused or over budget still starts its cooldown). A busy mochi takes the waiting
 event for each trigger after its turn (for webhooks, the first request waits
-and additional ones receive a cooldown or busy retry response until it finishes). Paused or archived mochis and
+and additional ones receive a cooldown or busy retry response until it finishes).
+External services such as GitHub do not automatically retry rejected webhook
+deliveries, so use a short cooldown when back-to-back events matter. Paused or archived mochis and
 mochis over their daily budget do not wake. Triggers stay owner-only, belong
 to their machine and are removed when a mochi moves to another one.
 
