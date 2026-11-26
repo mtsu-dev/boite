@@ -116,7 +116,7 @@ const oneShot = process.argv.includes('--no-session') || Boolean(sideCopy);
 const sessionFile = sideCopy || (sessionId && join(sessionDir,
   readdirSync(sessionDir).find(name => name.endsWith(`_${sessionId}.jsonl`)) ?? `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`));
 const saved = sessionFile && existsSync(sessionFile)
-  ? readFileSync(sessionFile, 'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
+  ? readFileSync(sessionFile, 'utf8').trim().split('\n').flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } }) : [];
 let leaf: string | null = saved.at(-1)?.id ?? null;
 let activePrompt = '';
 log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model}`);
@@ -243,7 +243,7 @@ const MODELS = [
 ];
 
 /** The model the session is on, which is the one pi reports as current. */
-const CURRENT = MODELS[0];
+const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0];
 const CURRENT_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 function assistantMessage(stopReason: string, usage: Record<string, unknown>): Record<string, unknown> {

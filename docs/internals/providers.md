@@ -398,7 +398,8 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   (still accepted, folded away in the picker), `badge: "new"`, and an `effort`
   block of named levels with a default. A probed model may have `images: false`
   when it reads no images. Only pi reports this today, from the model's `input`
-  list. Without the field, the model follows the agent's image capability.
+  list; pi's `default` entry copies the flag of the model pi reports as current.
+  Without the field, the model follows the agent's image capability.
   A native agent may declare an empty list and let the probe supply its catalog.
   The unnamed `default` alias remains accepted for existing descriptors. Echo
   requires at least one static model.
@@ -1759,6 +1760,8 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
 - Titles use a separate, tool-free RPC process with no session file, extensions,
   MCP, context files, skills or prompt templates. Boite uses the selected title
   model or the thread's own model at low effort and allows 30 seconds per call.
+  The profile's own tool, session and model flags, short aliases included, are
+  dropped from these launches.
 - `/btw` uses the same launch. At a settled checkpoint, it opens a temporary
   copy of the session cut at that checkpoint and keeps pi's read-only tools
   (`--tools read,grep,find,ls`): the copy's tool calls need tools defined, or
@@ -1768,6 +1771,8 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
 - A completed turn records the last persisted JSONL entry from the session
   named by `get_session_stats`. Native fork and rewind copy that entry and its
   `parentId` ancestry into a new session ID in the destination thread's folder.
+  A malformed line is skipped, as pi skips it on resume; a missing ancestor
+  falls back to the seeded path.
   Rewind switches the thread to the copy after the journal and file checks pass.
   Older turns without checkpoints and cuts inside a turn use the seeded path.
 

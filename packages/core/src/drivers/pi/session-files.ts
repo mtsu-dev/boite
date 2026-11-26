@@ -49,8 +49,9 @@ export async function copySession(sourceDir: string, checkpoint: Checkpoint, tar
     }
     const entries = new Map<string, { parentId: unknown; line: string }>();
     for (const line of lines) {
-      if (!line.trim()) continue;
-      const entry: unknown = JSON.parse(line);
+      // pi skips a malformed line when it resumes; only a broken ancestry stops the copy.
+      let entry: unknown;
+      try { entry = JSON.parse(line); } catch { continue; }
       if (isRecord(entry) && typeof entry['id'] === 'string') entries.set(entry['id'], { parentId: entry['parentId'], line });
     }
     const chain: string[] = [];

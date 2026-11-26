@@ -109,6 +109,8 @@ function modelsFrom(provider: ProviderDescriptor, listing: PiListing): ModelInfo
       ...(effort === null ? {} : { effort }),
     });
   }
+  // "pi default" runs the current model, so it reads images only when that model does.
+  if (own !== undefined && models.find((model) => model.id === listing.current)?.images === false) models[0]!.images = false;
   return models.length === (own === undefined ? 0 : 1) ? provider.models : models;
 }
 

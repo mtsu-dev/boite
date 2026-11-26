@@ -56,6 +56,17 @@ test('coordination steers a running pi turn over its RPC connection', async () =
   expect(await client.call('turns.steer', correction)).toEqual({ accepted: true });
 });
 
+test('pi default refuses images while pi itself runs a text-only model', async () => {
+  process.env['PI_FAKE_CURRENT'] = 'plain';
+  const { client, threadId } = await startThread();
+  const { accountId, model } = harness!.core.threads.require(threadId);
+  expect(model).toBe('default');
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+  const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+  expect((await rejection(client.call('turns.start', { threadId, prompt: 'Read this', attachments: [image] }))).reason)
+    .toMatchObject({ rpc: { message: 'pi default takes no images: send the prompt without them' } });
+});
+
 test('a text-only pi model refuses images on start and steer and still accepts files', async () => {
   const { client, threadId } = await startThread(undefined, 'fake-b/plain');
   const prompt = '[slow] Read this';
@@ -84,6 +95,7 @@ afterEach(async () => {
   const open = harness;
   harness = null;
   delete process.env['PI_FAKE_LOG'];
+  delete process.env['PI_FAKE_CURRENT'];
   if (open !== null) await open.stop();
 });
 
@@ -305,7 +317,7 @@ test('pi answers /btw from a disposable session copy and leaves the source intac
   // Tool flags the profile declares are the conversation's, never the side question's.
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
   const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
-  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--tools', 'bash', '--no-tools');
+  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--tools', 'bash', '-t', 'edit', '--no-tools', '-nt');
   writeFileSync(descriptorFile, JSON.stringify(descriptor));
   expect((await client.call('providers.reload', {})).rejected).toEqual([]);
   expect((await (await startTurn(client, threadId, 'The release color is amber.')).finished).status).toBe('done');
@@ -320,7 +332,7 @@ test('pi answers /btw from a disposable session copy and leaves the source intac
   const copy = args[args.indexOf('--session') + 1]!;
   // The copy's tool calls need tools defined on Anthropic: read-only ones, never none or all.
   expect(args).not.toContain('--no-tools');
-  expect(args.filter(arg => arg === '--tools')).toHaveLength(1);
+  expect(args.filter(arg => ['--tools', '-t', '-nt'].includes(arg))).toEqual(['--tools']);
   expect(args[args.indexOf('--tools') + 1]).toBe('read,grep,find,ls');
   expect(copy).not.toBe(source);
   expect(existsSync(copy)).toBe(false);
@@ -344,7 +356,8 @@ test('pi forks and rewinds at a finished turn, keeping only its native ancestors
   const unusedBranch = JSON.stringify({ type: 'message', id: 'unused', parentId: null, message: { role: 'user', content: 'Unrelated branch' } });
   const initial = readFileSync(source, 'utf8');
   const [header, ...entries] = initial.trimEnd().split('\n');
-  writeFileSync(source, `${[header, unusedBranch, ...entries].join('\n')}\n`);
+  // A torn line pi skips on resume must not cost the native copy either.
+  writeFileSync(source, `${[header, unusedBranch, '{"type":"message","id":"torn', ...entries].join('\n')}\n`);
   expect((await (await startTurn(client, threadId, 'Discard the cyan release')).finished).status).toBe('done');
   const before = readFileSync(source, 'utf8');
   const capability = await client.call('threads.capabilities', { threadId });

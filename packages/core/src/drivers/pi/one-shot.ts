@@ -19,9 +19,11 @@ import { copySession } from './session-files.ts';
 const VALUE_FLAGS = new Set([
   '--extension', '-e', '--skill', '--prompt-template', '--mode', '--model', '--provider',
   '--session', '--session-id', '--session-dir', '--fork', '--thinking',
-  '--system-prompt', '--append-system-prompt', '--tools',
+  '--system-prompt', '--append-system-prompt', '--tools', '-t', '--exclude-tools', '-xt',
 ]);
-const OWNED_SWITCHES = new Set(['--no-session', '--continue', '-c', '--resume', '-r', '--print', '-p', '--no-tools']);
+const OWNED_SWITCHES = new Set([
+  '--no-session', '--continue', '-c', '--resume', '-r', '--print', '-p', '--no-tools', '-nt', '--no-builtin-tools', '-nbt',
+]);
 /**
  * A side question on a session copy keeps pi's read-only tools: its history
  * holds tool calls, and Anthropic's Messages API refuses `tool_use` blocks in a
