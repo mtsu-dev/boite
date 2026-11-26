@@ -38,9 +38,10 @@ report ([updates](updates.md)).
 2. The file holds the last 24 hours: environment, grouped problems, threads
    and the timeline.
 
-The desktop app saves a copy in Downloads. A phone offers its share sheet
-when it can, and a browser downloads the file. The machine that runs Boite
-also keeps its ten newest exports in `logs/exports`.
+The desktop app saves the full report in Downloads, including reports larger
+than 5 MiB. A phone offers its share sheet when it can, and a browser
+downloads the file. The machine that runs Boite also keeps its ten newest
+exports in `logs/exports`.
 
 An export is anonymized: project paths and names, your user and machine
 names, emails and private addresses become placeholders. Thread ids stay, so

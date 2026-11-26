@@ -60,6 +60,7 @@ the OpenCode server, protected bridges, health checks).
 | 45 | agent-desktop download | `registry.npmjs.org`, the pinned `agent-desktop` release | A conversation's first virtual desktop or `boite desktop` command on a core without it | GET, IP | On; on Linux, with the desktop tools | None | `agentDesktop: false` |
 | 46 | Worktree default branch lookup | The selected Git remote of the project | Making a worktree that starts from the project's default branch | Git HEAD lookup and, if the commit is missing, a fetch using the repository's Git configuration | Only for repositories with a remote | Use a project without a remote to work locally | None: initiated by creating a worktree in a project with a configured remote |
 | 47 | Model prices | `models.dev/api.json` | The first price lookup when the cached rates are missing or a day old; a lookup of an unknown model, at most once an hour and once per model; an hour after a failure | GET with the user agent `boite` and the stored ETag, IP | On | None | `modelPrices: false` |
+| 48 | Anonymized log download | The core selected in desktop Diagnostics, directly or through a group relay | Export anonymized logs | Short-lived file ticket; the core returns its anonymized report | No | Do not click | The export requires owner access; the connection follows the core's network policy |
 
 ## Flows with no user switch
 
@@ -80,5 +81,5 @@ Each one is either blocked by a policy key or started by the user:
   `providers.allow` or in `providers.deny`; for an allowed provider they run
   only on the user's click, since choosing the agent is the administrator's
   decision and installing it is the user's.
-- Rows 31, 37, 44 and 46: user-initiated toward a destination the user chose, as
+- Rows 31, 37, 44, 46 and 48: user-initiated toward a destination the user chose, as
   the table says.

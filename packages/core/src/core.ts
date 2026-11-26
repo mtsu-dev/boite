@@ -736,6 +736,7 @@ export class Core {
     this.keybindings.close();
     await this.telemetry.close();
     this.bus.dispose();
+    this.fileTickets.forgetAll();
     this.#stopRetention();
     this.#stopMoves();
     this.#stopDeletionRetention();

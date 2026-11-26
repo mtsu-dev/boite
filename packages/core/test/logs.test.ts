@@ -472,5 +472,14 @@ test('real echo turns capture queued, started, finished lifecycle and CLI reads 
     let output = '';
     expect(await runCli(['logs', '--data-dir', harness.dataDir, '--json'], { env: {}, cwd: harness.dataDir, out: value => { output += value; }, err: () => undefined })).toBe(0);
     expect(JSON.parse(output)).toBeArray();
+    output = '';
+    const exported = join(harness.dataDir, 'diagnostics.txt');
+    expect(await runCli(['logs', 'export', '--data-dir', harness.dataDir, '--out', exported, '--json'], { env: {}, cwd: harness.dataDir, out: value => { output += value; }, err: () => undefined })).toBe(0);
+    const result = JSON.parse(output) as { path: string; bytes: number; written: string };
+    const file = readFileSync(exported);
+    expect(result.written).toBe(exported);
+    expect(file.length).toBe(result.bytes);
+    expect(file.equals(readFileSync(result.path))).toBe(true);
+    expect(file.toString('utf8')).toContain('## Timeline');
   } finally { await harness.stop(); }
 });

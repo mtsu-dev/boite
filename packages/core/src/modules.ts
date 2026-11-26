@@ -57,6 +57,8 @@ export function registerModules(core: Core): void {
   core.router.register('diagnostics.logs', (params, ctx) => core.diagnostics.logs(params, ctx.connection));
   core.router.register('diagnostics.summary', (params, ctx) => core.diagnostics.summary(params ?? {}, ctx.connection));
   core.router.register('diagnostics.export', (params, ctx) => core.diagnostics.export(params, ctx.connection));
+  // Owner only: creates a bearer ticket for a report of the whole machine.
+  core.router.register('diagnostics.exportFile', (params, ctx) => core.diagnostics.exportFile(params, ctx.connection));
   core.router.register('diagnostics.issue', (params, ctx) => core.diagnostics.issue(params, ctx.connection));
   core.router.register('diagnostics.report', (params, ctx) => core.diagnostics.report(params, ctx.connection));
   core.router.register('core.updateStatus', params => core.serverUpdates.status(params.refresh));
