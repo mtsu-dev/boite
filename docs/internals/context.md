@@ -81,7 +81,7 @@ The existing Stop action cancels the maintenance turn. Paired devices may call i
 | Claude | `/compact` through the SDK prompt, without prompt-only reasoning suffixes |
 | Codex | `thread/compact/start`, completed by normal turn notifications |
 | Muse | `session/compact`; a `noop` ends the turn with a `nothing_to_compact` notice carrying the host's reason |
-| pi | `compact` RPC, completed by its response, whose `estimatedTokensAfter` is pi's own estimate of what is left; Stop closes the process because prompt abort does not cancel this RPC; its refusal `Nothing to compact (session too small)` ends the turn with a `nothing_to_compact` notice, not an error |
+| pi | `compact` RPC, completed by its response, whose `estimatedTokensAfter` is pi's own estimate of what is left; Stop closes the process because prompt abort does not cancel this RPC; its refusals `Nothing to compact (session too small)` and `Already compacted` end the turn with a `nothing_to_compact` notice, not an error |
 | ACP | `/compact` only when the session advertised that command |
 | echo | `[compact]`, a deterministic test operation; the divider it draws says `manual`, while `[compact]` inside a prompt draws an `auto` one |
 

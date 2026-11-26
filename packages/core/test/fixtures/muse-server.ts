@@ -15,7 +15,7 @@
  * sends it when set to `never`, for the tests of a stalled startup.
  * `MUSE_FAKE_TURN_ACK=never` streams the turn without acknowledging `turn/start`.
  */
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { instructionsOf } from './history.ts';
 
 const DIRECTIVE =
@@ -507,8 +507,11 @@ function handle(method: string, raw: unknown, requestId?: unknown): unknown {
       return { accepted: true };
     }
     case 'session/compact': {
+      // Across processes, the log tells whether a turn ran since the last compaction.
+      const file = process.env['MUSE_FAKE_LOG'];
+      const steps = file && existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter((line) => /^(turn\/start|session\/compact)/.test(line)) : [];
       log('session/compact');
-      if (turnsRun === 0) return { status: 'noop', reason: 'nothing to compact' };
+      if (turnsRun === 0 || steps.at(-1) === 'session/compact') return { status: 'noop', reason: 'nothing to compact' };
       setTimeout(() => {
         const itemId = nextItemId();
         notify('item/started', { item: { itemId, kind: 'compaction', revision: 1, status: 'inProgress', trigger: 'manual' } });

@@ -1666,8 +1666,8 @@ process here goes through `procs.spawnChild`. The driver refuses a host whose
   denial when there is none. The server-request forms are declined.
 - A missing login ends the turn with `authRequired`, which the driver turns into
   a sentence saying to sign the account in from Providers.
-- `threads.compact` sends `session/compact`; a `noop` answer fails the turn
-  with Muse's reason. `session/todoListChanged` fills the thread's tasks, a
+- `threads.compact` sends `session/compact`; a `noop` answer ends the turn
+  with a `nothing_to_compact` notice carrying Muse's reason. `session/todoListChanged` fills the thread's tasks, a
   cancelled item left out, and `session/contextUsage` feeds the context meter.
 - Each startup step, `initialize` and then `session/start` or `session/resume`,
   has 90 s. A host that misses it is closed and the turn fails with the step's

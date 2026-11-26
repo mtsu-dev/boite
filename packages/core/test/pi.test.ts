@@ -406,6 +406,23 @@ test('a Compact with nothing to summarize ends as a quiet notice, not a failed t
   client.close();
 });
 
+test('a second Compact right after one is a quiet notice too', async () => {
+  const { client, threadId } = await startThread();
+  let finished = client.next('turn.finished', (turn) => turn.threadId === threadId);
+  await client.call('turns.start', { threadId, prompt: 'hi' });
+  await finished;
+  for (const expected of ['compaction', 'notice'] as const) {
+    finished = client.next('turn.finished', (turn) => turn.threadId === threadId);
+    await client.call('threads.compact', { threadId });
+    expect((await finished).status).toBe('done');
+    const last = (await client.call('threads.get', { threadId })).messages.at(-1)!;
+    expect(last.parts.map((p) => p.type)).toContain(expected);
+  }
+  const parts = (await client.call('threads.get', { threadId })).messages.flatMap((m) => m.parts);
+  expect(parts.find((p) => p.type === 'notice')).toMatchObject({ notice: { kind: 'nothing_to_compact' }, detail: 'Already compacted' });
+  client.close();
+});
+
 /** The same thread, on a fake pi the test wrote rather than the shared fixture. */
 async function threadOnAgent(client: CoreClient, agent: string): Promise<string> {
   const { projectId, accountId } = await piAccount(client, agent);

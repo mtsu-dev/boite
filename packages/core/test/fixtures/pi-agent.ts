@@ -16,7 +16,7 @@
  *
  * The framing is copied from the real mode on purpose: strict JSONL, LF only.
  */
-import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { instructionsOf } from './history.ts';
 
@@ -506,6 +506,13 @@ function handle(message: Record<string, unknown>): void {
         send({ id, type: 'response', command: 'compact', success: false, error: 'Nothing to compact (session too small)' });
         return;
       }
+      // pi's refusal when the last entry is already a summary: a marker beside the log lasts until the next prompt.
+      const summarized = process.env['PI_FAKE_LOG'] ? `${process.env['PI_FAKE_LOG']}.compacted` : null;
+      if (summarized !== null && existsSync(summarized)) {
+        send({ id, type: 'response', command: 'compact', success: false, error: 'Already compacted' });
+        return;
+      }
+      if (summarized !== null) writeFileSync(summarized, '');
       send({ id, type: 'response', command: 'compact', success: true, data: { tokensBefore: 150000, summary: 'remember this', firstKeptEntryId: 'm-1' } });
       return;
     }
@@ -566,6 +573,7 @@ function handle(message: Record<string, unknown>): void {
       }
       const text = textOf(message['message']);
       if (text.includes('[small]')) log('small-session');
+      if (process.env['PI_FAKE_LOG']) rmSync(`${process.env['PI_FAKE_LOG']}.compacted`, { force: true });
       const instructions = oneShot ? '' : instructionsOf(text);
       if (!oneShot && text.trimStart().startsWith('/fake-report')) {
         // An extension command: pi runs it, answers the prompt and starts no run,

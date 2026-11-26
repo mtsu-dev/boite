@@ -48,20 +48,19 @@ const READ_DEADLINE_MS = 5_000;
 let readDeadlineMs = READ_DEADLINE_MS;
 
 /** pi's refusal of a manual compact when no entry is old enough to summarize (`agent-session.js`). */
-const NOTHING_TO_COMPACT = 'Nothing to compact (session too small)';
 
 type PiCompactResult = { tokensBefore?: unknown; estimatedTokensAfter?: unknown; usage?: PiUsage };
 
 /**
- * pi's `compact`, or null when pi had nothing to summarize: a Compact asked
- * of a short conversation changes nothing and is no failure. Any other refusal
- * still fails the turn.
+ * pi's `compact`, or the reason pi had nothing to summarize: a Compact asked of
+ * a short conversation, or right after another, changes nothing and is no
+ * failure (`agent-session.js` in pi 1.6.1). Any other refusal fails the turn.
  */
-async function compactOrNothing(peer: PiPeer): Promise<PiCompactResult | null> {
+async function compactOrNothing(peer: PiPeer): Promise<{ result: PiCompactResult } | { nothing: string }> {
   try {
-    return dataOf(await peer.command('compact')) as PiCompactResult;
+    return { result: dataOf(await peer.command('compact')) as PiCompactResult };
   } catch (error) {
-    if (error instanceof Error && /^Nothing to compact\b/.test(error.message)) return null;
+    if (error instanceof Error && /^(Nothing to compact|Already compacted)\b/.test(error.message)) return { nothing: error.message };
     throw error;
   }
 }
@@ -322,10 +321,11 @@ export class PiSession {
       if (turn.isStopped) {
         turn.settleRun();
       } else if (turn.ctx.turn.execution?.operation === 'compact') {
-        const result = await compactOrNothing(peer);
-        if (result === null) {
-          turn.part(turn.takeIndex(), { type: 'notice', notice: { kind: 'nothing_to_compact' }, detail: NOTHING_TO_COMPACT });
+        const outcome = await compactOrNothing(peer);
+        if ('nothing' in outcome) {
+          turn.part(turn.takeIndex(), { type: 'notice', notice: { kind: 'nothing_to_compact' }, detail: outcome.nothing });
         } else {
+          const { result } = outcome;
           if (result.usage !== undefined && result.usage !== null) turn.addUsage(result.usage);
           turn.part(turn.takeIndex(), {
             type: 'compaction',

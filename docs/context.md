@@ -32,7 +32,7 @@ smaller. A compaction can count as usage.
 The button is off while a turn runs, before the first message, and for an
 agent that does not offer compaction. Stop cancels it. A compaction shows in
 the chat with the token counts before and after. When the conversation is still
-too short to summarize, a line says so and nothing changes.
+too short to summarize, or was just summarized, a line says so and nothing changes.
 
 ### Automatic compaction
 
