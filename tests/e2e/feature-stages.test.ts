@@ -48,12 +48,21 @@ async function capture(name: string) {
 }
 
 for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
-  test(`${name}: a Dev build lists the one experiment, off with nothing stored`, async () => {
+  test(`${name}: a Dev build lists the seven experiments, the app's off with nothing stored`, async () => {
     await open('', size);
     expect(await page.evaluate(`localStorage.getItem('boite.experiments')`)).toBeNull();
     await page.evaluate(`window.__boiteTest.workspace.active.showSettings('experiments')`);
     await page.waitFor(`document.querySelector('[data-testid="experiments-page"] [data-testid="experiment-draft-backdrop"]')?.getBoundingClientRect().width > 0`);
-    expect(await page.evaluate(`[...document.querySelectorAll('[data-testid="experiments-page"] input[data-testid^="experiment-"]')].map((node) => [node.dataset.testid, node.checked])`)).toEqual([['experiment-draft-backdrop', false]]);
+    expect(await page.evaluate(`[...document.querySelectorAll('[data-testid="experiments-page"] input[data-testid^="experiment-"]')].map((node) => [node.dataset.testid, node.checked])`)).toEqual([
+      ['experiment-draft-backdrop', false],
+      // A machine switch shows its setting: the fake core's seed has Contacts on.
+      ['experiment-contacts', true],
+      ['experiment-teams', false],
+      ['experiment-auto-goal', false],
+      ['experiment-session-import', false],
+      ['experiment-background-compaction', false],
+      ['experiment-device-stream', false],
+    ]);
     await capture(`dev-settings-${name}.png`);
     await page.evaluate(`localStorage.removeItem('boite.experiments.build')`);
   }, 60000);

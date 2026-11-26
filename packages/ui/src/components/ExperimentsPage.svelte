@@ -116,7 +116,10 @@
 {/snippet}
 
 <style>
+  /* Where a card applies heads it with no rule under it; a card the page's line already places has no head. */
   .scope { display: flex; justify-content: flex-end; }
+  .scope:not(:has(:global(.card-scope))) { display: none; }
+  :global(.settings .page) .card > .scope + .switch-row { border-top: 0; }
   .tag { flex: none; padding: 0 var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.5; white-space: nowrap; }
   .tag.dev { color: var(--color-foreground); border-color: var(--color-muted-foreground); }
 </style>

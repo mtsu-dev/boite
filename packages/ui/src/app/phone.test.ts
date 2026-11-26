@@ -130,7 +130,8 @@ test('the desktop still has every one of them', async ({ viewport }) => {
   expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archive-project]') !== null);
-  expect(menuValues()).toEqual(['back', 'import', 'worktree-default', 'worktrees', 'auto-archive-merged-pr', 'auto-remove-worktrees', 'windows', 'refresh-icon', 'secrets', 'archive-project', 'remove']);
+  // Importing sessions is an experiment, off here: `import.test.ts` turns it on.
+  expect(menuValues()).toEqual(['back', 'worktree-default', 'worktrees', 'auto-archive-merged-pr', 'auto-remove-worktrees', 'windows', 'refresh-icon', 'secrets', 'archive-project', 'remove']);
   const policyProjectId = query('[data-testid=project-row]').getAttribute('data-project-id')!;
   const policy = query<HTMLButtonElement>('[data-value=auto-archive-merged-pr]');
   expect(policy.getAttribute('role')).toBe('menuitemcheckbox');
