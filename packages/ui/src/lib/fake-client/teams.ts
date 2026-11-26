@@ -5,6 +5,7 @@
  */
 import {
   RpcErrorCode,
+  experimentStartRefusal,
   routeTeamPost,
   teamMemberKey,
   teamPostVisible,
@@ -39,6 +40,11 @@ const posters = new WeakMap<FakeContext, (team: Team, input: PostInput) => TeamP
 
 const refused =(message: string, data: Record<string, unknown> = {}) => new RpcFailure({ code: RpcErrorCode.Refused, message, data });
 const invalid = (message: string) => new RpcFailure({ code: RpcErrorCode.InvalidParams, message });
+
+function allowTeamStart(ctx: FakeContext, machine?: string): void {
+  const message = experimentStartRefusal('teams', ctx.core.version);
+  if (message !== null) throw refused(machine ? `${machine}: ${message}` : message, { reason: 'experiment-off' });
+}
 
 interface TeamState { teams: Map<string, Team>; posts: Map<string, TeamPost[]>; deliveries: TeamDelivery[] }
 const states = new WeakMap<FakeContext, TeamState>();
@@ -106,6 +112,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     }
     const there = fakeCore(peer.coreId);
     if (!there) throw refused(`${field}: ${peer.name} did not answer; its mochis can join once it answers`, { field, reason: 'unreachable' });
+    allowTeamStart(there, peer.name);
     const found = among(there.agents.liveProfiles(), name);
     if (!found) throw refused(`${peer.name}: bot: no mochi ${JSON.stringify(name)}`, { field, reason: 'peer-refused' });
     return { ...found, coreId: peer.coreId, machine: peer.name };
@@ -243,7 +250,10 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     changed(state(ctx).teams.get(team.id)!);
     return structuredClone(saved);
   };
-  posters.set(ctx, post);
+  posters.set(ctx, (team, input) => {
+    allowTeamStart(ctx);
+    return post(team, input);
+  });
   /** With its machine's id: the machine holding the team takes posts from machines whose counters run alike. */
   const autoPostId = () => `post-${self()}-${++ctx.seq}`;
   /** A member by bot id, or by a name no other member has. */
@@ -265,6 +275,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return { teams: structuredClone(pool.filter(team => (params?.archived === true || !team.archived) && (reader === TEAM_OWNER || team.members.some(entry => entry.key === reader)))) };
     },
     'teams.create': async (params) => {
+      allowTeamStart(ctx);
       const ask = params.card === undefined ? null : card(params.card, 'create');
       const name = checkName(params.name);
       const brief = checkBrief(params.brief);
@@ -289,6 +300,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return structuredClone(team);
     },
     'teams.update': async (params) => {
+      allowTeamStart(ctx);
       const team = require(params.teamId);
       const change: Partial<Team> = {};
       if (params.name !== undefined) change.name = checkName(params.name, team.id);
@@ -301,16 +313,19 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       const team = require(params.teamId);
       if (typeof params.archived !== 'boolean') throw invalid('archived: expected a boolean');
       if (team.archived === params.archived) return structuredClone(team);
+      if (!params.archived) allowTeamStart(ctx);
       // As the core: a member whose bot is gone from this machine leaves as the team comes back, and a member of another machine holds nothing back.
       const kept = params.archived ? team.members : team.members.filter(entry => entry.coreId !== self() || ctx.agents.profileOf(entry.botId) !== null);
       return save(team, { archived: params.archived, ...(kept.length === team.members.length ? {} : { members: kept }) });
     },
     'teams.pause': async (params) => {
+      allowTeamStart(ctx);
       const team = require(params.teamId);
       if (typeof params.paused !== 'boolean') throw invalid('paused: expected a boolean');
       return team.paused === params.paused ? structuredClone(team) : save(team, { paused: params.paused });
     },
     'teams.members.add': async (params) => {
+      allowTeamStart(ctx);
       const team = require(params.teamId);
       const ask = params.card === undefined ? null : card(params.card, 'invite');
       if (ask !== null && ask.kind === 'invite' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
@@ -332,6 +347,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return saved;
     },
     'teams.post': async (params) => {
+      allowTeamStart(ctx);
       const team = require(params.teamId);
       const audience = params.audience ?? 'team';
       if (audience !== 'team' && audience !== 'private') throw invalid('audience: expected team or private');
@@ -352,10 +368,12 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return structuredClone({ team, posts, deliveries, more: visible.length > posts.length });
     },
     'teams.say': async (params) => {
+      allowTeamStart(ctx);
       const { team, member: author } = mine(params.threadId, params.team);
       return post(team, { id: params.id ?? autoPostId(), author, text: params.text, audience: 'team', inReplyTo: params.inReplyTo });
     },
     'teams.dm': async (params) => {
+      allowTeamStart(ctx);
       const { team, member: author } = mine(params.threadId, params.team);
       const wanted = typeof params.to === 'string' ? params.to.trim() : '';
       if (!wanted) throw invalid('to: expected a member or owner');
@@ -363,6 +381,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return post(team, { id: params.id ?? autoPostId(), author, text: params.text, audience: 'private', to: [recipient] });
     },
     'teams.propose': async (params) => {
+      allowTeamStart(ctx);
       const agent = caller(params.threadId);
       const name = checkName(params.name);
       const brief = checkBrief(params.brief);
@@ -373,6 +392,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
         { kind: 'create', by: agent.id, name, brief, members: members.map(refOf) });
     },
     'teams.invite': async (params) => {
+      allowTeamStart(ctx);
       const { team, agent } = mine(params.threadId, params.team);
       const guest = bot(params.bot, 'bot');
       if (isMember(team, guest)) throw refused(`${guest.name} is already a member of ${team.name}`, { field: 'bot' });

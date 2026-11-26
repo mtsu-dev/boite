@@ -55,11 +55,10 @@ test('a bundle that lost the marker of a feature it must hold fails too, and so 
   expect(() => scanBundle(bundle({ 'assets/app.js.br': 'x', 'assets/font.woff2': 'x' }), 'ui', 'release', cuts, stages)).toThrow('holds no bundle');
 });
 
-test('the five finished features left the registry, their lazy entries load with no flag, and the contracts name no marker', () => {
+test('finished features leave the registry and their lazy entries, and the contracts name no marker', () => {
   const root = join(import.meta.dir, '..', '..');
   const read = (path: string) => readFileSync(join(root, path), 'utf8');
-  // Every build holds the five: nothing reads their stage, so they are no experiment ids any more.
-  for (const id of ['whip', 'debates', 'contacts', 'teams', 'auto-goal']) {
+  for (const id of ['whip', 'debates']) {
     expect(EXPERIMENT_IDS as readonly string[], id).not.toContain(id);
     expect((FEATURE_CUTS as Record<string, unknown>)[id], id).toBeUndefined();
   }
@@ -68,11 +67,6 @@ test('the five finished features left the registry, their lazy entries load with
     'packages/ui/src/lib/council-entry.ts',
     'packages/core/src/council-entry.ts',
     'packages/core/src/delegate-cli.ts',
-    'packages/ui/src/lib/contacts-entry.ts',
-    'packages/ui/src/lib/teams-entry.ts',
-    'packages/core/src/teams-entry.ts',
-    'packages/core/src/auto-goal-entry.ts',
-    'packages/ui/src/lib/deferred-parts.ts',
   ];
   for (const entry of entries) expect(read(entry), entry).not.toContain('__BOITE_HAS_');
   // The contracts file names no marker in full, or every bundle would hold them all.
@@ -85,6 +79,7 @@ test('every feature declared cut has one lazy entry that writes its flag in full
   /** The entry of each cut feature, by bundle: the only module that imports the feature's code. */
   const entries: Partial<Record<ExperimentId, { ui?: string; core?: string }>> = {
     'draft-backdrop': { ui: 'packages/ui/src/lib/backdrop-entry.svelte.ts' },
+    teams: { ui: 'packages/ui/src/lib/teams-entry.ts', core: 'packages/core/src/teams-entry.ts' },
   };
   expect(Object.keys(entries).sort()).toEqual(Object.keys(FEATURE_CUTS).sort());
   for (const [id, cut] of Object.entries(FEATURE_CUTS) as [ExperimentId, { ui: boolean; core: boolean }][]) {

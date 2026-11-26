@@ -58,7 +58,7 @@ beforeAll(async () => {
   core = await startCore();
   projectDir = mkdtempSync(join(tmpdir(), 'boite-e2e-ui-'));
   worktreesDir = join(projectDir, '.boite', 'worktrees');
-  page = await BrowserPage.launch({ url: pairingUrlOf(core) });
+  page = await BrowserPage.launch({ url: pairingUrlOf(core), experiments: ['session-import'] });
 }, TIMEOUT);
 
 afterAll(async () => {
@@ -217,7 +217,6 @@ test(
       client.close();
     }
 
-    // Session import is on in every build: the row is in the menu with nothing stored.
     const openProjectMenu = `(() => { document.querySelector('${testid('project-row')}').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 })); return null; })()`;
     await page.evaluate<null>(openProjectMenu);
     await page.waitFor(`document.querySelector('${testid('context-menu')} [data-value=copy]')`);

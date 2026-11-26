@@ -10,6 +10,7 @@
   import { railBotState, type RailBotState } from '../../lib/app-rail';
   import { agentRows, liveActivity, previewOf, waitingOn, type ActivityKind, type AgentMood, type AgentRowData, type AgentsView } from '../../lib/agents.svelte';
   import { contextMenu } from '../../lib/context-menu.svelte';
+  import { experimentOn } from '../../lib/experiments.svelte';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import { strings } from '../../lib/strings';
   import { listNames, watchTeams, type TeamRow } from '../../lib/teams.svelte';
@@ -102,13 +103,14 @@
     (owner.snapshot?.profiles ?? []).filter(a => a.status === 'archived' && a.name.toLowerCase().includes(needle)).map(profile => ({ machine, profile }))) : []);
 
   /** The listed machines' teams: the phone's list draws them, a desktop's column the open one. */
-  const watched = watchTeams(() => lists.map(list => list.machine));
+  const teamsOn = $derived(experimentOn('teams'));
+  const watched = watchTeams(() => teamsOn ? lists.map(list => list.machine) : []);
   /** The teams a search names, the one with the latest post first. */
   const teams = $derived(watched()
     .filter(({ team }) => !needle || team.name.toLowerCase().includes(needle))
     .sort((a, b) => lastPost(b) - lastPost(a) || a.team.name.localeCompare(b.team.name)));
   /** The Teams section: always while Teams is on, and under a search only over the teams it found. */
-  const teamsShown = $derived(needle ? teams.length > 0 : true);
+  const teamsShown = $derived(teamsOn && (!needle || teams.length > 0));
   /** A paired phone tapped the greyed New team: the reason shows under the heading. */
   let guestNote = $state(false);
   function newTeam() {

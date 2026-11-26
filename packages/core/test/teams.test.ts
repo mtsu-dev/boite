@@ -102,6 +102,41 @@ test('teams stay open whatever the app reports, and a machine in no group names 
   expect(team.members[0]).toMatchObject({ botId: bots[0]!.agent.id, joinedSeq: 0 });
 }, 30_000);
 
+test('a Release refuses a new team and keeps an existing team readable and archivable', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-teams-release-'));
+  try {
+    const { h, bots: [bot], team, post } = await setup(['Ada'], dataDir);
+    teamDriver();
+    post('Welcome');
+    await waitFor(() => settledWakes(h, bot!.threadId) && posts(h, team).length === 1);
+    h.core.teams.pause({ teamId: team.id, paused: true });
+    const waiting = post('Waiting');
+    await h.stop();
+
+    const release = await startTestCore({ dataDir, version: '2.0.0' });
+    cores.push(release);
+    const client = await release.connect();
+    const refusal = await failure(() => client.call('teams.create', { name: 'New crew', members: [bot!.agent.id] }));
+    expect(refusal.rpc.data).toEqual({ reason: 'experiment-off' });
+    expect(refusal.message).toContain('experiment.teams');
+    expect((await client.call('teams.list', {})).teams.map(entry => entry.id)).toEqual([team.id]);
+    const read = () => client.call('teams.read', { team: team.id });
+    expect((await read()).posts.map(entry => entry.text)).toEqual(['Welcome', 'Waiting']);
+    expect((await read()).deliveries.find(entry => entry.postId === waiting.id)?.state).toBe('waiting');
+    const postRefusal = await failure(() => client.call('teams.post', { teamId: team.id, id: 'held-post', text: 'Wake the team' }));
+    expect(postRefusal.rpc.data).toEqual({ reason: 'experiment-off' });
+    const addRefusal = await failure(() => client.call('teams.members.add', { teamId: team.id, botId: bot!.agent.id }));
+    expect(addRefusal.rpc.data).toEqual({ reason: 'experiment-off' });
+    expect(await client.call('teams.archive', { teamId: team.id, archived: true })).toMatchObject({ archived: true });
+    expect((await read()).deliveries.find(entry => entry.postId === waiting.id)?.state).toBe('rejected');
+    expect(await client.call('teams.members.remove', { teamId: team.id, botId: bot!.agent.id })).toMatchObject({ members: [] });
+    await release.stop();
+  } finally {
+    for (const core of cores.filter(core => core.dataDir === dataDir)) await core.stop();
+    await removeDir(dataDir);
+  }
+}, 30_000);
+
 test('one owner post in a team of one mochi gives one wake and one answer post, then nothing', async () => {
   const { h, bots: [ada], team, key, post } = await setup();
   const driver = teamDriver(() => ({ text: 'Release shipped.' }));

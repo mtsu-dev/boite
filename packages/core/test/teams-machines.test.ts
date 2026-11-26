@@ -271,7 +271,7 @@ test('when the machine holding the team is away a command says so and loses noth
   expect(posts(back, team).filter(post => post.id === 'kept')).toHaveLength(1);
 }, 120_000);
 
-test('teams are on in every build: a machine whose app reports none still lets its mochis join, and an older machine with its switch off is named', async () => {
+test('a Dev core lets its mochis join before its app reports Teams, and an older core with the switch off is named', async () => {
   const { host, away, hostOwner, awayOwner, awayId, ada, bob, adaKey, bobKey } = await machines();
   speak((prompt, threadId) => (threadId === bob.threadId && prompt.includes('answer me') ? { text: 'answered' } : { text: '[quiet]' }));
 

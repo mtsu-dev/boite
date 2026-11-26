@@ -259,7 +259,7 @@ test('a docked side panel leaves the list column alone: the thread list beside a
 
 test('the rail puts teams first, and a picture moved with the keyboard keeps its new place on this device', async () => {
   mochiLayout.set(true);
-  writeExperiments(['resident-agents']);
+  writeExperiments(['teams']);
   localStorage.removeItem('boite.rail.order');
   await mountOnFake('/?fake=1&agents=1');
   try {
@@ -424,7 +424,7 @@ test("with no mochi or team in the rail yet, its Add always shows: nothing else 
 
 test("a right click on a team's rail picture opens the team's menu, and its picks reach the team", async () => {
   mochiLayout.set(true);
-  writeExperiments(['resident-agents']);
+  writeExperiments(['teams']);
   await mountOnFake('/?fake=1&agents=1');
   try {
     const view = AgentsView.of(store);

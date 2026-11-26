@@ -5,20 +5,20 @@
  * final answer posted where the letter's envelope says.
  */
 import { createHash } from 'node:crypto';
-import { teamPostVisible, TEAM_OWNER, TEAM_POST_MAX, type AgentLetter, type Team, type TeamAudience, type TeamMember, type TeamParty, type TeamPost, type Turn } from '@boite/contracts';
+import { markFeature, teamPostVisible, TEAM_OWNER, TEAM_POST_MAX, type AgentLetter, type Team, type TeamAudience, type TeamMember, type TeamParty, type TeamPost, type Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 import { finalText, quietText } from '../agents/runtime.ts';
-import type { TeamPeerReport } from './peers.ts';
 import { planTeamLetter, teamPostLine, teamPrompt, type TeamChannel } from './prompt.ts';
-import type { PostRow, TeamStore } from './store.ts';
+import type { PostRow } from './records.ts';
+import type { TeamStore } from './store.ts';
+
+markFeature('boite-feature:teams');
 
 /** The letter states that keep a snapshot in flight; any other ends it. */
 const IN_FLIGHT = new Set(['Queued for provider delivery', 'Awaiting provider acknowledgement']);
 const inFlight = (error: string | null): boolean => error !== null && (IN_FLIGHT.has(error) || error.startsWith('Awaiting provider turn '));
 const ACTIVE = new Set(['queued', 'running']);
-/** What ends a bot's letters on the machine it left: its posts wait for it on the next one, so they settle nothing. */
-export const MOVED = 'moved to another machine';
 
 /** A final answer's post id: the same turn always gives the same id, so a retried publication posts once. */
 export function answerPostId(turnId: string): string {
@@ -167,18 +167,8 @@ export class TeamSnapshots {
     if (letter.status === 'delivered') this.#db.query("UPDATE team_seen SET state = 'seen', letter_id = NULL WHERE letter_id = ? AND state = 'flight'").run(letter.id);
     else this.#db.query("DELETE FROM team_seen WHERE letter_id = ? AND state = 'flight'").run(letter.id);
     if (team && member && letter.status === 'delivered') this.#fold(team, member);
-    // A bot on its way to another machine: its posts wait for it there.
-    if (letter.error === MOVED) return;
-    const state = letter.status === 'delivered' ? 'delivered' : letter.status === 'rejected' ? 'rejected' : letter.status === 'expired' ? 'expired' : null;
-    if (!team || !member || state === null) return;
-    const reports: TeamPeerReport[] = [];
-    const reason = state === 'delivered' ? null : letter.error;
-    for (const seq of ref.triggers) {
-      const post = this.#store.postAt(team.id, seq);
-      if (!post) continue;
-      this.#db.query('UPDATE team_deliveries SET state = ?, reason = ?, letter_id = ?, at = ? WHERE post_id = ? AND member = ?').run(state, reason, letter.id, Date.now(), post.id, member.key);
-      reports.push({ postId: post.id, member: member.key, state, reason });
-    }
+    if (!team || !member) return;
+    const reports = this.#store.settleDeliveries(team, member, letter);
     if (team.host !== this.#self && reports.length > 0) this.#store.peers.queue(team.host, 'team.report', { teamId: team.id, reports });
   }
 

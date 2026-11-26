@@ -152,6 +152,7 @@ function refusalTail(stage: FeatureStage, version: string | null | undefined): s
 declare global {
   const __BOITE_BUILD_KIND__: BuildKind | undefined;
   const __BOITE_HAS_DRAFT_BACKDROP__: boolean | undefined;
+  const __BOITE_HAS_TEAMS__: boolean | undefined;
 }
 
 /** The kind this bundle was compiled as, or null when it runs from source. */
@@ -186,6 +187,7 @@ export function featureDefines(version: string | null | undefined, stages: Recor
  */
 export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boolean }>> = {
   'draft-backdrop': { ui: true, core: false },
+  teams: { ui: true, core: true },
 };
 
 const MARKED: string[] = [];

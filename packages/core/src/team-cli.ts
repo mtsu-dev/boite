@@ -2,9 +2,11 @@
  * `boite team`: a bot posts in the teams it belongs to, reads them, and
  * proposes a team, an invitation or its leaving on a card (`docs/internals/teams.md`).
  */
-import type { Team, TeamPost } from '@boite/contracts';
+import { markFeature, type Team, type TeamPost } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import { Usage } from './cli-args.ts';
+
+markFeature('boite-feature:teams');
 
 export const TEAM_HELP = `boite team: talk with the other mochis of your teams. Group posts every member reads; private posts only you, the recipient and the owner.
   boite team list                                     your teams and their members

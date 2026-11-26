@@ -71,11 +71,11 @@ export const TEAM_GUIDE = [
 /**
  * Session context supplied by Boite, independent of the user's brain files.
  * `bot`: a bot's thread, which has no checkout or project of its own: the
- * project-bound commands go and the bot section comes last, with its team
- * section.
+ * project-bound commands go and the bot section comes last.
+ * `teams`: the core can run Teams in this build.
  * `ownDone`: a top-level conversation, told to put itself in Done once its PRs merged.
  */
-export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, pluginLines: readonly string[] = [], ownDone = false): string {
+export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, pluginLines: readonly string[] = [], ownDone = false, teams = false): string {
   const report = skills.find(skill => skill.name === REPORT_ISSUE_SKILL.name);
   const others = skills.filter(skill => skill !== report);
   return [
@@ -107,6 +107,6 @@ export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: r
     // What installed plugins add (plugins/extensions.ts): their commands, skills and prompts.
     ...pluginLines,
     ...(bot ? ['', BOT_GUIDE] : []),
-    ...(bot ? [TEAM_GUIDE] : []),
+    ...(bot && teams ? [TEAM_GUIDE] : []),
   ].join('\n') + '\n\n';
 }
