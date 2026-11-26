@@ -113,8 +113,8 @@ conversation ends it.
 
 ## Ask a side question
 
-In a Claude conversation, type `/btw <question>` to ask something while the
-agent keeps working, even while it waits for a permission.
+In a Claude Code or pi conversation, type `/btw <question>` to ask something
+while the agent keeps working, even while it waits for input.
 
 - The answer shows above the box. Escape or the close button dismisses it.
 - It does not enter the conversation or change the context meter.
@@ -128,6 +128,10 @@ Edit a message you sent to replace it and everything after it. Boite also
 restores the files the removed turns changed, unless something else edited
 them since or another agent still works in the folder. File backups cover the
 newest 50 turns of a conversation.
+
+Claude Code, Codex and pi can resume their saved sessions when the edit keeps
+a completed turn with its session history. Other edits carry the retained
+conversation into a new session.
 
 ## Going further
 

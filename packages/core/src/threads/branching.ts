@@ -87,7 +87,7 @@ export class ThreadBranching {
         const provider = this.#core.providers.require(thread.providerId);
         const account = this.#core.accounts.require(thread.accountId);
         const ctx = this.#threads.contexts.makeSessionContext({ ...thread, sessionId: null, sessionResumeAt: null }, provider, account);
-        try { native = await getDriver(provider.protocol).forkSession!(ctx, checkpoint); }
+        try { native = await getDriver(provider.protocol).forkSession!(ctx, checkpoint, thread.id); }
         catch (error) { if (!(error instanceof NativeForkUnsupported)) throw error; }
         const current = this.#threads.require(threadId);
         if (current.updatedAt !== thread.updatedAt || current.selectionVersion !== thread.selectionVersion
@@ -228,7 +228,7 @@ export class ThreadBranching {
         const account = this.#core.accounts.require(source.accountId);
         const targetThread = { ...source, id: placed.id, cwd: placed.cwd, sessionId: null, sessionResumeAt: null };
         const ctx = this.#threads.contexts.makeSessionContext(targetThread, provider, account);
-        try { native = await getDriver(provider.protocol).forkSession!(ctx, checkpoint); }
+        try { native = await getDriver(provider.protocol).forkSession!(ctx, checkpoint, source.id); }
         catch (error) { if (!(error instanceof NativeForkUnsupported)) throw error; }
         if (native) plan = { sessionId: native.sessionId, sessionResumeAt: null, session: 'native' };
       }
@@ -394,10 +394,10 @@ export class ThreadBranching {
   /** Indexed metadata existence checks: no provider load or transcript hydration. */
   nativeForkAvailable(thread: ThreadSummary): boolean {
     const provider = this.#core.providers.require(thread.providerId);
-    const codex = getDriver(provider.protocol).forkSession !== undefined;
-    if (!codex && provider.protocol !== 'claude-sdk') return false;
-    if (codex && (this.#threads.isBusy(thread.id) || thread.sessionId === null)) return false;
-    const nativeConditions = codex
+    const copiesSession = getDriver(provider.protocol).forkSession !== undefined;
+    if (!copiesSession && provider.protocol !== 'claude-sdk') return false;
+    if (copiesSession && (this.#threads.isBusy(thread.id) || thread.sessionId === null)) return false;
+    const nativeConditions = copiesSession
       ? "AND t.status = 'done' AND json_extract(t.checkpoint, '$.sessionId') = ? AND json_extract(t.execution, '$.sessionGeneration') = ?"
       : "AND t.status IN ('done','stopped','error') AND (SELECT COUNT(*) FROM messages u WHERE u.thread_id = t.thread_id AND u.turn_id = t.id AND u.role = 'user') <= 1";
     return this.#core.journal.db.query(`SELECT 1 FROM turns t WHERE t.thread_id = ?
@@ -405,7 +405,7 @@ export class ThreadBranching {
       AND json_extract(t.execution, '$.providerId') = ? AND json_extract(t.execution, '$.accountId') = ?
       ${nativeConditions}
       AND (SELECT state FROM messages m WHERE m.thread_id = t.thread_id AND m.turn_id = t.id ORDER BY rowid DESC LIMIT 1) = 'complete'
-      LIMIT 1`).get(thread.id, thread.providerId, thread.accountId, ...(codex ? [thread.sessionId!, thread.sessionGeneration ?? 0] : [])) !== null;
+      LIMIT 1`).get(thread.id, thread.providerId, thread.accountId, ...(copiesSession ? [thread.sessionId!, thread.sessionGeneration ?? 0] : [])) !== null;
   }
 
   nativeRewindAvailable(thread: ThreadSummary): boolean {

@@ -753,7 +753,8 @@ ways, and the rewind result's `session` field says which one applied:
 |---|---|
 | Claude | Exact. Each turn records `checkpoint: { sessionId, entry }`, the uuid of the last transcript entry it wrote. The next turn resumes that session with `resumeSessionAt: entry` and `forkSession: true`, so the CLI keeps the transcript up to the cut under a new session id and the original transcript is never shortened. A rewind closes the warm process first. |
 | Codex | Exact at a completed native turn boundary on the same account and session generation. A traced appserver, started without plugins or connectors, calls `thread/fork` with the retained native turn ID as an inclusive boundary and every MCP server turned off for that call only. Rewind prepares a new native session before restoring files and committing the journal cut. The source native transcript is unchanged. |
-| ACP, Muse, pi and echo | Seeded. The thread drops its native session. The next turn starts a fresh one carrying the kept history as bounded excerpts, the same [context transfer](model-switching.md#context-transfer) a change of account uses. |
+| pi | Exact at a completed native turn boundary on the same account and session generation. Boite copies the saved JSONL entry and its ancestors into a new session in the destination thread's folder. Rewind adopts the copy after file restore and journal validation. |
+| ACP, Muse and echo | Seeded. The thread drops its native session. The next turn starts a fresh one carrying the kept history as bounded excerpts, the same [context transfer](model-switching.md#context-transfer) a change of account uses. |
 
 Claude falls back to the seeded path in four cases: the kept turn left no
 checkpoint (it ran before checkpoints existed, failed early, or was stopped
@@ -845,8 +846,8 @@ with a fixture shape written for it.
 
 ## Side questions
 
-In an existing Claude conversation, `/btw <question>` asks a temporary question
-while the main turn continues, including while it waits for a permission. The
+In an existing Claude Code or pi conversation, `/btw <question>` asks a temporary
+question while the main turn continues, including while it waits for input. The
 answer appears beneath `/btw` and the question above the composer, and closes
 with Escape or its close button.
 Closing it or leaving the chat cancels an unfinished request. It works from
@@ -864,6 +865,11 @@ and says when earlier context was omitted. This is a separate request, so native
 is not guaranteed. Neither the question nor its answer enters the conversation,
 changes its native session or updates the main context meter.
 
+pi uses a tool-free RPC process on a temporary copy at the latest matching
+settled checkpoint. Active conversations and older sessions without a matching
+checkpoint use the same text snapshot as Claude. The temporary file, when used,
+is deleted after the request.
+
 The echo driver supplies offline test answers. Other protocols currently refuse
 side questions by provider name, and their slash menu omits `/btw`. Merely
 forwarding `/btw` to a provider would queue it as a normal turn instead of
@@ -875,7 +881,7 @@ serialized WebSocket request queue. One side request runs per thread; dismissal
 cancels only its request ID. Archive and core shutdown cancel pending requests.
 
 After a successful answer, the compact "Fork" button creates and opens
-an idle fork. It carries exactly the bounded text snapshot sent to the side
+an idle fork. It carries the bounded text snapshot captured for the side
 request, followed by its question and answer. Later output from the original
 thread stays there. The fork uses a fresh native session, the original selection
 and folder, and normal tool permissions on its next turn. It does not create a

@@ -24,6 +24,7 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX, UI_DIALOGS, UI_NOTICES } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiUsage } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
+import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
 import { answerText } from '../../attachments.ts';
 import { noteReady } from '../driver-log.ts';
@@ -453,6 +454,11 @@ export class PiSession {
       const usage = (stats['contextUsage'] ?? {}) as { tokens?: unknown; contextWindow?: unknown };
       const tokens = numberOf(usage.tokens);
       if (!turn.isStopped && tokens !== null) turn.ctx.context({ tokens, window: numberOf(usage.contextWindow) });
+      if (!this.#protection && !turn.isStopped && turn.pendingError === null && turn.sessionId !== null
+        && stats['sessionId'] === turn.sessionId && (turn.requestAt !== null || turn.ctx.turn.execution?.operation === 'compact')) {
+        const path = textOf(stats['sessionFile']);
+        turn.checkpoint = await checkpointOf(path, turn.sessionId, sessionDirOf(turn.ctx));
+      }
     } catch (error) {
       if (!reading.signal.aborted) turn.ctx.log('warn', `pi: get_session_stats failed: ${messageOf(error)}`);
     }

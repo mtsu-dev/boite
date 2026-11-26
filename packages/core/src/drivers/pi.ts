@@ -3,6 +3,8 @@ import { ModelProbes } from './model-probes.ts';
 import { compactionSetting } from './pi/compaction.ts';
 import { sessionKey } from './pi/mapping.ts';
 import { readModels } from './pi/models.ts';
+import { sideQuestion, title } from './pi/one-shot.ts';
+import { forkSession } from './pi/session-files.ts';
 import { PiSession } from './pi/session.ts';
 import { PiTurn } from './pi/turn.ts';
 import type { Driver, ProbeContext, ProbeFilter, ProbeResult, SessionContext, TurnContext, TurnHandle } from './types.ts';
@@ -41,6 +43,9 @@ export function createPiDriver(): Driver {
   }
 
   return {
+    title,
+    sideQuestion,
+    forkSession,
     prepare: (ctx, options) => acquire(ctx).prepare(ctx, options?.forTurn),
     setViewed: sessions.setViewed,
     protocol: 'pi',

@@ -60,7 +60,7 @@
   "capabilities": {
     "approvals": false,
     "hooks": true,
-    "checkpoint": false,
+    "checkpoint": true,
     "images": true,
     "planMode": false,
     "resume": true

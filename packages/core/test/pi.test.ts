@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -233,7 +233,7 @@ function writeDescriptor(dataDir: string, agent: string = FAKE_AGENT): void {
     capabilities: {
       approvals: false,
       hooks: false,
-      checkpoint: false,
+      checkpoint: true,
       images: true,
       planMode: false,
       resume: true,
@@ -266,10 +266,11 @@ async function piThread(client: CoreClient, model?: string, effort?: string): Pr
     projectId,
     providerId: 'pi-fake',
     accountId,
-    title: 'pi thread',
     ...(model === undefined ? {} : { model }),
     ...(effort === undefined ? {} : { effort }),
   });
+  // Pin the title for tests that measure the lifetime of the conversation process.
+  await client.call('threads.update', { threadId: thread.id, title: 'pi thread' });
   await client.call('threads.subscribe', { threadId: thread.id });
   return thread.id;
 }
@@ -282,6 +283,82 @@ async function startThread(
   const client = await startCore(settings);
   return { client, threadId: await piThread(client, ...thread) };
 }
+
+test('pi titles a new thread with a tool-free request on its chosen model', async () => {
+  const client = await startCore();
+  const { projectId, accountId } = await piAccount(client);
+  const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, model: 'anthropic/claude-sonnet-5' });
+  expect((await (await startTurn(client, threadId, 'Add a feature')).finished).status).toBe('done');
+  await settle(() => harness!.core.threads.require(threadId).titleSource === 'agent');
+  expect(await client.call('threads.get', { threadId })).toMatchObject({ title: 'Name the feature', titleSource: 'agent' });
+  const invocation = fakeLog().split('\n').find(line => line.startsWith('one-shot [') && line.includes('--no-tools'))!;
+  const args = JSON.parse(invocation.slice('one-shot '.length)) as string[];
+  expect(args).toEqual(expect.arrayContaining(['--no-session', '--no-tools', '--no-extensions', '--no-mcp', '--no-context-files', '--no-skills', '--no-prompt-templates']));
+  expect(args[args.indexOf('--model') + 1]).toBe('anthropic/claude-sonnet-5');
+});
+
+test('pi answers /btw from a disposable session copy and leaves the source intact', async () => {
+  const { client, threadId } = await startThread();
+  expect((await (await startTurn(client, threadId, 'The release color is amber.')).finished).status).toBe('done');
+  expect((await client.call('threads.capabilities', { threadId })).btw).toMatchObject({ available: true });
+  const source = piSessionFile(threadId);
+  const before = readFileSync(source, 'utf8');
+  const answered = client.next('thread.btw', event => event.requestId === 'side_pi_01');
+  await client.call('threads.btw', { threadId, question: 'What is the release color?', requestId: 'side_pi_01' });
+  expect(await answered).toMatchObject({ answer: expect.stringContaining('The release color is amber.'), error: null });
+  const invocation = fakeLog().split('\n').find(line => line.startsWith('one-shot [') && line.includes('"--session"'))!;
+  const args = JSON.parse(invocation.slice('one-shot '.length)) as string[];
+  const copy = args[args.indexOf('--session') + 1]!;
+  expect(copy).not.toBe(source);
+  expect(existsSync(copy)).toBe(false);
+  expect(readFileSync(source, 'utf8')).toBe(before);
+  expect(fakeLog()).toContain('What is the release color?');
+});
+
+function piSessionFile(threadId: string): string {
+  const sessionId = harness!.core.threads.require(threadId).sessionId;
+  const dir = join(harness!.dataDir, 'pi-sessions', threadId);
+  return join(dir, readdirSync(dir).find(name => name.endsWith(`_${sessionId}.jsonl`))!);
+}
+
+test('pi forks and rewinds at a finished turn, keeping only its native ancestors', async () => {
+  const { client, threadId } = await startThread();
+  const first = await (await startTurn(client, threadId, 'Keep the amber release')).finished;
+  expect(first.checkpoint).toMatchObject({ sessionId: expect.any(String), entry: expect.any(String) });
+  const source = piSessionFile(threadId);
+  const firstMessages = await client.call('threads.get', { threadId });
+  const reply = firstMessages.messages.at(-1)!;
+  const unusedBranch = JSON.stringify({ type: 'message', id: 'unused', parentId: null, message: { role: 'user', content: 'Unrelated branch' } });
+  const initial = readFileSync(source, 'utf8');
+  const [header, ...entries] = initial.trimEnd().split('\n');
+  writeFileSync(source, `${[header, unusedBranch, ...entries].join('\n')}\n`);
+  expect((await (await startTurn(client, threadId, 'Discard the cyan release')).finished).status).toBe('done');
+  const before = readFileSync(source, 'utf8');
+  const capability = await client.call('threads.capabilities', { threadId });
+  expect(capability.fork.native.available).toBe(true);
+  expect(capability.rewind.native.available).toBe(true);
+
+  const fork = await client.call('threads.fork', { threadId, messageId: reply.id });
+  expect(fork.sessionId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(fork.sessionId).not.toBe(first.checkpoint!.sessionId);
+  await client.call('threads.subscribe', { threadId: fork.id });
+  expect((await (await startTurn(client, fork.id, '[read-session]')).finished).status).toBe('done');
+
+  const second = (await client.call('threads.get', { threadId })).messages.filter(message => message.role === 'user')[1]!;
+  const rewind = await client.call('threads.rewind', { threadId, messageId: second.id });
+  expect(rewind.session).toBe('native');
+  expect(rewind.thread.sessionId).not.toBe(first.checkpoint!.sessionId);
+  expect((await (await startTurn(client, threadId, '[read-session]')).finished).status).toBe('done');
+  expect(readFileSync(source, 'utf8')).toBe(before);
+  for (const id of [fork.id, threadId]) {
+    const message = (await client.call('threads.get', { threadId: id })).messages.at(-1)!;
+    expect(message.parts).toEqual([{ type: 'text', text: expect.stringContaining('Native context: ') }]);
+    const text = JSON.stringify(message.parts);
+    expect(text).toContain('Keep the amber release');
+    expect(text).not.toContain('Discard the cyan release');
+    expect(text).not.toContain('Unrelated branch');
+  }
+});
 
 test('pi takes a thinking level while its turn runs', async () => {
   const client = await startCore({ warmProcessMinutes: 5 });
@@ -336,8 +413,8 @@ async function threadOnAgent(client: CoreClient, agent: string): Promise<string>
     projectId,
     providerId: 'pi-fake',
     accountId,
-    title: 'pi thread',
   });
+  await client.call('threads.update', { threadId: thread.id, title: 'pi thread' });
   await client.call('threads.subscribe', { threadId: thread.id });
   return thread.id;
 }
@@ -747,8 +824,8 @@ describe('pi driver', () => {
 
     await client.call('threads.subscribe', { threadId: thread.id });
     await runTurn(client, thread.id, 'first');
-    // The probe's own process wrote an argv line too; the turn's is the last one.
-    expect(argvLines()[argvLines().length - 1]).toContain('model=fake-a/quick:high');
+    const turnProcess = argvLines().find(line => line.startsWith(`argv sessionId=${harness!.core.threads.require(thread.id).sessionId} `));
+    expect(turnProcess).toContain('model=fake-a/quick:high');
   });
 
   test('a 529 that pi retried by itself ends the turn done, with no error card', async () => {

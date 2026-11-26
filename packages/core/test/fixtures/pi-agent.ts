@@ -16,7 +16,8 @@
  *
  * The framing is copied from the real mode on purpose: strict JSONL, LF only.
  */
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { instructionsOf } from './history.ts';
 
 const DIRECTIVE = /\[(agents|tool|thought|usage|slow|crash|splitcrash|ask|select|input|editor|retry|giveup|deaf|noclear|notify|timeout|compacted|swapped|taken)\]/g;
@@ -110,7 +111,16 @@ function flag(name: string): string {
 const sessionId = flag('--session-id');
 const sessionDir = flag('--session-dir');
 const model = flag('--model');
+const sideCopy = flag('--session');
+const oneShot = process.argv.includes('--no-session') || Boolean(sideCopy);
+const sessionFile = sideCopy || (sessionId && join(sessionDir,
+  readdirSync(sessionDir).find(name => name.endsWith(`_${sessionId}.jsonl`)) ?? `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`));
+const saved = sessionFile && existsSync(sessionFile)
+  ? readFileSync(sessionFile, 'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
+let leaf: string | null = saved.at(-1)?.id ?? null;
+let activePrompt = '';
 log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model}`);
+if (oneShot) log(`one-shot ${JSON.stringify(process.argv.slice(2))}`);
 for (const [index, arg] of process.argv.entries()) {
   if (arg === '--extension') log(`extension ${process.argv[index + 1] ?? ''}`);
 }
@@ -251,6 +261,15 @@ function assistantMessage(stopReason: string, usage: Record<string, unknown>): R
 
 /** The end of a run as pi writes it: `turn_end`, `agent_end` with nothing left to retry, `agent_settled`. */
 function endRun(message: Record<string, unknown>): void {
+  if (sessionFile) {
+    const timestamp = new Date().toISOString();
+    if (!existsSync(sessionFile)) writeFileSync(sessionFile, `${JSON.stringify({ type: 'session', version: 3, id: sessionId, cwd: process.cwd(), timestamp })}\n`);
+    for (const entry of [{ role: 'user', content: activePrompt }, message]) {
+      const id = crypto.randomUUID();
+      appendFileSync(sessionFile, `${JSON.stringify({ type: 'message', id, parentId: leaf, timestamp, message: entry })}\n`);
+      leaf = id;
+    }
+  }
   send({ type: 'turn_end', message, toolResults: [] });
   send({ type: 'agent_end', messages: [message], willRetry: false });
   streaming = false;
@@ -293,7 +312,8 @@ async function runRetry(giveUp: boolean): Promise<void> {
 }
 
 async function runPrompt(text: string): Promise<void> {
-  const directives = directivesOf(text);
+  activePrompt = text;
+  const directives = oneShot ? [] : directivesOf(text);
   if (directives.includes('retry') || directives.includes('giveup')) {
     await runRetry(directives.includes('giveup'));
     return;
@@ -321,7 +341,11 @@ async function runPrompt(text: string): Promise<void> {
     });
   }
 
-  for (const chunk of chunksOf(plainOf(text))) say(chunk);
+  const history = saved.flatMap(entry => entry.message?.role === 'user' ? [entry.message.content] : []).join(', ');
+  if (sideCopy) log(`side prompt ${JSON.stringify(text)}`);
+  const answer = sideCopy || text === '[read-session]' ? `Native context: ${history}`
+    : oneShot && text.startsWith('Title the user') ? '{"title":"Name the feature","needsRefinement":false}' : plainOf(text);
+  for (const chunk of chunksOf(answer)) say(chunk);
 
   let usage = zeroUsage();
   let stopReason = 'stop';
@@ -453,7 +477,7 @@ async function runPrompt(text: string): Promise<void> {
     }
   }
 
-  const message = assistantMessage(stopReason, usage);
+  const message = { ...assistantMessage(stopReason, usage), content: [{ type: 'text', text: answer }] };
   send({ type: 'message_end', message });
   endRun(message);
 }
@@ -517,7 +541,7 @@ function handle(message: Record<string, unknown>): void {
         type: 'response',
         command: 'get_session_stats',
         success: true,
-        data: { sessionId, contextUsage: { tokens: 4321, contextWindow: 200000, percent: 2.16 } },
+        data: { sessionId, sessionFile, contextUsage: { tokens: 4321, contextWindow: 200000, percent: 2.16 } },
       });
       return;
     }
@@ -542,8 +566,8 @@ function handle(message: Record<string, unknown>): void {
       }
       const text = textOf(message['message']);
       if (text.includes('[small]')) log('small-session');
-      const instructions = instructionsOf(text);
-      if (text.trimStart().startsWith('/fake-report')) {
+      const instructions = oneShot ? '' : instructionsOf(text);
+      if (!oneShot && text.trimStart().startsWith('/fake-report')) {
         // An extension command: pi runs it, answers the prompt and starts no run,
         // so no event and no `agent_settled` follow.
         send({ id, type: 'response', command: 'prompt', success: true });

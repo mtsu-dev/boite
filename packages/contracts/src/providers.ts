@@ -374,6 +374,7 @@ export interface ThreadCapabilities {
   plan: ThreadCapability;
   approvals: ThreadCapability;
   questions: ThreadCapability;
+  btw: ThreadCapability;
   fork: { native: ThreadCapability; seeded: ThreadCapability };
   rewind: { native: ThreadCapability; seeded: ThreadCapability };
   sessionPreparation: ThreadCapability;
@@ -491,7 +492,7 @@ export interface ProviderRejected {
 
 /** Protocols that can answer a side question with tools disabled. */
 export function supportsSideQuestions(protocol: Protocol): boolean {
-  return protocol === 'claude-sdk' || protocol === 'echo';
+  return protocol === 'claude-sdk' || protocol === 'echo' || protocol === 'pi';
 }
 
 export interface ProvidersRpcMethods {

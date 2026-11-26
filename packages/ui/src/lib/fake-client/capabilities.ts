@@ -28,7 +28,7 @@ export function capabilityMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.
         conversationReason: thread.archived ? 'archived' : !thread.agentSessionId && thread.projectId === null ? 'agent-session' : null,
         busy: threadActive(thread.status) || Boolean(running), steeringSupported, steeringReason,
         compactionReason: !thread.sessionId ? 'no-session' : protocol === 'acp' && !thread.commands.some(command => command.name === 'compact') ? 'no-command' : null,
-        preparationSupported: protocol === 'claude-sdk' || protocol === 'codex-appserver',
+        preparationSupported: protocol === 'claude-sdk' || protocol === 'codex-appserver' || protocol === 'pi',
         pendingApprovals, pendingQuestions: pendingQuestions.length > 0,
         hasForkHistory: thread.messages.some(message => message.state !== 'streaming'),
         hasRewindHistory: thread.messages.some(message => message.role === 'user'),

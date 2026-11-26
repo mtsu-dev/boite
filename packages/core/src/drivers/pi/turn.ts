@@ -17,6 +17,7 @@ export class PiTurn extends DecidedTurnParts {
 
   /** The pi session id the process was launched with, kept as the thread's. */
   sessionId: string | null;
+  checkpoint?: TurnResult['checkpoint'];
   usage: Usage | null = null;
   /** The prompt cache lifetime of the last request that named one. */
   cacheLife: PromptCacheLife | null = null;
@@ -97,6 +98,7 @@ export class PiTurn extends DecidedTurnParts {
     this.resolve(this.#status, () => ({
       status: this.#status,
       sessionId: this.sessionId,
+      ...(this.#status === 'done' && this.checkpoint ? { checkpoint: this.checkpoint } : {}),
       usage: this.usage,
       error: this.#error ?? undefined,
       ...(this.#diagnosticError === undefined ? {} : { diagnosticError: this.#diagnosticError }),
