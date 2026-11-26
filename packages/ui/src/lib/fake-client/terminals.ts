@@ -10,8 +10,11 @@ export function closeTerminal(ctx: FakeContext, id: string): void {
   if (!id.startsWith('login:')) return;
   const account = ctx.accounts.find((a) => `login:${a.id}` === id);
   if (!account) return;
-  account.status = 'ok';
-  account.identity = 'you@example.com';
+  // The pi fixture starts at the prompt, so closing it leaves the account as it was.
+  if (account.providerId !== 'pi') {
+    account.status = 'ok';
+    account.identity = 'you@example.com';
+  }
   ctx.emit('accounts.updated', structuredClone(account));
 }
 

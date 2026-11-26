@@ -1715,6 +1715,11 @@ verified native registry gate, not its shell sandbox or a permission callback.
 `packages/core/src/drivers/pi.ts` and the modules under `drivers/pi/` speak
 pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
 
+- Account sign-in opens an interactive `pi --no-session` terminal with the
+  account's `PI_CODING_AGENT_DIR`. The card prompts the user to type `/login`
+  to choose a provider. The profile keeps an account usable with status
+  `unknown` when it has no stored credentials. pi can get credentials from
+  the environment or the account's own `models.json`.
 - A turn ends on `agent_settled`, never on `agent_end`. pi retries an overloaded
   or dropped request by itself inside the same run (`auto_retry_start`,
   `auto_retry_end`) and recovers from a context overflow by compacting, so only

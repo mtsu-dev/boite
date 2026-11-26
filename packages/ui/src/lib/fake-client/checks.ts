@@ -179,5 +179,6 @@ export function checkRunnable(provider: ProviderSummary | undefined, account: Ac
 export function sessionStatus(provider: ProviderSummary | undefined, account: Account, signedIn: boolean): Account['status'] {
   if (provider === undefined) return 'error';
   if (provider.login === false || account.isolationDir === null || signedIn) return 'ok';
+  if (provider.protocol === 'pi') return 'unknown';
   return 'unauthenticated';
 }
