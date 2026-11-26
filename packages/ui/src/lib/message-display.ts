@@ -282,12 +282,13 @@ export function isSteeringMessage(
  * tool-only wakes still match `lastLined`.
  */
 export function lastAnswerTurn(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
+  const empty = new Set<string>();
   for (let index = timeline.length - 1; index >= 0; index--) {
     const message = timeline[index]!;
-    if (message.role === 'user' || newConversationOf(message) || folds.has(message.id)) continue;
+    if (message.role === 'user' || newConversationOf(message) || folds.has(message.id) || (message.turnId !== null && empty.has(message.turnId))) continue;
     const turn = turns.find(current => current.id === message.turnId);
     if (!turn || turn.execution?.operation === 'keepalive' || turn.status === 'queued' || turn.status === 'running') continue;
-    if (turn.status !== 'done' && !turnAnswer(timeline, turn.id)) continue;
+    if (turn.status !== 'done' && !turnAnswer(timeline, turn.id)) { empty.add(turn.id); continue; }
     return turn.id;
   }
   return null;

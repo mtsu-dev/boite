@@ -1995,17 +1995,24 @@ test('on a phone, a turn whose summary sits under a steering prompt keeps its bu
   steerAttachment!.blur(); flushSync();
   expect(earlySummary()).toBeNull();
 
-  // Once the running next turn streams thinking and even if it stops before answering, the previous settled steered turn keeps its buttons.
+  // Once the running next turn streams thinking and even if it stops or fails without a card before answering,
+  // the previous settled steered turn keeps its buttons AND the stopped/failed turn stays untucked with its Retry button.
   thread.messages.push({ id: 'm-next-tool', threadId: thread.id, turnId: 'turn-next', role: 'assistant', state: 'streaming', createdAt: 2, parts: [{ type: 'thinking', text: 'checking' }] });
   flushSync();
   const settledAfterStream = () => document.querySelector<HTMLElement>('[data-mid="m-steer"]')?.closest('article')?.querySelector<HTMLElement>('[data-testid=turn-summary]');
+  const nextSummary = () => document.querySelector<HTMLElement>('[data-mid="m-next-tool"]')?.closest('article')?.querySelector<HTMLElement>('[data-testid=turn-summary]');
   expect(settledAfterStream()).not.toBeNull();
   expect(settledAfterStream()?.hasAttribute('data-tucked')).toBe(false);
   expect(settledAfterStream()?.querySelector('[data-testid=message-actions]')).not.toBeNull();
-  thread.turns = thread.turns.map(current => current.id === 'turn-next' ? { ...current, status: 'stopped', finishedAt: 105_000 } : current);
-  flushSync();
-  expect(settledAfterStream()?.hasAttribute('data-tucked')).toBe(false);
-  expect(settledAfterStream()?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+  for (const status of ['stopped', 'error'] as const) {
+    thread.turns = thread.turns.map(current => current.id === 'turn-next' ? { ...current, status, finishedAt: 105_000, error: null } : current);
+    flushSync();
+    expect(settledAfterStream()?.hasAttribute('data-tucked')).toBe(false);
+    expect(settledAfterStream()?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+    expect(nextSummary()).not.toBeNull();
+    expect(nextSummary()?.hasAttribute('data-tucked')).toBe(false);
+    expect(nextSummary()?.querySelector('[data-testid=message-retry]')).not.toBeNull();
+  }
 });
 
 test('a row counts at the height it is drawn, fractions included, so rows measured above the reader move the view by what they weigh', async () => {

@@ -743,7 +743,7 @@
           data-seam={joined} style:content-visibility={isSlice(row) ? 'auto' : undefined} style:overflow-clip-margin={isSlice(row) ? 'var(--chat-block-gap)' : undefined} style:contain-intrinsic-size={sliceBox(row, heights.get(row.id) ?? slots.estimateOf(row), slotGap(joined, !row.first))}
           style:margin-top={joined && 'calc(var(--chat-block-gap) - var(--chat-message-gap))'}
           data-testid={row.first ? 'message' : 'message-rest'}
-          data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId} data-steered={isSteeringMessage(message, firstInTurn.get(message.turnId), (store.messagesBefore !== null && message.id === timeline[0]?.id) || Boolean(rows[view.start + index - 1]?.gap), closes, turn) ? '' : undefined}
+          data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId} data-steered={isSteeringMessage(message, firstInTurn.get(message.turnId), (store.messagesBefore !== null && message.id === messages[0]?.id) || Boolean(placement?.gaps.has(message.id)), closes, turn) ? '' : undefined}
         >
           {#if row.first && days.has(message.id)}<DayDivider at={days.get(message.id)!} />{/if}
           {#if row.first && turn?.switched && message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id}<SwitchMarker names={store} shown={turn.switched} />{/if}
@@ -775,7 +775,7 @@
             {#if !host && !merged}{@render changes(false)}{/if}
             {@const carded = failureCarded(turn, messages)}<!-- A failure's card holds its cause and its one Retry: the line keeps copy, fork and the background stop; a question at the composer's top is a running turn's status. -->
             {#if !(asking && turn.status === 'running')}
-            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id || focused === turn.id} tucked={!(reveal.showsTurn(turn.id) || reveal.shows(message))} resting={restingShown === turn.id}
+            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id || focused === turn.id} tucked={!(reveal.showsTurn(turn.id) || reveal.shows(message) || (store.openThread?.turns.at(-1)?.id === turn.id && (turn.status === 'stopped' || (turn.status === 'error' && !carded))))} resting={restingShown === turn.id}
               {...marks} changes={merged ? onLine : undefined}>
               {#snippet actions()}
                 <MessageActions
