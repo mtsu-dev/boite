@@ -173,6 +173,16 @@ replaced.
 - Muse Code, OpenCode, Antigravity, Grok and pi keep the prompt's title under
   Automatic.
 
+## Export a conversation
+
+Choose Export... in the conversation or mochi menu, or Export conversation in the
+Command Palette. Pick Markdown (.md) or HTML (.html), then Download. On desktop,
+Download saves to your Downloads folder and shows the saved path. HTML opens
+offline in a browser. When Markdown is selected, Copy Markdown puts the text on
+the clipboard. Include tool calls, Include diffs and Include thinking are optional.
+The export covers the complete conversation and lists attachments by name. Council
+conversations are not exported.
+
 ## Notifications
 
 On a desktop, notifications appear in the top-right corner, under the top bar,

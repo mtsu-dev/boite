@@ -10,7 +10,7 @@ import { pageTransport } from './transport';
 import { contactHistoryHold } from '../contacts/letter-scopes';
 
 type PageTransport = ReturnType<typeof pageTransport>;
-type Options = Pick<RpcParams<'threads.get'>, 'limit' | 'maxBytes' | 'compactTools' | 'compactFiles' | 'compactImages' | 'compactToolParts' | 'around' | 'sync' | 'open'>;
+type Options = Pick<RpcParams<'threads.get'>, 'limit' | 'maxBytes' | 'compactTools' | 'compactFiles' | 'compactImages' | 'compactToolParts' | 'omitThinking' | 'omitTools' | 'around' | 'sync' | 'open'>;
 // A deferred part hashes its stored digest, so a hidden change still invalidates a proof.
 const withDigests = (_key: string, value: unknown) => {
   if (value === null || typeof value !== 'object') return value;
@@ -20,7 +20,9 @@ const withDigests = (_key: string, value: unknown) => {
   return attachment === undefined ? { ...value, outputDigest: digest } : { ...attachment, dataDigest: digest };
 };
 /** Over the rows as read, deferred content included: the same rows read with other options are another proof. */
-const hash = (messages: Message[], options: Options) => createHash('sha256').update(`${!!options.compactTools}:${!!options.compactFiles}:${!!options.compactImages}:${!!options.compactToolParts}:`).update(JSON.stringify(messages, withDigests)).digest('base64url');
+const hash = (messages: Message[], options: Options) => createHash('sha256')
+  .update(`${!!options.compactTools}:${!!options.compactFiles}:${!!options.compactImages}:${!!options.compactToolParts}:${options.omitThinking ? 'nt:' : ''}${options.omitTools ? `${options.omitTools}:` : ''}`)
+  .update(JSON.stringify(messages, withDigests)).digest('base64url');
 
 /** Validate new options before an opening can change the socket or unread state. */
 function checkSnapshotOptions(options: Options): void {

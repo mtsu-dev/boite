@@ -6,6 +6,7 @@ export const appViews = {
   CommandPalette: new LazyComponent(() => import('../components/CommandPalette.svelte')),
   ProjectPicker: new LazyComponent(() => import('../components/ProjectPicker.svelte')),
   ImportDialog: new LazyComponent(() => import('../components/ImportDialog.svelte')),
+  ExportThreadDialog: new LazyComponent(() => import('../components/ExportThreadDialog.svelte')),
   ConnectFlow: new LazyComponent(() => import('../components/ConnectFlow.svelte')),
   Onboarding: new LazyComponent(() => import('../components/Onboarding.svelte')),
   TerminalDrawer: new LazyComponent(() => import('../components/TerminalDrawer.svelte')),

@@ -718,7 +718,7 @@ export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
    */
   'threads.get': {
     params: {
-      threadId: ThreadId; after?: MessageId; around?: MessageId; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean;
+      threadId: ThreadId; after?: MessageId; around?: MessageId; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean; omitThinking?: boolean; omitTools?: boolean | 'running';
       /** Request a resume proof, or reuse a proof previously supplied by this core. */
       sync?: true | MessageSync;
       /** Subscribe after a successful snapshot, optionally replacing the previous subscription and acknowledging unread content. */
