@@ -447,6 +447,7 @@
     <div
       class="viewport"
       data-testid="file-viewport"
+      data-wheel-zoom={natural ? '' : undefined}
       bind:this={viewport}
       onwheel={onWheel}
       onpointerdown={onPointerDown}

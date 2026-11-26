@@ -1,4 +1,4 @@
-import type { Message, MessagePart, MoveNotice, NewConversationNotice, ThreadLink, ThreadSummary } from '@boite/contracts';
+import type { Message, MessagePart, MoveNotice, NewConversationNotice, ThreadLink, ThreadSummary, Turn } from '@boite/contracts';
 import { HEADING, ITEM, QUOTE, RULE } from './markdown';
 import { FenceScan, fenceLanguage, openFence } from './fences';
 
@@ -306,14 +306,56 @@ export function newConversationOf(message: Message): NewConversationNotice | nul
 }
 
 /**
- * The first of the new-conversation markers that end `timeline`, or null. The
- * thread's closing line belongs to the turn they follow, so it stands above
- * the first of them rather than under the last.
+ * Whether a user row steered an in-progress turn rather than opening it.
+ * When older rows are cut above (`cutAbove`), a turn's opening prompt can sit off-page,
+ * so a leading user row that closes its turn or arrived after `turn.startedAt` is steered.
  */
-export function closingMarkerOf(timeline: readonly Message[]): string | null {
-  let at: string | null = null;
-  for (let index = timeline.length - 1; index >= 0 && newConversationOf(timeline[index]!); index--) at = timeline[index]!.id;
-  return at;
+export function isSteeringMessage(
+  message: Pick<Message, 'id' | 'role' | 'createdAt'>,
+  firstInTurnId: string | undefined,
+  cutAbove: boolean,
+  closes: boolean,
+  turn: Pick<Turn, 'startedAt'> | undefined,
+): boolean {
+  if (message.role !== 'user') return false;
+  if (firstInTurnId !== undefined && firstInTurnId !== message.id) return true;
+  return cutAbove && (closes || (turn?.startedAt != null && message.createdAt > turn.startedAt));
+}
+
+/**
+ * The last non-user row's settled turn in `timeline` that carries a summary line, past
+ * new-conversation markers, folded wakes (`folds`), cache pings, queued or running turns,
+ * and failed or stopped turns with no answer text: an in-progress or interrupted prompt
+ * without an answer leaves the previous settled answer's buttons on a phone, while done
+ * tool-only wakes still match `lastLined`.
+ */
+export function lastAnswerTurn(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
+  const empty = new Set<string>();
+  for (let index = timeline.length - 1; index >= 0; index--) {
+    const message = timeline[index]!;
+    if (message.role === 'user' || newConversationOf(message) || folds.has(message.id) || (message.turnId !== null && empty.has(message.turnId))) continue;
+    const turn = turns.find(current => current.id === message.turnId);
+    if (!turn || turn.execution?.operation === 'keepalive' || turn.status === 'queued' || turn.status === 'running') continue;
+    if (turn.status !== 'done' && !hasTurnAnswer(timeline, turn.id)) { empty.add(turn.id); continue; }
+    return turn.id;
+  }
+  return null;
+}
+
+/**
+ * The done turn whose summary line ends `timeline`, past new-conversation markers, folded wakes (`folds`) and cache
+ * pings, which draw none; null when the last line drawn is not a done turn's. `lib/resting-turn.ts` says whether
+ * the thread rests at all.
+ */
+export function lastLined(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
+  for (let index = timeline.length - 1; index >= 0; index--) {
+    const message = timeline[index]!;
+    if (newConversationOf(message) || folds.has(message.id)) continue;
+    const turn = turns.find(current => current.id === message.turnId);
+    if (!turn || turn.execution?.operation === 'keepalive') continue;
+    return turn.status === 'done' ? turn.id : null;
+  }
+  return null;
 }
 
 /** The core's line for a thread the agent started (`boite thread new`). */
@@ -331,6 +373,15 @@ export function startedFrom(message: Message): ThreadLink | null {
 export function pendingMoveOf(thread: Pick<ThreadSummary, 'id' | 'moveNote'> | null, threadId: string): MoveNotice | null {
   if (!thread || thread.id !== threadId) return null;
   return thread.moveNote ?? null;
+}
+
+/** Whether the agent wrote any copyable answer text in `turnId`. */
+export function hasTurnAnswer(messages: readonly Message[], turnId: string): boolean {
+  for (const message of messages) {
+    if (message.turnId !== turnId || message.role !== 'assistant') continue;
+    for (const part of message.parts) if (part.type === 'text' && visibleAnswer(part.text).trim()) return true;
+  }
+  return false;
 }
 
 /** Everything the agent wrote in one turn, its tool cards left out: what a copy of the answer takes. */

@@ -382,10 +382,6 @@
   .docked .labels { flex: 1 1 auto; }
   .docked .label { font-weight: 550; }
 
-  @media (max-width: 720px) {
-    .docked .option { min-height: var(--touch-target); padding: 3px 8px; }
-  }
-
   .waiting-row:disabled { opacity: 1; cursor: default; }
   /* Waiting on the owner: a small live dot, where to answer is in its tooltip. */
   .waiting-mark { flex: none; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
@@ -541,4 +537,17 @@
   }
 
   .given-files { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+
+  @media (max-width: 720px) {
+    .options, .docked .options { gap: 6px; }
+    .option, .docked .option { min-height: 48px; padding: 10px 12px; gap: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
+    .option.picked { border-color: var(--color-live); }
+    .docked .option.picked, .docked .option.picked:is(:hover, :focus-visible):not(:disabled) { background: var(--color-accent-soft); border-color: color-mix(in oklch, var(--color-accent) 55%, transparent); }
+    .docked .label, .option .label { font-size: var(--text-reading); }
+    /* Phones have no 1–9 keyboard shortcuts: draw a touch radio/check indicator instead of a keycap number. */
+    .docked .key { width: 20px; height: 20px; border-width: 1.5px; }
+    .docked .option[role='radio'] .key { border-radius: 50%; }
+    .docked .key > .ui-label { display: none; }
+    .more { min-height: var(--touch-target); padding: 0 10px; font-size: var(--text-base); }
+  }
 </style>

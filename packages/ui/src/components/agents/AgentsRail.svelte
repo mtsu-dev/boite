@@ -254,7 +254,7 @@
           {@const names = listNames(row.team.members.map(member => member.name))}
           <AgentRow title={row.team.name} open={row.machine.store === view.store && activeTeam === row.team.threadId} marked={!!row.chat?.unread}
             away={row.machine.store.connection !== 'ready'} at={lastPost(row)} {now} detail={names} tone={row.team.paused ? 'asleep' : 'idle'}
-            machine={elsewhere(row.machine)} testid="agent-team-{row.team.id}" onclick={() => onteam(row.machine, row.team)}>
+            machine={elsewhere(row.machine)} machineId={row.machine.id} preloadThread={row.team.threadId} testid="agent-team-{row.team.id}" onclick={() => onteam(row.machine, row.team)}>
             {#snippet picture()}<AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={34} lit={avatarLit({ open: row.machine.store === view.store && activeTeam === row.team.threadId, unread: !!row.chat?.unread })} />{/snippet}
           </AgentRow>
         {/each}
@@ -286,7 +286,7 @@
           at={row.status?.last?.at ?? 0} {now} tone={wait && tone === 'idle' ? 'working' : tone === 'queued' ? 'idle' : tone} detail={line.text} icon={line.icon} {wait}
           since={tone === 'working' ? earliest(thread?.requestSince, thread?.runningSince) : null}
           wake={tone === 'idle' && row.profile.status === 'active' && row.status?.nextWake ? row.status.nextWake : null}
-          machine={elsewhere(machine)} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}
+          machine={elsewhere(machine)} machineId={machine.id} preloadThread={row.status?.threadId ?? null} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}
           pending={leavingLine(owner, row.profile.id)} pinned={row.profile.pinned === true} onmenu={event => menu(event, machine, owner, row.profile.id)}
           renaming={renaming === rowKey(machine, row.profile.id)} onrename={name => rename(owner, row.profile.id, name)}>
           {#snippet picture()}<AgentAvatar kind="profile" id={row.profile.id} name={row.profile.name} avatar={row.profile.avatar} mood={moodOf(tone, unread)} size={34}
@@ -298,7 +298,7 @@
   {#if found.length}
     <section class="agents-card">
       {#each found as entry (JSON.stringify([entry.machine.id, entry.profile.id]))}
-        <AgentRow title={entry.profile.name} at={0} {now} detail={labels.state.archived} machine={elsewhere(entry.machine)} testid="agent-entry-{entry.profile.id}" onclick={() => onopen(entry.machine, entry.profile.id)}>
+        <AgentRow title={entry.profile.name} at={0} {now} detail={labels.state.archived} machine={elsewhere(entry.machine)} machineId={entry.machine.id} testid="agent-entry-{entry.profile.id}" onclick={() => onopen(entry.machine, entry.profile.id)}>
           {#snippet picture()}<AgentAvatar kind="profile" id={entry.profile.id} name={entry.profile.name} avatar={entry.profile.avatar} size={34} />{/snippet}
           {#snippet aside()}{/snippet}
         </AgentRow>

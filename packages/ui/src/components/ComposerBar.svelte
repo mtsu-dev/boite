@@ -571,15 +571,14 @@
        them. The field keeps its place; Composer pads its text clear of them.
        The disc is drawn 36 px inside its 44 px target, 8 px from the card's
        right edge and, on a one line field, 8 px from its top: an even margin. */
-    .tools { position: absolute; right: 4px; bottom: calc(100% - 4px); gap: 0; }
-    /* 36 px drawn, not --control-lg or the touch screen's 44 px icon minimum:
-       those pushed the disc onto the card's edge on a one line field. The
-       ::after below keeps the 44 px target. */
-    .tools :is(.send, .stop) { position: relative; width: 36px; height: 36px; min-width: 0; min-height: 0; margin: 4px; }
-    .tools :is(.send, .stop)::after { content: ''; position: absolute; inset: -5px; border-radius: inherit; }
-    /* The words at the field's end, 36 px drawn in a 44 px target; the field's text stops short of them. */
-    .tools .worded { position: relative; height: 36px; margin: 4px; padding: 0 12px; }
-    .tools .worded::after { content: ''; position: absolute; inset: -4px 0; }
+    .tools { position: absolute; right: 4px; bottom: calc(100% - 2px); gap: 0; }
+    /* 40 px drawn inside its 44 px target: reads like a true phone action button
+       while keeping the exact 44 px outer footprint at the field's end. */
+    .tools :is(.send, .stop) { position: relative; width: 40px; height: 40px; min-width: 0; min-height: 0; margin: 2px; }
+    .tools :is(.send, .stop)::after { content: ''; position: absolute; inset: -3px; border-radius: inherit; }
+    /* The words at the field's end, 40 px drawn in a 44 px target; the field's text stops short of them. */
+    .tools .worded { position: relative; height: 40px; margin: 2px; padding: 0 14px; font-size: var(--text-base); }
+    .tools .worded::after { content: ''; position: absolute; inset: -2px 0; }
     :global(.composer-wrap .composer:has(.bar .tools[data-worded][data-count='1'])) { --composer-tools: 10.5rem; }
     :global(.composer-wrap .composer:has(.bar .tools[data-worded][data-count='2'])) { --composer-tools: calc(10.5rem + var(--touch-target)); }
     :global(.composer-wrap .composer:has(.bar .tools[data-worded=answer][data-count='1'])) { --composer-tools: 6.5rem; }
@@ -591,11 +590,8 @@
        (its menu says it whole). Only what still cannot fit, a long effort
        beside a notice, wraps onto a second row of 44 px targets. The row
        starts 8 px down: a chip now sits under the field's microphone and
-       send, and their 44 px targets must not meet. The chips' sides and
-       gaps are a phone's closest: at 6 and 8 px, the bare context ring left
-       a 390 px row for a row of its own, which took the conversation's
-       height. */
-    .chips { flex: 1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 4px; min-width: 0; min-height: var(--touch-target); padding-block: 8px 4px; }
+       send, and their 44 px targets must not meet. */
+    .chips { flex: 1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 6px; min-width: 0; min-height: var(--touch-target); padding-block: 8px 4px; }
     .bar > :global(.options) { align-self: flex-start; }
     .chips :global(*) { max-width: 100%; }
     .chips > .line > :global(*) { flex: none; }
@@ -603,27 +599,29 @@
        shorter than the floor is counted at its own width, not followed by the floor's empty rest. */
     .chips > .line > :global(.picker) { flex: 1 1 76px; min-width: 0; max-width: max-content; }
     .chips :global(:is(.picker, .effort, .permission) > .trigger > :is(.chevron, .lucide-chevron-down)) { display: none; }
-    /* Each setting reads as a control at rest: a quiet surface and a hairline
-       around its icon, its value and its chevron, 36 px drawn in a 44 px target. */
+    /* Each setting reads as a finger-friendly pill at rest: 40 px drawn in a 44 px target. */
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) {
       position: relative;
-      height: 36px;
-      padding: 0 7px;
+      height: 40px;
+      padding: 0 8px;
       gap: 4px;
       border: 1px solid var(--color-border);
       border-radius: var(--radius-full);
       background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
+      font-size: var(--text-sm);
     }
-    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger)::after { content: ''; position: absolute; inset: -4px 0; }
+    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger)::after { content: ''; position: absolute; inset: -2px 0; }
     .chips :global(.picker > .trigger) { min-width: var(--touch-target); max-width: 100%; }
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; }
     .chips :global(.picker > .trigger > svg) { flex: none; }
-    .bar .chips :global(.picker > .trigger.connect) { padding: 0 12px; background: var(--color-active); color: var(--color-foreground); }
+    .bar .chips :global(.picker > .trigger.connect) { padding: 0 14px; background: var(--color-active); color: var(--color-foreground); }
   }
   /* A 360 px phone: the "+" takes a 32 px column, its 44 px target kept by
      the icon button's hit zone. */
   @media (max-width: 379px) {
     .bar { gap: 0; padding-inline: 4px; }
+    .chips { gap: 8px 4px; }
+    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) { padding: 0 7px; gap: 4px; }
     .bar :global(.options .opener) { margin-inline: -2px; }
     /* The bolt says effort: its word goes so the model's name stays whole. */
     .chips :global(.effort > .trigger .name) { display: none; }

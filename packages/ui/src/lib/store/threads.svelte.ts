@@ -14,7 +14,7 @@ import type {
 } from '@boite/contracts';
 import { ReadingCache } from '../reading-cache';
 import { DeviceSnapshots, readingPage } from './device-snapshots';
-import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, unreadInterruptionAt } from '@boite/contracts';
+import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, mergeWorkingChildren, READING_PAGE_BYTES, unreadInterruptionAt } from '@boite/contracts';
 import { DeferredParts } from './deferred-parts';
 import { askPage, ThreadPreloads } from './thread-preload';
 import { lightPage, NewerPages, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
@@ -78,7 +78,7 @@ export class Threads {
   /** The device's copies of recent threads, for an open after a reload; a visit the reading cache forgets goes there too. */
   readonly snapshots: DeviceSnapshots;
 
-  constructor(private readonly ctx: StoreContext) { this.newer = new NewerPages(ctx); this.preloads = new ThreadPreloads(ctx, this); this.parts = new DeferredParts(ctx, this); this.snapshots = new DeviceSnapshots(ctx, this, this.#unloaded); }
+  constructor(private readonly ctx: StoreContext) { this.newer = new NewerPages(ctx); this.preloads = new ThreadPreloads(ctx, this, this.#unloaded); this.parts = new DeferredParts(ctx, this); this.snapshots = new DeviceSnapshots(ctx, this, this.#unloaded); }
   get openTarget(): ThreadId | null { return this.#openTarget; }
 
   async capabilities(threadId: ThreadId) {
@@ -193,7 +193,7 @@ export class Threads {
 
   #workingChildren = $derived(workingChildren(this.threads));
   /** The thread's delegated agents still at work or asking the user; null when none is. */
-  subagents(threadId: ThreadId): WorkingChildren | null { return this.#workingChildren.get(threadId) ?? null; }
+  subagents(threadId: ThreadId): WorkingChildren | null { return mergeWorkingChildren(this.#workingChildren.get(threadId) ?? null, this.rowOf(threadId)?.remoteSubagents ?? null); }
 
   /** The owning core projects local and remote children even when another conversation is open. */
   subagentQuestions(threadId: ThreadId): NonNullable<ThreadSummary['subagentQuestions']> { return this.rowOf(threadId)?.subagentQuestions ?? []; }
@@ -364,17 +364,15 @@ export class Threads {
       if (client === this.ctx.client && this.#openTarget === null && this.subscribedThreadId && this.subscribedThreadId !== threadId) {
         await client.call('threads.subscribe', { threadId: this.subscribedThreadId, ...this.ctx.streams.params(this.subscribedThreadId) }).catch(() => undefined);
       }
-      if (client !== this.ctx.client || (this.subscribedThreadId !== threadId && delegation.delegationSubscribedThreadId !== threadId && (this.#openTarget !== threadId || newest()))) {
+      if (client !== this.ctx.client || (this.subscribedThreadId !== threadId && delegation.delegationSubscribedThreadId !== threadId && this.preloads.waitingThreadId !== threadId && (this.#openTarget !== threadId || newest()))) {
         await client.call('threads.unsubscribe', { threadId }).catch(() => undefined);
       }
     };
     // Nothing in memory, and no press on its way: the device's snapshot paints the thread and gives the cursor the page asks from.
-    const snapshot = this.openThread?.id === threadId || this.readingThreads.get(threadId) || this.preloads.waitingThreadId === threadId || !this.snapshots.mayHold(threadId) ? undefined : await this.snapshots.read(threadId);
+    const snapshot = this.preloads.held(threadId) || this.preloads.waitingThreadId === threadId || !this.snapshots.mayHold(threadId) ? undefined : await this.snapshots.read(threadId);
     if (!newest()) return;
     const previousThread = this.openThread;
-    let held = this.openThread?.id === threadId ? this.openThread : this.readingThreads.get(threadId) ?? snapshot;
-    // The bare row of an open still on its way holds nothing to paint: clicked again, the thread shows loading, not an empty history.
-    if (held && held.messages.length === 0 && this.#unloaded.has(threadId)) held = undefined;
+    let held = this.preloads.held(threadId) ?? snapshot;
     // A press on this thread already asked for its page (`thread-preload.ts`): the open takes it over.
     const preloaded = this.preloads.claim(threadId, client, held);
     const deselect = this.openThread?.id !== threadId && s.delegationSelectedAgentId && s.delegationSelectedAgentId !== threadId;

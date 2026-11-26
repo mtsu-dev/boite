@@ -92,6 +92,9 @@ export function spawnThere(ctx: FakeContext, parent: Thread, config: DelegationC
   there.threads.set(id, child);
   if (worktree) there.delegationWorktrees.set(id, worktree);
   there.emit('thread.created', structuredClone(toSummary(child)));
+  there.bus.observe('thread.updated', thread => {
+    if (thread.id === id) ctx.emit('delegation.changed', { threadId: parent.id });
+  });
   for (const event of ['question.asked', 'question.answered'] as const) there.bus.observe(event, request => {
     if (request.threadId === id) ctx.emit('delegation.changed', { threadId: parent.id });
   });

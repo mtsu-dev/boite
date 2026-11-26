@@ -16,6 +16,12 @@ already has asks first, and "Move it here" takes it from that command. The row's
 reset button returns one command to its default and its clear button leaves it
 with no key; Reset all removes every known entry.
 
+The `zoom-wheel` row records the wheel instead of a key: hold the modifiers and
+turn the wheel, and the row saves on the first turn, without the page
+scrolling. A key pressed there is refused on the row, and so is a wheel turned
+with no modifier or with Shift alone. While that row records, the old chord
+zooms nothing.
+
 Every change goes through the core: `keybindings.set` writes one entry and
 `keybindings.reset` removes one entry, or every known one. The file is deleted
 only when nothing is left in it, so a file holding an unknown key survives a
@@ -55,8 +61,12 @@ A chord is modifiers, then one key, joined with `+`, case and spaces ignored.
   `pagedown`, `up`, `down`, `left`, `right`, `f1` to `f24`. `comma`, `period`,
   `slash`, `minus`, `equal` and `plus` name their character; `mod++` is Mod
   and the plus key.
+- `wheel` ends a chord turned rather than pressed: `mod+wheel`, `alt+wheel`,
+  `mod+shift+wheel`. Only `zoom-wheel` takes it, and `zoom-wheel` takes nothing
+  else. A wheel chord never fires on a key, nor a key's on the wheel.
 - A chord needs `mod`, `ctrl`, `alt` or `meta` unless its key is a function
-  key. A bare letter, or Shift alone, is typing and is refused.
+  key. A bare letter, or Shift alone, is typing and is refused; a bare wheel,
+  or Shift alone with it, is scrolling and is refused too.
 - A chord matches its exact modifiers: `mod+b` does not fire on Ctrl+Alt+B.
   Two commands on the same chord both fire; keep them apart.
 
@@ -90,6 +100,7 @@ A chord is modifiers, then one key, joined with `+`, case and spaces ignored.
 | `rename` | none | Rename the open thread |
 | `retitle` | none | Ask the agent for the open thread's title again ([titles.md](titles.md)) |
 | `import-session` | none | Import a Claude Code or Codex session into the open thread's project ([imports.md](imports.md)) |
+| `zoom-wheel` | none | In the desktop app, the interface size from the wheel: up enlarges, down shrinks, one step of the Zoom ladder per notch. A wheel chord such as `mod+wheel` ([development.md](development.md#faces-and-zoom)) |
 | `trace` | none | The trace surface |
 | `appearance` | none | The Appearance tab |
 | `providers` | none | The Providers tab |
@@ -122,9 +133,10 @@ the thread sidebar and keeps the browser's save dialog closed. The panel button'
 tooltip shows its current chord, including any custom binding.
 
 `Ctrl+Q` in the shell, the quit hold, is not in the table and cannot move.
-Neither can the shell's zoom, `Ctrl+=`, `Ctrl+-` and `Ctrl+0` (`+` and `-` of
-the keypad and of any layout included), which follow the browser's own keys
-([development.md](development.md#faces-and-zoom)).
+Neither can the shell's zoom keys, `Ctrl+=`, `Ctrl+-` and `Ctrl+0` (`+` and `-`
+of the keypad and of any layout included), which follow the browser's own keys
+([development.md](development.md#faces-and-zoom)). Its wheel is `zoom-wheel`,
+off until bound.
 
 ## What is refused
 
@@ -134,7 +146,10 @@ in `core.log` at `warn`. Valid entries still apply. The core refuses:
 - an id that is not in the table above;
 - a value that is neither a string nor `null`;
 - a chord the grammar refuses, with the reason (`"b" has no modifier`,
-  `"mod+" names no key`, `"mod+banana" has an unknown key`).
+  `"mod+" names no key`, `"mod+banana" has an unknown key`, `"shift+wheel" has no modifier`);
+- a chord that does not fit its command: a key on `zoom-wheel`
+  (`"mod+k" is a key, and zoom-wheel runs on the wheel`) or the wheel on any
+  other (`"mod+wheel" is the wheel, which only zoom-wheel takes`).
 
 A file that is not JSON, or is JSON but not an object, is one error and no
 binding at all: the defaults stand until it is fixed. A file that does not
