@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import type { PermissionRequest, QuestionRequest, ThreadSummary } from '@boite/contracts';
+import { stateInbox, type PermissionRequest, type QuestionRequest, type ThreadSummary } from '@boite/contracts';
 import { activityFeed, feedOperation, readableThreads, storeNeeds } from './activity-feed';
 
 const NOW = Date.UTC(2026, 10, 7, 12);
@@ -69,6 +69,20 @@ test('a sub-agent that failed under a parent still at work is the parent\'s busi
   expect(feed.map(row => [row.thread.id, row.reason, row.place])).toEqual([['bot', 'Scout', 'Scout']]);
   // A project's head counts the same row, and knows it is a failure, so it wears the failure's mark.
   expect(storeNeeds(machine.store, threads)).toEqual({ count: 1, failed: 1 });
+});
+
+test('a remote permission appears in Activity on the subagent that can answer it', () => {
+  const remoteSubagents = { count: 1, asking: 1, since: NOW };
+  const parent = thread('parent', { remoteSubagents });
+  const child = thread('child', { status: 'waiting' });
+  const permission = { id: 'p', threadId: child.id, toolName: 'Bash', input: { command: 'bun test' }, createdAt: NOW } as PermissionRequest;
+  const local = { id: 'local', store: { pendingQuestions: [], pendingPermissions: [], subagents: () => remoteSubagents } };
+  const remote = { id: 'remote', store: { pendingQuestions: [], pendingPermissions: [permission], subagents: () => null } };
+
+  const entries = [{ machine: local, thread: parent, project: undefined }, { machine: remote, thread: child, project: undefined }];
+  const rows = activityFeed<typeof local | typeof remote>(entries);
+  expect(rows.map(row => [row.thread.id, row.kind, row.verb])).toEqual([[child.id, 'permission', 'allow']]);
+  expect(stateInbox([parent], [], [], () => null)).toEqual([]);
 });
 
 test('one event per row: a sub-agent shares its parent\'s row only for the same ask, so a permission never carries a stopped helper', () => {

@@ -33,7 +33,7 @@ export const PERMISSION_WAKE_MS = 30_000;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 /** Load and the derived live fields arrive in thread.updated without changing team history. */
 function teamState(thread: ThreadSummary): string {
-  const { load, progress, runningSince, requestSince, backgroundWork, backgroundWait, pendingMove, moveNote, pendingAnswers, openQuestions, subagentQuestions, retry, recovery, pullRequestWatches, wake, ...stored } = thread;
+  const { load, progress, runningSince, requestSince, backgroundWork, backgroundWait, pendingMove, moveNote, pendingAnswers, openQuestions, subagentQuestions, remoteSubagents, retry, recovery, pullRequestWatches, wake, ...stored } = thread;
   return JSON.stringify(Object.fromEntries(Object.entries(stored).sort(([left], [right]) => left.localeCompare(right))));
 }
 /** A family of ordinary threads. No extra orchestrator model or provider process. */
@@ -842,7 +842,7 @@ export class Delegation {
       this.#pendingChanges.delete(rootId);
       if (!this.#live()) return;
       const root = this.#core.journal.getThread(rootId);
-      if (root) this.#core.bus.emit('thread.updated', withLoad(this.#core, root));
+      if (root) this.#core.bus.emit('thread.updated', withLoad(this.#core, root, { delegationChanged: true }));
       this.#core.bus.emit('delegation.changed', { threadId: rootId });
       for (const row of this.#rows(rootId)) this.#core.bus.emit('delegation.changed', { threadId: row.thread_id });
     });
