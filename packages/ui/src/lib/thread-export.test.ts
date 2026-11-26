@@ -1,7 +1,8 @@
 import { expect, onTestFinished, vi } from 'vitest';
 import MarkdownIt from 'markdown-it';
-import type { Message, ThreadSummary } from '@boite/contracts';
+import { RpcErrorCode, type Message, type ThreadSummary } from '@boite/contracts';
 import { test } from '../test/fake-client';
+import { RpcFailure, type Client } from './client';
 import { longThread } from './fake-client/threads-seed';
 import { downloadExport, exportFilename, exportThreadHtml, exportThreadMarkdown, loadAllThreadMessages, type ExportOptions } from './thread-export';
 
@@ -196,6 +197,41 @@ test('export fetches every deferred tool part without filtering by tool name', a
   expect(exportThreadMarkdown(thread, exported, options)).toContain(patch);
 });
 
+async function mockLegacyToolRead(client: Client, deferred?: 'inputDeferred' | 'documentsDeferred') {
+  const message: Message = { ...messages[1]!, threadId: 't-trace', parts: [{
+    type: 'tool', toolId: 'read', name: 'Read', status: 'done', input: { file_path: 'auth.ts' }, output: 'preview',
+    outputDeferred: true, ...(deferred && { [deferred]: true }),
+  }] };
+  const ref = { threadId: message.threadId, messageId: message.id, toolId: 'read' };
+  const snapshot = await client.call('threads.get', { threadId: ref.threadId });
+  const original = client.call.bind(client);
+  const missingMethod = new RpcFailure({ code: RpcErrorCode.MethodNotFound, message: 'Unknown method messages.toolPart' });
+  const call = vi.spyOn(client, 'call').mockImplementation((method, params) => {
+    if (method === 'threads.get') return Promise.resolve({ ...snapshot, messages: [message], messagesBefore: null });
+    if (method === 'messages.toolPart') return Promise.reject(missingMethod);
+    if (method === 'messages.toolOutput') return Promise.resolve({ output: 'complete output' });
+    return original(method, params);
+  });
+  return { call, ref, missingMethod };
+}
+
+test('export reads from an old core when only tool output is deferred', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  const { call, ref } = await mockLegacyToolRead(client);
+  const exported = await loadAllThreadMessages(client, ref.threadId, { ...clean, includeTools: true });
+  expect(call).toHaveBeenCalledWith('messages.toolPart', ref);
+  expect(call).toHaveBeenCalledWith('messages.toolOutput', ref);
+  expect(exported[0]?.parts[0]).toMatchObject({ input: { file_path: 'auth.ts' }, output: 'complete output' });
+  expect(exported[0]?.parts[0]).not.toHaveProperty('outputDeferred', true);
+});
+
+test.for(['inputDeferred', 'documentsDeferred'] as const)('export refuses the old core fallback with %s', async (deferred, { createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  const { call, ref, missingMethod } = await mockLegacyToolRead(client, deferred);
+  await expect(loadAllThreadMessages(client, ref.threadId, { ...clean, includeTools: true, includeDiffs: true })).rejects.toBe(missingMethod);
+  expect(call.mock.calls.some(([method]) => method === 'messages.toolOutput')).toBe(false);
+});
+
 test('a core that returns the same cursor cannot hang or silently export half a conversation', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0, long: true });
   const original = client.call.bind(client);
@@ -232,8 +268,7 @@ test('desktop downloads mark exports and refuse an oversized body before IPC', a
 });
 
 test('exportFilename caps multibyte Unicode titles in UTF-8 bytes below filesystem limits', () => {
-  const title = '𝐀'.repeat(60);
+  const title = '𠮷'.repeat(60);
   const name = exportFilename(title, 'html', new Date('2026-11-25T10:00:00Z'));
-  expect(new TextEncoder().encode(name).byteLength).toBeLessThanOrEqual(200);
-  expect(name.endsWith('-2026-11-25.html')).toBe(true);
+  expect(name).toBe(`${'𠮷'.repeat(45)}-2026-11-25.html`);
 });

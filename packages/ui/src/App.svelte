@@ -220,7 +220,7 @@
         requested.delete(name);
         if (name === 'ProjectPicker' && store.projectPickerOpen) store.projectPickerOpen = false;
         else if (name === 'ImportDialog' && store.imports) store.closeImports();
-        else if (name === 'ExportThreadDialog') closeThreadExport();
+        else if (name === 'ExportThreadDialog' && threadExport.request) closeThreadExport();
         else if (name === 'ConnectFlow' && store.connectDialog) store.closeConnect();
         else if (name === 'CommandPalette' && store.paletteOpen) store.paletteOpen = false;
         else return;
