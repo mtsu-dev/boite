@@ -53,15 +53,19 @@ fn client_target(path: &str) -> Result<PathBuf, String> {
     Ok(target)
 }
 
-/// Read through links, like the app the click opens. A drive that does not
-/// answer (an unplugged NAS) reads as missing.
+/// Read through links, like the app the click opens. A link is a document only
+/// when both its own name and the file it leads to are one: `notes.txt` linked
+/// to a program is a program. A drive that does not answer (an unplugged NAS)
+/// reads as missing.
 fn classify(path: &Path) -> ClientPathKind {
-    let Ok(meta) = std::fs::metadata(path) else { return ClientPathKind::Missing };
-    let kind = extension(path);
+    let Ok(resolved) = path.canonicalize() else { return ClientPathKind::Missing };
+    let Ok(meta) = std::fs::metadata(&resolved) else { return ClientPathKind::Missing };
+    let kinds = [extension(path), extension(&resolved)];
     if meta.is_dir() {
-        return if BUNDLE_FOLDERS.contains(&kind.as_str()) { ClientPathKind::Program } else { ClientPathKind::Folder };
+        let bundle = kinds.iter().any(|kind| BUNDLE_FOLDERS.contains(&kind.as_str()));
+        return if bundle { ClientPathKind::Program } else { ClientPathKind::Folder };
     }
-    if meta.is_file() && CHAT_DOCUMENTS.contains(&kind.as_str()) && !runs(&meta) {
+    if meta.is_file() && kinds.iter().all(|kind| CHAT_DOCUMENTS.contains(&kind.as_str())) && !runs(&meta) {
         return ClientPathKind::Document;
     }
     ClientPathKind::Program
@@ -150,6 +154,12 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(root.join("notes.txt"), std::fs::Permissions::from_mode(0o755)).unwrap();
             assert_eq!(kind("notes.txt"), ClientPathKind::Program);
+            // A document's name on a link to a program, or to a bundle, is the program.
+            std::os::unix::fs::symlink(root.join("game.exe"), root.join("readme.txt")).unwrap();
+            std::os::unix::fs::symlink(root.join("Tool.app"), root.join("Tool")).unwrap();
+            assert_eq!(kind("readme.txt"), ClientPathKind::Program);
+            assert!(open_target(&path("readme.txt"), false).unwrap_err().contains("confirmed"));
+            assert_eq!(kind("Tool"), ClientPathKind::Program);
         }
         std::fs::remove_dir_all(root).unwrap();
     }

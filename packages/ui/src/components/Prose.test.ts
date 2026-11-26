@@ -44,13 +44,15 @@ function shell(files: Record<string, 'document' | 'folder' | 'program'> = {}) {
 }
 
 /** A Store with the parts a file link reaches: its machine, the thread's folder, the core's lookups and the panel. */
-function storeOf(options: { os?: string; localCore?: boolean; owner?: boolean; cwd?: string; locateFile?: Store['locateFile'] } = {}) {
+function storeOf(options: { os?: string; localCore?: boolean; owner?: boolean; cwd?: string; locateFile?: Store['locateFile']; listFiles?: Store['listFiles'] } = {}) {
   const panel = { openFile: vi.fn(), openFiles: vi.fn() };
   const store = {
     owner: options.owner ?? true, localCore: options.localCore ?? false,
     core: { os: options.os ?? 'linux', hostname: 'atelier' },
     threads: [{ id: 'thread', cwd: options.cwd ?? '/srv/project' }],
-    locateFile: vi.fn(options.locateFile ?? asWritten), readFile: vi.fn(), reportError: vi.fn(), panel
+    openThread: { id: 'thread' },
+    locateFile: vi.fn(options.locateFile ?? asWritten), listFiles: vi.fn(options.listFiles ?? (async () => ({ ok: true as const, value: [] }))),
+    readFile: vi.fn(), reportError: vi.fn(), panel
   } as unknown as Store;
   return { store, panel };
 }
@@ -128,6 +130,41 @@ test('a project file of a thread on another machine opens in the panel at its li
   await vi.waitFor(() => expect(fileNotice.current).toMatchObject({ title: 'Outside the project on atelier', path: '/etc/hosts' }));
   // Another machine's files never reach this computer's opener, the switch on or not.
   expect(invoke.mock.calls.filter(([name]) => name !== 'client_path_info')).toEqual([]);
+});
+
+test('a dotless file opens as a file, a greyed chip lights up once a click finds it, and a click whose thread was left opens nothing', async () => {
+  let written = false;
+  const locateFile = async (_thread: string, path: string) => ({ ok: true as const, value: path === 'notes.md' && !written ? [] : [path] });
+  const listFiles = async () => ({ ok: true as const, value: [
+    { name: 'glossary', path: 'refs/glossary', kind: 'file' as const, bytes: 4, modifiedAt: 0 },
+    { name: 'docs', path: 'refs/docs', kind: 'dir' as const, bytes: null, modifiedAt: 0 }
+  ] });
+  const { store, panel } = storeOf({ locateFile, listFiles });
+  show('`refs/glossary`, `refs/docs`, `notes.md` and `src/app.ts`', store);
+  const [glossary, docs, notes, app] = document.querySelectorAll<HTMLAnchorElement>('a.file-chip');
+  glossary!.click();
+  await vi.waitFor(() => expect(panel.openFile).toHaveBeenCalledWith('refs/glossary', undefined));
+  expect(panel.openFiles).not.toHaveBeenCalled();
+  await tick(); docs!.click();
+  await vi.waitFor(() => expect(panel.openFiles).toHaveBeenCalledWith('refs/docs'));
+  expect(store.listFiles).toHaveBeenCalledWith('thread', 'refs');
+
+  await vi.waitFor(() => expect(notes!.hasAttribute('data-missing')).toBe(true));
+  written = true;
+  await tick(); notes!.click();
+  await vi.waitFor(() => expect(panel.openFile).toHaveBeenLastCalledWith('notes.md', undefined));
+  expect(notes!.hasAttribute('data-missing')).toBe(false);
+
+  // The user moves to another thread while the core looks: the panel there stays as it was.
+  let answer!: (value: { ok: true; value: string[] }) => void;
+  vi.mocked(store.locateFile).mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+  const opened = panel.openFile.mock.calls.length;
+  await tick(); app!.click();
+  await vi.waitFor(() => expect(answer).toBeTypeOf('function'));
+  (store as unknown as { openThread: { id: string } }).openThread = { id: 'another' };
+  answer({ ok: true, value: ['src/app.ts'] });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(panel.openFile.mock.calls.length).toBe(opened);
 });
 
 test.each([false, true])('a thread on this computer opens a program only once confirmed, and documents per the switch (open-chat-links: %s)', async (direct) => {

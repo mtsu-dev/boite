@@ -76,14 +76,16 @@ text. A page runs only as an inline view, below.
 folder), the text is the base name and its line, and `title` holds the path as
 written. A path in code or bare also carries `data-source`, the written path,
 and a hidden `.file-chip-dir` with its parent folder; `markCollisions` shows
-that folder when two chips of one answer share a name with different paths. A
+it when two chips of one answer share a name with different paths, with as many
+trailing folders as tell them apart (`app/src/` and `web/src/`). A
 Markdown link keeps its own label. A copied selection replaces each chip with
 its `data-source` (`lib/selection-copy.ts`), so the clipboard carries the path.
 
 `fileChecks` in `lib/file-open.svelte.ts` greys a chip (`data-missing`) when
 it comes near the screen and its file is not found. Only the owner checks,
 since `files.locate` is owner only. Answers are cached per store and path, a
-found file for 60 s and a missing one for 15 s; a click asks again.
+found file for 60 s and a missing one for 15 s; a click asks again, and every
+answer reaches the chips of that path, so a file written since lights up.
 
 ### What a click does
 
@@ -106,8 +108,10 @@ found file for 60 s and a missing one for 15 s; a click asks again.
 4. Otherwise a file inside the thread's folder opens in the right panel's
    Files tab at its line (`panel.openFile`), a folder in its tree
    (`panel.openFiles`), and a picture or a video in the media viewer through
-   `files.read`. A paired phone does the same without `files.locate`, which it
-   may not call.
+   `files.read`. A name without a dot (`docs`, `glossary`) is a folder only
+   when its parent's `files.list` says `dir`. The panel is the open thread's,
+   so a click whose thread was left while the core looked opens nothing. A
+   paired phone does the same without `files.locate`, which it may not call.
 5. Anything else shows `FileLinkToast`: where the file was looked for (this
    computer, or the thread's machine by name) and the whole path, with Copy
    path. The panel shows a missing file the same way instead of the raw error.
@@ -137,7 +141,9 @@ RPCs cannot invoke them:
 - `client_path_info(path)` answers `missing`, `document`, `folder` or
   `program`. A document is a file whose extension is on the `CHAT_DOCUMENTS`
   list (text, data, office files, pictures, sound, video) without an execute
-  bit; a macOS bundle counts as a program, and so does every other file.
+  bit; a macOS bundle counts as a program, and so does every other file. A
+  link counts by both its own name and its resolved target, so `notes.txt`
+  linked to a program is a program.
 - `open_client_path(path, confirmed)` opens the path with the system's
   handler, a program only with `confirmed`.
 - `reveal_client_path(path)` selects the path in the file manager.

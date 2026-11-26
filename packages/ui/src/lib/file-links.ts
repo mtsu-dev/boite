@@ -90,21 +90,40 @@ export function fileChipHtml(label: string, raw: string, target: string, line: n
     + `<span class="file-chip-name">${escapeHtml(name)}</span></a>`;
 }
 
+/** The folders of a path, as written, outermost first. */
+function folders(path: string): string[] {
+  return path.split(/[\\/]/).filter(part => part && part !== '.').slice(0, -1);
+}
+
 /**
- * Two chips of one name and different paths in `root` show their folder
- * (`collide`), so `src/index.ts` and `test/index.ts` never read the same.
+ * Two chips of one name and different paths in `root` show their folders
+ * (`collide`), as many as tell them apart, so `src/index.ts` and
+ * `test/index.ts` never read the same, nor `app/src/index.ts` and `web/src/index.ts`.
  */
 export function markCollisions(root: ParentNode): void {
   const byName = new Map<string, Set<string>>();
   const chips = [...root.querySelectorAll<HTMLElement>('a.file-chip[data-source]')];
+  const nameOf = (chip: HTMLElement): string => baseName(chip.dataset.filePath ?? '').toLowerCase();
   for (const chip of chips) {
-    const name = baseName(chip.dataset.filePath ?? '').toLowerCase();
-    const paths = byName.get(name) ?? new Set<string>();
+    const paths = byName.get(nameOf(chip)) ?? new Set<string>();
     paths.add(chip.dataset.filePath ?? '');
-    byName.set(name, paths);
+    byName.set(nameOf(chip), paths);
+  }
+  // Per name, the fewest trailing folders that make every path's label its own.
+  const depth = new Map<string, number>();
+  for (const [name, paths] of byName) {
+    if (paths.size < 2) continue;
+    const all = [...paths].map(folders);
+    const most = Math.max(...all.map(parts => parts.length));
+    let shown = 1;
+    while (shown < most && new Set(all.map(parts => parts.slice(-shown).join('/'))).size < all.length) shown++;
+    depth.set(name, shown);
   }
   for (const chip of chips) {
-    const many = (byName.get(baseName(chip.dataset.filePath ?? '').toLowerCase())?.size ?? 0) > 1;
-    chip.classList.toggle('collide', many);
+    const shown = depth.get(nameOf(chip));
+    chip.classList.toggle('collide', shown !== undefined);
+    const dir = chip.querySelector('.file-chip-dir');
+    const parts = folders(chip.dataset.filePath ?? '');
+    if (dir && parts.length) dir.textContent = `${parts.slice(-(shown ?? 1)).join('/')}/`;
   }
 }

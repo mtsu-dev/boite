@@ -45,6 +45,9 @@ export interface LinkContext {
 const MISSING_MS = 15_000;
 const FOUND_MS = 60_000;
 const checks = new WeakMap<Store, Map<string, { at: number; answer: Promise<Where> }>>();
+/** Each answer, told to the chips of that link: a click that finds a greyed file lights its chip again. */
+const located = new EventTarget();
+type Located = CustomEvent<{ store: Store; threadId: string; written: string; missing: boolean }>;
 
 function cwdOf(store: Store, threadId: string): string | undefined {
   return store.threads.find(thread => thread.id === threadId)?.cwd;
@@ -72,7 +75,10 @@ export function locate(store: Store, threadId: string, written: string, fresh = 
   const answer = find(store, threadId, written);
   const entry = { at: Number.POSITIVE_INFINITY, answer };
   byStore.set(key, entry);
-  answer.then(where => { entry.at = Date.now() + (where.at === 'missing' ? MISSING_MS : FOUND_MS); }, () => byStore.delete(key));
+  answer.then(where => {
+    entry.at = Date.now() + (where.at === 'missing' ? MISSING_MS : FOUND_MS);
+    located.dispatchEvent(new CustomEvent('located', { detail: { store, threadId, written, missing: where.at === 'missing' } }));
+  }, () => byStore.delete(key));
   return answer;
 }
 
@@ -138,11 +144,30 @@ function mediaItem(ctx: LinkContext, path: string): MediaItem | null {
   return { src: '', name: baseName(path), mimeType: kind === 'video' ? 'video/mp4' : 'image/png', kind, load };
 }
 
-/** A file of the thread's folder, shown in Boite: the viewer for media, else the panel. */
-function showInProject(ctx: LinkContext, relative: string, line: number | undefined): void {
+/**
+ * Whether a path of the project is a folder. A trailing slash says so; a name
+ * without a dot may be either (`docs`, `glossary`), so its parent's listing decides.
+ */
+async function isFolder(ctx: LinkContext, relative: string): Promise<boolean> {
+  if (/[\\/]$/.test(relative)) return true;
+  if (fileKind(relative) !== 'folder') return false;
+  const path = relative.replaceAll('\\', '/').replace(/^\.\//, '');
+  const slash = path.lastIndexOf('/');
+  const listing = await ctx.store.listFiles(ctx.threadId, slash > 0 ? path.slice(0, slash) : undefined);
+  return listing.ok && listing.value.some(entry => entry.path === path && entry.kind === 'dir');
+}
+
+/**
+ * A file of the thread's folder, shown in Boite: the viewer for media, else the
+ * panel. The panel is the open thread's, so a click whose thread was left while
+ * it looked opens nothing in another one.
+ */
+async function showInProject(ctx: LinkContext, relative: string, line: number | undefined): Promise<void> {
   const item = mediaItem(ctx, relative);
+  const folder = !item && await isFolder(ctx, relative);
+  if (ctx.store.openThread?.id !== ctx.threadId) return;
   if (item) return ctx.show(item);
-  if (fileKind(relative) === 'folder') { ctx.store.panel.openFiles(relative.replace(/\/$/, '')); return; }
+  if (folder) { ctx.store.panel.openFiles(relative.replace(/[\\/]$/, '')); return; }
   ctx.store.panel.openFile(relative, line);
 }
 
@@ -168,7 +193,8 @@ export async function openLink(ctx: LinkContext, written: string, line: number |
     const full = fullPath(path, cwd);
     if (fileKind(path) === 'program' || ctx.directLinks || relative === null) return openOnClient(full, await clientPathInfo(full));
   }
-  if (relative !== null) return showInProject(ctx, relative, line);
+  // `relativeTo` drops a trailing slash, the one sure sign of a folder.
+  if (relative !== null) return showInProject(ctx, /[\\/]$/.test(path) && !relative.endsWith('/') ? `${relative}/` : relative, line);
   const title = where.at === 'thread' ? fill(strings.chat.fileLink.outside, { machine: machineOf(store) }) : strings.chat.fileLink.elsewhere;
   fileNotice.show(title, fullPath(path, cwd));
 }
@@ -250,6 +276,15 @@ export function fileChecks(node: HTMLElement, read: () => { store?: Store; threa
       if (near) near.observe(chip); else look(chip);
     }
   };
+  const heard = (event: Event): void => {
+    const { store, threadId, written, missing } = (event as Located).detail;
+    const current = read();
+    if (current.store !== store || current.threadId !== threadId) return;
+    for (const chip of node.querySelectorAll<HTMLElement>('a.file-chip')) {
+      if (chip.dataset.filePath === written) chip.toggleAttribute('data-missing', missing);
+    }
+  };
+  located.addEventListener('located', heard);
   const later = (): void => { if (!frame) frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(scan) : window.setTimeout(scan, 16); };
   const observer = new MutationObserver(later);
   observer.observe(node, { childList: true, subtree: true });
@@ -258,6 +293,7 @@ export function fileChecks(node: HTMLElement, read: () => { store?: Store; threa
     destroy() {
       observer.disconnect();
       near?.disconnect();
+      located.removeEventListener('located', heard);
       if (frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
       else if (frame) clearTimeout(frame);
     }

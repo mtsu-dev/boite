@@ -31,8 +31,13 @@ test('two chips of one name and different folders show their folder, the same fi
     fileChipHtml('src/index.ts', 'src/index.ts', 'src/index.ts', undefined),
     fileChipHtml('test/index.ts', 'test/index.ts', 'test/index.ts', undefined),
     fileChipHtml('lib/app.ts', 'lib/app.ts', 'lib/app.ts', 2),
-    fileChipHtml('lib/app.ts', 'lib/app.ts', 'lib/app.ts', 9)
+    fileChipHtml('lib/app.ts', 'lib/app.ts', 'lib/app.ts', 9),
+    fileChipHtml('app/src/main.ts', 'app/src/main.ts', 'app/src/main.ts', undefined),
+    fileChipHtml('web/src/main.ts', 'web/src/main.ts', 'web/src/main.ts', undefined)
   ].join(' ');
   markCollisions(host);
-  expect([...host.querySelectorAll('a.file-chip')].map(chip => chip.classList.contains('collide'))).toEqual([true, true, false, false]);
+  const chips = [...host.querySelectorAll('a.file-chip')];
+  expect(chips.map(chip => chip.classList.contains('collide'))).toEqual([true, true, false, false, true, true]);
+  // One folder is not enough when both sit in a `src`: as many show as tell them apart.
+  expect(chips.map(chip => chip.querySelector('.file-chip-dir')?.textContent)).toEqual(['src/', 'test/', 'lib/', 'lib/', 'app/src/', 'web/src/']);
 });
