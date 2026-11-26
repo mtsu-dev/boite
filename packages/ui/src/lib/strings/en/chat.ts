@@ -358,6 +358,8 @@ export const strings = {
       showDiagram: 'Diagram',
       /** The toggle back to a ```steps, ```options, ```bars or ```stats block from its code. */
       showBlock: 'Block',
+      /** Screen-reader cue on a `* ` highlighted item in a native block when not a single active step. */
+      highlighted: 'Highlighted',
       enlarge: 'Enlarge',
       failed: 'This diagram could not be drawn: {reason}',
       unavailable: 'The diagram could not be drawn here.'

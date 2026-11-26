@@ -160,7 +160,7 @@ function parser(rich: boolean): MarkdownParser {
     cursor.nl = findFrom(src, '\n', start, cursor.nl);
     const end = findFrom(src, close, start, cursor.close.get(close));
     cursor.close.set(close, end);
-    if (end.found <= start || (cursor.nl.found !== -1 && cursor.nl.found < end.found)) return false;
+    if (end.found <= start || end.found + close.length > state.posMax || (cursor.nl.found !== -1 && cursor.nl.found < end.found)) return false;
     const tex = src.slice(start, end.found).trim();
     if (!tex) return false;
     if (!silent) {

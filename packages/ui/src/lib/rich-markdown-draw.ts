@@ -301,7 +301,7 @@ export function selectedSource(range: Range): string {
   const fragment = whole.cloneContents();
   for (const element of fragment.querySelectorAll<HTMLElement>(DRAWINGS)) {
     // An enclosing drawing (for instance a native block holding inline math) already replaced its subtree.
-    if (!element.parentNode) continue;
+    if (!fragment.contains(element)) continue;
     const source = element.dataset.source ?? '';
     const fence = element.classList.contains('md-mermaid') ? 'mermaid' : element.classList.contains('md-view') ? 'view' : element.dataset.kind ?? '';
     const mark = element.dataset.fence || '```';

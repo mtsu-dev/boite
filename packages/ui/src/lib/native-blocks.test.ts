@@ -20,8 +20,10 @@ test('bars compare across time, byte, bit, currency and magnitude units, and per
   // Both micro sign (U+00B5) and Greek small mu (U+03BC) belong to time.
   expect(shares('Fast | 50 μs\nSlow | 1 ms')).toEqual([(50 * 1e-6) / 1e-3, 1]);
   expect(shares('A | 3.4 MB\nB | 850 KB')).toEqual([1, 0.85e6 / 3.4e6]);
-  // Bits and bytes preserve their 1:8 ratio (`10 Mb` is 1.25 MB).
-  expect(shares('A | 10 Mb\nB | 10 MB')).toEqual([0.125, 1]);
+  // Bits compare with bits; mixing bits and bytes (`10 Mb` vs `10 MB`, `800 kb` vs `1 MB`) falls back to code.
+  expect(shares('A | 10 Mb\nB | 100 Mb')).toEqual([0.1, 1]);
+  expect(shares('A | 10 Mb\nB | 10 MB')).toBeUndefined();
+  expect(shares('A | 800 kb\nB | 1 MB')).toBeUndefined();
   expect(shares('A | 12k\nB | 1,250\nC | 4.2')).toEqual([1, 1250 / 12000, 4.2 / 12000]);
   // French decimal commas: leading-zero 3-digit values (`0,750`, `0,125`) are decimals, and `1,500` follows them.
   expect(shares('A | 0,750 s\nB | 1,500 s\nC | 2,5 s')).toEqual([0.75 / 2.5, 1.5 / 2.5, 1]);
@@ -36,6 +38,9 @@ test('bars compare across time, byte, bit, currency and magnitude units, and per
   expect(shares('A | $1.2M\nB | $300k')).toEqual([1, 0.25]);
   expect(shares('A | $120/mo\nB | 60 $/mo')).toEqual([1, 0.5]);
   expect(shares('A | 120 €\nB | $80')).toBeUndefined();
+  // Invalid currency suffixes fall back to code just like invalid prefixes.
+  expect(shares('A | 120 € ms\nB | 60 € ms')).toBeUndefined();
+  expect(shares('A | 120 €$\nB | 60 €$')).toBeUndefined();
   // Lowercase `m` stays meters, never colliding with `M` (millions) or bare counts.
   expect(shares('A | 5 m\nB | 500')).toBeUndefined();
   expect(shares('A | 5 m\nB | 10 m')).toEqual([0.5, 1]);
@@ -60,7 +65,7 @@ test('a value reads only when the whole field is a number and an optional unit',
   expect(readValue('€120')).toEqual({ family: 'currency:€', amount: 120 });
   expect(readValue('120 req/s')).toEqual({ family: 'unit:req/s', amount: 120 });
   // Grouping is three digits after a group of one to three; an underscore or mixed currency+unit is no unit.
-  for (const text of ['1234,567', '12,34,567', '1,2345,678', '1_345', '1_345 ms', '1.2.3', '4,2,5', '$120 €', '$120 ms']) expect(readValue(text), text).toBeNull();
+  for (const text of ['1234,567', '12,34,567', '1,2345,678', '1_345', '1_345 ms', '1.2.3', '4,2,5', '$120 €', '$120 ms', '120 € ms', '120 €$', '120 ms €']) expect(readValue(text), text).toBeNull();
   // A unit named like an Object property is a unit of its own, not a lookup into the prototype.
   expect(readValue('5 constructor')).toEqual({ family: 'unit:constructor', amount: 5 });
   expect(readValue('5 __proto__')).toBeNull();
@@ -128,18 +133,24 @@ test('each kind draws its own structure with list semantics, highlight ARIA and 
   expect(steps.getAttribute('role')).toBe('list');
   expect([...steps.querySelectorAll('.md-step-mark')].map(mark => mark.textContent)).toEqual(['1', '2']);
   expect(steps.querySelector('.md-accent')?.getAttribute('aria-current')).toBe('step');
+  expect(steps.querySelector('.md-accent .visually-hidden')).toBeNull();
   expect(steps.querySelector('.md-accent .md-native-detail')?.textContent).toBe('then');
   // Display math inside an inline field stays inline (no data-display block box).
   expect(steps.querySelector('.md-math')?.hasAttribute('data-display')).toBe(false);
+  // Multiple highlighted steps do not claim aria-current; they get a visually hidden cue instead.
+  const multiSteps = drawNative('steps', parseNative('steps', '* One\n* Two')!);
+  expect(multiSteps.querySelector('[aria-current]')).toBeNull();
+  expect([...multiSteps.querySelectorAll('.visually-hidden')].map(el => el.textContent)).toEqual([' (Highlighted)', ' (Highlighted)']);
   const bars = drawNative('bars', parseNative('bars', '* Fast | 1 s\nSlow | 2 s')!);
   expect(bars.getAttribute('role')).toBe('list');
-  expect(bars.querySelector('.md-accent')?.getAttribute('aria-current')).toBe('true');
+  expect(bars.querySelector('[aria-current]')).toBeNull();
+  expect(bars.querySelector('.md-accent .visually-hidden')?.textContent).toBe(' (Highlighted)');
   expect(bars.querySelector('.md-bar-track')?.getAttribute('aria-hidden')).toBe('true');
   const stats = drawNative('stats', parseNative('stats', 'Users | 1,204 | +3%\n* p95 | 180 ms')!);
   expect(stats.localName).toBe('dl');
   expect(stats.getAttribute('role')).toBeNull();
-  expect([...stats.querySelectorAll('dt')].map(term => term.textContent)).toEqual(['Users', 'p95']);
-  expect(stats.querySelector('.md-accent')?.getAttribute('aria-current')).toBe('true');
+  expect([...stats.querySelectorAll('dt')].map(term => term.textContent)).toEqual(['Users', 'p95 (Highlighted)']);
+  expect(stats.querySelector('[aria-current]')).toBeNull();
   expect(stats.querySelector('.md-accent .md-stat-value')?.textContent).toBe('180 ms');
   expect(stats.classList.contains('md-has-accent')).toBe(true);
 });

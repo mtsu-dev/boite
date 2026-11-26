@@ -140,9 +140,10 @@ stay code.
 
 One grammar serves all four. A line is an item and blank lines are skipped; `|`
 splits its fields and `\|` is a literal pipe; a leading `* ` highlights the
-item in the accent and sets `aria-current` (`step` on steps, `true` elsewhere).
-Fields are escaped inline Markdown (`inline(text, false)` in
-`lib/markdown-inline.ts`): bold, italic, code, inline math and web links, never
+item in the accent, setting `aria-current="step"` when one step is highlighted
+and adding a visually hidden localized cue (`Highlighted` / `Mis en avant`) on
+other highlighted items. Fields are escaped inline Markdown (`inline(text, false)`
+in `lib/markdown-inline.ts`): bold, italic, code, inline math and web links, never
 HTML or a `javascript:` link. Structure is built with DOM calls only, with
 `role="list"` on `<ol>` and `<ul>` so WebKit keeps list semantics under
 `list-style: none`.
@@ -155,25 +156,29 @@ HTML or a `javascript:` link. Structure is built with DOM calls only, with
 | `stats` | `[* ]label \| value [\| detail]` | a `<dl>` of tiles in an auto-fit grid |
 
 A bar's value is a non-negative number with an optional unit or currency symbol.
-Time (`ns` to `h`, including both `µs` and Greek `μs`), bits and bytes (`b` to
-`Tb`, `B` to `TB`, `Kib` to `Tib`, `KiB` to `TiB`, preserving the 1:8 `b`/`B`
-ratio), magnitudes (`k`, `K`, `M`, `bn`), currencies (`120 €`, `€80`, `$1.2M`,
-`12k €`), space-grouped thousands (`1 250`) and decimal commas (`0,750`, `2,5`)
-are converted; a percentage up to 100 scales against 100. Any other unit must
+Time (`ns` to `h`, including both `µs` and Greek `μs`), bits (`b` to `Tb`, `Kib`
+to `Tib`), bytes (`B` to `TB`, `KiB` to `TiB`), magnitudes (`k`, `K`, `M`, `bn`),
+currencies (`120 €`, `€80`, `$1.2M`, `12k €`, `$120/mo`), space-grouped thousands
+(`1 250`) and decimal commas (`0,750`, `2,5`) are converted; a percentage up to
+100 scales against 100. Bits and bytes are kept in separate families so mixing
+`kb` and `MB` falls back to code instead of guessing 1:8, and any other unit must
 match in case on every row (so `m` stays meters and `mW` never merges with `MW`).
 When any row uses an unambiguous decimal comma, single-comma three-digit rows
-(`1,500`) in the same block follow it; mixing decimal commas with dot decimals
+(`1,500`) in the same block follow it; alongside plain integers alone (`3`),
+`1,500` reads as English thousands (`1500`), so French decimals without another
+decimal-comma row should write `1,5`. Mixing decimal commas with dot decimals
 or English thousands keeps the block as code. With no item, more than 30, a
 field too many, an empty title or value, a bar it cannot read or units that do
 not compare, the block is not drawn: it stays code with its copy button and no
 error line, since a misleading chart is worse than none. A drawn block has Copy
-and a switch between Block and Code, floating just above its top-right edge on
-desktop hover so it never hides the first bar or card; a copied selection gives
-back its original fence delimiter (`data-fence` when not three backticks). A
-bubble or a run of text that holds a block takes the column's width. Options and
-stats are cards that wrap on their own (an auto-fit grid); under 720px a bar's
-track goes below its label and value, and a value is drawn at most 14 characters
-wide, cut with an ellipsis, its whole text in a tooltip.
+and a switch between Block and Code in its own slim top row above the figure
+(fading in on pointer hover or keyboard focus, always visible on touch), so it
+overlaps neither the preceding block nor the first bar or card; a copied
+selection gives back its original fence delimiter (`data-fence` when not three
+backticks). A bubble or a run of text that holds a block takes the column's
+width. Options and stats are cards that wrap on their own (an auto-fit grid);
+under 720px a bar's track goes below its label and value, and a value is drawn at
+most 14 characters wide, cut with an ellipsis, its whole text in a tooltip.
 
 ## What the agent is told
 

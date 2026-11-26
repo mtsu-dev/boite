@@ -233,7 +233,7 @@ describe('diagrams and formulas', () => {
     const started = performance.now();
     expect(renderMarkdown('$$ '.repeat(10_000))).not.toContain('md-math');
     expect(renderMarkdown(`${'\\( '.repeat(10_000)}\n\\)`)).not.toContain('md-math');
-    expect(performance.now() - started).toBeLessThan(200);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 

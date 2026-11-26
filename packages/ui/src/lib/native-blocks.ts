@@ -11,6 +11,7 @@
  * inline renderer (`markdown-inline.ts`, no HTML, no `javascript:` link).
  */
 import { inline } from './markdown-inline';
+import { strings } from './strings';
 
 export const NATIVE_KINDS = ['steps', 'options', 'bars', 'stats'] as const;
 export type NativeKind = typeof NATIVE_KINDS[number];
@@ -78,15 +79,16 @@ function split(line: string): string[] {
 
 /**
  * Units that compare across rows: each family's scale to its base. Case is
- * preserved so `b`/`B` (bits vs bytes, 1:8) and `m`/`M` (meters vs millions)
- * never collide. Any other unit must be the same on every row.
+ * preserved so bits (`b`..`Tb`) and bytes (`B`..`TB`) stay separate families
+ * (mixing `kb` and `MB` falls back to code instead of guessing 1:8) and `m`
+ * stays meters rather than millions (`M`). Any other unit must match on every row.
  */
 const UNITS = new Map<string, [family: string, scale: number]>([
   ['ns', ['time', 1e-9]], ['us', ['time', 1e-6]], ['µs', ['time', 1e-6]], ['μs', ['time', 1e-6]], ['ms', ['time', 1e-3]], ['s', ['time', 1]], ['sec', ['time', 1]], ['min', ['time', 60]], ['h', ['time', 3600]],
-  ['b', ['bytes', 1]], ['kb', ['bytes', 1e3]], ['Kb', ['bytes', 1e3]], ['Mb', ['bytes', 1e6]], ['Gb', ['bytes', 1e9]], ['Tb', ['bytes', 1e12]],
-  ['Kib', ['bytes', 1024]], ['Mib', ['bytes', 1024 ** 2]], ['Gib', ['bytes', 1024 ** 3]], ['Tib', ['bytes', 1024 ** 4]],
-  ['B', ['bytes', 8]], ['kB', ['bytes', 8e3]], ['KB', ['bytes', 8e3]], ['MB', ['bytes', 8e6]], ['GB', ['bytes', 8e9]], ['TB', ['bytes', 8e12]],
-  ['KiB', ['bytes', 8 * 1024]], ['MiB', ['bytes', 8 * 1024 ** 2]], ['GiB', ['bytes', 8 * 1024 ** 3]], ['TiB', ['bytes', 8 * 1024 ** 4]],
+  ['b', ['bits', 1]], ['kb', ['bits', 1e3]], ['Kb', ['bits', 1e3]], ['Mb', ['bits', 1e6]], ['Gb', ['bits', 1e9]], ['Tb', ['bits', 1e12]],
+  ['Kib', ['bits', 1024]], ['Mib', ['bits', 1024 ** 2]], ['Gib', ['bits', 1024 ** 3]], ['Tib', ['bits', 1024 ** 4]],
+  ['B', ['bytes', 1]], ['kB', ['bytes', 1e3]], ['KB', ['bytes', 1e3]], ['MB', ['bytes', 1e6]], ['GB', ['bytes', 1e9]], ['TB', ['bytes', 1e12]],
+  ['KiB', ['bytes', 1024]], ['MiB', ['bytes', 1024 ** 2]], ['GiB', ['bytes', 1024 ** 3]], ['TiB', ['bytes', 1024 ** 4]],
   ['', ['count', 1]], ['k', ['count', 1e3]], ['K', ['count', 1e3]], ['M', ['count', 1e6]], ['bn', ['count', 1e9]], ['Bn', ['count', 1e9]],
   ['%', ['percent', 1]]
 ]);
@@ -101,11 +103,12 @@ const MAGNITUDES = new Map<string, number>([['k', 1e3], ['K', 1e3], ['M', 1e6], 
  */
 const VALUE = /^(?:(\p{Sc})[ \t\u00A0\u202F]*)?([1-9]\d{0,2}(?:[ \u00A0\u202F]\d{3})+(?:[.,]\d+)?|[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?|0,\d+|[1-9]\d*,(?:\d{1,2}|\d{4,})|\d+(?:\.\d+)?|\.\d+)(?:[ \t\u00A0\u202F]*(\S[\s\S]*))?$/u;
 const UNIT_LENGTH = 16;
-/** A unit starts with a letter, currency symbol, `%` or `°`, and may have one `/` or space part (`req/s`, `$/mo`). */
-const UNIT = /^[\p{L}\p{Sc}%°][^\s\d/]*(?:[ \t/][^\s\d/]+)?$/u;
+/** A non-currency unit starts with a letter, `%` or `°`, with no currency symbols and at most one `/` or space part (`req/s`). */
+const UNIT = /^[\p{L}%°][^\s\d/\p{Sc}]*(?:[ \t/][^\s\d/\p{Sc}]+)?$/u;
 const CURRENCY = /^\p{Sc}$/u;
 const MAG_CURRENCY = /^([kKM]|bn|Bn)[ \t\u00A0\u202F]*(\p{Sc})$/u;
-const PER_SUFFIX = /^\/[^\s\d/]+$/u;
+const PER_SUFFIX = /^\/[^\s\d/\p{Sc}]+$/u;
+const CURRENCY_PER = /^(\p{Sc})(\/[^\s\d/\p{Sc}]+)$/u;
 const SPACE_GROUP = /[ \u00A0\u202F]/;
 const AMBIGUOUS_COMMA = /^[1-9]\d{0,2},\d{3}$/;
 
@@ -146,6 +149,8 @@ function resolveUnit(prefix: string, tail: string): [family: string, scale: numb
   if (CURRENCY.test(tail)) return [`currency:${tail}`, 1];
   const priced = MAG_CURRENCY.exec(tail);
   if (priced) return [`currency:${priced[2]!}`, MAGNITUDES.get(priced[1]!)!];
+  const rate = CURRENCY_PER.exec(tail);
+  if (rate) return [`unit:${rate[1]!}${rate[2]!}`, 1];
   if (!UNIT.test(tail)) return null;
   return UNITS.get(tail) ?? [`unit:${tail}`, 1];
 }
@@ -203,22 +208,24 @@ export function drawNative(kind: NativeKind, items: NativeItem[]): HTMLElement {
   list.className = `md-${kind}`;
   // `list-style: none` removes implicit list semantics in WebKit/VoiceOver.
   if (kind !== 'stats') list.setAttribute('role', 'list');
-  if (items.some(item => item.accent)) list.classList.add('md-has-accent');
+  const accented = items.filter(item => item.accent).length;
+  if (accented > 0) list.classList.add('md-has-accent');
   // Every bar's value column is as wide as the longest value, so the tracks line up without a subgrid.
   if (kind === 'bars') list.style.setProperty('--md-bar-value', `${Math.min(VALUE_CH, Math.max(...items.map(item => item.value?.length ?? 0)))}ch`);
   for (const [index, item] of items.entries()) {
     const row = document.createElement(kind === 'stats' ? 'div' : 'li');
     row.className = `md-${kind.slice(0, -1)}`;
-    if (item.accent) {
-      row.classList.add('md-accent');
-      row.setAttribute('aria-current', kind === 'steps' ? 'step' : 'true');
-    }
+    // `aria-current="step"` applies to a single active step; other `* ` highlights carry a screen-reader label.
+    const currentStep = item.accent && kind === 'steps' && accented === 1;
+    if (item.accent) row.classList.add('md-accent');
+    if (currentStep) row.setAttribute('aria-current', 'step');
+    const cue = item.accent && !currentStep ? part('span', 'visually-hidden', ` (${strings.chat.diagram.highlighted})`, true) : null;
     if (kind === 'steps') {
       const mark = part('span', 'md-step-mark', String(index + 1), true);
       mark.setAttribute('aria-hidden', 'true');
-      row.append(mark, body(item));
+      row.append(mark, body(item, cue));
     }
-    else if (kind === 'options') row.append(body(item));
+    else if (kind === 'options') row.append(body(item, cue));
     else if (kind === 'bars') {
       const track = part('span', 'md-bar-track', '');
       track.setAttribute('aria-hidden', 'true');
@@ -231,10 +238,14 @@ export function drawNative(kind: NativeKind, items: NativeItem[]): HTMLElement {
       const value = part('span', 'md-bar-value', item.value ?? '', true);
       // The value column stops at `VALUE_CH`, cut with an ellipsis; the whole value stays in its tooltip.
       if ((item.value?.length ?? 0) > VALUE_CH) value.title = item.value!;
-      row.append(part('span', 'md-bar-label', item.title), track, value);
+      const label = part('span', 'md-bar-label', item.title);
+      if (cue) label.append(cue);
+      row.append(label, track, value);
       if (item.detail) row.append(part('span', 'md-bar-note', item.detail));
     } else {
-      row.append(part('dt', 'md-stat-label', item.title), part('dd', 'md-stat-value', item.value ?? ''));
+      const label = part('dt', 'md-stat-label', item.title);
+      if (cue) label.append(cue);
+      row.append(label, part('dd', 'md-stat-value', item.value ?? ''));
       if (item.detail) row.append(part('dd', 'md-stat-detail', item.detail));
     }
     list.append(row);
@@ -242,9 +253,11 @@ export function drawNative(kind: NativeKind, items: NativeItem[]): HTMLElement {
   return list;
 }
 
-function body(item: NativeItem): HTMLElement {
+function body(item: NativeItem, cue: HTMLElement | null): HTMLElement {
   const wrap = part('span', 'md-native-body', '');
-  wrap.append(part('span', 'md-native-title', item.title));
+  const title = part('span', 'md-native-title', item.title);
+  if (cue) title.append(cue);
+  wrap.append(title);
   if (item.detail) wrap.append(part('span', 'md-native-detail', item.detail));
   return wrap;
 }

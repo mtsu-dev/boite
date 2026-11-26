@@ -292,6 +292,7 @@ export const fr: Translation = {
       showCode: 'Code',
       showDiagram: 'Diagramme',
       showBlock: 'Bloc',
+      highlighted: 'Mis en avant',
       enlarge: 'Agrandir',
       failed: 'Ce diagramme n’a pas pu être dessiné : {reason}',
       unavailable: 'Le diagramme n’a pas pu être dessiné ici.'

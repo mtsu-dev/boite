@@ -122,24 +122,21 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
 /* No container query here: a size container has no width of its own, so one
    alone in a fit-content bubble drew 0px wide. The bubble widens instead
    (`.answer-bubble:has(.md-native)` in themes.css). */
-.md-native { position: relative; margin: 6px 0 10px; white-space: normal; }
+.md-native { position: relative; margin: 2px 0 10px; white-space: normal; }
 .md-native > pre { margin: 0; }
 .md-native[data-view='diagram'] > pre,
 .md-native[data-view='code'] > .md-native-figure { display: none; }
 .md-native:hover > .md-diagram-bar,
 .md-native:focus-within > .md-diagram-bar { opacity: 1; pointer-events: auto; }
-/* A drawn native block has no outer box: sit its hover bar right above its top
-   edge so it never hides the first bar's value, its tooltip or the top-right card. */
-@media (hover: hover) {
-  .md-native[data-view='diagram'] > .md-diagram-bar {
-    top: auto;
-    bottom: 100%;
-    right: 0;
-    margin-bottom: 0;
-    padding: 2px;
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-  }
+/* A drawn native block has no outer box: its bar keeps its own slim row above
+   the figure so it overlaps neither the block above nor the first bar/card below,
+   fading in on pointer hover or keyboard focus without shifting layout. */
+.md-native[data-view='diagram'] > .md-diagram-bar {
+  position: static;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+  padding: 0;
+  background: none;
 }
 /* Above Prose's own list spacing, which a drawn block does not take. */
 .md-native.md-drawn > .md-native-figure > :is(ol, ul, dl) { margin: 0; padding: 0; list-style: none; }
@@ -199,6 +196,9 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
   .md-step.md-accent > .md-step-mark,
   .md-option.md-accent,
   .md-stat.md-accent { outline: 2px solid Highlight; }
+  .md-bar-track { border: 1px solid CanvasText; }
+  .md-bar-fill { forced-color-adjust: none; background: CanvasText; }
+  .md-bar.md-accent .md-bar-fill { background: Highlight; }
 }
 
 /* A phone's column: a bar's track goes under its label and value. Options
