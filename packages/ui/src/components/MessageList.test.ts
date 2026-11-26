@@ -2011,8 +2011,17 @@ test('on a phone, a turn whose summary sits under a steering prompt keeps its bu
     expect(settledAfterStream()?.querySelector('[data-testid=message-actions]')).not.toBeNull();
     expect(nextSummary()).not.toBeNull();
     expect(nextSummary()?.hasAttribute('data-tucked')).toBe(false);
+    expect(nextSummary()?.querySelector('[data-testid=message-copy]')).toBeNull();
     expect(nextSummary()?.querySelector('[data-testid=message-retry]')).not.toBeNull();
   }
+  // A stopped automatic wake with no user prompt and no answer text hides both Copy and Retry.
+  thread.turns = [...thread.turns, { ...base, id: 'turn-wake-stop', startedAt: 110_000, finishedAt: 112_000, status: 'stopped', execution: { providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, operation: 'routine', opensRequest: true } } as Turn];
+  thread.messages.push({ id: 'm-wake-stop', threadId: thread.id, turnId: 'turn-wake-stop', role: 'system', state: 'complete', createdAt: 3, parts: [{ type: 'text', text: 'Routine check' }] });
+  flushSync();
+  const wakeStopSummary = document.querySelector<HTMLElement>('article[data-turn="turn-wake-stop"] [data-testid=turn-summary]');
+  expect(wakeStopSummary).not.toBeNull();
+  expect(wakeStopSummary?.querySelector('[data-testid=message-copy]')).toBeNull();
+  expect(wakeStopSummary?.querySelector('[data-testid=message-retry]')).toBeNull();
 });
 
 test('a row counts at the height it is drawn, fractions included, so rows measured above the reader move the view by what they weigh', async () => {

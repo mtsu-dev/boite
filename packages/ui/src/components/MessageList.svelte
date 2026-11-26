@@ -33,7 +33,7 @@
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { isSteeringMessage, lastAnswerTurn, lastLined, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
+  import { hasTurnAnswer, isSteeringMessage, lastAnswerTurn, lastLined, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
@@ -779,8 +779,8 @@
               {...marks} changes={merged ? onLine : undefined}>
               {#snippet actions()}
                 <MessageActions
-                  text={() => turnAnswer(messages, turn.id)}
-                  retry={atRest && !carded && store.openThread?.turns.at(-1)?.id === turn.id ? () => void retry(turn.id) : undefined}
+                  text={hasTurnAnswer(messages, turn.id) ? () => turnAnswer(messages, turn.id) : ''}
+                  retry={atRest && !carded && store.openThread?.turns.at(-1)?.id === turn.id && messages.some(current => current.turnId === turn.id && current.role === 'user') ? () => void retry(turn.id) : undefined}
                   fork={!narrow.current && forkable && !store.openThread?.incognito && source && source.state !== 'streaming' ? (worktree) => void store.fork(source.id, { worktree }) : undefined}
                   plugin={store === workspace.primary && source ? { threadId, messageId: source.id, role: 'assistant' } : undefined}
                 />

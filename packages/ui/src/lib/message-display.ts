@@ -288,7 +288,7 @@ export function lastAnswerTurn(timeline: readonly Message[], folds: ReadonlyMap<
     if (message.role === 'user' || newConversationOf(message) || folds.has(message.id) || (message.turnId !== null && empty.has(message.turnId))) continue;
     const turn = turns.find(current => current.id === message.turnId);
     if (!turn || turn.execution?.operation === 'keepalive' || turn.status === 'queued' || turn.status === 'running') continue;
-    if (turn.status !== 'done' && !turnAnswer(timeline, turn.id)) { empty.add(turn.id); continue; }
+    if (turn.status !== 'done' && !hasTurnAnswer(timeline, turn.id)) { empty.add(turn.id); continue; }
     return turn.id;
   }
   return null;
@@ -325,6 +325,15 @@ export function startedFrom(message: Message): ThreadLink | null {
 export function pendingMoveOf(thread: Pick<ThreadSummary, 'id' | 'moveNote'> | null, threadId: string): MoveNotice | null {
   if (!thread || thread.id !== threadId) return null;
   return thread.moveNote ?? null;
+}
+
+/** Whether the agent wrote any copyable answer text in `turnId`. */
+export function hasTurnAnswer(messages: readonly Message[], turnId: string): boolean {
+  for (const message of messages) {
+    if (message.turnId !== turnId || message.role !== 'assistant') continue;
+    for (const part of message.parts) if (part.type === 'text' && visibleAnswer(part.text).trim()) return true;
+  }
+  return false;
 }
 
 /** Everything the agent wrote in one turn, its tool cards left out: what a copy of the answer takes. */
