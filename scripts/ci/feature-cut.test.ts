@@ -85,6 +85,7 @@ test('every feature declared cut has one lazy entry that writes its flag in full
   /** The entry of each cut feature, by bundle: the only module that imports the feature's code. */
   const entries: Partial<Record<ExperimentId, { ui?: string; core?: string }>> = {
     'draft-backdrop': { ui: 'packages/ui/src/lib/backdrop-entry.svelte.ts' },
+    'discord-presence': { ui: 'packages/ui/src/lib/presence-entry.svelte.ts', core: 'packages/core/src/presence-entry.ts' },
   };
   expect(Object.keys(entries).sort()).toEqual(Object.keys(FEATURE_CUTS).sort());
   for (const [id, cut] of Object.entries(FEATURE_CUTS) as [ExperimentId, { ui: boolean; core: boolean }][]) {

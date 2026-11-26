@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, onTestFinished, test } from 'vitest';
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { EXPERIMENT_IDS, EXPERIMENT_STAGES, withFinished } from '@boite/contracts';
 import ExperimentsPage from './ExperimentsPage.svelte';
@@ -43,7 +43,7 @@ afterEach(() => {
 
 test('a finished feature is on in every build, and the one experiment has its switch from a Nightly up', async () => {
   expect(readExperiments()).toEqual(FINISHED);
-  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["goal2","whip","draft-backdrop"]');
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["goal2","whip","draft-backdrop","discord-presence"]');
   primarySays(RELEASE);
   expect(readExperiments()).toEqual(FINISHED);
   expect(experimentsShown()).toBe(false);
@@ -53,7 +53,7 @@ test('a finished feature is on in every build, and the one experiment has its sw
   expect(phonePage('experiments', null, true)).toBe('home');
   // A Release has no switch to flip: the stored choice stays as it was.
   setExperiment('draft-backdrop', false);
-  expect(chosenExperiments()).toEqual(['draft-backdrop']);
+  expect(chosenExperiments()).toEqual(['draft-backdrop', 'discord-presence']);
 
   // The same device on a Nightly finds its switch as it left it.
   primarySays(NIGHTLY);
@@ -69,14 +69,16 @@ test('a finished feature is on in every build, and the one experiment has its sw
   flushSync();
   await tick();
   const switches = () => [...document.querySelectorAll<HTMLInputElement>('input[data-testid^=experiment-]')];
-  expect(switches().map((node) => node.dataset['testid'])).toEqual(['experiment-draft-backdrop']);
+  expect(switches().map((node) => node.dataset['testid'])).toEqual(['experiment-draft-backdrop', 'experiment-discord-presence']);
   expect(switches()[0]!.checked).toBe(true);
   expect(switches()[0]!.closest('label')?.textContent).toContain(strings.experiments['draft-backdrop'].title);
+  // The rich presence's switch, on, has its preview under it, fetched on demand: idle with no agent at work.
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=presence-details]')?.textContent).toBe(strings.presence.idle));
   switches()[0]!.click();
   flushSync();
   await tick();
   expect(switches()[0]!.checked).toBe(false);
-  expect(readExperiments()).toEqual(FINISHED);
+  expect(readExperiments()).toEqual([...FINISHED, 'discord-presence']);
 });
 
 test('a phone keeps the list its desktop app chose, and has the experiment of it once its core runs experiments', async () => {

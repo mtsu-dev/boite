@@ -45,6 +45,7 @@
   import { featureOn } from './lib/features.svelte';
   import { contactsShown, contactsViews } from './lib/contacts-views.svelte';
   import { whipEntry } from './lib/whip-entry.svelte';
+  import { presenceEntry } from './lib/presence-entry.svelte';
   import { rightPanel } from './lib/right-panel.svelte';
   import type { Page } from './lib/store.svelte';
   import { workspace } from './lib/workspace.svelte';
@@ -226,9 +227,10 @@
   });
   // With the first open thread, so the corner is there before a stop lands in it; a stop elsewhere asks for it too.
   $effect(() => { if (store.openThread || store.memoryStop) need('MemoryCorner'); });
-  // The Whip's control, then its rope, the first time its switch in Appearance is on (lib/whip-entry.svelte.ts).
+  // The Whip's control, then its rope, and the rich presence of this computer, the first time their switches are on (lib/whip-entry.svelte.ts, lib/presence-entry.svelte.ts).
   $effect(() => {
     if (store.booted && featureOn('whip')) whipEntry.need(error => { store.error = String(error); });
+    if (store.booted && desktopShell()) presenceEntry.need();
   });
   // Browser profiles live on this computer, whichever machine is in view: they
   // are kept by the core this shell started (lib/browser-profiles.svelte.ts).

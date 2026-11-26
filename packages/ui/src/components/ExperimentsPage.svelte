@@ -4,6 +4,7 @@
   import { EXPERIMENT_STAGES, buildKindOf } from '@boite/contracts';
   import { canFollowDesktop, desktopExperiments, experimentsBuild, followsDesktop, listedSwitches, readExperiments, setExperiment, setFollowDesktop, subscribeExperiments, type ExperimentId } from '../lib/experiments';
   import { experimentCopy } from '../lib/experiment-copy';
+  import { presenceEntry } from '../lib/presence-entry.svelte';
   import { strings } from '../lib/strings';
 
   /**
@@ -29,6 +30,9 @@
   function toggle(id: ExperimentId, on: boolean) {
     setExperiment(id, on);
   }
+
+  // The rich presence's settings and preview sit under its switch while it is on (lib/presence-entry.svelte.ts).
+  $effect(() => { if (enabled.includes('discord-presence')) presenceEntry.need(); });
 
   // The desktop app can change them while the page is open.
   $effect(() => subscribeExperiments((next) => {
@@ -74,6 +78,9 @@
           onchange={(event) => toggle(id, event.currentTarget.checked)}
         />
       </label>
+      {#if id === 'discord-presence' && enabled.includes(id) && presenceEntry.feature}{@const PresenceSettings = presenceEntry.feature.PresenceSettings}
+        <PresenceSettings />
+      {/if}
     {/each}
   </section>
 </div>
