@@ -18,12 +18,21 @@ The chat shows Starting agent while the agent launches, then Working for once
 it starts working. The startup timer counts the current turn.
 Your message stays near the top while the reply fits below it. When the reply
 outgrows that space, the chat follows the latest text until you scroll up.
+Once the thread is done, its last reply ends on one quiet line, Worked for and
+the time. Point at the reply, or move the keyboard into it, to see when it
+finished, the tokens it spent and its buttons (Copy, and Retry or Fork where
+the reply allows them). An earlier reply's line shows at rest only its marks,
+such as a compaction or a memory update; its time, tokens and buttons come when
+you point at the reply, move the keyboard into any part of it or, on a phone,
+tap it. On a phone the last reply's line shows its time and buttons, and the
+"i" at its end holds when it finished and the tokens.
 The conversation header names what it is waiting on and how long the wait has
 lasted when the start time is available. In the thread list, rows waiting on
-sub-agents, pull requests, monitors or background work show a pulsing icon and
-the elapsed time (with full details in the tooltip), while rows waiting on your
-answer keep the steady Needs you dot. When a pull request watch pauses, the
-header gives the reason and the next check time.
+sub-agents (including ones on another machine), pull requests, monitors or
+background work show a pulsing icon and the elapsed time (with full details in
+the tooltip), while rows waiting on your answer keep the steady Needs you dot.
+When a pull request watch pauses, the header gives the reason and the next
+check time.
 
 An agent can warn that something went wrong beside its work while it carries
 on: the disk was full and part of the conversation was not saved, attached
@@ -52,10 +61,10 @@ the conversation, to keep your text as typed, with no red underline.
 Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: on a desktop, switch between
 Projects and Recent under View in the Filter menu; on a phone, in the list's
-title. Under Display in the desktop Filter menu, Mochi layout turns on the left
-app rail with your mochis, teams and shortcuts along the window's edge; with it
-off, Activity, Contacts, Mochis, machines, updates, limits and Settings sit in
-the compact bar at the foot of the sidebar. The two arrows at the start of the
+title. On a desktop, the left app rail shows your mochis, teams and shortcuts
+along the window's edge. Turn off Mochi layout under Display in the Filter menu
+to hide it: Activity, Contacts, Mochis, machines, updates, limits and Settings
+then sit in a compact bar at the foot of the sidebar. The two arrows at the start of the
 list's head go back and forward through the conversations and pages you opened,
 as a mouse's side buttons do.
 

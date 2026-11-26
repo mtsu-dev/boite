@@ -307,6 +307,8 @@ test('on a phone, Back during a pending mochi open cancels it so the late respon
 
 test('re-selecting the already open mochi cancels an in-flight open for a different mochi', async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
+  // The sidebar list holds the mochi rows only with Mochi layout off.
+  mochiLayout.set(false);
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
     const view = AgentsView.of(store);
@@ -343,5 +345,7 @@ test('re-selecting the already open mochi cancels an in-flight open for a differ
   } finally {
     if (page) unmount(page);
     document.body.innerHTML = '';
+    localStorage.clear();
+    mochiLayout.load();
   }
 });

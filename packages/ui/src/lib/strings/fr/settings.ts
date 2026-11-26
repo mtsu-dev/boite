@@ -178,6 +178,7 @@ export const fr: Translation = {
     monoSystem: 'Système',
     zoom: "Taille de l'interface",
     zoomHint: 'Ctrl+= et Ctrl+- partout dans l\'appli, Ctrl+0 pour revenir à 100 %.',
+    zoomHintWheel: 'Ctrl+= et Ctrl+- ou {chord} partout dans l\'appli, Ctrl+0 pour revenir à 100 %.',
     zoomOut: 'Plus petit',
     zoomIn: 'Plus grand',
     zoomReset: 'Revenir à 100 %',

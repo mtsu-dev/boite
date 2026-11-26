@@ -336,7 +336,7 @@
     <button type="button" class="ghost icon" bind:this={close} aria-label={strings.artifacts.closeImage} title={strings.artifacts.closeImage} onclick={onclose} data-testid="image-viewer-close"><X size={18} /></button>
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="stage" class:video={!isImage} bind:this={stage} onpointerdown={pointerdown} data-testid="image-viewer-stage">
+  <div class="stage" class:video={!isImage} bind:this={stage} onpointerdown={pointerdown} data-testid="image-viewer-stage" data-wheel-zoom={isImage ? '' : undefined}>
     <button type="button" class="backdrop" tabindex="-1" aria-label={strings.artifacts.closeImage} onclick={backdrop}></button>
     {#key index}
       {#if isImage && source}

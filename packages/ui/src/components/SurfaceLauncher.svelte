@@ -35,7 +35,7 @@
       <button
         type="button"
         class="card"
-        data-testid="launch-{card.kind}"
+        data-testid="launch-{card.kind}" data-preload-view={card.kind === 'agents' ? 'panel-agents' : undefined}
         onclick={() => onlaunch(card.kind)}
         oncontextmenu={(event) => onmenu(event, card.kind)}
       >

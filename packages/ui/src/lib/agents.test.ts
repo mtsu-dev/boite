@@ -72,7 +72,7 @@ test('only an older core without agents.open falls back to the listed thread; an
   const refusal = { error: null as unknown };
   const call = vi.fn(async () => { throw refusal.error; });
   const open = vi.fn(async (_threadId: string) => {});
-  const store = { client: { call, on: () => () => {} }, open, navigationGeneration: 0, error: '' } as unknown as Store;
+  const store = { client: { call, on: () => () => {} }, open, navigationGeneration: 0, error: '', previewAgentThread: vi.fn() } as unknown as Store;
   AgentsView.of(store).snapshot = snapshot;
   refusal.error = new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'agent a is archived' });
   expect(await openAgent(store, 'a')).toBeNull();
@@ -223,6 +223,7 @@ test('openAgent preloads a known thread from the directory in parallel with agen
   const store = {
     client,
     threads: [],
+    previewAgentThread: vi.fn(),
     preload: vi.fn((id: string) => { events.push(`preload:${id}`); return () => { events.push(`release:${id}`); }; }),
     open: vi.fn(async (id: string) => { events.push(`open:${id}`); }),
   } as unknown as Store;
@@ -330,4 +331,75 @@ test('reopening a mochi after Back cancels a claimed open reuses the new preload
   expect(getCalls).toBe(2);
   expect(unsubs).toBe(0);
   expect(client.coreSubscribers).toContain(threadId);
+});
+
+test('a held Mochi opens before validation and a refusal returns to the previous conversation', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const mira = view.snapshot!.profiles.find(profile => profile.name === 'Mira')!;
+  const threadId = view.snapshot!.sessions.find(session => session.agentId === mira.id)!.threadId;
+  await store.open(threadId);
+  const messages = store.openThread!.messages.map(message => message.id);
+  await store.open('t-trace');
+  const real = client.call.bind(client);
+  let refuse!: (reason: Error) => void;
+  const gate = new Promise<never>((_resolve, reject) => { refuse = reject; });
+  vi.spyOn(client, 'call').mockImplementation(async (method, params) => method === 'agents.open' ? gate : real(method, params));
+  const opening = openAgent(store, mira.id);
+  expect(store.openThread?.id).toBe(threadId);
+  expect(store.openThread?.messages.map(message => message.id)).toEqual(messages);
+  expect(store.loadingThreadId).toBeNull();
+  refuse(new Error('Mochi access changed'));
+  expect(await opening).toBeNull();
+  expect(store.openThread?.id).toBe('t-trace');
+  expect(store.error).toBe('Mochi access changed');
+});
+
+test('a refused second press on a held Mochi restores the last confirmed conversation', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const mira = view.snapshot!.profiles.find(profile => profile.name === 'Mira')!;
+  const threadId = view.snapshot!.sessions.find(session => session.agentId === mira.id)!.threadId;
+  await store.open(threadId);
+  await store.open('t-trace');
+  const real = client.call.bind(client);
+  const refusals: ((reason: Error) => void)[] = [];
+  vi.spyOn(client, 'call').mockImplementation(async (method, params) => method === 'agents.open'
+    ? new Promise<never>((_resolve, reject) => { refusals.push(reject); }) : real(method, params));
+
+  const first = openAgent(store, mira.id);
+  const second = openAgent(store, mira.id);
+  expect(store.openThread?.id).toBe(threadId);
+  refusals[1]!(new Error('Mochi access changed'));
+  expect(await second).toBeNull();
+  refusals[0]!(new Error('Older refusal'));
+  expect(await first).toBeNull();
+  expect(store.openThread?.id).toBe('t-trace');
+  expect(store.error).toBe('Mochi access changed');
+});
+
+test('a threads.get refusal after previewing a held Mochi restores the last confirmed conversation and page', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const mira = view.snapshot!.profiles.find(profile => profile.name === 'Mira')!;
+  const threadId = view.snapshot!.sessions.find(session => session.agentId === mira.id)!.threadId;
+  await store.open(threadId);
+  await store.open('t-trace');
+  expect(store.page).toBe('chat');
+
+  const real = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
+    if (method === 'threads.get' && (params as { threadId?: string })?.threadId === threadId) {
+      throw new RpcFailure({ code: RpcErrorCode.NotFound, message: 'Thread removed' });
+    }
+    return real(method, params);
+  });
+
+  await openAgent(store, mira.id);
+  expect(store.openThread?.id).toBe('t-trace');
+  expect(store.page).toBe('chat');
+  expect(store.error).toBe('Thread removed');
 });

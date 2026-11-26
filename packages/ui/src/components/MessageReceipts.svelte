@@ -33,7 +33,7 @@
   .receipts .received { color: var(--color-accent); opacity: 1; }
   /* Delivered and answered: the ticks wait for the pointer like the time beside them. A pending one stays. */
   .receipts.settled .tick { opacity: 0; transition: opacity var(--dur-2); }
-  :global(.message:hover) .receipts.settled .tick, .receipts.settled:focus-within .tick, .receipts.settled:not(:has(button)) .tick { opacity: 1; }
+  :global(.message:hover) .receipts.settled .tick, .receipts.settled:has(:focus-visible) .tick, .receipts.settled:not(:has(button)) .tick { opacity: 1; }
   /* A finger has no pointer to bring them up: settled ticks stay away, the turn's "i" holds its times. */
   @media (hover: none) { .receipts.settled .tick { display: none; } }
   .receipts.agent { align-self: flex-start; }

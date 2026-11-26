@@ -891,6 +891,52 @@ shellTest('Ctrl+= zooms the whole interface through the webview and Ctrl+0 puts 
   }
 }, TIMEOUT);
 
+// Input.dispatchMouseEvent enters the webview's browser process as a hardware
+// wheel does, ahead of the point where WebView2 would zoom the page on its own:
+// unbound, Ctrl + wheel zooms nothing; bound, it walks the interface zoom.
+shellTest('a Ctrl wheel zooms the interface only once the zoom-wheel chord is bound', async () => {
+  if (!page || !coreFile) throw new Error('shell is not ready');
+  const shell = page;
+  const client = await connect(`http://127.0.0.1:${coreFile.port}`, coreFile.token);
+  const CTRL = 2;
+  const wheel = (modifiers: number, deltaY: number) =>
+    shell.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 300, y: 300, deltaX: 0, deltaY, modifiers });
+  const zoom = async () => String(await shell.evaluate(`localStorage.getItem('boite.zoom') ?? '1'`));
+  const width = Number(await shell.evaluate('window.innerWidth'));
+  // Past the wheel's rest every notch starts a turn and steps once; the first
+  // ones may land before the page has the new chord.
+  const notchUntil = async (modifiers: number, deltaY: number, wanted: string) => {
+    const deadline = Date.now() + 10_000;
+    while ((await zoom()) !== wanted && Date.now() < deadline) {
+      await wheel(modifiers, deltaY);
+      await Bun.sleep(400);
+    }
+    expect(await zoom()).toBe(wanted);
+  };
+  try {
+    expect(await zoom()).toBe('1');
+    await wheel(CTRL, -120);
+    await Bun.sleep(600);
+    expect(await zoom()).toBe('1');
+    expect(Number(await shell.evaluate('window.innerWidth'))).toBe(width);
+
+    await client.call('keybindings.set', { command: 'zoom-wheel', chord: 'mod+wheel' });
+    await notchUntil(CTRL, -120, '1.1');
+    await shell.waitFor(`Math.abs(window.innerWidth - ${width} / 1.1) < 3`);
+    // Without the chord's modifier the wheel only scrolls.
+    await wheel(0, -120);
+    await Bun.sleep(600);
+    expect(await zoom()).toBe('1.1');
+    await notchUntil(CTRL, 120, '1');
+    await shell.waitFor(`window.innerWidth === ${width}`);
+  } finally {
+    await client.call('keybindings.reset', { command: 'zoom-wheel' }).catch(() => undefined);
+    client.close();
+    await shell.evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key:'0', ctrlKey:true, bubbles:true, cancelable:true }))`);
+    await shell.waitFor(`window.innerWidth === ${width} && localStorage.getItem('boite.zoom') === '1'`);
+  }
+}, TIMEOUT);
+
 shellTest('the machine picker opens a folder on the selected core and reports a lost connection', async () => {
   const remote = await startCore();
   const remoteClient = await connect(remote.url, remote.token);

@@ -1,5 +1,5 @@
 import type { AccountQuota, SubscriptionProxyQuotas } from './accounts';
-import { activityEvents, activityKind, activityThreadState, NEEDS_RANK, rowAsks, workingChildren } from './activity';
+import { activityEvents, activityKind, activityThreadState, mergeWorkingChildren, NEEDS_RANK, rowAsks, workingChildren } from './activity';
 import type { Group } from './group';
 import { harnessOffered } from './harness-updates';
 import type { ThreadId, Timestamp } from './ids';
@@ -219,7 +219,8 @@ export function stateInbox(
   projectName: (projectId: NonNullable<ThreadSummary['projectId']>) => string | null,
 ): StateInboxRow[] {
   const children = workingChildren(threads);
-  const machine = { id: '', store: { subagents: (threadId: ThreadId) => children.get(threadId) ?? null, pendingQuestions, pendingPermissions } };
+  const remote = new Map(threads.flatMap(thread => thread.remoteSubagents ? [[thread.id, thread.remoteSubagents] as const] : []));
+  const machine = { id: '', store: { subagents: (threadId: ThreadId) => mergeWorkingChildren(children.get(threadId) ?? null, remote.get(threadId) ?? null), pendingQuestions, pendingPermissions } };
   const kindOf = (thread: ThreadSummary) => activityKind(machine.store, thread.id, activityThreadState(thread, rowAsks(machine.store, thread.id)));
   // A parent listed only for its sub-agents' event (at work, say) is named by their event.
   const row = (thread: ThreadSummary, rank: number, nested: boolean, event: StateInboxRow['kind']): StateInboxRow => {

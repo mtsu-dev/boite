@@ -240,11 +240,25 @@ test('@ lists the members, Enter picks one, and the message goes to that member 
   expect(document.querySelector('[data-testid=mention-menu]:not(.closing)')).toBeNull();
   expect(field.value).toBe('@So');
 
-  type('@Gemini is an hour of sleep a real case?');
-  const sent = vi.spyOn(client, 'call');
-  query<HTMLButtonElement>('[data-testid=council-send]').click();
-  await vi.waitFor(() => expect(field.value).toBe(''));
-  expect(sent).toHaveBeenCalledWith('council.post', expect.objectContaining({ councilId: 'cnl_demo_live', text: '@Gemini is an hour of sleep a real case?', id: expect.any(String) }));
+  const draft = '@Gemini is an hour of sleep a real case?';
+  type(draft);
+  const call = client.call.bind(client);
+  let refuse = true;
+  const sent = vi.spyOn(client, 'call').mockImplementation(((...args: Parameters<typeof call>) => {
+    if (args[0] === 'council.post' && refuse) { refuse = false; return Promise.reject(new Error('Try again')); }
+    return call(...args);
+  }) as typeof call);
+  const send = query<HTMLButtonElement>('[data-testid=council-send]');
+  send.click(); flushSync();
+  expect(field.value).toBe('');
+  expect(send.disabled).toBe(true);
+  await vi.waitFor(() => expect(text('[data-testid=council-error]')).toBe('Try again'));
+  expect(field.value).toBe(draft);
+  send.click();
+  const posts = sent.mock.calls.filter(([method]) => method === 'council.post');
+  expect(posts).toHaveLength(2);
+  expect(posts[0]).toEqual(['council.post', { councilId: 'cnl_demo_live', text: draft, id: expect.any(String) }]);
+  expect(posts[1]).toEqual(posts[0]);
   await vi.waitFor(() => expect(all('[data-testid=council-post][data-author=owner]')).toHaveLength(2));
   const mine = all('[data-testid=council-post][data-author=owner]').at(-1)!;
   expect(mine.dataset.to).toBe('p3');

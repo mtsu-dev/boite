@@ -5,7 +5,7 @@
 
 import { untrack } from 'svelte';
 import { contactsRail, contactsShown } from './contacts-rail.svelte';
-import { contactsParts } from './contacts-entry';
+import { homePage as lazyHomePage, contactsRail as lazyContactsRail } from './navigation-views';
 import { groupLoading, operatorHost, operatorOnOpen } from './operator';
 import { strings } from './strings';
 import type { Store } from './store.svelte';
@@ -20,19 +20,15 @@ export { contactsShown };
  * starts: its effects live as long as the component.
  */
 export function contactsViews(current: () => Store, machines: () => readonly { store: Store }[], narrow: () => boolean) {
-  const views = $state<{
-    HomePage?: typeof import('../components/home/HomePage.svelte').default;
-    ContactsRail?: typeof import('../components/home/ContactsRail.svelte').default;
-    homeError: string;
-  }>({ homeError: '' });
+  let homeError = $state('');
   $effect(() => {
-    if (current().page !== 'home' || !contactsShown(current()) || views.HomePage) return;
-    void contactsParts.HomePage().then(module => { views.HomePage = module.default; })
-      .catch(() => { views.homeError = strings.contacts.loadFailed; });
+    if (current().page !== 'home' || !contactsShown(current()) || lazyHomePage.current) return;
+    homeError = '';
+    void lazyHomePage.load().catch(() => { homeError = strings.contacts.loadFailed; });
   });
   $effect(() => {
-    if (!contactsShown(current()) || narrow() || views.ContactsRail) return;
-    void contactsParts.ContactsRail().then(module => { views.ContactsRail = module.default; }).catch(() => {});
+    if (!contactsShown(current()) || narrow() || lazyContactsRail.current) return;
+    void lazyContactsRail.load().catch(() => undefined);
   });
   // Waits for the group's answer, which names the machine that holds the
   // Operator, and follows that machine: reached again while Contacts stay
@@ -51,5 +47,9 @@ export function contactsViews(current: () => Store, machines: () => readonly { s
     const store = current();
     if (store.page === 'home' && !contactsShown(store)) store.showChat();
   });
-  return views;
+  return {
+    get HomePage() { return lazyHomePage.current; },
+    get ContactsRail() { return lazyContactsRail.current; },
+    get homeError() { return homeError; }
+  };
 }

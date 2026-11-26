@@ -1,11 +1,11 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { PRESS_GRACE_MS, startPressPreload } from './press-preload';
 
-function press(target: Element, type: string, init: { pointerId?: number; button?: number; pointerType?: string } = {}): void {
-  const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: init.button ?? 0 });
+function press(target: Element, type: string, init: { pointerId?: number; button?: number; pointerType?: string; clientX?: number; isPrimary?: boolean } = {}): void {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: init.button ?? 0, clientX: init.clientX });
   Object.defineProperties(event, {
     pointerId: { value: init.pointerId ?? 1 },
-    isPrimary: { value: true },
+    isPrimary: { value: init.isPrimary ?? true },
     pointerType: { value: init.pointerType ?? 'mouse' }
   });
   target.dispatchEvent(event);
@@ -15,6 +15,35 @@ afterEach(() => {
   vi.useRealTimers();
   document.body.innerHTML = '';
   Object.defineProperty(navigator, 'webdriver', { value: false, configurable: true });
+});
+
+test('re-pressing a row shares its preload, but a drag or release away gives it back immediately', () => {
+  document.body.innerHTML = '<button data-preload-thread="t-1">row</button><div>outside</div>';
+  const row = document.querySelector('button')!;
+  const outside = document.querySelector('div')!;
+  const release = vi.fn();
+  const store = { preload: vi.fn(() => release) };
+  const stop = startPressPreload({ machines: [], active: store });
+  try {
+    press(row, 'pointerdown');
+    press(row, 'pointerup');
+    press(row, 'pointerdown');
+    expect(store.preload).toHaveBeenCalledTimes(1);
+    expect(release).not.toHaveBeenCalled();
+    press(row, 'pointermove', { clientX: 11, pointerId: 2 });
+    expect(release).not.toHaveBeenCalled();
+    press(row, 'pointermove', { clientX: 11 });
+    expect(release).toHaveBeenCalledTimes(1);
+    press(row, 'pointerdown');
+    press(outside, 'pointerup');
+    expect(release).toHaveBeenCalledTimes(2);
+    press(row, 'pointerdown');
+    press(outside, 'pointerdown');
+    expect(release).toHaveBeenCalledTimes(3);
+    press(row, 'pointerdown', { pointerType: 'touch' });
+    press(row, 'pointerdown', { pointerType: 'touch', pointerId: 2, isPrimary: false });
+    expect(release).toHaveBeenCalledTimes(4);
+  } finally { stop(); }
 });
 
 test('a press preloads on the owning machine, a click inside the grace keeps it, a cancel or a stray release gives it back', () => {
@@ -80,4 +109,18 @@ test('a button carrying both data-preload-view and data-preload-thread warms the
   } finally {
     stop();
   }
+});
+
+test('pressing the subagents tab warms the lightweight view on its owning machine', () => {
+  Object.defineProperty(navigator, 'webdriver', { value: false, configurable: true });
+  document.body.innerHTML = '<button data-machine-id="remote" data-preload-view="panel-agents">Subagents</button>';
+  const active = { preload: vi.fn(), loadDelegation: vi.fn(), openThread: { id: 'local-thread' } };
+  const remote = { preload: vi.fn(), loadDelegation: vi.fn(), openThread: { id: 'remote-thread' } };
+  const stop = startPressPreload({ machines: [{ id: 'remote', store: remote }], active });
+  try {
+    press(document.querySelector('button')!, 'pointerdown');
+    expect(remote.loadDelegation).toHaveBeenCalledWith('remote-thread', { join: true });
+    expect(active.loadDelegation).not.toHaveBeenCalled();
+    expect(remote.preload).not.toHaveBeenCalled();
+  } finally { stop(); }
 });

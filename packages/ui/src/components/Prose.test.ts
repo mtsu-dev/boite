@@ -434,3 +434,25 @@ test('a phone\'s menu has no folder to show, and a copied selection carries a ch
   expect(event.defaultPrevented).toBe(true);
   expect(copied.get('text/plain')).toBe('Edit src/lib/app.ts:12 now.');
 });
+
+test('unmount releases the standalone diagram URL while its viewer chunk is still pending', async () => {
+  const { parts } = await import('../lib/deferred-parts');
+  const load = vi.spyOn(parts.ImageViewer, 'load').mockImplementation(() => new Promise(() => {}));
+  const original = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
+  const revoke = vi.fn();
+  Object.assign(URL, { createObjectURL: () => 'blob:diagram-unmount', revokeObjectURL: revoke });
+  try {
+    running = mount(Prose, { target: document.body, props: { text: ['```mermaid', 'flowchart LR', '  A --> B', '```'].join('\n') } });
+    await vi.waitFor(() => expect(document.querySelector('[data-testid=diagram-enlarge]')).not.toBeNull(), { timeout: 10_000 });
+    query<HTMLButtonElement>('[data-testid=diagram-enlarge]').click();
+    flushSync();
+    expect(load).toHaveBeenCalledOnce();
+    expect(revoke).not.toHaveBeenCalled();
+    await unmount(running);
+    running = null;
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:diagram-unmount');
+  } finally {
+    load.mockRestore();
+    Object.assign(URL, original);
+  }
+});

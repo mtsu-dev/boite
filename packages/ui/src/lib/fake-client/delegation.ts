@@ -1,6 +1,6 @@
 /** Delegation: a parent thread's team of child threads, their usage and letters. */
 import { errorText } from '../errors';
-import { collectNativeAgents, collectProcessAgents, CONVERSATION_PROFILE_ID, DEFAULT_DELEGATION_CONFIG, delegationNeeds, delegationReply, matchSpeed, providerEnabled, RpcErrorCode, SPEED_NEEDS_MODEL, speedRefusal, threadActive, type AgentLetter, type DelegatedAgent, type DelegationConfig, type DelegationModelChoice, type DelegationProfile, type DelegationView, type DelegationWaitResult, type RpcParams, type Message, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { collectNativeAgents, collectProcessAgents, CONVERSATION_PROFILE_ID, DEFAULT_DELEGATION_CONFIG, delegationNeeds, delegationReply, matchSpeed, providerEnabled, RpcErrorCode, SPEED_NEEDS_MODEL, speedRefusal, threadActive, workingChildren, type AgentLetter, type DelegatedAgent, type DelegationConfig, type DelegationModelChoice, type DelegationProfile, type DelegationView, type DelegationWaitResult, type RpcParams, type Message, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { fakeContextMode } from './context-mode';
 import { RpcFailure } from '../client';
 import { addUsage, emptyUsage, toSummary } from './shared';
@@ -65,7 +65,7 @@ export function pickModel(ctx: FakeContext, parent: Thread, config: DelegationCo
 function delegatedAgent(ctx: FakeContext, row: DelegationRow, rootId: ThreadId): DelegatedAgent {
   if (row.machine !== undefined) return remoteAgent(row, rootId, there => delegatedAgent(there, { threadId: row.threadId, profileId: row.profileId, task: row.task }, rootId));
   const thread = ctx.thread(row.threadId);
-  const summary = toSummary(thread);
+  const summary = toSummary(thread.parentThreadId ? thread : { ...thread, parentThreadId: rootId });
   const lastTurn = thread.turns.findLast(turn => turn.execution?.operation !== 'compact' && turn.execution?.operation !== 'keepalive') ?? null;
   const terminal = lastTurn !== null && !['queued', 'running'].includes(lastTurn.status);
   const result = terminal
@@ -85,8 +85,8 @@ function delegatedAgent(ctx: FakeContext, row: DelegationRow, rootId: ThreadId):
     ...(needsInput.length ? { needsInput } : {}), ...(worktree ? { worktree: structuredClone(worktree) } : {}) };
 }
 
-/** The real core projects chatbar question links in global parent summaries, without subscribing to the child. */
-export function watchQuestionParents(ctx: FakeContext): void {
+/** As in the core, parent rows receive the state of their subagents without a subscription. */
+export function watchSubagentParents(ctx: FakeContext): void {
   let scheduled = false;
   for (const event of ['question.asked', 'question.answered', 'delegation.changed', 'thread.updated'] as const) ctx.bus.observe(event, () => {
     if (scheduled) return;
@@ -98,18 +98,22 @@ export function watchQuestionParents(ctx: FakeContext): void {
       for (const root of ctx.threads.values()) {
         if (root.parentThreadId) continue;
         const rootId = root.id;
-        const rows: DelegationRow[] = [
-          ...(ctx.delegationAgents.get(rootId) ?? []).filter(row => row.machine),
-          ...ctx.workflows.childrenThere(rootId).map(child => ({ threadId: child.threadId, task: '', profileId: CONVERSATION_PROFILE_ID, machine: { coreId: child.coreId, name: fakeCore(child.coreId)?.identity.name ?? child.coreId } })),
-        ];
-        const remote = rows.filter(row => row.last !== undefined || fakeCore(row.machine!.coreId)?.threads.has(row.threadId))
-          .map(row => delegatedAgent(ctx, row, rootId))
+        const reported = (rows: DelegationRow[]) => rows
+          .filter(row => row.last !== undefined || fakeCore(row.machine!.coreId)?.threads.has(row.threadId))
+          .map(row => delegatedAgent(ctx, row, rootId));
+        const agents = reported((ctx.delegationAgents.get(rootId) ?? []).filter(row => row.machine));
+        const steps = reported(ctx.workflows.childrenThere(rootId).map(child => ({ threadId: child.threadId, task: '', profileId: CONVERSATION_PROFILE_ID, machine: { coreId: child.coreId, name: fakeCore(child.coreId)?.identity.name ?? child.coreId } })));
+        const remote = [...agents, ...steps]
           .filter(agent => !agent.thread.archived && agent.needsInput?.some(input => input.kind === 'question'))
           .map(agent => ({ threadId: agent.thread.id, title: agent.thread.title, ...(agent.machine ? { machine: agent.machine } : {}) }));
         const links = root.archived ? [] : [...local.filter(child => child.parentThreadId === rootId).map(child => ({ threadId: child.id, title: child.title })), ...remote];
-        if (JSON.stringify(root.subagentQuestions ?? []) === JSON.stringify(links)) continue;
+        const work = root.remoteSubagents !== undefined || agents.length > 0
+          ? root.archived ? null : workingChildren(agents.map(agent => agent.thread)).get(rootId) ?? null
+          : undefined;
+        if (JSON.stringify(root.subagentQuestions ?? []) === JSON.stringify(links) && JSON.stringify(root.remoteSubagents) === JSON.stringify(work)) continue;
         root.subagentQuestions = links;
-        ctx.touch(root);
+        root.remoteSubagents = work;
+        ctx.emit('thread.updated', structuredClone(toSummary(root)));
       }
     });
   });

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { crc32, deflateSync } from 'node:zlib';
 import { INITIAL_PAGE_BYTES, type Message, type RpcResult } from '@boite/contracts';
@@ -6,6 +6,7 @@ import { noisyPng as png } from './fixtures/noisy-png.ts';
 import { echoThread, startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
+import { readMessageAttachment } from '../src/threads/attachment-read.ts';
 
 let harness: TestCore;
 
@@ -318,6 +319,37 @@ describe('deferred pictures', () => {
     expect(await client.call('messages.attachment', { threadId, messageId: 'msg_gif', partIndex: 0, display: true })).toEqual({ data: gif });
   });
 
+  test('queued display conversions leave their originals in the journal until a slot is free', async () => {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const { core } = harness;
+    const ids = ['copy-first', 'copy-second', 'copy-queued'];
+    for (const [createdAt, id] of ids.entries()) core.journal.putMessage({
+      id, threadId, turnId: 'trn_seed', role: 'assistant', state: 'complete', createdAt,
+      parts: [{ type: 'image', mimeType: 'image/png', data: SHOT, alt: null }],
+    });
+    const paused = Promise.withResolvers<void>();
+    const bytes = Bun.Image.prototype.bytes;
+    const encode = spyOn(Bun.Image.prototype, 'bytes').mockImplementation(async function (this: Bun.Image) {
+      await paused.promise;
+      return await bytes.call(this);
+    });
+    const part = spyOn(core.journal, 'messagePart');
+    const requests = ids.map(messageId => readMessageAttachment(core, { threadId, messageId, partIndex: 0, display: true }));
+    try {
+      expect(encode).toHaveBeenCalledTimes(2);
+      expect(part.mock.calls.map(([messageId]) => messageId)).toEqual(ids.slice(0, 2));
+      paused.resolve();
+      expect((await Promise.all(requests)).every(result => result.data.length > 0)).toBe(true);
+      expect(part.mock.calls.map(([messageId]) => messageId)).toEqual(ids);
+    } finally {
+      paused.resolve();
+      await Promise.allSettled(requests);
+      encode.mockRestore();
+      part.mockRestore();
+    }
+  });
+
   test('with ticket a copy and an original come as a cached file route address, the same one while it lives', async () => {
     const client = await harness.connect();
     const { threadId } = await echoThread(harness, client);
@@ -494,5 +526,37 @@ describe('deferred pictures', () => {
     expect(previews(threadId)).toBe(1);
     harness.core.journal.deleteThreads([threadId]);
     expect(previews(threadId)).toBe(0);
+  });
+
+  test('an in-flight display conversion is scoped to its thread and never answers a concurrent wrong-thread read', async () => {
+    const client = await harness.connect();
+    const first = await echoThread(harness, client);
+    const other = await echoThread(harness, client);
+    harness.core.journal.putMessage({
+      id: 'msg_scoped_display', threadId: first.threadId, turnId: 'trn_seed', role: 'user', state: 'complete', createdAt: 4_000,
+      parts: [{ type: 'image', mimeType: 'image/png', data: SCREEN, alt: 'screen.png' }],
+    });
+    const encode = Bun.Image.prototype.bytes;
+    let entered = false;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    Bun.Image.prototype.bytes = async function () {
+      entered = true;
+      await gate;
+      return encode.call(this);
+    };
+    try {
+      const ownerRead = client.call('messages.attachment', { threadId: first.threadId, messageId: 'msg_scoped_display', partIndex: 0, display: true });
+      await waitFor(() => entered);
+      const wrongRead = client.call('messages.attachment', { threadId: other.threadId, messageId: 'msg_scoped_display', partIndex: 0, display: true });
+      expect(await thrown(wrongRead)).toThrow(/msg_scoped_display/);
+      release();
+      const ownerAnswer = await ownerRead;
+      expect(ownerAnswer.mimeType).toBe('image/webp');
+      expect(ownerAnswer.data.length).toBeGreaterThan(0);
+    } finally {
+      release();
+      Bun.Image.prototype.bytes = encode;
+    }
   });
 });

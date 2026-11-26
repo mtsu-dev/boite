@@ -94,7 +94,7 @@ impl Spawned {
 }
 
 pub(super) fn spawn_core(launch: &Launch) -> Result<(Spawned, Option<CoreJob>), String> {
-    let CoreCommand { program, args, working_directory } = launch.command.clone()?;
+    let CoreCommand { program, args, working_directory } = launch.binary().command.clone()?;
     #[cfg(target_os = "linux")]
     let deployed = super::appimage::prepare(&launch.directory, std::path::Path::new(&program), launch.resources.as_deref())?;
     #[cfg(not(target_os = "linux"))]

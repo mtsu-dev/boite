@@ -25,6 +25,7 @@
  * read only for the scroll containers on the pointer's path; scroll and wheel
  * listened to only while a thumb shows.
  */
+import { zoomWheel } from './zoom';
 
 /** Beyond this distance from an edge, in CSS px, its thumb is hidden. */
 export const REVEAL_DISTANCE = 128;
@@ -364,10 +365,10 @@ function activate(): () => void {
     }
   }
 
-  /** The wheel over a thumb scrolls its container, as it would over a native bar. */
+  /** The wheel over a thumb scrolls its container, as it would over a native bar. A zoom's wheel scrolls nothing. */
   function onwheel(event: WheelEvent) {
     const bar = event.target instanceof HTMLDivElement ? owners.get(event.target) : undefined;
-    if (!bar) return;
+    if (!bar || zoomWheel(event)) return;
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bar.clientSize : 1;
     bar.el.scrollBy({ left: event.deltaX * unit, top: event.deltaY * unit });
   }

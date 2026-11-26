@@ -98,7 +98,7 @@ fn channel_label(channel: Channel) -> &'static str {
     match channel { Channel::Stable => "stable", Channel::Dev => "dev" }
 }
 
-/// One startup step, with how long it held the main thread.
+/// How long one startup step took on the thread that ran it.
 fn phase(name: &'static str, started: std::time::Instant) {
     let took = started.elapsed();
     shell_log::timed(shell_log::Level::Info, "startup", "shell.startup.phase",
@@ -336,12 +336,14 @@ pub fn run() {
                     if hides { hide_main(&closing); }
                     else { request_quit(&closing); }
                 }
-                // Minimizing hides nothing from WebView2: the page is parked
-                // here, and unparked by the resize that restores the window.
+                // Minimizing does not hide the webviews. Lower the main page's
+                // memory target and park the panels until the window is restored.
                 WindowEvent::Resized(size) => {
                     watchdog::saw(Seen::Resized);
                     let now_minimized = resized.is_minimized().unwrap_or(false);
                     if now_minimized != minimized.swap(now_minimized, Ordering::Relaxed) {
+                        #[cfg(windows)]
+                        window::sync_main_memory(&closing, &resized, now_minimized);
                         watchdog::saw(Seen::Minimized);
                         shell_log::info("window", if now_minimized { "shell.window.minimized" } else { "shell.window.restored" },
                             if now_minimized { "the window was minimized".to_string() } else { format!("the window was restored at {}x{}", size.width, size.height) },
@@ -351,6 +353,10 @@ pub fn run() {
                     else if resized.is_visible().unwrap_or(false) { browser::unpark_all(&closing); }
                 }
                 WindowEvent::Focused(focused) => {
+                    #[cfg(windows)]
+                    if *focused {
+                        window::sync_main_memory(&closing, &resized, resized.is_minimized().unwrap_or(false));
+                    }
                     watchdog::saw(if *focused { Seen::Focused } else { Seen::Blurred });
                     shell_log::debug("window", "shell.window.focus", if *focused { "the window gained focus" } else { "the window lost focus" },
                         json!({ "focused": focused }));
@@ -423,6 +429,7 @@ pub fn run() {
                 request_quit(app);
             }
             tauri::RunEvent::Exit => {
+                app.state::<quota_window::HoverState>().cancel_release();
                 if let Some(state) = app.try_state::<CoreState>() {
                     state.kill_child();
                 }
