@@ -4,7 +4,7 @@
  * and each file chip as the path it was written as (`lib/file-links.ts`).
  * A copy that touches neither stays the browser's own.
  */
-const DRAWINGS = '.md-math, .md-mermaid, .md-view';
+const DRAWINGS = '.md-math, .md-mermaid, .md-view, .md-native';
 const CHIPS = 'a.file-chip[data-source]';
 const BLOCKS = new Set(['p', 'div', 'li', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr', 'table', 'ul', 'ol', 'hr']);
 /** Blocks a blank line separates in Markdown. */
@@ -36,9 +36,12 @@ export function selectedSource(range: Range): string {
   if (end) whole.setEndAfter(end);
   const fragment = whole.cloneContents();
   for (const element of fragment.querySelectorAll<HTMLElement>(DRAWINGS)) {
+    // An enclosing drawing (for instance a native block holding inline math) already replaced its subtree.
+    if (!fragment.contains(element)) continue;
     const source = element.dataset.source ?? '';
-    const fence = element.classList.contains('md-mermaid') ? 'mermaid' : element.classList.contains('md-view') ? 'view' : '';
-    const text = fence ? `\`\`\`${fence}\n${source}\n\`\`\`` : source;
+    const fence = element.classList.contains('md-mermaid') ? 'mermaid' : element.classList.contains('md-view') ? 'view' : element.dataset.kind ?? '';
+    const mark = element.dataset.fence || '```';
+    const text = fence ? `${mark}${fence}\n${source}\n${mark}` : source;
     element.replaceWith(element.localName === 'div' ? blockOf(text) : document.createTextNode(text));
   }
   for (const chip of fragment.querySelectorAll<HTMLElement>(CHIPS)) chip.replaceWith(document.createTextNode(chip.dataset.source ?? ''));
@@ -52,9 +55,12 @@ function blockOf(text: string): HTMLParagraphElement {
   return paragraph;
 }
 
+/** Outermost drawing or chip containing `at`: a formula inside a native block belongs to that block's source. */
 function wholeOf(at: Node): Element | null {
-  const element = at instanceof Element ? at : at.parentElement;
-  return element?.closest(`${DRAWINGS}, ${CHIPS}`) ?? null;
+  const selector = `${DRAWINGS}, ${CHIPS}`;
+  let found: Element | null = null;
+  for (let current = (at instanceof Element ? at : at.parentElement)?.closest(selector) ?? null; current; current = current.parentElement?.closest(selector) ?? null) found = current;
+  return found;
 }
 
 /** Text with the line breaks its blocks imply: `textContent` would run two paragraphs together. */

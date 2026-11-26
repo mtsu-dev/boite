@@ -12,8 +12,10 @@ export const SHORT_ANSWERS = 'Answer style: brief updates. Lead with the result.
  * for a visual, since it costs the agent no command and no help to read. Each
  * Mermaid header named is one Pele draws. Pele's xychart lexer rejects a bare
  * label with an accent (`x-axis [Jan, Fév]`), the one slip a live run made.
+ * The four plain-line fences cost a few tokens where a view of the same list
+ * costs its HTML and CSS (`packages/ui/src/lib/native-blocks.ts`).
  */
-export const CHAT_VISUALS = 'Visuals need no command: chat draws a ```mermaid fence (flowchart, sequenceDiagram, xychart-beta with "quoted" labels, pie, gantt, timeline, quadrantChart, sankey-beta, mindmap), TeX in `$$` or backslash-parens, never single `$`, and a ```view fence of HTML, SVG, CSS and script for an interactive or animated piece, drawn offline in the app\'s theme: write no fixed color. Use them when asked for a visual or when a picture explains better than text.';
+export const CHAT_VISUALS = 'Visuals need no command: chat draws a ```mermaid fence (flowchart, sequenceDiagram, xychart-beta with "quoted" labels, pie, gantt, timeline, quadrantChart, sankey-beta, mindmap), TeX in `$$` or backslash-parens, never single `$`, and a ```view fence of HTML, SVG, CSS and script for an interactive or animated piece, drawn offline in the app\'s theme: write no fixed color. Plain lines draw too: ```steps and ```options (`title | detail`), ```bars and ```stats (`label | value | note`), a leading `* ` highlights one; prefer them to a view. Use them when asked for a visual or when a picture explains better than text.';
 
 /**
  * A conversation's agent closes its own thread in the turn its last PR merges:

@@ -16,6 +16,7 @@ import { copyByCommand } from './clipboard';
 import { fill, strings } from './strings';
 import type { MediaItem } from './media-gallery';
 import type { RichMarkdownOptions } from './rich-markdown';
+import { isNativeKind, parseNative, drawNative } from './native-blocks';
 import { knownViewHeight, mountViewFrame } from './view-block';
 import './rich-markdown-draw.css';
 
@@ -69,6 +70,7 @@ const diagrams = new DrawnCache<{ fragment: DocumentFragment; width: number; hei
 export function draw(element: HTMLElement, options: () => RichMarkdownOptions): void {
   if (element.classList.contains('md-math')) drawMath(element);
   else if (element.classList.contains('md-view')) drawView(element, options);
+  else if (element.classList.contains('md-native')) drawNativeBlock(element);
   else drawDiagram(element, options);
 }
 
@@ -125,6 +127,37 @@ function drawDiagram(element: HTMLElement, options: () => RichMarkdownOptions): 
     ),
     () => showSource(element, source, strings.chat.diagram.unavailable)
   );
+}
+
+/**
+ * A ```steps, ```options, ```bars or ```stats block, drawn here from its lines
+ * (`lib/native-blocks.ts`). One its grammar does not fit stays code, with its
+ * copy button and no error line: it reads as the code block it is.
+ */
+export function drawNativeBlock(element: HTMLElement): void {
+  const source = element.dataset.source ?? '';
+  const raw = element.dataset.kind ?? '';
+  const kind = isNativeKind(raw) ? raw : null;
+  const items = kind ? parseNative(kind, source) : null;
+  if (!kind || !items) {
+    const bar = document.createElement('div');
+    bar.className = 'md-diagram-bar';
+    bar.append(copyButton(source));
+    element.prepend(bar);
+    element.classList.add('md-drawn', 'md-source');
+    return;
+  }
+  const figure = document.createElement('div');
+  figure.className = 'md-native-figure';
+  figure.dataset.testid = 'native-block';
+  figure.append(drawNative(kind, items));
+  for (const math of figure.querySelectorAll<HTMLElement>('.md-math:not([data-drawn])')) {
+    math.dataset.drawn = '';
+    drawMath(math);
+  }
+  element.querySelector(':scope > pre')?.before(figure);
+  element.prepend(drawnBar(element, source, strings.chat.diagram.showBlock));
+  element.classList.add('md-drawn');
 }
 
 /**
