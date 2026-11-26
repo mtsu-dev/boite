@@ -166,6 +166,19 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACT_MAIL_SCENARIOS,
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
+  'diagnostics file export supplies a named report and refuses a caller-selected path': async env => {
+    const report = await env.call('diagnostics.exportFile', {});
+    check(/^boite-diagnostics-.+\.txt$/.test(report.name), 'expected a diagnostics filename');
+    check(Number.isSafeInteger(report.bytes) && report.bytes > 0, 'expected a nonempty report');
+    if (report.url === undefined) {
+      same(new TextEncoder().encode(report.text).byteLength, report.bytes, 'report size in bytes');
+    } else {
+      check(/^\/file\/[A-Za-z0-9_-]{32,}$/.test(report.url), 'expected a file ticket');
+      check(report.text === undefined, 'the ticket reply included the report text');
+    }
+    const params = { path: env.missingFolder() } as unknown as RpcParams<'diagnostics.exportFile'>;
+    await refusedWith(env.call('diagnostics.exportFile', params), RpcErrorCode.InvalidParams);
+  },
   'turns.resume refuses a completed turn without opening another turn': async env => {
     const { id: threadId } = await thread(env, await echo(env));
     const { id: turnId } = await env.call('turns.start', { threadId, prompt: 'Finish this once' });
