@@ -1,3 +1,4 @@
+import { markFeature } from '@boite/contracts';
 import type { ContactRequest, HeldContactLetter } from '@boite/contracts';
 
 /**
@@ -28,3 +29,5 @@ export function mergeAsks<R extends InboxAsk>(rows: readonly R[]): { row: R; sam
   }
   return [...groups.values()].map(same => ({ row: same.at(-1)!, same }));
 }
+
+markFeature('boite-feature:contacts');

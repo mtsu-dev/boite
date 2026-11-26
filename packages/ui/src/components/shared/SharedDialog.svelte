@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { onMount, type Snippet } from 'svelte';
   import { X } from '@lucide/svelte';
   import { focusedElement, restoreFocus } from '../../lib/focus';
@@ -13,6 +14,7 @@
     const release = mobileOverlay(onclose);
     return () => { release(); dialog.close(); restoreFocus(previous); };
   });
+  markFeature('boite-feature:contacts');
 </script>
 
 <dialog bind:this={dialog} class:compact aria-labelledby={uid} data-testid={testid}

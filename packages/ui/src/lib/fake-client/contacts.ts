@@ -37,6 +37,11 @@ const refuse = (message: string, field?: string) =>
 const invalid = (message: string, field?: string) =>
   new RpcFailure({ code: RpcErrorCode.InvalidParams, message, ...(field === undefined ? {} : { data: { field } }) });
 
+/** As the core's switch, read the effective setting, including the build's hold. */
+export function assertFakeContacts(ctx: FakeContext): void {
+  if (!contactsOn(ctx.settingsInForce())) throw new RpcFailure({ code: RpcErrorCode.Refused, message: CONTACTS_OFF_MESSAGE, data: { reason: CONTACTS_OFF_REASON } });
+}
+
 /** Like the core's `text()`: 1 to `max` characters, not blank, kept as written; the error names no field. */
 function text(value: unknown, field: string, max: number): string {
   if (typeof value !== 'string' || !value.trim() || value.length > max) throw invalid(`${field}: expected 1 to ${max} characters`);
@@ -452,10 +457,7 @@ export function contactMethods(ctx: FakeContext) {
     relate(request, thread, by);
     return thread;
   };
-  /** As the core (`contacts/switch.ts`): what links this machine to a contact waits for the owner's switch. */
-  const switchedOn = (): void => {
-    if (!contactsOn(ctx.settings)) throw new RpcFailure({ code: RpcErrorCode.Refused, message: CONTACTS_OFF_MESSAGE, data: { reason: CONTACTS_OFF_REASON } });
-  };
+  const switchedOn = () => assertFakeContacts(ctx);
   return {
     'contacts.get': async () => {
       const state = structuredClone({ ...contactState(ctx), bot: botOf(ctx), mail: fakeHeldMail(ctx) });
@@ -529,7 +531,7 @@ export function contactMethods(ctx: FakeContext) {
       const inviter = fakeCore(coreId);
       if (inviter) {
         // Like the core's join route: an inviter whose contacts are off answers 403 and keeps the token.
-        if (!contactsOn(inviter.settings)) throw refuse(`${machine} refused the join (403: forbidden)`);
+        if (!contactsOn(inviter.settingsInForce())) throw refuse(`${machine} refused the join (403: forbidden)`);
         if (!tokensOf(inviter).delete(String(card.t))) throw refuse('token: this invitation was already used, cancelled or expired; ask for a new one');
         contactState(inviter).invitations = tokensOf(inviter).size;
         inviter.emit('contacts.updated', {});
@@ -554,6 +556,7 @@ export function contactMethods(ctx: FakeContext) {
       return structuredClone(contact);
     },
     'contacts.update': async (params) => {
+      if (params?.trusted === true) switchedOn();
       const state = contactState(ctx);
       if (params?.trusted !== undefined && typeof params.trusted !== 'boolean') throw invalid('trusted: expected a boolean', 'trusted');
       const name = params?.name === undefined ? undefined : text(params.name, 'name', 100).trim();
@@ -573,10 +576,10 @@ export function contactMethods(ctx: FakeContext) {
       }
       if (params.trusted !== undefined) contact.trusted = params.trusted;
       // As the core's `requests.trusted`: what waited for the owner's card no longer needs one.
-      if (contact.trusted) for (const request of state.requests) if (request.coreId === contact.coreId && request.direction === 'in' && request.status === 'pending' && request.approved === false) request.approved = true;
+      if (params.trusted === true) for (const request of state.requests) if (request.coreId === contact.coreId && request.direction === 'in' && request.status === 'pending' && request.approved === false) request.approved = true;
       offers(contact);
       // As the core: trusted now, its mail goes to its threads.
-      if (contact.trusted) releaseFakeMail(ctx, contact.coreId);
+      if (params.trusted === true) releaseFakeMail(ctx, contact.coreId);
       changed();
       return structuredClone(contact);
     },
@@ -685,6 +688,7 @@ export function contactMethods(ctx: FakeContext) {
     },
     'contacts.tailscaleKey': async (params) => {
       const key = params?.key;
+      if (key !== null) switchedOn();
       if (key !== null && (typeof key !== 'string' || !/^tskey-[A-Za-z0-9_-]{10,200}$/.test(key.trim()))) throw invalid('key: expected a Tailscale API key starting with tskey-, or null to clear it', 'key');
       const state = contactState(ctx);
       state.tailscale = tailscale(key !== null);
@@ -695,7 +699,7 @@ export function contactMethods(ctx: FakeContext) {
       ctx.thread(params?.threadId);
       // A thread that keeps to this machine sees no contact.
       const config = coordinationConfig(ctx, params.threadId);
-      if (config.mode === 'off' || !config.remote || !contactsOn(ctx.settings)) return [];
+      if (config.mode === 'off' || !config.remote || !contactsOn(ctx.settingsInForce())) return [];
       // As the core: an ordinary thread reads names only; requests go through the Contacts bot, which reads the rest.
       const bot = params.threadId === ctx.agents.builtinThread('contacts');
       return fakeContactRoutes(ctx).map(({ contact }) => ({ name: contact.name, coreId: contact.coreId, projects: bot ? contact.offers.map(offer => offer.name) : [], link: contact.link }));

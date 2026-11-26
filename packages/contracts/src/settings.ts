@@ -344,7 +344,7 @@ export function contactsOn(settings: Pick<Settings, 'contacts'>): boolean {
 export const CONTACTS_OFF_REASON = 'contacts-off';
 
 /** What a call refused by the switch says, and the way an agent asks the owner for it. */
-export const CONTACTS_OFF_MESSAGE = 'contacts are off on this machine (Settings, General, What agents may do alone); ask the owner to turn them on with: boite settings request contacts true --why "<reason>"';
+export const CONTACTS_OFF_MESSAGE = 'contacts are off on this machine (Settings > Experiments in Nightly and Dev builds); ask the owner to turn them on with: boite settings request contacts true --why "<reason>"';
 
 /**
  * The `contacts` key a stored settings object lacks, with the value the first

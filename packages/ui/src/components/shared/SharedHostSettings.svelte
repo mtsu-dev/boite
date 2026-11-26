@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { untrack } from 'svelte';
   import type { DelegationView, PermissionMode, SharedComputePolicy, SharedProjectScope, SharedProjectView } from '@boite/contracts';
   import type { Store } from '../../lib/store.svelte';
@@ -49,6 +50,7 @@
     catch (e) { error = errorText(e); }
     finally { busy = false; }
   }
+  markFeature('boite-feature:contacts');
 </script>
 
 <section class="hosting">

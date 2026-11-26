@@ -13,7 +13,7 @@ const cores = ['core-a', 'core-c'].map(coreId => ({ coreId, name: coreId.toUpper
 function machine(self: string, connection: string, group: { botsHome?: string } | null, groupKnown: boolean) {
   const call = vi.fn(async (method: string): Promise<unknown> => method === 'contacts.get' ? { bot: null } : {});
   const store = $state({
-    owner: true, settings: { contacts: true }, page: 'chat', connection, client: { call }, groupKnown, error: '',
+    owner: true, core: { version: '2.0.0-test.0' }, settings: { contacts: true }, page: 'chat', connection, client: { call }, groupKnown, error: '',
     group: group && { id: 'grp', self, cores, ...group }, showChat: () => {},
   });
   return { store, call, ensured: () => call.mock.calls.filter(([method]) => method === 'agents.builtin.ensure').length };

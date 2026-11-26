@@ -79,6 +79,7 @@ function closedAgents(): boolean {
 }
 import { RpcFailure } from '../client';
 import { FakeAgents } from '../fake-agents';
+import { assertFakeContacts } from './contacts';
 import { checkEffort, checkModel, defaultModel } from './checks';
 import { fakeFirewall, fakeFirewallKind, fakeLan, type FakeFirewall } from './lan';
 import { modelsOf } from './provider-catalog';
@@ -473,6 +474,7 @@ export class FakeContext {
       this.settlingAgentCards = true;
       queueMicrotask(() => { this.settlingAgentCards = false; settleAgentSettings(this); });
     }, {
+      assertContacts: () => assertFakeContacts(this),
       create: (agent, sessionId) => createAgentSession(this, agent, sessionId),
       // A wake runs on the thread like a turn the user started; one already running refuses it, as the composer's queue would wait.
       wake: (threadId, prompt, operation, label) => this.startTurn(threadId, prompt, [], operation, undefined, undefined, [], false, label),

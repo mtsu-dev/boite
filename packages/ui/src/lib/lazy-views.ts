@@ -9,7 +9,7 @@ const intentViews: Record<string, readonly { load(): Promise<unknown> }[]> = {
   agents: [lazyAgentsLayout, lazyAgentsPage],
   team: [lazyAgentsLayout, lazyAgentsPage, lazyTeamChat],
   council: [appViews.RightPanel, lazyCouncilSalon],
-  home: [lazyHomePage, lazyContactsRail],
+  home: lazyHomePage && lazyContactsRail ? [lazyHomePage, lazyContactsRail] : [],
   panel: [appViews.RightPanel],
   'panel-agents': [appViews.RightPanel],
   terminal: [appViews.TerminalDrawer, appViews.TerminalView],

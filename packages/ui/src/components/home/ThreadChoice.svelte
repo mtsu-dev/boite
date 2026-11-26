@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import type { Snippet } from 'svelte';
   import type { ThreadId } from '@boite/contracts';
   import { Closing } from '../../lib/closing.svelte';
@@ -56,6 +57,7 @@
     event.preventDefault();
     open(true);
   }
+  markFeature('boite-feature:contacts');
 </script>
 
 <span class="choice">

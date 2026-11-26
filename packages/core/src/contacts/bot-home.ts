@@ -18,6 +18,7 @@ import type { CoordinationPeer } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 import { contactsBot } from './bot.ts';
+import { contactsOff, contactsRefusal } from './switch.ts';
 
 /** The member whose Contacts bot is on its way to this Bots host. */
 const COMING = 'contacts:bot-coming';
@@ -88,13 +89,22 @@ export class ContactBotHome {
 
   /** On the Bots host, at each sweep: the member that announced the bot left the group without sending it, so a fresh one starts here. */
   hosting(): void {
+    if (contactsOff(this.#core)) return;
     const coming = this.#core.journal.getSetting(COMING) as string | undefined;
     if (coming === undefined) return;
     if (contactsBot(this.#core) === null && this.#core.group.peers().some(peer => peer.coreId === coming)) return;
-    this.#core.journal.deleteSetting(COMING);
-    if (contactsBot(this.#core) !== null) return;
-    void this.#core.workforce.builtins.ensure({ kind: 'contacts' })
-      .catch(error => this.#core.log('warn', `contacts: no Contacts mochi could start here (${messageOf(error)})`, { source: 'contacts' }));
+    const forget = () => {
+      if (this.#core.journal.getSetting(COMING) === coming) this.#core.journal.deleteSetting(COMING);
+    };
+    if (contactsBot(this.#core) !== null) { forget(); return; }
+    if (this.#job !== null) return;
+    this.#job = this.#core.workforce.builtins.ensure({ kind: 'contacts' })
+      .then(forget, error => {
+        if (contactsRefusal(error)) return;
+        forget();
+        this.#core.log('warn', `contacts: no Contacts mochi could start here (${messageOf(error)})`, { source: 'contacts' });
+      })
+      .finally(() => { this.#job = null; });
   }
 
   close(): Promise<unknown> { this.#closed = true; return this.#job ?? Promise.resolve(); }

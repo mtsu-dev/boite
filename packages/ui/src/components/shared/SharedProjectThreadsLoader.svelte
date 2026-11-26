@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ComponentProps } from 'svelte';
+  import { contactsParts } from '../../lib/contacts-entry';
   import { sharedProjectThreads } from '../../lib/deferred-parts';
   import { strings } from '../../lib/strings';
   import Deferred from '../Deferred.svelte';
@@ -8,7 +9,7 @@
   let { children: localThreads, ...props }: ComponentProps<typeof SharedProjectThreads> = $props();
 </script>
 
-{#if props.active}
+{#if props.active && contactsParts}
   <Deferred part={sharedProjectThreads}>
     {#snippet pending()}{@render localThreads()}{/snippet}
     {#snippet failure(retry)}

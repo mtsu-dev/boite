@@ -583,6 +583,11 @@ flags apply when starting a new thread. `settings mochi` reads settings or
 proposes changes from a conversation. Use the app's mochi menu to pause, resume
 or archive it as the owner.
 
+`threads contacts` lists contacts available to the calling thread. With
+Contacts off, including in a Release, the list is empty and `threads ask`
+returns `contacts-off`. In Nightly and Dev builds, the owner turns Contacts on
+in Settings > Experiments.
+
 `threads ask "<what you need>"` sends a request to a contact's Contacts mochi
 ([contacts](contacts.md#the-contacts-mochi)), or, naming no contact, hands it
 to this machine's mochi, which picks one: `--to

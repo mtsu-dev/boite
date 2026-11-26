@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { onMount } from 'svelte';
   import { House, UserPlus } from '@lucide/svelte';
   import { openContact } from '../../lib/contacts.svelte';
@@ -26,6 +27,7 @@
     let frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => { drawn = true; }); });
     return () => cancelAnimationFrame(frame);
   });
+  markFeature('boite-feature:contacts');
 </script>
 
 <aside class="contacts-rail" class:collapsed={folded} class:drawn inert={folded} aria-label={labels.heading} data-testid="contacts-rail">

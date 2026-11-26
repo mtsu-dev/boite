@@ -15,6 +15,20 @@ import { encodeInvite, inviteShare, readInvite } from './contact-link';
 const clients: FakeClient[] = [];
 afterEach(() => { for (const client of clients.splice(0)) client.close(); });
 
+test('a Release applies the Contacts switch hold to contact operations', async () => {
+  const client = new FakeClient({ delayMs: 0, version: '2.0.0' });
+  clients.push(client);
+  await client.connect();
+  const off = { code: RpcErrorCode.Refused, data: { reason: 'contacts-off' } };
+  expect((await client.call('settings.get', { stored: true })).contacts).toBe(true);
+  expect((await client.call('contacts.get', {})).contacts).toHaveLength(1);
+  expect(await client.call('collaboration.contacts', { threadId: 't-trace' })).toEqual([]);
+  await expect(client.call('contacts.invite', {})).rejects.toMatchObject(off);
+  await expect(client.call('collaboration.ask', { threadId: 't-trace', contact: 'Chris', text: 'Read this project' })).rejects.toMatchObject(off);
+  await expect(client.call('agents.builtin.ensure', { kind: 'contacts' })).rejects.toMatchObject(off);
+  await expect(client.call('contacts.update', { coreId: 'core-chris', trusted: true })).rejects.toMatchObject(off);
+});
+
 async function fake(): Promise<{ client: FakeClient; events: () => number }> {
   const client = new FakeClient({ delayMs: 0 });
   clients.push(client);
