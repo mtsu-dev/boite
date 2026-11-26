@@ -18,7 +18,7 @@ export const strings = {
       active: 'Enabled',
       inactive: 'Disabled',
       outcomes: { fired: 'Mochi woken', queued: 'Queued', skipped: 'Skipped', error: 'Could not wake the mochi' },
-      last: '{state} at {when}',
+      last: '{state} · {when}',
       watchUnavailable: 'Could not watch project files. Retrying.',
       watchLimit: 'Too many folders to watch (over 512). Narrow the file patterns or ignore large folders.',
       test: 'Test',

@@ -4,6 +4,7 @@ import { expect, vi } from 'vitest';
 import { triggerWebhookUrl } from '../../lib/agent-trigger';
 import { AgentsView } from '../../lib/agents.svelte';
 import { test } from '../../test/fake-client';
+import AgentSheet from './AgentSheet.svelte';
 import AgentTriggers from './AgentTriggers.svelte';
 
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.querySelector<T>(`[data-testid="${id}"]`)!;
@@ -116,7 +117,24 @@ test('a compact webhook card shows the local-only warning, renders non-firing ou
   row.lastOutcomeAt = Date.now();
   const component = mount(AgentTriggers, { target: document.body, props: { view, agentId: agent.id, compact: true } });
   try {
-    expect(document.body.textContent).toContain('Queued at');
+    expect(document.body.textContent).toContain('Queued · ');
+    expect(document.body.textContent).not.toContain('Queued at');
     expect(document.body.textContent).toContain('Local address only');
+    expect(element('trigger-test').classList.contains('ghost')).toBe(true);
+  } finally { await unmount(component); view.close(); }
+});
+
+test('AgentSheet surfaces view.error inside the settings sheet', async ({ ready }) => {
+  const { store } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = new AgentsView(store);
+  await view.refresh();
+  const agent = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
+  const component = mount(AgentSheet, { target: document.body, props: { view, agent, pane: 'settings', onclose: () => {} } });
+  try {
+    flushSync();
+    view.error = 'This trigger changed elsewhere. Reopen it to see the latest settings.';
+    flushSync();
+    const sheet = element('agent-sheet');
+    expect(sheet.textContent).toContain('This trigger changed elsewhere. Reopen it to see the latest settings.');
   } finally { await unmount(component); view.close(); }
 });

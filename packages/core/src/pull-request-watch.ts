@@ -258,12 +258,11 @@ export class PullRequestWatches {
         if (!baseline) await this.#end(threadId, record, runtime, memo, read.state);
         return read.state;
       }
-      const required = await this.#requiredOf(threadId, record, read.base);
-      let detail = withRequired(read, required);
-      if (read.contextsCursor && detail.checks.some(check => check.required && check.conclusion === 'EXPECTED')) {
-        read = await this.#shared(memo, `detail-more ${record.url}`, () => this.#fillRequiredContexts(threadId, record, read, required));
-        detail = withRequired(read, required);
+      if (read.contextsCursor) {
+        read = await this.#shared(memo, `detail-more ${record.url}`, () => this.#fillContexts(threadId, record, read));
       }
+      const required = await this.#requiredOf(threadId, record, read.base);
+      const detail = withRequired(read, required);
       const remarks = remarksDue ? await this.#shared(memo, `remarks ${record.url}`, () => this.#remarks(threadId, record)) : null;
       // A stop or an unwatch that landed during the reads wins.
       if (this.#find(threadId, record.url) !== record) return 'OPEN';
@@ -379,8 +378,8 @@ export class PullRequestWatches {
     return this.gh(threadId, ['api', 'graphql', '--hostname', record.host, '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${record.number}`, ...extra]);
   }
 
-  /** Reads follow-up pages of statusCheckRollup contexts when >200 exist and a required check is still EXPECTED. */
-  async #fillRequiredContexts(threadId: ThreadId, record: WatchRecord, read: WatchDetail, required: string[] | null): Promise<WatchDetail> {
+  /** Reads follow-up pages of statusCheckRollup contexts when >200 exist so middle-page failures, reruns and required checks are not missed. */
+  async #fillContexts(threadId: ThreadId, record: WatchRecord, read: WatchDetail): Promise<WatchDetail> {
     let cursor: string | null = read.contextsCursor ?? null;
     let checks = read.checks;
     for (let page = 0; page < MAX_CONTEXT_PAGES && cursor; page++) {
@@ -388,9 +387,8 @@ export class PullRequestWatches {
       if (next.head && read.head && next.head !== read.head) break;
       checks = mergeWatchChecks(checks, next.checks);
       cursor = next.cursor;
-      if (!withRequired({ ...read, checks }, required).checks.some(check => check.required && check.conclusion === 'EXPECTED')) break;
     }
-    return { ...read, checks, contextsCursor: undefined };
+    return { ...read, checks, contextsCursor: cursor ?? undefined };
   }
 
   /** What the base branch requires, cached per repository and base: a failed read logs and keeps what was known, a rate limit throws. */

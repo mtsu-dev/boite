@@ -6,7 +6,7 @@ import {
   type AgentProfile, type AgentTrigger, type AgentTriggerEvent, type AgentTriggerPrEvent, type RpcParams, type RpcResult, type ThreadId, type Turn,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { messageOf, refused } from '../errors.ts';
+import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId, newToken } from '../ids.ts';
 import { PATHS_PER_EVENT, TriggerRootProbes, WatchLimitError, watchTriggerFiles } from './trigger-files.ts';
 import { TriggerSecrets, WEBHOOK_TRIGGER_ID } from './trigger-secrets.ts';
@@ -237,14 +237,22 @@ export class AgentTriggers {
   test(params: RpcParams<'agents.trigger.test'>): TestResult {
     const triggerId = text(params.triggerId, 'triggerId', 160);
     const requestId = text(params.requestId, 'requestId', 100);
-    return this.#records.command('trigger-test', requestId, { triggerId }, () => {
-      const trigger = this.#get(triggerId);
-      if (!trigger.enabled) throw refused('triggerId: enable the trigger before testing it');
-      const sample = trigger.source.kind === 'pr'
-        ? { ...SAMPLE_EVENT.pr, events: trigger.source.events }
-        : trigger.source.kind === 'file' ? { ...SAMPLE_EVENT.file, paths: [...SAMPLE_EVENT.file.paths] } : SAMPLE_EVENT.webhook;
-      return this.#dispatch(trigger, { event: sample, requestId: 'trigger-test-' + requestId, test: true }, Date.now());
-    });
+    if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw invalidParams('requestId: expected 8 to 128 letters, numbers, underscores or hyphens');
+    const fingerprint = createHash('sha256').update(JSON.stringify({ triggerId })).digest('hex');
+    const held = this.#core.journal.db.query('SELECT fingerprint, result FROM agent_requests WHERE actor = ? AND request_id = ?')
+      .get('trigger-test', requestId) as { fingerprint: string; result: string } | null;
+    if (held) {
+      if (held.fingerprint !== fingerprint) throw refused(`requestId ${requestId} was already used with different input`);
+      return JSON.parse(held.result) as TestResult;
+    }
+    const trigger = this.#get(triggerId);
+    if (!trigger.enabled) throw refused('triggerId: enable the trigger before testing it');
+    const sample = trigger.source.kind === 'pr'
+      ? { ...SAMPLE_EVENT.pr, events: trigger.source.events }
+      : trigger.source.kind === 'file' ? { ...SAMPLE_EVENT.file, paths: [...SAMPLE_EVENT.file.paths] } : SAMPLE_EVENT.webhook;
+    const result = this.#dispatch(trigger, { event: sample, requestId: 'trigger-test-' + requestId, test: true }, Date.now());
+    this.#records.command('trigger-test', requestId, { triggerId }, () => result);
+    return result;
   }
 
   async http(request: Request, id: string, source: string): Promise<Response> {

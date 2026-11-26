@@ -12,6 +12,12 @@
   const canEdit = $derived(view.store.owner && view.snapshot?.profiles.find(agent => agent.id === agentId)?.status !== 'archived');
   let editing = $state<string | 'new' | null>(null);
   let secret = $state<{ id: string; value: string } | null>(null);
+  let activeAgentId = '';
+  $effect(() => {
+    const id = agentId;
+    if (activeAgentId && activeAgentId !== id) { editing = null; secret = null; }
+    activeAgentId = id;
+  });
 
   function reveal(trigger: AgentTrigger, value: string) { secret = { id: trigger.id, value }; }
   function done(trigger: AgentTrigger, value?: string) {

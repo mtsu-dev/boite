@@ -1189,25 +1189,38 @@ test('archive ends the watches and their saved state, and a merged pull request 
   expect(await thrown(owner.call('threads.watchPullRequest', { threadId }))).toThrow('is merged');
 });
 
-test('a pull request with over 200 check contexts paginates to find a required check outside the first and last 100', async () => {
+test('a pull request with over 200 check contexts paginates to find middle-page required checks and failures', async () => {
   const { owner, threadId, github, watches, drive } = await watchedThread();
   github.rules = ['middle-gate'];
-  const makeRuns = (gateStatus: 'IN_PROGRESS' | 'COMPLETED'): Run[] => Array.from({ length: 250 }, (_, index) => (
+  const makeRuns = (gateStatus: 'IN_PROGRESS' | 'COMPLETED', middleFailed = false): Run[] => Array.from({ length: 250 }, (_, index) => (
     index === 140
       ? { name: 'middle-gate', status: gateStatus, conclusion: gateStatus === 'COMPLETED' ? 'SUCCESS' : '', required: true }
-      : { name: `job-${index}` }
+      : index === 150 && middleFailed
+        ? { name: 'middle-lint', status: 'COMPLETED', conclusion: 'FAILURE' }
+        : { name: `job-${index}` }
   ));
   github.runs = makeRuns('IN_PROGRESS');
   await owner.call('threads.watchPullRequest', { threadId });
-  expect(github.calls.filter(call => call === 'contexts')).toHaveLength(1);
+  expect(github.calls.filter(call => call === 'contexts')).toHaveLength(2);
   expect(watches.of(threadId)[0]!.seen?.checks).toEqual({ total: 250, running: 1, failed: 0 });
 
   github.calls = [];
-  github.runs = makeRuns('COMPLETED');
+  github.runs = makeRuns('COMPLETED', true);
   await drive();
   await settled(threadId);
-  expect(github.calls.filter(call => call === 'contexts')).toHaveLength(1);
+  expect(github.calls.filter(call => call === 'contexts')).toHaveLength(2);
   expect(wakes(threadId)).toHaveLength(1);
-  expect(wakeText(threadId, wakes(threadId)[0]!.id)).toContain('All 1 required check passed on aaaaaaa.');
+  expect(wakeText(threadId, wakes(threadId)[0]!.id)).toContain('middle-lint');
+});
+
+test('a StatusContext reposting the same failure with a newer createdAt does not wake again', () => {
+  const statusCheck = (createdAt: string): WatchDetail => ({
+    ...detail([]),
+    checks: [{ name: 'cla/bot', job: 'cla/bot', workflow: '', status: 'failed', conclusion: 'FAILURE', url: 'https://cla.example/1', required: false, context: true, started: '', finished: '', createdAt }],
+  });
+  const first = evaluate(initialMemory(since), statusCheck('2026-10-15T09:31:00Z'), null);
+  expect(first.changes).toHaveLength(1);
+  const repost = evaluate(first.next, statusCheck('2026-10-15T09:35:00Z'), null);
+  expect(repost.changes).toEqual([]);
 });
 

@@ -430,7 +430,9 @@ export function actionable(remark: Remark, edited: boolean): boolean {
  * (`actionable`) and its body was not read before. `remarks` null leaves
  * remarks for a later read.
  */
-const failedRunKey = (check: WatchCheck) => JSON.stringify([check.conclusion, check.url, check.createdAt ?? check.started, check.finished]);
+const failedRunKey = (check: WatchCheck) => check.context
+  ? JSON.stringify([check.conclusion, check.url])
+  : JSON.stringify([check.conclusion, check.url, check.createdAt ?? check.started, check.finished]);
 
 export function evaluate(memory: WatchMemory, detail: WatchDetail, remarks: Remark[] | null): { changes: WatchChange[]; next: WatchMemory } {
   const changes: WatchChange[] = [];

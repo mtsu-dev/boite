@@ -109,7 +109,8 @@ the event that should wake it and say what to do when it wakes.
   machine. Enter comma-separated paths or patterns such as `src/**/*.{ts,tsx}`,
   or leave them blank for all source paths. Boite groups changes before
   waking the mochi, skips ignored, dependency, build and Git folders, and
-  ignores changes in that project while that trigger's own turn is running.
+  ignores changes in that project while one of that mochi's file-trigger turns
+  on that project is running.
   The trigger shows when Boite cannot watch the project (for example, if it
   has more than 512 watchable folders) and is retrying.
 - **Pull requests** listens to pull requests that Boite already watches in a
@@ -123,7 +124,7 @@ and pull request changes that arrive during cooldown wait and combine until it
 ends, while webhooks receive a retry delay (a webhook received while the mochi
 is paused or over budget still starts its cooldown). A busy mochi takes the waiting
 event for each trigger after its turn (for webhooks, the first request waits
-and additional ones receive a busy retry response until it finishes). Paused or archived mochis and
+and additional ones receive a cooldown or busy retry response until it finishes). Paused or archived mochis and
 mochis over their daily budget do not wake. Triggers stay owner-only, belong
 to their machine and are removed when a mochi moves to another one.
 
@@ -132,7 +133,7 @@ to their machine and are removed when a mochi moves to another one.
 The info button in the window's top bar opens the mochi's info panel on the
 right, in one column with no tabs: its picture, name and description with its
 model, machine and age; while it works, a Now card with the step, a timer and
-its last steps; its routines; and its memory, with the note count and the
+its last steps; its routines and triggers; and its memory, with the note count and the
 first three notes. A warning mark there means a memory update failed; its
 tooltip holds the error.
 

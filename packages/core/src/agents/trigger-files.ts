@@ -138,6 +138,7 @@ export function watchTriggerFiles(
   let checking = false;
   let due = false;
   let overflow = 0;
+  const pendingValidated = new Set<() => void>();
 
   function close() {
     stop.abort();
@@ -149,6 +150,7 @@ export function watchTriggerFiles(
     clearTimeout(timer);
     timer = undefined;
     changed.clear();
+    pendingValidated.clear();
     overflow = 0;
     due = false;
   }
@@ -168,20 +170,24 @@ export function watchTriggerFiles(
   }
 
   function checkRoot(validated?: () => void) {
-    if (signal.aborted || checking || !root) return;
+    if (signal.aborted || !root) return;
+    if (validated) pendingValidated.add(validated);
+    if (checking) return;
     checking = true;
     // A batch can only use a probe requested after its debounce elapsed.
     const paths = due ? [...changed].sort() : undefined;
     const more = due ? overflow : 0;
     if (due) { changed.clear(); overflow = 0; }
     due = false;
+    const callbacks = [...pendingValidated];
+    pendingValidated.clear();
     void assertRoot(root).then(() => {
       if (signal.aborted) return;
       if (paths) publish(paths, more);
-      validated?.();
+      for (const callback of callbacks) callback();
     }).catch(failure).finally(() => {
       checking = false;
-      if (due) checkRoot();
+      if (due || pendingValidated.size > 0) checkRoot();
     });
   }
 
@@ -305,7 +311,7 @@ export function watchTriggerFiles(
       if (watches.has(relative)) removeTree(relative);
       if (mayMatch(relative) && !await addTree(relative, !wasSuppressed, { directory, watcher })) return;
     }
-    if (!wasSuppressed && watches.get(directory)?.watcher === watcher) record(relative);
+    if (!wasSuppressed && watches.get(directory)?.watcher === watcher && !watches.has(relative)) record(relative);
   }
 
   function failure(error: unknown) {

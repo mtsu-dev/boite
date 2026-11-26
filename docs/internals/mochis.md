@@ -1065,13 +1065,15 @@ the trigger's configuration has stayed the same since that revision.
   on the same trigger. `Tailscale-Funnel-Request` and `X-Forwarded-For` are
   read only on loopback connections from a local Funnel proxy; any other local
   reverse proxy forwarding untrusted traffic to loopback must strip
-  `Tailscale-Funnel-Request`. Only a bounded,
-  quoted payload excerpt and untrusted `X-GitHub-Event` label reach the mochi.
-  Use HTTPS when exposing the route.
+  `Tailscale-Funnel-Request`. Remote and Funnel requests also share the
+  server's per-source refusal budget (`Refusals`) and are tracked in
+  `peerRequests` so core shutdown drains in-flight deliveries cleanly. Only a
+  bounded, quoted payload excerpt and untrusted `X-GitHub-Event` label reach
+  the mochi. Use HTTPS when exposing the route.
 - File triggers attach non-recursive `fs.watch` listeners to directories in
   the local granted project (tracking each watched directory's device and inode
   so nameless rename rescans reopen replaced subdirectories), skipping symlinks, unreadable subdirectories
-  (`EACCES`, `EPERM`, `ELOOP`), `.gitignore` plain folder names (read from the
+  (`EACCES`, `EPERM`, `ELOOP`), `.gitignore` plain names (read from the
   resolved root with `O_NOFOLLOW`, rejecting symlinked or non-file `.gitignore`
   and capping reads at 64 KiB), `.git`,
   `node_modules`, `.boite` and default build/dependency folders (`dist`,

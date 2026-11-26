@@ -1,11 +1,12 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { X } from '@lucide/svelte';
+  import { CircleAlert, X } from '@lucide/svelte';
   import type { AgentProfile } from '@boite/contracts';
   import type { AgentsView } from '../../lib/agents.svelte';
   import { Closing } from '../../lib/closing.svelte';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import { fill, strings } from '../../lib/strings';
+  import Notice from '../Notice.svelte';
   import AgentEditor from './AgentEditor.svelte';
   import AgentRuntimeSettings from './AgentRuntimeSettings.svelte';
   import AgentRoutines from './AgentRoutines.svelte';
@@ -45,6 +46,7 @@
       <button type="button" class="ghost icon" aria-label={strings.common.close} title={strings.common.close} onclick={onclose} data-testid="agent-sheet-close"><X size={16} strokeWidth={1.75} /></button>
     </header>
     <div class="agent-sheet-body">
+      {#if view.error}<Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} />{/if}
       {#key `${agent.id}:${shown}:${session}`}
         {#if shown === 'brain'}
           <AgentBrainEditor {view} agentId={agent.id} />

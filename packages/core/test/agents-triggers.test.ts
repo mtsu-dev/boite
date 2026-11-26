@@ -745,7 +745,14 @@ test('the PR tracker sends matching transitions of a granted project without a s
   spyOn(h.core.pullRequests, 'gh').mockImplementation((_thread, args) => {
     const query = args.find(arg => arg.startsWith('query='));
     if (!query) return Promise.resolve(args.at(-1)?.includes('/branches/main') ? '{"protected":false}' : '[]');
-    const check = { __typename: 'StatusContext', context: 'test', state: status, targetUrl: 'https://ci.example/test', createdAt: statusCreatedAt };
+    const check = {
+      __typename: 'CheckRun', name: 'test',
+      status: status === 'PENDING' ? 'IN_PROGRESS' : 'COMPLETED',
+      conclusion: status === 'PENDING' ? null : status,
+      detailsUrl: 'https://ci.example/test',
+      startedAt: statusCreatedAt,
+      completedAt: status === 'PENDING' ? null : statusCreatedAt,
+    };
     const pr = {
       state, baseRefName: 'main', headRefOid: 'head', mergeable: moved ? 'CONFLICTING' : 'MERGEABLE',
       mergedBy: state === 'MERGED' ? { login: 'someone' } : null,
@@ -756,7 +763,7 @@ test('the PR tracker sends matching transitions of a granted project without a s
         checkRunCountsByState: baseCheck ? [{ state: baseCheck.status, count: 1 }] : [],
       } } } },
       commits: { nodes: [{ commit: { statusCheckRollup: { contexts: {
-        nodes: moved ? [check] : [], statusContextCountsByState: moved ? [{ state: status, count: 1 }] : [],
+        nodes: moved ? [check] : [], checkRunCountsByState: moved ? [{ state: status === 'PENDING' ? 'IN_PROGRESS' : status, count: 1 }] : [],
       } } } }] },
     };
     return Promise.resolve(JSON.stringify({ data: { viewer: { login: 'tracker' }, repository: { pullRequest: pr } } }));

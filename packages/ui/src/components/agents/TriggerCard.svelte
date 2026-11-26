@@ -105,7 +105,7 @@
   {/if}
   {#if canEdit}
     <div class="agent-actions">
-      <button type="button" class="small" disabled={view.pending || !trigger.enabled} title={t.test} aria-label={fill(t.testLabel, { name: trigger.name })}
+      <button type="button" class="small" class:ghost={compact} disabled={view.pending || !trigger.enabled} title={t.test} aria-label={fill(t.testLabel, { name: trigger.name })}
         onclick={() => void view.call('agents.trigger.test', { triggerId: trigger.id, requestId: secureId() })} data-testid="trigger-test">
         <FlaskConical size={13} strokeWidth={1.75} />{#if !compact}{t.test}{/if}
       </button>

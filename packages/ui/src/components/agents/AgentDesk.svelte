@@ -144,8 +144,10 @@
         {#if view.error}<div class="desk-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} /></div>{/if}
 
         <section class="desk-card desk-schedule" data-testid="desk-schedule">
-          <AgentRoutines {view} agentId={agent.id} compact />
-          <AgentTriggers {view} agentId={agent.id} compact />
+          {#key agent.id}
+            <AgentRoutines {view} agentId={agent.id} compact />
+            <AgentTriggers {view} agentId={agent.id} compact />
+          {/key}
         </section>
       </div>
 
