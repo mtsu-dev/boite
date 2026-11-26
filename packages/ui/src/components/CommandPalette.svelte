@@ -95,10 +95,11 @@
   let machines = $derived(workspace.machinesOr(store));
   let mentions = $state.raw<{ machine: Machine; hit: ThreadMessageMatch }[]>([]);
   let searchFailed = $state(false);
-  const searchTerms = $derived(messageSearchTerms(query.slice(0, MESSAGE_SEARCH_QUERY_LIMIT)));
+  const mentionQuery = $derived(query.slice(0, MESSAGE_SEARCH_QUERY_LIMIT));
+  const searchTerms = $derived(messageSearchTerms(mentionQuery));
   $effect(() => {
     if (!store.paletteOpen) return;
-    const asked = query.slice(0, MESSAGE_SEARCH_QUERY_LIMIT);
+    const asked = mentionQuery;
     const owners = machines.filter(machine => machine.store.connection === 'ready' && machine.store.core?.features?.messageSearch);
     const enough = searchTerms.some(term => term.words.some(word => word.length >= 2));
     mentions = [];
@@ -246,7 +247,7 @@
       if (!mention) return;
       const { hit, place } = mention;
       const target = place.machine.store;
-      const match = { messageId: hit.messageId, query };
+      const match = { messageId: hit.messageId, query: mentionQuery };
       if (workspace.machines.length) void workspace.select(target, hit.threadId, undefined, { match });
       else { target.showChat(); void target.open(hit.threadId, true, { match }); }
       return;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
-import { RpcErrorCode } from '@boite/contracts';
+import { MESSAGE_SEARCH_QUERY_LIMIT, RpcErrorCode } from '@boite/contracts';
 import CommandPalette from './CommandPalette.svelte';
 import { RpcFailure } from '../lib/client';
 import { FakeClient } from '../lib/fake-client';
@@ -167,6 +167,24 @@ test('metadata and message results coexist and Enter requests a page around the 
   const target = store.messageSearchJump!.messageId;
   expect(call.mock.calls).toContainEqual(['threads.get', expect.objectContaining({ threadId: 't-trace', around: target }), expect.any(Object)]);
   expect(store.openThread?.messages.find(message => message.id === target)?.turnId).toBe(turn.id);
+});
+
+test('a mention uses the same bounded query when searching and jumping', async () => {
+  const call = vi.spyOn(client, 'call');
+  await client.call('turns.start', { threadId: 't-trace', prompt: 'The cedar marker is here.' });
+  store.paletteOpen = true;
+  flushSync();
+  const query = 'cedar'.padEnd(MESSAGE_SEARCH_QUERY_LIMIT);
+  await type(query + 'absent');
+  const mention = await vi.waitFor(() => {
+    flushSync();
+    const row = document.querySelector<HTMLButtonElement>('[data-section=mentions] [data-testid=palette-row]');
+    expect(row?.querySelector('mark')?.textContent).toBe('cedar');
+    return row!;
+  });
+  expect(call.mock.calls).toContainEqual(['threads.search', { query, replacePending: true }]);
+  mention.click();
+  await vi.waitFor(() => expect(store.messageSearchJump).toMatchObject({ threadId: 't-trace', query }));
 });
 
 test('message search debounces typing, sends a newer query while an older one waits, and reports only current failures', async () => {

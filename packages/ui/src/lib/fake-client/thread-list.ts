@@ -12,7 +12,7 @@ export function threadListMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.
       const matches: ThreadMessageMatch[] = [];
       if (!terms.length) return { query, matches };
       for (const thread of ctx.threads.values()) {
-        if (thread.incognito || (!includeArchived && thread.archived) || (thread.projectId && ctx.removedProjects.has(thread.projectId))) continue;
+        if (thread.incognito || (!includeArchived && thread.archived)) continue;
         let best: ThreadMessageMatch | undefined;
         for (const message of thread.messages) {
           if (message.role !== 'user' && message.role !== 'assistant') continue;

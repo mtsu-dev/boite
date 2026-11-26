@@ -76,7 +76,7 @@ async function readSearch<T extends ChatHit | ThreadMessageMatch>(db: Database, 
       if (worker) worker.terminate(); else release();
       if (hits) resolve(hits); else reject(error);
     };
-    const timeout = setTimeout(() => finish(unavailable(`chat search timed out after ${Math.round(timeoutMs / 1000)} s`)), timeoutMs);
+    const timeout = setTimeout(() => finish(unavailable(`Conversation search timed out after ${Math.round(timeoutMs / 1000)} s`)), timeoutMs);
     timeout.unref();
     const abort = () => finish(unavailable('Conversation search cancelled'));
     signal?.addEventListener('abort', abort, { once: true });
