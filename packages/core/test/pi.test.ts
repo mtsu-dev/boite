@@ -81,6 +81,35 @@ test('pi default follows the model a resumed session restores, not the one pi st
   }
 });
 
+test('pi default on a session holds a registered router over the models it answered through, and yields to a profile --model', async () => {
+  process.env['PI_FAKE_VIRTUAL'] = '1';
+  const { client, threadId } = await startThread(undefined, 'fake-b/plain');
+  expect((await (await startTurn(client, threadId, 'Remember this')).finished).status).toBe('done');
+  const accountId = harness!.core.threads.require(threadId).accountId;
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+  await client.call('threads.update', { threadId, model: 'default' });
+  const images = async () => (await client.call('threads.capabilities', { threadId })).images.supported;
+  // As pi writes a routed turn: the router's model_change, then an answer that names the physical model.
+  const file = piSessionFile(threadId);
+  const leaf = (JSON.parse(readFileSync(file, 'utf8').trim().split('\n').at(-1)!) as { id: string }).id;
+  const routed = (router: string, id: string, parentId: string) => [
+    { type: 'model_change', id: `${id}c`, parentId, timestamp: '2026-11-26T00:00:00.000Z', provider: 'fake-a', modelId: router },
+    { type: 'message', id: `${id}a`, parentId: `${id}c`, timestamp: '2026-11-26T00:00:01.000Z', message: { role: 'assistant', api: 'fake', provider: 'fake-b', model: 'plain', content: [] } },
+  ].map(entry => JSON.stringify(entry) + '\n').join('');
+  writeFileSync(file, readFileSync(file, 'utf8') + routed('router', 'r', leaf));
+  expect(await images()).toBe(true);
+  // A physical model_change does not hold: pi resumes on the model that answered.
+  writeFileSync(file, readFileSync(file, 'utf8') + routed('smart', 's', 'ra'));
+  expect(await images()).toBe(false);
+  const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+  const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
+  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--model', 'fake-a/smart');
+  writeFileSync(descriptorFile, JSON.stringify(descriptor));
+  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+  expect(await images()).toBe(true);
+});
+
 test('a text-only pi model refuses images on start and steer and still accepts files', async () => {
   const { client, threadId } = await startThread(undefined, 'fake-b/plain');
   const prompt = '[slow] Read this';
@@ -110,6 +139,7 @@ afterEach(async () => {
   harness = null;
   delete process.env['PI_FAKE_LOG'];
   delete process.env['PI_FAKE_CURRENT'];
+  delete process.env['PI_FAKE_VIRTUAL'];
   if (open !== null) await open.stop();
 });
 

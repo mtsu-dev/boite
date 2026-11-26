@@ -8,6 +8,7 @@ import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
 import { sessionModelOf } from '../drivers/pi/session-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
+import { profileFor } from '../providers/resolve.ts';
 import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 
 /** The protocols whose models come from the agent, not from the descriptor. */
@@ -59,10 +60,13 @@ export function imageInputModel(
     const saved = pi && probedModelsOf(provider.protocol, provider.id, accountId) === null ? readSavedCatalog(core, provider.id, accountId) : null;
     return (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
   };
-  if (pi && wanted === AGENT_OWN_MODEL && id && sessionId) {
+  // A `--model` in the profile beats the session, as it does in pi.
+  if (pi && wanted === AGENT_OWN_MODEL && id && sessionId && !profileFor(provider)?.launch?.args?.includes('--model')) {
     const account = core.accounts.list().find(entry => entry.id === accountId);
     const resumed = account && sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId);
-    const found = resumed ? listed(resumed) : undefined;
+    // A registered virtual model holds over the physical models it answered through.
+    const router = resumed?.router ? listed(resumed.router) : undefined;
+    const found = router?.virtual ? router : resumed ? listed(resumed.model) : undefined;
     if (found) return found;
   }
   return listed(wanted);

@@ -2127,9 +2127,10 @@ test('pi default on an open thread follows the model its session resumes on', as
   await store.probeModels('pi', account.id);
   // pi starts new sessions on its text-only demo model; the core reads that this session resumes on one that reads images.
   const capabilities = store.threadCapabilities.bind(store);
+  let sessionImages = true;
   vi.spyOn(store, 'threadCapabilities').mockImplementation(async (threadId) => {
     const value = await capabilities(threadId);
-    return value && { ...value, images: { supported: true, available: true, reason: null } };
+    return value && { ...value, images: { supported: sessionImages, available: sessionImages, reason: sessionImages ? null : 'unsupported' } };
   });
   expect(await store.update('t-trace', { accountId: account.id, model: 'default' })).toBe(true);
   await send('Start a pi session');
@@ -2142,6 +2143,11 @@ test('pi default on an open thread follows the model its session resumes on', as
   await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
   expect(store.error).toBeNull();
   expect(document.querySelector('[data-testid=composer-image-warning]')).toBeNull();
+  // A new catalog for the account can change what the core reads for the session: the composer asks again.
+  sessionImages = false;
+  const key = `pi::${account.id}`;
+  store.probedModels = { ...store.probedModels, [key]: [...store.probedModels[key]!, { id: 'pi-new', name: 'pi new model' }] };
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') !== null);
 });
 
 test('switching a draft to a text-only pi model blocks its image but keeps file attachments', async ({ app: _app }) => {

@@ -327,6 +327,8 @@ export interface ModelInfo {
   badge?: 'new';
   /** False when this model reads no images although its agent does. Absent follows the agent. */
   images?: false;
+  /** A pi router that answers through other models, which a session resumes on while it is registered. */
+  virtual?: true;
   /**
    * Reasoning effort this model offers. A model without it has no effort control.
    * `default` is the level the agent runs this model on when none is picked;

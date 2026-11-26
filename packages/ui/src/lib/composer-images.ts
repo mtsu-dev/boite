@@ -30,8 +30,9 @@ export function imageRefusalOf(store: Store, choice: Choice | null, answering: b
   const provider = choice && !answering ? store.providerOf(choice.providerId) : null;
   if (!provider || !choice) return null;
   const model = resolveModelSelection(store.modelsOf(choice.providerId, choice.accountId), choice.model)?.model;
-  const { images: _listed, ...read } = model ?? { id: '', name: '' };
-  const blocker = imageAttachmentBlocker(provider, resumed === undefined || !model ? model : resumed ? read : { ...read, images: false });
+  // The resumed session decides, even before this client has the account's catalog.
+  const { images: _listed, ...read } = model ?? { id: choice.model ?? '', name: provider.name };
+  const blocker = imageAttachmentBlocker(provider, resumed === undefined ? model : resumed ? read : { ...read, images: false });
   return blocker ? fill(strings.composer.attachNoImages, { name: blocker.name }) : null;
 }
 

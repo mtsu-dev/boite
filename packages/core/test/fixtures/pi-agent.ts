@@ -242,6 +242,8 @@ const MODELS = [
   },
 ];
 
+// A virtual model as pi lists it: a router that answers through the others.
+if (process.env['PI_FAKE_VIRTUAL']) MODELS.push({ ...MODELS[0]!, id: 'router', name: 'Fake Router', api: 'pi-virtual' });
 /** The model the session is on, which is the one pi reports as current. */
 const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0]!;
 /** `--model provider/id[:level]` without its level, or the current model. */

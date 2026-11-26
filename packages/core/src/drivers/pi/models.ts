@@ -4,7 +4,7 @@ import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import type { ProbeContext } from '../types.ts';
 import { probeModels } from '../model-probe.ts';
 import { agentEnv, textOf } from './mapping.ts';
-import { AGENT_OWN_MODEL, PROBE_TIMEOUT_MS, STDERR_MAX, THINKING_LEVELS } from './protocol.ts';
+import { AGENT_OWN_MODEL, PROBE_TIMEOUT_MS, STDERR_MAX, THINKING_LEVELS, VIRTUAL_API } from './protocol.ts';
 import type { PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
 
@@ -106,6 +106,7 @@ function modelsFrom(provider: ProviderDescriptor, listing: PiListing): ModelInfo
       name: `${providerLabel(providerId)} / ${entry.name ?? id}`,
       default: full === listing.current,
       ...(Array.isArray(entry.input) && !entry.input.includes('image') ? { images: false as const } : {}),
+      ...(entry.api === VIRTUAL_API ? { virtual: true as const } : {}),
       ...(effort === null ? {} : { effort }),
     });
   }
