@@ -183,4 +183,9 @@ test('the line a timeline ends on is the last done turn drawn with one, past mar
     expect(lastLined(withPrompt, new Map(), promptTurns)).toBeNull();
     expect(lastAnswerTurn(withPrompt, new Map(), promptTurns)).toBe('a');
   }
+  // A running turn that has already emitted thinking or tool output still renders no actions, so lastAnswerTurn stays on the previous settled answer.
+  const runningReply = [said('m-a', 'a'), said('m-u', 'u', {}, 'user'), said('m-r', 'u')];
+  const runningTurns = [turn('a'), turn('u', { status: 'running' })];
+  expect(lastLined(runningReply, new Map(), runningTurns)).toBeNull();
+  expect(lastAnswerTurn(runningReply, new Map(), runningTurns)).toBe('a');
 });

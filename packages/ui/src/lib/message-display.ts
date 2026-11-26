@@ -258,16 +258,16 @@ export function newConversationOf(message: Message): NewConversationNotice | nul
 }
 
 /**
- * The last non-user row's turn in `timeline` that carries a summary line, past
- * new-conversation markers, folded wakes (`folds`), cache pings and queued turns:
- * an unanswered running, failed or stopped user prompt leaves the previous answer's buttons on a phone.
+ * The last non-user row's settled turn in `timeline` that carries a summary line, past
+ * new-conversation markers, folded wakes (`folds`), cache pings and queued or running turns:
+ * an in-progress or unanswered prompt leaves the previous settled answer's buttons on a phone.
  */
 export function lastAnswerTurn(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
   for (let index = timeline.length - 1; index >= 0; index--) {
     const message = timeline[index]!;
     if (message.role === 'user' || newConversationOf(message) || folds.has(message.id)) continue;
     const turn = turns.find(current => current.id === message.turnId);
-    if (!turn || turn.execution?.operation === 'keepalive' || turn.status === 'queued') continue;
+    if (!turn || turn.execution?.operation === 'keepalive' || turn.status === 'queued' || turn.status === 'running') continue;
     return turn.id;
   }
   return null;

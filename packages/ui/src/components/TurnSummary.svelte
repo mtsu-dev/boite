@@ -231,7 +231,7 @@
   .summary.stale { order: -1; margin-top: 0; margin-bottom: var(--chat-block-gap); color: var(--color-foreground); }
   /* Read on demand: the message under the pointer or the keyboard shows it, a finger always does. */
   .summary.settled { opacity: 0; transition: opacity var(--dur-2); }
-  :global(.message:hover) .summary.settled, .summary.settled.pointed, .summary.settled:focus-within, .summary.settled:not(:has(.tail)) { opacity: 1; }
+  :global(.message:hover) .summary.settled, .summary.settled.pointed, .summary.settled:has(:focus-visible), .summary.settled:not(:has(.tail)) { opacity: 1; }
   /* Pointed from another message of the turn, its buttons show with it. */
   .summary.settled.pointed :global(.act) { opacity: 1; }
   @media (hover: none) { .summary.settled { opacity: 1; } }
@@ -242,7 +242,7 @@
   @media (hover: hover) {
     .summary.settled.resting .metric.meta { display: inline-flex; order: 1; opacity: 0; transition: opacity var(--dur-2); }
     .summary.settled.resting .tail { order: 2; }
-    .summary.settled.resting :global(.turn-files.inline :is(.expand, .tools)) { order: 3; }
+    .summary.settled.resting :global(:is(.turn-files.inline :is(.expand, .tools), .expand.inline, .tools.inline)) { order: 3; }
     .summary.settled.resting :global(.turn-files.inline :is(.tree, .diffs)) { order: 4; }
     :global(.message:hover) .summary.settled.resting .metric.meta, .summary.settled.resting:is(.pointed, :has(:focus-visible)) .metric.meta { opacity: 1; }
     .summary.settled.resting:has(:focus-visible) :global(.act) { opacity: 1; }
@@ -261,8 +261,8 @@
   /* The count's dot hides but keeps its room: taken out, the count opened the line under the clip and lost its number. */
   .summary.settled.marked .meta { display: none; }
   .summary.settled.marked .marks > .dot:first-child { visibility: hidden; }
-  :global(.message:hover) .summary.settled.marked .meta, .summary.settled.marked.pointed .meta, .summary.settled.marked:focus-within .meta { display: inline-flex; }
-  :global(.message:hover) .summary.settled.marked .marks > .dot:first-child, .summary.settled.marked.pointed .marks > .dot:first-child, .summary.settled.marked:focus-within .marks > .dot:first-child { visibility: visible; }
+  :global(.message:hover) .summary.settled.marked .meta, .summary.settled.marked.pointed .meta, .summary.settled.marked:has(:focus-visible) .meta { display: inline-flex; }
+  :global(.message:hover) .summary.settled.marked .marks > .dot:first-child, .summary.settled.marked.pointed .marks > .dot:first-child, .summary.settled.marked:has(:focus-visible) .marks > .dot:first-child { visibility: visible; }
   /* The thread's last line says how long at rest even when it counts steps. */
   .summary.settled.marked.resting .meta:not(.metric) { display: inline-flex; }
   .summary.settled.marked.resting .marks > .dot:first-child { visibility: visible; }
@@ -276,7 +276,7 @@
   }
   /* The turn's changes on the line: the count right after the steps, its diff button at the line's end, the list
      and the diff under the line at its text's start (the clip hides what starts further left). */
-  .summary :global(.turn-files.inline .fold) { margin-left: 0; }
+  .summary :global(:is(.turn-files.inline .fold, .fold.inline)) { margin-left: 0; }
   .summary :global(.turn-files.inline :is(.tree, .diffs)) { flex-basis: calc(100% - var(--lead)); margin-left: var(--lead); }
   /* The step count and the memory mark: text buttons on the line, no box, the foreground on hover. */
   .mark { position: relative; display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 2px; margin: -2px 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font-size: inherit; font-variant-numeric: inherit; cursor: pointer; transition: color var(--dur-2) var(--ease-out-quint); }

@@ -1968,6 +1968,40 @@ test('on a phone, a turn whose summary sits under a steering prompt keeps its bu
   expect(tappedCopy!.isConnected).toBe(true);
   tappedCopy!.click(); flushSync();
   expect(earlySummary()).not.toBeNull();
+  // Tapping outside closes it.
+  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })); flushSync();
+  expect(earlySummary()).toBeNull();
+
+  // Tapping the earlier steering prompt itself and then pressing "i" inside its summary keeps the summary open and opens the tip.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  const earlySteer = document.querySelector<HTMLElement>('[data-mid="m-e2"]')!;
+  earlySteer.click(); flushSync();
+  const earlyDetails = earlySummary()?.querySelector<HTMLButtonElement>('[data-testid=turn-details]');
+  expect(earlyDetails).not.toBeNull();
+  earlyDetails!.dispatchEvent(new Event('pointerdown', { bubbles: true })); flushSync();
+  expect(earlyDetails!.isConnected).toBe(true);
+  earlyDetails!.click(); flushSync();
+  expect(earlySummary()).not.toBeNull();
+  expect(earlyDetails!.getAttribute('aria-expanded')).toBe('true');
+  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })); flushSync();
+  expect(earlySummary()).toBeNull();
+
+  // Keyboard focus inside the earlier steering prompt's own controls keeps its turn summary mounted.
+  const steerPromptCopy = earlySteer.closest('article')?.querySelector<HTMLButtonElement>('[data-testid=message-receipts] [data-testid=message-copy]');
+  expect(steerPromptCopy).not.toBeNull();
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  steerPromptCopy!.focus(); flushSync();
+  expect(earlySummary()).not.toBeNull();
+  steerPromptCopy!.blur(); flushSync();
+  expect(earlySummary()).toBeNull();
+
+  // Once the running next turn streams assistant activity (still no actions), the previous settled steered turn keeps its buttons.
+  thread.messages.push({ id: 'm-next-tool', threadId: thread.id, turnId: 'turn-next', role: 'assistant', state: 'streaming', createdAt: 2, parts: [{ type: 'thinking', text: 'checking' }] });
+  flushSync();
+  const settledAfterStream = document.querySelector<HTMLElement>('[data-mid="m-steer"]')?.closest('article')?.querySelector<HTMLElement>('[data-testid=turn-summary]');
+  expect(settledAfterStream).not.toBeNull();
+  expect(settledAfterStream?.hasAttribute('data-tucked')).toBe(false);
+  expect(settledAfterStream?.querySelector('[data-testid=message-actions]')).not.toBeNull();
 });
 
 test('a row counts at the height it is drawn, fractions included, so rows measured above the reader move the view by what they weigh', async () => {

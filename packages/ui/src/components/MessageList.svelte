@@ -743,7 +743,7 @@
           data-seam={joined} style:content-visibility={isSlice(row) ? 'auto' : undefined} style:overflow-clip-margin={isSlice(row) ? 'var(--chat-block-gap)' : undefined} style:contain-intrinsic-size={sliceBox(row, heights.get(row.id) ?? slots.estimateOf(row), slotGap(joined, !row.first))}
           style:margin-top={joined && 'calc(var(--chat-block-gap) - var(--chat-message-gap))'}
           data-testid={row.first ? 'message' : 'message-rest'}
-          data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId}
+          data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId} data-steered={message.role === 'user' && firstInTurn.get(message.turnId) !== message.id ? '' : undefined}
         >
           {#if row.first && days.has(message.id)}<DayDivider at={days.get(message.id)!} />{/if}
           {#if row.first && turn?.switched && message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id}<SwitchMarker names={store} shown={turn.switched} />{/if}
@@ -809,7 +809,7 @@
   @media (hover: hover) {
     .timeline :global(:is(.fold-caret, .summary .info-tip)) { opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
     .timeline :global(:is(button, summary):is(:hover, :focus-visible) .fold-caret),
-    .timeline :global(.summary:is(:hover, :focus-within) .info-tip),
+    .timeline :global(.summary:is(:hover, :has(:focus-visible)) .info-tip),
     .timeline :global(.info-tip[aria-expanded='true']) { opacity: 1; }
   }
 

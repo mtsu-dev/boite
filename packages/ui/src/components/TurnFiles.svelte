@@ -23,7 +23,7 @@
    * Changes panel, one click away for whoever can read the repository.
    */
   type Source = { messageId: string; toolId: string };
-  let { store, files, diffs = [], cwd, deferred = [], sources = [], acquireDiff, loadDiffs, inline = false, between, after }: {
+  let { store, files, diffs = [], cwd, deferred = [], sources = [], acquireDiff, loadDiffs, inline = false, between, after, beforeAnchor, afterAnchor }: {
     store: Store; files: TurnFile[]; diffs?: TurnDiff[];
     /** The directory `files` were read against. */ cwd: string;
     deferred?: Source[]; sources?: Source[];
@@ -35,7 +35,16 @@
     between?: Snippet;
     /** Inline summary items placed at the end of the line after the diff controls and before the expanded tree/diffs (e.g. phone details "i"). */
     after?: Snippet;
+    /** Optional DOM anchors when `TurnFilesLoader` keeps inline siblings mounted across the async load. */
+    beforeAnchor?: HTMLElement;
+    afterAnchor?: HTMLElement;
   } = $props();
+  function slotBefore(node: HTMLElement, anchor: HTMLElement | undefined) {
+    let moved = false;
+    const place = (target: HTMLElement | undefined) => { if (!target?.parentNode) return; target.before(node); moved = true; };
+    place(anchor);
+    return { update: place, destroy() { if (moved) node.remove(); } };
+  }
   let diffToggled = $state<boolean | null>(null);
   let showDiff = $derived(diffToggled ?? chatPrefs.expandDiffs);
   /** Folded by default: the count and the lines added and removed say enough until the list is wanted. */
@@ -119,31 +128,33 @@
 
 <section class="turn-files" class:inline data-testid="turn-files" aria-label={strings.chat.turnFiles}>
   <header>
-    <button type="button" class="ghost small fold" data-testid="turn-files-toggle" aria-expanded={open} title={`${strings.chat.turnFiles}: ${changeText(total)}`} onclick={() => (open = !open)}>
+    <button type="button" class="ghost small fold" class:inline use:slotBefore={beforeAnchor} data-testid="turn-files-toggle" aria-expanded={open} title={`${strings.chat.turnFiles}: ${changeText(total)}`} onclick={() => (open = !open)}>
       <!-- On the tool line the count is the opener: the run's own caret is just before it. -->
       {#if !inline}<ChevronRight size={14} class={open ? 'fold-caret open' : 'fold-caret'} /><span class="ui-label">{strings.chat.turnFiles}</span>{/if}
       <!-- "1 file, +7 −2": the one count of changes (lib/change-count.ts). On the tool line, whose words already count the files, the lines alone when known. -->
       <span class="count"><ChangeCount files={inline && diffs.length > 0 ? null : files.length} added={diffs.length > 0 ? lines.total.added : null} removed={diffs.length > 0 ? lines.total.removed : null} testid="turn-lines" /></span>
     </button>
     {@render between?.()}
-    {#if open && hasFolders}
-      <button type="button" class="ghost small icon expand" data-testid="turn-files-expand"
-        title={allExpanded ? strings.chat.collapseFileFolders : strings.chat.expandFileFolders}
-        aria-label={allExpanded ? strings.chat.collapseFileFolders : strings.chat.expandFileFolders}
-        onclick={toggleAll}>
-        {#if allExpanded}<ChevronsDownUp size={14} />{:else}<ChevronsUpDown size={14} />{/if}
-      </button>
-    {/if}
-    <!-- One action: the answer's own diff, the same rows its counts are read from. The folder's whole change set is offered under it. -->
-    {#if diffs.length > 0 || deferred.length > 0}
-      <span class="tools">
-        <button type="button" class="ghost small" data-testid="turn-diff-toggle" aria-expanded={showDiff} onclick={() => { if (!showDiff) { attempt += 1; loadError = null; } diffToggled = !showDiff; }}>
-          <FileDiff size={14} /><span class="ui-label">{showDiff ? strings.chat.hideTurnDiff : strings.chat.showTurnDiff}</span>
+    <span class="controls" use:slotBefore={afterAnchor}>
+      {#if open && hasFolders}
+        <button type="button" class="ghost small icon expand" class:inline data-testid="turn-files-expand"
+          title={allExpanded ? strings.chat.collapseFileFolders : strings.chat.expandFileFolders}
+          aria-label={allExpanded ? strings.chat.collapseFileFolders : strings.chat.expandFileFolders}
+          onclick={toggleAll}>
+          {#if allExpanded}<ChevronsDownUp size={14} />{:else}<ChevronsUpDown size={14} />{/if}
         </button>
-      </span>
-    {:else if repository}
-      <span class="tools">{@render allChanges()}</span>
-    {/if}
+      {/if}
+      <!-- One action: the answer's own diff, the same rows its counts are read from. The folder's whole change set is offered under it. -->
+      {#if diffs.length > 0 || deferred.length > 0}
+        <span class="tools" class:inline>
+          <button type="button" class="ghost small" data-testid="turn-diff-toggle" aria-expanded={showDiff} onclick={() => { if (!showDiff) { attempt += 1; loadError = null; } diffToggled = !showDiff; }}>
+            <FileDiff size={14} /><span class="ui-label">{showDiff ? strings.chat.hideTurnDiff : strings.chat.showTurnDiff}</span>
+          </button>
+        </span>
+      {:else if repository}
+        <span class="tools" class:inline>{@render allChanges()}</span>
+      {/if}
+    </span>
     {@render after?.()}
   </header>
   {#if open}<div class="tree" data-testid="turn-files-tree">{@render branch(tree, 0)}</div>{/if}
@@ -255,7 +266,7 @@
     font-weight: 500;
   }
   /* A pointer gets 28 px on the head's buttons; the row keeps its height. */
-  header button.small { min-height: 28px; }
+  header button.small, .fold.inline, .expand.inline, .tools.inline button.small { min-height: 28px; }
 
   .count {
     flex: none;
@@ -291,14 +302,14 @@
 
   /* On the tool line: its buttons join the line's row, the list and diffs open
      under it at full width, with no surface of their own. */
-  .inline, .inline header { display: contents; }
-  .inline header { font-weight: inherit; }
-  .inline .fold { margin-left: 0; }
+  .turn-files.inline, .turn-files.inline header, .controls { display: contents; }
+  .turn-files.inline header { font-weight: inherit; }
+  .turn-files.inline .fold, .fold.inline { margin-left: 0; }
   /* Its own line on a phone, under the run's words rather than its glyph. */
-  @media (max-width: 720px) { .inline .fold { margin-left: calc(var(--activity-glyph) + var(--activity-gap)); } }
-  .inline .tree, .inline .diffs { flex: 1 0 100%; min-width: 0; }
-  .inline .tree { padding: 0 0 6px; }
-  .inline .diffs { padding: 4px 0 8px; }
+  @media (max-width: 720px) { .turn-files.inline .fold, .fold.inline { margin-left: calc(var(--activity-glyph) + var(--activity-gap)); } }
+  .turn-files.inline .tree, .turn-files.inline .diffs { flex: 1 0 100%; min-width: 0; }
+  .turn-files.inline .tree { padding: 0 0 6px; }
+  .turn-files.inline .diffs { padding: 4px 0 8px; }
 
   ul {
     list-style: none;

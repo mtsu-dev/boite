@@ -29,10 +29,14 @@ export class MessageReveal {
     this.#focused = focused;
     $effect(() => {
       if (this.revealed === null) return;
-      const away = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest(`[data-reveal="${this.revealed}"]`)) this.revealed = null; };
+      const away = (event: PointerEvent) => { if (!(event.target instanceof Element) || !this.#withinRevealed(event.target)) this.revealed = null; };
       window.addEventListener('pointerdown', away, true);
       return () => window.removeEventListener('pointerdown', away, true);
     });
+  }
+
+  #withinRevealed(target: Element): boolean {
+    return this.revealed !== null && target.closest(`[data-reveal="${this.revealed}"]`) !== null;
   }
 
   key(message: Message): string { return message.role === 'user' ? `prompt:${message.id}` : `turn:${message.turnId}`; }
@@ -64,11 +68,11 @@ export class MessageReveal {
   /** A tap in the timeline: on a message it shows or hides that message's row. A selection is being read, not tapped. */
   tap = (event: MouseEvent): void => {
     if (!this.#phone() || !(event.target instanceof Element)) return;
-    const key = event.target.closest<HTMLElement>('[data-reveal]')?.dataset.reveal ?? null;
     if (event.target.closest(CONTROL)) {
-      if (key !== this.revealed) this.revealed = null;
+      if (this.revealed !== null && !this.#withinRevealed(event.target)) this.revealed = null;
       return;
     }
+    const key = event.target.closest<HTMLElement>('[data-reveal]')?.dataset.reveal ?? null;
     if (window.getSelection()?.isCollapsed === false) return;
     this.revealed = key !== null && key !== this.revealed ? key : null;
   };
