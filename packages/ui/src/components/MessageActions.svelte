@@ -101,8 +101,8 @@
 
   :global(.message:hover) .act,
   :global(.message:hover) .stamp,
-  .message-actions:focus-within .act,
-  .message-actions:focus-within .stamp,
+  .message-actions:has(:focus-visible) .act,
+  .message-actions:has(:focus-visible) .stamp,
   /* With no button to reach, a keyboard could never show the time: it stays. */
   .message-actions:not(:has(.act)) .stamp {
     opacity: 1;
@@ -127,9 +127,11 @@
      message, which keeps the gap's height, and its target reaches the gaps around it. */
   .act { margin-block: calc((var(--chat-message-gap) - var(--icon-button)) / 2); }
 
-  /* Give the target its own width so surrounding message content cannot cut into its sides. */
+  /* Give the target its own box so surrounding message content cannot cut into it and thumbs hit reliably. */
   @media (pointer: coarse), (max-width: 720px) {
-    .act { width: var(--icon-button-target); }
-    .act::before { inset-inline: 0; }
+    .message-actions { gap: 4px; }
+    .act { width: var(--icon-button-target); height: var(--icon-button-target); margin-block: 0; }
+    .act :global(svg) { width: 16px; height: 16px; }
+    .act::before { inset: 0; }
   }
 </style>

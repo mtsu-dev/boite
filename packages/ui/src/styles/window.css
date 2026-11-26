@@ -279,7 +279,8 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
   /* A phone's grouped cards sit tighter: a smaller title step and less air under it, the rows keeping 44 px targets. */
   .settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card { padding: var(--space-1) var(--space-4); margin-bottom: var(--space-4); }
   /* Buttons under the last prompt and answer, or the message tapped (lib/message-reveal.svelte.ts). A settled prompt's ticks go with them; a pending one keeps its own. */
-  .message[data-reveal]:not([data-latest]):not([data-revealed]) .message-actions,
+  .message[data-reveal]:not([data-latest]):not([data-revealed]) > :not(.summary) .message-actions,
+  .message[data-reveal]:not([data-latest]):not([data-revealed]) .summary[data-tucked] .message-actions,
   .message[data-reveal]:not([data-latest]):not([data-revealed]) .receipts.settled { display: none; }
 }
 

@@ -1,6 +1,7 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { KEYBINDING_COMMANDS, parseChord } from '@boite/contracts';
-import { COMMAND_GROUPS, chordFromEvent, chordLabel, chordParts, commandForKey, isMac, matchesChord, resolveBindings } from './keybindings';
+import { COMMAND_GROUPS, chordFromEvent, chordFromWheel, chordLabel, chordParts, commandForKey, isMac, matchesChord, matchesWheel, resolveBindings } from './keybindings';
+import { setLocaleSetting } from './i18n.svelte';
 
 function key(init: KeyboardEventInit): KeyboardEvent {
   return new KeyboardEvent('keydown', init);
@@ -120,5 +121,55 @@ describe('recording a chord on the Keyboard page', () => {
     const listed = COMMAND_GROUPS.flatMap((group) => group.commands);
     expect([...listed].sort()).toEqual([...KEYBINDING_COMMANDS].sort());
     expect(new Set(listed).size).toBe(listed.length);
+  });
+});
+
+describe('the wheel chord', () => {
+  afterEach(async () => { await setLocaleSetting('system'); });
+
+  test('the wheel zoom has no chord until the file gives it one', () => {
+    expect(resolveBindings({})['zoom-wheel']).toEqual({ text: null, chord: null, custom: false });
+    expect(resolveBindings({ 'zoom-wheel': 'mod+wheel' })['zoom-wheel'].chord).toEqual({ mod: true, ctrl: false, alt: false, shift: false, meta: false, key: 'wheel' });
+    expect(COMMAND_GROUPS.find((group) => group.id === 'general')?.commands).toContain('zoom-wheel');
+  });
+
+  test('it reads Ctrl+Wheel, Molette in French', async () => {
+    const chord = resolveBindings({ 'zoom-wheel': 'mod+wheel' })['zoom-wheel'].chord!;
+    expect(chordLabel(chord, false)).toBe('Ctrl+Wheel');
+    expect(chordLabel(chord, true)).toBe('Cmd+Wheel');
+    expect(chordParts(resolveBindings({ 'zoom-wheel': 'mod+shift+wheel' })['zoom-wheel'].chord!, false)).toEqual(['Ctrl', 'Shift', 'Wheel']);
+    await setLocaleSetting('fr');
+    expect(chordLabel(chord, false)).toBe('Ctrl+Molette');
+  });
+
+  test('no key fires it, and no wheel fires a key\'s command', () => {
+    const table = resolveBindings({ 'zoom-wheel': 'mod+wheel' });
+    const chord = table['zoom-wheel'].chord!;
+    // Not even a key that would call itself the wheel.
+    expect(matchesChord(key({ key: 'Wheel', ctrlKey: true }), chord, false)).toBe(false);
+    expect(commandForKey(table, key({ key: 'Wheel', ctrlKey: true }), false)).toBeNull();
+    expect(commandForKey(table, key({ key: 'n', ctrlKey: true }), false)).toBe('new-thread');
+    expect(matchesWheel({ ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }, table['new-thread'].chord!, false)).toBe(false);
+  });
+
+  test('a turn matches its exact modifiers, mod being Ctrl here and Cmd on a Mac', () => {
+    const mod = resolveBindings({ 'zoom-wheel': 'mod+wheel' })['zoom-wheel'].chord!;
+    const alt = resolveBindings({ 'zoom-wheel': 'alt+wheel' })['zoom-wheel'].chord!;
+    const turn = (init: Partial<Record<'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey', boolean>>) => ({ ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...init });
+    expect(matchesWheel(turn({ ctrlKey: true }), mod, false)).toBe(true);
+    expect(matchesWheel(turn({ ctrlKey: true, altKey: true }), mod, false)).toBe(false);
+    expect(matchesWheel(turn({ metaKey: true }), mod, true)).toBe(true);
+    expect(matchesWheel(turn({ ctrlKey: true }), mod, true)).toBe(false);
+    expect(matchesWheel(turn({ altKey: true }), alt, false)).toBe(true);
+    expect(matchesWheel(turn({ ctrlKey: true }), alt, false)).toBe(false);
+    expect(matchesWheel(turn({}), mod, false)).toBe(false);
+  });
+
+  test('a turn of the wheel spells the words of the file', () => {
+    expect(chordFromWheel({ ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }, false)).toBe('mod+wheel');
+    expect(chordFromWheel({ ctrlKey: false, metaKey: true, altKey: false, shiftKey: true }, true)).toBe('mod+shift+wheel');
+    expect(chordFromWheel({ ctrlKey: false, metaKey: false, altKey: true, shiftKey: false }, false)).toBe('alt+wheel');
+    expect(chordFromWheel({ ctrlKey: false, metaKey: false, altKey: false, shiftKey: true }, false)).toBe('shift+wheel');
+    expect(parseChord(chordFromWheel({ ctrlKey: false, metaKey: false, altKey: false, shiftKey: true }, false)).ok).toBe(false);
   });
 });

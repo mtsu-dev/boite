@@ -4,6 +4,7 @@ import { findChromium } from '../../packages/core/src/browser/chromium.ts';
 import { makeAgent, scripted } from '../../packages/core/test/agent-fixture.ts';
 import { startTestCore, type TestCore } from '../../packages/core/test/harness.ts';
 import { BrowserPage } from './lib/cdp.ts';
+import { openSettings } from './lib/mobile.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
 
 const real = findChromium().path ? test : test.skip;
@@ -63,8 +64,10 @@ real('a mochi project worker appears live in the project and opens as a conversa
   await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, 'archive-desktop.png'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.click('[data-testid="nav-settings"]');
-  await page.click('[data-testid="mobile-settings-home"] [data-testid="settings-tab-general"]');
+  await openSettings(page);
+  if (!await page.evaluate(`!!document.querySelector('[data-testid="mobile-settings-archived"]')`)) {
+    await page.click('[data-testid="mobile-settings-home"] [data-testid="settings-tab-general"]');
+  }
   await page.click('[data-testid="mobile-settings-archived"]');
   await page.waitFor(`document.querySelector(${JSON.stringify(archivedBot)}) && document.querySelector(${JSON.stringify(archivedWorker)})`);
   await page.settleAnimations();

@@ -24,11 +24,13 @@ for (const width of [1280, 390]) {
       const phone = width < 720;
       const enterGeneral = async () => {
         if (phone) await mobileAction(page, 'mobile-settings');
-        else await page.click('[data-testid=nav-settings]');
+        else if (!await page.evaluate(`!!document.querySelector('[data-testid=settings-tab-general]')`)) await page.click('[data-testid=nav-settings]');
         await page.click(`${phone ? '[data-testid=mobile-settings-home] ' : ''}[data-testid=settings-tab-general]`);
       };
       const openArchive = async () => {
-        await page.click(phone ? '[data-testid=mobile-settings-archived]' : '[data-testid=archived-show]');
+        if (!await page.evaluate(`!!document.querySelector('[data-testid=archived-list]')`)) {
+          await page.click(phone ? '[data-testid=mobile-settings-archived]' : '[data-testid=archived-show]');
+        }
         await page.waitFor(`document.querySelector('[data-testid=archived-list]')`);
       };
       await enterGeneral();

@@ -105,6 +105,7 @@ pub(super) fn resolve_core(state: &CoreState) -> Result<Resolved, String> {
         return Err(HELD.to_string());
     }
     let launch = &state.launch;
+    let binary = launch.binary();
     let file = launch.directory.join("core.json");
 
     // The run `core.json` described before this start: the wait below must
@@ -112,7 +113,7 @@ pub(super) fn resolve_core(state: &CoreState) -> Result<Resolved, String> {
     let mut before = None;
     match read_core_file(&file) {
         Ok(Some(existing)) => {
-            match probe(&existing, &launch.version, launch.bundle_hash.as_deref()) {
+            match probe(&existing, &launch.version, binary.bundle_hash.as_deref()) {
                 Probe::Current => return Ok(adopt(state, &existing)),
                 Probe::Stale(version) => replace_stale(state, &existing, &version)?,
                 Probe::Absent => {}
@@ -181,7 +182,7 @@ pub(super) fn resolve_core(state: &CoreState) -> Result<Resolved, String> {
                     && foreign.as_ref().is_none_or(|(_, start, _)| same_core(*pid, start));
                 if let Some(pid) = found.pid.filter(matches_expected) {
                     if foreign.is_some() {
-                        match probe(&found, &launch.version, launch.bundle_hash.as_deref()) {
+                        match probe(&found, &launch.version, binary.bundle_hash.as_deref()) {
                             Probe::Current => return Ok(adopt(state, &found)),
                             Probe::Stale(version) => {
                                 replace_stale(state, &found, &version)?;

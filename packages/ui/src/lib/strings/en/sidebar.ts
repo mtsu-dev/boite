@@ -14,20 +14,18 @@ export const strings = {
     threadListRetrying: 'Reloading conversations from {machine}.',
     projectDoneThreads: '{project}: {count} done',
     projectArchivedThreads: '{project}: {count} archived',
-    /** The fold under the list for projects with no open conversation, and what choosing one does. */
-    idleProjects: 'Idle projects',
+    /** The fold under the list for projects without a single conversation, and what choosing one does. */
+    idleProjects: 'No threads',
     /** The section on top of the Projects view: projects whose every conversation is at work, so nothing there waits on the user. */
     workingProjects: 'Working',
     workingProjectsHint: 'Every conversation in these projects is at work. A project moves down once one needs you.',
-    /** The section under the open projects: nothing open, conversations archived to pick up again. */
-    laterProjects: 'Set aside',
-    laterProjectsHint: 'Conversations you archived to pick up later, in projects with nothing else open.',
-    idleProjectsHint: 'Nothing to do here: no open or set-aside conversation. Choose one to start a thread.',
+    /** The section under the open projects: conversations, none at work and none waiting on the user. */
+    pausedProjects: 'Inactive',
+    pausedProjectsHint: 'Nothing runs in these projects and nothing waits on you. A project moves up once a thread starts or needs you.',
+    idleProjectsHint: 'No thread in these projects, running or stopped. Choose one to start a thread.',
     filter: 'Filter',
     /** The Filter menu's group of switches: what the list folds away or shows. */
     filterDisplay: 'Display',
-    /** The archive in the list column: the way back to the threads. */
-    backToThreads: 'Back to the threads',
     /** A filter on, as a chip under the list's head (FilterChips.svelte): its press removes it. */
     filterClear: 'Remove the {name} filter',
     /** Recent's filter on the rows still at work, named on its chip. */
@@ -51,9 +49,11 @@ export const strings = {
     history: 'History', historyBack: 'Back', historyForward: 'Forward',
     displayOrder: 'Sort by',
     groupWorkingRow: 'Working threads',
-    groupIdleRow: 'Idle projects',
+    groupIdleRow: 'Inactive projects',
     showDoneRow: 'Done threads',
     showDoneHint: 'Lists finished threads after the live ones, in Projects and Recent. This device only.',
+    mochiLayoutRow: 'Mochi layout',
+    mochiLayoutHint: 'Shows the side rail with your mochis, teams and shortcuts along the left edge. This device only.',
     autoArchiveMergedPrHint: 'After every PR merges or closes, Boite asks the agent whether the conversation is done. Applies to this project.',
     autoRemoveWorktreesHint: 'An hour after every conversation in a worktree is done or archived, Boite deletes the worktree if nothing would be lost: its last commit is on another branch, or a merged pull request has that exact commit. A merged branch goes too. Uncommitted changes always stay. Applies to this project.',
     noActiveProjects: 'No conversations need attention.',

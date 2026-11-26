@@ -496,6 +496,10 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   // Diagnostics reach an agent anonymized, and only while the owner leaves agentLogAccess on (checked in diagnostics.ts).
   ['diagnostics.logs', 'anonymized app records so it can tell whether Boite itself failed; paths, names and addresses are placeholders'],
   ['diagnostics.summary', 'the anonymized environment and grouped recent problems'],
+  // The owner asked that agents reach the archive to audit past failures; it is read only, and a sandboxed agent cannot open the data directory.
+  ['transcripts.list', 'list the compacted conversations of the archive'],
+  ['transcripts.failures', 'read the failures the archive\'s index lists'],
+  ['transcripts.read', 'read the records of a compacted conversation, a bounded page at a time'],
   ['diagnostics.export', 'the anonymized export a developer reads, the same file the owner would send'],
   ['diagnostics.issue', 'a GitHub issue draft about Boite and its prefilled link; only the owner publishes it, so an agent never posts publicly under their login'],
 ]);

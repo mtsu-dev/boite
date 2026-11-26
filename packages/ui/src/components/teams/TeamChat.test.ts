@@ -3,6 +3,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { FakeClient } from '../../lib/fake-client';
 import { Store } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
+import { mochiLayout } from '../../lib/mochi-layout.svelte';
 import MobileNavigation from '../MobileNavigation.svelte';
 import AgentsPage from '../agents/AgentsPage.svelte';
 import TeamChat from './TeamChat.svelte';
@@ -16,6 +17,7 @@ afterEach(async () => {
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
+  mochiLayout.load();
   document.documentElement.classList.remove('agents-detail-open');
 });
 
@@ -116,6 +118,7 @@ test("a phone's Mochis list holds the teams above the mochis, opens a team's cha
 });
 
 test("a desktop's column shows the open team: its picture, its name, who is in it, its chat, and its members open their mochi", async () => {
+  mochiLayout.set(true);
   const { store, team, huginn } = await skollheim();
   botsPage(store, false);
   // The desktop's default bot is open first; the rail then opens the team.
@@ -247,7 +250,7 @@ test('a member of another machine of the group carries that machine in the membe
 });
 
 test("the owner's composer says who a post wakes before it goes, and posts a mention, a reply and a private post", async () => {
-  const { store, team, huginn, jeux, say, key } = await skollheim();
+  const { client, store, team, huginn, jeux, say, key } = await skollheim();
   const draft = await say(huginn.id, 'The draft is up.');
   await store.open(team.threadId);
   mounted.push(mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } }));
@@ -282,7 +285,24 @@ test("the owner's composer says who a post wakes before it goes, and posts a men
   expect(query('[data-testid=team-replying]').textContent).toContain('Replying to Huginn (Réseaux)');
   type('Ship it');
   expect(wakes()).toBe('Wakes Huginn (Réseaux), whose post this answers');
+  const call = client.call.bind(client);
+  let refuse = true;
+  const sent = vi.spyOn(client, 'call').mockImplementation(((...args: Parameters<typeof call>) => {
+    if (args[0] === 'teams.post' && refuse) { refuse = false; return Promise.reject(new Error('Try again')); }
+    return call(...args);
+  }) as typeof call);
+  query<HTMLButtonElement>('[data-testid=team-send]').click(); flushSync();
+  const field = query<HTMLTextAreaElement>('[data-testid=team-composer-input]');
+  expect(field.value).toBe('');
+  expect(field.readOnly).toBe(true);
+  expect(document.querySelector('[data-testid=team-replying]')).toBeNull();
+  await vi.waitFor(() => expect(query('[data-testid=team-composer-error]').textContent).toBe('Try again'));
+  expect(field.value).toBe('Ship it');
+  expect(query('[data-testid=team-replying]').textContent).toContain('Replying to Huginn (Réseaux)');
   const answer = await send(3);
+  const posts = sent.mock.calls.filter(([method]) => method === 'teams.post');
+  expect(posts).toHaveLength(2);
+  expect(posts[1]).toEqual(posts[0]);
   expect(answer.querySelector('[data-testid=team-post-quote]')?.textContent).toContain('In reply to Huginn (Réseaux)');
   expect(document.querySelector('[data-testid=team-replying]')).toBeNull();
 
@@ -307,4 +327,50 @@ test('an archived team keeps its chat readable and takes no post', async () => {
   expect(all('[data-testid=team-post]')).toHaveLength(1);
   expect(document.querySelector('[data-testid=team-composer]')).toBeNull();
   expect(document.querySelector('[data-testid=team-post-reply]')).toBeNull();
+});
+
+test('leaving and returning to a team while a post fails restores the draft, reply, error and idempotent post id', async () => {
+  const { client, store, team, huginn, say } = await skollheim();
+  const draft = await say(huginn.id, 'Ready for review.');
+  await store.open(team.threadId);
+  const firstMount = mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } });
+  mounted.push(firstMount);
+  await vi.waitFor(() => expect(all('[data-testid=team-post]')).toHaveLength(1));
+  await vi.waitFor(() => query('[data-testid=team-composer-input]'));
+
+  query<HTMLButtonElement>(`[data-post-id="${draft.id}"] [data-testid=team-post-reply]`).click();
+  await settle();
+  type('Needs one tweak');
+
+  const call = client.call.bind(client);
+  let rejectPost!: (reason: Error) => void;
+  let firstCall = true;
+  const spy = vi.spyOn(client, 'call').mockImplementation(((...args: Parameters<typeof call>) => {
+    if (args[0] === 'teams.post' && firstCall) {
+      firstCall = false;
+      return new Promise<never>((_resolve, reject) => { rejectPost = reject; });
+    }
+    return call(...args);
+  }) as typeof call);
+
+  query<HTMLButtonElement>('[data-testid=team-send]').click();
+  flushSync();
+  await vi.waitFor(() => expect(spy.mock.calls.filter(([method]) => method === 'teams.post')).toHaveLength(1));
+
+  // Leave the team while teams.post is still in flight, then fail the request and come back.
+  await unmount(firstMount);
+  mounted.splice(mounted.indexOf(firstMount), 1);
+  rejectPost(new Error('Network dropped'));
+  await settle();
+
+  mounted.push(mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } }));
+  await vi.waitFor(() => expect(query('[data-testid=team-composer-error]').textContent).toBe('Network dropped'));
+  expect(query<HTMLTextAreaElement>('[data-testid=team-composer-input]').value).toBe('Needs one tweak');
+  expect(query('[data-testid=team-replying]').textContent).toContain('Replying to Huginn (Réseaux)');
+
+  query<HTMLButtonElement>('[data-testid=team-send]').click();
+  await vi.waitFor(() => expect(all('[data-testid=team-post]')).toHaveLength(2));
+  const posts = spy.mock.calls.filter(([method]) => method === 'teams.post');
+  expect(posts).toHaveLength(2);
+  expect(posts[1]).toEqual(posts[0]);
 });

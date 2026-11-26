@@ -1,5 +1,5 @@
 /** Core settings, the scheduler they size, keybindings and telemetry. */
-import { KEYBINDING_COMMANDS, MACHINE_SETTINGS, parseChord, RpcErrorCode, checkSettingsPatch, followedPatch, keepLaterFavorites } from '@boite/contracts';
+import { KEYBINDING_COMMANDS, MACHINE_SETTINGS, parseChordFor, RpcErrorCode, checkSettingsPatch, followedPatch, keepLaterFavorites } from '@boite/contracts';
 import type { Settings } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import type { FakeContext, FakeMethods } from './context';
@@ -71,7 +71,7 @@ export function settingsMethods(ctx: FakeContext) {
         throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `command: "${command}" is not a command Boite has` });
       }
       if (chord !== null) {
-        const parsed = parseChord(chord);
+        const parsed = parseChordFor(command, chord);
         if (!parsed.ok) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `chord: ${parsed.reason}` });
       }
       ctx.keybindings = { ...ctx.keybindings, bindings: { ...ctx.keybindings.bindings, [command]: chord === null ? null : chord.trim().toLowerCase() } };

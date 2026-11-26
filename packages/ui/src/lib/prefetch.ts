@@ -1,3 +1,5 @@
+import { agentsPage as lazyAgentsPage } from './agents-views';
+import { settingsShell as lazySettingsShell, agentsLayout as lazyAgentsLayout } from './navigation-views';
 import type { Store } from './store.svelte';
 
 /**
@@ -34,9 +36,12 @@ export function prefetchNames<Name extends string>(names: Name[], device: { tour
  */
 export function warmPages(store: Store, agents: boolean): void {
   const quiet = () => undefined;
-  void import('../components/SettingsShell.svelte').catch(quiet);
+  void lazySettingsShell.load().catch(quiet);
   if (agents) {
-    void Promise.all([import('../components/agents/AgentsPage.svelte'), import('./agents.svelte')]).then(async ([, { AgentsView }]) => {
+    void Promise.all([
+      Promise.all([lazyAgentsLayout.load(), lazyAgentsPage.load()]),
+      import('./agents.svelte')
+    ]).then(async ([, { AgentsView }]) => {
       const view = AgentsView.of(store);
       if (!view.snapshot && store.connection === 'ready') await view.refresh();
     }).catch(quiet);

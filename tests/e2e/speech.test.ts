@@ -1,4 +1,4 @@
-import { mobileAction, newMobileThread, screensSettled } from './lib/mobile.ts';
+import { mobileAction, newMobileThread, openSettings, screensSettled } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -191,7 +191,7 @@ test('phone draft options preserve worktree choice and close when returning to d
 }, 15_000);
 
 test('voice settings save API selection, hide credentials on reload, and fit phone and desktop', async () => {
-  await page.evaluate(`document.querySelector('${id('nav-settings')}').click()`);
+  await openSettings(page);
   await page.click(id('settings-tab-voice'));
   await page.waitFor(`document.querySelector('${id('voice-settings')}')?.textContent.includes('Ready')`);
   expect(await page.evaluate(`document.querySelector('${id('voice-api')}')`)).toBeNull();
@@ -265,7 +265,7 @@ test('device voice settings select and test the microphone, stop capture, and pe
   await capture('speech-desktop-voice-disabled.png');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await installMicrophone();
-  await page.evaluate(`document.querySelector('${id('nav-settings')}').click()`);
+  await openSettings(page);
   await page.click(id('settings-tab-voice'));
   await page.waitFor(`document.querySelector('${id('voice-enabled')}')`);
   expect(await page.evaluate(`document.querySelector('${id('voice-enabled')}').checked`)).toBe(false);
@@ -286,7 +286,7 @@ test('Appearance hides Worktree on desktop and phone while preserving the draft 
   await page.waitFor(`document.querySelector('${id('composer-worktree')}')?.getAttribute('aria-checked') === 'true'`);
   await page.evaluate('history.back()');
   await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')`);
-  await page.evaluate(`document.querySelector('${id('nav-settings')}').click()`);
+  await openSettings(page);
   await page.click(id('settings-tab-appearance'));
   // The buttons are chosen in the desktop's Appearance; the phone's leaves them out and follows the same choice.
   await page.waitFor(`document.querySelector('${id('appearance-page')}')`);
@@ -306,7 +306,7 @@ test('Appearance hides Worktree on desktop and phone while preserving the draft 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 950, deviceScaleFactor: 1, mobile: false });
   expect(await worktreeChoice()).toBeNull();
   await capture('speech-desktop-disabled-controls.png');
-  await page.evaluate(`document.querySelector('${id('nav-settings')}').click()`);
+  await openSettings(page);
   await page.click(id('settings-tab-appearance'));
   await page.evaluate(`document.querySelector('${id('control-composer.worktree')}').scrollIntoView({block:'center'})`);
   await capture('speech-desktop-appearance-worktree.png');

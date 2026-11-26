@@ -136,3 +136,40 @@ test.each(['card-first', 'files-first', 'hydrated-first'])('a visible diff keeps
   expect(part.inputDeferred).toBe(true);
   expect(read().diffs).toEqual([]);
 });
+
+test('TurnFilesLoader keeps inline between and after controls mounted and focused when TurnFiles resolves in DOM order', async () => {
+  const { createRawSnippet } = await import('svelte');
+  const { default: TurnFilesLoader } = await import('./TurnFilesLoader.svelte');
+  const between = createRawSnippet(() => ({ render: () => '<button type="button" data-testid="inline-copy">Copy</button>' }));
+  const after = createRawSnippet(() => ({ render: () => '<button type="button" data-testid="inline-details">i</button>' }));
+  component = mount(TurnFilesLoader, {
+    target: document.body,
+    props: {
+      store: { openProject: null, pickerAvailable: false } as unknown as Store,
+      cwd: '/repo',
+      inline: true,
+      between,
+      after,
+      files: [{ path: '/repo/a.ts', relative: 'a.ts', absolute: '/repo/a.ts', name: 'a.ts', folder: '', change: 'changed' }],
+      diffs: [{ kind: 'diff', path: '/repo/a.ts', oldText: 'a\n', newText: 'a\nb\n' }],
+    },
+  });
+  flushSync();
+  const copy = document.querySelector<HTMLButtonElement>('[data-testid=inline-copy]')!;
+  const details = document.querySelector<HTMLButtonElement>('[data-testid=inline-details]')!;
+  copy.focus();
+  expect(document.activeElement).toBe(copy);
+  await vi.waitFor(() => {
+    flushSync();
+    expect(document.querySelector('[data-testid=turn-files-toggle]')).not.toBeNull();
+  });
+  expect(document.querySelector('[data-testid=inline-copy]')).toBe(copy);
+  expect(document.querySelector('[data-testid=inline-details]')).toBe(details);
+  expect(copy.isConnected).toBe(true);
+  expect(document.activeElement).toBe(copy);
+  const order = [...document.querySelectorAll('button')].map(node => node.getAttribute('data-testid'));
+  expect(order).toEqual(['turn-files-toggle', 'inline-copy', 'turn-diff-toggle', 'inline-details']);
+  await unmount(component); component = undefined;
+  expect(document.querySelector('[data-testid=turn-files-toggle]')).toBeNull();
+  expect(document.querySelector('[data-testid=turn-diff-toggle]')).toBeNull();
+});

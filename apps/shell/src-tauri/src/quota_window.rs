@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Runtime, Webview, WebviewUrl, WebviewWindow};
 
@@ -28,6 +28,8 @@ pub struct HoverState {
     /// Counts every opening, so a release planned at a hide knows whether the
     /// popup was opened again since.
     opened: AtomicU64,
+    /// One cancellable idle timer for the opening it was scheduled after.
+    release: Mutex<Option<(u64, tauri::async_runtime::JoinHandle<()>)>>,
 }
 
 impl HoverState {
@@ -54,9 +56,11 @@ impl HoverState {
     /// nothing, no second `show()` and no second `tray://open`, whose handler
     /// replays the page's opening.
     fn opening(&self) -> bool {
+        let mut release = self.release.lock().unwrap();
         if self.open.swap(true, Ordering::AcqRel) { return false; }
         self.placing.store(true, Ordering::Release);
         self.opened.fetch_add(1, Ordering::AcqRel);
+        if let Some((_, timer)) = release.take() { timer.abort(); }
         true
     }
 
@@ -69,7 +73,23 @@ impl HoverState {
 
     /// Whether the popup hidden when `opened` was the count stayed hidden.
     fn still_closed(&self, opened: u64) -> bool {
-        self.opened.load(Ordering::Acquire) == opened
+        self.opened.load(Ordering::Acquire) == opened && !self.open.load(Ordering::Acquire)
+    }
+
+    fn release_after(&self, opened: u64, deadline: Instant, release: impl FnOnce() + Send + 'static) {
+        let mut timer = self.release.lock().unwrap();
+        if !self.still_closed(opened) { return; }
+        // Repeated hides during the same hidden period keep its first deadline.
+        if timer.as_ref().is_some_and(|(generation, task)| *generation == opened && !task.inner().is_finished()) { return; }
+        if let Some((_, task)) = timer.take() { task.abort(); }
+        *timer = Some((opened, tauri::async_runtime::spawn(async move {
+            tokio::time::sleep_until(deadline.into()).await;
+            release();
+        })));
+    }
+
+    pub fn cancel_release(&self) {
+        if let Some((_, timer)) = self.release.lock().unwrap().take() { timer.abort(); }
     }
 
     /// Whether the popup opened as number `opened` is still the one open.
@@ -100,8 +120,7 @@ pub fn hide<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>) -> tauri:
     window.emit("tray://closed", ())?;
     let opened = state.opened.load(Ordering::Acquire);
     let handle = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(idle_release());
+    state.release_after(opened, Instant::now() + idle_release(), move || {
         let app = handle.clone();
         let _ = handle.run_on_main_thread(move || {
             if !app.state::<HoverState>().still_closed(opened) { return; }
@@ -509,6 +528,23 @@ mod tests {
         assert!(state.still_closed(at_hide));
         state.opened.fetch_add(1, Ordering::AcqRel);
         assert!(!state.still_closed(at_hide));
+    }
+    #[test]
+    fn the_quota_release_timer_is_reused_while_hidden_and_cancelled_on_open() {
+        let state = HoverState::default();
+        let deadline = Instant::now() + IDLE_RELEASE;
+        state.release_after(0, deadline, || {});
+        let id = state.release.lock().unwrap().as_ref().unwrap().1.inner().id();
+        state.release_after(0, deadline + IDLE_RELEASE, || {});
+        assert_eq!(state.release.lock().unwrap().as_ref().unwrap().1.inner().id(), id);
+        assert!(state.opening());
+        assert!(state.release.lock().unwrap().is_none());
+        state.closed();
+        state.release_after(0, deadline, || {});
+        assert!(state.release.lock().unwrap().is_none());
+        state.release_after(1, deadline, || {});
+        assert_eq!(state.release.lock().unwrap().as_ref().unwrap().0, 1);
+        state.cancel_release();
     }
     #[test]
     fn visible_and_auto_hidden_taskbars_reserve_the_same_space() {

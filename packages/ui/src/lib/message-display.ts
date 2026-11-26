@@ -1,5 +1,5 @@
-import type { Message, MessagePart, MoveNotice, NewConversationNotice, ThreadLink, ThreadSummary } from '@boite/contracts';
-import { QUOTE } from './markdown';
+import type { Message, MessagePart, MoveNotice, NewConversationNotice, ThreadLink, ThreadSummary, Turn } from '@boite/contracts';
+import { HEADING, ITEM, QUOTE, RULE } from './markdown';
 import { FenceScan, fenceLanguage, openFence } from './fences';
 
 /** Older cores journalled the whole goal instruction as a user message. */
@@ -130,21 +130,40 @@ export class ParagraphScan {
   #previous = '';
   #epoch: object | undefined;
   #start = 0;
+  // ParagraphScan never splits inside a fenced block: keeping FenceScan here
+  // guarantees a closing fence after a blank line cannot orphan and swallow
+  // following paragraphs, even when indented under a list item.
   #fences = new FenceScan();
   #done: string[] = [];
   #tail = '';
   #result: string[] | null = null;
-  #drawing = new DrawingScan();
+  #drawing = new DrawingScan(false);
   #drawAt = -1;
+  #rich = false;
 
   /** The unfinished paragraph, for disclosures that show live text without parsing it. */
   pending(text: string): string { return blockText(text.slice(this.#start)); }
 
-  /** Reuses the completed-line grammar, speculating only on the unfinished line. */
-  drafting(text: string): { text: string; drawing: boolean } {
+  /**
+   * Reuses the completed-line grammar, speculating only on the unfinished
+   * line. `rich` is the rendering's (`renderMarkdown`): without it the native
+   * blocks stay code, so they hold nothing back.
+   */
+  drafting(text: string, rich = false): { text: string; drawing: boolean } {
+    if (rich !== this.#rich) this.#rescan(text, rich);
     const at = this.#drawAt >= 0 ? this.#drawAt : this.#drawing.line(text.slice(this.#read), false) ? this.#read : -1;
     return at < 0 ? { text: this.pending(text), drawing: false }
       : { text: blockText(text.slice(this.#start, at)).replace(/\r\n/g, '\n'), drawing: true };
+  }
+
+  /** Reads the complete lines of the unfinished paragraph again under the other grammar. */
+  #rescan(text: string, rich: boolean): void {
+    this.#rich = rich;
+    this.#drawing = new DrawingScan(rich);
+    this.#drawAt = -1;
+    for (let offset = this.#start, end = text.indexOf('\n', offset); end !== -1 && end < this.#read; offset = end + 1, end = text.indexOf('\n', offset)) {
+      if (this.#drawing.line(text.slice(offset, end))) { this.#drawAt = offset; return; }
+    }
   }
 
   /** An epoch is supplied only by a writer that records appends and rotates it on replacement. */
@@ -157,7 +176,7 @@ export class ParagraphScan {
       this.#fences.reset();
       this.#done = [];
       this.#result = null;
-      this.#drawing = new DrawingScan();
+      this.#drawing = new DrawingScan(this.#rich);
       this.#drawAt = -1;
     }
     this.#previous = text;
@@ -173,7 +192,7 @@ export class ParagraphScan {
         const block = blockText(text.slice(this.#start, offset));
         if (block) { this.#done.push(block); grew = true; }
         this.#start = offset;
-        this.#drawing = new DrawingScan();
+        this.#drawing = new DrawingScan(this.#rich);
         this.#drawAt = -1;
       }
     }
@@ -187,8 +206,10 @@ export class ParagraphScan {
   }
 }
 
-/** The fences `lib/rich-markdown.ts` draws, or a formula on lines of its own (`lib/markdown.ts`). */
+/** The fences `lib/rich-markdown.ts` draws, or a formula on lines of its own (`lib/markdown.ts`), in any rendering. */
 const DRAWN = new Set(['mermaid', 'math', 'view']);
+/** The fences it draws only in rich rendering: `lib/native-blocks.ts`. */
+const DRAWN_RICH = new Set(['steps', 'options', 'bars', 'stats']);
 const DISPLAY_MATH = /^(?:\$\$|\\\[)/;
 
 /**
@@ -197,9 +218,9 @@ const DISPLAY_MATH = /^(?:\$\$|\\\[)/;
  * written of it would show as source, then jump to a drawing, so a placeholder
  * stands there (`drawing`) until its paragraph is complete.
  */
-export function pendingDrawing(tail: string): { text: string; drawing: boolean } {
+export function pendingDrawing(tail: string, rich = false): { text: string; drawing: boolean } {
   const lines = tail.split(/\r?\n/);
-  const at = drawingLine(lines);
+  const at = drawingLine(lines, rich);
   return at < 0 ? { text: tail, drawing: false } : { text: lines.slice(0, at).join('\n').trimEnd(), drawing: true };
 }
 
@@ -209,18 +230,24 @@ export function pendingDrawing(tail: string): { text: string; drawing: boolean }
  * document of its own once its marks are off, so what is held back is what
  * it draws.
  */
-function drawingLine(lines: string[]): number {
-  const scan = new DrawingScan();
+function drawingLine(lines: string[], rich: boolean): number {
+  const scan = new DrawingScan(rich);
   for (let index = 0; index < lines.length; index++) {
     if (scan.line(lines[index]!)) return index;
   }
   return -1;
 }
 
+const LIST_CONT = /^\s{2,}\S/;
+
 /** Each contiguous quote is its own document, including its own nested fences. */
 class DrawingScan {
   #fences = new FenceScan();
   #quote: DrawingScan | null = null;
+  #inList = false;
+  readonly #rich: boolean;
+
+  constructor(rich: boolean) { this.#rich = rich; }
 
   line(line: string, complete = true): boolean {
     // pendingDrawing splits CRLF before descending through quote documents.
@@ -229,17 +256,38 @@ class DrawingScan {
       if (complete) this.#fences.line(line);
       return false;
     }
-    const fence = openFence(line);
-    if (fence) {
-      if (complete) { this.#fences.line(line); this.#quote = null; }
-      return DRAWN.has(fenceLanguage(fence).toLowerCase());
+    if (!line.trim()) {
+      if (complete) { this.#quote = null; this.#inList = false; }
+      return false;
     }
-    if (DISPLAY_MATH.test(line.trim())) return true;
+    // Mirrors `renderMarkdown`: an indented line under an open list item
+    // continues the item rather than opening a fenced block.
+    const fence = this.#inList && LIST_CONT.test(line) ? null : openFence(line);
+    if (fence) {
+      if (complete) { this.#fences.line(line); this.#quote = null; this.#inList = false; }
+      const kind = fenceLanguage(fence).toLowerCase();
+      return DRAWN.has(kind) || (this.#rich && DRAWN_RICH.has(kind));
+    }
+    if (DISPLAY_MATH.test(line.trim())) {
+      if (complete) { this.#quote = null; this.#inList = false; }
+      return true;
+    }
+    if (RULE.test(line) || HEADING.test(line)) {
+      if (complete) { this.#quote = null; this.#inList = false; }
+      return false;
+    }
     const quote = QUOTE.exec(line);
-    if (!quote) { if (complete) this.#quote = null; return false; }
-    const inner = this.#quote ?? new DrawingScan();
-    if (complete) this.#quote = inner;
-    return inner.line(quote[1]!, complete);
+    if (quote) {
+      const inner = this.#quote ?? new DrawingScan(this.#rich);
+      if (complete) { this.#quote = inner; this.#inList = false; }
+      return inner.line(quote[1]!, complete);
+    }
+    if (complete) {
+      this.#quote = null;
+      if (ITEM.test(line)) this.#inList = true;
+      else if (!(this.#inList && LIST_CONT.test(line))) this.#inList = false;
+    }
+    return false;
   }
 }
 
@@ -258,14 +306,56 @@ export function newConversationOf(message: Message): NewConversationNotice | nul
 }
 
 /**
- * The first of the new-conversation markers that end `timeline`, or null. The
- * thread's closing line belongs to the turn they follow, so it stands above
- * the first of them rather than under the last.
+ * Whether a user row steered an in-progress turn rather than opening it.
+ * When older rows are cut above (`cutAbove`), a turn's opening prompt can sit off-page,
+ * so a leading user row that closes its turn or arrived after `turn.startedAt` is steered.
  */
-export function closingMarkerOf(timeline: readonly Message[]): string | null {
-  let at: string | null = null;
-  for (let index = timeline.length - 1; index >= 0 && newConversationOf(timeline[index]!); index--) at = timeline[index]!.id;
-  return at;
+export function isSteeringMessage(
+  message: Pick<Message, 'id' | 'role' | 'createdAt'>,
+  firstInTurnId: string | undefined,
+  cutAbove: boolean,
+  closes: boolean,
+  turn: Pick<Turn, 'startedAt'> | undefined,
+): boolean {
+  if (message.role !== 'user') return false;
+  if (firstInTurnId !== undefined && firstInTurnId !== message.id) return true;
+  return cutAbove && (closes || (turn?.startedAt != null && message.createdAt > turn.startedAt));
+}
+
+/**
+ * The last non-user row's settled turn in `timeline` that carries a summary line, past
+ * new-conversation markers, folded wakes (`folds`), cache pings, queued or running turns,
+ * and failed or stopped turns with no answer text: an in-progress or interrupted prompt
+ * without an answer leaves the previous settled answer's buttons on a phone, while done
+ * tool-only wakes still match `lastLined`.
+ */
+export function lastAnswerTurn(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
+  const empty = new Set<string>();
+  for (let index = timeline.length - 1; index >= 0; index--) {
+    const message = timeline[index]!;
+    if (message.role === 'user' || newConversationOf(message) || folds.has(message.id) || (message.turnId !== null && empty.has(message.turnId))) continue;
+    const turn = turns.find(current => current.id === message.turnId);
+    if (!turn || turn.execution?.operation === 'keepalive' || turn.status === 'queued' || turn.status === 'running') continue;
+    if (turn.status !== 'done' && !hasTurnAnswer(timeline, turn.id)) { empty.add(turn.id); continue; }
+    return turn.id;
+  }
+  return null;
+}
+
+/**
+ * The done turn whose summary line ends `timeline`, past new-conversation markers, folded wakes (`folds`) and cache
+ * pings, which draw none; null when the last line drawn is not a done turn's. `lib/resting-turn.ts` says whether
+ * the thread rests at all.
+ */
+export function lastLined(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
+  for (let index = timeline.length - 1; index >= 0; index--) {
+    const message = timeline[index]!;
+    if (newConversationOf(message) || folds.has(message.id)) continue;
+    const turn = turns.find(current => current.id === message.turnId);
+    if (!turn || turn.execution?.operation === 'keepalive') continue;
+    return turn.status === 'done' ? turn.id : null;
+  }
+  return null;
 }
 
 /** The core's line for a thread the agent started (`boite thread new`). */
@@ -283,6 +373,15 @@ export function startedFrom(message: Message): ThreadLink | null {
 export function pendingMoveOf(thread: Pick<ThreadSummary, 'id' | 'moveNote'> | null, threadId: string): MoveNotice | null {
   if (!thread || thread.id !== threadId) return null;
   return thread.moveNote ?? null;
+}
+
+/** Whether the agent wrote any copyable answer text in `turnId`. */
+export function hasTurnAnswer(messages: readonly Message[], turnId: string): boolean {
+  for (const message of messages) {
+    if (message.turnId !== turnId || message.role !== 'assistant') continue;
+    for (const part of message.parts) if (part.type === 'text' && visibleAnswer(part.text).trim()) return true;
+  }
+  return false;
 }
 
 /** Everything the agent wrote in one turn, its tool cards left out: what a copy of the answer takes. */

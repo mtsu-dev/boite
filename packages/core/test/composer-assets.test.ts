@@ -1,12 +1,56 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 import type { ComposerAttachment, ComposerValue } from '@boite/contracts';
+import { ComposerStorage } from '../src/composer-storage.ts';
+import type { Connection } from '../src/router.ts';
 
 let h: TestCore;
 afterEach(async () => { await h?.stop(); });
 const attachment = { kind: 'file' as const, mimeType: 'text/plain', name: 'notes.txt', data: 'aGVsbG8=' };
 const value = (...attachments: ComposerAttachment[]): ComposerValue => ({ input: { text: '', attachments, queued: [], paused: false } });
+const owner = (id: string): Connection => ({ id, subscriptions: new Set(), identity: { principal: 'owner', sessionId: null, threadId: null }, sendEvent() {}, close() {} });
+
+test('large composer records and assets write through uncached statements', async () => {
+  h = await startTestCore();
+  const storage = h.core.composer.storage;
+  const query = spyOn(h.core.journal.db, 'query');
+  try {
+    const large = { ...attachment, data: 'aGVs'.repeat(20_000) };
+    const asset = storage.putAsset(large, false, owner('first'));
+    const input = { ...value().input, text: 'a'.repeat(80_000), attachments: [{ kind: large.kind, name: large.name, mimeType: large.mimeType, ...asset }] };
+    const saved = storage.save('drafts', 'large', { input });
+    expect(storage.get('drafts', 'large')).toEqual(saved);
+    expect(storage.readAsset(asset.assetId)).toEqual(large);
+    expect(query.mock.calls.map(([sql]) => sql).filter(sql => /INSERT (?:OR IGNORE )?INTO composer_(?:records|assets)/i.test(sql))).toEqual([]);
+  } finally { query.mockRestore(); }
+});
+
+test('private pending uploads share bounded budgets, expire and keep active drafts intact', async () => {
+  h = await startTestCore();
+  const storage = new ComposerStorage(h.core, { perConnection: 2048, global: 3072, ttlMs: 200 });
+  const a = owner('a'), b = owner('b'), c = owner('c');
+  const file = { ...attachment, data: 'aGVs'.repeat(256) };
+  const upload = (id: string, connection: Connection) => storage.putAsset({ ...file, name: id }, true, connection);
+  try {
+    const active = upload('active', a);
+    expect(upload('active', a)).toEqual(active);
+    expect(() => upload('too many for a', a)).toThrow('pending incognito');
+    const ref = { kind: file.kind, name: 'active', mimeType: file.mimeType, ...active };
+    storage.save('drafts', 'active', { ...value(ref), draft: { projectId: null, worktree: false, incognito: true } }, a);
+    const pendingA = upload('pending-a', a);
+    const pendingB = upload('pending-b', b);
+    expect(() => upload('too many globally', c)).toThrow('pending incognito');
+    expect(storage.readAsset(pendingA.assetId).data).toBe(file.data);
+    expect(storage.readAsset(pendingB.assetId).data).toBe(file.data);
+    await waitFor(() => { try { storage.readAsset(pendingA.assetId); return false; } catch { return true; } }, 1500);
+    expect(() => storage.readAsset(pendingB.assetId)).toThrow('uploaded attachment');
+    expect(storage.getAsset(active.assetId, a.id).data).toBe(file.data);
+    expect(upload('pending-a', a)).toEqual(pendingA);
+    expect(upload('active', a)).toEqual(active);
+    expect(upload('pending-c', c).assetId).toBeTruthy();
+  } finally { storage.close(); }
+});
 
 test('asset collection preserves shared references and pending uploads through replacement, null saves and hard deletion', async () => {
   h = await startTestCore();

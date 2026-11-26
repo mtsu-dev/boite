@@ -13,5 +13,5 @@
 {/if}
 
 <style>
-  .elapsed { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .elapsed { flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>

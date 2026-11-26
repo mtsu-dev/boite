@@ -173,7 +173,7 @@ export class TurnAttempts {
       state.thread.selectionVersion = candidate;
       state.running.execution = { ...execution, selectionVersion: candidate };
       this.#core.journal.putTurn(state.running);
-      this.#core.bus.emit('thread.updated', picking);
+      this.#core.bus.emit('thread.updated', withLoad(this.#core, picking));
     }).catch(error => quiet(() => this.#core.logs.warn(`could not confirm live selection: ${String(error)}`, { source: 'turns', threadId: state.threadId })));
   }
 

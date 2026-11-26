@@ -1,6 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
-    "externalBin": ["binaries/boite-core", "binaries/boite-launch"]
+    "externalBin": ["binaries/boite-core", "binaries/boite-launch"],
+    "resources": {
+      "binaries/linux-tcp-worker.js": "linux-tcp-worker.js"
+    }
   }
 }

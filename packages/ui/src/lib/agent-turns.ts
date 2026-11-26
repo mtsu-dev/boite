@@ -213,7 +213,7 @@ export function wakeFolds(turn: Turn): boolean {
 }
 
 /** A compaction Boite ran by itself that went through: housekeeping, said on the line of the turn before it. */
-const quietCompaction = (turn: Turn) => turn.execution?.operation === 'compact' && turn.execution.automatic === true && turn.status === 'done';
+export const quietCompaction = (turn: Pick<Turn, 'status' | 'execution'>) => turn.execution?.operation === 'compact' && turn.execution.automatic === true && turn.status === 'done';
 
 /**
  * `timeline` without the automatic compactions that went through, and what

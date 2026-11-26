@@ -5,19 +5,23 @@ works on its own, wakes on a schedule or when something happens in its
 projects, and tells you what matters. Teams put a few mochis and you in one
 chat.
 
-On the desktop, each mochi shows as a picture in the app rail, the column down
-the window's left edge, and the phone shows a Mochis tab in its bottom bar.
-Teams come first; drag a picture up or down to put mochis and teams in your own
-order, which this device keeps. A small mark on a picture says the mochi needs
-you, failed or is at work; a mochi with unread answers shows how many, and a
-team shows a dot. A circle runs around the picture while the mochi works. Point
-at the picture to read it in words beside the mochi's name.
+On the desktop, each mochi and team shows as a picture in the app rail, the
+column down the window's left edge. With Mochi layout turned off under Filter,
+Display, open Mochis from the button at the foot of the sidebar to list them in
+the left column instead. A phone shows a Mochis tab in its bottom bar. In the app rail, teams come first; drag a
+picture up or down to put mochis and teams in your own order, which this device
+keeps. A small mark on a picture says the mochi needs you, failed or is at
+work; a mochi with unread answers shows how many, and a team shows a dot. A
+circle runs around the picture while the mochi works. Point at the picture to
+read it in words beside the mochi's name. A faded edge means there are more
+pictures to scroll to.
 
 ## Create a mochi
 
-1. On the desktop, press the `+` under the mochis in the app rail and pick a
-   new mochi. Under a mouse, the `+` fades in when the pointer comes to the
-   rail. On a phone, open Mochis and press New mochi.
+1. On the desktop, press the `+` under the mochis in the app rail (under a
+   mouse, it fades in when the pointer comes to the rail), or with Mochi layout
+   off, open Mochis and press `+` in the column head, and pick New mochi. On a phone,
+   open Mochis and press New mochi.
 2. Give it a name and, under What it does, its standing instructions, for
    example "every morning, read the new issues and sum them up in five lines".
 3. Its robot, model and projects come filled in; change them if you like. It

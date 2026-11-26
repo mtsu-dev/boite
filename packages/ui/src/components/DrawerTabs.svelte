@@ -14,12 +14,12 @@
 
 <div class="tabs" role="tablist" aria-label={strings.board.tabs} data-testid="drawer-tabs">
   <button type="button" class="ghost tab ui-label" role="tab" aria-selected={current === 'board'} class:selected={current === 'board'}
-    data-testid="drawer-tab-board" onclick={() => { if (current !== 'board') store.showBoard(); }}>
+    data-testid="drawer-tab-board" data-preload-view="board" onclick={() => { if (current !== 'board') store.showBoard(); }}>
     <SquareKanban size={14} aria-hidden="true" />{strings.board.open}
   </button>
   {#if store.owner}
     <button type="button" class="ghost tab ui-label" role="tab" aria-selected={current === 'terminal'} class:selected={current === 'terminal'}
-      data-testid="drawer-tab-terminal" onclick={() => { if (current !== 'terminal') store.toggleTerminal(); }}>
+      data-testid="drawer-tab-terminal" data-preload-view="terminal" onclick={() => { if (current !== 'terminal') store.toggleTerminal(); }}>
       <SquareTerminal size={14} aria-hidden="true" />{strings.terminal.title}
     </button>
   {/if}

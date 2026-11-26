@@ -3,7 +3,8 @@
  * ids to chords (`"new-thread": "mod+shift+n"`) or to null to unbind. The core
  * reads it at start and again on every change, hands the result to `keybindings.get`
  * and `keybindings.updated`, and refuses each bad entry by name: an unknown
- * command, a chord it cannot parse, a value that is neither a string nor null.
+ * command, a chord it cannot parse or that does not fit its command (the wheel
+ * on a key's command, a key on the wheel's), a value that is neither a string nor null.
  * A file that is not JSON gives one error and no binding at all. The defaults
  * are the UI's, so the file only carries what differs.
  */
@@ -11,7 +12,7 @@
 import { existsSync, readFileSync, renameSync, rmSync, watch, writeFileSync } from 'node:fs';
 import type { FSWatcher } from 'node:fs';
 import { join } from 'node:path';
-import { KEYBINDING_COMMANDS, parseChord } from '@boite/contracts';
+import { KEYBINDING_COMMANDS, parseChordFor } from '@boite/contracts';
 import type { Keybindings, KeybindingCommand } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, refused } from './errors.ts';
@@ -53,7 +54,7 @@ export function readKeybindings(path: string, text: string | null): Keybindings 
       errors.push(`${KEYBINDINGS_FILE}: "${id}" must be a chord string like mod+shift+k, or null to unbind it`);
       continue;
     }
-    const chord = parseChord(value);
+    const chord = parseChordFor(command, value);
     if (!chord.ok) {
       errors.push(`${KEYBINDINGS_FILE}: "${id}": ${chord.reason}`);
       continue;
@@ -92,7 +93,7 @@ export class KeybindingStore {
     if (!KNOWN.has(command)) throw invalidParams(`command: "${command}" is not a command Boite has`);
     if (chord !== null) {
       if (typeof chord !== 'string') throw invalidParams('chord: expected a chord string like mod+shift+k, or null');
-      const parsed = parseChord(chord);
+      const parsed = parseChordFor(command, chord);
       if (!parsed.ok) throw invalidParams(`chord: ${parsed.reason}`);
     }
     const entries = this.#entries();

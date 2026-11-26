@@ -39,6 +39,20 @@ export function rowCut(edge: number, height: number, rows: Iterable<CutRow>, fad
   return 0;
 }
 
+function* cutRows(box: HTMLElement): Generator<CutRow> {
+  for (const row of box.querySelectorAll(ROW_EDGES)) {
+    const { top, bottom: end } = row.getBoundingClientRect();
+    // A head's title is its own line, and its card goes from the card's top, its padding over the head included.
+    const card = row.matches(CARD_HEADS) ? row.closest(CARDS) : null;
+    if (card) {
+      yield { top: card.getBoundingClientRect().top, bottom: end, title: end };
+      continue;
+    }
+    const title = row.matches(ROW_CARDS) ? row.querySelector(ROW_TITLE) : null;
+    yield title ? { top, bottom: end, title: title.getBoundingClientRect().bottom } : { top, bottom: end };
+  }
+}
+
 /**
  * Keeps `set` given the list's cut while it rests: measured once it settles (a resize, new rows, the end of a
  * scroll), zero while it scrolls, so a row passing the edge is never hidden mid-motion. The fade is the box's
@@ -47,24 +61,25 @@ export function rowCut(edge: number, height: number, rows: Iterable<CutRow>, fad
 export function watchRowCut(box: HTMLElement, set: (cut: number) => void): () => void {
   let settle: ReturnType<typeof setTimeout> | undefined;
   const measure = () => {
+    if (box.classList.contains('covered')) return;
+    if (box.parentElement?.querySelector(':scope > [data-slide]')) {
+      rest(180);
+      return;
+    }
     const { bottom, height } = box.getBoundingClientRect();
+    if (height <= 0) return;
     const fade = parseFloat(getComputedStyle(box).getPropertyValue('--fade')) || 0;
-    set(rowCut(bottom, height, [...box.querySelectorAll(ROW_EDGES)].map((row): CutRow => {
-      const { top, bottom: end } = row.getBoundingClientRect();
-      // A head's title is its own line, and its card goes from the card's top, its padding over the head included.
-      const card = row.matches(CARD_HEADS) ? row.closest(CARDS) : null;
-      if (card) return { top: card.getBoundingClientRect().top, bottom: end, title: end };
-      const title = row.matches(ROW_CARDS) ? row.querySelector(ROW_TITLE) : null;
-      return title ? { top, bottom: end, title: title.getBoundingClientRect().bottom } : { top, bottom: end };
-    }), fade));
+    set(rowCut(bottom, height, cutRows(box), fade));
   };
   const rest = (delay: number) => { clearTimeout(settle); settle = setTimeout(measure, delay); };
   const scrolled = () => { set(0); rest(140); };
   const resized = new ResizeObserver(() => rest(60));
   const changed = new MutationObserver(() => rest(60));
+  const revealed = new MutationObserver(() => { if (!box.classList.contains('covered')) rest(60); });
   resized.observe(box);
   changed.observe(box, { childList: true, subtree: true });
+  revealed.observe(box, { attributes: true, attributeFilter: ['class'] });
   box.addEventListener('scroll', scrolled, { passive: true });
   rest(0);
-  return () => { resized.disconnect(); changed.disconnect(); box.removeEventListener('scroll', scrolled); clearTimeout(settle); };
+  return () => { resized.disconnect(); changed.disconnect(); revealed.disconnect(); box.removeEventListener('scroll', scrolled); clearTimeout(settle); };
 }

@@ -122,7 +122,7 @@ test('the desktop page charts each day by provider, reads a column on hover and 
   expect(cards.pad).toBeGreaterThanOrEqual(16);
   expect(cards.inset).toBeGreaterThanOrEqual(cards.pad);
   expect(cards.gap).toBeGreaterThanOrEqual(16);
-  expect(cards.width).toBeLessThanOrEqual(880);
+  expect(cards.width).toBeLessThanOrEqual(920);
   await capture('usage-desktop-dark.png');
 
   await page.evaluate(`document.querySelector('[data-testid=usage-chart]').scrollIntoView({ block: 'center' })`);

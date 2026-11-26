@@ -185,6 +185,7 @@ export class Store {
 
   detach(): void {
     const ctx = this.#ctx;
+    ctx.threads.releaseCaches(this.machineId);
     ctx.shared.reset();
     ctx.requests.resetSecrets();
     ctx.clientGeneration++;
@@ -567,6 +568,7 @@ export class Store {
   get threads() { return this.#ctx.threads.threads; }
   set threads(value) { this.#ctx.threads.threads = value; }
   get openThread() { return this.#ctx.threads.openThread; }
+  get subscribedThreadId() { return this.#ctx.threads.subscribedThreadId; }
   /** Where a thread opens: an agent's own on the Agents page, any other in the chat. */
   pageOf(thread: Parameters<Threads['pageOf']>[0]) { return this.#ctx.threads.pageOf(thread); }
   set openThread(value) { this.#ctx.threads.openThread = value; }
@@ -595,6 +597,7 @@ export class Store {
   /** Reads ahead (`IdlePreloads`) stop for an open and wait for the next idle moment after it. */
   open(...args: Parameters<Threads['open']>) { const resume = this.#ctx.threads.preloads.idle.pause(); return this.#ctx.threads.open(...args).finally(resume); }
   preload(threadId: ThreadId) { return this.#ctx.threads.preloads.preload(threadId); }
+  previewAgentThread(threadId: ThreadId) { return this.#ctx.threads.previewAgentThread(threadId); }
   loadToolOutput(...args: Parameters<Threads['loadToolOutput']>) { return this.#ctx.threads.loadToolOutput(...args); }
   acquireToolOutput(...args: Parameters<Threads['acquireToolOutput']>) { return this.#ctx.threads.acquireToolOutput(...args); }
   /** A card shows a running call of `threadId`: a phone streams its live output until the release (`store/stream-channels.ts`). */

@@ -238,9 +238,10 @@ test('ready visits and visits waiting for idle share the same byte budget', () =
   try {
     cache.remember('first', page('first'), READING_CACHE_BYTES, thread => thread);
     for (const id of ['second', 'third', 'fourth']) expect(cache.defer(page(id), READING_CACHE_BYTES, thread => thread, thread => thread, () => true)).toBe(true);
-    const mark = cache.mark();
+    const mark = cache.mark('second');
     expect(cache.get('second')?.id).toBe('second');
-    expect(cache.droppedSince('second', mark)).toBe(false);
+    expect(mark.dropped).toBe(false);
+    mark.release();
     expect(cache.defer(page('fifth'), READING_CACHE_BYTES, thread => thread, thread => thread, () => true)).toBe(true);
     expect(cache.has('first')).toBe(false);
     expect(waiting.size).toBe(4);
@@ -249,4 +250,25 @@ test('ready visits and visits waiting for idle share the same byte budget', () =
     expect(waiting.size).toBe(0);
     vi.unstubAllGlobals();
   }
+});
+
+test('a press waits for a same-thread idle transfer, and releasing it before that transfer never unsubscribes', async () => {
+  const { calls, ahead, release } = await machine(true);
+  await vi.waitFor(() => expect(ahead()).toEqual(['t-trace']), { timeout: 3500 });
+  const end = store.preload('t-trace');
+  expect(calls().filter(([method, params]) => method === 'threads.get' && params.threadId === 't-trace')).toHaveLength(1);
+  end();
+  release();
+  await vi.waitFor(() => expect(ahead().length).toBeGreaterThan(1), { timeout: 3500 });
+  expect(calls().filter(([method, params]) => method === 'threads.unsubscribe' && params.threadId === 't-trace')).toEqual([]);
+});
+
+test('idle reads wait for a hidden document to become visible', async () => {
+  const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+  const { ahead } = await machine();
+  await new Promise(resolve => setTimeout(resolve, IDLE_PRELOAD_WAIT_MS + 50));
+  expect(ahead()).toEqual([]);
+  hidden.mockReturnValue(false);
+  document.dispatchEvent(new Event('visibilitychange'));
+  await vi.waitFor(() => expect(ahead()).toContain('t-trace'), { timeout: 3500 });
 });
