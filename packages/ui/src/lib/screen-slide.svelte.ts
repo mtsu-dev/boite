@@ -94,9 +94,23 @@ export class ScreenSlide {
   async #settle(run: number): Promise<void> {
     await tick();
     if (run !== this.#run) return;
+    // Wait until after the browser paints the first slide frame so checking
+    // whether an animation actually started never forces a synchronous full-page
+    // style and layout before frame 1.
+    if (typeof requestAnimationFrame === 'function' && !document.hidden) {
+      await new Promise<void>(resolve => { requestAnimationFrame(() => { requestAnimationFrame(() => resolve()); }); });
+      if (run !== this.#run) return;
+    }
     const stage = this.#stage;
-    const moving = (stage?.getAnimations({ subtree: true }) ?? []).some(animation =>
-      keyframes.has((animation as CSSAnimation).animationName) && (animation.effect as KeyframeEffect | null)?.target?.parentElement === stage);
+    let moving = false;
+    if (stage) {
+      for (const child of stage.children) {
+        if (child.getAnimations().some(animation => keyframes.has((animation as CSSAnimation).animationName))) {
+          moving = true;
+          break;
+        }
+      }
+    }
     if (!moving) this.stop();
   }
 }

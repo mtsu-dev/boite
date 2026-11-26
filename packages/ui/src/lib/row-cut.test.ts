@@ -102,4 +102,43 @@ describe('watchRowCut', () => {
       vi.useRealTimers();
     }
   });
+
+  it('re-measures when .covered is removed after rows changed off-screen at the same box size', async () => {
+    vi.useFakeTimers();
+    try {
+      const box = document.createElement('section');
+      box.style.setProperty('--fade', '10px');
+      box.getBoundingClientRect = () => ({ top: 100, bottom: 600, height: 500 }) as DOMRect;
+      const row = document.createElement('button');
+      row.dataset['testid'] = 'thread-row';
+      let top = 560;
+      row.getBoundingClientRect = () => ({ top, bottom: top + 80 }) as DOMRect;
+      box.append(row);
+      document.body.append(box);
+      const set = vi.fn();
+      const stop = watchRowCut(box, set);
+      vi.advanceTimersByTime(0);
+      expect(set).toHaveBeenLastCalledWith(30);
+
+      // Cover the list, mutate rows while covered (ignored), then reveal at identical dimensions.
+      box.classList.add('covered');
+      top = 540;
+      const extra = document.createElement('button');
+      extra.dataset['testid'] = 'thread-row';
+      extra.getBoundingClientRect = () => ({ top: 600, bottom: 660 }) as DOMRect;
+      box.append(extra);
+      await Promise.resolve();
+      vi.advanceTimersByTime(100);
+      expect(set).toHaveBeenLastCalledWith(30);
+
+      box.classList.remove('covered');
+      await Promise.resolve();
+      vi.advanceTimersByTime(60);
+      expect(set).toHaveBeenLastCalledWith(50);
+      stop();
+      box.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

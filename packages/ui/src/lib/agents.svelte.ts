@@ -170,18 +170,25 @@ export async function openAgent(store: Store, agentId: string): Promise<string |
   const request = (agentOpens.get(store) ?? 0) + 1;
   agentOpens.set(store, request);
   const navigation = store.navigationGeneration;
-  const known = threadOfAgent(AgentsView.of(store).snapshot, agentId);
+  const known = threadOfAgent(AgentsView.of(store).snapshot, agentId) ?? threadOfAgent(agentDirectory(store).snapshot, agentId);
+  // Start fetching the known thread in parallel with agents.open so opening takes one round trip instead of two;
+  // store.open adopts the in-flight preload once agents.open confirms the thread, and finally releases it on refusal or handoff.
+  const release = known && typeof store.preload === 'function' ? store.preload(known) : null;
   let threadId = known;
   try {
-    threadId = (await client.call('agents.open', { agentId })).threadId;
-  } catch (error) {
-    // An older core without `agents.open` still lists the thread in its sessions; any other refusal is the answer.
-    if (!known || !(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) { store.error = errorText(error); return null; }
+    try {
+      threadId = (await client.call('agents.open', { agentId })).threadId;
+    } catch (error) {
+      // An older core without `agents.open` still lists the thread in its sessions; any other refusal is the answer.
+      if (!known || !(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) { store.error = errorText(error); return null; }
+    }
+    if (!threadId || store.client !== client || agentOpens.get(store) !== request || store.navigationGeneration !== navigation) return null;
+    lastAgent.set(store, agentId);
+    await store.open(threadId);
+    return threadId;
+  } finally {
+    release?.();
   }
-  if (!threadId || store.client !== client || agentOpens.get(store) !== request || store.navigationGeneration !== navigation) return null;
-  lastAgent.set(store, agentId);
-  await store.open(threadId);
-  return threadId;
 }
 
 const DESK_SEEN_KEY = 'boite:agent-desk-seen';
@@ -237,7 +244,11 @@ export class AgentsView {
   private users = 0;
   /** The agent whose desk the snapshot carries, null for none. */
   private desk: string | null = null;
-  constructor(readonly store: Store) {}
+  constructor(readonly store: Store) {
+    // Reuse the directory's snapshot (already populated for the rail) so the first visit draws profiles immediately.
+    const directory = agentDirectory(store).snapshot;
+    if (directory) this.snapshot = directory;
+  }
   /**
    * The view of this store, kept between visits: the page draws the last
    * snapshot at once and refreshes it, instead of starting from "loading".
@@ -252,7 +263,15 @@ export class AgentsView {
   start(): void {
     this.users++;
     // A failure of an earlier visit is not news on this one.
-    if (this.users === 1) { this.error = ''; this.loadError = ''; agentDirectory(this.store).feed(true); }
+    if (this.users === 1) {
+      this.error = '';
+      this.loadError = '';
+      if (!this.snapshot) {
+        const directory = agentDirectory(this.store).snapshot;
+        if (directory) this.snapshot = directory;
+      }
+      agentDirectory(this.store).feed(true);
+    }
     this.listen();
     void this.refresh();
   }
@@ -263,6 +282,10 @@ export class AgentsView {
     if (this.users > 0) return;
     this.off?.(); this.off = null;
     agentDirectory(this.store).feed(false);
+  }
+  /** Sets the initial desk before `start()` so the first snapshot carries it in one RPC. */
+  primeDesk(agentId: string | null): void {
+    if (this.users === 0) this.desk = agentId;
   }
   /** The agent whose desk is on screen, or null: a change reads the snapshot again with that desk only. */
   showDesk(agentId: string | null): void {
