@@ -1,32 +1,16 @@
 // No tracked text file may contain U+2014. A fixture that must carry one, such as
 // recorded provider output, writes it as an escape (`\u2014` in JSON or a string).
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+// Git searches the index, so it decides what is text and reads a file kept in
+// another working-tree-encoding as the UTF-8 blob it stores.
 
-const EM_DASH = Buffer.from('\u2014');
-
-/** `line:column` of each em dash in a text buffer; a buffer with a NUL byte is binary and skipped. */
-export function emDashes(data: Buffer): string[] {
-  if (data.subarray(0, 8000).includes(0)) return [];
-  const found: string[] = [];
-  let line = 1;
-  let lineStart = 0;
-  let scanned = 0;
-  for (let at = data.indexOf(EM_DASH); at !== -1; at = data.indexOf(EM_DASH, at + EM_DASH.length)) {
-    for (let i = scanned; i < at; i++) if (data[i] === 0x0a) { line++; lineStart = i + 1; }
-    scanned = at;
-    found.push(`${line}:${data.subarray(lineStart, at).toString('utf8').length + 1}`);
-  }
-  return found;
-}
-
+/** `file:line:byte-column` of each em dash in the files Git tracks under `root`. */
 export function checkEmDashes(root = process.cwd()): string[] {
-  const listed = Bun.spawnSync(['git', 'ls-files', '-z'], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
-  if (listed.exitCode !== 0) throw new Error(`git ls-files failed in ${root}: ${listed.stderr.toString().trim()}`);
-  return listed.stdout.toString().split('\0').filter(Boolean).flatMap((file) => {
-    let data: Buffer;
-    try { data = readFileSync(join(root, file)); } catch { return []; } // Deleted but still staged.
-    return emDashes(data).map((at) => `${file}:${at}: no-em-dash: replace U+2014 with a comma, colon, parentheses or a new sentence`);
+  const found = Bun.spawnSync(['git', '-c', 'core.quotepath=off', 'grep', '--cached', '-z', '-o', '-n', '--column', '-I', '-F', '-e', '\u2014'], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+  if (found.exitCode === 1) return [];
+  if (found.exitCode !== 0) throw new Error(`git grep failed in ${root}: ${found.stderr.toString().trim()}`);
+  return found.stdout.toString().split('\n').filter(Boolean).map((match) => {
+    const [file, line, column] = match.split('\0');
+    return `${file}:${line}:${column}: no-em-dash: replace U+2014 with a comma, colon, parentheses or a new sentence`;
   });
 }
 
