@@ -275,7 +275,7 @@ export class MuseSession {
         // Nothing to summarize is no failure: the conversation stays as it was,
         // and no compaction item will come to end the turn.
         if (result.status === 'noop') {
-          turn.part(turn.takeIndex(), { type: 'notice', notice: { kind: 'nothing_to_compact' }, detail: `Muse had nothing to compact${result.reason === undefined ? '' : ` (${result.reason})`}` });
+          turn.part(turn.takeIndex(), { type: 'notice', notice: { kind: 'nothing_to_compact' }, detail: `Muse had nothing to compact${result.reason === undefined || /nothing to compact/i.test(result.reason) ? '' : ` (${result.reason})`}` });
           turn.finish('completed', null);
         }
       } else {

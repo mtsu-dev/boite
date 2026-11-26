@@ -588,7 +588,7 @@ describe('muse driver', () => {
     await client.call('threads.compact', { threadId });
     expect((await finished).status).toBe('done');
     const last = (await client.call('threads.get', { threadId })).messages.at(-1)!;
-    expect(last.parts).toContainEqual({ type: 'notice', notice: { kind: 'nothing_to_compact' }, detail: 'Muse had nothing to compact (nothing to compact)' });
+    expect(last.parts).toContainEqual({ type: 'notice', notice: { kind: 'nothing_to_compact' }, detail: 'Muse had nothing to compact' });
     expect(last.parts.some((part) => part.type === 'error' || part.type === 'compaction')).toBe(false);
   });
 

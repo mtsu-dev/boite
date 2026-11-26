@@ -1762,8 +1762,9 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   model or the thread's own model at low effort and allows 30 seconds per call.
   The profile's own tool, session and model flags, short aliases included, are
   dropped from these launches.
-- `/btw` uses the same launch. At a settled checkpoint, it opens a temporary
-  copy of the session cut at that checkpoint and keeps pi's read-only tools
+- `/btw` reuses that isolated launch, with a session and tools as below. At a
+  settled checkpoint, it opens a temporary copy of the session cut at that
+  checkpoint and keeps pi's read-only tools
   (`--tools read,grep,find,ls`): the copy's tool calls need tools defined, or
   Anthropic's Messages API refuses the request. When the current conversation
   has no matching checkpoint, it receives Boite's frozen text snapshot in
