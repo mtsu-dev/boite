@@ -28,9 +28,50 @@ async function capture(page: BrowserPage, name: string) {
   await page.evaluate('document.fonts.ready');
   await page.screenshot(join(artifacts, name));
 }
+
+// Capture the hit test, the real pointer events and the input reply before a
+// later frame can clear an error. The viewer and the counter only use fixtures.
+const TRACE_TAP = `(() => {
+  const canvas = document.querySelector('${id('remote-browser-frame')}');
+  const screen = canvas.closest('button');
+  const rect = canvas.getBoundingClientRect();
+  const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+  const name = node => node instanceof Element ? (node.getAttribute('data-testid') || node.tagName + '.' + node.className) : null;
+  const trace = window.__boiteTestTap = {
+    x, y, width: rect.width, height: rect.height,
+    hit: name(document.elementFromPoint(x, y)), screen: name(screen), disabled: screen.disabled,
+    slide: document.querySelector('${id('mobile-header')}')?.getAttribute('data-slide'),
+    events: [], requests: [], replies: [],
+  };
+  for (const type of ['touchstart', 'touchend', 'touchcancel', 'pointerdown', 'pointerup', 'pointercancel']) {
+    document.addEventListener(type, event => {
+      if (trace.events.length >= 16) return;
+      trace.events.push({ type, target: name(event.target), onScreen: screen.contains(event.target),
+        disabled: screen.disabled, connected: screen.isConnected, x: event.clientX, y: event.clientY });
+    }, { capture: true, passive: true });
+  }
+  const send = WebSocket.prototype.send;
+  WebSocket.prototype.send = function(payload) {
+    if (typeof payload === 'string' && payload.includes('"method":"browser.remoteInput"')) {
+      const { id, params } = JSON.parse(payload);
+      trace.requests.push({ id, frameId: params.frameId, input: params.input });
+      const reply = event => {
+        if (typeof event.data !== 'string' || !event.data.startsWith('{')) return;
+        const message = JSON.parse(event.data);
+        if (message.id !== id) return;
+        trace.replies.push({ id, ok: message.result?.ok, error: message.error?.message });
+        this.removeEventListener('message', reply);
+      };
+      this.addEventListener('message', reply);
+    }
+    return send.call(this, payload);
+  };
+  return { x, y };
+})()`;
+
 /** A real pointer press and release in the middle of the shown frame. */
-async function tapFrame(page: BrowserPage, touch: boolean) {
-  const box = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('${id('remote-browser-frame')}').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+async function tapFrame(page: BrowserPage, touch: boolean, trace = false) {
+  const box = await page.evaluate<{ x: number; y: number }>(trace ? TRACE_TAP : `(() => { const r = document.querySelector('${id('remote-browser-frame')}').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
   if (touch) {
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [box] });
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -127,13 +168,14 @@ real('desktop and phone reveal background browser tabs, and their taps reach the
         await page.waitFor(frameShown(true), 20_000);
         await page.settleAnimations();
         const nextBefore = await button();
-        await tapFrame(page, true);
+        await tapFrame(page, true, true);
         const nextDeadline = Date.now() + 10_000;
         while (await button() === nextBefore && Date.now() < nextDeadline) await Bun.sleep(100);
         const nextAfter = await button();
         if (nextAfter === nextBefore) {
           await capture(page, 'agent-browser-core-failed-tap-phone.png');
-          console.error('browser tap failure', await page.evaluate('document.body.innerText'));
+          const { product } = await page.send('Browser.getVersion', {}) as { product: string };
+          console.error('browser tap failure', product, JSON.stringify(await page.evaluate('window.__boiteTestTap')));
         }
         expect(nextAfter).not.toBe(nextBefore);
         await page.evaluate('history.back()');
