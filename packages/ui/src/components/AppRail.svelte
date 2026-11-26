@@ -329,7 +329,7 @@
 
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
-    if (!contactsAnywhere || ContactRequestNotice) return;
+    if (!contactsParts || !contactsAnywhere || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
 </script>

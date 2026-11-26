@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { fingerprintWords } from '../../lib/contacts.svelte';
 
   /** The eight words both owners compare, drawn as keycaps so they read one by one. */
   let { fingerprint, testid }: { fingerprint: string; testid?: string } = $props();
   const words = $derived(fingerprintWords(fingerprint));
+  markFeature('boite-feature:contacts');
 </script>
 
 <div class="fit">

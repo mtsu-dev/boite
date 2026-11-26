@@ -5,6 +5,7 @@
  * load it when they first show.
  */
 
+import { markFeature } from '@boite/contracts';
 import type { Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, ProjectId, ThreadId } from '@boite/contracts';
 import { untrack } from 'svelte';
 import { errorText } from './errors';
@@ -376,3 +377,5 @@ export async function copyText(text: string, field?: HTMLInputElement | HTMLText
     return !!field && !!document.execCommand?.('copy');
   }
 }
+
+markFeature('boite-feature:contacts');

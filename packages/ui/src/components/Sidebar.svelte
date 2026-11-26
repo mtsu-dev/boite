@@ -81,7 +81,7 @@
   const contactsSide = $derived(!mobile.current && store.page === 'home' && contactsShown(store));
   let ContactRows = $state<typeof import('./home/ContactRows.svelte').default>();
   $effect(() => {
-    if (!contactsSide || ContactRows) return;
+    if (!contactsParts || !contactsSide || ContactRows) return;
     void contactsParts.ContactRows().then(module => { ContactRows = module.default; }).catch(() => {});
   });
   const foldLabel = $derived(contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide);

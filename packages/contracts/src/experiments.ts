@@ -153,6 +153,7 @@ declare global {
   const __BOITE_BUILD_KIND__: BuildKind | undefined;
   const __BOITE_HAS_DRAFT_BACKDROP__: boolean | undefined;
   const __BOITE_HAS_AUTO_GOAL__: boolean | undefined;
+  const __BOITE_HAS_CONTACTS__: boolean | undefined;
 }
 
 /** The kind this bundle was compiled as, or null when it runs from source. */
@@ -188,6 +189,7 @@ export function featureDefines(version: string | null | undefined, stages: Recor
 export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boolean }>> = {
   'draft-backdrop': { ui: true, core: false },
   'auto-goal': { ui: true, core: true },
+  contacts: { ui: true, core: false },
 };
 
 const MARKED: string[] = [];

@@ -535,7 +535,7 @@
   let contactsAnywhere = $derived(contactsShownAnywhere(store));
   let ContactRequestNotice = $state<typeof import('./components/home/ContactRequestNotice.svelte').default>();
   $effect(() => {
-    if (!noRailDesktop || !contactsAnywhere || ContactRequestNotice) return;
+    if (!contactsParts || !noRailDesktop || !contactsAnywhere || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
   let agentsRailShown = $derived(store.page === 'agents' && experimentOn('resident-agents') && !(store.connection === 'closed' && !store.core));

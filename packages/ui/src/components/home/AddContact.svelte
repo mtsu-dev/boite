@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { lockedBy } from '../../lib/policy';
   import { onDestroy, tick, untrack } from 'svelte';
   import { Check, Copy, ExternalLink, Globe, Link2, Share2, TriangleAlert } from '@lucide/svelte';
@@ -67,6 +68,7 @@
     if (!link) return;
     if (await view.join(link)) pasted = '';
   }
+  markFeature('boite-feature:contacts');
 </script>
 
 <div class="switch-row invite-row">

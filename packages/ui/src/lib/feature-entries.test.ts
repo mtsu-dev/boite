@@ -40,5 +40,5 @@ test('the Council\'s card and salon load', async () => {
 
 test('holds the Contacts screens', async () => {
   const { contactsParts } = await import('./contacts-entry');
-  expect(Object.keys(contactsParts)).toEqual(['HomePage', 'ContactsRail', 'ContactRows', 'ContactRequestNotice', 'ContactInboxRows', 'SidebarContacts', 'SharedThreadDialog']);
+  expect(Object.keys(contactsParts ?? {})).toEqual(['HomePage', 'ContactsRail', 'ContactRows', 'ContactRequestNotice', 'ContactInboxRows', 'SidebarContacts', 'SharedThreadDialog']);
 });

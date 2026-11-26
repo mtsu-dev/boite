@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { tick } from 'svelte';
   import { ChevronRight, Ellipsis } from '@lucide/svelte';
   import type { ContactRequest, HeldContactLetter, Project } from '@boite/contracts';
@@ -107,6 +108,7 @@
   function answerMail(row: Row, same: Row[], deliver: boolean) {
     act(row, async () => { for (const copy of same) if (copy.letter) await copy.view.decideMail(copy.letter.id, deliver); });
   }
+  markFeature('boite-feature:contacts');
 </script>
 
 {#each merged as { row, same } (row.key)}

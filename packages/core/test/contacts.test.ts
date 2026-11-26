@@ -1,7 +1,8 @@
 import { publicDns } from '../src/contacts/public-dns.ts';
 import { afterEach, expect, test } from 'bun:test';
 import { createHash, generateKeyPairSync } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentContact, AgentLetter } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
@@ -13,15 +14,17 @@ import { pack, seal, SEALED } from '../src/group/seal.ts';
 import { newToken } from '../src/ids.ts';
 import { Refusals, REFUSALS_PER_MINUTE } from '../src/server/refusals.ts';
 import { contactsBotOf } from './contacts-fixture.ts';
-import { startTestCore, waitFor, type TestCore } from './harness.ts';
+import { removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
 
 const cores: TestCore[] = [];
+const dirs: string[] = [];
 let restore: (() => void) | undefined;
 afterEach(async () => {
   restore?.();
   restore = undefined;
   for (const core of cores.splice(0)) await core.stop();
+  for (const dir of dirs.splice(0)) await removeDir(dir);
 });
 
 async function project(harness: TestCore, client: CoreClient, name: string, remote?: string): Promise<{ id: string; path: string }> {
@@ -41,8 +44,8 @@ async function thread(client: CoreClient, projectId: string, title: string): Pro
 }
 
 /** Two cores linked as contacts over loopback: the host's tailnet URL is its loopback URL. */
-async function linked() {
-  const host = await startTestCore();
+async function linked(dataDir?: string) {
+  const host = await startTestCore(dataDir === undefined ? {} : { dataDir });
   const guest = await startTestCore();
   cores.push(host, guest);
   host.core.contacts.selfUrl = async () => host.url;
@@ -69,6 +72,35 @@ async function eventually(predicate: () => Promise<boolean>, timeoutMs = 10000):
     await new Promise(resolve => setTimeout(resolve, 20));
   }
 }
+
+test('a Release keeps its saved Contacts choice and lets the owner remove existing links', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-contacts-release-'));
+  dirs.push(dataDir);
+  const { host, hostClient, guestId } = await linked(dataDir);
+  const work = await project(host, hostClient, 'release-work');
+  const threadId = await thread(hostClient, work.id, 'Release work');
+  await hostClient.call('contacts.grant', { coreId: guestId, projectId: work.id });
+  const contacts = { threadId };
+  expect(await hostClient.call('collaboration.contacts', contacts)).toHaveLength(1);
+  await host.stop();
+
+  const release = await startTestCore({ dataDir, version: '2.0.0' });
+  cores.push(release);
+  const owner = await release.connect();
+  const off = { rpc: { data: { reason: 'contacts-off' } } };
+  expect((await owner.call('settings.get', { stored: true })).contacts).toBe(true);
+  expect((await owner.call('settings.get', {})).contacts).toBe(false);
+  expect(await owner.call('collaboration.contacts', contacts)).toEqual([]);
+  expect(release.core.coordination.instructions(threadId)).not.toContain('boite threads contacts');
+  expect((await rejection(owner.call('contacts.invite', {}))).reason).toMatchObject(off);
+  expect((await rejection(owner.call('collaboration.ask', { ...contacts, contact: guestId, text: 'Read this project' }))).reason).toMatchObject(off);
+  expect((await rejection(owner.call('agents.builtin.ensure', { kind: 'contacts' }))).reason).toMatchObject(off);
+  expect((await owner.call('contacts.get', {})).contacts).toMatchObject([{ coreId: guestId, grants: [{ projectId: work.id }] }]);
+  await owner.call('contacts.revoke', { coreId: guestId, projectId: work.id });
+  expect((await owner.call('contacts.get', {})).contacts[0]?.grants).toEqual([]);
+  await owner.call('contacts.remove', { coreId: guestId });
+  expect((await owner.call('contacts.get', {})).contacts).toEqual([]);
+});
 
 test('an invitation links two owners: both keep the other\'s keys, read the same eight words, and the guest\'s link carries the host\'s requests', async () => {
   const { host, guest, hostClient, guestClient, hostId, guestId, invite, joined } = await linked();

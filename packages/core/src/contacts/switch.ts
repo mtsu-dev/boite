@@ -1,12 +1,15 @@
-import { CONTACTS_OFF_MESSAGE, CONTACTS_OFF_REASON, contactsOn, type Settings } from '@boite/contracts';
+import { CONTACTS_OFF_MESSAGE, CONTACTS_OFF_REASON, contactsOn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { memberAdmission } from './admission.ts';
 import { RpcFailure, refused } from '../errors.ts';
 
+// Earlier peers match the full refusal text to decide whether to retry.
+const PEER_CONTACTS_OFF = 'contacts are off on this machine (Settings, General, What agents may do alone); ask the owner to turn them on with: boite settings request contacts true --why "<reason>"';
+
 /*
  * Whether contacts run on this machine. Two things hold them off: the admin
  * policy (`network.contacts: false`) and the owner's own switch, `contacts`
- * in Settings, off unless turned on. Off, they stop where the policy stops
+ * in Settings, held off in a Release. Off, they stop where the policy stops
  * them: no invitation, join, link or contact letter, and agents read nothing
  * about contacts. What is stored waits for the switch.
  */
@@ -15,7 +18,8 @@ import { RpcFailure, refused } from '../errors.ts';
  * Whether this install already works with contacts, the first start's reason
  * to leave the switch on: one of its own (`store.ts`), or a copy another
  * member relays to it (`members.ts`) or holds for the group (`held.ts`) under
- * the admission still current. A copy from a group this core left reaches
+ * the admission still current. Seeding reads saved records separately from
+ * the switch in force. A copy from a group this core left reaches
  * nothing and counts for nothing. Read once the group is restored.
  */
 export function contactsKept(core: Core): boolean {
@@ -31,8 +35,8 @@ export function contactsKept(core: Core): boolean {
 }
 
 /** True while either the policy or the owner's switch holds contacts off. */
-export function contactsOff(core: Pick<Core, 'policy' | 'settings'>, settings: Pick<Settings, 'contacts'> = core.settings.get()): boolean {
-  return core.policy.networkOff('contacts') || !contactsOn(settings);
+export function contactsOff(core: Pick<Core, 'policy' | 'settings'>): boolean {
+  return core.policy.networkOff('contacts') || !contactsOn(core.settings.get());
 }
 
 /** Throws the policy's refusal, else the switch's, while contacts are off. */
@@ -54,5 +58,11 @@ export function contactsRefusal(error: unknown): boolean {
  * them instead of failing.
  */
 export function contactsOffWord(message: string): boolean {
-  return message.startsWith(CONTACTS_OFF_MESSAGE) || message.includes(': blocked by your organization\'s policy, key network.contacts in ');
+  return message.startsWith(PEER_CONTACTS_OFF) || message.startsWith(CONTACTS_OFF_MESSAGE) || message.includes(': blocked by your organization\'s policy, key network.contacts in ');
+}
+
+/** The signed peer protocol carries text only. Keep it recognizable to older senders. */
+export function contactsPeerRefusal(error: RpcFailure): string {
+  return error.message.startsWith(CONTACTS_OFF_MESSAGE)
+    ? PEER_CONTACTS_OFF + error.message.slice(CONTACTS_OFF_MESSAGE.length) : error.message;
 }
