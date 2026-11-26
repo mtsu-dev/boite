@@ -386,7 +386,7 @@ function htmlContent(content: Content): string {
     case 'error': return `<p class="error"><strong>${escapeHtml(doc.error)}:</strong> ${escapeHtml(content.text)}</p>`;
     case 'attachment': return `<p class="attachment">${escapeHtml(content.text)}</p>`;
     case 'details': return `<details><summary>${escapeHtml(content.title)}</summary><pre>${escapeHtml(content.text)}</pre></details>`;
-    case 'diff': return `<pre><code class="language-diff">${escapeHtml(content.text)}</code></pre>`;
+    case 'diff': return `<pre><code class="language-diff">${escapeHtml(content.text).replace(/\r/g, '&#13;')}</code></pre>`;
   }
 }
 

@@ -285,10 +285,11 @@ function binaryPatchEndOffset(value: string, start: number): number {
       sawData = true;
       cur = line.next;
     }
-    // Git's apply.c requires each binary hunk to carry base85 lines ended by a blank line.
-    if (!sawData || !terminated) return start;
+    // Each binary hunk requires valid base85 lines ended by a blank line (or EOF when trailing newlines were trimmed).
+    if (!sawData || (!terminated && cur < value.length)) return start;
     lastValid = cur;
     pos = cur;
+    if (!terminated) break;
   }
   return lastValid;
 }
@@ -384,12 +385,12 @@ function findEndPatch(value: string, from: number): number {
   return line ? line.next : -1;
 }
 
-export function patchEndOffset(value: string, start: number): number {
+function patchEnd(value: string, start: number): { end: number; kind: 'apply' | 'binary' | 'diff' } {
   const first = lineAt(value, start);
-  if (!first) return start;
+  if (!first) return { end: start, kind: 'diff' };
   if (first.text === '*** Begin Patch') {
     const end = findEndPatch(value, first.next);
-    return end === -1 ? start : end;
+    return { end: end === -1 ? start : end, kind: 'apply' };
   }
   let pos = start;
   const git = first.text.startsWith('diff --git ');
@@ -402,7 +403,7 @@ export function patchEndOffset(value: string, start: number): number {
     }
     if (lineAt(value, pos)?.text === 'GIT binary patch') {
       const binEnd = binaryPatchEndOffset(value, pos);
-      return binEnd > pos ? binEnd : start;
+      return { end: binEnd > pos ? binEnd : start, kind: 'binary' };
     }
   }
   const minus = lineAt(value, pos);
@@ -410,11 +411,15 @@ export function patchEndOffset(value: string, start: number): number {
   if (minus?.text.startsWith('--- ') && plus?.text.startsWith('+++ ')) {
     const firstHunk = plus.next;
     pos = hunkEndOffset(value, firstHunk);
-    if (pos === firstHunk) return start;
+    if (pos === firstHunk) return { end: start, kind: 'diff' };
     for (let next = hunkEndOffset(value, pos); next > pos; next = hunkEndOffset(value, pos)) pos = next;
-    return pos;
+    return { end: pos, kind: 'diff' };
   }
-  return git && pos > first.next ? pos : start;
+  return { end: git && pos > first.next ? pos : start, kind: 'diff' };
+}
+
+export function patchEndOffset(value: string, start: number): number {
+  return patchEnd(value, start).end;
 }
 
 function extractPatches(value: string | null | undefined, keepRest: boolean): { patches: string[]; rest: string } {
@@ -425,14 +430,23 @@ function extractPatches(value: string | null | undefined, keepRest: boolean): { 
   let cursor = 0;
   for (let match = PATCH_START.exec(value); match; match = PATCH_START.exec(value)) {
     const start = match.index;
-    const end = patchEndOffset(value, start);
+    const { end, kind } = patchEnd(value, start);
     if (end === start) continue;
     if (keepRest && start > cursor) rest.push(value.slice(cursor, start));
     const raw = value.slice(start, end);
-    // Keep the terminating blank line of `GIT binary patch` hunks, and preserve exact
-    // diff line bytes (including `\r` on CRLF lines) instead of normalizing `\r\n`.
-    const isBinaryTerminated = raw.endsWith('\n\n') || raw.endsWith('\r\n\r\n');
-    const slice = isBinaryTerminated ? raw : raw.endsWith('\n') ? raw.slice(0, -1) : raw;
+    let slice: string;
+    if (kind === 'binary') {
+      // Preserve or restore the terminating blank line required by `git apply` for binary hunks.
+      slice = raw.endsWith('\n\n') || raw.endsWith('\r\n\r\n') ? raw
+        : raw.endsWith('\r\n') ? `${raw}\r\n`
+        : raw.endsWith('\n') ? `${raw}\n`
+        : `${raw}\n\n`;
+    } else if (kind === 'apply') {
+      slice = raw.replace(/\r?\n$/, '');
+    } else {
+      // Preserve exact diff line bytes (including `\r` on CRLF lines) instead of normalizing `\r\n`.
+      slice = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
+    }
     patches.push(slice);
     cursor = end;
     PATCH_START.lastIndex = end;

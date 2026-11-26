@@ -366,13 +366,16 @@ test('messages.toolPart with diffsOnly and messages.list with omitThinking keep 
         id: 'bin-diff', threadId, turnId: 'heavy-turn', role: 'assistant', state: 'complete', createdAt: 103,
         parts: [
           { type: 'tool', toolId: 'bin-cmd', name: 'Bash', status: 'done', input: { command: 'git diff --binary' }, output: `log before\n${binaryDiff}log after\n` },
+          { type: 'tool', toolId: 'bin-trimmed', name: 'Bash', status: 'done', input: { command: 'git diff --binary' }, output: `log before\n${binaryDiff.trimEnd()}` },
           { type: 'tool', toolId: 'crlf-cmd', name: 'Bash', status: 'done', input: { command: 'git diff' }, output: `log before\n${crlfDiff}log after\n` },
         ],
       });
-      const projectedBin = await client.call('messages.toolPart', { threadId, messageId: 'bin-diff', toolId: 'bin-cmd', diffsOnly: true });
-      const extractedBin = extractToolPatches(projectedBin.part.output);
-      expect(extractedBin.patches).toHaveLength(1);
-      expect(git(['apply', '--check'], extractedBin.patches[0]!).exitCode).toBe(0);
+      for (const toolId of ['bin-cmd', 'bin-trimmed']) {
+        const projectedBin = await client.call('messages.toolPart', { threadId, messageId: 'bin-diff', toolId, diffsOnly: true });
+        const extractedBin = extractToolPatches(projectedBin.part.output);
+        expect(extractedBin.patches).toHaveLength(1);
+        expect(git(['apply', '--check'], extractedBin.patches[0]!).exitCode).toBe(0);
+      }
 
       const projectedCrlf = await client.call('messages.toolPart', { threadId, messageId: 'bin-diff', toolId: 'crlf-cmd', diffsOnly: true });
       const extractedCrlf = extractToolPatches(projectedCrlf.part.output);
