@@ -544,7 +544,7 @@ export interface Driver {
   /** Exact inclusive completed turn boundary; no prompt or source mutation. */
   forkSession?(ctx: SessionContext, checkpoint: NonNullable<TurnResult['checkpoint']>, sourceThreadId: ThreadId): Promise<ForkedSession>;
   startTurn(ctx: TurnContext): TurnHandle;
-  /** A separate, tool-free request. No native session or chat transcript is changed. */
+  /** A separate request that changes nothing: tool-free, or read-only tools where a session copy holds tool calls (pi). No native session or chat transcript is changed. */
   sideQuestion?(ctx: SideQuestionContext): Promise<string>;
   /** Initialize or resume a session without submitting a prompt. Unsupported protocols remain cold. */
   prepare?(ctx: SessionContext, options?: { forTurn?: boolean }): Promise<void>;

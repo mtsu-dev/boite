@@ -47,7 +47,7 @@ export class SideQuestions {
     const account = this.#core.accounts.require(thread.accountId);
     assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), account);
     const driver = getDriver(provider.protocol);
-    if (!driver.sideQuestion) throw refused(`threads.btw: ${provider.name} does not support tool-free side questions`, { threadId, providerId: provider.id });
+    if (!driver.sideQuestion) throw refused(`threads.btw: ${provider.name} does not support side questions`, { threadId, providerId: provider.id });
     if (this.#pending.has(threadId)) throw refused('a side question is already being answered for this thread', { threadId });
     this.forget(threadId);
     const source = structuredClone(thread);

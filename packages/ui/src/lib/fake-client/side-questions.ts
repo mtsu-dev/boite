@@ -108,7 +108,7 @@ export function sideQuestionMethods(ctx: FakeContext, fork: (source: Thread, mes
       requireParent(ctx, thread);
       const provider = ctx.providers.find(entry => entry.id === thread.providerId)!;
       checkRunnable(provider, ctx.accounts.find(entry => entry.id === thread.accountId)!);
-      if (!supportsSideQuestions(provider.protocol)) throw refusal(`threads.btw: ${provider.name} does not support tool-free side questions`);
+      if (!supportsSideQuestions(provider.protocol)) throw refusal(`threads.btw: ${provider.name} does not support side questions`);
       const requests = sideRequests.get(ctx) ?? new Map<string, SideRequest>();
       sideRequests.set(ctx, requests);
       if (requests.has(threadId)) throw refusal('a side question is already being answered for this thread');
