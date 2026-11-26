@@ -36,7 +36,7 @@
   /** One machine names no machine. */
   const machines = $derived(selection?.machines ?? workspace.machinesOr(store));
   const label = $derived(selection?.label ?? strings.thread.changeProject);
-  const footer = $derived(!selection && store.owner ? { id: OPEN_FOLDER, label: strings.drafts.pickFolder } : undefined);
+  const footer = $derived(!selection && store.owner ? { id: OPEN_FOLDER, preload: "project", label: strings.drafts.pickFolder } : undefined);
   let several = $derived(workspace.machines.length > 1 || machines.length > 1);
   let trigger = $state<HTMLButtonElement | undefined>(undefined);
   let search = $state<ProjectSearch | undefined>(undefined);
@@ -116,8 +116,7 @@
     const [machineId, projectId] = JSON.parse(id) as [string, ProjectId | null];
     const target = workspace.machines.find((m) => m.id === machineId)?.store ?? store;
     if (target === store) store.setDraftProject(projectId);
-    else if (projectId !== null) await workspace.select(target, undefined, projectId);
-    else await workspace.select(target).then(() => target.startDraft(null));
+    else await workspace.select(target, undefined, projectId);
     // Another machine draws its own composer: the focus waits for it.
     await tick();
     focusComposer();

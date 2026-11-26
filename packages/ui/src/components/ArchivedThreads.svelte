@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { ArchiveRestore, Folder, GitMerge, GitPullRequest, GitPullRequestClosed, Puzzle, Trash2 } from '@lucide/svelte';
   import { errorText } from '../lib/errors';
   import { DEFAULT_THREAD_DONE_RETENTION_DAYS, type ThreadId, type ThreadSummary } from '@boite/contracts';
@@ -25,23 +26,30 @@
   let threads = $state<ThreadSummary[] | null>(null);
   let loading = $state(false);
   const lock = new ThreadRestore();
-  /** One automatic ask per connection: a failed read leaves the button for another user ask. */
-  let asked = false;
+  let listOwner: Store | undefined;
+  let listIdentity: string | undefined;
   const removed = new Set<ThreadId>();
   const rows = new Set<ThreadId>();
   const reads = new SnapshotReads<ThreadSummary>(thread => thread.projectId ?? '');
   $effect(() => {
-    void store.connection;
-    const client = store.client;
+    const owner = store;
+    const online = owner.connection === 'ready';
+    const client = owner.client;
     const generation = store.clientGeneration;
-    const current = () => store.client === client && store.clientGeneration === generation;
-    threads = null;
+    const current = () => store === owner && owner.client === client && owner.clientGeneration === generation;
+    const identity = store.core ? JSON.stringify([store.core.coreId, store.principal]) : undefined;
+    untrack(() => {
+      if (listOwner !== store || (identity !== undefined && listIdentity !== identity)) {
+        threads = null;
+        restored = [];
+        rows.clear();
+      }
+      if (listOwner !== store || identity !== undefined) listIdentity = identity;
+      listOwner = store;
+    });
     loading = false;
-    restored = [];
     lock.reset();
-    asked = false;
     removed.clear();
-    rows.clear();
     reads.clear();
     const offRemove = client?.on('thread.removed', ({ threadId }) => {
       if (!current()) return;
@@ -55,6 +63,7 @@
       reconcile(summary);
     });
     const offUpdate = client?.on('thread.updated', summary => { if (current()) reconcile(summary); });
+    if (online && (eager || untrack(() => threads) !== null)) untrack(() => void load());
     return () => { offRemove?.(); offRestore?.(); offUpdate?.(); reads.clear(); };
   });
 
@@ -85,29 +94,32 @@
     threads = at < 0 ? [...rest, summary] : [...rest.slice(0, at), summary, ...rest.slice(at)];
   }
 
-  $effect(() => {
-    if (asked || !eager || store.connection !== 'ready') return;
-    asked = true;
-    void load();
-  });
-
   async function load() {
-    const client = store.client;
-    const generation = store.clientGeneration;
+    const owner = store;
+    const client = owner.client;
+    const generation = owner.clientGeneration;
+    const current = () => store === owner && owner.client === client && owner.clientGeneration === generation;
     const read = reads.begin();
     loading = true;
     try {
-      const answer = await archivedThreads(store);
-      if (store.client === client && store.clientGeneration === generation && read.active) {
-        threads = read.apply(answer, threads ?? []).filter(t => !removed.has(t.id)).sort((a, b) => archivedTime(b) - archivedTime(a));
+      const answer = await archivedThreads(owner);
+      if (current() && read.active) {
+        const prior = threads ?? [];
+        const next = read.apply(answer, prior).filter(t => !removed.has(t.id));
+        const seen = new Set(next.map(thread => thread.id));
+        const rearchived = new Set(next.filter(thread => thread.archived).map(thread => thread.id));
+        if (rearchived.size) restored = restored.filter(id => !rearchived.has(id));
+        const kept = new Set([...restored, lock.restoring].filter(id => id !== null));
+        threads = [...next, ...prior.filter(t => kept.has(t.id) && !removed.has(t.id) && !seen.has(t.id))]
+          .sort((a, b) => archivedTime(b) - archivedTime(a));
         rows.clear();
         for (const thread of threads) rows.add(thread.id);
       }
     } catch (error) {
-      if (store.client === client && store.clientGeneration === generation) store.error = errorText(error);
+      if (current()) store.error = errorText(error);
     } finally {
       read.cancel();
-      if (store.client === client && store.clientGeneration === generation) loading = false;
+      if (current()) loading = false;
     }
   }
 
@@ -115,8 +127,10 @@
   let restored = $state<ThreadId[]>([]);
 
   async function restore(thread: ThreadSummary) {
-    const summary = await lock.restore(store, thread.id);
-    if (!summary) return;
+    const owner = store;
+    const generation = store.clientGeneration;
+    const summary = await lock.restore(owner, thread.id);
+    if (!summary || store !== owner || store.clientGeneration !== generation || removed.has(thread.id)) return;
     threads = threads?.map(row => row.id === summary.id ? summary : row) ?? null;
     restored = [...restored, thread.id];
   }
@@ -176,7 +190,7 @@
         {@const at = reason?.archivedAt ?? archivedTime(thread)}
         {@const project = focusId ? undefined : projectOf(thread)}
         {@const back = restored.includes(thread.id)}
-        <li data-thread-id={thread.id} class:back>
+        <li data-thread-id={thread.id} class:back aria-busy={lock.restoring === thread.id}>
           <span class="headline">
             <button type="button" class="text title" data-testid="archived-title" title={thread.title} disabled={lock.deleting === thread.id} onclick={() => open(thread)}>{thread.title}</button>
             <time datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, minuteClock.now)}</time>
@@ -206,7 +220,7 @@
             {#if back}
               <button type="button" class="small" data-testid="archived-open" onclick={() => open(thread)}><span class="ui-label">{strings.common.open}</span></button>
             {:else}
-              <button type="button" class="small" data-testid="archived-restore" disabled={lock.busy || offline} onclick={() => void restore(thread)}><ArchiveRestore size={14} /><span class="ui-label">{strings.settings.archived.restore}</span></button>
+              <button type="button" class="small" data-testid="archived-restore" disabled={lock.busy || offline} onclick={() => void restore(thread)}><ArchiveRestore size={14} /><span class="ui-label">{lock.restoring === thread.id ? strings.app.loading : strings.settings.archived.restore}</span></button>
             {/if}
             {#if canDeleteThread(thread)}
               <button type="button" class="ghost small danger" data-testid="archived-delete" disabled={lock.busy || offline} onclick={() => void remove(thread)}><Trash2 size={14} /><span class="ui-label">{strings.common.delete}</span></button>

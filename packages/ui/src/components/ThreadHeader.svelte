@@ -151,7 +151,7 @@
   });
 
   /** The view's own tool, first on the menu. A phone has no Ctrl+F: this row is its way to the find bar. */
-  let tools = $derived.by((): MenuItem[] => thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }] : []);
+  let tools = $derived.by((): MenuItem[] => thread ? [{ id: 'find', preload: 'find', label: strings.palette.find, glyph: Search }] : []);
   /**
    * One menu on a desktop and a phone: find, then the frequent actions, then
    * the named group, which opens in place (`Menu.svelte`): its bot, its title,

@@ -83,11 +83,20 @@ test('opening a conversation asks the core once for each thing the panel and the
 
   asked.length = 0;
   askers.length = 0;
-  await workspace.select(store, second!);
+  const releasePress = store.preload(second!);
+  await quiet(calls);
+  const opening = workspace.select(store, second!);
+  expect(store.openThread).toMatchObject({ id: second });
+  expect(store.loadingThreadId).toBeNull();
+  releasePress();
+  await opening;
   await waitFor(() => store.openThread?.id === second && store.openThread?.messages !== undefined);
   await quiet(calls);
 
   const counts = Object.fromEntries([...new Set(asked)].map((method) => [method, asked.filter((name) => name === method).length]));
   const twice = Object.entries(counts).filter(([, count]) => count > 1).map(([method]) => askers.filter((asker) => asker.startsWith(`${method} `)));
   expect({ counts, twice }).toMatchObject({ twice: [] });
+  expect(counts['threads.get']).toBe(1);
+  expect(asked).not.toContain('permissions.list');
+  expect(asked).not.toContain('questions.list');
 });

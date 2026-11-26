@@ -12,6 +12,8 @@
   let loading = $state(false);
   let restoring = $state<ThreadId | null>(null);
   let asked = false;
+  let listOwner: Store | undefined;
+  let listIdentity: string | undefined;
   let generation = 0;
   let retention = $derived(store.settings?.threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS);
   /** Once a storage mode is picked, it decides when a deleted conversation leaves this list. */
@@ -24,6 +26,17 @@
   });
 
   $effect(() => {
+    const identity = store.core ? JSON.stringify([store.core.coreId, store.principal]) : undefined;
+    if (listOwner !== store || (identity !== undefined && listIdentity !== identity)) {
+      asked = false;
+      threads = null;
+    }
+    if (listOwner !== store || identity !== undefined) listIdentity = identity;
+    listOwner = store;
+    void store.clientGeneration;
+    ++generation;
+    loading = false;
+    restoring = null;
     if (store.owner && store.connection === 'ready' && asked) void load();
   });
   $effect(() => store.client?.on('thread.deletionsUpdated', () => { if (asked) void load(); }));
@@ -43,9 +56,16 @@
   }
 
   async function restore(threadId: ThreadId): Promise<void> {
+    const owner = store;
+    const clientGeneration = owner.clientGeneration;
+    const current = () => store === owner && store.clientGeneration === clientGeneration;
     restoring = threadId;
-    try { if (await store.restoreDeletedThread(threadId)) await load(); }
-    finally { restoring = null; }
+    try {
+      if (await owner.restoreDeletedThread(threadId) && current()) {
+        threads = threads?.filter(thread => thread.id !== threadId) ?? null;
+        await load();
+      }
+    } finally { if (current()) restoring = null; }
   }
 
   function projectOf(thread: ThreadSummary): string {
@@ -72,7 +92,7 @@
     {:else}
       <ul data-testid="deleted-list">
         {#each threads as thread (thread.id)}
-          <li data-thread-id={thread.id}>
+          <li data-thread-id={thread.id} aria-busy={restoring === thread.id}>
             <div class="conversation">
               <span class="title" title={thread.title}>{thread.title}</span>
               {#if leaves !== null && thread.deletedAt}
@@ -81,7 +101,7 @@
             </div>
             <span class="subtle meta">{projectOf(thread)}</span>
             <button type="button" class="small" data-testid="deleted-restore" disabled={restoring !== null || store.connection !== 'ready'} onclick={() => void restore(thread.id)}>
-              <span class="ui-label">{strings.sidebar.undo}</span>
+              <span class="ui-label">{restoring === thread.id ? strings.app.loading : strings.sidebar.undo}</span>
             </button>
           </li>
         {/each}

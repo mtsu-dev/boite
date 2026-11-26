@@ -206,7 +206,9 @@
   {#if closed}
     <p class="closed" data-testid="team-closed">{#if team?.archived}<Archive size={14} />{/if}<span>{closed}</span></p>
   {:else if team}
-    <TeamComposer {store} {team} draftKey={`${store.core?.coreId ?? ''}:${team.id}`} bind:reply onsent={sent} />
+    {#key team.id}
+      <TeamComposer {store} {team} draftKey={`${store.core?.coreId ?? ''}:${team.id}`} bind:reply onsent={sent} />
+    {/key}
   {/if}
 </section>
 

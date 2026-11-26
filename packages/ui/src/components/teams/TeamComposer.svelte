@@ -1,15 +1,33 @@
 <script lang="ts" module>
+  import { SvelteMap } from 'svelte/reactivity';
   import type { TeamMemberKey, TeamParty } from '@boite/contracts';
 
   /** The post the owner answers: its id, its author and its first words. */
   export interface TeamReply { id: string; author: TeamParty; excerpt: string }
 
-  /** What the owner was writing in each team, kept while the app runs, as a thread's draft is. */
-  const drafts = new Map<string, { text: string; privateTo: TeamMemberKey | null }>();
+  interface TeamDraftState {
+    text: string;
+    privateTo: TeamMemberKey | null;
+    reply: TeamReply | null;
+    sending: boolean;
+    error: string | null;
+    attempt: { id: string; fingerprint: string } | null;
+  }
+
+  /** What the owner was writing or sending in each team, reactive across unmounts. */
+  const drafts = new SvelteMap<string, TeamDraftState>();
+  const EMPTY_DRAFT: TeamDraftState = { text: '', privateTo: null, reply: null, sending: false, error: null, attempt: null };
+
+  function updateDraft(key: string, patch: Partial<TeamDraftState>): TeamDraftState {
+    const next = { ...(drafts.get(key) ?? EMPTY_DRAFT), ...patch };
+    if (next.text || next.privateTo || next.reply || next.sending || next.error || next.attempt) drafts.set(key, next);
+    else drafts.delete(key);
+    return next;
+  }
 </script>
 
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { ArrowUp, AtSign, ChevronDown, CornerDownRight, Lock, LoaderCircle, UsersRound, X } from '@lucide/svelte';
   import { routeTeamPost, TEAM_OWNER, TEAM_POST_MAX, type Team, type TeamMember } from '@boite/contracts';
   import { errorText } from '../../lib/errors';
@@ -42,18 +60,23 @@
   } = $props();
   const labels = $derived(strings.teamChat.composer);
 
-  const kept = untrack(() => drafts.get(draftKey));
-  let text = $state(kept?.text ?? '');
-  let privateTo = $state<TeamMemberKey | null>(kept?.privateTo ?? null);
-  let sending = $state(false);
-  let error = $state<string | null>(null);
+  const current = $derived(drafts.get(draftKey) ?? EMPTY_DRAFT);
+  const text = $derived(current.text);
+  const privateTo = $derived(current.privateTo);
+  const sending = $derived(current.sending);
+  const error = $derived(current.error);
+  const activeReply = $derived(reply ?? current.reply);
+  let mounted = true;
+  onDestroy(() => { mounted = false; });
   let field = $state<HTMLTextAreaElement>();
-  /** The id of the post on its way, for as long as its content stays the same. */
-  let attempt: { id: string; fingerprint: string } | null = null;
 
-  function keep() {
-    if (text || privateTo) drafts.set(draftKey, { text, privateTo });
-    else drafts.delete(draftKey);
+  function setText(value: string) {
+    updateDraft(draftKey, { text: value });
+  }
+
+  function clearReply() {
+    reply = null;
+    updateDraft(draftKey, { reply: null });
   }
 
   /** A member who left, or a team that changed: the post goes to the whole team again. */
@@ -68,8 +91,8 @@
     text: body,
     audience: recipient ? 'private' : 'team',
     to: recipient ? [recipient.key] : [],
-    inReplyTo: reply?.id ?? null,
-  }, reply?.author ?? null));
+    inReplyTo: activeReply?.id ?? null,
+  }, activeReply?.author ?? null));
   /** Who the post wakes, said before it goes: a post that names nobody wakes every member. */
   const wakes = $derived.by(() => {
     if (recipient) return fill(labels.wakesPrivate, { name: recipient.name });
@@ -93,8 +116,7 @@
   ]);
 
   function pickAudience(id: string) {
-    privateTo = id === 'team' ? null : id as TeamMemberKey;
-    keep();
+    updateDraft(draftKey, { privateTo: id === 'team' ? null : id as TeamMemberKey });
     field?.focus();
   }
   /** The mention goes where the caret is, with a space on each side it needs. */
@@ -107,8 +129,7 @@
     const after = text.slice(end);
     const lead = before && !/\s$/.test(before) ? ' ' : '';
     const inserted = `${lead}${name} `;
-    text = `${before}${inserted}${after.replace(/^ /, '')}`;
-    keep();
+    setText(`${before}${inserted}${after.replace(/^ /, '')}`);
     const caret = before.length + inserted.length;
     requestAnimationFrame(() => { field?.focus(); field?.setSelectionRange(caret, caret); });
   }
@@ -116,35 +137,42 @@
   async function send() {
     const client = store.client;
     if (!client || !canSend) return;
+    const targetReply = activeReply;
     const params = {
       teamId: team.id,
       text: body,
       ...(recipient ? { audience: 'private' as const, to: [recipient.botId] } : {}),
-      ...(reply ? { inReplyTo: reply.id } : {}),
+      ...(targetReply ? { inReplyTo: targetReply.id } : {}),
     };
     const fingerprint = JSON.stringify(params);
-    if (attempt?.fingerprint !== fingerprint) attempt = { id: secureId(), fingerprint };
-    sending = true;
-    error = null;
+    const attempt = current.attempt?.fingerprint === fingerprint ? current.attempt : { id: secureId(), fingerprint };
+    const key = draftKey;
+    const draft = { text, reply: targetReply, privateTo };
+    reply = null;
+    updateDraft(key, { text: '', reply: null, sending: true, error: null, attempt });
     try {
       await client.call('teams.post', { ...params, id: attempt.id });
-      attempt = null;
-      text = '';
-      reply = null;
-      keep();
-      onsent?.();
+      updateDraft(key, { sending: false, attempt: null, error: null });
+      if (mounted && draftKey === key) onsent?.();
     } catch (failure) {
-      error = errorText(failure);
-    } finally {
-      sending = false;
+      const latest = drafts.get(key);
+      updateDraft(key, {
+        text: latest?.text ? latest.text : draft.text,
+        privateTo: latest?.text ? latest.privateTo : draft.privateTo,
+        reply: latest?.reply ?? draft.reply,
+        sending: false,
+        error: errorText(failure),
+        attempt,
+      });
+      if (mounted && draftKey === key && !reply) reply = draft.reply;
     }
   }
 
   function keydown(event: KeyboardEvent) {
-    if (event.key === 'Escape' && reply) {
+    if (event.key === 'Escape' && activeReply) {
       event.preventDefault();
       event.stopPropagation();
-      reply = null;
+      clearReply();
       return;
     }
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing || !hasKeyboard()) return;
@@ -152,39 +180,43 @@
     void send();
   }
 
-  // Answering a post brings the caret to the field.
-  $effect(() => { if (reply) untrack(() => field?.focus()); });
+  // Answering a post brings the caret to the field, and mirrors parent reply changes into shared draft state.
+  $effect(() => {
+    const target = reply;
+    const key = draftKey;
+    if (target) untrack(() => { updateDraft(key, { reply: target }); field?.focus(); });
+  });
 </script>
 
 <div class="composer-wrap team-composer-wrap">
   <div class="composer" data-testid="team-composer" data-private={recipient ? 'true' : undefined}>
-    {#if reply}
+    {#if activeReply}
       <div class="replying" data-testid="team-replying">
         <CornerDownRight size={14} />
-        <span class="ui-label">{fill(labels.replying, { name: partyName(team, reply.author, true) })}</span>
-        <span class="excerpt">{reply.excerpt}</span>
-        <button type="button" class="ghost small icon" title={labels.cancelReply} aria-label={labels.cancelReply} onclick={() => { reply = null; field?.focus(); }} data-testid="team-reply-cancel"><X size={14} /></button>
+        <span class="ui-label">{fill(labels.replying, { name: partyName(team, activeReply.author, true) })}</span>
+        <span class="excerpt">{activeReply.excerpt}</span>
+        <button type="button" class="ghost small icon" title={labels.cancelReply} aria-label={labels.cancelReply} onclick={() => { clearReply(); field?.focus(); }} data-testid="team-reply-cancel"><X size={14} /></button>
       </div>
     {/if}
     <textarea
       bind:this={field}
-      bind:value={text}
+      bind:value={() => text, setText}
+      readonly={sending}
       rows="1"
       placeholder={recipient ? fill(labels.placeholderPrivate, { name: recipient.name }) : labels.placeholder}
       aria-label={recipient ? fill(labels.placeholderPrivate, { name: recipient.name }) : labels.placeholder}
-      oninput={keep}
       onkeydown={keydown}
       data-testid="team-composer-input"
     ></textarea>
     <div class="bar">
       <div class="chips">
-        <Menu items={audienceItems} onpick={pickAudience} label={labels.audience} testid="team-audience">
+        <Menu items={audienceItems} onpick={pickAudience} label={labels.audience} disabled={sending} testid="team-audience">
           {#if recipient}<Lock size={14} /><span class="ui-label">{fill(labels.onlyReads, { name: recipient.name })}</span>
           {:else}<UsersRound size={14} /><span class="ui-label">{labels.everyoneReads}</span>{/if}
           <ChevronDown size={14} />
         </Menu>
         {#if !recipient}
-          <Menu items={mentionItems} onpick={mention} label={labels.mention} testid="team-mention">
+          <Menu items={mentionItems} onpick={mention} label={labels.mention} disabled={sending} testid="team-mention">
             <AtSign size={14} /><span class="ui-label mention-label">{labels.mention}</span>
           </Menu>
         {/if}

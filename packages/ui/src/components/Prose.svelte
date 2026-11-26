@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { renderBlock } from '../lib/markdown';
   import { workspace } from '../lib/workspace.svelte';
   import { ParagraphScan, answerText } from '../lib/message-display';
@@ -178,6 +178,7 @@
     if (viewing) URL.revokeObjectURL(viewing.items[0]!.src);
     viewing = null;
   }
+  onDestroy(closeViewer);
 
   // Attach copy buttons once the final paragraph has reached the DOM.
   $effect(() => {

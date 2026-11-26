@@ -425,7 +425,7 @@
           {@const news = !!row.chat?.unread && !selected}
           <div class="slot" class:selected class:dragging={reorder.dragging === entry.key} role="listitem" data-rail-id={entry.key}>
             <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
-              aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-team" data-team-id={row.team.id} data-machine-id={row.machine.id} data-preload-view="agents" data-preload-thread={row.team.threadId}
+              aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-team" data-team-id={row.team.id} data-machine-id={row.machine.id} data-preload-view="team" data-preload-thread={row.team.threadId}
               onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
               onclick={() => openTeamChat(row)} oncontextmenu={(event) => teamMenu(event, row)}>
               <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle lit={avatarLit({ open: selected, unread: news })} />

@@ -29,7 +29,7 @@
    * One signal per state: a coloured mark leads the line under the name (the
    * thread rows' shapes, StatusMark.svelte) and the words stay neutral ink.
    */
-  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wait = null, wake = null, machine, machineId, testid, preloadThread = null, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
+  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wait = null, wake = null, machine, machineId, testid, preloadThread = null, preloadView = "agents", onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
     title: string;
     /** A bot Boite ships: a small badge after its name. */
     builtin?: boolean;
@@ -59,6 +59,7 @@
     testid?: string;
     /** Thread id to warm on pointerdown before the click opens the agent. */
     preloadThread?: string | null;
+    preloadView?: "agents" | "team";
     onclick: () => void;
     picture: Snippet;
     /** Replaces the state on the right, for a row that is not an agent's. */
@@ -157,7 +158,7 @@
       {@render body(field)}
     </div>
   {:else}
-    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={wake ? `${title}\n${wakeText}` : title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid} data-preload-thread={preloadThread || undefined} data-unread={marked ? 'true' : undefined}>
+    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={wake ? `${title}\n${wakeText}` : title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid} data-preload-view={preloadView} data-preload-thread={preloadThread || undefined} data-unread={marked ? 'true' : undefined}>
       {#snippet name()}
         {#if builtin}<span class="name"><span class="title">{title}</span><BuiltinBadge /></span>{:else}<span class="title">{title}</span>{/if}
       {/snippet}

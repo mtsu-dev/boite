@@ -61,6 +61,8 @@ const SCROLLBACK = 10_000;
 const MAX_MARKS = 1000;
 /** How long a screen out of the page keeps its xterm before the core's snapshot is all it needs. */
 export const HIDDEN_RELEASE_MS = 5 * 60_000;
+const detachedScreens = new Set<TerminalSession>();
+const WARM_SCREENS = 2;
 
 /**
  * True for a key the shell takes even when the app has a command on it: Ctrl
@@ -253,6 +255,7 @@ export class TerminalSession {
   /** Puts the screen in `host`, starting or attaching to the shell the first time. */
   mount(host: HTMLElement, options: TerminalMount): void {
     if (this.#disposed) return;
+    detachedScreens.delete(this);
     this.#host = host;
     this.#onexit = options.onexit;
     this.#wantsFocus = options.autofocus && !touchScreen();
@@ -278,6 +281,11 @@ export class TerminalSession {
     this.#dropGpu();
     if (this.#releaseTimer !== null) clearTimeout(this.#releaseTimer);
     this.#releaseTimer = setTimeout(() => this.#release(), HIDDEN_RELEASE_MS);
+    detachedScreens.add(this);
+    if (detachedScreens.size > WARM_SCREENS) {
+      const oldest = detachedScreens.values().next().value;
+      if (oldest) oldest.#release();
+    }
     return focused;
   }
 
@@ -288,6 +296,7 @@ export class TerminalSession {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    detachedScreens.delete(this);
     this.#run++;
     if (this.#fitTimer !== null) clearTimeout(this.#fitTimer);
     if (this.#releaseTimer !== null) clearTimeout(this.#releaseTimer);
@@ -302,8 +311,10 @@ export class TerminalSession {
 
   /** The screen was out of the page long enough: its xterm goes, the shell and this session stay. */
   #release(): void {
+    detachedScreens.delete(this);
+    if (this.#releaseTimer !== null) clearTimeout(this.#releaseTimer);
     this.#releaseTimer = null;
-    if (this.#disposed || this.#host !== null || this.#term === null) return;
+    if (this.#disposed || this.#host !== null) return;
     // An attach in flight lands on nothing.
     this.#run++;
     if (this.#fitTimer !== null) clearTimeout(this.#fitTimer);
@@ -426,6 +437,7 @@ export class TerminalSession {
   // ---------------------------------------------------------------------------
 
   async #load(): Promise<void> {
+    const run = this.#run;
     const family = fontFamily();
     // The extras are optional: a chunk that fails to load leaves the screen without
     // GPU drawing, find or wide characters, never without a screen.
@@ -440,7 +452,7 @@ export class TerminalSession {
     ]);
     this.#WebglAddon = webgl?.WebglAddon ?? null;
     const client = this.store.client;
-    if (this.#disposed || !client) return;
+    if (this.#disposed || !client || this.#run !== run) return;
     const term = new Terminal({
       fontFamily: family,
       fontSize: FONT_SIZE,

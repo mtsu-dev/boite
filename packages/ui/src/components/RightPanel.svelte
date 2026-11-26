@@ -373,7 +373,7 @@
   class:floating={rightPanel.floating}
   class:closing
   aria-label={strings.common.close}
-  onclick={() => panel.toggle()}
+  data-preload-view="panel" onclick={() => panel.toggle()}
 ></button>
 
 <aside
@@ -439,7 +439,7 @@
           tabindex="0"
           aria-selected={surface.id === panel.activeSurfaceId}
           data-surface-id={surface.id}
-          data-kind={surface.kind}
+          data-kind={surface.kind} data-preload-view={surface.kind === 'council' ? 'council' : surface.kind === 'agents' ? 'panel-agents' : undefined}
           data-testid="panel-tab"
           title={tooltip(surface)}
           onclick={() => panel.activate(surface.id)}

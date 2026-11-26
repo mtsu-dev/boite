@@ -70,11 +70,11 @@ fn fake_command(directory: &Path, version: &str, mode: &str) -> CoreCommand {
 fn state(directory: &Path, shell_version: &str, core: CoreCommand, resident: bool, timeout: Duration) -> CoreState {
     CoreState::new(Launch {
         directory: directory.to_path_buf(),
-        command: Ok(core),
+        channel: Channel::Stable,
+        binary: OnceLock::from(LaunchBinary { command: Ok(core), bundle_hash: None }),
         resources: None,
         resident,
         version: shell_version.to_string(),
-        bundle_hash: None,
         timeout,
     })
 }
@@ -235,7 +235,7 @@ fn a_same_version_core_without_the_installed_bundle_is_replaced() {
     let directory = scratch("stale-bundle");
     let (mut old, old_pid) = running_core(&directory, "2.0.0");
     let mut state = state(&directory, "2.0.0", fake_command(&directory, "2.0.0", "serve"), false, Duration::from_secs(30));
-    state.launch.bundle_hash = Some("installed".to_string());
+    state.launch.binary.get_mut().unwrap().bundle_hash = Some("installed".to_string());
     let outcome = resolve_core(&state);
     let deadline = Instant::now() + Duration::from_secs(5);
     let old_status = loop {
