@@ -23,6 +23,8 @@
   import SideHead from './SideHead.svelte';
   import { minuteClock } from '../../lib/clock.svelte';
   import { tabHeader } from '../../lib/tab-header.svelte';
+  import { separator } from '../../lib/menu';
+  import { mochiLayout } from '../../lib/mochi-layout.svelte';
 
   /**
    * The Bots page's column. On a desktop the window's rail lists the bots, so
@@ -196,17 +198,39 @@
       } : null,
     });
   });
+  let addButton = $state<HTMLButtonElement>();
+  const listMode = $derived(phone.current || !mochiLayout.on);
+  function addMenu(anchor: HTMLElement) {
+    const rect = anchor.getBoundingClientRect();
+    contextMenu.show({ x: rect.left, y: rect.bottom + 4 }, [
+      { id: 'bot', label: labels.newAgent },
+      ...(onnewteam && view.store.owner ? [{ id: 'team', label: strings.teamChat.newTeam }] : []),
+      ...(view.store.owner ? [separator('sep-engine'), { id: 'engine', label: labels.engineSettings }] : [])
+    ], id => { if (id === 'bot') oncreate(); else if (id === 'team') newTeam(); else onengine(); }, anchor);
+  }
 </script>
 
-<RailFrame store={view.store} kind="agents-rail" label={phone.current ? labels.heading : agent?.name ?? team?.name ?? labels.heading}>
+<RailFrame store={view.store} kind="agents-rail" label={listMode ? labels.heading : agent?.name ?? team?.name ?? labels.heading}>
   {#snippet head()}
     {#if !phone.current}
-      <SideHead store={view.store} current="agents" />
-      <BotColumnHead {view} {agent} {status} {thread} {team} {onpane} {onengine} onopen={pane => agent && here && onopen(here, agent.id, pane)} />
+      {#if mochiLayout.on}
+        <SideHead store={view.store} current="agents" />
+        <BotColumnHead {view} {agent} {status} {thread} {team} {onpane} {onengine} onopen={pane => agent && here && onopen(here, agent.id, pane)} />
+      {:else}
+        <SideHead store={view.store} current="agents">
+          {#snippet actions()}
+            <button type="button" class="icon-button" title={strings.app.rail.add} aria-label={strings.app.rail.add}
+              aria-haspopup="menu" aria-expanded={contextMenu.current !== null && contextMenu.anchor === addButton}
+              bind:this={addButton} data-testid="agents-rail-add" onclick={(event) => addMenu(event.currentTarget)}>
+              <Plus size={16} />
+            </button>
+          {/snippet}
+        </SideHead>
+      {/if}
     {/if}
   {/snippet}
 
-  {#if !phone.current}
+  {#if !listMode}
     <BotColumn {view} {agent} {team} {conversation}
       onconversation={() => { if (agent && here) onopen(here, agent.id); else if (team && here) onteam(here, team); }}
       onmember={id => here && onopen(here, id)} />
@@ -230,7 +254,7 @@
           {@const names = listNames(row.team.members.map(member => member.name))}
           <AgentRow title={row.team.name} open={row.machine.store === view.store && activeTeam === row.team.threadId} marked={!!row.chat?.unread}
             away={row.machine.store.connection !== 'ready'} at={lastPost(row)} {now} detail={names} tone={row.team.paused ? 'asleep' : 'idle'}
-            machine={elsewhere(row.machine)} testid="agent-team-{row.team.id}" onclick={() => onteam(row.machine, row.team)}>
+            machine={elsewhere(row.machine)} machineId={row.machine.id} preloadThread={row.team.threadId} testid="agent-team-{row.team.id}" onclick={() => onteam(row.machine, row.team)}>
             {#snippet picture()}<AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={34} lit={avatarLit({ open: row.machine.store === view.store && activeTeam === row.team.threadId, unread: !!row.chat?.unread })} />{/snippet}
           </AgentRow>
         {/each}
@@ -249,7 +273,7 @@
   {#if teamsShown && teams.length}
     {@render teamsBlock()}
   {/if}
-  {#if teamsShown && rows.length}<h2 class="agents-section section-label" data-testid="agents-bots-heading">{labels.heading}</h2>{/if}
+  {#if teamsShown && rows.length && (phone.current || teams.length > 0)}<h2 class="agents-section section-label" data-testid="agents-bots-heading">{labels.heading}</h2>{/if}
   {#if rows.length}
     <section class="agents-card" aria-label={labels.heading}>
       {#each rows as { machine, view: owner, row } (JSON.stringify([machine.id, row.profile.id]))}
@@ -262,7 +286,7 @@
           at={row.status?.last?.at ?? 0} {now} tone={wait && tone === 'idle' ? 'working' : tone === 'queued' ? 'idle' : tone} detail={line.text} icon={line.icon} {wait}
           since={tone === 'working' ? earliest(thread?.requestSince, thread?.runningSince) : null}
           wake={tone === 'idle' && row.profile.status === 'active' && row.status?.nextWake ? row.status.nextWake : null}
-          machine={elsewhere(machine)} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}
+          machine={elsewhere(machine)} machineId={machine.id} preloadThread={row.status?.threadId ?? null} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}
           pending={leavingLine(owner, row.profile.id)} pinned={row.profile.pinned === true} onmenu={event => menu(event, machine, owner, row.profile.id)}
           renaming={renaming === rowKey(machine, row.profile.id)} onrename={name => rename(owner, row.profile.id, name)}>
           {#snippet picture()}<AgentAvatar kind="profile" id={row.profile.id} name={row.profile.name} avatar={row.profile.avatar} mood={moodOf(tone, unread)} size={34}
@@ -274,7 +298,7 @@
   {#if found.length}
     <section class="agents-card">
       {#each found as entry (JSON.stringify([entry.machine.id, entry.profile.id]))}
-        <AgentRow title={entry.profile.name} at={0} {now} detail={labels.state.archived} machine={elsewhere(entry.machine)} testid="agent-entry-{entry.profile.id}" onclick={() => onopen(entry.machine, entry.profile.id)}>
+        <AgentRow title={entry.profile.name} at={0} {now} detail={labels.state.archived} machine={elsewhere(entry.machine)} machineId={entry.machine.id} testid="agent-entry-{entry.profile.id}" onclick={() => onopen(entry.machine, entry.profile.id)}>
           {#snippet picture()}<AgentAvatar kind="profile" id={entry.profile.id} name={entry.profile.name} avatar={entry.profile.avatar} size={34} />{/snippet}
           {#snippet aside()}{/snippet}
         </AgentRow>

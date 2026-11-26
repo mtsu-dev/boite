@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { flushSync, onDestroy, onMount, tick, untrack } from 'svelte';
+  import { flushSync, onDestroy, onMount, tick, untrack, type Snippet } from 'svelte';
   import { MESSAGE_PAGE, type Message } from '@boite/contracts';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -33,13 +33,13 @@
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { closingMarkerOf, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
+  import { hasTurnAnswer, isSteeringMessage, lastAnswerTurn, lastLined, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
   import { retryTurn } from '../lib/composer-edit';
   import { TurnProgress } from '../lib/turn-progress.svelte';
-  import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, gapChanged, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
+  import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, collectMeasuredEntries, gapChanged, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
   import { rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { ReactiveTimelineRows } from '../lib/timeline-rows.svelte';
   import { promptAtRow } from '../lib/message-outline';
@@ -49,7 +49,7 @@
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
   import { glides } from '../lib/motion';
-  import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, timelineEndRoom, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
+  import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, timelineEndRoom, turnOf, typingKey, watchOutsideFocus, watchWheel, wheelsUp } from '../lib/timeline-follow';
   import { selectionClicks } from '../lib/selection-clicks';
   import { editWhole, fillShort, pullNewer, pullOlder } from '../lib/reading-window';
   import { ReadingAnchor, type RowAnchor } from '../lib/reading-anchor';
@@ -61,10 +61,10 @@
 
   /** A phone has no room left of the bubbles for the outline rail: it is not drawn there. */
   const narrow = new MediaQuery('(max-width: 720px)');
-  const reveal = new MessageReveal(() => messages, () => narrow.current);
+  const reveal = new MessageReveal(() => messages, () => narrow.current, () => lastSummary, () => focused);
 
-  /** `closing`: a finished thread's last word (`lib/closing-line.ts`), drawn under the last message and scrolling with it. */
-  let { store, threadId, messages, closing = null }: { store: Store; threadId: string; messages: Message[]; closing?: string | null } = $props();
+  /** `resting`: non-null when the thread is at rest (`lib/resting-turn.ts`); `lastLined` picks the drawn line it ends on. */
+  let { store, threadId, messages, resting = null }: { store: Store; threadId: string; messages: Message[]; resting?: string | null } = $props();
   const viewer = new ListViewer();
   /** The find bar is its own chunk, fetched the first time it opens. A failed fetch tries again on the next open. */
   let FindBar = $state.raw<typeof import('./FindBar.svelte').default>();
@@ -152,11 +152,14 @@
   let scrollTop = $state(savedTop);
   let column = $state<HTMLDivElement | undefined>(undefined);
   function rememberAnchor() {
+    if (pinned) return;
     const id = lastView && rows[lastView.first]?.id;
     anchors.remember(viewport, column, id ? anchors.nodes.get(id) : undefined);
   }
+  function rememberBeforePointer(event: Event) { viaPointer = true; if (narrow.current && focused !== null && event.target instanceof Element && event.target.closest('[data-testid="turn-summary"]')?.getAttribute('data-reveal') === `turn:${focused}`) reveal.revealed = `turn:${focused}`; focused = null; focusedNode = null; rememberAnchor(); }
   /** Typing in a field never leaves the thread: a chord, Enter, Escape or a key outside a field reads the anchor. */
-  function rememberBeforeKey(event: KeyboardEvent) { if (!typingKey(event)) rememberAnchor(); }
+  function rememberBeforeKey(event: KeyboardEvent) { viaPointer = false; const active = document.activeElement; if (viewport?.contains(active)) { focused = turnOf(active); focusedNode = focused ? active : null; } if (!typingKey(event)) rememberAnchor(); }
+  function rememberBeforeClick() { if (anchors.pending) rememberAnchor(); }
   function restoreAnchor(anchor: RowAnchor | undefined = anchors.current) {
     if (!anchor || !viewport?.isConnected || pinned || navigationTarget || promptTarget) return;
     const delta = anchors.drift(viewport, anchor);
@@ -168,10 +171,12 @@
   function releaseAnchor() { anchors.restoring = false; anchors.held = false; }
   onMount(() => {
     // Capture the settled layout before a navigation click removes this list.
-    document.addEventListener('pointerdown', rememberAnchor, true);
+    document.addEventListener('pointerdown', rememberBeforePointer, true);
+    document.addEventListener('click', rememberBeforeClick, true);
     document.addEventListener('keydown', rememberBeforeKey, true);
     return () => {
-      document.removeEventListener('pointerdown', rememberAnchor, true);
+      document.removeEventListener('pointerdown', rememberBeforePointer, true);
+      document.removeEventListener('click', rememberBeforeClick, true);
       document.removeEventListener('keydown', rememberBeforeKey, true);
     };
   });
@@ -380,47 +385,34 @@
    * A rendered message's real height replaces its estimate. One above what the user reads would push the text down
    * as it lands, so the same delta goes back into `scrollTop` and the viewport does not move.
    */
-  function onMeasured(entries: ResizeObserverEntry[]): void {
+  function onMeasured(entries: ResizeObserverEntry[]): { moved: boolean; restore: boolean; boxResized: boolean; anchor: RowAnchor | undefined } | null {
     const box = viewport;
+    const { boxResized, nextViewHeight, gapFixes, deltas } = collectMeasuredEntries(entries, box, viewHeight, rows, slots, heights);
+    const restoring = anchors.restoring || anchors.held;
+    if (deltas.length === 0 && !boxResized && gapFixes.length === 0 && !restoring) return null;
+    const needsAnchor = boxResized || restoring || deltas.some(d => d.at <= view.first + 2 || d.next < d.previous);
+    if (needsAnchor && !pinned && !navigationTarget && !promptTarget) rememberAnchor();
+    const anchor = anchors.current;
+    if (boxResized && box) { viewHeight = nextViewHeight; readEndRoom(box); }
+    for (const fix of gapFixes) fix.node.dataset['gap'] = fix.gap;
+    if (deltas.length === 0) return { moved: false, restore: needsAnchor, boxResized, anchor };
     const lastId = rows.at(-1)?.id;
     let shift = 0;
-    let moved = false;
-    for (const entry of entries) {
-      const node = entry.target as HTMLElement;
-      if (node === box) {
-        viewHeight = node.clientHeight;
-        readEndRoom(node);
-        continue;
-      }
-      const id = node.dataset['mid'];
-      if (!id) continue;
-      // The box is measured already: `offsetHeight` would lay out, mid-scroll, what the window just mounted. Fractions
-      // stay (rounded, each row above the reader left it up to half a pixel off); a continued message sits a gap under,
-      // written only when it changed: the same value again is still a DOM mutation, one per row after every open.
-      const gap = slotGap(node.dataset['seam'], node.dataset['rest'] !== undefined);
-      if (node.dataset['gap'] !== String(gap)) node.dataset['gap'] = String(gap);
-      const next = (entry.borderBoxSize?.[0]?.blockSize ?? node.offsetHeight) + gap;
-      const at = slots.indexOf(rows, id);
-      const previous = heights.get(id) ?? slots.estimateOf(rows[at]);
-      if (previous === next) continue;
+    for (const { id, at, next, previous } of deltas) {
       heights.set(id, next);
       estimates.learn(rows[at], next);
-      moved = true;
       if (at < 0) continue;
-      // Everything from here down is worth a different number now.
       if (at < slots.dirty) slots.dirty = at;
       if (at < view.first) shift += next - previous;
       if (id === lastId) tail.note(next);
     }
-    if (!moved) return;
     measured += 1;
     if (box && shift !== 0 && !pinned) {
       box.scrollTop += shift;
-      // The window moves with it at once: computed on the old position, it mounted a message above
-      // for a frame and dropped it unmeasured, moving the text with no scroll event to read the anchor.
       scrollTop = box.scrollTop;
       if (lifting) liftFrom += shift;
     }
+    return { moved: true, restore: needsAnchor, boxResized, anchor };
   }
 
   /** The bottom message's height, at most ten times a second: what the pin follows. */
@@ -489,11 +481,11 @@
         frame = 0;
         const batch = measurable([...pending.values()], id => slots.indexOf(rows, id) >= 0);
         pending.clear();
-        rememberAnchor();
-        const anchor = anchors.current;
-        onMeasured(batch);
+        const result = onMeasured(batch);
+        if (!result || (!result.moved && !result.boxResized && !result.restore)) return;
+        if (pinned) { scrolledGap = 0; return; }
         // A row growing below moves no scroll position: the gap a later notch down is measured against grows with it.
-        void tick().then(() => { restoreAnchor(anchor); if (box.scrollTop === scrollTop) scrolledGap = box.scrollHeight - box.scrollTop - box.clientHeight; });
+        void tick().then(() => { if (result.restore) restoreAnchor(result.anchor); if (box.scrollTop === scrollTop) scrolledGap = box.scrollHeight - box.scrollTop - box.clientHeight; });
       });
     });
     boxes = observer;
@@ -513,20 +505,21 @@
     const box = viewport;
     if (!box) return;
     const height = box.scrollHeight;
+    const top = box.scrollTop;
+    const client = box.clientHeight;
     const resized = height !== scrolledHeight, shrank = height < scrolledHeight;
     scrolledHeight = height;
     // The browser keeping the text in place as a row above grows moves the list down, never nearer its bottom.
-    const distance = height - box.scrollTop - box.clientHeight, closer = distance < scrolledGap - 1; scrolledGap = distance;
+    const distance = height - top - client, closer = distance < scrolledGap - 1; scrolledGap = distance;
     // Pulled up by a finger or the scrollbar thumb, the list leaves the bottom as the wheel does.
-    if (hold.held && box.scrollTop < scrollTop - 1) leftBottom = true;
+    if (hold.held && top < scrollTop - 1) leftBottom = true;
     anchors.release(box);
     const relaid = edge.relaid(box), moved = edge.moved(box);
     // `scrollTop` lags the observer's follows; the edge alone counts this list's own corrections.
-    const rose = moved < -1, descended = moved > 1 && box.scrollTop > scrollTop + 1;
-    scrollTop = box.scrollTop;
-    viewHeight = box.clientHeight;
+    const rose = moved < -1, descended = moved > 1 && top > scrollTop + 1;
+    scrollTop = top;
+    if (viewHeight !== client) viewHeight = client;
     if (navigationTarget || promptTarget) return;
-    anchors.schedule(rememberAnchor);
     if (glide.active) {
       if (distance > 1) return;
       endGlide(false);
@@ -535,10 +528,12 @@
     if (rose && pinned && distance > 1 && !shrank && !relaid) leftBottom = true;
     // Scrolled down into the tolerance, the reader is back: a streaming answer keeps moving the very bottom. Moved down
     // as far from it, by a row growing above after a small notch up, the list took it back and bounced each notch.
-    if (descended && closer && atBottom(box)) leftBottom = false;
+    const nearBottom = distance < 80;
+    if (descended && closer && nearBottom) leftBottom = false;
     // A card shrinking can clamp scrollTop before new output grows the list again; so can its own box growing and shrinking back (`relaid`).
-    pinned = !cutBelow && !leftBottom && (atBottom(box) || (pinned && (resized || relaid) && !hold.held));
+    pinned = !cutBelow && !leftBottom && (nearBottom || (pinned && (resized || relaid) && !hold.held));
     if (anchors.restoring) pinned = false;
+    if (!pinned) anchors.schedule(rememberAnchor);
     // Away from the bottom, the way back shows, whether or not anything new came in.
     behind = !pinned;
     if (pinned) markSeen();
@@ -565,8 +560,10 @@
     if (opening) { releaseNavigation(); pinned = false; leftBottom = true; rememberAnchor(); }
     else if (viewport && viewport.scrollHeight <= viewport.clientHeight + 1) { pinned = true; leftBottom = false; behind = false; }
   }
-  /** The turn whose answer is under the pointer: its summary shows from any of its messages (`pointedTurn`). */
+  /** The turns whose answer is under the pointer and holds the keyboard: the summary shows from any of its messages (`pointedTurn`). */
   let pointed = $state<string | null>(null);
+  let focused = $state<string | null>(null), focusedNode: Element | null = null, viaPointer = false;
+  $effect(() => { void rendered; if (focused === null) return; if (!focusedNode?.isConnected || !viewport?.contains(focusedNode)) { focused = null; focusedNode = null; return; } return watchOutsideFocus(viewport, () => { focused = null; focusedNode = null; }); });
   /** Whether the list keeps to the bottom right now: pinned, and nobody is moving it. */
   const following = () => pinned && !navigationTarget && !glide.active && !hold.held;
 
@@ -659,9 +656,10 @@
     }
   });
 
+  /** The last non-user row with a summary line, so a phone's buttons and the resting footer pick the same row without dropping them on an unanswered prompt. */
+  const lastSummary = $derived(lastAnswerTurn(timeline, shaped.folds, shownTurns) ?? (shownTurns.length === 0 ? timeline.findLast((message) => message.role === 'assistant')?.turnId ?? null : null));
   /** Only once the loaded window reaches the thread's end: newer history still unread is not its last word. */
-  let closingShown = $derived(closing !== null && store.messagesAfter === null && !store.loadingNewer);
-  const closingAt = $derived(closingMarkerOf(timeline)); // A new conversation ending the thread follows its last turn, closing line included.
+  let restingShown = $derived(resting !== null && store.messagesAfter === null && !store.loadingNewer ? lastLined(timeline, shaped.folds, shownTurns) : null);
   /** A line lands at the foot of a pinned list: the bottom takes it in, like a new message. */
   function followFoot(): void {
     const box = viewport;
@@ -718,7 +716,7 @@
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- The top fade is sticky inside the padding: it is told the padding a sent prompt's lead adds, or it would hang that far under the header, a dark band across the prompt's lines. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onfocusin={(event) => { focused = viaPointer ? null : pointedTurn(event); focusedNode = !viaPointer && event.target instanceof Element ? event.target : null; }} onfocusout={(event) => { focused = viaPointer ? null : turnOf(event.relatedTarget); focusedNode = !viaPointer && event.relatedTarget instanceof Element && viewport?.contains(event.relatedTarget) ? event.relatedTarget : null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
@@ -734,9 +732,9 @@
         {@const joined = seam(rows[view.start + index - 1], row)}
         {@const host = turn ? turnChanges.hostOf(turn.id) : null}
         <!-- The turn's change count, on the tool line of its last change (`inline`) or at its end. -->
-        {#snippet changes(inline: boolean)}
+        {#snippet changes(inline: boolean, between?: Snippet, after?: Snippet)}
           {@const files = turn ? turnChanges.filesOf(turn) : null}
-          {#if files}<TurnFiles {store} {...files} {inline} acquireDiff={source => store.acquireToolOutput(threadId, source.messageId, source.toolId, false)} />{/if}
+          {#if files}<TurnFiles {store} {...files} {inline} {between} {after} acquireDiff={source => store.acquireToolOutput(threadId, source.messageId, source.toolId, false)} />{:else}{@render between?.()}{@render after?.()}{/if}
         {/snippet}
         <article
           use:track={{ row, joined }}
@@ -745,7 +743,7 @@
           data-seam={joined} style:content-visibility={isSlice(row) ? 'auto' : undefined} style:overflow-clip-margin={isSlice(row) ? 'var(--chat-block-gap)' : undefined} style:contain-intrinsic-size={sliceBox(row, heights.get(row.id) ?? slots.estimateOf(row), slotGap(joined, !row.first))}
           style:margin-top={joined && 'calc(var(--chat-block-gap) - var(--chat-message-gap))'}
           data-testid={row.first ? 'message' : 'message-rest'}
-          data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId}
+          data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId} data-steered={isSteeringMessage(message, firstInTurn.get(message.turnId), (store.messagesBefore !== null && message.id === messages[0]?.id) || Boolean(placement?.gaps.has(message.id)), closes, turn) ? '' : undefined}
         >
           {#if row.first && days.has(message.id)}<DayDivider at={days.get(message.id)!} />{/if}
           {#if row.first && turn?.switched && message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id}<SwitchMarker names={store} shown={turn.switched} />{/if}
@@ -758,7 +756,7 @@
           {:else if group}
             <AgentMessageGroup {store} {group} />
           {:else if movedBy(message)}<MoveMarker notice={movedBy(message)!} />
-          {:else if newConversationOf(message)}<NewConversationMarker {store} {threadId} notice={newConversationOf(message)!} closing={closingShown && closingAt === message.id ? closing : null} />
+          {:else if newConversationOf(message)}<NewConversationMarker {store} {threadId} notice={newConversationOf(message)!} />
           {:else if startedFrom(message)}<SpawnMarker {store} link={startedFrom(message)!} direction="to" />
           {:else if message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id && wakeKind(turn) && (message.role === 'system' || turn?.execution?.operation === 'routine' || turn?.execution?.operation === 'event')}
             <WakeMarker {message} kind={wakeKind(turn)!} />
@@ -773,16 +771,16 @@
             {@const marks = summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}
             <!-- A line that counts the turn's steps carries its changes too: one line, never a card over it. -->
             {@const merged = !host && !!marks.steps && turn.status !== 'running'}
-            {#snippet onLine()}{@render changes(true)}{/snippet}
+            {#snippet onLine(between?: Snippet, after?: Snippet)}{@render changes(true, between, after)}{/snippet}
             {#if !host && !merged}{@render changes(false)}{/if}
             {@const carded = failureCarded(turn, messages)}<!-- A failure's card holds its cause and its one Retry: the line keeps copy, fork and the background stop; a question at the composer's top is a running turn's status. -->
             {#if !(asking && turn.status === 'running')}
-            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id} tucked={!reveal.shows(message)}
+            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id || focused === turn.id} tucked={!(reveal.showsTurn(turn.id) || reveal.shows(message) || (store.openThread?.turns.at(-1)?.id === turn.id && (turn.status === 'stopped' || (turn.status === 'error' && !carded))))} resting={restingShown === turn.id}
               {...marks} changes={merged ? onLine : undefined}>
               {#snippet actions()}
                 <MessageActions
-                  text={() => turnAnswer(messages, turn.id)}
-                  retry={atRest && !carded && store.openThread?.turns.at(-1)?.id === turn.id ? () => void retry(turn.id) : undefined}
+                  text={hasTurnAnswer(messages, turn.id) ? () => turnAnswer(messages, turn.id) : ''}
+                  retry={atRest && !carded && store.openThread?.turns.at(-1)?.id === turn.id && messages.some(current => current.turnId === turn.id && current.role === 'user') ? () => void retry(turn.id) : undefined}
                   fork={!narrow.current && forkable && !store.openThread?.incognito && source && source.state !== 'streaming' ? (worktree) => void store.fork(source.id, { worktree }) : undefined}
                   plugin={store === workspace.primary && source ? { threadId, messageId: source.id, role: 'assistant' } : undefined}
                 />
@@ -795,7 +793,7 @@
       {/each}
       {#if view.below > 0}<div class="spacer" data-testid="timeline-below" style="height: {view.below}px"></div>{/if}
       {#if store.loadingNewer}<p class="loading-older" data-testid="loading-newer">{strings.chat.loadingNewer}</p>{/if}
-      <TimelineFoot {store} {threadId} pending={!cutBelow && !isSending(timeline.at(-1) ?? { id: '' })} closing={closingShown && !closingAt ? closing : null} onlanded={followFoot} />
+      <TimelineFoot {store} {threadId} pending={!cutBelow && !isSending(timeline.at(-1) ?? { id: '' })} onlanded={followFoot} />
     </div>
     {#if promptRoom > 0}<div class="spacer" data-testid="prompt-room" style:height="{promptRoom}px" aria-hidden="true"></div>{/if}
   </div>
@@ -811,7 +809,7 @@
   @media (hover: hover) {
     .timeline :global(:is(.fold-caret, .summary .info-tip)) { opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
     .timeline :global(:is(button, summary):is(:hover, :focus-visible) .fold-caret),
-    .timeline :global(.summary:is(:hover, :focus-within) .info-tip),
+    .timeline :global(.summary:is(:hover, :has(:focus-visible)) .info-tip),
     .timeline :global(.info-tip[aria-expanded='true']) { opacity: 1; }
   }
 

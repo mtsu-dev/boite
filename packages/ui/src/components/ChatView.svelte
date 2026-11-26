@@ -28,7 +28,7 @@
   import WorktreeGoneNotice from './WorktreeGoneNotice.svelte';
   import ContactHoldNotice from './ContactHoldNotice.svelte';
   import { firstRunScreen, needsAnAI } from '../lib/first-run';
-  import { closingLine } from '../lib/closing-line';
+  import { restingTurn } from '../lib/resting-turn';
   import { loadCouncilSalon } from '../lib/council-entry';
   import { backdropEntry } from '../lib/backdrop-entry.svelte';
 
@@ -79,9 +79,9 @@
     return at < 0 ? held : held.slice(0, at);
   });
   let messages = $derived(sending ? [...kept, sending] : kept);
-  /** A finished thread's quiet last word: done, how long it worked, what its last turn changed. */
-  let closing = $derived(thread && !thread.archived && !locked && !sending && store.rewinding[thread.id] === undefined && thread.status !== 'running' && thread.status !== 'waiting' && store.loadingThreadId !== thread.id
-    ? closingLine(thread.turns, kept, thread.cwd) : null);
+  /** The turn a finished thread ends on: its summary line is the thread's one footer, read at rest. */
+  let resting = $derived(thread && !thread.archived && !locked && !sending && store.rewinding[thread.id] === undefined && thread.status !== 'running' && thread.status !== 'waiting' && store.loadingThreadId !== thread.id
+    ? restingTurn(thread.turns) : null);
   // The timeline still needs agent messages after reload, even with settings hidden.
   let threadId = $derived(thread?.id);
   let agentSession = $derived(!!thread?.agentSessionId);
@@ -160,7 +160,7 @@
         {#if store.loadingThreadId === thread.id && messages.length === 0}
           <ThreadLoading progress={store.loadingBytes?.threadId === thread.id ? store.loadingBytes : null} />
         {:else}
-          <MessageList {store} threadId={thread.id} {messages} {closing} />
+          <MessageList {store} threadId={thread.id} {messages} {resting} />
         {/if}
       {/key}
     {:else if sending}

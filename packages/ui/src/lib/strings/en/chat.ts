@@ -25,6 +25,7 @@ export const strings = {
     incompleteHistory: 'Could not read the complete conversation history',
     incompleteMessage: 'Could not read the complete message {id}',
     incompleteTool: 'Could not read tool call "{name}" in message {id}: {reason}',
+    incompleteToolDiffsUpgrade: 'Could not read diffs from tool call "{name}" in message {id} because this machine runs an older Boite core without diff-only projection. Update Boite on that machine and try again ({reason}).',
     desktopTooLarge: 'Desktop downloads are limited to {limit} MiB. Download from the web app, turn off export options, or copy the Markdown.',
     doc: {
       conversation: 'Conversation',

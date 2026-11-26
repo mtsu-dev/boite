@@ -746,7 +746,7 @@
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: auto minmax(0, 1fr);
       width: calc(100vw - 24px);
-      height: min(460px, 62dvh);
+      height: min(520px, 68dvh);
       /* The sheet runs edge to edge: the rail strip and the list keep off its sides. */
       padding-inline: var(--space-1);
     }
@@ -761,6 +761,8 @@
     /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)
        and the refresh button take a full touch target like every other control. */
     .main-models { grid-area: 2 / 1; border-left: none; }
+    .row { min-height: 48px; padding: 8px 10px; font-size: var(--text-reading); }
+    .favorite-button { width: var(--touch-target); height: var(--touch-target); }
     /* The refresh ends the logo strip on its ground, no box of its own. */
     .refresh {
       width: var(--touch-target);
@@ -770,11 +772,11 @@
       border-radius: var(--radius-md);
       background: transparent;
     }
-    .popover.single { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: auto; max-height: min(460px, 62dvh); }
+    .popover.single { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: auto; max-height: min(520px, 68dvh); }
     .single .main-models { grid-area: 1 / 1; }
     .single .main-models .head { padding-right: calc(var(--touch-target) + 8px); }
     /* Show all and Legacy models are rows a finger takes like any other. */
-    .fold { min-height: var(--touch-target); }
+    .fold { min-height: 48px; }
     .single .refresh { top: 0; right: 0; }
   }
 </style>

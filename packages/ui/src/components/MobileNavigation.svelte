@@ -161,7 +161,7 @@
   let groups = $derived(projectView.sorted(machines.flatMap(machine => machine.store.projects.filter(project => !project.archived).map(project => ({ machine, project })))));
   /** The thread list on screen, with projects to show: its header names its two views. */
   let threadViews = $derived(headerList === 'threads' && store.page === 'chat' && !recover && groups.length > 0);
-  /** At work on top when working grouping is on, open, then set aside; idle projects go to their fold, as on the desktop. */
+  /** At work on top when working grouping is on, open, then paused; idle projects go to their fold, as on the desktop. */
   let sections = $derived(projectSections(groups, recentPreferences.groupOtherProjects, recentPreferences.groupWorking));
   let shelved = $derived(machines.flatMap(machine => machine.store.projects.filter(project => project.archived === true).map(project => ({ machine, project }))));
   let selected = $derived(projectView.selected(groups));
@@ -307,7 +307,6 @@
     const key = projectKey(entry);
     return Object.values(sections).find(list => list.some(other => projectKey(other) === key)) ?? groups;
   }
-  /** A set-aside project shows its archived conversations as its body, with no pill for them. */
 </script>
 
 {#snippet connection()}
@@ -321,7 +320,7 @@
 
 <!-- Resizing releases the phone's controls, but keeps this navigation's filters and list state. -->
 {#if narrow.current}
-<header class="mobile-header" class:chatting={chatting && !firstRun} class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
+<header class="mobile-header" class:chatting={chatting && !firstRun} class:settings={store.page !== 'chat'} class:detail-hidden={store.page === 'agents' && mobileChrome.detail} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
   {#if chatting && !firstRun}
     <!-- The only way out of a conversation on a phone. A thread that waits elsewhere is in its name and the tab bar's count, not a dot on the arrow. -->
     {#if store.openThread?.parentThreadId}
@@ -407,12 +406,11 @@
         onaction={action => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
     {#if listScreen === 'threads' && workspace.view === 'projects'}
-      {#snippet projectRows(projects: ProjectEntry[], later = false)}
+      {#snippet projectRows(projects: ProjectEntry[])}
       {#each projects as group (projectKey(group))}
         {@const groupRows = rowsByProject.get(group.machine.id)?.get(group.project.id) ?? []}
         {@const workingOpen = projectThreadView.isOpen(group, 'working')}
-        {@const doneOpen = archiveCount(group.project, 'done') > 0 && doneFilter.shown}
-        {@const archivedOpen = later && archiveCount(group.project, 'archived') > 0}
+        {@const doneOpen = archiveCount(group.project, 'done') > 0 && (doneFilter.shown || projectThreadView.isOpen(group, 'done'))}
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
         {@const needsHere = needsCount(group)}
         {@const waitingHere = needsHere.count}
@@ -424,7 +422,7 @@
         {@const drafts = group.machine.store.draftEntries.filter(entry => entry.projectId === group.project.id)}
         {@const folded = !query && group.machine.store.isCollapsed(group.project.id)}
         {@const rollup = folded && group.machine.store.connection === 'ready' ? projectRollup(group.machine.store.threadsOf(group.project.id), thread => rowAsks(group.machine.store, thread.id)) : null}
-        {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
+        {#if !query || groupRows.length > 0 || doneOpen}
         <section class="project-group" class:inactive={!activeProject(group)} class:folded data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading" data-row-edge>
             <!-- The tile and the name fold the project, as its header does on the desktop; the counters and menus beside them keep their own action.
@@ -440,7 +438,7 @@
                 { id: 'down', label: strings.sidebar.moveProjectDown, disabled: projectKey(foldOf(group).at(-1)!) === projectKey(group) }
               ]} onpick={action => projectView.step(foldOf(group), projectKey(group), action === 'up' ? -1 : 1)} label={strings.sidebar.customOrder} placement="bottom" variant="ghost" testid="mobile-project-order"><ArrowUpDown size={18} /></Menu>
             {/if}
-            <!-- The desktop header's menu: a new thread here, the path, archived threads and their switch (a set-aside group always shows them), managing the project. -->
+            <!-- The desktop header's menu: a new thread here, the path, archived threads, managing the project. -->
             <button type="button" class="ghost icon project-actions" data-testid="mobile-project-menu" title={strings.sidebar.projectMenu} aria-label={strings.sidebar.projectMenu}
               onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'), { count: archiveCount(group.project, 'archived') })}><Ellipsis size={18} /></button>
           </div>
@@ -466,9 +464,6 @@
             {#if doneOpen}<GroupLabel kind="done" count={query ? undefined : archiveCount(group.project, 'done')} />{/if}
             <RecentDone entries={[group]} {scrollRoot} {now} {query} open={doneOpen && !folded} header={false} cap={10} onopen={() => show('chat')} />
           </div>
-          <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
-            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && !folded && (!later || projectThreadView.laterOpen)} header={false} cap={10} onopen={() => show('chat')} />
-          </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
           </div></div>
         </section>
@@ -480,7 +475,7 @@
         {#if sections.working.length > 0}<ProjectCardsSection kind="working" count={sections.working.length}>{@render projectRows(sections.working)}</ProjectCardsSection>{/if}
         {@render projectRows(sections.open)}
         {#if groups.length > 0 && sections.working.length + sections.open.length === 0}<p class="empty">{strings.sidebar.noActiveProjects}</p>{/if}
-        {#if sections.later.length > 0}<ProjectCardsSection kind="later" count={sections.later.length}>{@render projectRows(sections.later, true)}</ProjectCardsSection>{/if}
+        {#if sections.paused.length > 0}<ProjectCardsSection kind="paused" count={sections.paused.length}>{@render projectRows(sections.paused)}</ProjectCardsSection>{/if}
         <ProjectShelf projects={sections.idle} multi={several} {now} {scrollRoot} onopen={() => show('chat')} />
         <ProjectShelf kind="archived" projects={shelved} multi={several} {now} {scrollRoot} onopen={() => show('chat')} />
         {@render contacts()}
@@ -552,6 +547,7 @@
   @media (max-width: 720px) {
 
     .mobile-header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 60px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); background: var(--color-background); border-bottom: 1px solid var(--color-border); padding-top: max(8px, env(safe-area-inset-top)); }
+    .mobile-header.detail-hidden { display: none; }
     .chat-heading { flex: 1; min-width: 0; height: 44px; }
     .mobile-header.chatting { gap: 6px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
     .chat-heading :global(.thread-header) { gap: 2px; }
@@ -561,15 +557,18 @@
     /* A list's row holds the view switch and up to four finger squares (the machine, the display menu, the search, a
        new thread): the squares touch, their glyphs still 24 px apart, so the switch keeps its room at 360 px. */
     .mobile-header:not(.chatting) > :is(.icon, .header-display) { margin-left: -10px; }
-    /* The new thread's button: filled, shorter than the finger squares beside it, its target the header's height,
-       10 px from the glyphs on both sides. At 360 px the row holds the views, three squares and "+ New" once the
-       views' sides give 3 px each, the search reaches 6 px into the display menu's square (glyphs still 18 px apart)
-       and the button and the gear 2 px into the square before them; past 480 px it says "New thread". From 381 px
-       the search keeps to its own square, so a finger on the display menu's edge never opens the search. */
-    .mobile-header > .primary.new { position: relative; flex: none; gap: 4px; height: 36px; margin-left: -12px; padding: 0 8px 0 6px; }
-    @media (max-width: 380px) { .mobile-header:has(> .primary.new) > [data-testid=mobile-search-open] { margin-left: -16px; } }
+    /* The new thread's button: filled, 40 px drawn inside a 44 px target, 10 px from the glyphs on both sides. At 360 px
+       the row holds the views, three squares and "+ New" once the views' sides give 3 px each, the search reaches 6 px
+       into the display menu's square (glyphs still 18 px apart) and the button and the gear 2 px into the square before
+       them; past 480 px it says "New thread". From 381 px the search keeps to its own square, so a finger on the display
+       menu's edge never opens the search. */
+    .mobile-header > .primary.new { position: relative; flex: none; gap: 5px; height: 40px; margin-left: -12px; padding: 0 11px 0 9px; font-size: var(--text-sm); }
+    @media (max-width: 380px) {
+      .mobile-header > .primary.new { gap: 4px; padding: 0 8px 0 6px; }
+      .mobile-header:has(> .primary.new) > [data-testid=mobile-search-open] { margin-left: -16px; }
+    }
     .mobile-header:has(> .primary.new) > .gear { margin-left: -12px; }
-    .mobile-header > .primary.new::before { content: ''; position: absolute; inset: -4px 0; }
+    .mobile-header > .primary.new::before { content: ''; position: absolute; inset: -2px 0; }
     .new .long { display: none; }
     .mobile-header:has(> .primary.new) .brand strong :global(.view-switch .side) { padding-inline: 7px; }
     @media (min-width: 480px) { .new .long { display: block; } .new .short { display: none; } }

@@ -550,13 +550,11 @@ jobs:
       - run: bun run build:ui
       - name: Build the fake-client E2E bundle
         run: bun tests/e2e/lib/warm.ts --build-only tests/e2e/.artifacts/fake-ui
-      # The production UI keeps its dot folder: .well-known/assetlinks.json.
       - uses: ./.github/actions/upload-artifact
         with:
           name: ui-dist
           path: packages/ui/dist/
           if-no-files-found: error
-          include-hidden-files: true
           retention-days: 1
       - uses: ./.github/actions/upload-artifact
         with:

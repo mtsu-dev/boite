@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parseChord } from '@boite/contracts';
 import { dragScroll, edgeOpacity, FULL_DISTANCE, MIN_THUMB, REVEAL_DISTANCE, startEdgeScrollbars, thumbSpan } from './edge-scrollbars';
+import { watchZoomWheel } from './zoom';
+
+vi.mock('@tauri-apps/api/webview', () => ({ getCurrentWebview: () => ({ setZoom: () => Promise.resolve() }) }));
 
 describe('edgeOpacity', () => {
   it('is hidden past the reveal distance, full near the edge and rises in between', () => {
@@ -93,6 +97,56 @@ describe('startEdgeScrollbars', () => {
     removed.mockRestore();
     addedOnDocument.mockRestore();
     removedOnDocument.mockRestore();
+  });
+
+  it('the wheel over a thumb scrolls its container, unless the zoom\'s bound chord takes that wheel', () => {
+    media(true);
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => { frames.push(callback); return frames.length; });
+    const flush = () => { for (const callback of frames.splice(0)) callback(0); };
+    const list = document.body.appendChild(document.createElement('div'));
+    list.style.overflowY = 'auto';
+    for (const [name, value] of Object.entries({ offsetWidth: 200, offsetHeight: 200, clientWidth: 200, clientHeight: 200, scrollHeight: 1000 })) {
+      Object.defineProperty(list, name, { configurable: true, value });
+    }
+    list.getBoundingClientRect = () => ({ left: 0, top: 0, right: 200, bottom: 200, width: 200, height: 200, x: 0, y: 0, toJSON: () => ({}) });
+    const scrolled = vi.fn();
+    list.scrollBy = scrolled as typeof list.scrollBy;
+    (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    const stop = startEdgeScrollbars();
+    let unzoom = () => {};
+    try {
+      list.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 196, clientY: 50 }));
+      flush();
+      const thumb = document.querySelector<HTMLDivElement>('.edge-scrollbar-thumb')!;
+      expect(thumb).not.toBeNull();
+      const turn = (init: WheelEventInit) => thumb.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 40, ...init }));
+      // No chord, the default: Ctrl with the wheel scrolls as any wheel does.
+      turn({ ctrlKey: true });
+      expect(scrolled).toHaveBeenCalledTimes(1);
+      const bind = (text: string) => {
+        unzoom();
+        const parsed = parseChord(text);
+        if (!parsed.ok) throw new Error(parsed.reason);
+        unzoom = watchZoomWheel(parsed.chord, () => undefined, false);
+      };
+      bind('mod+wheel');
+      turn({ ctrlKey: true });
+      expect(scrolled).toHaveBeenCalledTimes(1);
+      turn({ ctrlKey: true, altKey: true });
+      expect(scrolled).toHaveBeenCalledTimes(2);
+      bind('alt+wheel');
+      turn({ altKey: true });
+      expect(scrolled).toHaveBeenCalledTimes(2);
+      turn({ ctrlKey: true });
+      expect(scrolled).toHaveBeenCalledTimes(3);
+    } finally {
+      unzoom();
+      stop();
+      raf.mockRestore();
+      list.remove();
+      delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    }
   });
 
   it('leaves a touch-only display alone', () => {

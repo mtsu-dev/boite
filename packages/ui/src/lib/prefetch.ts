@@ -36,7 +36,10 @@ export function warmPages(store: Store, agents: boolean): void {
   const quiet = () => undefined;
   void import('../components/SettingsShell.svelte').catch(quiet);
   if (agents) {
-    void Promise.all([import('../components/agents/AgentsPage.svelte'), import('./agents.svelte')]).then(async ([, { AgentsView }]) => {
+    void Promise.all([
+      import('../components/agents/AgentsLayout.svelte').then(({ preloadAgentsPage }) => preloadAgentsPage()),
+      import('./agents.svelte')
+    ]).then(async ([, { AgentsView }]) => {
       const view = AgentsView.of(store);
       if (!view.snapshot && store.connection === 'ready') await view.refresh();
     }).catch(quiet);

@@ -245,7 +245,7 @@ for (const width of [1280, 390]) {
       expect(await page.evaluate(`document.querySelector('${first} ${id('project-done')}').hidden`)).toBe(true);
       // The archived thread stays in the menu, off the card; the other machine's card counts its own archive.
       expect(await archivedHint(first)).toBe('1');
-      expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived')}').hidden && !document.querySelector('${first} ${id('project-done')} ${id('done-thread')}')`)).toBe(true);
+      expect(await page.evaluate(`!document.querySelector('${first} ${id('project-archived')}') && !document.querySelector('${first} ${id('project-done')} ${id('done-thread')}')`)).toBe(true);
       expect(await archivedHint(second)).toBe(await page.evaluate<string | null>(`(() => { const p = globalThis.__boiteTest.workspace.machines[1].store.projects.find(p => p.id === 'p-boite'), n = (p?.archivedThreads ?? 0) - (p?.doneThreads ?? 0); return n > 0 ? String(n) : null; })()`));
       // Opening the other machine's menu scrolls its card into view. The local fold stays open, even when its rows leave the viewport.
       expect(await page.evaluate(`document.querySelector('${first} ${id('project-working-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
@@ -262,7 +262,7 @@ for (const width of [1280, 390]) {
         await page.waitFor(`document.querySelector('${first} ${id('mobile-project-toggle')}').getAttribute('aria-expanded') === 'true'`);
         expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.isCollapsed('p-boite')`)).toBe(false);
         expect(await page.evaluate(`document.querySelector('${first} ${id('project-working-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
-        expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived')}').hidden`)).toBe(true);
+        expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived')}') === null`)).toBe(true);
         // The unfold grows the card below its header: its working list can land under the screen, where the list draws no row.
         await revealWorking(first, 't-scheduler');
         // A folded card whose only rows work counts them in its head, and that counter unfolds it onto its list, as the sidebar's does.
@@ -285,15 +285,26 @@ for (const width of [1280, 390]) {
       expect(await page.evaluate(`!!document.querySelector('${row(project(remote, 'p-boite'), 't-trace')}')`)).toBe(true);
       await click(`${first} ${id('project-working-toggle')}`);
       expect(await page.evaluate(`!document.querySelector('${row(first, 't-scheduler')}') && ${width < 720} === !document.querySelector('${first} ${id('done-thread')}')`)).toBe(true);
-      if (width >= 720) {
-        await showDone(false);
-        // With the Done switch off, the card's head still counts its done thread and opens its done list, then folds it.
-        await page.waitFor(`document.querySelector('${first} ${id('project-done-toggle')}')?.dataset.count === '1' && document.querySelector('${first} ${id('project-done')}').hidden`);
-        await click(`${first} ${id('project-done-toggle')}`);
-        await page.waitFor(`!!document.querySelector('${first} ${id('project-done')} ${id('done-thread')}[data-thread-id="t-trace"]')`);
-        await click(`${first} ${id('project-done-toggle')}`);
-        await page.waitFor(`document.querySelector('${first} ${id('project-done')}').hidden`);
-      }
+      // The phone archived t-trace by hand: a thread marked done gives its card a done count too.
+      const doneHere = width < 720 ? await page.evaluate<string>(`(async () => {
+        const store = globalThis.__boiteTest.workspace.machines[0].store;
+        const thread = await store.client.call('threads.create', {projectId:'p-boite', providerId:'echo', accountId:'a-echo', title:'Done on a phone'});
+        await store.client.call('threads.archive', {threadId:thread.id, onlyIfIdle:true});
+        return thread.id;
+      })()`) : 't-trace';
+      if (width >= 720) await showDone(false);
+      // With the Done switch off, the card's head still counts its done thread and opens its done list, on a phone too, then folds it.
+      await page.waitFor(`document.querySelector('${first} ${id('project-done-toggle')}')?.dataset.count === '1' && document.querySelector('${first} ${id('project-done')}').hidden`);
+      await click(`${first} ${id('project-done-toggle')}`);
+      await page.waitFor(`!!document.querySelector('${first} ${id('project-done')} ${id('done-thread')}[data-thread-id="${doneHere}"]')`);
+      // Open, the count shows it by its fill as well as its ink; and the done row starts its title where the live rows start theirs.
+      await page.waitFor(`getComputedStyle(document.querySelector('${first} ${id('project-done-toggle')}')).backgroundColor !== 'rgba(0, 0, 0, 0)'`);
+      expect(await page.evaluate<number[]>(`(() => {
+        const left = selector => Math.round(document.querySelector(selector).getBoundingClientRect().left);
+        return [left('${first} :is(${id('thread-row')}, .row):not(${id('done-thread')} *) .headline .title'), left('${first} ${id('done-thread')} .title'), left('${first} ${id('group-label-done')} .ui-label')];
+      })()`).then(edges => new Set(edges).size)).toBe(1);
+      await click(`${first} ${id('project-done-toggle')}`);
+      await page.waitFor(`document.querySelector('${first} ${id('project-done')}').hidden`);
       await page.evaluate(`(() => { const store = globalThis.__boiteTest.workspace.machines[0].store; store.threads = store.threads.map(t => t.id === 't-scheduler' ? {...t, pinned:true} : t); })()`);
       await page.waitFor(`document.querySelector('${row(first, 't-scheduler')}')`);
       await click(`${first} ${id('project-working-toggle')}`);
@@ -351,7 +362,7 @@ for (const width of [1280, 390]) {
       const finished = idleRow('p-notes');
       await page.waitFor(`document.querySelector('${finished}')`);
       await click(`${finished} ${id('project-done-toggle')}`);
-      // Open, the row's done pill keeps its fill inside the touch target: no opaque edge bars above and below it on a phone.
+      // Open, the row's done count keeps its fill inside the touch target: no opaque edge bars above and below it on a phone.
       if (width < 720) expect(await page.evaluate(`getComputedStyle(document.querySelector('${finished} ${id('project-done-toggle')}')).borderTopColor`)).toBe('rgba(0, 0, 0, 0)');
       const done = `${root} ${id('done-thread')}[data-machine-id="${main}"][data-thread-id="t-descriptors"]`;
       const revealDone = () => page.waitFor(`(() => {

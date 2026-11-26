@@ -62,10 +62,11 @@ const ATTRIBUTE = /\s([^\s=>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/dg;
 
 interface Edit { start: number; end: number; text: string }
 
-export interface BuiltView { html: string; problems: string[] }
+export interface BuiltView { html: string; problems: string[]; hasColorScheme: boolean }
 
 const remote = (address: string) => /^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(address);
 const kept = (address: string) => address === '' || /^(?:data:|blob:|#|javascript:|about:|mailto:)/i.test(address);
+const declaresColorScheme = (css: string) => /(?:^|[;{])\s*color-scheme\s*:/i.test(css.replace(/\/\*[\s\S]*?\*\//g, ' '));
 
 /**
  * The page with every local file it names embedded, and what stops it from
@@ -76,6 +77,7 @@ const kept = (address: string) => address === '' || /^(?:data:|blob:|#|javascrip
 export function buildView(source: string, directory: string, cwd: string, guard?: (path: string) => import('./contacts/access-policy.ts').SharedFilePermit | undefined): BuiltView {
   const problems: string[] = [];
   const edits: Edit[] = [];
+  let hasColorScheme = false;
   const lineOf = (offset: number) => source.slice(0, offset).split('\n').length;
   const problem = (offset: number, text: string) => { if (problems.length < 12) problems.push(`line ${lineOf(offset)}: ${text}`); };
   const cache = new Map<string, { mime: string; data: Buffer } | string>();
@@ -116,6 +118,7 @@ export function buildView(source: string, directory: string, cwd: string, guard?
    * from its own folder, and embedded here, since nothing of it is in `source`.
    */
   const stylesheet = (css: string, folder: string, at: number): string => {
+    hasColorScheme ||= declaresColorScheme(css);
     if (/@import\b/i.test(css.replace(/\/\*[\s\S]*?\*\//g, ''))) problem(at, 'the stylesheet uses @import, which is not followed: link each stylesheet from the page.');
     return css.replace(CSS_URL, (rule: string, double?: string, single?: string, bare?: string) => {
       const address = (double ?? single ?? bare ?? '').trim();
@@ -176,14 +179,19 @@ export function buildView(source: string, directory: string, cwd: string, guard?
    */
   const css: [number, number][] = [...styles];
   for (const tag of markup.matchAll(TAG)) {
+    const meta = /^<meta(?=[\s/>])/i.test(tag[0]);
     for (const value of tag[0].matchAll(ATTRIBUTE)) {
-      if (!CSS_ATTRIBUTE.has(value[1]!.toLowerCase())) continue;
+      const name = value[1]!.toLowerCase();
+      if (meta && name === 'name') hasColorScheme ||= /^color-scheme$/i.test(value[2] ?? value[3] ?? value[4] ?? '');
+      if (!CSS_ATTRIBUTE.has(name)) continue;
       const [start, end] = (value.indices![2] ?? value.indices![3] ?? value.indices![4])!;
       css.push([tag.index + start, tag.index + end]);
     }
   }
   for (const [start, end] of css) {
-    for (const found of source.slice(start, end).matchAll(CSS_URL)) {
+    const rules = source.slice(start, end);
+    hasColorScheme ||= declaresColorScheme(rules);
+    for (const found of rules.matchAll(CSS_URL)) {
       const at = start + found.index;
       const address = (found[1] ?? found[2] ?? found[3] ?? '').trim();
       // An import is refused below, whatever it names.
@@ -210,7 +218,7 @@ export function buildView(source: string, directory: string, cwd: string, guard?
     html += source.slice(from, edit.start) + edit.text;
     from = edit.end;
   }
-  return { html: html + source.slice(from), problems };
+  return { html: html + source.slice(from), problems, hasColorScheme };
 }
 
 const NAMED_COLORS = 'black|white|red|green|blue|yellow|orange|purple|pink|gray|grey|brown|cyan|magenta|navy|teal|lime|gold|silver|maroon|olive';
@@ -221,7 +229,7 @@ const NAMED_COLORS = 'black|white|red|green|blue|yellow|orange|purple|pink|gray|
  * user's theme or accent, and a font of its own is not the app's face. A mock
  * of somebody else's screen has reasons for both, which is why this advises.
  */
-export function viewAdvice(source: string): string[] {
+export function viewAdvice(source: string, hasColorScheme = false): string[] {
   // Embedded files and comments say nothing about the page's own look.
   const text = source.replace(/<!--[\s\S]*?(?:-->|$)|\/\*[\s\S]*?\*\//g, ' ').replace(/data:[a-z0-9.+-]+\/[a-z0-9.+-]+[;,][^"')\s]*/gi, 'data:');
   const colors = new Set<string>();
@@ -246,6 +254,7 @@ export function viewAdvice(source: string): string[] {
     if (/[a-z]/i.test(value) && /,|serif|mono|system-ui|arial|helvetica|inter|roboto/i.test(value)) fonts.add(value.slice(0, 60));
   }
   if (fonts.size) advice.push(`a font of its own (${[...fonts][0]}) replaces the app's face: use var(--font-sans) or var(--font-mono), which the page already has.`);
+  if (hasColorScheme) advice.push("Remove the page's color-scheme declaration. The view follows the app's theme.");
   return advice;
 }
 
@@ -283,14 +292,15 @@ async function prepareView(core: Core, params: { threadId: string; path: string 
   if (built.problems.length) throw notReady(built.problems, method);
   const data = Buffer.from(viewDocument(built.html), 'utf8');
   if (data.length > VIEW_MAX_BYTES) throw refused(`${method} page is ${(data.length / 1024 / 1024).toFixed(1)} MB with its files embedded; the limit is 4 MB. Use smaller images.`, { path: params.path });
-  return { thread, turn, found, source, data, permit, permits };
+  const advice = viewAdvice(source, built.hasColorScheme);
+  return { thread, turn, found, source, data, advice, permit, permits };
 }
 
 /** Render a disposable draft. No journal entry, panel request or browser tab is created. */
 export async function checkView(core: Core, params: RpcParams<'artifacts.viewCheck'>): Promise<RpcResult<'artifacts.viewCheck'>> {
   if (params.script !== undefined && typeof params.script !== 'string') throw refused('artifacts.viewCheck script must be JavaScript text');
   if (params.scheme !== undefined && params.scheme !== 'dark' && params.scheme !== 'light') throw refused('artifacts.viewCheck scheme must be dark or light');
-  const { found, source, data, permits } = await prepareView(core, params, 'artifacts.viewCheck');
+  const { found, data, advice, permits } = await prepareView(core, params, 'artifacts.viewCheck');
   const root = join(core.dataDir, 'view-checks');
   await mkdir(root, { recursive: true });
   const directory = await mkdtemp(join(root, 'draft-'));
@@ -305,7 +315,7 @@ export async function checkView(core: Core, params: RpcParams<'artifacts.viewChe
     const result: RpcResult<'artifacts.viewCheck'> = {
       checked: probe !== null,
       errors: probe?.errors ?? ['the draft could not be checked: this machine has no available browser, or the browser did not answer in time'],
-      advice: viewAdvice(source),
+      advice,
       captures: probe?.captures ?? [],
     };
     // Captures and a script return share one RPC frame. Keep room for its envelope.
@@ -328,7 +338,7 @@ export async function checkView(core: Core, params: RpcParams<'artifacts.viewChe
  * in two where the command ran: only the answer's own line places it.
  */
 export async function publishView(core: Core, params: RpcParams<'artifacts.view'>): Promise<RpcResult<'artifacts.view'>> {
-  const { thread, turn, found, source, data, permit, permits } = await prepareView(core, params, 'artifacts.view');
+  const { thread, turn, found, source, data, advice, permit, permits } = await prepareView(core, params, 'artifacts.view');
 
   const id = randomUUID();
   const directory = join(core.dataDir, 'artifacts');
@@ -363,7 +373,7 @@ export async function publishView(core: Core, params: RpcParams<'artifacts.view'
     committed = true;
     core.bus.emit('message.started', message);
     core.bus.emit('message.completed', { threadId: thread.id, messageId: message.id, state: 'complete' });
-    return { message, checked: probe !== null, advice: viewAdvice(source) };
+    return { message, checked: probe !== null, advice };
   } finally {
     if (!committed) await Promise.all([unlink(destination), unlink(`${destination}${VIEW_GZIP_SUFFIX}`)].map(removal => removal.catch(() => {})));
   }

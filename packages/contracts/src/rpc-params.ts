@@ -25,6 +25,13 @@ const RPC_PARAMS: { readonly [M in RpcMethodName]?: (params: unknown) => RpcPara
   },
   'threads.subscribe': channelsRule<'threads.subscribe'>,
   'threads.get': channelsRule<'threads.get'>,
+  'messages.toolPart': params => {
+    const diffsOnly = (params as { diffsOnly?: unknown } | null)?.diffsOnly;
+    if (diffsOnly !== undefined && typeof diffsOnly !== 'boolean') {
+      return { ok: false, field: 'diffsOnly', message: 'diffsOnly must be a boolean' };
+    }
+    return { ok: true, params: params as RpcMethods['messages.toolPart']['params'] };
+  },
 };
 
 /** The params a handler receives, or the field the method's rule refuses. */

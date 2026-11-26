@@ -27,6 +27,7 @@ export const fr: Translation = {
     incompleteHistory: 'Impossible de lire tout l’historique de la conversation',
     incompleteMessage: 'Impossible de lire le message complet {id}',
     incompleteTool: 'Impossible de lire l’appel d’outil « {name} » dans le message {id} : {reason}',
+    incompleteToolDiffsUpgrade: 'Impossible de lire les diffs de l’appel d’outil « {name} » dans le message {id}, car cette machine exécute un ancien cœur Boite sans projection des diffs seuls. Mettez à jour Boite sur cette machine puis réessayez ({reason}).',
     desktopTooLarge: 'Les téléchargements sur le bureau sont limités à {limit} Mio. Téléchargez depuis l’application web, désactivez des options ou copiez le Markdown.',
     doc: {
       conversation: 'Conversation',

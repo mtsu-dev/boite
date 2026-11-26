@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import type { Attachment, Settings, ThreadId } from '@boite/contracts';
+import type { Attachment, Settings, ThreadId, ThreadRetry } from '@boite/contracts';
 import { readAntigravityQuota, type Fetch } from '../src/antigravity-quota.ts';
 import type { CoreClient } from '../src/client.ts';
 import { probeTimeoutMs } from '../src/drivers/acp/probe.ts';
@@ -21,6 +21,7 @@ import { shareProfile, variableHome } from '../src/profile-share.ts';
 import { profileFor } from '../src/providers/resolve.ts';
 import { saveCatalog } from '../src/providers/saved-catalogs.ts';
 import { LAUNCH_TEMP_DIR } from '../src/drivers/launch-temp.ts';
+import { CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
 import * as fsRetry from '../src/fs-retry.ts';
 import { startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
@@ -184,6 +185,52 @@ async function runTurn(client: CoreClient, threadId: ThreadId, prompt: string, a
   await client.call('turns.start', { threadId, prompt, attachments });
   expect((await finished).error).toBeNull();
 }
+
+test.each([
+  ['scenario:transient-error', 0, ['tool', 'error', 'text']],
+  ['scenario:swarm-error', 5, ['tool', 'text', 'error', 'text']],
+] as const)('Antigravity retries a temporary account failure from %s in the same session', async (prompt, warmProcessMinutes, partTypes) => {
+  const delays = CAPACITY_RETRY.delaysMs;
+  CAPACITY_RETRY.delaysMs = [40, 40, 40];
+  try {
+    const client = await startCore({ warmProcessMinutes });
+    const { threadId } = await agyThread(client);
+    const retries: ThreadRetry[] = [];
+    client.on('thread.updated', thread => { if (thread.id === threadId && thread.retry) retries.push(thread.retry); });
+    const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+    const turn = await client.call('turns.start', { threadId, prompt });
+    expect(await finished).toMatchObject({ id: turn.id, status: 'done', error: null });
+    const thread = await client.call('threads.get', { threadId });
+    expect(retries).toContainEqual(expect.objectContaining({ kind: 'capacity', turnId: turn.id, attempt: 1 }));
+    expect(thread.turns.map(turn => turn.id)).toEqual([turn.id]);
+    const parts = thread.messages.filter(message => message.role === 'assistant').flatMap(message => message.parts);
+    expect(parts.map(part => part.type)).toEqual([...partTypes]);
+    expect(parts.at(-2)).toMatchObject({ message: expect.stringContaining('temporarily unavailable') });
+    expect(parts.at(-1)).toMatchObject({ text: 'pong' });
+    const prompts = fakeLog().match(/^prompt:.*$/gm) ?? [];
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toBe(prompts[1]!);
+  } finally {
+    CAPACITY_RETRY.delaysMs = delays;
+  }
+}, 20_000);
+
+test.each([
+  ['scenario:other-session-error', 'done', null],
+  ['scenario:quoted-error', 'done', null],
+  ['scenario:max-tokens', 'error', 'the agent stopped: max_tokens'],
+] as const)('Antigravity keeps the prompt outcome for %s', async (prompt, status, error) => {
+  const client = await startCore();
+  const { threadId } = await agyThread(client);
+  const finished = client.next('turn.finished', turn => turn.threadId === threadId);
+  await client.call('turns.start', { threadId, prompt });
+  expect(await finished).toMatchObject({ status, error });
+  expect(fakeLog().match(/^prompt:/gm)).toHaveLength(1);
+  const thread = await client.call('threads.get', { threadId });
+  const text = thread.messages.filter(message => message.role === 'assistant').flatMap(message => message.parts)
+    .find(part => part.type === 'text');
+  expect(text).toMatchObject({ text: expect.stringContaining('temporarily unavailable') });
+});
 
 /** Douane, at a loopback address nothing answers: these tests start no turn through it. */
 const DOUANE = { enabled: true, kind: 'douane' as const, baseUrl: 'http://127.0.0.1:9/v1', dashboardUrl: 'http://127.0.0.1:9/admin/' };
@@ -544,12 +591,12 @@ describe('antigravity', () => {
     expect(antigravitySubagentBatch('t:2', 'done', 'Launch readers')).toEqual({ id: 't:2', status: 'running', task: 'Launch readers' });
   }, 30000);
 
-  test('a command that outlived its turn is background work that keeps the process, and Stop ends both', async () => {
+  test.each(['command', 'command-late-kind', 'command-late-input'])('a command that outlived its turn keeps the process, and Stop ends both (%s)', async (scenario) => {
     // No warm process: only the running command keeps it.
     const client = await startCore({ warmProcessMinutes: 0 });
     const { threadId } = await agyThread(client);
     const background = client.next('thread.background', (event) => event.threadId === threadId && event.tasks.length > 0, 20_000);
-    await runTurn(client, threadId, 'build it scenario:command');
+    await runTurn(client, threadId, `build it scenario:${scenario}`);
     const [command] = (await background).tasks;
     expect(command).toMatchObject({ kind: 'shell', description: 'sleep 600' });
     expect(fakeLog().split('\n').filter((line) => line === 'initialize')).toHaveLength(1);
@@ -567,6 +614,14 @@ describe('antigravity', () => {
     await runTurn(client, threadId, 'again');
     expect(fakeLog().split('\n').filter((line) => line === 'initialize').length).toBeGreaterThan(1);
   }, 40000);
+
+  test('a pending command that never started does not leave the finished turn in background', async () => {
+    const client = await startCore({ warmProcessMinutes: 0 });
+    const { threadId } = await agyThread(client);
+    await runTurn(client, threadId, 'build it scenario:command-pending');
+    expect((await client.call('threads.get', { threadId })).backgroundHistory ?? []).toEqual([]);
+    expect((await client.call('turns.stop', { threadId })).stopped).toBe(false);
+  }, 30000);
 
   test('a swarm worker that outlives the prompt keeps the turn open until the agent answers its report', async () => {
     // No warm process: before, the turn ended with the prompt and its process went with the worker.
@@ -588,7 +643,10 @@ describe('antigravity', () => {
     await runTurn(client, threadId, 'investigate scenario:swarm-ask');
     expect(fakeLog().split('\n')).toEqual(expect.arrayContaining(['permission answered', 'synthesized']));
     const parts = (await client.call('threads.get', { threadId })).messages.at(-1)?.parts ?? [];
-    expect(parts.filter((part) => part.type === 'text').map((part) => part.text).join('')).toContain('synthesis: the disk filled up');
+    const text = parts.filter((part) => part.type === 'text').map((part) => part.text).join('');
+    expect(text).toContain('temporarily unavailable');
+    expect(text).toContain('synthesis: the disk filled up');
+    expect(fakeLog().match(/^prompt:/gm)).toHaveLength(1);
   }, 30000);
 
   test('Stop ends a turn held for a swarm worker, and the process with it', async () => {
@@ -607,12 +665,12 @@ describe('antigravity', () => {
     await waitFor(() => !alive(pid), 10_000);
   }, 30000);
 
-  test('a command that ends after its turn leaves the background list on its own', async () => {
+  test.each(['short-command', 'short-command-other-kind'])('a command that ends after its turn leaves the background list on its own (%s)', async (scenario) => {
     const client = await startCore();
     const { threadId } = await agyThread(client);
     const background = client.next('thread.background', (event) => event.threadId === threadId && event.tasks.length > 0, 20_000);
     const cleared = client.next('thread.background', (event) => event.threadId === threadId && event.tasks.length === 0, 20_000);
-    await runTurn(client, threadId, 'build it scenario:short-command');
+    await runTurn(client, threadId, `build it scenario:${scenario}`);
     await background;
     await cleared;
     const history = (await client.call('threads.get', { threadId })).backgroundHistory ?? [];

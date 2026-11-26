@@ -25,6 +25,8 @@ export interface TransportOptions {
    * frame limit (`RPC_MAX_FRAME_BYTES`) still applies.
    */
   fullText?: boolean;
+  /** Strip thinking text so unchecked reasoning does not consume the frame budget. */
+  omitThinking?: boolean;
 }
 
 /**
@@ -38,7 +40,17 @@ export const MESSAGE_SENT_MAX_BYTES = 8 * 1024 * 1024;
 
 /** Whether the options defer anything at all. */
 function compacts(options: TransportOptions): boolean {
-  return !!(options.compactTools || options.compactFiles || options.compactImages || options.compactToolParts);
+  return !!(options.compactTools || options.compactFiles || options.compactImages || options.compactToolParts || options.omitThinking);
+}
+
+function omitThinkingParts(message: Message): Message {
+  let changed = false;
+  const parts = message.parts.map(part => {
+    if (part.type !== 'thinking' || !part.text) return part;
+    changed = true;
+    return { ...part, text: '', omitted: (part.omitted ?? 0) + part.text.length };
+  });
+  return changed ? { ...message, parts } : message;
 }
 
 function toolParts(message: Message, options: { inputs: boolean; strict: boolean; folded: true }): Message {
@@ -53,9 +65,10 @@ function toolParts(message: Message, options: { inputs: boolean; strict: boolean
 }
 
 function project(message: Message, options: TransportOptions, strict: boolean, previews?: ImagePreviews): Message {
+  const base = options.omitThinking ? omitThinkingParts(message) : message;
   // A page is history: its cards are drawn folded.
   const tools = options.compactTools || options.compactToolParts
-    ? toolParts(message, { inputs: !!options.compactToolParts, strict, folded: true }) : message;
+    ? toolParts(base, { inputs: !!options.compactToolParts, strict, folded: true }) : base;
   const files = options.compactFiles ? previewFileData([tools], previews)[0]! : tools;
   return options.compactImages ? previewImageData([files], strict ? 0 : undefined, previews)[0]! : files;
 }

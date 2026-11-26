@@ -1,6 +1,7 @@
 <script lang="ts">
   import { desktopShell, MOBILE_BUILD } from './lib/shell-platform';
   import { errorText } from './lib/errors';
+  import { watchZoomWheel } from './lib/zoom';
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { opensFromLink, readStoredEndpoint, shellStarting, takeNotificationTarget } from './lib/endpoint';
@@ -25,6 +26,7 @@
 
   import TitleBar from './components/TitleBar.svelte';
   import AppRail from './components/AppRail.svelte';
+  import MachineStatus from './components/MachineStatus.svelte';
   import { Closing } from './lib/closing.svelte';
   import { focusComposer } from './lib/focus';
   import { handleAppKey } from './lib/app-keys';
@@ -70,12 +72,16 @@
   import { WsClient } from './lib/client';
   import { watchAbsence, watchWake } from './lib/ws-client-utils';
   import { listenForInstall } from './lib/pwa';
-  import { appPage } from './lib/app-origin';
-  import { localNetwork } from './lib/local-network.svelte';
   import { mobileOverlay } from './lib/mobile-history';
   import { startViewHistory } from './lib/view-history.svelte';
   import { agentAutoLink } from './lib/agent-links.svelte';
   import ThreadPreparation from './components/ThreadPreparation.svelte';
+  import { mochiLayout } from './lib/mochi-layout.svelte';
+  import { followActivityReturn } from './lib/activity-return.svelte';
+  import { followAgentDirectories } from './lib/agent-directory.svelte';
+  import { contactsShownAnywhere } from './lib/contacts-anywhere';
+  import { contactsParts } from './lib/contacts-entry';
+  import { isMac } from './lib/keybindings';
 
   let store = $derived(workspace.active);
   const inShell = desktopShell();
@@ -312,8 +318,6 @@
     // The system slept with the page in sight, a laptop closed on the app: every remote socket is checked as after that long away.
     const stopWake = watchWake((slept) => resume(slept, true));
     const offline = () => { for (const machine of workspace.machines) if (machine.store.client instanceof WsClient) machine.store.client.offline(); };
-    // The app's page is public and every machine is on a private address: Chrome lets its sockets through once "Local network" is allowed.
-    const stopLocalNetwork = appPage() ? localNetwork.start(() => resume()) : () => undefined;
     document.addEventListener('visibilitychange', visibility);
     window.addEventListener('online', online);
     window.addEventListener('offline', offline);
@@ -327,7 +331,6 @@
       stopDesktopReport();
       stopInstall();
       stopUpdates();
-      stopLocalNetwork();
       stopWake();
       stopAbsence();
       document.removeEventListener('visibilitychange', visibility);
@@ -350,6 +353,12 @@
   let quitting = $state(false);
   const requestQuit = desktopQuit(() => closingStores(workspace.machines), () => { quitting = true; });
   onMount(() => { if (inShell) return installQuitGuard(requestQuit, error => { store.error = String(error); }); });
+  // The `zoom-wheel` chord, unbound by default, zooms the interface as `Ctrl+=` does (`lib/zoom.ts`), and
+  // follows the Keyboard page and the file as the keys do; a browser tab keeps its own wheel.
+  $effect(() => {
+    const chord = store.bindings['zoom-wheel'].chord;
+    return untrack(() => watchZoomWheel(chord, error => { store.error = errorText(error); }));
+  });
   const quitHold = inShell
     ? confirmedQuitHold(requestQuit, {
         onHolding: (holding) => {
@@ -529,17 +538,33 @@
    * anywhere below restyle the body, right before the list read its layout.
    */
   /**
-   * The desktop's left edge: the app rail on every page, then the list column
-   * (threads, bots, or the Settings pages, which never fold). Both reach the
-   * window's top, so the main column's bar starts right of them.
+   * The desktop's left edge: optionally the Mochi layout app rail on every page,
+   * then the list column (threads, bots, or the Settings pages, which never fold).
+   * Both reach the window's top, so the main column's bar starts right of them.
    */
-  let railShown = $derived(booted && !wideRecovery);
+  let desktopReady = $derived(booted && !wideRecovery);
+  // A phone-width window never mounts the rail: CSS hides it there, but it would still load teams and contacts.
+  let railShown = $derived(desktopReady && mochiLayout.on && !narrow.current);
+  let noRailDesktop = $derived(desktopReady && !railShown && !narrow.current);
+  let macEdge = $derived(desktopReady && !railShown && inShell && isMac());
+  // Acting from Activity opens a thread; the root lives as long as the desktop frame, so it walks the way back.
+  followActivityReturn();
+  // Without AppRail mounted, keep every machine's mochi directory live for the sidebar foot dot and palette search.
+  followAgentDirectories(() => workspace.machinesOr(store).map(machine => machine.store), () => noRailDesktop && experimentOn('resident-agents'));
+  let contactsAnywhere = $derived(contactsShownAnywhere(store));
+  let ContactRequestNotice = $state<typeof import('./components/home/ContactRequestNotice.svelte').default>();
+  $effect(() => {
+    if (!noRailDesktop || !contactsAnywhere || ContactRequestNotice) return;
+    void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+  });
   let agentsRailShown = $derived(store.page === 'agents' && experimentOn('resident-agents') && !(store.connection === 'closed' && !store.core));
   // Before the first project the desktop draws no list column (lib/list-absent.ts): it counts as folded, with no toggle.
   let listGone = $derived(store.page !== 'settings' && !(store.page === 'agents' && experimentOn('resident-agents'))
     && listAbsent(workspace.machinesOr(store).map((machine) => machine.store), narrow.current));
+  let footShown = $derived(noRailDesktop && !store.sidebarCollapsed
+    && (store.page === 'agents' ? agentsRailShown : store.page !== 'settings' && !listGone));
   let listFolded = $derived((store.sidebarCollapsed || listGone) && store.page !== 'settings');
-  let barLeft = $derived(!railShown ? '0px' : listFolded ? 'var(--frame-gap)'
+  let barLeft = $derived(!desktopReady ? '0px' : listFolded ? 'var(--frame-gap)'
     : `calc(${visibleSidebarWidth({ sidebarWidth: store.sidebarWidth, agentsSidebarWidth: store.agentsSidebarWidth, page: agentsRailShown ? 'agents' : 'chat' })}px + var(--frame-gap))`);
   let sidebarFolded = $derived(listFolded && store.booted);
   // A machine with no AI shows its one action first: the tour waits for something to show.
@@ -573,8 +598,10 @@
   <ThreadPreparation {store} visible={documentVisible && (inShell || mobileScreen === 'chat')} />
 {/if}
 
-<div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:railed={railShown} class:quitting style:--bar-left={barLeft} bind:this={appRoot}>
+<div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:railed={railShown} class:mac-edge={macEdge} class:quitting style:--bar-left={barLeft} bind:this={appRoot}>
   {#if railShown}<AppRail {store} />{/if}
+  {#if desktopReady && !railShown && !footShown}<div class="visually-hidden"><MachineStatus {store} /></div>{/if}
+  {#if noRailDesktop && contactsAnywhere && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
   {#if !inShell && booted}
     {#if earlyPairing}
       <MobilePairing {store} screen={mobileScreen} navigate={(screen) => { mobileScreen = screen; }} onpaired={() => { mobileScreen = 'threads'; }} />
@@ -588,7 +615,7 @@
       </p>
     {/if}
   {/if}
-  <TitleBar {store} edge={!railShown} listless={listGone} />
+  <TitleBar {store} edge={!desktopReady || (!railShown && listFolded)} listless={listGone} noRail={desktopReady && !railShown} />
 
   <div class="body" class:under-settings={phoneSettings} class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
     {#if !booted}
@@ -692,9 +719,8 @@
 
   <QuitHint {quitHint} />
 
-  <!-- A missing or revoked phone pairing has its own recovery screen; Chrome refuses every socket until "Local network" is allowed, which that screen says too. -->
-  <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired}
-    blocked={mobileRecovery && localNetwork.state === 'denied'} onopen={() => { mobileScreen = 'chat'; }} />
+  <!-- A missing or revoked phone pairing has its own recovery screen. -->
+  <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired} onopen={() => { mobileScreen = 'chat'; }} />
   {#if inShell && store.canForceCoreRestart}
     <div class="toast-slot" use:toastSlot>
       <Notice icon={CircleAlert} tone="danger" floating role="alert" detail={strings.errors.coreUnresponsive} testid="core-recovery">
@@ -779,6 +805,9 @@
     /* The list column climbs over the bar's band to the window's top; the bar
        starts right of it (`--bar-left`). */
     .body > :global(.rail) { margin-top: calc(-1 * var(--titlebar)); }
+    /* On macOS without the app rail, the traffic lights sit in the top-left corner over the list column or Settings nav. */
+    .app.mac-edge .body > :global(.rail),
+    .app.mac-edge .body :global(.settings > nav) { padding-top: var(--titlebar); }
 
     .body.sidebar-folded {
       padding-left: var(--frame-gap);

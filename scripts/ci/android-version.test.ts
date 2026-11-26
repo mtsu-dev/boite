@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
-import { ASSETLINKS, assetlinksDigest, nextVersion, parseBase, signerDigest, versionCode } from './android-version.ts';
+import { APK_CERT_DIGEST, nextVersion, parseBase, signerDigest, versionCode } from './android-version.ts';
 
 const FILE = 'apps/example/VERSION';
 
@@ -24,10 +23,9 @@ test('the version code orders every app version above the old commit counts', ()
   expect(() => parseBase('1.0.0', FILE)).toThrow(`${FILE} must hold MAJOR.MINOR`);
 });
 
-test('the signer is read from apksigner, and the served assetlinks.json names the certificate', () => {
+test('the signer is read from apksigner, and the Boite APK certificate is one digest', () => {
   expect(signerDigest('Signer #1 certificate SHA-256 digest: 3cf11e0fAB\n')).toBe('3cf11e0fab');
   expect(signerDigest('V3.0 Signer: certificate SHA-256 digest: 3C:F1:1E\n')).toBe('3cf11e');
   expect(signerDigest('DOES NOT VERIFY\n')).toBeNull();
-  expect(assetlinksDigest(readFileSync(ASSETLINKS, 'utf8'))).toMatch(/^[0-9a-f]{64}$/);
-  expect(() => assetlinksDigest('[]')).toThrow('names no certificate');
+  expect(APK_CERT_DIGEST).toMatch(/^[0-9a-f]{64}$/);
 });

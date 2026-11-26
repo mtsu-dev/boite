@@ -108,15 +108,16 @@
   /* Offline: the last known count, not live work, so its ring takes the header's grey and stands still. */
   .away .work-ring { border-color: var(--color-muted-foreground); border-top-color: transparent; animation: none; transform: rotate(45deg); }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
-  /* Open, a count says it by its ink, Working and Done alike: no box stays behind once the pointer leaves. */
-  .counter.active { color: var(--color-foreground); }
+  /* Open, a count shows it by its fill and its ink, Working and Done alike, as long as its fold stays open. */
+  .counter.active, .counter.active:hover:not(:disabled) { background: var(--color-active); color: var(--color-foreground); }
   /* Done: the rows' finished green on the mark alone, the count in the header's grey. */
   .done :global(svg) { color: var(--color-success); }
   /* The working fold's toggle inside the card, a quiet row over the fold, as the group labels read. */
   .fold-toggle { display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; padding: 0 10px; justify-content: flex-start; border-radius: var(--radius-sm);
     color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
   .fold-toggle .count { margin-left: auto; font-variant-numeric: tabular-nums; }
-  .fold-toggle:hover:not(:disabled), .fold-toggle.active { color: var(--color-foreground); }
+  .fold-toggle:hover:not(:disabled) { color: var(--color-foreground); }
+  .fold-toggle.active, .fold-toggle.active:hover:not(:disabled) { background: var(--color-active); color: var(--color-foreground); }
 
   /* A phone: the tag a 32px target of its own, and a finger's 44px around it. */
   @media (max-width: 720px) {

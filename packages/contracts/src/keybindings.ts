@@ -30,6 +30,7 @@ export const KEYBINDING_COMMANDS = [
   'theme-system',
   'archive',
   'import-session',
+  'zoom-wheel',
   'terminal',
   'terminal-new',
   'terminal-split',
@@ -53,6 +54,16 @@ export const KEYBINDING_COMMANDS = [
   'thread-9',
 ] as const;
 export type KeybindingCommand = (typeof KEYBINDING_COMMANDS)[number];
+
+/**
+ * The commands a turn of the mouse wheel runs rather than a key: their chord
+ * ends on `wheel` (`mod+wheel`), and no other command's may.
+ */
+export const WHEEL_COMMANDS: readonly KeybindingCommand[] = ['zoom-wheel'];
+
+export function isWheelCommand(command: KeybindingCommand): boolean {
+  return WHEEL_COMMANDS.includes(command);
+}
 
 /** What `<dataDir>/keybindings.json` says, as the core last read it. */
 export interface Keybindings {
@@ -79,7 +90,10 @@ export interface Chord {
   alt: boolean;
   shift: boolean;
   meta: boolean;
-  /** The key as `KeyboardEvent.key` reports it, lowercased: `k`, `,`, `enter`, `arrowup`, `f5`. */
+  /**
+   * The key as `KeyboardEvent.key` reports it, lowercased: `k`, `,`, `enter`,
+   * `arrowup`, `f5`. Or `wheel`, the mouse wheel, which no key reports.
+   */
   key: string;
 }
 
@@ -131,9 +145,11 @@ const CHORD_KEYS: Record<string, string> = {
 };
 
 /**
- * Reads a chord such as `mod+shift+k`, `ctrl+alt+b`, `mod+,` or `f5`. A chord
- * needs `mod`, `ctrl`, `alt` or `meta` unless its key is a function key: a
- * bare letter, or Shift alone, is typing. The refusal names what was wrong.
+ * Reads a chord such as `mod+shift+k`, `ctrl+alt+b`, `mod+,`, `f5` or
+ * `alt+wheel`. A chord needs `mod`, `ctrl`, `alt` or `meta` unless its key is
+ * a function key: a bare letter, or Shift alone, is typing, and a bare wheel,
+ * or Shift alone with it, is scrolling. The refusal names what was wrong.
+ * Which commands a wheel chord fits is `parseChordFor`'s call.
  */
 export function parseChord(text: string): { ok: true; chord: Chord } | { ok: false; reason: string } {
   const parts = text.split('+').map((part) => part.trim().toLowerCase());
@@ -154,15 +170,37 @@ export function parseChord(text: string): { ok: true; chord: Chord } | { ok: fal
     if (modifier !== undefined) return { ok: false, reason: `"${text}" ends on a modifier and names no key` };
     const named = CHORD_KEYS[part];
     if (named !== undefined) chord.key = named;
+    else if (part === 'wheel') chord.key = 'wheel';
     else if (/^f([1-9]|1[0-9]|2[0-4])$/.test(part)) chord.key = part;
     else if ([...part].length === 1) chord.key = part;
     else return { ok: false, reason: `"${text}" has an unknown key "${part}" (a character, enter, escape, tab, space, up, down, left, right, home, end, pageup, pagedown, backspace, delete or f1 to f24)` };
   }
   const isFunctionKey = /^f\d+$/.test(chord.key);
+  if (chord.key === 'wheel' && !chord.mod && !chord.ctrl && !chord.alt && !chord.meta) {
+    return { ok: false, reason: `"${text}" has no modifier: the wheel needs mod, ctrl, alt or meta with it, or it only scrolls` };
+  }
   if (!chord.mod && !chord.ctrl && !chord.alt && !chord.meta && !isFunctionKey) {
     return { ok: false, reason: `"${text}" has no modifier: a chord needs mod, ctrl, alt or meta before its key` };
   }
   return { ok: true, chord };
+}
+
+/**
+ * `parseChord`, and the chord fits the command: a wheel command takes a wheel
+ * chord and nothing else, a key's command never the wheel. The core, the
+ * Keyboard page and the fake all ask this one.
+ */
+export function parseChordFor(command: KeybindingCommand, text: string): ReturnType<typeof parseChord> {
+  const parsed = parseChord(text);
+  if (!parsed.ok) return parsed;
+  const wheel = parsed.chord.key === 'wheel';
+  if (isWheelCommand(command) && !wheel) {
+    return { ok: false, reason: `"${text}" is a key, and ${command} runs on the wheel: give it a chord ending on wheel, like mod+wheel` };
+  }
+  if (!isWheelCommand(command) && wheel) {
+    return { ok: false, reason: `"${text}" is the wheel, which only ${WHEEL_COMMANDS.join(', ')} takes: ${command} needs a key` };
+  }
+  return parsed;
 }
 
 export interface KeybindingsRpcMethods {

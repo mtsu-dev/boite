@@ -523,10 +523,12 @@ export interface MessagesRpcMethods {
    * left out by cores without that feature.
    * `maxBytes` lowers the byte budget as it does for `threads.get`.
    * `fullText` keeps prose whole while leaving heavy tool inputs, documents
-   * and images deferred as `compactToolParts` does.
+   * and images deferred as `compactToolParts` does. `omitThinking` strips
+   * thinking text so an unchecked reasoning block cannot push a message past
+   * `RPC_MAX_FRAME_BYTES`.
    */
   'messages.list': {
-    params: { threadId: ThreadId; before?: MessageId; after?: MessageId; from?: number; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean; fullText?: boolean };
+    params: { threadId: ThreadId; before?: MessageId; after?: MessageId; from?: number; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean; fullText?: boolean; omitThinking?: boolean };
     result: { messages: Message[]; before: MessageId | null; after?: MessageId | null; turns?: Turn[]; offset?: number };
   };
   /** The full output of a tool already visible in this conversation. No filesystem path is accepted. */

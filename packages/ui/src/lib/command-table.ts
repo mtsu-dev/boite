@@ -64,6 +64,8 @@ const commandTable: readonly CommandDefinition[] = [
     const projectId = store.openThread?.projectId ?? store.draft?.projectId ?? store.projects[0]?.id;
     if (projectId !== undefined) void store.openImports(projectId);
   } },
+  // Runs on the wheel, not here: `lib/zoom.ts` listens for its chord.
+  { id: 'zoom-wheel', label: () => strings.keyboard.commands.zoomWheel },
   // The drawer's: the terminal, or the project board a paired device opens too.
   { id: 'terminal', label: () => strings.palette.terminal, run: (store) => {
     if (!drawerCommandAvailable(store)) return;

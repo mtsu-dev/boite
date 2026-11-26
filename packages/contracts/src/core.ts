@@ -76,6 +76,8 @@ export interface CoreInfo {
     streamChannels?: boolean;
     /** `browser.remoteStream`: a viewer's frames are pushed on a websocket of their own (`BROWSER_STREAM_ROUTE`). Without it a viewer asks for each frame with `browser.remoteFrame`, which every core answers. */
     browserStream?: boolean;
+    /** `messages.toolPart` accepts `diffsOnly: true` to strip unrelated tool payloads before framing. */
+    diffOnlyToolParts?: boolean;
   };
   /** The fingerprint of this core's identity key: the id its group knows it by, and the one a device signs its hello for. */
   coreId?: string;

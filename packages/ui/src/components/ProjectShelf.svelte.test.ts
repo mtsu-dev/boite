@@ -16,7 +16,7 @@ const settle = async () => {
 afterEach(async () => {
   if (mounted) await unmount(mounted);
   mounted = undefined;
-  projectThreadView.shelfOpen = false;
+  projectThreadView.folds.idle = false;
   store?.client?.close(); store?.detach(); store = undefined;
   localStorage.clear();
 });
@@ -29,7 +29,7 @@ test('history rows an idle project reported leave Alt+digit once the fold emptie
   const onrows = vi.fn();
   const props = $state({ projects: [entry], multi: false, now: Date.now(), onrows });
   mounted = mount(ProjectShelf, { target: document.body, props });
-  projectThreadView.shelfOpen = true;
+  projectThreadView.folds.idle = true;
   await settle();
   projectThreadView.toggle(entry, 'done');
   await settle();

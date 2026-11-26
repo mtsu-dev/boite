@@ -160,6 +160,7 @@ const DIFF_HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 const DIFF_NO_NEWLINE = '\\ No newline at end of file';
 const DIFF_GIT_HEADER = /^(?:index [\da-f]+\.\.[\da-f]+(?: \d+)?|(?:(?:old|new|new file|deleted file) mode) \d+|(?:dis)?similarity index \d+%|(?:rename|copy) (?:from|to) .+|Binary files .+ differ)$/;
 const PATCH_START = /^(?:diff --git |--- |\*\*\* Begin Patch\r?$)/gm;
+const PATCH_END = /^\*\*\* End Patch\r?$/gm;
 const NON_CHANGE_TOOL_NAMES = new Set([
   'bash', 'shell', 'exec', 'execute', 'runshellcommand', 'command', 'powershell',
   'read', 'readfile', 'view', 'cat', 'notebookread',
@@ -198,16 +199,26 @@ function hunkEndOffset(value: string, start: number): number {
   return pos;
 }
 
-export function patchEndOffset(value: string, start: number): number {
+/** Find the next `*** End Patch` end offset at or after `from`, advancing monotonically. */
+function findEndPatch(value: string, from: number): number {
+  PATCH_END.lastIndex = from;
+  const match = PATCH_END.exec(value);
+  if (!match) return -1;
+  const line = lineAt(value, match.index);
+  return line ? line.next : -1;
+}
+
+export function patchEndOffset(value: string, start: number, cachedEndPatch?: { pos: number }): number {
   const first = lineAt(value, start);
   if (!first) return start;
   if (first.text === '*** Begin Patch') {
-    for (let pos = first.next; ;) {
-      const line = lineAt(value, pos);
-      if (!line) return start;
-      if (line.text === '*** End Patch') return line.next;
-      pos = line.next;
+    if (cachedEndPatch) {
+      if (cachedEndPatch.pos === -1) return start;
+      if (cachedEndPatch.pos < first.next) cachedEndPatch.pos = findEndPatch(value, first.next);
+      return cachedEndPatch.pos === -1 ? start : cachedEndPatch.pos;
     }
+    const end = findEndPatch(value, first.next);
+    return end === -1 ? start : end;
   }
   let pos = start;
   const git = first.text.startsWith('diff --git ');
@@ -234,12 +245,13 @@ export function patchEndOffset(value: string, start: number): number {
 function extractPatches(value: string | null | undefined, keepRest: boolean): { patches: string[]; rest: string } {
   if (!value) return { patches: [], rest: '' };
   PATCH_START.lastIndex = 0;
+  const endPatch = { pos: -2 };
   const patches: string[] = [];
   const rest: string[] = [];
   let cursor = 0;
   for (let match = PATCH_START.exec(value); match; match = PATCH_START.exec(value)) {
     const start = match.index;
-    const end = patchEndOffset(value, start);
+    const end = patchEndOffset(value, start, endPatch);
     if (end === start) continue;
     if (keepRest && start > cursor) rest.push(value.slice(cursor, start));
     const slice = value.slice(start, end).replace(/\r?\n$/, '');
@@ -267,7 +279,7 @@ function diffOnlyInput(part: ToolPart, hasDiffDocs: boolean): unknown {
     const kept: Record<string, unknown> = {};
     if (typeof fields['command'] === 'string') {
       const { patches } = extractPatches(fields['command'], false);
-      if (patches.length) kept['command'] = patches.join('\n');
+      if (patches.length) kept['command'] = patches.join('\n\n');
     }
     if (Array.isArray(fields['changes'])) {
       const changes = fields['changes'].flatMap(entry => {
@@ -293,7 +305,7 @@ function diffOnlyInput(part: ToolPart, hasDiffDocs: boolean): unknown {
   }
   const raw = typeof part.input === 'string' ? part.input : part.inputText;
   const { patches } = extractPatches(raw, false);
-  return patches.length ? patches.join('\n') : null;
+  return patches.length ? patches.join('\n\n') : null;
 }
 
 /**
@@ -319,7 +331,7 @@ export function projectToolDiffs(part: ToolPart): ToolPart {
   return {
     ...base,
     input: diffOnlyInput(part, documents.length > 0),
-    output: patches.length ? patches.join('\n') : null,
+    output: patches.length ? patches.join('\n\n') : null,
     ...(documents.length ? { documents } : {}),
   };
 }

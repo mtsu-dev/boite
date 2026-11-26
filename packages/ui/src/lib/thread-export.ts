@@ -84,8 +84,9 @@ export async function loadAllThreadMessages(
     signal?.throwIfAborted();
     onProgress?.({ phase: 'messages', done: index + 1, total: omittedIndexes.length });
     // Keep heavy tool parts deferred while asking for complete prose so a message with
-    // large tool inputs/documents does not exceed RPC_MAX_FRAME_BYTES.
-    let { messages: [full] } = await client.call('messages.list', { threadId, ...flags, from, limit: 1, fullText: true });
+    // large tool inputs/documents (or unchecked thinking) does not exceed RPC_MAX_FRAME_BYTES.
+    const omitThinking = !options?.includeThinking;
+    let { messages: [full] } = await client.call('messages.list', { threadId, ...flags, from, limit: 1, fullText: true, ...(omitThinking ? { omitThinking: true } : {}) });
     if (full?.id === message.id && omitted(full)) {
       // Older cores ignore `fullText`; fall back to disabling `compactToolParts` for this single message.
       ({ messages: [full] } = await client.call('messages.list', { threadId, ...flags, from, limit: 1, compactToolParts: false }));
@@ -96,7 +97,7 @@ export async function loadAllThreadMessages(
     messages[from] = full;
   }
   const diffsOnly = Boolean(options?.includeDiffs && !options?.includeTools);
-  if (options?.includeTools || options?.includeDiffs) await loadDeferredTools(client, threadId, messages, diffsOnly, signal, onProgress);
+  if (options?.includeTools || options?.includeDiffs) await loadDeferredTools(client, threadId, messages, diffsOnly, features, signal, onProgress);
   signal?.throwIfAborted();
   return messages;
 }
@@ -115,12 +116,17 @@ function deferredTools(messages: Message[], diffsOnly: boolean) {
   return list;
 }
 
+function isOversizedToolError(error: unknown): boolean {
+  return error instanceof RpcFailure && /exceeds \d+|frame|too large/i.test(error.message);
+}
+
 /** Pages carry previews. Fetch each deferred call independently to stay within the RPC page budget. */
 async function loadDeferredTools(
   client: Client,
   threadId: string,
   messages: Message[],
   diffsOnly: boolean,
+  features?: CoreInfo['features'],
   signal?: AbortSignal,
   onProgress?: (progress: ExportProgress) => void,
 ): Promise<void> {
@@ -131,6 +137,12 @@ async function loadDeferredTools(
   let done = 0;
   let failed = false;
   onProgress?.({ phase: 'tools', done: 0, total });
+  function toolError(entry: { messageId: string; tool: Tool }, error: unknown): Error {
+    const template = diffsOnly && features && !features.diffOnlyToolParts && isOversizedToolError(error)
+      ? strings.threadExport.incompleteToolDiffsUpgrade
+      : strings.threadExport.incompleteTool;
+    return new Error(fill(template, { name: entry.tool.name, id: entry.messageId, reason: errorText(error) }), { cause: error });
+  }
   async function read(): Promise<void> {
     while (cursor < total) {
       if (failed) return;
@@ -148,11 +160,11 @@ async function loadDeferredTools(
             entry.parts[entry.partIndex] = { ...entry.tool, output, outputDeferred: undefined };
           } catch (fallbackError) {
             if (signal?.aborted) throw fallbackError;
-            throw new Error(fill(strings.threadExport.incompleteTool, { name: entry.tool.name, id: entry.messageId, reason: errorText(fallbackError) }), { cause: fallbackError });
+            throw toolError(entry, fallbackError);
           }
         } else {
           if (signal?.aborted) throw error;
-          throw new Error(fill(strings.threadExport.incompleteTool, { name: entry.tool.name, id: entry.messageId, reason: errorText(error) }), { cause: error });
+          throw toolError(entry, error);
         }
       }
       done += 1;

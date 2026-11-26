@@ -260,32 +260,58 @@ test('no message keeps a thread from opening: heavy inputs, documents and texts 
   } finally { await harness.stop(); }
 });
 
-test('messages.toolPart with diffsOnly strips oversized non-diff outputs and preserves patches', async () => {
+test('messages.toolPart with diffsOnly and messages.list with omitThinking keep oversized unrelated payloads off the wire', async () => {
   const harness = await startTestCore();
   try {
     const client = await harness.connect();
     const { threadId } = await echoThread(harness, client);
-    const hugeOutput = 'log line\n'.repeat(2_000_000);
+    const hugeOutput = 'log line\n'.repeat(1_900_000);
+    const halfHuge = 'log line\n'.repeat(950_000);
     const patch = '--- auth.ts\n+++ auth.ts\n@@ -1 +1 @@\n-old\n+new';
+    const cmdPatch = '*** Begin Patch\n*** Add File: notes.txt\n+note\n*** End Patch';
+    const bigProse = 'a'.repeat(9_000_000);
+    const bigThought = 't'.repeat(9_000_000);
+    const basePos = harness.core.journal.listMessages(threadId).length;
     harness.core.journal.append({ type: 'message.started', threadId, version: 1, payload: {} }, () => {
       harness.core.journal.putMessage({
         id: 'huge-tools', threadId, turnId: 'heavy-turn', role: 'assistant', state: 'complete', createdAt: 100,
         parts: [
           { type: 'tool', toolId: 'huge-read', name: 'Read', status: 'done', input: { file_path: 'big.log' }, output: hugeOutput,
-            documents: [{ kind: 'markdown', title: 'Notes', text: hugeOutput }] },
-          { type: 'tool', toolId: 'huge-bash-diff', name: 'Bash', status: 'done', input: { command: 'git diff' }, output: `${hugeOutput}\n${patch}\n${hugeOutput}` },
+            documents: [{ kind: 'markdown', title: 'Notes', text: 'extra note' }] },
+          { type: 'tool', toolId: 'huge-bash-diff', name: 'Bash', status: 'done', input: { command: `echo hi\n${cmdPatch}\necho bye`, extra: 'drop me' }, output: `${halfHuge}\n${patch}\n${halfHuge}` },
           { type: 'tool', toolId: 'real-edit', name: 'Edit', status: 'done', input: { file_path: 'auth.ts', old_string: 'old', new_string: 'new' }, output: 'ok',
             documents: [{ kind: 'diff', path: 'auth.ts', oldText: 'old\n', newText: 'new\n' }] },
+          { type: 'tool', toolId: 'raw-edit', name: 'Edit', status: 'done', input: { file_path: 'raw.ts', old_string: 'before', new_string: 'after', note: 'drop me' }, output: 'ok' },
+          { type: 'tool', toolId: 'raw-write', name: 'Write', status: 'done', input: { file_path: 'new.ts', content: 'export const x = 1;\n', note: 'drop me' }, output: 'ok' },
+          { type: 'tool', toolId: 'codex-patch', name: 'ApplyPatch', status: 'done', input: { changes: [{ path: 'c.ts', kind: { type: 'update' }, diff: '@@ -1 +1 @@\n-a\n+b' }], meta: 'drop me' }, output: null },
         ],
+      });
+      harness.core.journal.putMessage({
+        id: 'huge-thinking', threadId, turnId: 'heavy-turn', role: 'assistant', state: 'complete', createdAt: 101,
+        parts: [{ type: 'thinking', text: bigThought }, { type: 'text', text: bigProse }],
       });
     });
     expect(await thrown(client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'huge-read' }))).toThrow(`exceeds ${RPC_MAX_FRAME_BYTES}`);
+    expect(await thrown(client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'huge-read', diffsOnly: 'yes' as unknown as boolean }))).toThrow('diffsOnly');
     const strippedRead = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'huge-read', diffsOnly: true });
     expect(strippedRead.part).toMatchObject({ toolId: 'huge-read', input: null, output: null });
     expect(strippedRead.part.documents).toBeUndefined();
     const bashDiff = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'huge-bash-diff', diffsOnly: true });
     expect(bashDiff.part.output).toBe(patch);
+    expect(bashDiff.part.input).toEqual({ command: cmdPatch });
     const editDiff = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'real-edit', diffsOnly: true });
     expect(editDiff.part.documents).toEqual([{ kind: 'diff', path: 'auth.ts', oldText: 'old\n', newText: 'new\n' }]);
+    const rawEdit = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'raw-edit', diffsOnly: true });
+    expect(rawEdit.part.input).toEqual({ file_path: 'raw.ts', old_string: 'before', new_string: 'after' });
+    const rawWrite = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'raw-write', diffsOnly: true });
+    expect(rawWrite.part.input).toEqual({ file_path: 'new.ts', content: 'export const x = 1;\n' });
+    const codexPatch = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'codex-patch', diffsOnly: true });
+    expect(codexPatch.part.input).toEqual({ changes: [{ path: 'c.ts', kind: { type: 'update' }, diff: '@@ -1 +1 @@\n-a\n+b' }] });
+
+    const light = { compactTools: true, compactToolParts: true } as const;
+    expect(await thrown(client.call('messages.list', { threadId, from: basePos + 1, limit: 1, ...light, fullText: true }))).toThrow('message huge-thinking');
+    const proseOnly = await client.call('messages.list', { threadId, from: basePos + 1, limit: 1, ...light, fullText: true, omitThinking: true });
+    expect(proseOnly.messages[0]?.parts[0]).toEqual({ type: 'thinking', text: '', omitted: bigThought.length });
+    expect(proseOnly.messages[0]?.parts[1]).toEqual({ type: 'text', text: bigProse });
   } finally { await harness.stop(); }
 });

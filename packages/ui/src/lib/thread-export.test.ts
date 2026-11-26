@@ -1,6 +1,6 @@
 import { expect, onTestFinished, vi } from 'vitest';
 import MarkdownIt from 'markdown-it';
-import { RpcErrorCode, type Message, type ThreadSummary } from '@boite/contracts';
+import { extractToolPatches, projectToolDiffs, RpcErrorCode, type Message, type ThreadSummary } from '@boite/contracts';
 import { test } from '../test/fake-client';
 import { RpcFailure, type Client } from './client';
 import { longThread } from './fake-client/threads-seed';
@@ -172,7 +172,7 @@ test('export reads full prose with fullText first and falls back for older cores
   });
   const exported = await loadAllThreadMessages(client, 't-trace');
   expect(exported[1]).toEqual(full);
-  expect(call).toHaveBeenCalledWith('messages.list', expect.objectContaining({ from: 1, limit: 1, compactToolParts: true, fullText: true }));
+  expect(call).toHaveBeenCalledWith('messages.list', expect.objectContaining({ from: 1, limit: 1, compactToolParts: true, fullText: true, omitThinking: true }));
 
   // Older core ignores fullText and keeps returning omitted until compactToolParts: false.
   call.mockImplementation((method, params) => {
@@ -275,14 +275,15 @@ test('diff-only export skips failed deferred tool calls, requests diffsOnly and 
       { type: 'tool', toolId: 't-big', name: 'Write', status: 'done', input: { file_path: 'huge.bin' }, output: null, documentsDeferred: true },
     ],
   };
-  const frameError = new RpcFailure({ code: RpcErrorCode.Refused, message: 'response exceeds 16 MiB frame limit' });
+  const frameError = new RpcFailure({ code: RpcErrorCode.Refused, message: 'response exceeds 16777216 serialized UTF-8 bytes' });
   call.mockImplementation((method, params) => {
     if (method === 'threads.get') return Promise.resolve({ ...snapshot, messages: [oversized], messagesBefore: null });
     if (method === 'messages.toolPart') return Promise.reject(frameError);
     return original(method, params);
   });
-  await expect(loadAllThreadMessages(client, 't-trace', { ...clean, includeDiffs: true })).rejects.toThrow(/"Write".*m-oversized.*16 MiB/);
+  await expect(loadAllThreadMessages(client, 't-trace', { ...clean, includeDiffs: true })).rejects.toThrow(/"Write".*m-oversized.*16777216/);
   expect(call).toHaveBeenCalledWith('messages.toolPart', { threadId: 't-trace', messageId: 'm-oversized', toolId: 't-big', diffsOnly: true });
+  await expect(loadAllThreadMessages(client, 't-trace', { ...clean, includeDiffs: true }, undefined, { deferredToolParts: true })).rejects.toThrow(/older Boite core.*Update Boite/i);
 });
 
 test('a core that returns the same cursor cannot hang or silently export half a conversation', async ({ createClient }) => {
@@ -382,4 +383,19 @@ test('edit metadata, trailing-newline diffs, failed tool diffs, errors and stand
   expect(html).toContain('docs (https://example.com/docs)');
   const doc = new DOMParser().parseFromString(html, 'text/html');
   expect(doc.querySelector('a[href="#thread"], a[href="#file"], [data-file-path], a[href]:not([href^="#"])')).toBeNull();
+});
+
+test('patch extraction stays linear on unclosed Begin Patch headers and separates header-only git diffs', () => {
+  const realPatch = '--- ok.ts\n+++ ok.ts\n@@ -1 +1 @@\n-old\n+new';
+  const unclosed = `${'*** Begin Patch\nnoise line\n'.repeat(10_000)}${realPatch}`;
+  const extracted = extractToolPatches(unclosed);
+  expect(extracted.patches).toEqual([realPatch]);
+
+  const headerOnly = 'diff --git a/empty.txt b/empty.txt\nnew file mode 100644';
+  const projected = projectToolDiffs({
+    type: 'tool', toolId: 't-sep', name: 'Bash', status: 'done', input: null,
+    output: `log\n${headerOnly}\nother log\n${realPatch}\n`,
+  });
+  expect(projected.output).toBe(`${headerOnly}\n\n${realPatch}`);
+  expect(extractToolPatches(projected.output).patches).toEqual([headerOnly, realPatch]);
 });

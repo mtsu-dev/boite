@@ -29,6 +29,9 @@ export class ReadingAnchor {
   /** The rows on the page by id, kept by the list as it mounts them: an anchor is found without searching every node of the thread. */
   readonly nodes = new Map<string, HTMLElement>();
   #frame = 0;
+  #dirty = false;
+
+  get pending(): boolean { return this.#frame !== 0; }
 
   constructor(saved: ReadingPosition | undefined) {
     this.current = saved?.anchor ? { id: saved.anchor.row ?? saved.anchor.id, offset: saved.anchor.offset, message: saved.anchor.id } : undefined;
@@ -69,13 +72,22 @@ export class ReadingAnchor {
     }
   }
 
+  /** Wait until scrolling pauses for an animation frame before reading layout. */
   schedule(remember: () => void): void {
-    if (!this.#frame) this.#frame = requestAnimationFrame(remember);
+    this.#dirty = true;
+    if (this.#frame) return;
+    const step = () => {
+      if (this.#dirty) { this.#dirty = false; this.#frame = requestAnimationFrame(step); return; }
+      this.#frame = 0;
+      remember();
+    };
+    this.#frame = requestAnimationFrame(step);
   }
 
   cancelPending(): void {
     if (this.#frame) cancelAnimationFrame(this.#frame);
     this.#frame = 0;
+    this.#dirty = false;
   }
 
   /** Keeps `anchor` until the reader moves it (`release`). */

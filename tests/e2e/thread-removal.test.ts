@@ -15,11 +15,9 @@ async function openPhoneArchive(page: BrowserPage): Promise<void> {
   await page.click('[data-testid=mobile-settings-archived]');
 }
 
-/** Delete waits in an archived row's menu. */
+/** Delete is available on the archived row. */
 async function deleteArchived(page: BrowserPage, threadId: string): Promise<void> {
-  await page.click(`[data-testid=archived-list] [data-testid="archived-menu-${threadId}"]`);
-  await page.waitFor(`document.querySelector('[data-testid="archived-menu-${threadId}-menu"]:not(.closing) [data-testid=archived-delete]')`);
-  await page.click(`[data-testid="archived-menu-${threadId}-menu"] [data-testid=archived-delete]`);
+  await page.click(`[data-testid=archived-list] li[data-thread-id="${threadId}"] [data-testid=archived-delete]`);
   await page.waitFor(`document.querySelector('[data-testid=confirm-ok]')`);
   await page.click('[data-testid=confirm-ok]');
   await page.waitFor(`!document.querySelector('[data-testid=confirm-dialog]')`);
@@ -139,8 +137,9 @@ for (const width of [1280, 390]) {
         await page.waitFor(`document.querySelector('[data-testid=archived-show]')`);
         await page.click('[data-testid=archived-show]');
       }
-      await page.waitFor(`document.querySelector('[data-testid=archived-list] li [data-testid^=archived-menu-]')`);
-      const archivedId = await page.evaluate<string>(`document.querySelector('[data-testid=archived-list] li [data-testid^=archived-menu-]').closest('li').dataset.threadId`);
+      const deleteButton = '[data-testid=archived-list] li [data-testid=archived-delete]';
+      await page.waitFor(`document.querySelector('${deleteButton}')`);
+      const archivedId = await page.evaluate<string>(`document.querySelector('${deleteButton}').closest('li').dataset.threadId`);
       await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-archive-${width}.png`));
       await deleteArchived(page, archivedId);
@@ -149,7 +148,7 @@ for (const width of [1280, 390]) {
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
       // On the phone, Recently deleted is below the archive on the same page.
       if (width >= 720) {
-        await page.click('[data-testid=nav-settings]');
+        if (!await page.evaluate(`!!document.querySelector('[data-testid=settings-tab-general]')`)) await page.click('[data-testid=nav-settings]');
         await page.click('[data-testid=settings-tab-general]');
       }
       await page.waitFor(`document.querySelector('[data-testid=deleted-show]') || document.querySelector('[data-testid=deleted-list]')`);
