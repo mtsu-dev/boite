@@ -30,9 +30,10 @@ many bytes of UTF-8 JSON. Ops: 0 handshake, 1 frame, 2 close, 3 ping, 4 pong.
 The core opens the socket, sends `{ v: 1, client_id }`, and waits up to 5 s
 for the `READY` dispatch, which names the account (`global_name`, else
 `username`). Each update is a `SET_ACTIVITY` command with
-`{ pid, activity }` and a nonce; a command without `activity` clears it. A
-`Close` frame, an `ERROR` event or a dropped socket ends that chat app's
-connection and leaves the others alone. A frame over 64 KB closes the
+`{ pid, activity }` and a nonce; a command without `activity` clears it. The
+chat app answers each command with the same `cmd`: `evt: null` when it shows
+the activity, `evt: "ERROR"` when it refuses it. A `Close` frame or a dropped
+socket ends that chat app's connection and leaves the others alone. A frame over 64 KB closes the
 connection.
 
 Sockets are `discord-ipc-0` to `discord-ipc-9`:
@@ -70,7 +71,11 @@ arRPC answers `READY` with a placeholder user or none, so a target can have
   is not sent again.
 - While an activity is set, the sockets are looked for again every 15 s
   (`PRESENCE_SCAN_MS`): a chat app opened later shows it within that time.
-- `presence.status` goes to the owner when a chat app answers or leaves.
+- A chat app is listed in the status only once it answered the last
+  activity without an error; one that refuses it stays connected but unlisted.
+  `presence.status` goes to the owner when that list changes.
+- A clear from any other socket leaves the presence as it is: a second
+  window cannot take away the desktop app's.
 - A clear sends an empty `SET_ACTIVITY`, then closes each socket with
   `end()`, so the clear frame is flushed before the close; a peer that keeps
   its side open is destroyed after 1 s.
@@ -85,7 +90,9 @@ and any unknown field.
 `presence.set` is owner only, and refused from a connection that is not
 loopback (`ctx.connection.remote !== false`): the chat apps' sockets are on
 the machine that runs the core, so a phone or a group member could only set
-someone else's presence. A build without the experiment refuses an activity
+someone else's presence. An activity is also refused from a loopback
+connection whose hello did not name the client `shell`: a browser tab on the
+same machine never replaces the desktop app's presence. A build without the experiment refuses an activity
 with `experimentRefusal` and still accepts a clear.
 
 ## The words
@@ -128,7 +135,8 @@ lists it ([network](network.md)).
 
 - `packages/core/test/presence.test.ts`: fake chat apps on Unix sockets;
   broadcast to two, pacing, clear when the owner leaves, a late app, a `Close`
-  frame, the socket list and the RPC refusals.
+  frame, an app that refuses the activity, a clear from another socket, the
+  socket list and the RPC refusals, a local browser tab included.
 - `packages/ui/src/lib/presence/activity.test.ts`: the words.
 - `tests/contract/presence.ts`: the same refusals and clear on the real core
   and the in-memory client.

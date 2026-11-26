@@ -37,6 +37,8 @@ interface Target {
   user: string | null;
   /** The activity this chat app holds, as sent. */
   sent: string | null;
+  /** The chat app answered the last activity without an error: only then is it listed as showing it. */
+  shown: boolean;
   lastSent: number;
   timer: ReturnType<typeof setTimeout> | null;
 }
@@ -69,13 +71,14 @@ export class PresenceService {
   }
 
   status(): PresenceStatus {
-    return { active: this.#activity !== null, targets: [...this.#targets.values()].filter(t => t.connection.ready).map(t => ({ socket: socketLabel(t.connection.path), user: t.user })) };
+    return { active: this.#activity !== null, targets: [...this.#targets.values()].filter(t => t.connection.ready && t.shown).map(t => ({ socket: socketLabel(t.connection.path), user: t.user })) };
   }
 
   /** Sets or clears the activity for `owner`'s socket; answers once the sockets present now were tried. */
   async set(activity: PresenceActivity | null, owner: PresenceOwner): Promise<PresenceStatus> {
     if (this.#closed) return this.status();
-    if (activity === null) { this.#clear(); return this.status(); }
+    // Only the socket that set it takes it away: another window's clear leaves the desktop app's presence alone.
+    if (activity === null) { if (this.#owner === null || this.#owner.id === owner.id) this.#clear(); return this.status(); }
     this.#adopt(owner);
     this.#activity = discordActivity(activity);
     for (const target of this.#targets.values()) this.#pace(target);
@@ -141,22 +144,27 @@ export class PresenceService {
         target.user = user;
         this.#options.log('info', `rich presence: ${socketLabel(path)} answered${user ? ` as ${user}` : ''}`);
         this.#pace(target);
+      },
+      answered: (refusal) => {
+        if (target === null || this.#activity === null) return;
+        if (refusal !== null) this.#options.log('warn', `rich presence: ${socketLabel(path)} refused the activity: ${refusal}`);
+        const shown = refusal === null;
+        if (shown === target.shown) return;
+        target.shown = shown;
         this.#owner?.sendEvent('presence.status', this.status());
       },
-      refused: (message) => this.#options.log('warn', `rich presence: ${socketLabel(path)} refused the activity: ${message}`),
       closed: (reason) => {
         if (target === null || this.#targets.get(path) !== target) return;
         if (target.timer !== null) clearTimeout(target.timer);
         this.#targets.delete(path);
-        const wasReady = target.user !== null || target.sent !== null;
         if (this.#activity !== null) this.#options.log('info', `rich presence: ${socketLabel(path)} closed: ${reason}`);
-        if (wasReady) this.#owner?.sendEvent('presence.status', this.status());
+        if (target.shown) this.#owner?.sendEvent('presence.status', this.status());
       },
     }).finally(() => this.#opening.delete(path));
     if (connection === null) return;
     // Cleared while the socket opened: it closes without showing anything.
     if (this.#activity === null || this.#closed) { connection.close('the presence was cleared'); return; }
-    target = { connection, user: null, sent: null, lastSent: 0, timer: null };
+    target = { connection, user: null, sent: null, shown: false, lastSent: 0, timer: null };
     this.#targets.set(path, target);
   }
 

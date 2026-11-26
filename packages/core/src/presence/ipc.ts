@@ -102,8 +102,8 @@ export interface DiscordActivity {
 export interface IpcEvents {
   /** The chat app answered the handshake, with the account it shows. */
   ready(user: string | null): void;
-  /** A command was refused: an unknown application, a malformed activity. */
-  refused(message: string): void;
+  /** The chat app answered a SET_ACTIVITY: shown, or refused (an unknown application, a malformed activity) with its message. */
+  answered(refusal: string | null): void;
   /** The socket closed, by either side. */
   closed(reason: string): void;
 }
@@ -183,7 +183,9 @@ export class IpcConnection {
         const user = message.data?.user;
         this.#events.ready(user?.global_name || user?.username || null);
       } else if (message.evt === 'ERROR') {
-        this.#events.refused(message.data?.message ?? `error ${message.data?.code ?? 'without a code'}`);
+        this.#events.answered(message.data?.message ?? `error ${message.data?.code ?? 'without a code'}`);
+      } else if (message.cmd === 'SET_ACTIVITY') {
+        this.#events.answered(null);
       }
     }
   }

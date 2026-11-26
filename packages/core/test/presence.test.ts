@@ -9,9 +9,11 @@ import { encodeFrame, FrameReader, Op, socketCandidates, socketLabel } from '../
 import { PresenceService, type PresenceOwner } from '../src/presence/service.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 
-/** A chat app on a socket, as Discord and arRPC answer: READY after the handshake, then every frame recorded. */
+/** A chat app on a socket, as Discord and arRPC answer: READY after the handshake, an answer to each SET_ACTIVITY, every frame recorded. */
 class FakeChatApp {
   readonly frames: { op: number; payload: any }[] = [];
+  /** Answers SET_ACTIVITY with an ERROR, as Discord does for an unknown application. */
+  refuse = false;
   readonly sockets = new Set<Socket>();
   readonly server: Server;
   constructor(readonly path: string, user: { username: string; global_name?: string } | null) {
@@ -23,6 +25,12 @@ class FakeChatApp {
         for (const frame of reader.push(chunk)) {
           this.frames.push(frame);
           if (frame.op === Op.Handshake) socket.write(encodeFrame(Op.Frame, { cmd: 'DISPATCH', evt: 'READY', data: { v: 1, user } }));
+          const command = frame.payload as { cmd?: string; nonce?: string; args?: { activity?: unknown } };
+          if (frame.op === Op.Frame && command.cmd === 'SET_ACTIVITY') {
+            socket.write(encodeFrame(Op.Frame, this.refuse
+              ? { cmd: 'SET_ACTIVITY', evt: 'ERROR', data: { code: 4000, message: 'Unknown Application' }, nonce: command.nonce }
+              : { cmd: 'SET_ACTIVITY', evt: null, data: command.args?.activity ?? null, nonce: command.nonce }));
+          }
         }
       });
     });
@@ -87,6 +95,7 @@ test('one activity reaches Discord and a second chat app side by side, paced, th
     type: 0, details: 'Working on boite', state: '2 agents · Opus 5.5', timestamps: { start: 1_700_000_000_000 },
     assets: { large_image: PRESENCE_LOGO_ASSET, large_text: 'Boite' }, buttons: [{ label: 'Get Boite', url: PRESENCE_LINK }],
   });
+  await waitFor(() => presence.status().targets.length === 2);
   expect(presence.status().targets.sort((a, b) => a.socket.localeCompare(b.socket))).toEqual([{ socket: 'discord-ipc-0', user: 'Ada' }, { socket: 'discord-ipc-1', user: null }]);
 
   // Three changes inside one pace: the chat app gets the last, once, after the pause.
@@ -111,7 +120,7 @@ test('a chat app started later gets the activity at the next look, and one that 
   const app = owner();
   expect((await presence.set({ details: 'Idle in Boite' }, app)).targets).toEqual([]);
   const discord = await chatApp('discord-ipc-0', { username: 'ada' });
-  await waitFor(() => discord.activities().length === 1);
+  await waitFor(() => discord.activities().length === 1 && app.statuses.length > 0);
   expect(app.statuses.at(-1)).toEqual({ active: true, targets: [{ socket: 'discord-ipc-0', user: 'ada' }] });
   await discord.close();
   apps.splice(apps.indexOf(discord), 1);
@@ -121,12 +130,31 @@ test('a chat app started later gets the activity at the next look, and one that 
 test('a chat app\'s close frame or a refusal leaves the others showing', async () => {
   const quitting = await chatApp('discord-ipc-0', { username: 'ada' });
   const staying = await chatApp('discord-ipc-1', { username: 'ada' });
-  const presence = service(() => [quitting.path, staying.path]);
-  await presence.set({ details: 'Working' }, owner());
-  await waitFor(() => quitting.activities().length === 1 && staying.activities().length === 1);
+  const refusing = await chatApp('discord-ipc-2', { username: 'ada' });
+  refusing.refuse = true;
+  const presence = service(() => [quitting.path, staying.path, refusing.path]);
+  const app = owner();
+  await presence.set({ details: 'Working' }, app);
+  await waitFor(() => presence.status().targets.length === 2 && refusing.activities().length === 1);
+  // The app that answered with an error is not listed as showing it.
+  await Bun.sleep(50);
+  expect(presence.status().targets.map(t => t.socket).sort()).toEqual(['discord-ipc-0', 'discord-ipc-1']);
   for (const socket of quitting.sockets) socket.write(encodeFrame(Op.Close, { code: 4000, message: 'Invalid Client ID' }));
   await waitFor(() => presence.status().targets.length === 1);
   expect(presence.status().targets[0]!.socket).toBe('discord-ipc-1');
+  expect(app.statuses.at(-1)).toEqual({ active: true, targets: [{ socket: 'discord-ipc-1', user: 'ada' }] });
+});
+
+test('only the socket that set the presence clears it', async () => {
+  const discord = await chatApp('discord-ipc-0', { username: 'ada' });
+  const presence = service(() => [discord.path]);
+  const shell = owner();
+  await presence.set({ details: 'Working' }, shell);
+  await waitFor(() => presence.status().targets.length === 1);
+  expect(await presence.set(null, { ...owner(), id: 'tab-1' })).toMatchObject({ active: true });
+  expect(discord.activities()).toHaveLength(1);
+  await presence.set(null, shell);
+  expect(presence.status()).toEqual({ active: false, targets: [] });
 });
 
 test('the sockets looked for: ten pipes on Windows, the runtime, temporary and sandbox folders elsewhere', () => {
@@ -149,6 +177,11 @@ test('presence.set checks its activity, is the owner\'s alone, and clears from a
   expect(await client.call('presence.set', { activity: { details: 'x' } } as never).catch(error => error)).toMatchObject({ rpc: { code: RpcErrorCode.InvalidParams, data: { field: 'activity.details' } } });
   expect(await client.call('presence.set', { activity: { details: 'Working', color: 'red' } } as never).catch(error => error)).toMatchObject({ rpc: { code: RpcErrorCode.InvalidParams, data: { field: 'activity.color' } } });
   expect(await client.call('presence.set', { activity: null })).toEqual({ active: false, targets: [] });
+  // A browser tab on this machine is loopback and the owner, but not the desktop app.
+  const tab = await connect(harness.url, harness.token, { client: { name: 'pwa', version: 'test' } });
+  try {
+    expect(await tab.call('presence.set', { activity: { details: 'Working' } }).catch(error => error)).toMatchObject({ rpc: { code: RpcErrorCode.Refused, data: { field: 'connection' } } });
+  } finally { tab.close(); }
   const { grant } = await client.call('pairing.grant', {});
   const session = harness.core.sessions.exchange(grant, { name: 'phone', version: 'test' });
   const device = await connect(harness.url, session.token);
