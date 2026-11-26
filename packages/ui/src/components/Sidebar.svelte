@@ -195,6 +195,7 @@
       const { shown } = cardRows(entry, lists.attention);
       for (const thread of open ? [...shown, ...lists.working] : shown) rows.push({ store: entry.machine.store, threadId: thread.id });
       if (doneShown(entry)) rows.push(...projectDoneRows[JSON.stringify(['done', projectKey(entry)])] ?? []);
+      if (projectThreadView.isOpen(entry, 'archived')) rows.push(...projectDoneRows[JSON.stringify(['archived', projectKey(entry)])] ?? []);
     }
     return rows;
   }
@@ -216,7 +217,7 @@
   const loading = $derived(groups.length === 0 && visible.some(machine => machine.store.connection !== 'ready'));
   /**
    * `list` is the section the card sits in: a project moves among its neighbours there, as the sections place it themselves.
-   * The menu names the card's archived threads, which open in the archive.
+   * The card's head counts its archived threads (ProjectThreadCounters.svelte), so its menu leaves them out.
    */
   function openProjectMenu(event: MouseEvent, machine: Machine, project: Project, list: ProjectEntry[]) {
     const entry = { machine, project };
@@ -225,7 +226,7 @@
       up: list[0] !== undefined && projectKey(list[0]) !== key,
       down: list.at(-1) !== undefined && projectKey(list.at(-1)!) !== key,
       move: direction => projectView.step(list, key, direction)
-    } : undefined, undefined, { count: archiveCount(project, 'archived') });
+    } : undefined, undefined, true);
   }
   /** A project header dragged to a new place among the cards of its section, in the manual order; idle projects sit in their fold as rows. */
   function dragProject(event: PointerEvent, entry: ProjectEntry, list: ProjectEntry[]) {
@@ -307,6 +308,7 @@
         {@const owner = machine.store}
         {@const workingOpen = projectThreadView.isOpen(entry, 'working')}
         {@const doneOpen = archiveCount(project, 'done') > 0 && doneShown(entry)}
+        {@const archivedOpen = archiveCount(project, 'archived') > 0 && projectThreadView.isOpen(entry, 'archived')}
         {@const { lists } = projectLists.get(projectKey(entry))!}
         {@const fold = cardRows(entry, lists.attention)}
         {@const controls = `sidebar-project-${encodeURIComponent(projectKey(entry))}`}
@@ -385,6 +387,12 @@
                 {#if doneOpen}<GroupLabel kind="done" count={archiveCount(project, 'done')} />{/if}
                 <RecentDone entries={[entry]} {scrollRoot} {now} open={doneOpen && !collapsed} header={false} cap={10}
                   onrows={doneObserver(entry, 'done')} />
+              </div>
+              <ProjectThreadCounters {entry} working={lists.working.length} {controls} {collapsed} {away} place="archived" />
+              <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
+                {#if archivedOpen}<div class="archived-label"><GroupLabel kind="archived" count={archiveCount(project, 'archived')} /></div>{/if}
+                <RecentDone kind="archived" entries={[entry]} {scrollRoot} {now} open={archivedOpen && !collapsed} header={false} cap={10}
+                  onrows={doneObserver(entry, 'archived')} />
               </div>
               {#if lists.attention.length === 0 && lists.working.length === 0 && !project.archivedThreads && draftsHere.length === 0}<p class="none">{strings.sidebar.noThreads}</p>{/if}
               </SharedProjectThreads>
@@ -582,6 +590,8 @@
   /* The rows under it carry no machine icon, so the header says the machine is unreachable. */
   .host.away { color: var(--color-danger); }
   .head :global(.counters) { flex: 0 1000 auto; min-width: min-content; }
+  /* Narrow, the archived count is a row over its fold (ProjectThreadCounters.svelte `place="archived"`), which names it already. */
+  @container sidebar (max-width: 263.98px) { .archived-label { display: none; } }
   /* The menu keeps its slot at the right end even while hidden, so it sits at the same place on every project and
      the counters never move under the pointer. */
   .project-actions {

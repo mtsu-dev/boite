@@ -193,9 +193,11 @@ above the message box or the bottom tabs.
 
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up
   later; the toast offers Undo, or press Ctrl+Z.
-- Archived threads is a section of Settings > General. Filter, a project's
-  menu and the command palette open it there; from a project's menu it lists
-  that project's threads until you choose All projects. Each row shows the
+- A project's archived threads open under its card from the archive count in
+  its heading, beside the Done count, on desktop and phone, ten rows at a time.
+  Select a row to read the conversation.
+- Archived threads is also a section of Settings > General, for every project.
+  Filter and the command palette open it there. Each row shows the
   project, why the thread was archived and when it will be deleted, with
   Restore and Delete. Select a title to read the conversation. Restore it from
   the row or from the open conversation before sending a message. Restoring brings back your message

@@ -64,6 +64,7 @@ export const strings = {
     doneWhyMoving: 'Moving',
     doneToast: 'Marked "{title}" done',
     doneLoadFailed: 'Some completed threads could not be loaded.',
+    archivedLoadFailed: 'Some archived threads could not be loaded.',
     /** The pull request under a done or archived conversation, which opens it on the forge. */
     prMerged: '#{number} merged',
     prClosed: '#{number} closed',
