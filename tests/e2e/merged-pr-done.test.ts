@@ -80,9 +80,10 @@ for (const width of [1280, 390]) {
         const time = row.querySelector('time');
         const restore = row.querySelector('[data-testid="done-thread-restore"]');
         const actions = restore.parentElement;
-        return getComputedStyle(time).opacity === '1' && getComputedStyle(actions).opacity === '1'
-          && restore.getBoundingClientRect().width > 0
-          && time.getBoundingClientRect().right <= restore.getBoundingClientRect().left;
+        // A pointer's row trades its time for the buttons where it stands, as a live row does; a touch row keeps both, the time before them.
+        const touch = matchMedia('(hover: none), (pointer: coarse)').matches || innerWidth <= 720;
+        return getComputedStyle(actions).opacity === '1' && restore.getBoundingClientRect().width > 0
+          && (touch ? getComputedStyle(time).opacity === '1' && time.getBoundingClientRect().right <= restore.getBoundingClientRect().left : getComputedStyle(time).opacity === '0');
       })()`;
       await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-open"]').focus()`);
       await page.waitFor(`document.querySelector('${done}').matches(':focus-within') && ${actionsVisible}`);

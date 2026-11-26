@@ -19,7 +19,8 @@ async function capture(name: string) {
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
-  url = `http://127.0.0.1:${port}/?fake=1&open=recent&machines=1`;
+  // `contactNotice=0`: the seeded contact request would float its card over the list, and a tap aimed at a project header lands on it.
+  url = `http://127.0.0.1:${port}/?fake=1&open=recent&machines=1&contactNotice=0`;
   page = await BrowserPage.launch({ url, windowSize: { width: 1300, height: 850 } });
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
 }, 30_000);
@@ -147,6 +148,14 @@ test('projects follow user activity, then keep a dragged custom order after relo
   await showThreadView(page, 'projects');
   // Back from the phone width, the sidebar draws its cards again.
   await page.waitFor(`document.querySelectorAll('${id('project-menu')}').length > 1`);
+  // The four projects stay in one list, the paused ones included, so their order alone places them.
+  const toggleInactive = async () => {
+    await page.click(id('grouping-options'));
+    await page.click(`${id('grouping-options-menu')} [data-value=other]`);
+    await page.click(id('grouping-options'));
+  };
+  await toggleInactive();
+  await page.waitFor(`!document.querySelector('${id('paused-projects')}')`);
   // The menu ends every header at the same place, whatever counters sit before it.
   const menuEdges = await page.evaluate<number[]>(`Array.from(document.querySelectorAll('${id('project-menu')}')).map(e => Math.round(e.getBoundingClientRect().right))`);
   expect(menuEdges.length).toBeGreaterThan(1);
@@ -190,6 +199,7 @@ test('projects follow user activity, then keep a dragged custom order after relo
   await page.navigate(url);
   await page.waitFor(`document.querySelectorAll('${id('project')}').length === 4`);
   expect(await keys()).toEqual([before[3]!, ...before.slice(0, 3)]);
+  await toggleInactive();
 }, 20_000);
 
 test('phone reorders a project from its group on a short screen and manages no project from its header', async () => {
@@ -228,6 +238,16 @@ test('phone folds a project from a tap on its header and finds it folded after a
     await page.evaluate(`document.querySelector(${JSON.stringify(`${toggle} ${part}`)}).scrollIntoView({ block: 'center' })`);
     await page.waitFor(screensSettled);
     const at = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector(${JSON.stringify(`${toggle} ${part}`)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    // Nothing floats over the header there, or the finger would land on it instead: a sheet still leaving may, for a moment.
+    const covering = `(() => { const hit = document.elementFromPoint(${at.x}, ${at.y}); return document.querySelector(${JSON.stringify(toggle)}).contains(hit) ? '' : hit?.outerHTML.slice(0, 300) ?? 'nothing'; })()`;
+    await page.waitFor(`${covering} === ''`, 5_000).catch(() => {});
+    const covered = await page.evaluate<string>(covering);
+    if (covered) {
+      // A sheet's backdrop names nothing: the open popovers say whose it is.
+      const open = await page.evaluate<string>(`JSON.stringify(Array.from(document.querySelectorAll(':popover-open')).map(e => ({ class: e.className, testid: e.dataset.testid ?? e.closest('[data-testid]')?.dataset.testid ?? null, sheet: e.dataset.mobileSheet ?? null, visible: e.checkVisibility(), text: e.textContent.trim().slice(0, 80) })))`);
+      await capture('project-fold-covered.png');
+      expect({ covered, open }).toEqual({ covered: '', open: '[]' });
+    }
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, id: 1 }] });
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };

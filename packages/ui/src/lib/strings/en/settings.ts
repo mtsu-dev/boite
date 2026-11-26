@@ -51,7 +51,7 @@ export const strings = {
     /** The muted line under a switch: what turning it on does. */
     effects: {
       groupWorking: 'Threads at work fold under Working, so the ones that need you stay in view',
-      groupIdle: 'Projects with nothing to do fold into Idle projects at the end of the list',
+      groupIdle: 'Projects where nothing runs fold under Inactive, those without a thread under No threads',
       groupChanges: 'Edits join the turn\'s other steps instead of each standing on its own row',
       expandDiffs: 'Each edit shows its diff open, without a click',
       typingCorrection: 'The message box underlines spelling mistakes, corrects and capitalizes as you type',
@@ -90,8 +90,8 @@ export const strings = {
     },
     groupWorkingThreads: 'Group working threads',
     groupWorkingThreadsHint: 'Fold working and background threads in Projects and Recent, and list projects where every thread is at work under Working, on top. Pins, drafts, errors and threads that need you stay visible. This device only.',
-    groupOtherProjects: 'Group idle projects',
-    groupOtherProjectsHint: 'In the Projects view, projects with nothing open but conversations archived by hand go under Set aside, and those with nothing to do into the Idle projects fold. Turn off to keep all projects in the list. This device only.',
+    groupOtherProjects: 'Group inactive projects',
+    groupOtherProjectsHint: 'In the Projects view, projects whose threads all rest, with nothing waiting on you, go under Inactive, and projects without a thread into the No threads fold. Turn off to keep all projects in the list. This device only.',
     app: 'App',
     tourReplay: 'Replay the tour',
     execution: 'Agent execution',

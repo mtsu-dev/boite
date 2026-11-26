@@ -29,7 +29,7 @@ afterEach(() => {
   window.localStorage.clear();
   work.load();
   workspace.view = 'projects';
-  projectThreadView.shelfOpen = false;
+  projectThreadView.folds.idle = false;
 });
 
 async function waitFor(check: () => boolean, attempts = 2000): Promise<void> {

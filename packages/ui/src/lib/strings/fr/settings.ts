@@ -50,7 +50,7 @@ export const fr: Translation = {
     homeOff: 'Désactivée',
     effects: {
       groupWorking: 'Les fils au travail se replient sous En cours, ceux qui vous attendent restent en vue',
-      groupIdle: 'Les projets sans rien à faire se replient dans Projets inactifs, en fin de liste',
+      groupIdle: 'Les projets où rien ne tourne se replient dans Inactifs, ceux sans fil dans Aucun fil',
       groupChanges: 'Les modifications rejoignent les autres étapes du tour au lieu d\'avoir chacune sa ligne',
       expandDiffs: 'Chaque modification montre son diff ouvert, sans clic',
       typingCorrection: 'La zone de message souligne les fautes, corrige et met les majuscules pendant la frappe',
@@ -90,7 +90,7 @@ export const fr: Translation = {
     groupWorkingThreads: 'Regrouper les fils en cours',
     groupWorkingThreadsHint: 'Replie les fils en cours et le travail en arrière-plan dans Projets et Récent, et range en haut, dans En cours, les projets dont tous les fils sont au travail. Les épingles, brouillons, erreurs et demandes de réponse restent visibles. Cet appareil seulement.',
     groupOtherProjects: 'Regrouper les projets inactifs',
-    groupOtherProjectsHint: 'Dans la vue Projets, les projets sans rien d’ouvert mais avec des fils archivés à la main passent dans Mis de côté, ceux où il n’y a rien à faire dans Projets inactifs. Désactive pour garder tous les projets dans la liste. Cet appareil seulement.',
+    groupOtherProjectsHint: 'Dans la vue Projets, les projets dont tous les fils sont au repos, sans rien qui t’attende, passent dans Inactifs, et ceux sans fil dans Aucun fil. Désactive pour garder tous les projets dans la liste. Cet appareil seulement.',
     app: 'Application',
     tourReplay: 'Revoir la présentation',
     execution: 'Exécution des agents',

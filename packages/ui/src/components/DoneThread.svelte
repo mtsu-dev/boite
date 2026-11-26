@@ -12,11 +12,13 @@
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import { longPress } from '../lib/long-press';
   import MachineIcon from './MachineIcon.svelte';
+  import ProviderLogo from './ProviderLogo.svelte';
   import Menu from './Menu.svelte';
 
   /**
-   * A done or archived conversation, drawn like a thread row and on its column: the title
-   * (the agent only in its tooltip), when it was put away, and under it the pull request it ended
+   * A done or archived conversation, drawn like a thread row and on its columns (ThreadCard.svelte's classic row):
+   * the agent's mark, the title on the live titles' edge, when it was put away where a live row ends on its time,
+   * and under it the pull request it ended
    * with, which opens on the forge. The row reads the conversation and its
    * actions keep restoration separate.
    */
@@ -76,10 +78,11 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="done-thread" class:open data-testid="done-thread" data-thread-id={thread.id} data-machine-id={machine?.id ?? workspace.machines.find(m => m.store === owner)?.id}
+<div class="done-thread" class:open class:restorable={thread.archived} data-testid="done-thread" data-thread-id={thread.id} data-machine-id={machine?.id ?? workspace.machines.find(m => m.store === owner)?.id}
   oncontextmenu={(event) => contextMenu.open(event, items, pick)} use:longPress={(target) => !!target.closest('.row')}>
   <button type="button" class="ghost row" data-testid="done-thread-open" title="{thread.title} · {agent}" disabled={deleting} onclick={select}>
     <span class="headline">
+      <span class="provider" aria-hidden="true"><ProviderLogo providerId={thread.providerId} size={14} /></span>
       {#if machine}
         <span class="machine" title={machine.label} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} /></span>
       {/if}
@@ -111,14 +114,19 @@
 
 <style>
   .done-thread {
-    /* The thread row's own measures (ThreadCard.svelte), so both lists share one column and one height. */
-    --pad-x: 8px;
+    /* The classic thread row's measures (ThreadCard.svelte): its sides, its 34 px line, the agent's mark stepped out
+       under the project's tile, so a done title starts where a live one does and its time ends where theirs end. */
+    --pad-x: 10px;
+    --provider-shift: 4px;
+    --act: max(32px, var(--control-sm));
+    --act-room: calc(var(--act) + 3px);
     position: relative;
     font-size: 13.5px;
     border-radius: var(--radius-md);
     transition: background var(--dur-2) var(--ease-out-quint);
     -webkit-touch-callout: none;
   }
+  .done-thread.restorable { --act-room: calc(2 * var(--act) + 3px); }
   .done-thread:hover, .done-thread:focus-within { background: var(--color-hover); }
   .done-thread.open { background: var(--color-active); }
   .row {
@@ -127,15 +135,17 @@
     align-items: stretch;
     width: 100%;
     height: auto;
-    min-height: 32px;
-    padding: 6px calc(2 * max(var(--control-sm), var(--icon-button-target)) + var(--pad-x)) 6px var(--pad-x);
+    min-height: var(--row);
+    padding: 7px var(--pad-x);
     gap: 4px;
     background: transparent;
   }
   .row::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
   .row:hover:not(:disabled) { background: transparent; }
   .row:active:not(:disabled) { transform: none; }
-  .headline { display: flex; align-items: center; min-width: 0; min-height: 20px; gap: 8px; }
+  .headline { display: flex; align-items: center; min-width: 0; min-height: 20px; gap: 6px; margin-left: calc(-1 * var(--provider-shift)); }
+  /* Put away: the mark a step back, like the title, and both wake under the pointer. */
+  .provider { display: inline-flex; flex: none; margin-right: 4px; opacity: 0.5; transition: opacity var(--dur-2) var(--ease-out-quint); }
   .machine { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
   /* Done or archived, put away: a step quieter than the live rows above it (lighter ink, regular weight), and it
      wakes under the pointer. */
@@ -150,14 +160,17 @@
     font-weight: 400;
     transition: color var(--dur-2) var(--ease-out-quint);
   }
-  .done-thread:hover .title, .done-thread:focus-within .title, .done-thread.open .title { color: var(--color-foreground); }
-  time { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .done-thread:is(:hover, :focus-within, .open) .title { color: var(--color-foreground); }
+  .done-thread:is(:hover, :focus-within, .open) .provider { opacity: 1; }
+  time { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; transition: opacity var(--dur-2) var(--ease-out-quint); }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .metadata {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    padding: 0 var(--pad-x) 8px;
+    /* Under the title, past the mark. */
+    padding: 0 var(--pad-x) 8px calc(var(--pad-x) + 20px);
+    margin-top: -3px;
     gap: 9px;
     min-width: 0;
     pointer-events: none;
@@ -184,13 +197,26 @@
   /* The badge's softened red (PullRequestBadge.svelte): a closed pull request is read, never shouted. */
   .pr.closed { color: color-mix(in oklch, var(--color-danger) 60%, var(--color-muted-foreground)); }
   .pr:hover span, .pr:focus-visible span { text-decoration: underline; text-underline-offset: 3px; }
-  .actions { position: absolute; display: flex; align-items: center; top: 0; right: 0; opacity: 0; }
+  /* Centred on the title's line, at the row's end. They show under the pointer and take the time's place, which fades
+     where it stands, while the title's last letters melt away under them, as on a live row. */
+  .actions { position: absolute; display: flex; align-items: center; top: calc(var(--row) / 2 - var(--act) / 2); right: 3px; opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
   .done-thread:is(:hover, :focus-within) .actions { opacity: 1; }
+  .done-thread:is(:hover, :focus-within) time { opacity: 0; }
+  .done-thread:is(:hover, :focus-within) .headline { mask-image: linear-gradient(to left, transparent calc(var(--act-room) - var(--pad-x)), black calc(var(--act-room) - var(--pad-x) + 12px)); }
+  /* No pointer to wait for: the buttons always show, and the title's line, its time included, ends before them. */
   @media (hover: none), (pointer: coarse) {
     .actions { opacity: 1; }
+    .headline { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
+    .done-thread:is(:hover, :focus-within) time { opacity: 1; }
+    .done-thread:is(:hover, :focus-within) .headline { mask-image: none; }
   }
   @media (max-width: 720px) {
-    .row { min-height: var(--touch-target); }
+    /* A phone's live rows (MobileThreadRow.svelte) sit further in: the same title edge there too. */
+    .done-thread { --pad-x: 16px; }
+    .actions { opacity: 1; }
+    .headline { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
+    .done-thread:is(:hover, :focus-within) time { opacity: 1; }
+    .done-thread:is(:hover, :focus-within) .headline { mask-image: none; }
     .actions :is(.restore, :global(.trigger)) { min-height: var(--touch-target); min-width: var(--touch-target); }
     .title { font-size: var(--text-base); }
   }

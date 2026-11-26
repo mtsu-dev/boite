@@ -415,24 +415,28 @@ includes running, queued and background work. Pins and unsent
 drafts stay visible while Working is folded and appear once when expanded;
 questions and failures stay in the main list. Done and Archived read only that project's
 archived summaries when expanded, with the same reading and restore actions as
-Recent. Set aside, below the open projects, holds the projects with nothing open
-but conversations archived by hand: archiving is how work is put away to pick up
-later, so those projects keep a card whose body is that list, drawn at once and
-read like open rows, with no Archived pill while the card is unfolded. Working
-and Set aside start open; their headers fold them for the session.
-Two closed folds below, on desktop and phone, hold the projects with no card
+Recent. Inactive (section `paused`), below the open projects, holds the projects whose every
+conversation rests: none at work, none with news, a question, a failure, a pin
+or unsent text, and no new draft, so folding it hides nothing that waits on the
+user. A project leaves it as soon as a conversation starts or needs the user.
+Two folds below, on desktop and phone, hold the projects with no thread to show
 (`ProjectShelf.svelte`, its rows in `ProjectShelfRows.svelte`, loaded at the
-first opening or once the list has drawn): Idle projects, with nothing to do,
-at most a done history, then Archived projects, a step quieter. Choosing an idle row starts a draft
+first opening or once the list has drawn): No threads, without a single
+conversation (archived and done history aside), then Archived projects, a step
+quieter. Their rows are the cards' headers, in one list by name whatever the
+machine, its icon on the header once several are listed. Choosing an idle row starts a draft
 there; choosing an archived row restores the project, then starts a draft. Under
 the pointer a row archives (idle) or restores and removes (archived) without
 opening anything; its full menu opens with a right click or a long press, and an
 idle row takes a dragged thread. An idle project
-with done conversations shows that count on its row, which unfolds
+with done or archived conversations shows each count on its row, which unfolds
 that history under it. Creating or restoring a conversation or starting a draft
 returns its project to the open cards. In the custom order a project moves among
 the cards of its own section.
-Group idle projects, in settings and the Display options panel, can be disabled
+Every fold starts from one table, `PROJECT_FOLDS_OPEN`: Working and Inactive open,
+No threads and Archived projects closed. A header folds its section for the
+session; the next launch starts from the table again.
+Group inactive projects, in settings and the Display options panel, can be disabled
 to keep every project but the Working ones as open cards, in their normal order. Both grouping preferences persist on
 the device. Expansion follows the owning project between desktop and phone for
 the current session. Phone search exposes matching
