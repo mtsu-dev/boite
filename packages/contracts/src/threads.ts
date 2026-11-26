@@ -1,4 +1,5 @@
 import type { AgentTask, AgentTaskChange } from './agent-tasks';
+import type { WorkingChildren } from './activity';
 import type { ContextPreset, ContextRequest, ThreadContextMode } from './context-mode';
 import type { AgentLetter } from './coordination';
 import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, TurnId } from './ids';
@@ -273,6 +274,8 @@ export interface ThreadSummary {
   openQuestions?: number;
   /** Unanswered child questions, including children on another machine. No question text; missing on older cores. */
   subagentQuestions?: { threadId: ThreadId; title: string; machine?: { coreId: string; name: string } }[];
+  /** Working or asking subagents on other machines. Null clears a previously reported wait. */
+  remoteSubagents?: WorkingChildren | null;
   unread: boolean;
   archived: boolean;
   /** Kept above the other threads of its project in the sidebar, whatever runs. */

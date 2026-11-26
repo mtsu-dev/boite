@@ -14,7 +14,7 @@ import type {
 } from '@boite/contracts';
 import { ReadingCache } from '../reading-cache';
 import { DeviceSnapshots, readingPage } from './device-snapshots';
-import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, unreadInterruptionAt } from '@boite/contracts';
+import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, mergeWorkingChildren, READING_PAGE_BYTES, unreadInterruptionAt } from '@boite/contracts';
 import { DeferredParts } from './deferred-parts';
 import { askPage, ThreadPreloads } from './thread-preload';
 import { lightPage, NewerPages, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
@@ -193,7 +193,7 @@ export class Threads {
 
   #workingChildren = $derived(workingChildren(this.threads));
   /** The thread's delegated agents still at work or asking the user; null when none is. */
-  subagents(threadId: ThreadId): WorkingChildren | null { return this.#workingChildren.get(threadId) ?? null; }
+  subagents(threadId: ThreadId): WorkingChildren | null { return mergeWorkingChildren(this.#workingChildren.get(threadId) ?? null, this.rowOf(threadId)?.remoteSubagents ?? null); }
 
   /** The owning core projects local and remote children even when another conversation is open. */
   subagentQuestions(threadId: ThreadId): NonNullable<ThreadSummary['subagentQuestions']> { return this.rowOf(threadId)?.subagentQuestions ?? []; }
