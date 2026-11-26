@@ -72,6 +72,22 @@ test('agent and paired device principals cannot list or test the owner credentia
   } finally { phone.close(); agent.close(); }
 });
 
+test('credential patches follow the stdio host environment case rules', async () => {
+  const client = await harness.connect();
+  const installed = await client.call('mcp.save', { ...stdio('Local tools'), secretEnv: { TOKEN: 'upper-fixture' } });
+  expect(await thrown(client.call('mcp.save', { ...installed, env: { boite_fixture: 'reserved' } }))).toThrow('reserved keys');
+  const removed = await client.call('mcp.save', { ...installed, secretEnv: { token: null } });
+  if (process.platform === 'win32') {
+    expect(removed.secretEnvKeys).toEqual([]);
+    expect(JSON.parse(readFileSync(join(harness.dataDir, 'mcp-secrets.json'), 'utf8'))).toEqual({});
+  } else {
+    expect(removed.secretEnvKeys).toEqual(['TOKEN']);
+    const patched = await client.call('mcp.save', { ...removed, secretEnv: { token: 'lower-fixture' } });
+    expect(patched.secretEnvKeys).toEqual(['TOKEN', 'token']);
+    expect(harness.core.mcp.runtime(patched)).toMatchObject({ env: { TOKEN: 'upper-fixture', token: 'lower-fixture' } });
+  }
+});
+
 test('an owner can send credentials only over an encrypted connection', async () => {
   const client = await harness.connect();
   const plain = await connect(harness.url, harness.token, { headers: { host: 'owner.example' } });
@@ -213,7 +229,7 @@ test('managed stdio probes and sessions redact reflected secrets and stop their 
     result: { tools: [{ name: 'probe', inputSchema: { type: 'object', properties: { [MOCK_SECRET]: { type: 'string' } } } }], [MOCK_SECRET]: 'leaked' },
   }, redact);
   expect(JSON.stringify(redactedMessage)).toContain('"result":');
-  expect(JSON.stringify(redactedMessage)).not.toContain(MOCK_SECRET);
+  expect(JSON.stringify(redactedMessage)).not.toContain('fixture-value');
   const pid = pids().at(-1)!;
   expect(processExited(pid)).toBe(false);
   await client.call('mcp.toggle', { id: server.id, enabled: false });

@@ -11,7 +11,9 @@ function upstream(url: string) {
 test('a previously saved plain remote HTTP entry cannot send its credentials', async () => {
   const fetch = spyOn(globalThis, 'fetch');
   try {
-    expect(await thrown(mcpFetch(upstream('http://example.test/mcp'), 'POST', new Headers(), new AbortController().signal))).toThrow('HTTPS');
+    for (const url of ['http://example.test/mcp', 'https://']) {
+      expect(await thrown(mcpFetch(upstream(url), 'POST', new Headers(), new AbortController().signal))).toThrow('HTTPS');
+    }
     expect(fetch).not.toHaveBeenCalled();
   } finally { fetch.mockRestore(); }
 });
@@ -52,6 +54,7 @@ test('HTTP sessions retain the negotiated protocol and expire after a remote 404
 
 test('POST event streams can run past the idle limit with activity and end when silent', async () => {
   const encoder = new TextEncoder();
+  let silentCancelled = false;
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
     const silent = new URL(request.url).pathname === '/silent';
     let timer: ReturnType<typeof setInterval> | undefined;
@@ -65,11 +68,15 @@ test('POST event streams can run past the idle limit with activity and end when 
           if (++count === 5) {
             clearInterval(timer);
             controller.enqueue(encoder.encode('data: {"jsonrpc":"2.0","id":1,"result":{}}\n\n'));
+            controller.enqueue(encoder.encode('data: {"jsonrpc":"2.0","id":2,"result":{}}'));
             controller.close();
           }
         }, 75);
       },
-      cancel() { clearInterval(timer); },
+      cancel() {
+        clearInterval(timer);
+        if (silent) silentCancelled = true;
+      },
     });
     return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
   } });
@@ -77,8 +84,11 @@ test('POST event streams can run past the idle limit with activity and end when 
   const silent = new HttpMcpProxy(upstream(new URL('/silent', server.url).href), 250);
   const request = () => new Request('http://localhost/mcp', { method: 'POST', body: '{}' });
   try {
-    expect(await (await active.handle(request())).text()).toContain('"result":{}');
+    const content = await (await active.handle(request())).text();
+    expect(content).toContain('"id":1,"result":{}');
+    expect(content).not.toContain('"id":2');
     expect(await thrown((await silent.handle(request())).text())).toThrow();
+    await waitFor(() => silentCancelled);
   } finally { active.close(); silent.close(); await server.stop(true); }
 });
 

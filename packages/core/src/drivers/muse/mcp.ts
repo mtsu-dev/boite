@@ -2,7 +2,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { McpRegistration } from '../../mcp/lazy.ts';
 import { agentEnv } from '../../providers/resolve.ts';
-import { knownVersion } from '../../providers/versions.ts';
+import { knownVersion, readVersion } from '../../providers/versions.ts';
 import type { SessionContext } from '../types.ts';
 
 const AUTH = 'BOITE_MCP_AUTHORIZATION';
@@ -13,7 +13,7 @@ const PROBE_MAX_BYTES = 4_096;
 interface ProbedVersion {
   mtimeMs: number;
   size: number;
-  version: string | null;
+  version: string;
 }
 
 const probed = new Map<string, ProbedVersion>();
@@ -29,7 +29,7 @@ export function museVersionSupportsMcp(version: string | null): boolean {
 /**
  * Checks whether a Muse binary accepts `-c mcp_servers.<name>=...` config flags:
  * reads `.muse-version` when Boite installed it, falls back to the cached provider
- * version, and otherwise probes `--version` once per binary revision.
+ * version, and otherwise caches a successful `--version` per binary revision.
  */
 export async function museSupportsMcp(executable: string, probeVersion: () => Promise<string | null>): Promise<boolean> {
   if (!basename(executable).toLowerCase().startsWith('muse')) return false;
@@ -45,8 +45,9 @@ export async function museSupportsMcp(executable: string, probeVersion: () => Pr
   if (kept !== undefined && kept.mtimeMs === stat.mtimeMs && kept.size === stat.size) {
     return museVersionSupportsMcp(kept.version);
   }
-  const version = await probeVersion().catch(() => null);
-  probed.set(executable, { mtimeMs: stat.mtimeMs, size: stat.size, version });
+  const output = await probeVersion().catch(() => null);
+  const version = output === null ? null : readVersion(output);
+  if (version !== null) probed.set(executable, { mtimeMs: stat.mtimeMs, size: stat.size, version });
   return museVersionSupportsMcp(version);
 }
 

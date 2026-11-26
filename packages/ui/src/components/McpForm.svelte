@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ExternalLink, Plus, TriangleAlert, X } from '@lucide/svelte';
   import { untrack } from 'svelte';
-  import { mcpHttpOriginChanged, type McpPreset, type McpPresetField, type McpScope, type McpServer, type McpServerInput, type McpTransport, type Project } from '@boite/contracts';
+  import { mcpEnvKey, mcpHttpOriginChanged, type McpPreset, type McpPresetField, type McpScope, type McpServer, type McpServerInput, type McpTransport, type Os, type Project } from '@boite/contracts';
   import { errorText } from '../lib/errors';
   import { projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
@@ -9,10 +9,11 @@
   import SettingsSection from './SettingsSection.svelte';
   import SettingSwitch from './SettingSwitch.svelte';
 
-  let { server, preset, projects, encrypted = true, onsave, oncancel }: {
+  let { server, preset, projects, os, encrypted = true, onsave, oncancel }: {
     server?: McpServer;
     preset?: McpPreset;
     projects: Project[];
+    os: Os;
     encrypted?: boolean;
     onsave: (input: McpServerInput) => Promise<void>;
     oncancel: () => void;
@@ -111,7 +112,7 @@
     pending = true;
     error = '';
     try {
-      const vars = values(transport === 'stdio' ? env : [], server?.secretEnvKeys ?? [], key => key.toUpperCase());
+      const vars = values(transport === 'stdio' ? env : [], server?.secretEnvKeys ?? [], key => mcpEnvKey(key, os));
       const httpRows = transport === 'http' ? headers : [];
       const auth = values(originChanged ? httpRows.filter(entry => !entry.savedKey || entry.value !== '' || !entry.secret) : httpRows,
         originChanged ? [] : server?.secretHeaderKeys ?? [], key => key.toLowerCase());
@@ -119,7 +120,7 @@
         ? args === '' ? [] : args.split(/\r?\n/)
         : [...argumentsOf, ...fields.filter(field => field.target === 'arg').map(field => presetArgs[field.key] ?? '').filter(Boolean)];
       await onsave({
-        id: server?.id, name, enabled: server?.enabled ?? true, transport, scope,
+        ...(server ? { id: server.id } : { enabled: true }), name, transport, scope,
         projectIds: scope === 'global' ? [] : [...selection],
         ...(transport === 'stdio' ? { command, args: nextArgs } : { url }),
         env: vars.shown, secretEnv: vars.secret, headers: auth.shown, secretHeaders: auth.secret,

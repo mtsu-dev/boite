@@ -19,12 +19,15 @@ the field blank to keep it. Remove its row to delete it. Use an encrypted
 connection to Boite to save credentials. HTTP servers with secret headers use
 HTTPS unless they run on this machine's loopback. If you change the server's
 scheme, host, or port, re-enter the credentials for the new address.
+Environment variable names are case-sensitive on Linux and macOS, and
+case-insensitive on Windows.
 
 ## Use a server
 
 Installed servers are enabled by default. Start a conversation or send the
 next message to load changes. Use the switch to disable a server, **Edit** to
 change its scope or connection, or **Remove** to delete it and its credentials.
+Saving edits preserves the switch setting.
 
 Boite passes these servers to Claude, Codex, OpenCode 2, compatible Muse
 versions and ACP agents that support HTTP MCP. A conversation with MCP turned

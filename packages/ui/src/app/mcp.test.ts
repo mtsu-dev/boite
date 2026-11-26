@@ -33,11 +33,11 @@ test('MCP settings follow fake-core changes, render test tools and keep saved cr
   actions.find(button => button.textContent?.includes('Edit'))!.click();
   await waitFor(() => text(form).includes('Saved'));
   expect(document.querySelector<HTMLInputElement>(form + ' input[type=password]')?.value).toBe('');
-  click(form + ' button[type=submit]');
-  await waitFor(() => !document.querySelector(form));
-  expect((await store.client!.call('mcp.list', {})).servers[0]?.secretEnvKeys).toEqual(['GITHUB_PERSONAL_ACCESS_TOKEN']);
   await store.client!.call('mcp.toggle', { id: 'github', enabled: false });
   await waitFor(() => document.querySelector<HTMLInputElement>(installed + ' [role=switch]')?.checked === false);
+  click(form + ' button[type=submit]');
+  await waitFor(() => !document.querySelector(form));
+  expect((await store.client!.call('mcp.list', {})).servers[0]).toMatchObject({ enabled: false, secretEnvKeys: ['GITHUB_PERSONAL_ACCESS_TOKEN'] });
   [...document.querySelectorAll<HTMLButtonElement>(installed + ' .server-actions button')]
     .find(button => button.textContent?.includes('Remove'))!.click();
   await waitFor(() => !!document.querySelector('[data-testid=confirm-dialog]'));
@@ -74,6 +74,22 @@ test('MCP settings warn when changing origin and handle a server named construct
   click(form + ' button[type=submit]');
   await waitFor(() => !document.querySelector(form));
   expect((await client.call('mcp.list', {})).servers[0]).toMatchObject({ url: 'https://one.example.test:8443/other', secretHeaderKeys: [] });
+});
+
+test('MCP edits distinguish environment keys by case on a Linux core', async () => {
+  await mountOnFake('/?fake=1&os=linux');
+  const client = store.client!;
+  const saved = await client.call('mcp.save', {
+    name: 'Local fixture', enabled: true, transport: 'stdio', command: 'fixture-mcp', args: [], scope: 'global', projectIds: [],
+    env: { token: 'plain-fixture' }, secretEnv: { TOKEN: 'secret-fixture' },
+  });
+  store.showSettings('mcp');
+  await waitFor(() => text(installed).includes(saved.name));
+  click(installed + ' .server-actions button:nth-child(2)');
+  await waitFor(() => text(form).includes('Saved'));
+  click(form + ' button[type=submit]');
+  await waitFor(() => !document.querySelector(form));
+  expect((await client.call('mcp.list', {})).servers[0]).toMatchObject({ env: { token: 'plain-fixture' }, secretEnvKeys: ['TOKEN'] });
 });
 
 test('McpPage refuses to submit secrets over an unencrypted link and fake-client enforces the same refusal', async () => {

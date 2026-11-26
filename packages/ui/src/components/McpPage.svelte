@@ -165,7 +165,7 @@
       {#if edit}
         <div class="editor" bind:this={editor}>
           {#key edit}
-            <McpForm server={edit.server} preset={edit.preset} {projects} {encrypted} onsave={save} oncancel={() => edit = null} />
+            <McpForm server={edit.server} preset={edit.preset} {projects} os={store.core?.os ?? 'windows'} {encrypted} onsave={save} oncancel={() => edit = null} />
           {/key}
         </div>
       {/if}

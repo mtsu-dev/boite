@@ -40,6 +40,11 @@ export const MCP_SCENARIOS: Record<string, Scenario> = {
 
       const toggled = await env.call('mcp.toggle', { id: saved.id, enabled: false });
       check(toggled.enabled === false, 'mcp.toggle should disable the server');
+      const edited = await env.call('mcp.save', {
+        id: saved.id, name: 'Edited HTTP', transport: 'http', url: saved.url, scope: 'global', projectIds: [],
+      });
+      check(edited.enabled === false && edited.name === 'Edited HTTP', 'editing a disabled server should keep it disabled');
+      await refused(env.call('mcp.save', { ...edited, enabled: null as unknown as boolean }), RpcErrorCode.InvalidParams, 'enabled');
       await refused(env.call('mcp.toggle', { id: saved.id, enabled: 'yes' as unknown as boolean }), RpcErrorCode.InvalidParams, 'enabled');
       await refused(env.call('mcp.toggle', { id: 'missing-server', enabled: true }), RpcErrorCode.InvalidParams, 'id');
       await refused(env.call('mcp.test', { id: 'missing-server' }), RpcErrorCode.InvalidParams, 'id');

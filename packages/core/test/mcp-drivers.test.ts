@@ -103,9 +103,13 @@ test('Muse detects MCP config support via --version when no .muse-version file e
   const legacyBin = join(legacyDir, 'muse');
   writeFileSync(modernBin, '#!/bin/sh\necho muse 1.4.14\n');
   writeFileSync(legacyBin, '#!/bin/sh\necho muse 1.3.0\n');
+  expect(await museSupportsMcp(modernBin, async () => { throw new Error('fixture spawn failure'); })).toBe(false);
+  expect(await museSupportsMcp(modernBin, async () => null)).toBe(false);
+  expect(await museSupportsMcp(modernBin, async () => 'fixture without a version')).toBe(false);
   let calls = 0;
   expect(await museSupportsMcp(modernBin, async () => { calls += 1; return 'muse 1.4.14'; })).toBe(true);
   expect(await museSupportsMcp(modernBin, async () => { calls += 1; return 'muse 1.4.14'; })).toBe(true);
   expect(calls).toBe(1);
   expect(await museSupportsMcp(legacyBin, async () => 'muse 1.3.0')).toBe(false);
+  expect(await museSupportsMcp(legacyBin, async () => 'muse 1.4.14')).toBe(false);
 });

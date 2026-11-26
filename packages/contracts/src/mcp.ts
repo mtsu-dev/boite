@@ -21,15 +21,18 @@ export interface McpServer {
   secretHeaderKeys: string[];
 }
 
-export type McpServerInput = Omit<McpServer, 'id' | 'env' | 'headers' | 'envKeys' | 'headerKeys' | 'secretEnvKeys' | 'secretHeaderKeys'> & {
-  id?: string;
+/** An edit that omits enabled preserves the current switch value. */
+export type McpServerInput = Omit<McpServer, 'id' | 'enabled' | 'env' | 'headers' | 'envKeys' | 'headerKeys' | 'secretEnvKeys' | 'secretHeaderKeys'> & {
   env?: Record<string, string>;
   headers?: Record<string, string>;
   /** Missing keys keep their value, null deletes a value. */
   secretEnv?: Record<string, string | null>;
   /** Missing keys keep their value only while the URL origin stays the same. */
   secretHeaders?: Record<string, string | null>;
-};
+} & (
+  | { id?: undefined; enabled: boolean }
+  | { id: string; enabled?: boolean }
+);
 
 export interface McpPresetField {
   target: 'arg' | 'env' | 'header';

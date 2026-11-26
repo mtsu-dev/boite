@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MCP_PRESETS, McpInputError, mcpHttpOriginChanged, mcpSecretPatch, normalizeMcpServer, type McpServer, type McpServerInput, type ProjectId } from '@boite/contracts';
+import { MCP_PRESETS, McpInputError, mcpEnvKey, mcpHttpOriginChanged, mcpSecretPatch, normalizeMcpServer, type McpServer, type McpServerInput, type ProjectId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams } from '../errors.ts';
+import { currentOs } from '../paths.ts';
 import type { StdioServer } from './lazy.ts';
 import { probeMcp } from './probe.ts';
 
@@ -16,11 +17,13 @@ const SERVERS_KEY = 'mcp:servers';
 const PENDING_KEY = 'mcp:secrets-pending';
 const emptyCredentials: Credentials = { env: {}, headers: {} };
 const encoder = new TextEncoder();
+const os = currentOs();
+const envKey = (key: string) => mcpEnvKey(key, os);
 
-function applyPatch(values: Record<string, string>, patch: Record<string, string | null>, header: boolean): Record<string, string> {
+function applyPatch(values: Record<string, string>, patch: Record<string, string | null>, normalize: (key: string) => string): Record<string, string> {
   const next = new Map(Object.entries(values));
   for (const [key, value] of Object.entries(patch)) {
-    const old = [...next.keys()].find(candidate => header ? candidate.toLowerCase() === key.toLowerCase() : candidate.toUpperCase() === key.toUpperCase());
+    const old = [...next.keys()].find(candidate => normalize(candidate) === normalize(key));
     if (old !== undefined) next.delete(old);
     if (value !== null) next.set(key, value);
   }
@@ -51,7 +54,7 @@ export class McpRegistry {
       next = normalizeMcpServer(input, servers, id => {
         const project = this.core.journal.getProject(id);
         return !!project && !project.archived && project.kind !== 'drafts';
-      });
+      }, envKey);
     } catch (error) {
       if (!(error instanceof McpInputError)) throw error;
       throw invalidParams(error.message, { field: error.field, expected: error.expected });
@@ -59,10 +62,10 @@ export class McpRegistry {
     const previous = this.#readSecrets();
     const stored = input.id === undefined ? emptyCredentials : this.#credentials(next.id, previous);
     const current = servers.find(server => server.id === next.id);
-    const patch = mcpSecretPatch(input);
+    const patch = mcpSecretPatch(input, envKey);
     const credentials = {
-      env: applyPatch(stored.env, patch.env, false),
-      headers: applyPatch(mcpHttpOriginChanged(current?.url, next.url) ? {} : stored.headers, patch.headers, true),
+      env: applyPatch(stored.env, patch.env, envKey),
+      headers: applyPatch(mcpHttpOriginChanged(current?.url, next.url) ? {} : stored.headers, patch.headers, key => key.toLowerCase()),
     };
     const updated = { ...previous };
     if (Object.keys(credentials.env).length || Object.keys(credentials.headers).length) {

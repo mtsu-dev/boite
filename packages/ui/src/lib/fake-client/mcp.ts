@@ -1,4 +1,4 @@
-import { MCP_PRESETS, McpInputError, normalizeMcpServer, RpcErrorCode, type McpServer } from '@boite/contracts';
+import { MCP_PRESETS, McpInputError, mcpEnvKey, normalizeMcpServer, RpcErrorCode, type McpServer } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { policyRefusal } from './policy';
 import type { FakeContext, FakeMethods } from './context';
@@ -24,7 +24,11 @@ export function mcpMethods(ctx: FakeContext): Pick<FakeMethods, `mcp.${string}` 
         throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'mcp.save: credentials travel only over an encrypted link', data: { field: 'connection', expected: 'loopback, Tailscale or HTTPS' } });
       }
       let server: McpServer;
-      try { server = normalizeMcpServer(input, servers, id => ctx.projects.some(project => project.id === id && !project.archived && project.kind !== 'drafts')); }
+      try {
+        server = normalizeMcpServer(input, servers,
+          id => ctx.projects.some(project => project.id === id && !project.archived && project.kind !== 'drafts'),
+          key => mcpEnvKey(key, ctx.core.os));
+      }
       catch (error) {
         if (!(error instanceof McpInputError)) throw error;
         throw invalid(error.field, error.expected);
