@@ -20,11 +20,12 @@ test('owner controls consent on desktop and phone; captures both layouts', async
   expect(await page.evaluate(`document.querySelector('[data-testid="telemetry-choice-notice"]').textContent`)).toContain('without an installation ID');
   await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => { a.finish(); return a.finished.catch(() => {}); })])`);
   await page.screenshot(join(import.meta.dir, '.artifacts/onboarding-telemetry-desktop.png'));
-  // Consent uses the panel's height: the last action must not float above a blank strip.
-  const desktopBottomGap = await page.evaluate<number>(`(() => {
+  // Consent sits in the middle of the panel's height: no blank strip under the last action that is not also above the first line.
+  const desktopGaps = await page.evaluate<{ top: number; bottom: number }>(`(() => {
+    const screen = document.querySelector('[data-testid="onboarding-step"]').getBoundingClientRect();
     const footer = document.querySelector('[data-testid="onboarding"] footer').getBoundingClientRect();
-    const details = document.querySelector('[data-testid="telemetry-deal"] > button.link').getBoundingClientRect();
-    return footer.top - details.bottom;
+    const layout = document.querySelector('[data-testid="telemetry-deal"] .layout').getBoundingClientRect();
+    return { top: layout.top - screen.top, bottom: footer.top - layout.bottom };
   })()`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.click('[data-testid="onboarding-dot-welcome"]');
@@ -45,7 +46,8 @@ test('owner controls consent on desktop and phone; captures both layouts', async
       return row.top >= screen.top && row.bottom <= screen.bottom;
     });
   })()`)).toBe(true);
-  expect(desktopBottomGap).toBeLessThanOrEqual(32);
+  expect(desktopGaps.bottom).toBeLessThanOrEqual(56);
+  expect(Math.abs(desktopGaps.bottom - desktopGaps.top)).toBeLessThanOrEqual(24);
   await page.click('[data-testid="onboarding-skip"]');
   await page.waitFor(`!document.querySelector('[data-testid="onboarding"]')`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });

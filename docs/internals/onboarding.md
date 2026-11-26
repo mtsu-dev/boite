@@ -14,7 +14,7 @@ persist immediately and remain editable there.
 |---|---|---|
 | Welcome | One conversation per task, and agents keep working meanwhile | Language and theme |
 | Profile | Developer or not, asked plainly | Two answers, each writing a preset of existing settings |
-| Conversation | The same history follows a change of agent | Selectable agent, dictation and diff demonstrations; inline local voice installation |
+| Conversation | The same history follows a change of agent | One demonstration in three parts (agent switch, dictation, diff) played in a row; inline local voice installation |
 | Usage | A named provider, a five-hour limit, used percentage and reset time | An illustrated taskbar hover, no live account list |
 | Reach | The host keeps working while the phone shows the same conversation | An animated desktop-to-phone illustration |
 | Quiet | Agents work without taking over the screen or speakers | Notifications, close to tray, focus guard, mute |
@@ -27,14 +27,26 @@ in a shown window: one scrolled out of view or behind a hidden window holds its
 frame and starts where it stopped. Reduced motion does not stop the scenes or
 the trade offer clip, which are the tour's pictures; their timing comes from
 `--dur-demo-step` and `--dur-demo-word`, which reduced motion leaves alone, and
-only the glow around a scene stops. Their three buttons show dictation, agent
-switching and diffs. Dictation ends with a draft to review; switching shows the
-next provider's answer. While playing, a scene has an inner accent glow and
+only the glow around a scene stops. The conversation screen chains three parts,
+agent switching, dictation and diffs, as one demonstration: under the scene a
+segment per part fills while it plays, the part's sentence replaces the one
+under the title, and 1.4 s after a part ends the next one starts, the last
+leading back to the first. The segments are buttons that jump to a part; they
+read as progress, not as answers, and stay in view. The scene holds the height
+of the tallest part seen at its width, so the segments do not move between
+parts. A local voice download in progress keeps the demonstration on dictation.
+Dictation ends with a draft to review; switching shows the next provider's
+answer. While playing, a scene has an inner accent glow and
 hover/focus pause/replay controls; touch always shows controls. Pause holds the
 scene and its loop until resumed. Step dots provide progress.
 
 The privacy screen is Boite Legacy's: a title that turns red over ten seconds,
-the trade offer clip, and two rows. "NO! Just the basic counters" keeps the
+the trade offer clip, and two rows. In a panel 520 px wide or more it has two
+columns: the clip at full column width with the sentence on what leaves the
+machine as its caption, and beside it the title, "Deal?", the two rows stacked,
+the line saying the choice itself is counted, and the opt-out, all on one left
+edge and centred in the panel's height. Narrower, it is one column with the
+title first. "NO! Just the basic counters" keeps the
 anonymous counters (or a saved opt-out on a replay), swaps to the refusal clip
 and closes the tour two seconds later, at once under reduced motion. "Deal" turns
 on enhanced analytics and closes it. The "turn everything off" link under both
@@ -64,8 +76,8 @@ The tour is a 600 x 600 panel. Every screen fits it in English and French,
 the conversation demonstrations included, and the end-to-end suite fails a
 screen that scrolls on a computer. A window shorter than the panel shrinks it,
 and the screen then scrolls inside it. Every screen takes that same height, so
-Next stays in one place from screen to screen. The privacy clip sits beside the
-text saying what is counted, and above it in a panel narrower than 480 px.
+Next stays in one place from screen to screen. The privacy clip sits above its
+caption in the wide layout, and beside it in a panel narrower than 520 px.
 
 The shell opens its main window at 70% of the primary monitor's work area in
 width and 80% in height, kept between 1200 x 720 and 1600 x 1000 and centred
@@ -170,9 +182,9 @@ assertions are written in English whatever the machine speaks.
 
 ## The screens that read the core
 
-Voice polls `speech.status` only while its example is selected. The owner can
+Voice polls `speech.status` only while its part of the demonstration plays. The owner can
 start or cancel the local engine download there; no download starts without a
-click. Selecting another example, leaving the step or closing the tour stops
+click. Moving to another part, leaving the step or closing the tour stops
 polling, but a requested download continues in the core. The tour never requests
 microphone access or sends a prompt. Privacy and the quiet switches use the
 same host settings and shell command as Settings.

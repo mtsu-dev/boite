@@ -61,7 +61,7 @@ export const fr: Translation = {
 
     agents: {
       title: 'Un fil qui suit votre travail',
-      body: "Changez d'agent, dictez un message, relisez le résultat. Sans changer de fil.",
+      body: "Passez la main à un autre agent en cours de route. Il reprend le même fil et son historique.",
     },
 
     voice: {

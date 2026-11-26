@@ -2,7 +2,7 @@
   import { desktopShell } from '../lib/shell-platform';
   import { lockedBy } from '../lib/policy';
   import { onMount, tick, untrack } from 'svelte';
-  import { AppWindow, ArrowLeftRight, Bell, Check, FileDiff, Languages, MessageCircle, Mic, Minimize2, Palette, SquareTerminal, VolumeX, X } from '@lucide/svelte';
+  import { AppWindow, Bell, Check, Languages, MessageCircle, Minimize2, Palette, SquareTerminal, VolumeX, X } from '@lucide/svelte';
   import type { SpeechStatus } from '@boite/contracts';
   import TelemetryDeal from './TelemetryDeal.svelte';
   import OnboardingScene from './OnboardingScene.svelte';
@@ -34,7 +34,11 @@
   let locale = $state<LocaleSetting>(localeSetting());
   let theme = $state<Theme>(readTheme());
   const themes = $derived([{ id: 'system', label: strings.settings.themeSystem }, { id: 'dark', label: strings.settings.themeDark }, { id: 'light', label: strings.settings.themeLight }] as const);
+  /** One demo in three parts that play in a row: segments under the scene, not answers to pick from. */
   const examples = $derived([{ id: 'agents', label: strings.onboarding.demo.conversation }, { id: 'voice', label: strings.onboarding.demo.voice }, { id: 'panel', label: strings.onboarding.demo.panel }] as const);
+  function exampleLead(id: typeof example): string { return id === 'voice' ? strings.onboarding.voice.body : id === 'panel' ? strings.onboarding.panel.body : strings.onboarding.agents.body; }
+  /** The next part, the first after the last. A dictation download in progress holds the demo on its part. */
+  function nextExample() { const at = examples.findIndex(item => item.id === example); example = examples[(at + 1) % examples.length]!.id; }
   const profiles = $derived([
     { id: 'everyday', label: strings.onboarding.profile.everyday, hint: strings.onboarding.profile.everydayHint },
     { id: 'developer', label: strings.onboarding.profile.developer, hint: strings.onboarding.profile.developerHint }
@@ -80,6 +84,9 @@
     finally { trayBusy = false; }
   }
   let speech = $state<SpeechStatus | null>(null), speechBusy = $state(false), speechError = $state(''), speechPollError = $state('');
+  /** Focus inside the dictation row: moving on would remove the control under the keyboard. */
+  let voiceFocus = $state(false);
+  const holdExample = $derived(example === 'voice' && (!!speech?.installing || speechBusy || voiceFocus));
   $effect(() => {
     const client = store.client;
     if (step !== 'agents' || example !== 'voice' || !client || !store.owner) return;
@@ -121,7 +128,9 @@
       <header><BoiteMark size={18} /><span class="ui-label">{strings.onboarding.label}</span><button class="ghost icon" data-testid="onboarding-skip" aria-label={strings.onboarding.skip} onclick={finish}><X size={16} /></button></header>
       {#key step}
         <div class="screen" data-testid="onboarding-step" data-step={step}>
-          <h1 id="onboarding-title" tabindex="-1" class:soul={step === 'privacy'}>{phone && step === 'reach' ? strings.onboarding.reach.onPhoneTitle : strings.onboarding[step].title}</h1>
+          {#snippet title()}<h1 id="onboarding-title" tabindex="-1" class:soul={step === 'privacy'}>{phone && step === 'reach' ? strings.onboarding.reach.onPhoneTitle : strings.onboarding[step].title}</h1>{/snippet}
+          <!-- The consent screen sets its title beside the meme, above the offer it names. -->
+          {#if step !== 'privacy'}{@render title()}{/if}
           {#if step === 'welcome'}
             <p class="lead">{strings.onboarding.welcome.body}</p>
             <OnboardingScene scene="welcome" />
@@ -146,18 +155,10 @@
             </div>
             <p class="detail">{strings.onboarding.profile.later}</p>
           {:else if step === 'agents'}
-            <div class="examples" role="group" aria-label={strings.onboarding.agents.title}>
-              {#each examples as item (item.id)}
-                <button class:on={example === item.id} aria-pressed={example === item.id} data-testid="onboarding-example-{item.id}" onclick={() => { example = item.id; }}>
-                  {#if item.id === 'agents'}<ArrowLeftRight size={20} />{:else if item.id === 'voice'}<Mic size={20} />{:else}<FileDiff size={20} />{/if}
-                  <span class="ui-label">{item.label}</span>
-                  {#if example === item.id}<Check size={13} class="selected-mark" />{/if}
-                </button>
-              {/each}
-            </div>
-            <OnboardingScene scene={example} />
-            {#if example === 'voice' && store.owner}
-              <div class="voice-setup">
+            <!-- Every part's sentence sits in one cell, the others unseen, so the longest sets the height and the scene under it never moves. -->
+            <p class="lead chapter-lead">{#each examples as item (item.id)}<span class:current={item.id === example} aria-hidden={item.id !== example} data-testid={item.id === example ? 'onboarding-example-lead' : undefined}>{exampleLead(item.id)}</span>{/each}</p>
+            {#snippet voiceSetup()}
+              <div class="voice-setup" onfocusin={() => { voiceFocus = true; }} onfocusout={event => { voiceFocus = event.currentTarget.contains(event.relatedTarget as Node | null); }}>
                 {#if speech?.ready}<p data-testid="onboarding-voice-ready">{strings.onboarding.demo.readyVoice}</p>
                 {:else if speech?.installing}
                   <label>{strings.onboarding.demo.installingVoice}<progress max={speech.totalBytes || 1} value={speech.downloadedBytes}></progress></label>
@@ -167,7 +168,8 @@
                 {:else}<p>{speech ? strings.onboarding.changeLater : strings.onboarding.voice.reading}</p>{/if}
                 {#if speechError || speechPollError || speech?.error}<p role="alert">{speechError || speechPollError || speech?.error}</p>{/if}
               </div>
-            {/if}
+            {/snippet}
+            <OnboardingScene scene={example} chapters={examples} onend={holdExample ? undefined : nextExample} onpick={id => { if (id === 'agents' || id === 'voice' || id === 'panel') { example = id; voiceFocus = false; } }} extra={example === 'voice' && store.owner ? voiceSetup : undefined} />
           {:else if step === 'usage'}
             <p class="lead">{strings.onboarding.usage.body}</p>
             <OnboardingScene scene="usage" />
@@ -188,7 +190,7 @@
             </div>
             {#if error}<p role="alert">{error}</p>{/if}
           {:else if step === 'privacy'}
-            <TelemetryDeal {store} onchosen={finish} />
+            <TelemetryDeal {store} onchosen={finish} heading={title} />
           {/if}
         </div>
       {/key}
@@ -228,9 +230,8 @@
   header button { margin-left: auto; }
   .screen { flex: 1; overflow-y: auto; min-height: 0; padding: 8px 28px 16px; }
   .screen[data-step=privacy] { display: flex; flex-direction: column; }
-  .screen[data-step=privacy] h1 { flex: none; }
   h1 { font-size: var(--text-lg); line-height: 1.35; margin: 0 0 6px; }
-  h1.soul { text-align: center; font-size: var(--text-xl); font-weight: 900; letter-spacing: .08em; animation: soul 10s linear forwards; }
+  h1.soul { margin: 0; font-size: calc(var(--text-lg) * 1.3); font-weight: 900; line-height: 1.15; letter-spacing: .06em; text-wrap: balance; animation: soul 10s linear forwards; }
   @keyframes soul {
     from { color: var(--color-foreground); text-shadow: 0 0 0 transparent; }
     40% { color: color-mix(in srgb, var(--color-danger) 65%, var(--color-foreground)); text-shadow: 0 0 6px color-mix(in srgb, var(--color-danger) 20%, transparent); }
@@ -244,11 +245,10 @@
   .preference > span { margin-right: auto; }
   /* The shared track (app.css), as wide as its row. */
   .segmented { display: flex; }
-  .examples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-  .examples button { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; height: auto; min-height: 48px; padding: 8px 20px 8px 10px; white-space: normal; line-height: 1.3; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-muted-foreground); font-size: var(--text-sm); cursor: pointer; }
-  .examples button:hover { color: var(--color-foreground); background: var(--color-hover); border-color: var(--color-muted-foreground); }
-  .examples button.on { border-color: var(--color-muted-foreground); background: var(--color-active); color: var(--color-foreground); }
-  .examples :global(.selected-mark) { position: absolute; top: 7px; right: 7px; color: var(--color-foreground); }
+  .chapter-lead { display: grid; }
+  .chapter-lead > span { grid-area: 1 / 1; visibility: hidden; }
+  .chapter-lead > span.current { visibility: visible; animation: lead var(--dur-3) var(--ease-out-quint); }
+  @keyframes lead { from { opacity: 0; transform: translateY(3px); } }
   .profiles { display: grid; gap: 8px; margin: 12px 0; }
   .profiles button { position: relative; display: flex; align-items: flex-start; gap: 14px; height: auto; padding: 16px 36px 16px 16px; white-space: normal; text-align: left; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-muted-foreground); cursor: pointer; }
   .profiles button :global(svg) { flex: none; margin-top: 2px; }
@@ -258,7 +258,7 @@
   .answer { display: grid; gap: 4px; }
   .answer strong { font-size: var(--text-base); font-weight: 600; line-height: 1.4; color: var(--color-foreground); }
   .answer span { font-size: var(--text-sm); line-height: 1.5; }
-  .voice-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  .voice-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .voice-setup progress { display: block; width: 100%; margin-top: 6px; accent-color: var(--color-accent); }
   .quiet-scene { margin: auto; }
   .rows { display: grid; }
@@ -281,7 +281,6 @@
     /* The last step has three consent choices, so use the phone's available height. */
     .panel.privacy { height: calc(100dvh - 32px); }
     .scrim.shell .panel.privacy { height: calc(100dvh - 32px - var(--titlebar)); }
-    .examples button { flex-direction: column; gap: 6px; min-height: 72px; padding: 10px 8px; }
     .screen { padding: 8px 18px 18px; } .preference { flex-wrap: wrap; } .segmented { flex-basis: 100%; } .segmented button { flex: 1; }
     footer { padding: 12px; gap: 4px; } .dot { width: 20px; } .dot::after { left: 7px; } .dot.on::after { left: 3px; } .dot { height: var(--touch-target); } .dot::after { top: 19px; }
   }

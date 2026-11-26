@@ -3,9 +3,16 @@
   import ProviderLogo from './ProviderLogo.svelte';
   import BoiteMark from './BoiteMark.svelte';
   import { strings } from '../lib/strings';
-  import { untrack } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
 
-  let { scene }: { scene: 'welcome' | 'agents' | 'voice' | 'panel' | 'usage' | 'reach' | 'quiet' } = $props();
+  type Scene = 'welcome' | 'agents' | 'voice' | 'panel' | 'usage' | 'reach' | 'quiet';
+  /**
+   * `chapters` makes the scene one part of a longer demo: the parts show as
+   * segments under it, the playing one filling, and the end of a part calls
+   * `onend` (the next part) instead of looping. `onpick` jumps to a part.
+   */
+  let { scene, chapters, onend, onpick, extra }: { scene: Scene; chapters?: readonly { id: Scene; label: string }[]; onend?: () => void; onpick?: (id: Scene) => void; extra?: Snippet } = $props();
+  const position = $derived(chapters?.findIndex((chapter) => chapter.id === scene) ?? -1);
   /** The reader's pause: it holds the scene and its loop until resumed. */
   let paused = $state(false);
   let replay = $state(0);
@@ -20,6 +27,8 @@
   /** The last animation ended: the final frame rests, then the scene plays again, like a GIF. */
   let finished = $state(false);
   const REST_MS = 2400;
+  /** Between two parts of a chained demo: long enough to read the outcome, short enough to feel like one film. */
+  const CHAPTER_REST_MS = 1400;
   function running(): boolean {
     // An engine that cannot list animations is assumed to be playing.
     if (!stage?.getAnimations) return true;
@@ -43,7 +52,8 @@
   });
   $effect(() => {
     if (!finished || !seen || paused) return;
-    const timer = setTimeout(() => { replay++; }, REST_MS);
+    const next = onend;
+    const timer = next ? setTimeout(next, CHAPTER_REST_MS) : setTimeout(() => { replay++; }, REST_MS);
     return () => clearTimeout(timer);
   });
   function ended() { if (!running()) finished = true; }
@@ -62,10 +72,8 @@
   <div class="chrome"><BoiteMark size={16} /><span class="ui-label">{t.task}</span><span class="chrome-end"><Check size={14} /></span></div>
 {/snippet}
 
-<figure data-testid="onboarding-scene" data-scene={scene} bind:this={figure} class:paused class:held={!seen} class:playing={seen && !paused && !finished}>
-  {#key `${scene}-${replay}`}
-    <div class="stage {scene}" role="img" aria-label={description} data-testid="onboarding-animation" bind:this={stage} onanimationend={ended}>
-      {#if scene === 'welcome'}
+{#snippet art(part: Scene)}
+      {#if part === 'welcome'}
         <ul class="tasks">
           {#each [{ name: t.task, provider: 'claude', result: t.taskResult }, { name: t.secondTask, provider: 'codex', result: t.loginResult }, { name: t.thirdTask, provider: 'claude', result: t.testsResult }] as item, i (i)}
             <li class="task" style:--order={i}>
@@ -75,7 +83,7 @@
             </li>
           {/each}
         </ul>
-      {:else if scene === 'agents'}
+      {:else if part === 'agents'}
         <div class="mini-app">
           {@render threadHeader()}
           <div class="conversation">
@@ -96,7 +104,7 @@
           </div>
         </div>
         <div class="scene-outcome"><span class="before-handoff"><ArrowDown size={16} /><span class="ui-label">{t.chooseAgent}</span></span><span class="after-handoff"><Check size={16} /><span class="ui-label">{t.handoff}</span></span></div>
-      {:else if scene === 'voice'}
+      {:else if part === 'voice'}
         <div class="voice-sequence"><span><b>1</b>{t.record}</span><span><b>2</b>{t.speak}</span><span><b>3</b>{t.review}</span></div>
         <div class="mini-app">
           {@render threadHeader()}
@@ -116,7 +124,7 @@
             <div class="composer-tools"><span class="local"><LockKeyhole size={13} /><span class="ui-label">{t.localLabel}</span></span><div class="voice-actions"><span class="mic-target"><Mic size={20} />{@render pointer('mic-pointer')}</span><span class="send voice-send"><ArrowUp size={17} /></span></div></div>
           </div>
         </div>
-      {:else if scene === 'panel'}
+      {:else if part === 'panel'}
         <div class="mini-app">
           {@render threadHeader()}
           <div class="split-view">
@@ -125,13 +133,13 @@
           </div>
         </div>
         <div class="scene-outcome"><Check size={16} /><span class="ui-label">{t.changesReady}</span></div>
-      {:else if scene === 'usage'}
+      {:else if part === 'usage'}
         <div class="desktop-space">
           <div class="quota-popup"><div class="quota-title"><ProviderLogo providerId="claude" size={22} /><strong class="ui-label">{t.usageLabel}</strong></div><div class="quota-value"><span>{t.window}</span><strong>{t.used}</strong></div><div class="quota-track"><span></span></div><p>{t.reset}</p></div>
           <div class="tray-instruction"><span class="ui-label">{t.hoverTray}</span><ArrowDown size={18} /></div>
           <div class="taskbar"><span class="desktop-app"><Folder size={18} /></span><span class="desktop-app"><Monitor size={18} /></span><div class="system-tray"><ChevronDown size={14} /><span class="tray-target"><BoiteMark size={20} />{@render pointer('tray-pointer')}</span><VolumeX size={16} /><span class="clock ui-label">14:32</span></div></div>
         </div>
-      {:else if scene === 'reach'}
+      {:else if part === 'reach'}
         <!-- The same three lines on both screens: the picture says "same conversation" without text to read. -->
         {#snippet chat()}
           <span class="line user-line"></span>
@@ -147,10 +155,33 @@
       {:else}
         <div class="quiet-desktop"><div class="background-agent"><BoiteMark size={18} /><span class="ui-label">{t.background}</span></div><div class="notes"><div class="chrome"><FileCode2 size={15} /><span class="ui-label">{t.notes}</span><span class="chrome-end"><VolumeX size={15} /></span></div><strong>{t.writing}</strong><p><span class="empty-check"></span>{t.noteOne}</p><p><span class="empty-check"></span>{t.noteTwo}<span class="caret"></span></p></div><div class="notification"><Bell size={18} /><div><strong>Boite</strong><span>{t.notification}</span></div><Check size={16} /></div></div>
       {/if}
+{/snippet}
+
+<figure data-testid="onboarding-scene" data-scene={scene} bind:this={figure} class:paused class:held={!seen} class:playing={seen && !paused && !finished}>
+  <!-- A chained demo stacks its other parts, unseen, in the same cell: the tallest sets the height, so the segments never move. -->
+  <div class="hold" class:chained={!!chapters}>
+  <!-- Each other part, still and unseen, only lends its height. -->
+  {#each chapters?.filter((chapter) => chapter.id !== scene) ?? [] as chapter (chapter.id)}<div class="stage {chapter.id} measure-scene" aria-hidden="true" inert>{@render art(chapter.id)}</div>{/each}
+  <div class="body">
+  {#key `${scene}-${replay}`}
+    <div class="stage {scene}" role="img" aria-label={description} data-testid="onboarding-animation" bind:this={stage} onanimationend={ended}>
+      {@render art(scene)}
     </div>
   {/key}
+  {@render extra?.()}
+  </div>
+  </div>
   <!-- Keep playback controls below the scene so touch devices can read every row. -->
   <div class="controls">
+    {#if chapters}
+      <div class="chapters" role="group" aria-label={description} style:--parts={chapters.length}>
+        {#each chapters as chapter, index (chapter.id)}
+          <button class="chapter" class:past={index < position} class:current={index === position} aria-current={index === position ? 'step' : undefined} data-testid="onboarding-example-{chapter.id}" onclick={() => onpick?.(chapter.id)}>
+            <span class="track">{#key `${scene}-${replay}`}<span class="fill"></span>{/key}</span><span class="ui-label">{chapter.label}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
     <button class="ghost icon" aria-pressed={paused} aria-label={paused ? t.resume : t.pause} title={paused ? t.resume : t.pause} data-testid="onboarding-animation-pause" onclick={() => paused = !paused}>{#if paused}<Play size={14} />{:else}<Pause size={14} />{/if}</button>
     <button class="ghost icon" aria-label={t.play} title={t.play} data-testid="onboarding-animation-replay" onclick={() => { paused = false; replay++; }}><RotateCcw size={14} /></button>
   </div>
@@ -166,16 +197,40 @@
   figure.playing::after { opacity: 1; animation: glow calc(var(--dur-3) * 8) ease-in-out infinite alternate; }
   /* Reserve a small row for playback so controls never cover the illustration: hidden, they rise no further than their margin. */
   .controls { position: relative; z-index: 2; display: flex; align-items: center; justify-content: flex-end; gap: 2px; height: 28px; margin-top: 2px; opacity: 0; transform: translateY(-2px); transition: opacity var(--dur-2) var(--ease-out-quint), transform var(--dur-2) var(--ease-out-quint); }
-  .controls button { width: 28px; height: 28px; color: var(--color-muted-foreground); }
-  .controls button:hover { color: var(--color-foreground); }
+  .controls > button { width: 28px; height: 28px; color: var(--color-muted-foreground); }
+  .controls > button:hover { color: var(--color-foreground); }
   figure:hover .controls, figure:focus-within .controls, figure.paused .controls { opacity: 1; transform: none; }
   /* Without a pointer that hovers, the controls stay in view. */
   @media (hover: none) { .controls { opacity: 1; transform: none; } }
+  /* A chained demo's parts stay in view: they are its progress, the pause and replay beside them still wait for the pointer. */
+  .controls:has(.chapters) { opacity: 1; transform: none; height: auto; margin-top: 6px; }
+  .controls:has(.chapters) > button { opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+  figure:hover .controls > button, figure:focus-within .controls > button, figure.paused .controls > button { opacity: 1; }
+  @media (hover: none) { .controls:has(.chapters) > button { opacity: 1; } }
+  .chapters { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(var(--parts, 3), minmax(0, 1fr)); gap: 8px; margin-right: 8px; }
+  .chapter { display: grid; justify-content: stretch; justify-items: stretch; align-content: start; width: 100%; gap: 6px; height: auto; min-height: 36px; padding: 6px 2px 4px; border: 0; background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); text-align: left; white-space: normal; line-height: 1.3; cursor: pointer; }
+  .chapter:hover, .chapter.current { color: var(--color-foreground); }
+  .chapter.current { font-weight: 600; }
+  .track { display: block; height: 3px; border-radius: 999px; background: var(--color-edge); overflow: hidden; }
+  .fill { display: block; height: 100%; border-radius: inherit; background: var(--color-foreground); transform: scaleX(0); transform-origin: left; }
+  .chapter.past .fill { transform: none; }
+  /* The playing part fills over the scene's own length, and holds with it. */
+  .chapter.current .fill { animation: chapter var(--demo-duration) linear both; }
+  figure[data-scene=agents], figure[data-scene=voice] { --demo-duration: calc(var(--dur-demo-step) * 22); }
+  figure { --demo-duration: calc(var(--dur-demo-step) * 16); }
+  :is(.paused, .held) .fill { animation-play-state: paused !important; }
+  @keyframes chapter { from { transform: scaleX(0); } to { transform: none; } }
+  @media (max-width: 480px) { .chapter { min-height: var(--touch-target); font-size: var(--text-xs); } }
   /* Its own clock: a GIF keeps its pace when the app's motion tokens drop to zero under reduced motion. */
   .stage { --demo-step: var(--dur-demo-step); --demo-word: var(--dur-demo-word); --demo-duration: calc(var(--demo-step) * 16); font-size: var(--text-sm); line-height: 1.5; color: var(--color-foreground); }
   /* The two conversation demos carry text to read; the others are over in under four seconds. */
   .stage.agents, .stage.voice { --demo-duration: calc(var(--demo-step) * 22); }
   .stage :global(svg) { flex: none; }
+  .hold.chained { display: grid; }
+  .hold.chained > * { grid-area: 1 / 1; min-width: 0; }
+  .hold.chained .body { display: flex; flex-direction: column; gap: 10px; align-self: center; }
+  .measure-scene { visibility: hidden; pointer-events: none; align-self: center; }
+  .measure-scene, .measure-scene :global(*) { animation: none !important; transition: none !important; }
   .stage p { margin: 0; }
   .mini-app { background: var(--color-surface-2); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-e1); }
   .chrome { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 5px 12px; border-bottom: 1px solid var(--color-border); color: var(--color-muted-foreground); }
