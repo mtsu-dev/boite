@@ -8,17 +8,35 @@ type TestResult = RpcResult<'agents.trigger.test'>;
 
 interface FakeTriggerHost {
   profile: (agentId: string) => AgentProfile;
-  owner: (threadId: string) => string | null;
   project: (projectId: string) => boolean;
   held: (agent: AgentProfile) => 'queued' | 'skipped' | null;
   wake: (trigger: AgentTrigger) => string | null;
   changed: () => void;
 }
 
+function validGlob(pattern: string): boolean {
+  let braces = 0;
+  let inClass = false;
+  for (let index = 0; index < pattern.length; index++) {
+    const ch = pattern[index];
+    if (ch === '[') {
+      if (inClass) return false;
+      inClass = true;
+    } else if (ch === ']') {
+      inClass = false;
+    } else if (!inClass && ch === '{') braces++;
+    else if (!inClass && ch === '}') {
+      if (braces === 0) return false;
+      braces--;
+    }
+  }
+  return !inClass && braces === 0;
+}
+
 export class FakeAgentTriggers {
   readonly #triggers = new Map<string, AgentTrigger>();
   readonly #tests = new Map<string, { triggerId: string; result: TestResult }>();
-  readonly #pending = new Set<string>();
+  readonly #pendingTests = new Set<string>();
 
   constructor(private readonly host: FakeTriggerHost) {}
 
@@ -28,25 +46,34 @@ export class FakeAgentTriggers {
     const value = params.value;
     const agent = this.host.profile(value.agentId);
     const previous = params.id === undefined ? null : this.#get(params.id);
-    this.#allow(params.threadId, agent.id);
     if (previous && previous.agentId !== agent.id) this.#refuse('agentId: a trigger cannot change owner');
     if (previous) {
       const revision = params.expectedRevision ?? 0;
       if (!Number.isSafeInteger(revision) || revision < (previous.configRevision ?? previous.revision) || revision > previous.revision) {
-        this.#refuse('expectedRevision: the trigger changed');
+        throw new RpcFailure({
+          code: RpcErrorCode.Refused,
+          message: `trigger ${previous.id}: expected revision ${previous.revision}, received ${revision}`,
+          data: { kind: 'trigger', id: previous.id, expectedRevision: previous.revision },
+        });
       }
     }
     const webhook = value.source.kind === 'webhook';
     const createsSecret = webhook && previous?.source.kind !== 'webhook';
-    if (createsSecret && params.threadId !== undefined) this.#refuse('source.kind: only the owner can create a webhook trigger');
     if (value.source.kind !== 'webhook' && (value.enabled || !previous || previous.source.kind !== value.source.kind || previous.source.projectId !== value.source.projectId)) {
       if (!agent.projectIds?.includes(value.source.projectId) || !this.host.project(value.source.projectId)) this.#refuse('source.projectId: expected a local project granted to this mochi');
     }
-    if (value.source.kind === 'file' && (!Number.isInteger(value.source.debounceMs) || value.source.debounceMs < 50 || value.source.debounceMs > 60_000
-      || value.source.patterns.length > 20 || new Set(value.source.patterns).size !== value.source.patterns.length
-      || value.source.patterns.some(pattern => pattern.length > 160 || /[\\:\x00-\x1f]/.test(pattern) || pattern.split('/').some(part => !part || part === '.' || part === '..')))) this.#refuse('source: expected relative patterns and a debounce from 50 to 60000 milliseconds');
-    if (value.source.kind === 'pr' && (!value.source.events.length || new Set(value.source.events).size !== value.source.events.length
-      || value.source.events.some(event => !AGENT_TRIGGER_PR_EVENTS.includes(event)))) this.#refuse('source.events: expected pull request events');
+    let normalizedSource = structuredClone(value.source);
+    if (normalizedSource.kind === 'file') {
+      const trimmed = normalizedSource.patterns.map(pattern => pattern.trim());
+      if (!Number.isInteger(normalizedSource.debounceMs) || normalizedSource.debounceMs < 50 || normalizedSource.debounceMs > 60_000
+        || trimmed.length > 20 || new Set(trimmed).size !== trimmed.length
+        || trimmed.some(pattern => !pattern || pattern.length > 160 || /[\\:\x00-\x1f]/.test(pattern) || pattern.split('/').some(part => !part || part === '.' || part === '..') || !validGlob(pattern))) {
+        this.#refuse('source: expected relative patterns and a debounce from 50 to 60000 milliseconds');
+      }
+      normalizedSource = { ...normalizedSource, patterns: trimmed };
+    }
+    if (normalizedSource.kind === 'pr' && (!normalizedSource.events.length || new Set(normalizedSource.events).size !== normalizedSource.events.length
+      || normalizedSource.events.some(event => !AGENT_TRIGGER_PR_EVENTS.includes(event)))) this.#refuse('source.events: expected pull request events');
     if (!value.name.trim() || value.name.length > 80 || !value.prompt.trim() || value.prompt.length > 4000
       || typeof value.enabled !== 'boolean' || !Number.isInteger(value.cooldownSeconds) || value.cooldownSeconds < 1 || value.cooldownSeconds > 86_400) this.#refuse('trigger: check its name, instructions, enabled status and cooldown');
     if (!previous && this.list().filter(trigger => trigger.agentId === agent.id).length >= AGENT_TRIGGERS_MAX) this.#refuse(`trigger: a mochi may have at most ${AGENT_TRIGGERS_MAX} triggers`);
@@ -55,20 +82,19 @@ export class FakeAgentTriggers {
     const revision = (previous?.revision ?? 0) + 1;
     const trigger: AgentTrigger = {
       agentId: agent.id, name: value.name.trim(), prompt: value.prompt.trim(), enabled: value.enabled, cooldownSeconds: value.cooldownSeconds,
-      source: structuredClone(value.source), hasSecret: webhook, webhookPath: webhook ? AGENT_TRIGGER_WEBHOOK_ROUTE + id : null,
+      source: normalizedSource, hasSecret: webhook, webhookPath: webhook ? AGENT_TRIGGER_WEBHOOK_ROUTE + id : null,
       id, revision, configRevision: revision, createdAt: previous?.createdAt ?? now, updatedAt: now,
       lastFiredAt: previous?.lastFiredAt ?? null, lastOutcome: previous?.lastOutcome === 'queued' ? 'skipped' : previous?.lastOutcome ?? null,
     };
-    this.#pending.delete(id);
+    this.#pendingTests.delete(id);
     this.#put(trigger);
     return { trigger: structuredClone(trigger), ...(createsSecret ? { secret: this.#secret() } : {}) };
   }
 
   remove(params: RpcParams<'agents.trigger.remove'>): { removed: true } {
     const trigger = this.#get(params.triggerId);
-    this.#allow(params.threadId, trigger.agentId);
     this.#triggers.delete(trigger.id);
-    this.#pending.delete(trigger.id);
+    this.#pendingTests.delete(trigger.id);
     this.host.changed();
     return { removed: true };
   }
@@ -99,7 +125,7 @@ export class FakeAgentTriggers {
   }
 
   flush(agentId: string): void {
-    for (const id of this.#pending) {
+    for (const id of this.#pendingTests) {
       const trigger = this.#get(id);
       if (trigger.agentId === agentId) this.#dispatch(trigger, trigger.lastFiredAt);
     }
@@ -111,8 +137,8 @@ export class FakeAgentTriggers {
     const held = revoked ? 'skipped' : this.host.held(agent);
     const turnId = held === null ? this.host.wake(trigger) : null;
     const outcome = held ?? (turnId ? 'fired' : 'error');
-    if (outcome === 'queued') this.#pending.add(trigger.id);
-    else this.#pending.delete(trigger.id);
+    if (outcome === 'queued') this.#pendingTests.add(trigger.id);
+    else this.#pendingTests.delete(trigger.id);
     if (trigger.lastOutcome !== outcome || trigger.lastFiredAt !== at) {
       this.#put({ ...trigger, lastFiredAt: at, lastOutcome: outcome, revision: trigger.revision + 1, updatedAt: Date.now() });
     }
@@ -129,10 +155,6 @@ export class FakeAgentTriggers {
     this.#triggers.set(trigger.id, trigger);
     this.host.changed();
     return structuredClone(trigger);
-  }
-
-  #allow(threadId: string | undefined, agentId: string): void {
-    if (threadId !== undefined && this.host.owner(threadId) !== agentId) this.#refuse('agentId: a mochi configures only its own triggers from its own thread');
   }
 
   #secret(): string {

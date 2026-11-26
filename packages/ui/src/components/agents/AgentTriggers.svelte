@@ -54,4 +54,7 @@
   .agent-triggers { gap: 8px; }
   .agent-triggers .agent-pane-head { margin-bottom: 0; align-items: center; }
   .agent-triggers h2, .empty { margin: 0; }
+  @media (max-width: 720px) {
+    .desk-label button { min-width: var(--control-touch); min-height: var(--control-touch); }
+  }
 </style>

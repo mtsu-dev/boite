@@ -121,7 +121,7 @@ export type AgentTriggerSource =
   | { kind: 'pr'; projectId: string; events: AgentTriggerPrEvent[] };
 export type AgentTriggerEvent =
   | { kind: 'webhook'; summary: string; eventName?: string }
-  | { kind: 'file'; paths: string[] }
+  | { kind: 'file'; paths: string[]; more?: number }
   | { kind: 'pr'; events: AgentTriggerPrEvent[]; url: string };
 export interface AgentTriggerConfig {
   agentId: string;
@@ -468,8 +468,8 @@ export interface AgentsRpcMethods {
   'agents.routine.remove': { params: { routineId: string; threadId?: string }; result: { removed: true } };
   /** Runs a routine now, as a turn on the agent's thread. Refused while that thread has a turn in flight. */
   'agents.routine.run': { params: { routineId: string; requestId: string }; result: { turnId: string } };
-  'agents.trigger.save': { params: { id?: string; expectedRevision?: number; value: AgentTriggerConfig; threadId?: string }; result: { trigger: AgentTrigger; secret?: string } };
-  'agents.trigger.remove': { params: { triggerId: string; threadId?: string }; result: { removed: true } };
+  'agents.trigger.save': { params: { id?: string; expectedRevision?: number; value: AgentTriggerConfig }; result: { trigger: AgentTrigger; secret?: string } };
+  'agents.trigger.remove': { params: { triggerId: string }; result: { removed: true } };
   'agents.trigger.test': { params: { triggerId: string; requestId: string }; result: { outcome: NonNullable<AgentTrigger['lastOutcome']>; turnId: string | null } };
   'agents.trigger.rotateSecret': { params: { triggerId: string }; result: { trigger: AgentTrigger; secret: string } };
   /**

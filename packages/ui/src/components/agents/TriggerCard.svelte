@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Copy, Files, FlaskConical, GitPullRequest, Pencil, RotateCw, Trash2, Webhook, X } from '@lucide/svelte';
+  import { Check, Copy, Files, FlaskConical, GitPullRequest, Pencil, RotateCw, Trash2, Webhook, X } from '@lucide/svelte';
   import type { AgentTrigger } from '@boite/contracts';
   import { triggerWebhookUrl } from '../../lib/agent-trigger';
   import type { AgentsView } from '../../lib/agents.svelte';
@@ -30,6 +30,7 @@
   const endpoint = $derived(trigger.webhookPath
     ? triggerWebhookUrl(trigger.webhookPath, view.store.endpointUrl, view.store.settings?.publicUrl ?? null, view.store.group, location.origin)
     : null);
+  const isLocalEndpoint = $derived(endpoint !== null && /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::|\/|$)/i.test(endpoint));
   const address = $derived(endpoint ?? trigger.webhookPath);
   const addressLabel = $derived(endpoint ? t.endpoint : t.endpointPath);
   let endpointField = $state<HTMLInputElement>();
@@ -68,7 +69,7 @@
       {#if last}<span class="trigger-last" class:failed={trigger.lastOutcome === 'error'}>{last}</span>{/if}
     </div>
     {#if canEdit}
-      <SettingSwitch checked={trigger.enabled} aria-label={trigger.enabled ? t.active : t.inactive} disabled={view.pending} onchange={() => void toggle()} />
+      <SettingSwitch checked={trigger.enabled} aria-label={fill(t.toggleLabel, { name: trigger.name })} disabled={view.pending} onchange={() => void toggle()} />
     {:else}<span class="routine-state">{trigger.enabled ? t.active : t.inactive}</span>{/if}
   </header>
   {#if address}
@@ -76,8 +77,11 @@
       {#if !endpoint}<p class="hint">{t.endpointPath}</p>{/if}
       <div class="copy-line">
         <input type="text" readonly value={address} bind:this={endpointField} aria-label={addressLabel} title={addressLabel} />
-        <button type="button" class="small ghost icon" title={copied === 'endpoint' ? t.copied : addressLabel} aria-label={addressLabel} onclick={() => void copy('endpoint', address, endpointField)}><Copy size={14} strokeWidth={1.75} /></button>
+        <button type="button" class="small ghost icon" title={copied === 'endpoint' ? t.copied : fill(t.copyEndpoint, { name: trigger.name })} aria-label={copied === 'endpoint' ? t.copied : fill(t.copyEndpoint, { name: trigger.name })} onclick={() => void copy('endpoint', address, endpointField)}>
+          {#if copied === 'endpoint'}<Check size={14} strokeWidth={1.75} />{:else}<Copy size={14} strokeWidth={1.75} />{/if}
+        </button>
       </div>
+      {#if !compact && isLocalEndpoint}<p class="hint">{t.localOnly}</p>{/if}
       {#if !compact}<p class="hint">{t.auth}</p>{/if}
       {#if secret && canEdit}
         <div class="secret-display" data-testid="trigger-secret">
@@ -86,7 +90,7 @@
           </div>
           <div class="copy-line">
             <input type="text" readonly value={secret} bind:this={secretField} aria-label={t.secret} autocomplete="off" spellcheck="false" />
-            <button type="button" class="small ghost" aria-label={t.copy} onclick={() => void copy('secret', secret, secretField)}><Copy size={14} strokeWidth={1.75} />{copied === 'secret' ? t.copied : t.copy}</button>
+            <button type="button" class="small ghost" aria-label={copied === 'secret' ? t.copied : t.copy} onclick={() => void copy('secret', secret, secretField)}><Copy size={14} strokeWidth={1.75} />{copied === 'secret' ? t.copied : t.copy}</button>
           </div>
           <p class="hint">{t.secretHint}</p>
         </div>
@@ -95,15 +99,15 @@
   {/if}
   {#if canEdit}
     <div class="agent-actions">
-      <button type="button" class="small" disabled={view.pending || !trigger.enabled} title={t.test} aria-label={t.test}
+      <button type="button" class="small" disabled={view.pending || !trigger.enabled} title={t.test} aria-label={fill(t.testLabel, { name: trigger.name })}
         onclick={() => void view.call('agents.trigger.test', { triggerId: trigger.id, requestId: secureId() })} data-testid="trigger-test">
         <FlaskConical size={13} strokeWidth={1.75} />{#if !compact}{t.test}{/if}
       </button>
-      <button type="button" class="small ghost" disabled={view.pending} title={strings.agents.edit} aria-label={strings.agents.edit} onclick={onedit} data-testid="trigger-edit"><Pencil size={13} strokeWidth={1.75} />{#if !compact}{strings.agents.edit}{/if}</button>
+      <button type="button" class="small ghost" disabled={view.pending} title={strings.agents.edit} aria-label={fill(t.editLabel, { name: trigger.name })} onclick={onedit} data-testid="trigger-edit"><Pencil size={13} strokeWidth={1.75} />{#if !compact}{strings.agents.edit}{/if}</button>
       {#if trigger.hasSecret}
-        <button type="button" class="small ghost" disabled={view.pending} title={t.rotate} aria-label={t.rotate} onclick={() => void rotate()}><RotateCw size={13} strokeWidth={1.75} />{#if !compact}{t.rotate}{/if}</button>
+        <button type="button" class="small ghost" disabled={view.pending} title={t.rotate} aria-label={fill(t.rotateLabel, { name: trigger.name })} onclick={() => void rotate()}><RotateCw size={13} strokeWidth={1.75} />{#if !compact}{t.rotate}{/if}</button>
       {/if}
-      <button type="button" class="small ghost" disabled={view.pending} title={strings.agents.remove} aria-label={strings.agents.remove} onclick={() => void remove()}><Trash2 size={13} strokeWidth={1.75} />{#if !compact}{strings.agents.remove}{/if}</button>
+      <button type="button" class="small ghost" disabled={view.pending} title={strings.agents.remove} aria-label={fill(t.removeLabel, { name: trigger.name })} onclick={() => void remove()}><Trash2 size={13} strokeWidth={1.75} />{#if !compact}{strings.agents.remove}{/if}</button>
     </div>
   {/if}
 </article>
@@ -128,6 +132,7 @@
   .secret-head { display: flex; align-items: center; justify-content: space-between; }
   @media (max-width: 720px) {
     .webhook-fields { margin-left: 0; }
-    .compact .agent-actions button { min-width: var(--control-touch); min-height: var(--control-touch); }
+    .compact .agent-actions button,
+    .copy-line button { min-width: var(--control-touch); min-height: var(--control-touch); }
   }
 </style>

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { createHmac } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import * as fs from 'node:fs';
 import * as files from 'node:fs/promises';
 import { request, type ClientRequest } from 'node:http';
@@ -9,7 +9,9 @@ import { basename, dirname, join, sep } from 'node:path';
 import type { AgentTrigger, AgentTriggerSource } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { botCommand } from '../src/agents/cli.ts';
+import { PATHS_PER_EVENT, TriggerRootProbes, watchTriggerFiles } from '../src/agents/trigger-files.ts';
 import { TriggerSecrets } from '../src/agents/trigger-secrets.ts';
+import { WEBHOOK_MAX_BODY_BYTES } from '../src/agents/trigger-webhook.ts';
 import { makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -43,15 +45,15 @@ async function saveWatching(folder: string, agentId: string, source: AgentTrigge
 }
 
 function holdRootProbe(folder: string) {
-  const root = fs.statSync(folder, { bigint: true });
+  const root = fs.lstatSync(folder, { bigint: true });
   const held = Promise.withResolvers<fs.BigIntStats>();
-  const real = files.stat;
+  const real = files.lstat;
   let calls = 0;
-  const probe = spyOn(files, 'stat').mockImplementation(((path: fs.PathLike, options?: object) => {
+  const probe = spyOn(files, 'lstat').mockImplementation(((path: fs.PathLike, options?: object) => {
     if (path !== folder || !options || !('bigint' in options)) return real(path, options as never);
     calls++;
     return held.promise;
-  }) as typeof files.stat);
+  }) as typeof files.lstat);
   return {
     calls: () => calls,
     finish(error?: Error) {
@@ -106,7 +108,7 @@ const oldEnough = (trigger: AgentTrigger) => {
   h.core.workforce.records.update('trigger', current.id, current.revision, { ...current, lastFiredAt: Date.now() - 61_000 });
 };
 
-test('a webhook authenticates three ways, caps and quotes its body, rotates without leaking the secret, and enforces cooldown', async () => {
+test('a webhook authenticates three ways, streams up to 1 MiB, blocks replays, rotates without leaking, and enforces cooldown', async () => {
   const { agent, threadId } = await makeAgent(h, owner);
   const { trigger, secret } = await save(agent.id, { kind: 'webhook' });
   expect(secret).toMatch(/^[a-f0-9]{64}$/);
@@ -122,18 +124,20 @@ test('a webhook authenticates three ways, caps and quotes its body, rotates with
   expect((await post(trigger)).status).toBe(401);
   expect((await post(trigger, { 'x-boite-secret': 'no' })).status).toBe(401);
   expect((await post(trigger, { 'x-hub-signature-256': 'sha256=' + '0'.repeat(64) })).status).toBe(401);
-  expect((await post(trigger, { authorization: `Bearer ${secret}` }, 'x'.repeat(65_537))).status).toBe(413);
+  expect((await post(trigger, { authorization: `Bearer ${secret}` }, 'x'.repeat(WEBHOOK_MAX_BODY_BYTES + 1))).status).toBe(413);
   const stream = new ReadableStream<Uint8Array>({ start(controller) {
-    controller.enqueue(new Uint8Array(33_000));
-    controller.enqueue(new Uint8Array(33_000));
+    controller.enqueue(new Uint8Array(600_000));
+    controller.enqueue(new Uint8Array(600_000));
     controller.close();
   } });
   expect((await post(trigger, { 'x-boite-secret': secret! }, stream)).status).toBe(413);
 
-  const body = JSON.stringify({ action: 'verified', token: secret, long: 'x'.repeat(2000) + 'omitted-marker' });
+  const body = JSON.stringify({ action: 'verified', token: secret, long: 'x'.repeat(80_000) + 'omitted-marker' });
   const signature = createHmac('sha256', secret!).update(body).digest('hex');
   expect((await post(trigger, { 'x-hub-signature-256': `sha256=${signature}`, 'x-github-event': 'push' }, body + '!')).status).toBe(401);
-  expect((await post(trigger, { 'x-hub-signature-256': `SHA256=${signature.toUpperCase()}`, 'x-github-event': 'push' }, body)).status).toBe(202);
+  expect((await post(trigger, {
+    'x-hub-signature-256': `SHA256=${signature.toUpperCase()}`, 'x-github-event': 'push', 'x-github-delivery': 'delivery-1',
+  }, body)).status).toBe(202);
   await waitFor(() => driver.prompts.get(threadId)?.length === 2 && settled(h, threadId));
   expect(driver.prompts.get(threadId)!.at(-1)).toContain('verified');
   expect(driver.prompts.get(threadId)!.at(-1)).toContain('[redacted]');
@@ -143,6 +147,14 @@ test('a webhook authenticates three ways, caps and quotes its body, rotates with
   const limited = await post(trigger, { authorization: `Bearer ${secret}` });
   expect(limited.status).toBe(429);
   expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+
+  oldEnough(trigger);
+  expect((await post(trigger, {
+    'x-hub-signature-256': `sha256=${signature}`, 'x-github-delivery': 'delivery-1',
+  }, body)).status).toBe(409);
+  // Even without X-GitHub-Delivery, replaying the exact signed body within the window returns 409.
+  expect((await post(trigger, { 'x-hub-signature-256': `sha256=${signature}` }, body)).status).toBe(409);
+
   const rotated = await owner.call('agents.trigger.rotateSecret', { triggerId: trigger.id });
   expect(rotated.secret).not.toBe(secret);
   expect(settingsWithSecret.all(rotated.secret)).toEqual([]);
@@ -160,7 +172,7 @@ test('a webhook authenticates three ways, caps and quotes its body, rotates with
   expect(new TriggerSecrets(h.dataDir).get(trigger.id)).toBeUndefined();
 });
 
-test('malformed signatures leave the body alone and incomplete signed requests cannot hold other webhooks', async () => {
+test('malformed signatures leave the body alone and one slow source cannot starve another source on the same trigger', async () => {
   const { agent } = await makeAgent(h, owner);
   const first = await save(agent.id, { kind: 'webhook' }, 'First');
   const second = await save(agent.id, { kind: 'webhook' }, 'Second');
@@ -170,7 +182,7 @@ test('malformed signatures leave the body alone and incomplete signed requests c
     const url = new URL(trigger.webhookPath!, h.url.replace(/^ws/, 'http'));
     return h.core.workforce.triggers.http(new Request(url.href, { method: 'POST', headers, body }), trigger.id, source);
   };
-  const bad = await call(first.trigger, 'source-a', { 'x-hub-signature-256': 'malformed', 'content-length': '65537' });
+  const bad = await call(first.trigger, 'source-a', { 'x-hub-signature-256': 'malformed', 'content-length': String(WEBHOOK_MAX_BODY_BYTES + 1) });
   expect(bad.status).toBe(401);
 
   const held: { close: () => void; response: Promise<Response> }[] = [];
@@ -182,12 +194,15 @@ test('malformed signatures leave the body alone and incomplete signed requests c
   try {
     hold(first.trigger);
     hold(first.trigger);
-    expect((await call(first.trigger, 'source-b', { 'x-hub-signature-256': signature })).status).toBe(429);
+    expect((await call(first.trigger, 'source-a', { 'x-hub-signature-256': signature })).status).toBe(429);
+    const firstAccepted = createHmac('sha256', first.secret!).update('{}').digest('hex');
+    expect((await call(first.trigger, 'source-b', { 'x-hub-signature-256': 'sha256=' + firstAccepted })).status).toBe(202);
     hold(second.trigger);
     hold(second.trigger);
     expect((await call(third.trigger, 'source-a', { 'x-hub-signature-256': signature })).status).toBe(429);
     const accepted = createHmac('sha256', third.secret!).update('{}').digest('hex');
     expect((await call(third.trigger, 'source-b', { 'x-hub-signature-256': 'sha256=' + accepted })).status).toBe(202);
+    oldEnough(first.trigger);
     expect((await call(first.trigger, 'source-a', { 'x-boite-secret': first.secret! })).status).toBe(202);
   } finally {
     for (const request of held) request.close();
@@ -236,23 +251,34 @@ test('a trigger edit can use its opening revision after an event updates its out
   expect(await thrown(owner.call('agents.trigger.save', edit))).toThrow('expected revision');
 });
 
-test('test events are idempotent, queue while working, and respect the core pause', async () => {
+test('test events are idempotent, queue without clobbering real events or cooldown, and respect the core pause', async () => {
   const { agent, threadId } = await makeAgent(h, owner);
-  const { trigger } = await save(agent.id, { kind: 'webhook' });
+  const { trigger, secret } = await save(agent.id, { kind: 'webhook' });
   expect(await botCommand(owner, threadId, ['triggers'])).toEqual([trigger]);
   await owner.call('turns.start', { threadId, prompt: 'manual hold' });
   await waitFor(() => driver.held.length === 1);
+  expect((await post(trigger, { 'x-boite-secret': secret! }, JSON.stringify({ real: 'payload' }))).status).toBe(202);
   const params = { triggerId: trigger.id, requestId: 'trigger-check-1' };
   const queued = await owner.call('agents.trigger.test', params);
   expect(queued).toEqual({ outcome: 'queued', turnId: null });
   expect(await owner.call('agents.trigger.test', params)).toEqual(queued);
   driver.release();
-  await waitFor(() => read(trigger).lastOutcome === 'fired' && settled(h, threadId));
-  expect(driver.prompts.get(threadId)?.filter(prompt => prompt.includes('sample event'))).toHaveLength(1);
+  await waitFor(() => (driver.prompts.get(threadId)?.length ?? 0) === 4 && settled(h, threadId));
+  const prompts = driver.prompts.get(threadId)!;
+  expect(prompts.some(prompt => prompt.includes('payload'))).toBe(true);
+  expect(prompts.filter(prompt => prompt.includes('sample event'))).toHaveLength(1);
   expect(await owner.call('agents.trigger.test', params)).toEqual(queued);
+
+  // A standalone test run does not start a cooldown against subsequent real webhooks.
+  oldEnough(trigger);
+  await owner.call('agents.trigger.test', { triggerId: trigger.id, requestId: 'trigger-check-cooldown' });
+  await waitFor(() => turnsOf(h, threadId).length === 5 && settled(h, threadId));
+  expect((await post(trigger, { 'x-boite-secret': secret! }, JSON.stringify({ afterTest: true }))).status).toBe(202);
+  await waitFor(() => turnsOf(h, threadId).length === 6 && settled(h, threadId));
+
   await owner.call('agents.limits.set', { paused: true });
   expect(await owner.call('agents.trigger.test', { ...params, requestId: 'trigger-check-2' })).toEqual({ outcome: 'skipped', turnId: null });
-  expect(turnsOf(h, threadId)).toHaveLength(3);
+  expect(turnsOf(h, threadId)).toHaveLength(6);
 });
 
 test('file watches debounce matching paths and stop on edit, disable, removal and shutdown', async () => {
@@ -329,7 +355,7 @@ test('a file trigger reports an unavailable project and resumes watching when it
   expect(read(trigger).configRevision).toBe(trigger.configRevision);
 });
 
-test('an active file trigger follows a replacement directory and drops the old watcher batch', async () => {
+test.skipIf(process.platform === 'win32')('an active file trigger follows a replacement directory and drops the old watcher batch', async () => {
   const folder = join(h.dataDir, 'project');
   const moved = folder + '-away';
   mkdirSync(folder);
@@ -361,7 +387,7 @@ test('an active file trigger follows a replacement directory and drops the old w
   expect(read(trigger).configRevision).toBe(trigger.configRevision);
 }, 10_000);
 
-test('a file event queued behind a busy mochi is skipped if its watched directory was replaced', async () => {
+test.skipIf(process.platform === 'win32')('a file event queued behind a busy mochi is skipped if its watched directory was replaced', async () => {
   const folder = join(h.dataDir, 'project');
   mkdirSync(folder);
   const project = await owner.call('projects.add', { path: folder, name: 'Project' });
@@ -395,12 +421,12 @@ test('a stalled root probe leaves the RPC responsive and holds file wakes across
   await waitFor(() => read(trigger).lastOutcome === 'queued');
 
   const held = holdRootProbe(folder);
-  const realSync = fs.statSync;
+  const realSync = fs.lstatSync;
   let syncReads = 0;
-  const sync = spyOn(fs, 'statSync').mockImplementation(((path: fs.PathLike, options?: object) => {
+  const sync = spyOn(fs, 'lstatSync').mockImplementation(((path: fs.PathLike, options?: object) => {
     if (path === folder && options && 'bigint' in options) syncReads++;
     return realSync(path, options as never);
-  }) as typeof fs.statSync);
+  }) as typeof fs.lstatSync);
   const triggers = h.core.workforce.triggers;
   try {
     triggers.tick();
@@ -528,15 +554,15 @@ test.skipIf(process.platform !== 'linux')('native renames of a child named like 
     writeFileSync(join(folder, 'notes.txt'), '');
     await waitFor(() => read(trigger).lastOutcome === 'queued');
 
-    const root = fs.statSync(folder, { bigint: true });
+    const root = fs.lstatSync(folder, { bigint: true });
     const releaseProbes: Array<(root: fs.BigIntStats) => void> = [];
-    const realStat = files.stat;
-    const stat = spyOn(files, 'stat').mockImplementation(((path: fs.PathLike, options?: object) => {
+    const realStat = files.lstat;
+    const stat = spyOn(files, 'lstat').mockImplementation(((path: fs.PathLike, options?: object) => {
       if (path !== folder || !options || !('bigint' in options)) return realStat(path, options as never);
       const probe = Promise.withResolvers<fs.BigIntStats>();
       releaseProbes.push(probe.resolve);
       return probe.promise;
-    }) as typeof files.stat);
+    }) as typeof files.lstat);
     try {
       h.core.workforce.triggers.tick();
       await waitFor(() => releaseProbes.length === 1);
@@ -697,6 +723,8 @@ test('the PR tracker sends matching transitions of a granted project without a s
   const projectId = h.core.journal.getThread(projectThread)!.projectId!;
   const { agent, threadId } = await makeAgent(h, owner, { projectIds: [projectId] });
   const { trigger } = await save(agent.id, { kind: 'pr', projectId, events: ['ci_failed', 'review_requested', 'changes_requested', 'conflict', 'merged'] });
+  const { agent: paused } = await makeAgent(h, owner, { projectIds: [projectId], status: 'paused' });
+  const { trigger: pausedTrigger } = await save(paused.id, { kind: 'pr', projectId, events: ['ci_failed', 'merged'] }, 'Paused PR');
   const { agent: outside } = await makeAgent(h, owner);
   expect(await thrown(save(outside.id, { kind: 'pr', projectId, events: ['merged'] }))).toThrow('granted');
   const other = await owner.call('threads.create', { projectId, providerId: 'echo', accountId, title: 'Another PR watch' });
@@ -744,6 +772,7 @@ test('the PR tracker sends matching transitions of a granted project without a s
   const prompt = driver.prompts.get(threadId)!.at(-1)!;
   for (const event of ['ci_failed', 'review_requested', 'changes_requested', 'conflict']) expect(prompt).toContain(event);
   expect(prompt).toContain(url);
+  expect(read(pausedTrigger)).toMatchObject({ lastFiredAt: null, lastOutcome: null });
   oldEnough(trigger);
   await watches.pass();
   expect(turnsOf(h, threadId)).toHaveLength(2);
@@ -758,21 +787,161 @@ test('the PR tracker sends matching transitions of a granted project without a s
   await waitFor(() => settled(h, threadId));
   expect(driver.prompts.get(threadId)!.at(-1)).toContain('ci_failed');
 
-  baseCheck = { status: 'COMPLETED', completedAt: '2026-11-25T12:15:00Z' };
+  // A second failed run of the same check between two polls (no intermediate PENDING) still fires.
+  statusCreatedAt = '2026-11-25T12:12:00Z';
   await watches.pass();
   expect(turnsOf(h, threadId)).toHaveLength(4);
+  await waitFor(() => settled(h, threadId));
+  expect(driver.prompts.get(threadId)!.at(-1)).toContain('ci_failed');
+
+  baseCheck = { status: 'COMPLETED', completedAt: '2026-11-25T12:15:00Z' };
+  await watches.pass();
+  expect(turnsOf(h, threadId)).toHaveLength(5);
   await waitFor(() => settled(h, threadId));
   baseCheck = { status: 'IN_PROGRESS' };
   await watches.pass();
   baseCheck = { status: 'COMPLETED', completedAt: '2026-11-25T12:20:00Z' };
   await watches.pass();
-  expect(turnsOf(h, threadId)).toHaveLength(5);
+  expect(turnsOf(h, threadId)).toHaveLength(6);
+  await waitFor(() => settled(h, threadId));
+  expect(driver.prompts.get(threadId)!.at(-1)).toContain('ci_failed');
+
+  // Consecutive failed base runs without an intermediate IN_PROGRESS poll still fire.
+  baseCheck = { status: 'COMPLETED', completedAt: '2026-11-25T12:22:00Z' };
+  await watches.pass();
+  expect(turnsOf(h, threadId)).toHaveLength(7);
   await waitFor(() => settled(h, threadId));
   expect(driver.prompts.get(threadId)!.at(-1)).toContain('ci_failed');
 
   state = 'MERGED';
   await watches.pass();
-  await waitFor(() => (driver.prompts.get(threadId)?.length ?? 0) >= 6 && read(trigger).lastOutcome !== 'queued' && settled(h, threadId));
-  expect(turnsOf(h, threadId)).toHaveLength(6);
+  await waitFor(() => (driver.prompts.get(threadId)?.length ?? 0) >= 8 && read(trigger).lastOutcome !== 'queued' && settled(h, threadId));
+  expect(turnsOf(h, threadId)).toHaveLength(8);
   expect(driver.prompts.get(threadId)!.at(-1)).toContain('merged');
+  expect(read(pausedTrigger)).toMatchObject({ lastFiredAt: null, lastOutcome: null });
 });
+
+test('a file trigger rejects a project root replaced by a symlink or junction', async () => {
+  const folder = join(h.dataDir, 'project');
+  const outside = join(h.dataDir, 'outside');
+  mkdirSync(folder);
+  mkdirSync(outside);
+  const project = await owner.call('projects.add', { path: folder, name: 'Project' });
+  const { agent, threadId } = await makeAgent(h, owner, { projectIds: [project.id] });
+  const { listeners, restore } = controlFileEvents(folder);
+  try {
+    const { trigger } = await save(agent.id, { kind: 'file', projectId: project.id, patterns: ['*.txt'], debounceMs: 50 });
+    await waitFor(() => listeners.has(folder));
+    renameSync(folder, folder + '-original');
+    symlinkSync(outside, folder, process.platform === 'win32' ? 'junction' : 'dir');
+    listeners.get(dirname(folder))!('rename', basename(folder));
+    await waitFor(() => read(trigger).watchUnavailable === true);
+    h.core.workforce.triggers.tick();
+    await Bun.sleep(100);
+    expect(read(trigger).watchUnavailable).toBe(true);
+    expect(listeners.has(folder)).toBe(false);
+    expect(turnsOf(h, threadId)).toHaveLength(1);
+  } finally { restore(); }
+});
+
+test('file watches prune gitignored and unmatched folders, skip unreadable subdirs, cap directories, and report path overflow', async () => {
+  const folder = join(h.dataDir, 'pruned-project');
+  for (const dir of ['src/sub', 'ignored-dir', 'other-tree', 'src/locked']) mkdirSync(join(folder, dir), { recursive: true });
+  writeFileSync(join(folder, '.gitignore'), 'ignored-dir/\n');
+  if (process.platform !== 'win32') chmodSync(join(folder, 'src/locked'), 0o000);
+  const { listeners, restore } = controlFileEvents(folder);
+  const batches: Array<{ paths: string[]; more: number }> = [];
+  let unavailable = false;
+  const roots = new TriggerRootProbes();
+  let watch: ReturnType<typeof watchTriggerFiles> | undefined;
+  let capped: ReturnType<typeof watchTriggerFiles> | undefined;
+  try {
+    watch = watchTriggerFiles(
+      folder,
+      ['src/**/*.ts'],
+      40,
+      roots,
+      {
+        publish: (paths, more) => { batches.push({ paths, more }); },
+        ready: () => undefined,
+        failed: () => { unavailable = true; },
+      },
+    );
+    await waitFor(() => listeners.has(join(folder, 'src/sub')));
+    expect(unavailable).toBe(false);
+    expect(listeners.has(join(folder, 'ignored-dir'))).toBe(false);
+    expect(listeners.has(join(folder, 'other-tree'))).toBe(false);
+
+    const srcSub = listeners.get(join(folder, 'src/sub'))!;
+    for (let i = 0; i < PATHS_PER_EVENT + 5; i++) srcSub('change', `f${i}.ts`);
+    await waitFor(() => batches.length === 1);
+    expect(batches[0]!.paths).toHaveLength(PATHS_PER_EVENT);
+    expect(batches[0]!.more).toBe(5);
+
+    let capHit = false;
+    capped = watchTriggerFiles(
+      folder,
+      ['src/**/*.ts'],
+      40,
+      roots,
+      { publish: () => undefined, ready: () => undefined, failed: () => { capHit = true; } },
+      1,
+    );
+    await waitFor(() => capHit);
+    expect(capHit).toBe(true);
+  } finally {
+    watch?.close();
+    capped?.close();
+    restore();
+    if (process.platform !== 'win32') chmodSync(join(folder, 'src/locked'), 0o700);
+  }
+});
+
+test('file events arriving during cooldown coalesce and dispatch once cooldown expires', async () => {
+  const folder = join(h.dataDir, 'project');
+  mkdirSync(folder);
+  const project = await owner.call('projects.add', { path: folder, name: 'Project' });
+  const { agent, threadId } = await makeAgent(h, owner, { projectIds: [project.id] });
+  const { trigger } = await saveWatching(folder, agent.id, { kind: 'file', projectId: project.id, patterns: ['*.txt'], debounceMs: 50 });
+
+  writeFileSync(join(folder, 'first.txt'), '');
+  await waitFor(() => driver.prompts.get(threadId)?.length === 2 && settled(h, threadId));
+  const firstFiredAt = read(trigger).lastFiredAt!;
+
+  writeFileSync(join(folder, 'during-1.txt'), '');
+  await waitFor(() => read(trigger).lastOutcome === 'queued');
+  expect(read(trigger).lastFiredAt).toBe(firstFiredAt);
+  writeFileSync(join(folder, 'during-2.txt'), '');
+  await Bun.sleep(100);
+  expect(turnsOf(h, threadId)).toHaveLength(2);
+
+  oldEnough(trigger);
+  h.core.workforce.triggers.tick();
+  await waitFor(() => driver.prompts.get(threadId)?.length === 3 && settled(h, threadId));
+  const prompt = driver.prompts.get(threadId)!.at(-1)!;
+  expect(prompt).toContain('during-1.txt');
+  expect(prompt).toContain('during-2.txt');
+  expect(read(trigger).lastOutcome).toBe('fired');
+});
+
+test('writes during a mochi\'s own file-trigger turn do not re-wake that trigger', async () => {
+  driver.restore();
+  driver = scripted(ctx => ({ text: '[quiet] tested', hold: ctx.prompt.includes('first.txt') }));
+  const folder = join(h.dataDir, 'project');
+  mkdirSync(folder);
+  const project = await owner.call('projects.add', { path: folder, name: 'Project' });
+  const { agent, threadId } = await makeAgent(h, owner, { projectIds: [project.id] });
+  const { trigger } = await saveWatching(folder, agent.id, { kind: 'file', projectId: project.id, patterns: ['*.txt'], debounceMs: 50 });
+
+  writeFileSync(join(folder, 'first.txt'), '');
+  await waitFor(() => driver.held.length === 1);
+  oldEnough(trigger);
+  writeFileSync(join(folder, 'self-edit.txt'), '');
+  await Bun.sleep(120);
+  driver.release();
+  await waitFor(() => settled(h, threadId));
+  await Bun.sleep(120);
+  expect(turnsOf(h, threadId)).toHaveLength(2);
+  expect(read(trigger).lastOutcome).toBe('fired');
+});
+

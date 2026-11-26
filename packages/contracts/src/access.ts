@@ -346,8 +346,6 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['agents.session.new', 'a fresh provider session for its own thread, applied when its turn ends; memory, routines, desk and history stay, a mochi at most once in 30 minutes'],
   ['agents.routine.save', 'its own routines, the clock its wakes run on; the owner pauses it or caps its daily spend'],
   ['agents.routine.remove', 'removing one of its own routines'],
-  ['agents.trigger.save', 'its own event triggers on granted local projects; creating webhooks or reading their secrets requires the owner'],
-  ['agents.trigger.remove', 'removing one of its own event triggers'],
   ['agents.watch', 'putting a thread of its projects on its own desk, or taking one off; it reads nothing it could not already read through resident.thread'],
   ['delegation.result', 'bounded assistant-text pages from an exact terminal turn of its direct delegated child'],
   ['delegation.wait', 'event-driven completion of its direct children; timeout/disconnect never stops their work'],

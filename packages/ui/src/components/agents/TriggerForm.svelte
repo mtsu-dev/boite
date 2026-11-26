@@ -31,6 +31,11 @@
   let debounceMs = $state<number | undefined>(source?.kind === 'file' ? source.debounceMs : 500);
   let events = $state<AgentTriggerPrEvent[]>(source?.kind === 'pr' ? [...source.events] : [...AGENT_TRIGGER_PR_EVENTS]);
   const project = $derived(projects.find(candidate => candidate.id === projectId) ?? (!projectId ? projects[0] : undefined));
+  const keepsRevokedProject = $derived(
+    initial !== undefined && !initial.enabled && initial.source.kind !== 'webhook' && initial.source.kind === kind
+      && projectId === initial.source.projectId && !project,
+  );
+  const selectedProjectId = $derived(project?.id ?? (keepsRevokedProject ? projectId : null));
 
   function toggle(event: AgentTriggerPrEvent) {
     events = events.includes(event) ? events.filter(value => value !== event) : [...events, event];
@@ -39,10 +44,10 @@
   async function save() {
     if (cooldownSeconds === undefined || !name.trim() || !prompt.trim()) return;
     let source: AgentTriggerSource = { kind: 'webhook' };
-    if (kind === 'file' && project && debounceMs !== undefined) {
-      source = { kind, projectId: project.id, patterns: triggerPatterns(patterns), debounceMs };
-    } else if (kind === 'pr' && project && events.length) {
-      source = { kind, projectId: project.id, events };
+    if (kind === 'file' && selectedProjectId && debounceMs !== undefined) {
+      source = { kind, projectId: selectedProjectId, patterns: triggerPatterns(patterns), debounceMs };
+    } else if (kind === 'pr' && selectedProjectId && events.length) {
+      source = { kind, projectId: selectedProjectId, events };
     } else if (kind !== 'webhook') return;
     const value = { agentId, name, prompt, enabled: initial?.enabled ?? true, cooldownSeconds, source };
     const saved = await view.call('agents.trigger.save', initial ? { id: initial.id, expectedRevision: openedRevision, value } : { value });
@@ -96,7 +101,7 @@
     <input type="number" bind:value={cooldownSeconds} min={1} max={86400} required />
   </label>
   <div class="agent-actions">
-    <button type="submit" class="primary small" disabled={view.pending || (kind !== 'webhook' && (!project || kind === 'pr' && !events.length))} data-testid="trigger-save">{strings.common.save}</button>
+    <button type="submit" class="primary small" disabled={view.pending || (kind !== 'webhook' && (!selectedProjectId || kind === 'pr' && !events.length))} data-testid="trigger-save">{strings.common.save}</button>
     <button type="button" class="ghost small" onclick={oncancel}>{strings.common.cancel}</button>
   </div>
 </form>
@@ -110,4 +115,7 @@
   .agent-field textarea { min-height: 64px; }
   .event-filters { display: flex; flex-wrap: wrap; gap: 8px 16px; }
   .event-filters label { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
+  @media (max-width: 480px) {
+    .segmented button { padding-inline: 8px; gap: 4px; font-size: var(--text-xs); }
+  }
 </style>

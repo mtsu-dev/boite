@@ -351,7 +351,9 @@ export class AgentStore {
     }
     if (saved.status === 'archived') this.core.agentRuntime.forget(saved.id);
     if (previous.status !== saved.status) this.resident.enforce();
-    if (previous.status !== saved.status || previous.projectIds !== saved.projectIds) this.core.bus.whenCommitted(() => this.triggers.syncWatches(saved.id));
+    if (previous.status !== saved.status || JSON.stringify(previous.projectIds ?? []) !== JSON.stringify(saved.projectIds ?? [])) {
+      this.core.bus.whenCommitted(() => this.triggers.syncWatches(saved.id));
+    }
     if ((previous.projectIds ?? []).some(id => !(saved.projectIds ?? []).includes(id))) this.projects.forget(saved);
     if (previous.instructions !== saved.instructions) this.#wakeSoon(saved, 'instructions', 'Instructions changed', INSTRUCTIONS_PROMPT);
   }

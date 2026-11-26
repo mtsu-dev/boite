@@ -1,12 +1,15 @@
 import { watch, type BigIntStats, type FSWatcher } from 'node:fs';
-import { lstat, readdir, stat } from 'node:fs/promises';
+import { lstat, readdir, readFile } from 'node:fs/promises';
 import { basename, dirname, join, sep } from 'node:path';
+import { ignoredNames } from '../files.ts';
 
-const IGNORED = new Set(['.git', 'node_modules', '.boite', 'dist', 'target']);
-const PATHS_PER_EVENT = 50;
+const ALWAYS_IGNORED = new Set(['.git', 'node_modules', '.boite']);
+const DEFAULT_IGNORED = new Set([...ALWAYS_IGNORED, 'dist', 'target', '.venv', 'venv', '__pycache__', '.next', '.nuxt', 'build', 'coverage']);
+export const PATHS_PER_EVENT = 50;
+export const MAX_WATCH_DIRS = 512;
 
 type WatchCallbacks = {
-  publish: (paths: string[]) => void;
+  publish: (paths: string[], more: number) => void;
   ready: () => void;
   failed: (error: unknown) => void;
 };
@@ -61,7 +64,8 @@ export class TriggerRootProbes {
       read.waiting = new Set();
       read.invalidated = false;
       let result: RootResult;
-      try { result = { root: await stat(folder, { bigint: true }) }; }
+      // lstat rejects symlinks and Windows junctions so a replaced root cannot escape the granted folder.
+      try { result = { root: await lstat(folder, { bigint: true }) }; }
       catch (error) { result = { error }; }
       // A root rename observed during the read may postdate the sample.
       if (read.invalidated) {
@@ -81,8 +85,14 @@ export function watchTriggerFiles(
   debounceMs: number,
   roots: TriggerRootProbes,
   { publish, ready, failed }: WatchCallbacks,
-): { close: () => void; checkRoot: (validated?: () => void) => void } {
+  maxWatchDirs = MAX_WATCH_DIRS,
+): { close: () => void; checkRoot: (validated?: () => void) => void; discardPending: () => void } {
   const globs = patterns.map(pattern => new Bun.Glob(pattern));
+  const patternParts = patterns.map(pattern => pattern.split('/'));
+  const explicitSegments = new Set(
+    patternParts.flat().filter(part => !/[*?[\]{}]/.test(part)).map(part => part.toLowerCase()),
+  );
+  let ignoredSet = new Set([...DEFAULT_IGNORED].filter(name => ALWAYS_IGNORED.has(name) || !explicitSegments.has(name)));
   const changed = new Set<string>();
   const watches = new Map<string, FSWatcher>();
   const lookups = new Map<string, { parent?: WatchedDirectory }>();
@@ -97,6 +107,15 @@ export function watchTriggerFiles(
   let root: BigIntStats | undefined;
   let checking = false;
   let due = false;
+  let overflow = 0;
+
+  function discardPending() {
+    clearTimeout(timer);
+    timer = undefined;
+    changed.clear();
+    overflow = 0;
+    due = false;
+  }
 
   function close() {
     stop.abort();
@@ -105,8 +124,7 @@ export function watchTriggerFiles(
     for (const watcher of watches.values()) watcher.close();
     watches.clear();
     lookups.clear();
-    clearTimeout(timer);
-    changed.clear();
+    discardPending();
   }
 
   async function assertRoot(expected: BigIntStats) {
@@ -125,11 +143,12 @@ export function watchTriggerFiles(
     checking = true;
     // A batch can only use a probe requested after its debounce elapsed.
     const paths = due ? [...changed].sort() : undefined;
-    if (due) changed.clear();
+    const more = due ? overflow : 0;
+    if (due) { changed.clear(); overflow = 0; }
     due = false;
     void assertRoot(root).then(() => {
       if (signal.aborted) return;
-      if (paths) publish(paths);
+      if (paths) publish(paths, more);
       validated?.();
     }).catch(failure).finally(() => {
       checking = false;
@@ -139,7 +158,10 @@ export function watchTriggerFiles(
 
   function record(relative: string) {
     if (patterns.length && !patterns.some((pattern, index) => relative === pattern || relative.startsWith(pattern + '/') || globs[index]!.match(relative))) return;
-    if (changed.size < PATHS_PER_EVENT) changed.add(relative);
+    if (!changed.has(relative)) {
+      if (changed.size < PATHS_PER_EVENT) changed.add(relative);
+      else overflow++;
+    }
     if (due) return;
     timer ??= setTimeout(() => {
       timer = undefined;
@@ -151,7 +173,23 @@ export function watchTriggerFiles(
 
   const childOf = (directory: string, name: string) => directory ? directory + '/' + name : name;
   function ignored(name: string) {
-    return !name || name === '.' || name === '..' || name.includes('/') || (sep === '\\' && name.includes('\\')) || IGNORED.has(name.toLowerCase());
+    return !name || name === '.' || name === '..' || name.includes('/') || (sep === '\\' && name.includes('\\')) || ignoredSet.has(name.toLowerCase());
+  }
+
+  function mayMatch(directory: string): boolean {
+    if (!patternParts.length || !directory) return true;
+    const parts = directory.split('/');
+    return patternParts.some(pParts => {
+      for (let i = 0; i < parts.length; i++) {
+        if (i >= pParts.length) return true;
+        const segment = pParts[i]!;
+        if (segment.includes('**') || segment.includes('{') || segment.includes('}')) return true;
+        if (/[*?[\]]/.test(segment)) {
+          if (!new Bun.Glob(segment).match(parts[i]!)) return false;
+        } else if (segment !== parts[i]) return false;
+      }
+      return true;
+    });
   }
 
   function removeTree(directory: string) {
@@ -163,9 +201,9 @@ export function watchTriggerFiles(
     }
   }
 
-  function missing(error: unknown) {
+  function skippable(error: unknown) {
     const code = (error as NodeJS.ErrnoException).code;
-    return code === 'ENOENT' || code === 'ENOTDIR';
+    return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES' || code === 'EPERM' || code === 'ELOOP';
   }
 
   async function scan(directory: string, reportNew: boolean, watcher: FSWatcher) {
@@ -180,8 +218,9 @@ export function watchTriggerFiles(
       if (watches.get(directory) !== watcher) return;
       if (ignored(entry.name)) continue;
       const relative = childOf(directory, entry.name);
-      if (entry.isDirectory() && lookups.get(relative)?.parent?.watcher !== watcher) await addTree(relative, reportNew, parent);
-      else if (reportNew && entry.isFile()) record(relative);
+      if (entry.isDirectory()) {
+        if (mayMatch(relative) && lookups.get(relative)?.parent?.watcher !== watcher) await addTree(relative, reportNew, parent);
+      } else if (reportNew && entry.isFile()) record(relative);
     }
   }
 
@@ -200,7 +239,7 @@ export function watchTriggerFiles(
     const relative = childOf(directory, name);
     if (event === 'rename') {
       if (watches.has(relative)) removeTree(relative);
-      if (!await addTree(relative, true, { directory, watcher })) return;
+      if (mayMatch(relative) && !await addTree(relative, true, { directory, watcher })) return;
     }
     if (watches.get(directory) === watcher) record(relative);
   }
@@ -214,6 +253,10 @@ export function watchTriggerFiles(
   async function addTree(directory: string, reportNew: boolean, parent?: WatchedDirectory): Promise<boolean> {
     const parentIsCurrent = () => !signal.aborted && (!parent || watches.get(parent.directory) === parent.watcher);
     if (!parentIsCurrent() || watches.has(directory)) return false;
+    if (watches.size >= maxWatchDirs) {
+      failure(new Error(`project has more than ${maxWatchDirs} watchable directories; narrow the trigger patterns`));
+      return false;
+    }
     // Each rename supersedes the lookup for that path, even when it finds a file.
     const lookup = { parent };
     lookups.set(directory, lookup);
@@ -223,12 +266,16 @@ export function watchTriggerFiles(
       const path = join(folder, directory);
       if (directory && !(await lstat(path)).isDirectory()) return isCurrent();
       if (!isCurrent()) return false;
+      if (watches.size >= maxWatchDirs) {
+        failure(new Error(`project has more than ${maxWatchDirs} watchable directories; narrow the trigger patterns`));
+        return false;
+      }
       watcher = watch(path, { persistent: false }, (event, name) => {
         void changedIn(directory, watcher, event, name).catch(error => watchError(directory, watcher, error));
       });
     } catch (error) {
       if (!isCurrent()) return false;
-      if (directory && missing(error)) return true;
+      if (directory && skippable(error)) return true;
       failure(error);
       return false;
     } finally {
@@ -242,7 +289,7 @@ export function watchTriggerFiles(
 
   function watchError(directory: string, watcher: FSWatcher, error: unknown) {
     if (watches.get(directory) !== watcher) return;
-    if (directory && missing(error)) removeTree(directory);
+    if (directory && skippable(error)) removeTree(directory);
     else failure(error);
   }
 
@@ -277,6 +324,20 @@ export function watchTriggerFiles(
     const initial = await roots.probe(folder, signal);
     if (signal.aborted) return;
     if (!initial.isDirectory()) throw new Error(`project root is not a directory: ${folder}`);
+    try {
+      const extra = ignoredNames(await readFile(join(folder, '.gitignore'), 'utf8'));
+      if (extra.size > 0) {
+        const merged = new Set(ignoredSet);
+        for (const name of extra) {
+          const lower = name.toLowerCase();
+          if (ALWAYS_IGNORED.has(lower) || !explicitSegments.has(lower)) merged.add(lower);
+        }
+        ignoredSet = merged;
+      }
+    } catch {
+      // No readable .gitignore: default ignored names still apply.
+    }
+    if (signal.aborted) return;
     watchRootEntry();
     // Non-recursive watches let ignored directories stay outside the OS watcher tree.
     await addTree('', false);
@@ -289,5 +350,5 @@ export function watchTriggerFiles(
   }
 
   void open().catch(failure);
-  return { close, checkRoot };
+  return { close, checkRoot, discardPending };
 }

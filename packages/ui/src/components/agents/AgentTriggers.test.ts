@@ -27,6 +27,7 @@ test('a file trigger edit keeps brace globs, survives a trigger run, and refuses
   };
   const snapshotTrigger = async () => (await client.call('agents.snapshot', {})).triggers!.find(row => row.id === trigger.id)!;
   try {
+    expect(element('trigger-edit').getAttribute('aria-label')).toBe('Edit Code changes');
     click('trigger-edit');
     patterns('src/**/*.{ts,tsx}, package.json, src/items[,].txt');
     await client.call('agents.trigger.test', { triggerId: trigger.id, requestId: 'test-while-editing' });
@@ -46,12 +47,21 @@ test('a file trigger edit keeps brace globs, survives a trigger run, and refuses
     await client.call('agents.trigger.save', { id: stored.id, expectedRevision: stored.revision, value: { ...stored, name: 'Edited elsewhere' } });
     await view.refresh();
     click('trigger-save');
-    await vi.waitFor(() => expect(view.error).toContain('trigger changed'));
+    await vi.waitFor(() => expect(view.error).toBe('This trigger changed elsewhere. Reopen it to see the latest settings.'));
     expect((await snapshotTrigger()).name).toBe('Edited elsewhere');
     expect(element<HTMLInputElement>('trigger-patterns').value).toBe('local.ts');
 
+    const latest = await snapshotTrigger();
+    await client.call('agents.trigger.save', { id: latest.id, expectedRevision: latest.revision, value: { ...latest, enabled: false } });
     await client.call('projects.archive', { projectId: source.projectId });
-    await expect(client.call('agents.trigger.save', { value: { ...stored, source } })).rejects.toThrow('granted');
+    await expect(client.call('agents.trigger.save', { value: { ...latest, source } })).rejects.toThrow('granted');
+    await view.refresh();
+    flushSync(() => document.querySelector<HTMLButtonElement>('[data-testid="trigger-form"] button[type="button"].ghost')?.click());
+    click('trigger-edit');
+    expect(element<HTMLButtonElement>('trigger-save').disabled).toBe(false);
+    patterns('kept.ts');
+    click('trigger-save');
+    await vi.waitFor(async () => expect((await snapshotTrigger()).source).toMatchObject({ patterns: ['kept.ts'] }));
   } finally { await unmount(component); view.close(); }
 });
 

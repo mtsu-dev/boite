@@ -1027,10 +1027,12 @@ under the core data directory in `mochi-trigger-secrets.json`, atomically
 replaced with mode `0600`. On Windows, access relies on the data directory's
 ACLs, inherited from the user profile by default, as for group and speech
 credentials. The secret stays out of SQLite. `agents.record` events carry
-only the id and revision. A mochi's own thread may save or remove its
-own triggers, with webhook creation restricted to the owner.
-`boite mochi triggers` lists them.
-`agents.trigger.test` is owner-only and keeps a receipt keyed by `requestId`.
+only the id and revision. Trigger mutations (`agents.trigger.save`,
+`agents.trigger.remove`, `agents.trigger.rotateSecret`, `agents.trigger.test`)
+are owner-only; a mochi's own thread can list its triggers through
+`boite mochi triggers` (`agents.snapshot`). `agents.trigger.test` keeps a
+receipt keyed by `requestId`, queues in its own slot so it never overwrites a
+real pending event, and does not count toward the trigger's real cooldown.
 `agents.trigger.remove` also deletes any stored webhook secret.
 Trigger edits accept a revision from before the latest firing outcome, provided
 the trigger's configuration has stayed the same since that revision.
@@ -1038,18 +1040,37 @@ the trigger's configuration has stayed the same since that revision.
 - `POST /hooks/mochi/<triggerId>` accepts `Authorization: Bearer`,
   `X-Boite-Secret`, or `X-Hub-Signature-256: sha256=<hex>` (HMAC-SHA256
   of the exact request body). Comparison is constant-time. A missing or
-  disabled route returns 404, failed authentication 401, a body over 64 KiB
-  413 and cooldown 429 with `Retry-After`. Malformed signatures are rejected
-  before reading the body. Signature-only requests have their own read pool
-  with limits per trigger and source address. Only a bounded, quoted
-  payload excerpt reaches the mochi. Use HTTPS when exposing the route.
+  disabled route returns 404, failed authentication 401, a body over 1 MiB
+  (`WEBHOOK_MAX_BODY_BYTES`) 413, cooldown 429 with `Retry-After`, and a
+  replayed delivery 409. Duplicate `X-GitHub-Delivery` or `Idempotency-Key`
+  values are rejected via durable receipts, and signed requests without a
+  delivery header are also checked against a bounded 15-minute digest cache.
+  Malformed signatures are rejected before reading the body. Signature
+  verification streams chunks directly into HMAC-SHA256 while retaining only
+  an 8 KiB preview in memory (`PREVIEW_BYTES`), and signature-only requests
+  have their own read pool with limits per trigger, per `(trigger, source)`
+  pair and per source address so one slow client cannot starve other senders
+  on the same trigger. `Tailscale-Funnel-Request` and `X-Forwarded-For` are
+  read only on loopback connections from a local Funnel proxy. Only a bounded,
+  quoted payload excerpt and untrusted `X-GitHub-Event` label reach the mochi.
+  Use HTTPS when exposing the route.
 - File triggers attach non-recursive `fs.watch` listeners to directories in
-  the local granted project, skipping symlinks and the subtrees of `.git`,
-  `node_modules`, `.boite`, `dist` and `target`. They group matching
-  relative paths into a debounced batch. Editing or disabling a trigger,
-  removing its project grant, or stopping the core closes the file watch
-  and drops its pending batch. Boite checks the root's device and inode
-  asynchronously, with one metadata read in flight per path. File wakes wait
+  the local granted project, skipping symlinks, unreadable subdirectories
+  (`EACCES`, `EPERM`, `ELOOP`), `.gitignore` plain folder names, `.git`,
+  `node_modules`, `.boite` and default build/dependency folders (`dist`,
+  `target`, `.venv`, `venv`, `__pycache__`, `.next`, `.nuxt`, `build`,
+  `coverage` unless explicitly named in a pattern), and pruning directories
+  whose prefix cannot match any configured pattern. Each trigger watches at
+  most `MAX_WATCH_DIRS` (512) directories and reports `watchUnavailable` if a
+  project tree exceeds that cap. Matching relative paths are grouped into a
+  debounced batch of up to 50 paths plus an overflow count (`more`). Editing
+  or disabling a trigger, removing its project grant, or stopping the core
+  closes the file watch and drops its pending batch. File changes emitted
+  while that mochi's own file-trigger turn on the same project is running are
+  ignored and its pending batch is discarded when the turn ends so a mochi
+  does not wake itself in a loop. Boite checks the root's device and inode
+  asynchronously with `lstat` (rejecting symlinks and Windows junctions on
+  open and reopen), with one metadata read in flight per path. File wakes wait
   for validation. A separate non-recursive watch on the parent invalidates
   a probe when the project's directory entry is renamed during that probe.
   This keeps ordinary child renames from invalidating the root check. If a
@@ -1062,18 +1083,24 @@ the trigger's configuration has stayed the same since that revision.
   batch and any queued wake from that watch, reports the watch unavailable,
   and retries opening it with backoff.
 - PR triggers reuse the existing PR tracker and its GitHub reads. An open
-  watch establishes a baseline, then forwards new CI failures, review
-  requests, requests for changes, conflicts and merges for its conversation's
-  project. The trigger filters these by its configured event types. A
-  receipt deduplicates each transition across watches of the same pull
-  request in the same project. There is no second polling loop.
+  watch establishes a baseline, then forwards new CI failures (including
+  repeated failed runs of the same check name on the same commit when no
+  intermediate pending poll occurred), review requests, requests for changes,
+  conflicts and merges for its conversation's project. Only eligible triggers
+  record `trigger-pr-transition` receipts so paused, archived or revoked
+  mochis do not consume transitions or mutate trigger state. A receipt
+  deduplicates each transition across watches of the same pull request in the
+  same project. There is no second polling loop.
 
 Explicit triggers use the regular event wake checks for pauses, archived
 profiles, budget, provider availability and grants, independently of the
-general `eventWakes` setting. A busy mochi keeps its latest pending event per
-trigger in memory. On restart the core reopens eligible file watches and
-marks any previously queued event skipped. Triggers are scoped to the
-original machine and are removed at the source when a move completes.
+general `eventWakes` setting. File and PR events that arrive during a
+trigger's cooldown coalesce in memory (`lastOutcome: 'queued'`) without
+overwriting `lastFiredAt` and dispatch once cooldown expires. A busy mochi
+keeps its latest pending event per trigger in memory. On restart the core
+reopens eligible file watches and marks any previously queued event skipped.
+Triggers are scoped to the original machine and are removed inside the same
+SQLite transaction as the source profile when a move completes.
 
 ## Budget and limits
 
@@ -1355,6 +1382,6 @@ one sees, steers and hears a thread of the other, owner-only actions refused,
 an offline machine named and its events delivered on return, access cut when
 `groupBots` goes off), `agents-projects.test.ts`, `agents-entrust.test.ts`,
 `agents-memory.test.ts`, `agents-migration.test.ts`,
-`agents-setting-cards.test.ts` and the mochi section of `cli.test.ts`.
+`agents-setting-cards.test.ts`, `agents-triggers.test.ts` and the mochi section of `cli.test.ts`.
 `bench/agents-snapshot.ts` measures the snapshot over a mochi thread with
 thousands of turns. Real-provider inference is opt-in.
