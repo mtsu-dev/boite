@@ -10,6 +10,7 @@ export function titleProblem(title: string): string | undefined {
   const type = match[1]!;
   if (!(TYPES as readonly string[]).includes(type)) return `unknown type "${type}", expected one of ${TYPES.join(', ')}`;
   if (match[3]!.endsWith('.')) return 'the summary ends with a period';
+  if (title.includes('\u2014')) return 'the title contains an em dash (U+2014): use a comma, colon or parentheses';
   return undefined;
 }
 

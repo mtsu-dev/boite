@@ -122,6 +122,8 @@ jobs:
       # Missing sentences are warnings here and in the nightly; release.yml refuses them.
       - run: bun scripts/ci/translations.ts
       - run: bun run check:copy
+      # No U+2014 in any tracked file; pr-title.ts refuses it in the squash title.
+      - run: bun run check:em-dash
       - run: bun run check:architecture
       # oxlint reads every file in well under a second, so it lints every change here.
       - run: bun run lint
