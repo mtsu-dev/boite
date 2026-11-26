@@ -245,12 +245,14 @@ export function watchTriggerFiles(
       return;
     }
     const parent = { directory, watcher };
+    const seenDirs = recheckExisting ? new Set<string>() : undefined;
     for (const entry of entries) {
       if (watches.get(directory)?.watcher !== watcher) return;
       if (ignored(entry.name)) continue;
       const relative = childOf(directory, entry.name);
       if (entry.isDirectory()) {
         if (!mayMatch(relative)) continue;
+        seenDirs?.add(relative);
         const existing = watches.get(relative);
         if (existing) {
           if (!recheckExisting) continue;
@@ -268,6 +270,13 @@ export function watchTriggerFiles(
         }
         if (lookups.get(relative)?.parent?.watcher !== watcher) await addTree(relative, reportNew, parent);
       } else if (reportNew && entry.isFile()) record(relative);
+    }
+    if (seenDirs && watches.get(directory)?.watcher === watcher) {
+      const prefix = directory ? directory + '/' : '';
+      for (const watched of [...watches.keys()]) {
+        if (!watched || watched === directory || !watched.startsWith(prefix)) continue;
+        if (!watched.slice(prefix.length).includes('/') && !seenDirs.has(watched)) removeTree(watched);
+      }
     }
   }
 

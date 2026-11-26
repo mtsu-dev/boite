@@ -1091,11 +1091,13 @@ the trigger's configuration has stayed the same since that revision.
   in a loop while pre-turn edits remain intact. Boite checks the root's
   resolved `realpath`, device and inode asynchronously (`lstat` + `realpath`),
   with one metadata read in flight per path. Saving a file trigger resolves the
-  project's `realpath` asynchronously and anchors it in SQLite
-  (`agents:trigger-anchor:<id>`), preserved across restarts, disables and edits
-  on the same project; if the folder is absent at save, Boite persists an
-  unresolved anchor (`realPath: null`) so initial open refuses symlinks even
-  after a restart until a real directory is anchored. That
+  project's canonical path asynchronously (`resolveExpectedRealPath`, walking up
+  missing tail segments and following broken symlink targets) and anchors it in
+  SQLite (`agents:trigger-anchor:<id>`), preserved across restarts, disables and
+  edits on the same project. If resolution fails for a non-ENOENT error or the
+  project path changes concurrently, Boite persists an unresolved anchor
+  (`realPath: null`) so initial open still refuses symlinks even after a restart
+  until a real directory is anchored. That
   allows retry recovery if a symlinked project is temporarily absent at
   startup while rejecting any redirection of the root or an ancestor directory
   even across restarts. File wakes wait

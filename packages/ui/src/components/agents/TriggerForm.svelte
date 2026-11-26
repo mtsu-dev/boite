@@ -60,7 +60,7 @@
     <legend>{t.source}</legend>
     <div class="segmented" role="group" aria-label={t.source}>
       {#each kinds as { id, icon: Icon } (id)}
-        <button type="button" class:on={kind === id} aria-pressed={kind === id} onclick={() => { kind = id; }} data-testid="trigger-kind-{id}">
+        <button type="button" class:on={kind === id} aria-pressed={kind === id} title={t.kinds[id]} onclick={() => { kind = id; }} data-testid="trigger-kind-{id}">
           <Icon size={14} strokeWidth={1.75} /><span class="seg-label">{t.kinds[id]}</span>
         </button>
       {/each}

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { realpath } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { lstat, readlink, realpath } from 'node:fs/promises';
+import { basename, dirname, join, resolve as resolvePath } from 'node:path';
 import {
   AGENT_TRIGGERS_MAX, AGENT_TRIGGER_WEBHOOK_ROUTE, pullRequestAddress,
   type AgentProfile, type AgentTrigger, type AgentTriggerEvent, type AgentTriggerPrEvent, type RpcParams, type RpcResult, type ThreadId, type Turn,
@@ -36,10 +36,11 @@ type PendingWake = {
   test?: true;
 };
 
-/** Resolves a folder's canonical path, walking up missing tail segments so a missing project folder still anchors against symlinks. */
+/** Resolves a folder's canonical path, following broken symlinks and walking up missing tail segments so offline or missing folders still anchor cleanly. */
 async function resolveExpectedRealPath(folder: string): Promise<string | null> {
   const missing: string[] = [];
   let current = folder;
+  let links = 0;
   while (true) {
     try {
       const base = await realpath(current);
@@ -47,6 +48,14 @@ async function resolveExpectedRealPath(folder: string): Promise<string | null> {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException)?.code;
       if (code !== 'ENOENT' && code !== 'ENOTDIR') return null;
+      try {
+        const info = await lstat(current);
+        if (info.isSymbolicLink()) {
+          if (++links > 16) return null;
+          current = resolvePath(dirname(current), await readlink(current));
+          continue;
+        }
+      } catch { /* Missing segment; walk up to its parent directory. */ }
       const parent = dirname(current);
       if (parent === current) return null;
       missing.push(basename(current));

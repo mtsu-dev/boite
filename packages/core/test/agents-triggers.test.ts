@@ -1333,6 +1333,28 @@ test.skipIf(process.platform === 'win32')('a file trigger saved while its folder
       second!.core.workforce.triggers.tick();
       return !second!.core.workforce.records.get('trigger', trigger.id).watchUnavailable;
     }, 6000);
+
+    // A broken symlink whose target is offline at save anchors to its target and opens when the target appears.
+    const offlineTarget = join(dataDir, 'offline-target');
+    const brokenLink = join(holder, 'offline-link');
+    mkdirSync(offlineTarget);
+    symlinkSync(offlineTarget, brokenLink);
+    const client2 = await second.connect();
+    const offlineProject = await client2.call('projects.add', { path: brokenLink, name: 'OfflineLink' });
+    const prof = second.core.workforce.records.get('profile', agent.id);
+    await client2.call('agents.profile.save', {
+      id: agent.id, expectedRevision: prof.revision, value: { ...prof, projectIds: [...(prof.projectIds ?? []), offlineProject.id] },
+    });
+    fs.rmSync(offlineTarget, { recursive: true });
+    const { trigger: offlineTrigger } = await client2.call('agents.trigger.save', {
+      value: { agentId: agent.id, source: { kind: 'file', projectId: offlineProject.id, patterns: ['*.txt'], debounceMs: 50 }, name: 'OfflineTarget', prompt: 'Watch.', enabled: true, cooldownSeconds: 60 },
+    });
+    await waitFor(() => second!.core.workforce.records.get('trigger', offlineTrigger.id).watchUnavailable === true);
+    mkdirSync(offlineTarget);
+    await waitFor(() => {
+      second!.core.workforce.triggers.tick();
+      return !second!.core.workforce.records.get('trigger', offlineTrigger.id).watchUnavailable;
+    }, 6000);
   } finally {
     await first?.stop();
     await second?.stop();
@@ -1340,7 +1362,7 @@ test.skipIf(process.platform === 'win32')('a file trigger saved while its folder
   }
 });
 
-test('a nameless rename reopens a replaced subdirectory with a new inode', async () => {
+test('a nameless rename reopens a replaced subdirectory with a new inode and prunes deleted children', async () => {
   const folder = join(h.dataDir, 'project');
   const child = join(folder, 'src');
   mkdirSync(child, { recursive: true });
@@ -1363,6 +1385,11 @@ test('a nameless rename reopens a replaced subdirectory with a new inode', async
     newChildListener('change', 'reopened.txt');
     await waitFor(() => driver.prompts.get(threadId)?.at(-1)?.includes('src/reopened.txt') === true && settled(h, threadId));
     expect(read(trigger).lastOutcome).toBe('fired');
+
+    // Deleting src before a nameless rename prunes its watcher entry instead of leaking it.
+    fs.rmSync(child, { recursive: true });
+    rootEvent('rename', null);
+    await waitFor(() => !listeners.has(child));
   } finally {
     restore();
   }

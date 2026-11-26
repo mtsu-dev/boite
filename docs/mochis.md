@@ -120,7 +120,8 @@ Use **Test** to send a sample event without affecting real events or cooldowns.
 The trigger shows when it received an event and whether the mochi woke, waited
 or skipped it. A cooldown limits how often a trigger wakes it: project file
 and pull request changes that arrive during cooldown wait and combine until it
-ends, while webhooks receive a retry delay. A busy mochi takes the waiting
+ends, while webhooks receive a retry delay (a webhook received while the mochi
+is paused or over budget still starts its cooldown). A busy mochi takes the waiting
 event for each trigger after its turn (for webhooks, the first request waits
 and additional ones receive a busy retry response until it finishes). Paused or archived mochis and
 mochis over their daily budget do not wake. Triggers stay owner-only, belong
