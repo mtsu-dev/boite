@@ -57,6 +57,9 @@ The language is saved on this device only, and changes everywhere at once,
 with no reload. Dates and numbers follow the language, in your machine's
 region. App update errors stay in English.
 
+Boite supplies missing archive and computer symbols automatically, including
+in messages you already sent.
+
 ### The whip
 
 The Whip button sits with the buttons at the bottom of the app rail, or on

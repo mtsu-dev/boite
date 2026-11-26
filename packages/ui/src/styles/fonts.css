@@ -1,3 +1,15 @@
+/* Office and computer pictographs can be missing from the system fallback.
+ * Subset of @fontsource/noto-sans-symbols-2 5.3.0, with the OFL in public/fonts.
+ * The ranges omit U+1F5A4, whose default presentation is a color emoji. */
+@font-face {
+  font-family: 'Noto Sans Symbols 2';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/NotoSansSymbols2-pictographs.woff2') format('woff2');
+  unicode-range: U+1F5A0-1F5A3, U+1F5A5-1F5FA;
+}
+
 /*
  * Geist Mono, variable on wght, cut like the faces below into latin and latin
  * extended, plus a third file holding every other glyph of the font
