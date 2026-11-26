@@ -2,13 +2,13 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AGENT_ENV, type ClientPreferences, type ComposerValue, type ExperimentId } from '@boite/contracts';
+import { AGENT_ENV, effectiveCompaction, EXPERIMENT_SETTINGS, experimentStartRefusal, type ClientPreferences, type ComposerValue, type ExperimentId } from '@boite/contracts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { runCli, type CliIo } from '../src/cli.ts';
 import { agentGuide } from '../src/agent-guide.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoThread, holdAccountTurns, startTestCore, waitFor, type TestCore } from './harness.ts';
-import { thrown } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 
 let h: TestCore;
 let restore: (() => void) | undefined;
@@ -35,11 +35,12 @@ const cards = (client: CoreClient, threadId: string) => client.call('todos.list'
  * top-level conversation running until `release`: a steer has a turn to
  * join, and a goal stays under way.
  */
-function roles(options: { hold?: boolean; prompts?: string[]; answer?: string } = {}) {
+function roles(options: { hold?: boolean; prompts?: string[]; answer?: string; background?: boolean[] } = {}) {
   const held: (() => void)[] = [];
   restore = setDriver('echo', {
     protocol: 'echo',
     startTurn(ctx) {
+      if (ctx.backgroundCompaction) options.background?.push(ctx.backgroundCompaction().background);
       const id = ctx.emit.startMessage('assistant');
       if (h.core.activity.ownsTracker(ctx.thread.id)) {
         ctx.emit.part(id, 0, { type: 'text', text: ctx.prompt.includes('Say which open items') ? json({ done: [1] }) : json({ items: [{ text: 'Fix the login page', source: 'Fix the login page.' }] }) });
@@ -81,6 +82,47 @@ async function boite(threadId: string, args: string[]): Promise<{ code: number; 
   };
   return { code: await runCli(args, io), out, err };
 }
+
+test('a Release holds stored automatic goals, background compaction and device streaming off', async () => {
+  const version = '2.0.0';
+  restartDir = mkdtempSync(join(tmpdir(), 'boite-release-experiments-'));
+  h = await startTestCore({ dataDir: restartDir, settings: {
+    autoGoals: true, deviceStream: true, backgroundCompaction: true,
+    compactionByType: { agent: { autoCompact: { tokens: 8000, moments: ['turn-end'] }, backgroundCompaction: true } },
+  } });
+  await h.stop();
+  h = await startTestCore({ dataDir: restartDir, version });
+  const background: boolean[] = [];
+  roles({ background });
+  const owner = await h.connect();
+  const { threadId } = await echoThread(h, owner);
+  expect(await owner.call('settings.get', { stored: true })).toMatchObject({
+    autoGoals: true, deviceStream: true, backgroundCompaction: true,
+    compactionByType: { agent: { backgroundCompaction: true } },
+  });
+  const settings = await owner.call('settings.get', {});
+  expect(settings.backgroundCompaction).toBe(false);
+  expect(effectiveCompaction(settings, h.core.threads.require(threadId))).toMatchObject({
+    autoCompact: { tokens: 8000 }, backgroundCompaction: false,
+  });
+  expect(await owner.call('devices.list', { threadId })).toMatchObject({ liveStream: false });
+  const done = owner.next('turn.finished', turn => turn.threadId === threadId);
+  await owner.call('turns.start', { threadId, prompt: prompt(5000) });
+  await done;
+  expect(background).toEqual([false]);
+  expect(goalOf(threadId)).toBeNull();
+  expect(await boite(threadId, ['goal', 'track'])).toMatchObject({ code: 1, err: expect.stringContaining(experimentStartRefusal('auto-goal', version)!) });
+  const { reason: goalRefusal } = await rejection(owner.call('threads.goal.track', { threadId }));
+  expect(goalRefusal).toHaveProperty('rpc.data.reason', 'experiment-off');
+  expect((await boite(threadId, ['device', 'help'])).out).not.toContain('settings request deviceStream');
+  const reading = await owner.call('agent.settings', { threadId });
+  for (const [id, key] of Object.entries(EXPERIMENT_SETTINGS)) {
+    expect(reading.settings.some(setting => setting.key === key)).toBe(false);
+    const { reason } = await rejection(owner.call('settings.request', { threadId, key, value: true, reason: 'Enable the experiment' }));
+    expect(reason).toHaveProperty('message', experimentStartRefusal(id as keyof typeof EXPERIMENT_SETTINGS, version));
+    expect(reason).toHaveProperty('rpc.data.reason', 'experiment-off');
+  }
+});
 
 test('a prompt of 1500 characters with the experiment on starts a reviewed goal on it and a linked card', async () => {
   h = await startTestCore();

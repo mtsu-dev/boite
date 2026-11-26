@@ -1,4 +1,4 @@
-import { isAdbText, LOCAL_DEVICE_HOST, MOBILE_STREAM_SIZE, mobileDeviceIdError, mobileDeviceInputError, type MobileDevice, type MobileDeviceSession } from '@boite/contracts';
+import { experimentStartRefusal, isAdbText, LOCAL_DEVICE_HOST, MOBILE_STREAM_SIZE, mobileDeviceIdError, mobileDeviceInputError, type MobileDevice, type MobileDeviceSession } from '@boite/contracts';
 import { fakeDeviceScreen } from './device-screen';
 import { FAKE_STREAM, FAKE_STREAM_FRAMES } from './device-stream';
 import { refusal } from './shared';
@@ -8,7 +8,7 @@ type Methods = 'devices.list' | 'devices.open' | 'devices.sessions' | 'devices.f
 
 const SCREEN = { width: 1080, height: 2400 };
 /** The core's answer while the deviceStream setting is off (control.ts STREAM_OFF). */
-const STREAM_OFF = 'the live stream is off: the owner turns it on in Settings > System, or an agent asks with `boite settings request deviceStream true --why "..."`';
+const STREAM_OFF = 'the live stream is off: the owner turns it on in Settings > Experiments, or an agent asks with `boite settings request deviceStream true --why "..."`';
 /** How long a viewer stays counted after its last answer, as the core's stream.ts viewerMs. */
 const VIEWER_MS = 5000;
 /** How long a fake emulator takes to boot: long enough to see the starting state. */
@@ -31,6 +31,7 @@ export function devicesMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
   const screens = new Map<string, number>();
   // When each device last answered a stream poll, and what its clipboard holds.
   const watched = new Map<string, number>(), clipboards = new Map<string, string>();
+  const streamOff = experimentStartRefusal('device-stream', ctx.core.version) ?? STREAM_OFF;
   const live = (deviceId: string) => ctx.settingsInForce().deviceStream === true && Date.now() - (watched.get(deviceId) ?? 0) < VIEWER_MS;
   const list = (threadId: string) => [...(sessions.get(threadId)?.values() ?? [])].map(session => ({ ...session }));
   const changed = (threadId: string) => ctx.emitToThread(threadId, 'devices.changed', { threadId, sessions: list(threadId) });
@@ -137,7 +138,7 @@ export function devicesMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       }
       const streamOnly = input.kind === 'touch' ? 'a touch' : input.kind === 'scroll' ? 'a scroll' : input.kind === 'clipboard' ? 'the device clipboard'
         : input.kind === 'text' && !isAdbText(input.text) ? 'text beyond printable ASCII' : undefined;
-      if (streamOnly) throw refusal(`${streamOnly} needs the device's live stream (adb input cannot send it): ${ctx.settingsInForce().deviceStream === true ? 'show the device in the Device panel to start it' : STREAM_OFF}`, { deviceId });
+      if (streamOnly) throw refusal(`${streamOnly} needs the device's live stream (adb input cannot send it): ${ctx.settingsInForce().deviceStream === true ? 'show the device in the Device panel to start it' : streamOff}`, { deviceId });
       screens.set(deviceId, (screens.get(deviceId) ?? 0) + 1);
       return { ok: true, via: 'adb' };
     },
@@ -149,7 +150,7 @@ export function devicesMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         throw refusal('device stream after must be the id and seq of a chunk this device sent');
       }
       const session = ready(threadId, deviceId);
-      if (ctx.settingsInForce().deviceStream !== true) return { deviceId, state: 'off', reason: STREAM_OFF, chunks: [] };
+      if (ctx.settingsInForce().deviceStream !== true) return { deviceId, state: 'off', reason: streamOff, chunks: [] };
       if (session.platform !== 'android') return { deviceId, state: 'unavailable', reason: 'iOS Simulators have no live stream; the panel shows their screenshots', chunks: [] };
       const id = `fake-${deviceId}`;
       // The first answer starts at the key frame; each later one waits a frame's time and sends the next.
@@ -165,7 +166,7 @@ export function devicesMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     'devices.clipboard': async ({ threadId, deviceId, copy }) => {
       if (copy !== undefined && copy !== 'copy' && copy !== 'cut') throw refusal('device clipboard copy must be copy or cut');
       ready(threadId, deviceId);
-      if (!live(deviceId)) throw refusal(`the device clipboard needs the live stream: ${ctx.settingsInForce().deviceStream === true ? 'show the device in the Device panel to start it' : STREAM_OFF}`, { deviceId });
+      if (!live(deviceId)) throw refusal(`the device clipboard needs the live stream: ${ctx.settingsInForce().deviceStream === true ? 'show the device in the Device panel to start it' : streamOff}`, { deviceId });
       return { text: clipboards.get(deviceId) ?? 'Copied on the fake phone' };
     },
     'devices.screenshot': async ({ threadId, deviceId, hostId }) => {

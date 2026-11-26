@@ -107,7 +107,7 @@ export const strings = {
     compactionBot: 'Mochis',
     compactionCustomize: 'Customize this type',
     compactionInherited: 'Uses the common settings.',
-    compactionInheritanceHint: 'Each type inherits the common settings until customized. Customizing copies all current compaction parameters, including background compaction. Turn this off to restore inheritance.',
+    compactionInheritanceHint: 'Each type inherits the common settings until customized. Customizing copies the common compaction policy. Turn this off to restore inheritance.',
     autoCompactHint: 'Set an independent token limit and choose idle moments for compaction. Each compaction counts as usage.',
     autoCompactWhen: 'Idle moments',
     autoCompactCondition: 'Context size',

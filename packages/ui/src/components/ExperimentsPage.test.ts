@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, expect, onTestFinished, test } from 'vitest';
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
-import { EXPERIMENT_IDS, EXPERIMENT_STAGES, withFinished } from '@boite/contracts';
+import { EXPERIMENT_IDS, EXPERIMENT_STAGES, isSettingExperiment, listedExperiments, withFinished } from '@boite/contracts';
 import ExperimentsPage from './ExperimentsPage.svelte';
-import { DESKTOP_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, chosenExperiments, desktopHeard, followDesktopOf, heardBuild, heardDesktop, readExperiments, setExperiment, writeExperiments } from '../lib/experiments';
-import { experimentsShown } from '../lib/experiments.svelte';
+import SettingsShell from './SettingsShell.svelte';
+import { DESKTOP_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, chosenExperiments, desktopHeard, followDesktopOf, heardBuild, heardDesktop, isExperimentEnabled, readExperiments, setExperiment, writeExperiments } from '../lib/experiments';
+import { experimentOn, experimentsShown } from '../lib/experiments.svelte';
 import { navOf, desktopPage, phonePage } from '../lib/settings-tabs';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
@@ -19,8 +20,66 @@ beforeEach(() => {
 const NIGHTLY = '2.0.0-nightly.20261111.1';
 const RELEASE = '2.0.0';
 const ALL = [...EXPERIMENT_IDS];
+const APP = ALL.filter(id => !isSettingExperiment(id));
 /** The finished features: each is in force in every build. */
 const FINISHED = EXPERIMENT_IDS.filter((id) => EXPERIMENT_STAGES[id] === 'release');
+
+test('desktop and phone hide experimental settings in Release and offer them on the Nightly Experiments page', async () => {
+  const ids = ['contacts', 'auto-goal', 'background-compaction', 'device-stream'];
+  const oldRows = ['setting-contacts', 'setting-auto-goals', 'auto-goal-min-chars', 'background-compaction-on', 'device-stream-on'];
+  const get = <T extends Element = HTMLElement>(id: string) => document.querySelector<T>(`[data-testid="${id}"]`);
+  const settle = async () => { for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); } };
+  onTestFinished(() => { vi.unstubAllGlobals(); });
+  Element.prototype.scrollIntoView ??= vi.fn();
+  for (const version of [RELEASE, NIGHTLY]) {
+    for (const phone of [false, true]) {
+      vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), {
+        media, matches: phone && media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {},
+      }));
+      const client = new FakeClient({ delayMs: 0, version });
+      const store = new Store();
+      try {
+        followDesktopOf(store);
+        store.attach(client);
+        await store.connect();
+        running = mount(SettingsShell, { target: document.body, props: { store } });
+        await settle();
+        expect(!!get('settings-tab-experiments')).toBe(version === NIGHTLY);
+        for (const section of ['agent-replies', 'auto-compact']) {
+          store.showSettings(section === 'agent-replies' ? 'general' : 'advanced', section);
+          await settle();
+          for (const id of oldRows) expect(get(id), `${version} ${phone ? 'phone' : 'desktop'} ${id}`).toBeNull();
+        }
+        get('compaction-target-agent')!.click();
+        await vi.waitFor(() => expect(get('compaction-customize')).not.toBeNull());
+        expect(!!get('background-compaction-on')).toBe(version === NIGHTLY);
+        store.showSettings('experiments');
+        await settle();
+        if (version === RELEASE) expect(get('experiments-page')).toBeNull();
+        else {
+          for (const id of ids) expect(get(`experiment-${id}`)).not.toBeNull();
+          setExperiment('auto-goal', true);
+          expect(isExperimentEnabled('auto-goal')).toBe(false);
+          get<HTMLInputElement>('experiment-auto-goal')!.click();
+          await vi.waitFor(() => expect(get('auto-goal-min-chars')).not.toBeNull());
+          expect(await client.call('settings.get', {})).toMatchObject({ autoGoals: true });
+          expect(experimentOn('auto-goal')).toBe(true);
+          const contacts = get<HTMLInputElement>('experiment-contacts')!;
+          for (const on of [true, false]) {
+            contacts.click();
+            await vi.waitFor(() => expect(store.settings?.contacts).toBe(on));
+          }
+        }
+      } finally {
+        if (running) await unmount(running, { outro: false });
+        running = null;
+        store.detach();
+        client.close();
+        followDesktopOf(null);
+      }
+    }
+  }
+});
 
 /** The primary machine's core says its version, as a hello does. */
 function primarySays(version: string): object {
@@ -41,7 +100,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-test('a finished feature is on in every build, and the one experiment has its switch from a Nightly up', async () => {
+test('a finished feature is on in every build and experiments have their switches from a Nightly up', async () => {
   expect(readExperiments()).toEqual(FINISHED);
   window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["goal2","whip","draft-backdrop"]');
   primarySays(RELEASE);
@@ -57,19 +116,19 @@ test('a finished feature is on in every build, and the one experiment has its sw
 
   // The same device on a Nightly finds its switch as it left it.
   primarySays(NIGHTLY);
-  expect(readExperiments()).toEqual(ALL);
+  expect(readExperiments()).toEqual([...FINISHED, 'draft-backdrop']);
   expect(experimentsShown()).toBe(true);
   expect(navOf('advanced', true)).toContain('experiments');
   expect(desktopPage('experiments', true)).toBe('experiments');
   // A finished feature has no switch, on any build.
   setExperiment('resident-agents', false);
-  expect(readExperiments()).toEqual(ALL);
+  expect(readExperiments()).toEqual([...FINISHED, 'draft-backdrop']);
 
-  running = mount(ExperimentsPage, { target: document.body });
+  running = mount(ExperimentsPage, { target: document.body, props: { store: new Store() } });
   flushSync();
   await tick();
   const switches = () => [...document.querySelectorAll<HTMLInputElement>('input[data-testid^=experiment-]')];
-  expect(switches().map((node) => node.dataset['testid'])).toEqual(['experiment-draft-backdrop']);
+  expect(switches().map((node) => node.dataset['testid']).sort()).toEqual(listedExperiments(NIGHTLY).map(id => `experiment-${id}`).sort());
   expect(switches()[0]!.checked).toBe(true);
   expect(switches()[0]!.closest('label')?.textContent).toContain(strings.experiments['draft-backdrop'].title);
   switches()[0]!.click();
@@ -99,9 +158,9 @@ test('a phone keeps the list its desktop app chose, and has the experiment of it
   for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); }
   // Both lists also name the finished ids, for a phone older than the core; this app keeps only the ones it knows.
   expect(said).toEqual([{ experiments: withFinished(FINISHED), chosen: withFinished(ALL) }]);
-  expect(chosenExperiments()).toEqual(ALL);
+  expect(chosenExperiments()).toEqual(APP);
   heardBuild(store, NIGHTLY);
-  expect(readExperiments()).toEqual(ALL);
+  expect(readExperiments()).toEqual(APP);
 });
 
 test('the followed cache keeps the chosen list a new core sends, and the historic list of a core from before it', () => {
@@ -138,7 +197,7 @@ test('the desktop app follows no one', async () => {
   const owner = {};
   followDesktopOf(owner);
   heardDesktop(owner, ['resident-agents']);
-  running = mount(ExperimentsPage, { target: document.body });
+  running = mount(ExperimentsPage, { target: document.body, props: { store: new Store() } });
   flushSync();
   await tick();
   expect(document.querySelector('[data-testid=experiments-follow]')).toBeNull();

@@ -144,7 +144,9 @@ disables Boite's automatic triggers and restores the driver's native policy
 for that target. Removing a target restores live inheritance, without copying
 thresholds. The override map replaces the previous map on `settings.set` and
 follows the group's settings home alongside `autoCompact`. The common
-`backgroundCompaction` setting stays local to its machine.
+`backgroundCompaction` setting stays local to its machine. Release builds
+read the common switch and per-type overrides as off and preserve their stored
+values for a later Nightly or Dev build.
 
 All drivers resolve the policy at preparation and before each turn. Idle
 compaction and background copies use the same resolver. A policy change
@@ -312,12 +314,13 @@ is the detail its summary drops.
 
 ### Background compaction
 
-`Settings.backgroundCompaction` is off by default. The owner turns it on
-under Settings, System, Automatic compaction, for the machine picked above the
-card, the one that runs the thread (an agent asks with
-`boite settings request backgroundCompaction true --why "..."`). It works
-with the `autoCompact` rule above and does nothing without one. Like `deviceStream`,
-it stays on its machine: the group's settings do not carry it.
+`Settings.backgroundCompaction` is available in Nightly and Dev builds and is
+off by default. The owner turns it on in Settings, Experiments, for the machine
+that runs the thread. Settings, System, Automatic compaction holds the
+per-type overrides. An agent can ask for the machine switch with
+`boite settings request backgroundCompaction true --why "..."`. The setting
+works with the `autoCompact` rule above and does nothing without one. Like
+`deviceStream`, the common switch stays on its machine.
 
 The copy is OpenCode 2's background compaction, ported
 (`threads/background-compact.ts`). Once the context passes 85% of the limit

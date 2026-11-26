@@ -1,8 +1,8 @@
 <script lang="ts">
   import { ArrowRight, Settings2, ShieldAlert } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { currentSetting, experimentOf, isExperimentKey, type QuestionAnswer, type Settings, type SettingAsk } from '@boite/contracts';
-  import { readExperiments, setExperiment, subscribeExperiments } from '../lib/experiments';
+  import { REQUESTABLE_SETTINGS, currentSetting, experimentOf, experimentOfSetting, featureRuns, isExperimentKey, settingExperimentKey, type QuestionAnswer, type Settings, type SettingAsk } from '@boite/contracts';
+  import { experimentsBuild, readExperiments, setExperiment, subscribeExperiments } from '../lib/experiments';
   import { experimentsListed } from '../lib/experiments.svelte';
   import { keepFocus } from '../lib/focus';
   import { desktopSettings } from '../lib/settings-tabs';
@@ -53,12 +53,11 @@
   const phone = $derived(!desktopSettings(narrow.current));
 
   const change = $derived(setting.kind === 'change' ? setting : null);
-  /** An experiment is this device's own switch, which any of the user's devices flips for itself. */
-  const known = $derived(change === null ? null : experimentOf(change.key));
+  const machineKey = $derived(change === null ? null : settingExperimentKey(change.key));
+  /** An app experiment is a switch any of the user's devices can flip for itself. */
+  const known = $derived(change === null || machineKey !== null ? null : experimentOf(change.key));
   /** Null too for an id without a switch in the build that decides: a finished feature, or any experiment on a Release. */
   const experiment = $derived(known !== null && experimentsListed().includes(known) ? known : null);
-  /** An experiment this build no longer lists: it graduated or runs in a Nightly only, and the card can only be refused. */
-  const retired = $derived(change !== null && experiment === null && isExperimentKey(change.key));
   let experiments = $state(readExperiments());
   $effect(() => subscribeExperiments((enabled) => { experiments = enabled; }));
   /** True or false: the card draws the switch itself. */
@@ -67,13 +66,19 @@
   const remote = $derived(change?.machine === undefined ? null : workspace.machines.find((machine) => GroupLinks.coreOf(machine) === change.machine?.coreId)?.store ?? null);
   const away = $derived(change?.machine !== undefined && (remote === null || remote.connection !== 'ready'));
   const holder = $derived(remote ?? store);
+  const machineExperiment = $derived(machineKey === null ? null : experimentOfSetting(machineKey));
+  /** A card about a switch its build lacks can only be refused. */
+  const retired = $derived(machineExperiment !== null
+    ? !featureRuns(machineExperiment, holder.core?.version ?? experimentsBuild())
+    : change !== null && experiment === null && isExperimentKey(change.key));
+  const sensitive = $derived(change !== null && (machineKey === null ? change.sensitive : REQUESTABLE_SETTINGS[machineKey].sensitive));
   /** What the switch shows now, from this device or the core's settings. */
   const now = $derived(change === null ? null : experiment !== null ? experiments.includes(experiment) : retired || away ? change.previous : (holder.settings === null ? change.previous : currentSetting(change.key, holder.settings, null)));
   const canApply = $derived(change !== null && !retired && !away && (experiment !== null || holder.owner));
   /** This client's Settings has the card: Show and Open land on it rather than on Home. */
-  const reachable = $derived(settingsReachable(setting, { owner: store.owner, phone }));
+  const reachable = $derived(settingsReachable(settingPlace(setting), { owner: store.owner, phone }));
   const place = $derived([settingPlaceText(setting, store.providers), change?.machine?.name].filter(Boolean).join(' › '));
-  const heading = $derived(settingHeading(setting));
+  const heading = $derived(settingHeading(change === null ? setting : { ...change, sensitive }));
   const label = $derived(change ? settingLabel(change.key) : '');
   const hint = $derived(change ? settingHint(change.key) : null);
 
@@ -92,7 +97,7 @@
       return true;
     }
     busy = true;
-    if (await holder.saveSettings({ [change.key]: next } as Partial<Settings>)) return true;
+    if (await holder.saveSettings({ [machineKey ?? change.key]: next } as Partial<Settings>)) return true;
     busy = false;
     return false;
   }
@@ -145,11 +150,11 @@
     <span class="given ui-label" data-testid="setting-subject">{subject(answer)}</span>
   </div>
 {:else}
-  <div class="setting-card" class:docked class:sensitive={setting.kind === 'change' && setting.sensitive} data-testid="setting-card" data-state="pending" data-kind={setting.kind} role="group" aria-label={heading}>
+  <div class="setting-card" class:docked class:sensitive data-testid="setting-card" data-state="pending" data-kind={setting.kind} role="group" aria-label={heading}>
     {#if !docked}
       <div class="head">
         <span class="glyph">
-          {#if setting.kind === 'change' && setting.sensitive}<ShieldAlert size={15} strokeWidth={1.75} />{:else}<Settings2 size={15} strokeWidth={1.75} />{/if}
+          {#if sensitive}<ShieldAlert size={15} strokeWidth={1.75} />{:else}<Settings2 size={15} strokeWidth={1.75} />{/if}
         </span>
         <span class="muted ui-label">{heading}</span>
       </div>
@@ -185,7 +190,7 @@
       <p class="hint" data-testid="setting-guest-hint">{strings.settingRequest.guestHint}</p>
     {:else if !reachable && !canApply}
       <p class="hint" data-testid="setting-elsewhere-hint">{strings.settingRequest.elsewhere}</p>
-    {:else if change?.sensitive}
+    {:else if sensitive}
       <p class="hint" data-testid="setting-sensitive-hint">{strings.settingRequest.sensitiveHint}</p>
     {/if}
 

@@ -1,4 +1,4 @@
-import { threadActive } from '@boite/contracts';
+import { experimentStartRefusal, threadActive } from '@boite/contracts';
 import type { ActivityTurn, AgentTask, Attachment, ComposerChoice, GoalReview, MessagePart, RpcParams, ThreadActivity, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, messageOf, refused } from './errors.ts';
@@ -169,12 +169,17 @@ export class ActivityStore {
    * reviewed goal's objective. False, and nothing changes, when it cannot start.
    */
   autoGoal(threadId: string, turnId: string, messageId: string, objective: string, executionChoice?: ComposerChoice): boolean {
-    return autoGoalCode().autoGoal(this.#core, this, threadId, turnId, messageId, objective, executionChoice);
+    if (this.#core.settings.get().autoGoals !== true) return false;
+    return autoGoalCode()?.autoGoal(this.#core, this, threadId, turnId, messageId, objective, executionChoice) ?? false;
   }
 
   /** `boite goal track`: an automatic goal on the user's last prompt. */
   track(threadId: string): ThreadActivity {
-    return autoGoalCode().track(this.#core, this, threadId);
+    const unavailable = experimentStartRefusal('auto-goal', this.#core.version);
+    if (unavailable !== null) throw refused(unavailable, { reason: 'experiment-off' });
+    const code = autoGoalCode();
+    if (!code) throw refused('automatic goals are not in this build', { reason: 'experiment-off' });
+    return code.track(this.#core, this, threadId);
   }
 
   /** The goal just set takes the turn still under way as its first run: its claim or blocker counts, and no second run starts before them. */

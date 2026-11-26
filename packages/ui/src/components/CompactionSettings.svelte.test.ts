@@ -14,13 +14,13 @@ const flip = async (id: string, checked: boolean) => {
   node(id).dispatchEvent(new Event('change', { bubbles: true }));
   await settle();
 };
-function render(backgroundOnly = false) {
-  const store = $state({ owner: true, settings: {
+function render() {
+  const store = $state({ owner: true, core: { version: '2.0.0-nightly.20261126.1' }, settings: {
     autoCompact: { tokens: 200_000, moments: ['cache-expiry'] }, backgroundCompaction: true,
   } as Partial<Settings>, saveSettings: vi.fn(async (patch: Partial<Settings>) => {
     store.settings = { ...store.settings, ...patch }; return true;
   }) });
-  mounted = mount(CompactionSettings, { target: document.body, props: { store: store as unknown as Store, backgroundOnly } });
+  mounted = mount(CompactionSettings, { target: document.body, props: { store: store as unknown as Store } });
   flushSync();
   return store;
 }
@@ -59,7 +59,7 @@ test('types inherit live defaults, customize independently, and can restore inhe
 });
 
 test('experimental background compaction is independently configurable for each type', async () => {
-  const store = render(true);
+  const store = render();
   await click('compaction-target-bot');
   await flip('compaction-customize', true);
   await flip('background-compaction-on', false);
@@ -85,7 +85,7 @@ test('a draft saves to its original type when switching scopes', async () => {
 });
 
 test.each([false, true])('switching types awaits the previous save before another edit (backgroundOnly=%s)', async (backgroundOnly) => {
-  const store = render(backgroundOnly);
+  const store = render();
   await click('compaction-target-subagent');
   await flip('compaction-customize', true);
   let answer!: () => void;

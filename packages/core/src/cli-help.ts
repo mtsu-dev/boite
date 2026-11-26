@@ -3,6 +3,7 @@ import { SETTINGS_PAGES } from '../../contracts/src/setting-requests.ts';
 import { ShortUsage, Usage } from './cli-args.ts';
 import { BUILTIN_COMMANDS, BOT_HELP, CONTROL_HELP, PLUGIN_HELP } from './cli-commands.ts';
 import type { CliIo } from './cli.ts';
+import { CORE_VERSION } from './version.ts';
 
 const families = () => import('./cli-families.ts');
 
@@ -210,7 +211,7 @@ ${BOT_HELP}
 
 export const DEFAULT_HELP = new Set(['bot', 'contacts', 'secret', 'team', 'view', 'window', 'workflow']);
 const FAMILY_HELP = {
-  browser: 'BROWSER_HELP', contacts: 'CONTACTS_HELP', device: 'DEVICE_HELP', logs: 'LOGS_HELP',
+  browser: 'BROWSER_HELP', contacts: 'CONTACTS_HELP', logs: 'LOGS_HELP',
   transcripts: 'TRANSCRIPTS_HELP',
   secret: 'SECRET_HELP', view: 'VIEW_HELP', window: 'WINDOW_HELP', workflow: 'WORKFLOW_HELP',
 } as const;
@@ -233,9 +234,10 @@ function usageEntries(command: string, action?: string): string[] {
   });
 }
 
-export async function cliHelp([command, action]: string[]): Promise<string> {
+export async function cliHelp([command, action]: string[], version = CORE_VERSION): Promise<string> {
   if (command === undefined) return USAGE;
   if (!BUILTIN_COMMANDS.has(command)) throw new Usage(`unknown command ${command}`);
+  if (command === 'device') return (await families()).deviceHelp(version);
   if (Object.hasOwn(FAMILY_HELP, command)) return (await families())[FAMILY_HELP[command as keyof typeof FAMILY_HELP]];
   if (command === 'desktop') return (await import('./desktop-cli.ts')).DESKTOP_HELP;
   if (command === 'team') return (await (await families()).teamCli()).TEAM_HELP;

@@ -93,7 +93,7 @@ test('an origin being typed is not sent until it is a valid origin, and a refuse
   expect(store.settings.browserOrigins).toEqual(['https://boite.example.com']);
 });
 
-test('the owner turns the prompt cache keepalive, background compaction and the live device stream on; a paired device sees none of them', async () => {
+test('the owner turns the prompt cache keepalive on and a paired device does not see it', async () => {
   const saved: unknown[] = [];
   const machine = (owner: boolean) => ({
     owner,
@@ -104,20 +104,18 @@ test('the owner turns the prompt cache keepalive, background compaction and the 
     loadSessions: vi.fn(async () => {}),
     deviceInvite: null,
     connection: 'ready',
-    settings: { ...base, deviceStream: false, backgroundCompaction: false, cacheKeepalive: null },
+    settings: { ...base, cacheKeepalive: null },
     saveSettings: async (patch: unknown) => { saved.push(patch); return true; },
   });
   mounted = mount(AdvancedSettings, { target: document.body, props: { store: machine(true) as unknown as Store } });
   await settle();
-  for (const id of ['cache-keepalive-on', 'background-compaction-on', 'device-stream-on']) {
-    const toggle = document.querySelector<HTMLInputElement>(`[data-testid=${id}]`)!;
-    expect(toggle.checked, id).toBe(false);
-    toggle.click();
-    await settle();
-  }
-  expect(saved).toEqual([{ cacheKeepalive: { hours: 12 } }, { backgroundCompaction: true }, { deviceStream: true }]);
+  const toggle = document.querySelector<HTMLInputElement>('[data-testid=cache-keepalive-on]')!;
+  expect(toggle.checked).toBe(false);
+  toggle.click();
+  await settle();
+  expect(saved).toEqual([{ cacheKeepalive: { hours: 12 } }]);
   await unmount(mounted);
   mounted = mount(AdvancedSettings, { target: document.body, props: { store: machine(false) as unknown as Store } });
   await settle();
-  for (const id of ['cache-keepalive-settings', 'background-compaction-settings', 'device-stream-settings']) expect(document.querySelector(`[data-testid=${id}]`), id).toBeNull();
+  expect(document.querySelector('[data-testid=cache-keepalive-settings]')).toBeNull();
 });

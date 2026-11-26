@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CompactionTarget } from '@boite/contracts';
+  import { featureRuns, type CompactionTarget } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { strings } from '../lib/strings';
   import { CompactionWrites, compactionPolicy } from '../lib/compaction-settings';
@@ -9,7 +9,8 @@
 
   /**
    * The compaction card: the type it edits, then for that type the automatic
-   * compaction's limit and moments, and background compaction under them.
+   * compaction's limit and moments. A Nightly or Dev can override background
+   * compaction per type. The common switch lives under Experiments.
    */
   let { store }: { store: Store } = $props();
   let target = $state<CompactionTarget | undefined>();
@@ -68,7 +69,9 @@
     {#key `${target ?? 'common'}:${customized}`}
       <fieldset disabled={saving || (target !== undefined && !customized)}>
         <AutoCompactSettings bind:this={editor} {store} {target} {writes} embedded />
-        <div class="background"><BackgroundCompactionSettings bind:this={background} {store} {target} {writes} embedded /></div>
+        {#if target !== undefined && featureRuns('background-compaction', store.core?.version)}
+          <div class="background"><BackgroundCompactionSettings bind:this={background} {store} {target} {writes} /></div>
+        {/if}
       </fieldset>
     {/key}
   </section>

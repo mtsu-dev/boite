@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXPERIMENT_IDS, EXPERIMENT_STAGES, FEATURE_CUTS, buildKindOf, effectiveExperiments, experimentRefusal, experimentStartRefusal, featureCompiled, featureDefines, featureMarker, stageRuns, isReleaseVersion, listedExperiments, withFinished, type ClientPreferences, type ExperimentId } from '@boite/contracts';
+import { EXPERIMENT_IDS, EXPERIMENT_STAGES, FEATURE_CUTS, buildKindOf, effectiveExperiments, experimentRefusal, experimentStartRefusal, featureCompiled, featureDefines, featureFlag, featureMarker, stageRuns, isReleaseVersion, listedExperiments, withFinished, type ClientPreferences, type ExperimentId } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
 
@@ -10,7 +10,8 @@ const RELEASE = '2.0.0';
 const NIGHTLY = '2.0.1-nightly.20261113.1';
 const DEV = '2.0.0-beta.1';
 /** The experiments finished and removed from the list since, as an older app still reports them. */
-const GRADUATED = ['whip', 'contacts', 'auto-goal', 'teams', 'debates'] as unknown as ExperimentId[];
+const GRADUATED = ['whip', 'debates'] as unknown as ExperimentId[];
+const NIGHTLY_SWITCHES: ExperimentId[] = ['draft-backdrop', 'contacts', 'teams', 'auto-goal', 'session-import', 'background-compaction', 'device-stream'];
 /** The finished features: on in every build, with no switch. */
 const FINISHED = EXPERIMENT_IDS.filter(id => EXPERIMENT_STAGES[id] === 'release');
 const report = (experiments: ExperimentId[]): ClientPreferences => ({ app: 'app-desktop-0001', language: 'en', experiments, labels: {} });
@@ -22,20 +23,20 @@ afterEach(async () => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 async function core(version: string, dataDir?: string): Promise<TestCore> {
-  const h = await startTestCore({ version, ...(dataDir === undefined ? {} : { dataDir }) });
+  const h = await startTestCore({ version, agentDefaults: 'boot', ...(dataDir === undefined ? {} : { dataDir }) });
   cores.push(h);
   return h;
 }
 /** The desktop app of the machine: the one whose switches the core and the phones follow. */
 const desktop = (h: TestCore) => connect(h.url, h.token, { client: { version: 'test', name: 'shell' } });
 
-test('a version without a prerelease part is a Release, which lists no switch; a Nightly and a Dev build list the one experiment', () => {
+test('a version without a prerelease part is a Release; Nightly and Dev list the Nightly switches', () => {
   expect(['2.0.0', '0.1.1', '', null, undefined].map(isReleaseVersion)).toEqual([true, true, true, true, true]);
   expect(['2.0.0-nightly.20261111.1', '2.0.0-beta.1', '2.0.0-test.0'].map(isReleaseVersion)).toEqual([false, false, false]);
 
   // Every switch has a stage, and the sort is the one the docs state.
   expect(Object.keys(EXPERIMENT_STAGES).sort()).toEqual([...EXPERIMENT_IDS].sort());
-  expect([RELEASE, NIGHTLY, DEV].map(version => listedExperiments(version))).toEqual([[], ['draft-backdrop'], ['draft-backdrop']]);
+  expect([RELEASE, NIGHTLY, DEV].map(version => listedExperiments(version))).toEqual([[], NIGHTLY_SWITCHES, NIGHTLY_SWITCHES]);
 
   // Finished features are on whatever a device stored, in every build; the experiment only where chosen and listed.
   for (const version of [RELEASE, NIGHTLY, DEV]) expect(effectiveExperiments([], version), version).toEqual(FINISHED);
@@ -88,12 +89,12 @@ test('a dev feature exists in a Dev build only, a nightly one in a Nightly and a
 test('a build is compiled with one constant for its kind and one flag per tagged feature', () => {
   const dev = { ...EXPERIMENT_STAGES, 'resident-agents': 'dev' } as const;
   const nightly = { ...EXPERIMENT_STAGES, 'resident-agents': 'nightly' } as const;
-  expect(featureDefines(RELEASE, dev)).toEqual({ __BOITE_BUILD_KIND__: '"release"', __BOITE_HAS_RESIDENT_AGENTS__: 'false', __BOITE_HAS_DRAFT_BACKDROP__: 'false' });
-  expect(featureDefines(NIGHTLY, dev)).toEqual({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_RESIDENT_AGENTS__: 'false', __BOITE_HAS_DRAFT_BACKDROP__: 'true' });
-  expect(featureDefines(NIGHTLY, nightly)).toEqual({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_RESIDENT_AGENTS__: 'true', __BOITE_HAS_DRAFT_BACKDROP__: 'true' });
-  expect(featureDefines(DEV, dev)).toEqual({ __BOITE_BUILD_KIND__: '"dev"', __BOITE_HAS_RESIDENT_AGENTS__: 'true', __BOITE_HAS_DRAFT_BACKDROP__: 'true' });
-  // A finished feature has no flag: nothing of it is ever cut. The one experiment has its own.
-  expect(Object.keys(featureDefines(RELEASE))).toEqual(['__BOITE_BUILD_KIND__', '__BOITE_HAS_DRAFT_BACKDROP__']);
+  const flags = (on: boolean) => Object.fromEntries(NIGHTLY_SWITCHES.map(id => [featureFlag(id), String(on)]));
+  expect(featureDefines(RELEASE, dev)).toEqual({ __BOITE_BUILD_KIND__: '"release"', __BOITE_HAS_RESIDENT_AGENTS__: 'false', ...flags(false) });
+  expect(featureDefines(NIGHTLY, dev)).toEqual({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_RESIDENT_AGENTS__: 'false', ...flags(true) });
+  expect(featureDefines(NIGHTLY, nightly)).toEqual({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_RESIDENT_AGENTS__: 'true', ...flags(true) });
+  expect(featureDefines(DEV, dev)).toEqual({ __BOITE_BUILD_KIND__: '"dev"', __BOITE_HAS_RESIDENT_AGENTS__: 'true', ...flags(true) });
+  expect(featureDefines(RELEASE)).toEqual({ __BOITE_BUILD_KIND__: '"release"', ...flags(false) });
   // From source nothing is compiled out, and a finished feature is in every bundle.
   expect(featureCompiled('resident-agents')).toBe(true);
   expect(featureCompiled('resident-agents', 'release')).toBe(true);
@@ -102,17 +103,12 @@ test('a build is compiled with one constant for its kind and one flag per tagged
   expect(featureMarker('resident-agents')).toBe('boite-feature:resident-agents');
 });
 
-test('a Release core has every feature on before any app reported, as after a restart: teams, the council and goal track answer', async () => {
+test('a Release core can read teams and councils before any app reported', async () => {
   const h = await core(RELEASE);
   const owner = await h.connect();
-  const { threadId } = await echoThread(h, owner);
-  // Automatic goals have the owner's own switch, off on a fresh machine (the next test).
-  await owner.call('settings.set', { autoGoals: true });
   expect(h.core.clients.desktopExperiments()).toBeNull();
   expect((await owner.call('teams.list', {})).teams).toEqual([]);
   expect((await owner.call('council.list', {})).councils).toEqual([]);
-  // The thread holds no prompt yet: goal track gets that far, past any switch.
-  expect(() => h.core.activity.track(threadId)).toThrow('this conversation has no prompt of the user to track');
   owner.close();
 });
 
@@ -123,7 +119,7 @@ test('automatic goals follow the machine\'s own setting: off by default, on only
   expect(startsAutoGoal(long, { autoGoals: true })).toBe(true);
   expect(startsAutoGoal(long, { autoGoals: true, autoGoalMinChars: 3000 })).toBe(false);
   expect(startsAutoGoal(long, { autoGoals: false })).toBe(false);
-  const h = await core(RELEASE);
+  const h = await core(NIGHTLY);
   const owner = await h.connect();
   const { threadId } = await echoThread(h, owner);
   expect(() => h.core.activity.track(threadId)).toThrow('goal track needs automatic goals, which are off on this machine');
@@ -135,7 +131,7 @@ test('automatic goals follow the machine\'s own setting: off by default, on only
   owner.close();
 });
 
-test('a former experiment\'s card says it is finished, and the former experimental settings take a card like any other', async () => {
+test('a Release refuses cards for finished and Nightly experiments, and still offers cache keepalive', async () => {
   const h = await core(RELEASE);
   const owner = await desktop(h);
   const { threadId } = await echoThread(h, owner);
@@ -157,8 +153,6 @@ test('a former experiment\'s card says it is finished, and the former experiment
 
   expect(await owner.call('settings.request', { threadId, reason: 'Try the mochis', key: 'experiment.resident-agents', value: true }).catch((error: Error) => error.message)).toContain('no longer an experiment');
   expect(await owner.call('settings.request', { threadId, reason: 'Try the whip', key: 'experiment.whip', value: true }).then(() => 'accepted', (error: Error) => error.message)).not.toBe('accepted');
-  const { setting } = await owner.call('settings.request', { threadId, reason: 'Watch the phone', key: 'deviceStream', value: true });
-  expect(setting).toMatchObject({ kind: 'change', key: 'deviceStream', value: true, previous: false, page: 'advanced', section: 'device-stream' });
   owner.close();
 });
 
@@ -172,14 +166,18 @@ test('a Nightly core keeps the experiment an app chose beside the finished featu
   await finished;
   expect(await owner.call('client.preferences', report([]))).toEqual({ ok: true, desktop: withFinished(FINISHED), desktopChosen: withFinished([]) });
   const read = await owner.call('agent.settings', { threadId });
-  expect(read.settings.filter(setting => setting.key.startsWith('experiment.')).map(setting => [setting.key, setting.value])).toEqual([['experiment.draft-backdrop', false]]);
+  expect(read.settings.filter(setting => setting.key.startsWith('experiment.')).map(setting => [setting.key, setting.value])).toEqual([
+    ['experiment.draft-backdrop', false], ['experiment.teams', false], ['experiment.session-import', false],
+  ]);
   const { setting } = await owner.call('settings.request', { threadId, reason: 'Try the background', key: 'experiment.draft-backdrop', value: true });
   expect(setting).toMatchObject({ kind: 'change', key: 'experiment.draft-backdrop', value: true, previous: false });
-  expect(await owner.call('client.preferences', report(['draft-backdrop']))).toEqual({ ok: true, desktop: withFinished([...EXPERIMENT_IDS]), desktopChosen: withFinished(['draft-backdrop']) });
+  const stream = await owner.call('settings.request', { threadId, reason: 'Watch the phone', key: 'deviceStream', value: true });
+  expect(stream.setting).toMatchObject({ kind: 'change', key: 'deviceStream', value: true, previous: false, page: 'experiments', section: 'device-stream' });
+  expect(await owner.call('client.preferences', report(['draft-backdrop']))).toEqual({ ok: true, desktop: withFinished([...FINISHED, 'draft-backdrop']), desktopChosen: withFinished(['draft-backdrop']) });
   owner.close();
 });
 
-test('a setting a Nightly turned on while it was an experiment stays on in a Release, which saves it like any other', async () => {
+test('a Release save preserves the Nightly choice for an experimental setting', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'boite-stages-'));
   dirs.push(dataDir);
 
@@ -191,14 +189,12 @@ test('a setting a Nightly turned on while it was an experiment stays on in a Rel
 
   const release = await core(RELEASE, dataDir);
   owner = await release.connect();
-  expect(await owner.call('settings.get', {})).toMatchObject({ deviceStream: true, backgroundCompaction: true, cacheKeepalive: { hours: 2 }, compactionByType: { bot: { backgroundCompaction: true } } });
-  expect(await owner.call('settings.set', { deviceStream: false })).toMatchObject({ deviceStream: false });
-  expect(release.core.settings.stored().deviceStream).toBe(false);
-  expect(await owner.call('settings.set', { deviceStream: true })).toMatchObject({ deviceStream: true });
+  await owner.call('settings.set', { deviceStream: false, compactionByType: { bot: { autoCompact: null, backgroundCompaction: false } } });
+  expect(release.core.settings.stored()).toMatchObject({ deviceStream: true, backgroundCompaction: true, cacheKeepalive: { hours: 2 }, compactionByType: { bot: { backgroundCompaction: true } } });
   owner.close();
 });
 
-test('a Release core lets Contacts start something', async () => {
+test('a Release core refuses new Contacts operations with contacts-off', async () => {
   const release = await core(RELEASE);
   const owner = await release.connect();
   // One call at a time: a rejection waits for no earlier answer before its handler is attached.
@@ -206,6 +202,6 @@ test('a Release core lets Contacts start something', async () => {
     () => owner.call('contacts.invite', {}),
     () => owner.call('contacts.join', { link: 'boite://contact/none' }),
     () => owner.call('contacts.update', { coreId: 'none', trusted: true }),
-  ]) expect(await call().then(() => 'accepted', (error: Error) => error.message)).not.toContain('Nightly');
+  ]) expect(await call().catch((error: unknown) => error)).toHaveProperty('rpc.data.reason', 'contacts-off');
   owner.close();
 });

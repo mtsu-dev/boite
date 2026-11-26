@@ -126,10 +126,12 @@ tracker adds one pass per user message and per finished turn.
 
 ## Automatic goals
 
-Automatic goals start a reviewed goal without `/goal2`. They are off by
-default and belong to the machine: the owner setting `autoGoals` (Settings,
-General, Agent replies; off unless `true`) turns them on there, for every app
-and every device, and survives a core restart. A user prompt that starts a turn, on a thread
+Automatic goals start a reviewed goal without `/goal2`. They are available in
+Nightly and Dev builds and off by default. The owner setting `autoGoals`
+(Settings, Experiments) turns them on for every app and device connected to
+that machine and survives a core restart. A Release reads the switch as off,
+keeps its stored value and allows viewing or removing existing goals.
+A user prompt that starts a turn, on a thread
 with no goal or loop under way (a paused one counts), starts one when it holds
 at least `autoGoalMinChars` characters, 1500 by default. The owner sets that
 number under the switch, shown while it is on; the core accepts 200 to 20000.
