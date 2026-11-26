@@ -112,6 +112,7 @@ test('unmounting the outline releases its reactive links to a long-lived message
       },
     });
     flushSync();
+    expect(document.querySelector('[data-testid=message-outline]')?.getAttribute('data-message-count')).toBe('4');
     await unmount(outline);
     flushSync();
   };
@@ -146,15 +147,22 @@ test('streaming parts do not recreate memos or retain them after the timeline st
     const sentinel = { id: 'mem-1', messageId: shared[0]!.id, partIndex: 0, kind: 'remembered', text: 'note', at: 1 } as never;
     const memory = new Map([[shared[0]!.id, [sentinel]]]);
     ref = new WeakRef(sentinel);
+    let runs = 0;
     let stop: (() => void) | null = $effect.root(() => {
       const timeline = new ReactiveTimelineRows(() => ({ timeline: shared, memory }));
-      $effect(() => { void timeline.build(); });
+      $effect(() => {
+        void timeline.build();
+        runs++;
+      });
     });
     flushSync();
+    const initialRuns = runs;
+    expect(initialRuns).toBeGreaterThan(0);
     for (let index = 0; index < 10; index++) {
       shared[0]!.parts.push({ type: 'text', text: `Chunk ${index}` });
       flushSync();
     }
+    expect(runs).toBeGreaterThan(initialRuns);
     stop();
     stop = null;
     flushSync();
