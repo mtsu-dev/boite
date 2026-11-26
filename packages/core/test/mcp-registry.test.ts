@@ -125,6 +125,17 @@ test('HTTP credentials stay on the same origin and require explicit replacement 
   expect(JSON.parse(readFileSync(join(harness.dataDir, 'mcp-secrets.json'), 'utf8'))).toEqual({});
 });
 
+test('repairing a stored HTTP URL with an unreadable origin discards its old credentials', async () => {
+  const client = await harness.connect();
+  const original = await client.call('mcp.save', {
+    ...http('https://one.example.test/mcp'), secretHeaders: { Authorization: HTTP_CREDENTIAL },
+  });
+  harness.core.journal.setSetting('mcp:servers', [{ ...original, url: 'https://' }]);
+  const repaired = await client.call('mcp.save', { ...original, url: 'https://two.example.test/mcp' });
+  expect(repaired.secretHeaderKeys).toEqual([]);
+  expect(JSON.parse(readFileSync(join(harness.dataDir, 'mcp-secrets.json'), 'utf8'))).toEqual({});
+});
+
 test('recovery reads the current credential file on either side of the journal commit', async () => {
   const client = await harness.connect();
   const server = await client.call('mcp.save', { ...stdio('Local tools'), secretEnv: { LAZY_MCP_TOOL: 'prior-fixture' } });

@@ -7,6 +7,7 @@ import type { MessagePart, PermissionMode, ProviderDescriptor, RpcEvents, Settin
 import type { CoreClient } from '../src/client.ts';
 import { getDriver } from '../src/drivers/index.ts';
 import { choiceFor, museExecutable, museHostArgs } from '../src/drivers/muse/mapping.ts';
+import * as museMapping from '../src/drivers/muse/mapping.ts';
 import { mintUuidV7 } from '../src/drivers/muse/rpc.ts';
 import { setMuseStartupDeadlineForTests } from '../src/drivers/muse/session.ts';
 import { StdioTransport } from '../src/drivers/stdio.ts';
@@ -633,6 +634,41 @@ describe('muse driver', () => {
     expect(fakeLog()).toContain(`session/resume ${sessionId} excludeItems=true`);
     expect(fakeLog()).toContain('flags=--disable-sandbox');
     expect(fakeLog()).toContain('session/setApprovalMode allowAll');
+  });
+
+  test('the next warm Muse turn resumes with MCP after a transient version probe failure', async () => {
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
+    await client.call('mcp.save', {
+      name: 'Retry fixture', enabled: true, scope: 'global', projectIds: [], transport: 'http', url: 'https://example.test/mcp',
+    });
+    const { core, dataDir } = harness!;
+    const executable = join(dataDir, 'muse-fixture');
+    writeFileSync(executable, 'fixture');
+    const resolve = spyOn(museMapping, 'museExecutable').mockReturnValue(executable);
+    const spawn = core.procs.spawnChild.bind(core.procs);
+    let probes = 0;
+    const launch = spyOn(core.procs, 'spawnChild').mockImplementation((owner, cmd, args, opts) => {
+      if (cmd !== executable) return spawn(owner, cmd, args, opts);
+      const childArgs = args[0] === '--version'
+        ? ['-e', ++probes === 1 ? 'process.exit(1)' : 'console.log("muse 1.4.14")']
+        : args;
+      return spawn(owner, process.execPath, childArgs, opts);
+    });
+    try {
+      expect((await runTurn(client, threadId, 'first')).status).toBe('done');
+      expect(probes).toBe(1);
+      expect(fakeLog()).not.toContain('mcp_servers.');
+      const { sessionId } = await client.call('threads.get', { threadId });
+      expect((await runTurn(client, threadId, 'second')).status).toBe('done');
+      expect(probes).toBe(2);
+      expect(fakeLog()).toContain('mcp_servers.boite-managed-retry-fixture=');
+      expect(fakeLog()).toContain(`session/resume ${sessionId} excludeItems=true`);
+      expect((await runTurn(client, threadId, 'third')).status).toBe('done');
+      expect(fakeLog().split('\n').filter(line => line.startsWith('initialize '))).toHaveLength(2);
+    } finally {
+      launch.mockRestore();
+      resolve.mockRestore();
+    }
   });
 
   test('plan mode starts a host that cannot write or run a shell, and denies the rest', async () => {

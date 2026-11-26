@@ -55,7 +55,7 @@ import { endOnClose, releaseChild } from '../session-close.ts';
 import { protectedMuse } from './protected.ts';
 import { MuseControls } from './controls.ts';
 import { sessionMcp } from '../mcp.ts';
-import { museMcpConfig, museSupportsMcp, probeMuseVersion } from './mcp.ts';
+import { museMcpConfig, museMcpSupport, probeMuseVersion } from './mcp.ts';
 
 /** One question set still open, settled by an answer, a stop or the host itself. */
 interface OpenQuestion {
@@ -96,6 +96,7 @@ export class MuseSession {
   #exited: Promise<number | null> | null = null;
   #processClosed: Promise<void> = Promise.resolve();
   #mcp: ReturnType<typeof sessionMcp> = null;
+  #retryMcp = false;
   readonly #idle = new IdleTimer(() => this.#drop());
   readonly #retention = new SessionRetention();
   /** The turn waiting on the host's startup, which a stop ends by closing the host. */
@@ -332,7 +333,7 @@ export class MuseSession {
     // Turns run one at a time: what the map holds was this turn's.
     this.#items.clear();
     this.#turns.end();
-    if (drop || this.#closing || this.#retention.idleMs(this.warmMs) <= 0) {
+    if (drop || this.#closing || (this.#retryMcp && !this.busy()) || this.#retention.idleMs(this.warmMs) <= 0) {
       this.#drop();
       return;
     }
@@ -357,12 +358,16 @@ export class MuseSession {
     const declared = profileFor(ctx.provider)?.launch?.args ?? [];
     this.#protection = protectedMuse(ctx, () => this.#current ? {ctx: this.#current.ctx, stopped: this.#current.stopped} : null, declared);
     const hostArgs = museHostArgs(executable);
-    const candidateMcp = sessionMcp(ctx);
-    if (candidateMcp !== null && !(await museSupportsMcp(executable, () => probeMuseVersion(ctx, executable)))) {
-      candidateMcp.release();
-      this.#mcp = null;
-    } else {
-      this.#mcp = candidateMcp;
+    this.#mcp = sessionMcp(ctx);
+    if (this.#mcp !== null) {
+      const support = await museMcpSupport(executable, () => probeMuseVersion(ctx, executable));
+      if (this.#ended) throw new Error('the muse session was closed before it started');
+      if (support !== true) {
+        this.#mcp.release();
+        this.#mcp = null;
+        // MCP config is fixed at launch. Let this turn finish and probe on the next host.
+        this.#retryMcp = support === null;
+      }
     }
     const mcpConfig = museMcpConfig(this.#mcp);
     const args = this.#protection?.args ?? [...declared, ...hostArgs, ...posture.flags, ...mcpConfig.args];

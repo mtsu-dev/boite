@@ -30,8 +30,9 @@ export function museVersionSupportsMcp(version: string | null): boolean {
  * Checks whether a Muse binary accepts `-c mcp_servers.<name>=...` config flags:
  * reads `.muse-version` when Boite installed it, falls back to the cached provider
  * version, and otherwise caches a successful `--version` per binary revision.
+ * Null leaves support undetermined so a later host can probe again.
  */
-export async function museSupportsMcp(executable: string, probeVersion: () => Promise<string | null>): Promise<boolean> {
+export async function museMcpSupport(executable: string, probeVersion: () => Promise<string | null>): Promise<boolean | null> {
   if (!basename(executable).toLowerCase().startsWith('muse')) return false;
   try {
     const file = readFileSync(join(dirname(executable), '.muse-version'), 'utf8').trim();
@@ -40,14 +41,15 @@ export async function museSupportsMcp(executable: string, probeVersion: () => Pr
   const cached = knownVersion(executable);
   if (cached !== null) return museVersionSupportsMcp(cached);
   let stat: { mtimeMs: number; size: number } | null = null;
-  try { stat = statSync(executable); } catch { return false; }
+  try { stat = statSync(executable); } catch { return null; }
   const kept = probed.get(executable);
   if (kept !== undefined && kept.mtimeMs === stat.mtimeMs && kept.size === stat.size) {
     return museVersionSupportsMcp(kept.version);
   }
   const output = await probeVersion().catch(() => null);
   const version = output === null ? null : readVersion(output);
-  if (version !== null) probed.set(executable, { mtimeMs: stat.mtimeMs, size: stat.size, version });
+  if (version === null) return null;
+  probed.set(executable, { mtimeMs: stat.mtimeMs, size: stat.size, version });
   return museVersionSupportsMcp(version);
 }
 
@@ -74,7 +76,7 @@ export function probeMuseVersion(ctx: SessionContext, executable: string): Promi
       if (output.length < PROBE_MAX_BYTES) output += chunk.toString('utf8').slice(0, PROBE_MAX_BYTES - output.length);
     });
     child.on('error', () => done(null));
-    child.on('exit', code => done(code === 0 ? output.trim() || null : null));
+    child.on('close', code => done(code === 0 ? output.trim() || null : null));
   });
 }
 

@@ -16,10 +16,17 @@ const HEADER_KEY = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const RESERVED_HEADERS = new Set(['accept', 'connection', 'content-length', 'content-type', 'host', 'mcp-session-id', 'mcp-protocol-version', 'transfer-encoding', 'upgrade', 'last-event-id']);
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]', 'localhost']);
 
+function httpOrigin(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  try {
+    const { protocol, origin } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:' ? origin : undefined;
+  } catch { return undefined; }
+}
+
 export function mcpHttpOriginChanged(previous: string | undefined, next: string | undefined): boolean {
-  if (previous === undefined || next === undefined) return false;
-  try { return new URL(previous).origin !== new URL(next).origin; }
-  catch { return false; }
+  const origin = httpOrigin(next);
+  return origin !== undefined && httpOrigin(previous) !== origin;
 }
 
 export function mcpHttpAllowsSecretHeaders(url: string): boolean {
