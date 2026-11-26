@@ -3,6 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../../test/fake-client';
 import { AgentsView } from '../../lib/agents.svelte';
 import { confirm } from '../../lib/confirm.svelte';
+import { mochiLayout } from '../../lib/mochi-layout.svelte';
 import { strings } from '../../lib/strings';
 import AgentsPage from './AgentsPage.svelte';
 import TitleBar from '../TitleBar.svelte';
@@ -17,6 +18,7 @@ const one = <T extends HTMLElement>(selector: string) => document.querySelector<
 test('a built-in mochi carries its badge, locks its texts and resets after the app asks', async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
   let bar: ReturnType<typeof mount> | null = null;
+  mochiLayout.set(true);
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
     const made = await client.call('agents.builtin.ensure', { kind: 'contacts', name: strings.agents.builtin.name.contacts });
@@ -75,5 +77,7 @@ test('a built-in mochi carries its badge, locks its texts and resets after the a
     if (bar) await unmount(bar);
     if (page) await unmount(page);
     confirm.answer(false);
+    localStorage.clear();
+    mochiLayout.load();
   }
 });

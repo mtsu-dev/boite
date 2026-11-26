@@ -1,7 +1,7 @@
 <script lang="ts">
   import SettingsSection from './SettingsSection.svelte';
   import { errorText } from '../lib/errors';
-  import { DEFAULT_THREAD_DELETION_RETENTION_DAYS, DEFAULT_THREAD_DONE_RETENTION_DAYS, type DeletedThreadSummary, type ThreadId, type ThreadSummary } from '@boite/contracts';
+  import { DEFAULT_THREAD_DELETION_RETENTION_DAYS, DEFAULT_THREAD_DONE_RETENTION_DAYS, transcriptPolicy, type DeletedThreadSummary, type ThreadId, type ThreadSummary } from '@boite/contracts';
   import { exactTime, projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -14,6 +14,14 @@
   let asked = false;
   let generation = 0;
   let retention = $derived(store.settings?.threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS);
+  /** Once a storage mode is picked, it decides when a deleted conversation leaves this list. */
+  let mode = $derived(store.settings?.transcriptStorage);
+  let leaves = $derived.by(() => {
+    if (mode === undefined) return retention > 0 ? retention : null;
+    const policy = transcriptPolicy(mode, retention);
+    const days = [policy.deletedCompactDays, policy.deletedEraseDays].filter(value => value !== null);
+    return days.length === 0 ? null : Math.min(...days);
+  });
 
   $effect(() => {
     if (store.owner && store.connection === 'ready' && asked) void load();
@@ -51,8 +59,10 @@
     <!-- How long a thread stays, done then deleted: two rows that save when left, out of the archive's list. -->
     <SettingDays {store} key="threadDoneRetentionDays" label={strings.settings.archived.doneRetentionLabel} hint={strings.settings.archived.doneRetentionHint}
       fallback={DEFAULT_THREAD_DONE_RETENTION_DAYS} testid="done-retention-days" />
-    <SettingDays {store} key="threadDeletionRetentionDays" label={strings.settings.deleted.retentionLabel} hint={strings.settings.deleted.retentionHint}
-      fallback={DEFAULT_THREAD_DELETION_RETENTION_DAYS} testid="deleted-retention-days" onsaved={() => { if (asked) return load(); }} />
+    {#if mode === undefined}
+      <SettingDays {store} key="threadDeletionRetentionDays" label={strings.settings.deleted.retentionLabel} hint={strings.settings.deleted.retentionHint}
+        fallback={DEFAULT_THREAD_DELETION_RETENTION_DAYS} testid="deleted-retention-days" onsaved={() => { if (asked) return load(); }} />
+    {/if}
     {#if threads === null}
       <button type="button" data-testid="deleted-show" disabled={loading || store.connection !== 'ready'} onclick={() => void load()}>
         <span class="ui-label">{strings.settings.deleted.show}</span>
@@ -65,8 +75,8 @@
           <li data-thread-id={thread.id}>
             <div class="conversation">
               <span class="title" title={thread.title}>{thread.title}</span>
-              {#if retention > 0 && thread.deletedAt}
-                <span class="subtle expiry">{fill(strings.settings.deleted.purgesAt, { date: exactTime(thread.deletedAt + retention * 86_400_000) })}</span>
+              {#if leaves !== null && thread.deletedAt}
+                <span class="subtle expiry">{fill(mode === undefined ? strings.settings.deleted.purgesAt : strings.settings.deleted.compactsAt, { date: exactTime(thread.deletedAt + leaves * 86_400_000) })}</span>
               {/if}
             </div>
             <span class="subtle meta">{projectOf(thread)}</span>

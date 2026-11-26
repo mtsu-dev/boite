@@ -14,8 +14,13 @@ export function scheduleThreadDeletionRetention(core: Core, everyMs = 60_000): (
   return () => clearInterval(timer);
 }
 
-/** Expiry uses the deletion date. Listeners release resources after the purge commits. */
+/**
+ * Expiry uses the deletion date. Listeners release resources after the purge
+ * commits. Once a storage mode is picked, the transcript pass decides what a
+ * deleted conversation becomes and when (`transcripts/engine.ts`).
+ */
 export function purgeExpiredThreads(core: Core): void {
+  if (core.settings.get().transcriptStorage !== undefined) return;
   const days = core.settings.get().threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS;
   if (days === 0) return;
   let sessions: NativeSession[] = [];

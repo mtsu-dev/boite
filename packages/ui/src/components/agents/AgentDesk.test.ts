@@ -2,6 +2,7 @@ import { expect, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../../test/fake-client';
 import { AgentsView, openAgent } from '../../lib/agents.svelte';
+import { mochiLayout } from '../../lib/mochi-layout.svelte';
 import AgentDesk from './AgentDesk.svelte';
 import BotWorkList from './BotWorkList.svelte';
 import { readFileSync } from 'node:fs';
@@ -41,7 +42,12 @@ test('Nova\'s desk is one column: who it is, its routines and its notes, its liv
     expect(document.querySelector('[role=tablist]')).toBeNull();
     expect(document.querySelector('[data-testid=desk-today]')).toBeNull();
     expect(document.body.textContent).not.toContain('$');
-    // On the Bots page of a desktop, the threads are in the column and the live step in the conversation, not here.
+    // Without Mochi layout, the sidebar lists all mochis so the desk carries this mochi's threads while keeping Now out beside the chat.
+    expect(document.querySelector('[data-testid=desk-work]')).not.toBeNull();
+    expect(document.querySelector('[data-testid=desk-now]')).toBeNull();
+    // With Mochi layout on, the threads move to the bot column and stay out of the desk.
+    mochiLayout.set(true);
+    flushSync();
     expect(document.querySelector('[data-testid=desk-work]')).toBeNull();
     expect(document.querySelector('[data-testid=desk-now]')).toBeNull();
 
@@ -79,6 +85,8 @@ test('Nova\'s desk is one column: who it is, its routines and its notes, its liv
   } finally {
     if (desk) await unmount(desk);
     document.body.innerHTML = '';
+    localStorage.clear();
+    mochiLayout.load();
   }
 });
 

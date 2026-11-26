@@ -55,3 +55,15 @@ export async function openLimitsTab(page: BrowserPage): Promise<void> {
   if (!await page.evaluate(`!!document.querySelector('[data-testid=mobile-usage-tab-limits]')`)) await page.click('[data-testid=settings-tab-usage]');
   await page.click('[data-testid=mobile-usage-tab-limits]');
 }
+
+/** Opens Settings on desktop (sidebar foot, app rail, or title bar) or phone (list header gear). */
+export async function openSettings(page: BrowserPage): Promise<void> {
+  if (await page.evaluate<boolean>('innerWidth <= 720')) {
+    if (!await page.evaluate(`!!document.querySelector('[data-testid=mobile-settings-home], [data-testid=mobile-settings-detail]')`)) {
+      await mobileAction(page, 'mobile-settings');
+    }
+    return;
+  }
+  if (await page.evaluate(`!!document.querySelector('[data-testid=settings-search]')`)) return;
+  await page.click('[data-testid=nav-settings]');
+}

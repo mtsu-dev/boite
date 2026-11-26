@@ -8,7 +8,9 @@
   import { pinnedQuotas } from '../lib/pinned-quotas.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
+  import { mochiLayout } from '../lib/mochi-layout.svelte';
   import ResizeHandle from './ResizeHandle.svelte';
+  import SidebarFoot from './SidebarFoot.svelte';
 
   /**
    * The column right of the app rail, for the thread list and the Bots list
@@ -96,7 +98,7 @@
 
   let resizeFrom = 0;
   let resizeAgentsBefore: number | null = null;
-  /** Rows scrolled under the head: it takes a hairline and the fade deepens, so no sliced row shows below it. */
+  /** Rows scrolled under the head: the fade deepens, and the agents column shows its separator. */
   let scrolled = $state(false);
 
   /** Rows below the foot: the list melts into its edge over a deep fade, and the limits line under it takes a
@@ -123,7 +125,7 @@
    * drag the window as the bar's do. The rows and the resize handle keep their own presses.
    */
   function dragTop(event: MouseEvent) {
-    if (event.target instanceof Element && event.target.closest('.scroll, [role=separator], [role=radio], [role=radiogroup]')) return;
+    if (event.target instanceof Element && event.target.closest('.scroll, .sidebar-foot, [role=separator], [role=radio], [role=radiogroup]')) return;
     dragWindow(event);
   }
 </script>
@@ -156,6 +158,8 @@
   <!-- No app rail below 720 pixels: the drawer's foot keeps the update button, and its card opens as a sheet. -->
   {#if drawer && phone.current}
     <div class="foot"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred></div>
+  {:else if !phone.current && !mochiLayout.on && !absent && !store.sidebarCollapsed}
+    <SidebarFoot {store} />
   {/if}
   <div class="resize">
     <ResizeHandle
@@ -261,7 +265,7 @@
     /* Up to the window's top (App.svelte pulls it over the bar's band), its
        head in that band, level with the main column's title. */
     .rail { padding-top: 6px; }
-    .views.scrolled { border-bottom-color: var(--color-border); }
+    .agents-rail .views.scrolled { border-bottom-color: var(--color-border); }
     .rail {
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
       /* One motion with the panel that comes in on the other side: the same duration and curve for the slide and the fade. */

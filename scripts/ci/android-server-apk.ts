@@ -1,10 +1,9 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  ASSETLINKS,
+  APK_CERT_DIGEST,
   type AppVersion,
   type Release,
-  assetlinksDigest,
   buildTool,
   formatVersion,
   nextVersion,
@@ -57,14 +56,13 @@ export function serverNextVersion(base: { major: number; minor: number }, previo
 
 /**
  * An update signed with another key is one Android refuses, so a reused or
- * rebuilt APK must carry the certificate every Boite APK does: the one
- * assetlinks.json publishes.
+ * rebuilt APK must carry the certificate every Boite APK does
+ * (`APK_CERT_DIGEST`).
  */
 export function checkServerSigner(apk: string): string | null {
   const got = signerDigest(run([buildTool('apksigner'), 'verify', '--print-certs', apk]).out);
-  const want = assetlinksDigest(readFileSync(ASSETLINKS, 'utf8'));
-  if (got === want) return null;
-  return `${apk} is signed with ${got ?? 'no certificate'} but ${ASSETLINKS} publishes ${want}: phones would refuse it as an update`;
+  if (got === APK_CERT_DIGEST) return null;
+  return `${apk} is signed with ${got ?? 'no certificate'} but every Boite APK carries ${APK_CERT_DIGEST}: phones would refuse it as an update`;
 }
 
 interface Decision {
@@ -134,7 +132,7 @@ if (import.meta.main) {
       console.error(`::error::${problem}`);
       process.exit(1);
     }
-    console.log(`${apk} carries the certificate ${ASSETLINKS} publishes`);
+    console.log(`${apk} carries the Boite APK certificate`);
   } else {
     throw new Error('usage: android-server-apk.ts version | reuse <releases.json> <dir> | verify <apk>');
   }
