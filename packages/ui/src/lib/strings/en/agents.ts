@@ -32,6 +32,8 @@ export const strings = {
       rotate: 'Rotate secret',
       rotateTitle: 'Rotate the webhook secret?',
       rotateBody: 'The old secret stops working immediately.',
+      dropSecretTitle: 'Remove the webhook secret?',
+      dropSecretBody: 'Changing this trigger away from Webhook deletes its endpoint secret immediately.',
       deleteTitle: 'Delete "{name}"?',
       deleteBody: 'This event will stop waking the mochi.',
       copy: 'Copy',

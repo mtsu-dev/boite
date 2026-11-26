@@ -392,7 +392,7 @@ export class PullRequestWatches {
       cursor = next.cursor;
       if (next.count === 0) break;
     }
-    return { ...read, checks, contextsCursor: !needed || fetched < needed ? (cursor ?? undefined) : undefined };
+    return { ...read, checks, contextsCursor: undefined };
   }
 
   /** What the base branch requires, cached per repository and base: a failed read logs and keeps what was known, a rate limit throws. */

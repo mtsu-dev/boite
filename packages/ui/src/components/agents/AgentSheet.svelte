@@ -27,13 +27,19 @@
   /** What the sheet shows while it plays its exit: the pane it had. */
   let shown = $state<AgentPane>('settings');
   let activeAgentId = '';
+  let wasOpen = false;
   $effect(() => {
     const next = pane;
     const id = agent.id;
     untrack(() => {
       if (activeAgentId && activeAgentId !== id) view.error = '';
       activeAgentId = id;
-      if (next) { shown = next; sheet.show(); } else { view.error = ''; sheet.hide(); }
+      if (next) { shown = next; sheet.show(); }
+      else {
+        if (wasOpen) view.error = '';
+        sheet.hide();
+      }
+      wasOpen = next !== null;
     });
   });
   let body = $state<HTMLElement>();

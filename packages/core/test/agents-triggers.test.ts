@@ -1211,11 +1211,13 @@ test('repeated scheduler ticks while queued do not bump trigger revision, and we
     value: { agentId: agent.id, source: { kind: 'webhook' }, name: 'Throttled', prompt: 'Handle hook.', enabled: true, cooldownSeconds: 1 },
   });
   const url = new URL(trigger.webhookPath!, h.url.replace(/^ws/, 'http'));
-  const post = (body: string) => fetch(url, { method: 'POST', headers: { 'x-boite-secret': secret! }, body });
+  const post = (body: string, delivery?: string) => fetch(url, {
+    method: 'POST', headers: { 'x-boite-secret': secret!, ...(delivery ? { 'x-github-delivery': delivery } : {}) }, body,
+  });
 
-  // Paused mochi skips the wake, records lastOutcomeAt without lastFiredAt, and enforces 429 cooldown.
+  // Paused mochi skips the wake, records lastOutcomeAt without lastFiredAt, enforces 429 cooldown, and keeps delivery id redeliverable.
   await owner.call('agents.profile.save', { id: agent.id, expectedRevision: agent.revision, value: { ...agent, status: 'paused' } });
-  expect((await post('{"step":1}')).status).toBe(202);
+  expect((await post('{"step":1}', 'dlv-paused-1')).status).toBe(202);
   const afterPause = read(trigger);
   expect(afterPause.lastOutcome).toBe('skipped');
   expect(afterPause.lastFiredAt).toBeNull();
@@ -1224,14 +1226,14 @@ test('repeated scheduler ticks while queued do not bump trigger revision, and we
   expect(limitedPaused.status).toBe(429);
   expect(Number(limitedPaused.headers.get('retry-after'))).toBeGreaterThanOrEqual(1);
 
-  // Resume, wait past 1s cooldown, hold the mochi busy, and verify queued tick stability + 503 past cooldown.
+  // Resume, wait past 1s cooldown, hold the mochi busy, and verify manual redelivery + queued tick stability + 503 past cooldown.
   const latestProfile = h.core.workforce.records.get('profile', agent.id);
   await owner.call('agents.profile.save', { id: agent.id, expectedRevision: latestProfile.revision, value: { ...latestProfile, status: 'active' } });
   await Bun.sleep(1050);
   await owner.call('turns.start', { threadId, prompt: 'manual hold' });
   await waitFor(() => driver.held.length === 1);
 
-  expect((await post('{"step":3}')).status).toBe(202);
+  expect((await post('{"step":3}', 'dlv-paused-1')).status).toBe(202);
   const queued = read(trigger);
   expect(queued.lastOutcome).toBe('queued');
   expect(queued.lastFiredAt).toBeNull();

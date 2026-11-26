@@ -291,16 +291,13 @@ export class AgentTriggers {
       if (this.#pending.has(id)) return new Response(null, { status: 503, headers: { 'retry-after': '10' } });
       const rawDelivery = (request.headers.get('x-github-delivery') ?? request.headers.get('idempotency-key'))?.trim() ?? null;
       const deliveryId = rawDelivery && /^[A-Za-z0-9_.:-]{1,128}$/.test(rawDelivery) ? rawDelivery : null;
-      if (deliveryId) {
-        let fresh = false;
-        const receiptId = createHash('sha256').update(JSON.stringify([id, deliveryId])).digest('hex');
-        this.#records.command('trigger-webhook-delivery', receiptId, null, () => { fresh = true; return null; });
-        if (!fresh) return new Response(null, { status: 409, headers: { 'cache-control': 'no-store' } });
+      const receiptId = deliveryId ? createHash('sha256').update(JSON.stringify([id, deliveryId])).digest('hex') : null;
+      if (receiptId && this.#core.journal.db.query('SELECT 1 FROM agent_requests WHERE actor = ? AND request_id = ?').get('trigger-webhook-delivery', receiptId)) {
+        return new Response(null, { status: 409, headers: { 'cache-control': 'no-store' } });
       }
-      if (digestKey) this.#rememberDigest(digestKey, now);
       const payload = new TextDecoder().decode(body.preview).replaceAll(secret, '[redacted]');
       const eventName = request.headers.get('x-github-event');
-      this.#dispatch(current, {
+      const result = this.#dispatch(current, {
         event: {
           kind: 'webhook',
           summary: payload.slice(0, WEBHOOK_SUMMARY_CHARS),
@@ -308,6 +305,10 @@ export class AgentTriggers {
         },
         requestId: newId('trigger-'),
       }, now);
+      if (result.outcome === 'fired' || result.outcome === 'queued') {
+        if (receiptId) this.#records.command('trigger-webhook-delivery', receiptId, null, () => null);
+        if (digestKey) this.#rememberDigest(digestKey, now);
+      }
       return new Response(null, { status: 202, headers: { 'cache-control': 'no-store' } });
     } finally {
       release();

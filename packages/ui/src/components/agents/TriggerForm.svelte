@@ -4,6 +4,7 @@
   import { untrack } from 'svelte';
   import { triggerPatterns } from '../../lib/agent-trigger';
   import type { AgentsView } from '../../lib/agents.svelte';
+  import { confirm } from '../../lib/confirm.svelte';
   import { strings } from '../../lib/strings';
   import Menu from '../Menu.svelte';
 
@@ -49,6 +50,10 @@
     } else if (kind === 'pr' && selectedProjectId && events.length) {
       source = { kind, projectId: selectedProjectId, events };
     } else if (kind !== 'webhook') return;
+    if (initial?.hasSecret && kind !== 'webhook') {
+      const yes = await confirm.ask({ title: t.dropSecretTitle, body: t.dropSecretBody, confirmLabel: strings.common.save, cancelLabel: strings.common.cancel, danger: true });
+      if (!yes) return;
+    }
     const value = { agentId, name, prompt, enabled: initial?.enabled ?? true, cooldownSeconds, source };
     const saved = await view.call('agents.trigger.save', initial ? { id: initial.id, expectedRevision: openedRevision, value } : { value });
     if (saved) ondone(saved.trigger, saved.secret);

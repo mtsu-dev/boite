@@ -307,13 +307,11 @@ export function watchTriggerFiles(
     }
     if (ignored(name)) return;
     const relative = childOf(directory, name);
-    let wasWatched = false;
     if (event === 'rename') {
-      wasWatched = watches.has(relative);
-      if (wasWatched) removeTree(relative);
+      if (watches.has(relative)) removeTree(relative);
       if (mayMatch(relative) && !await addTree(relative, !wasSuppressed, { directory, watcher })) return;
     }
-    if (!wasSuppressed && watches.get(directory)?.watcher === watcher && !wasWatched && !watches.has(relative)) record(relative);
+    if (!wasSuppressed && watches.get(directory)?.watcher === watcher && !watches.has(relative)) record(relative);
   }
 
   function failure(error: unknown) {

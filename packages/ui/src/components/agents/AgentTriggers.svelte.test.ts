@@ -126,15 +126,25 @@ test('a compact webhook card shows the local-only warning, renders non-firing ou
   } finally { await unmount(component); view.close(); }
 });
 
-test('AgentSheet pins view.error, dismisses it, and clears it on close or agent switch', async ({ ready }) => {
+test('AgentSheet pins view.error, dismisses it, preserves errors across snapshots while closed, and clears on close or agent switch', async ({ ready }) => {
   const { store } = await ready({ delayMs: 0, agentsDemo: true });
   const view = new AgentsView(store);
   await view.refresh();
   const nova = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
   const mira = view.snapshot!.profiles.find(profile => profile.name === 'Mira')!;
-  const props = $state({ view, agent: nova, pane: 'settings' as const, onclose: () => {} });
+  const props = $state<{ view: AgentsView; agent: typeof nova; pane: 'settings' | null; onclose: () => void }>({
+    view, agent: nova, pane: null, onclose: () => {},
+  });
   const component = mount(AgentSheet, { target: document.body, props });
   try {
+    flushSync();
+    view.error = 'Desk action failed.';
+    // A fresh snapshot copy of the same agent while the sheet is closed must not wipe Desk/Page errors.
+    props.agent = { ...nova };
+    flushSync();
+    expect(view.error).toBe('Desk action failed.');
+
+    props.pane = 'settings';
     flushSync();
     view.error = 'This trigger changed elsewhere. Reopen it to see the latest settings.';
     flushSync();
@@ -143,9 +153,16 @@ test('AgentSheet pins view.error, dismisses it, and clears it on close or agent 
     expect(sheet.querySelector('.agent-sheet-error')).not.toBeNull();
     flushSync(() => sheet.querySelector<HTMLButtonElement>('.agent-sheet-error button')?.click());
     expect(view.error).toBe('');
+
     view.error = 'Stale error';
     flushSync();
     props.agent = mira;
+    flushSync();
+    expect(view.error).toBe('');
+
+    view.error = 'Close clears me';
+    flushSync();
+    props.pane = null;
     flushSync();
     expect(view.error).toBe('');
   } finally { await unmount(component); view.close(); }

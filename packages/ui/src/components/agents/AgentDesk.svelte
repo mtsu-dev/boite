@@ -65,7 +65,16 @@
   const busy = $derived(noConversationBeside && standing !== 'idle' && standing !== 'archived');
 
   // The snapshot carries the open agent's desk only; the Agents page asks for it too, this asks wherever the desk is drawn.
-  $effect(() => { const id = agent?.id; if (id) untrack(() => view.showDesk(id)); });
+  let activeAgentId = '';
+  $effect(() => {
+    const id = agent?.id;
+    if (!id) return;
+    untrack(() => {
+      if (activeAgentId && activeAgentId !== id) view.error = '';
+      activeAgentId = id;
+      view.showDesk(id);
+    });
+  });
 
   /** Its brain files, kept beside the snapshot and read again when the agent changes. */
   let brain = $state<AgentBrain | null>(null);
@@ -141,7 +150,7 @@
           </section>
         {/if}
 
-        {#if view.error}<div class="desk-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} /></div>{/if}
+        {#if view.error}<div class="desk-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} ondismiss={() => { view.error = ''; }} /></div>{/if}
 
         <section class="desk-card desk-schedule" data-testid="desk-schedule">
           {#key agent.id}

@@ -34,6 +34,8 @@ export const fr: Translation = {
       rotate: 'Renouveler le secret',
       rotateTitle: 'Renouveler le secret du webhook ?',
       rotateBody: 'L\'ancien secret cesse de fonctionner immédiatement.',
+      dropSecretTitle: 'Supprimer le secret du webhook ?',
+      dropSecretBody: 'Changer la source de ce déclencheur supprime immédiatement le secret de son webhook.',
       deleteTitle: 'Supprimer "{name}" ?',
       deleteBody: 'Cet événement ne réveillera plus le mochi.',
       copy: 'Copier',
