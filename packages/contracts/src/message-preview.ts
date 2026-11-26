@@ -1,5 +1,5 @@
 import type { Message, MessagePart, ToolDocument } from './index';
-import { isCompleteGitBinaryHunk, isGitBase85Line } from './git-binary';
+import { BINARY_PATCH_VERIFY_BUDGET, checkGitBinaryHunk, isGitBase85Line } from './git-binary';
 
 type ToolPart = Extract<MessagePart, { type: 'tool' }>;
 
@@ -256,11 +256,16 @@ function hunkEndOffset(value: string, start: number): number {
 }
 
 /** Consume a `GIT binary patch` section (forward and optional reverse base85 hunks). */
-function binaryPatchEndOffset(value: string, start: number): number {
+function binaryPatchEndOffset(
+  value: string,
+  start: number,
+  budget: { remaining: number },
+): { end: number; unverified: boolean } {
   const head = lineAt(value, start);
-  if (!head || head.text !== 'GIT binary patch') return start;
+  if (!head || head.text !== 'GIT binary patch') return { end: start, unverified: false };
   let pos = head.next;
   let lastValid = start;
+  let unverified = false;
   for (let sections = 0; sections < 2; sections++) {
     const section = lineAt(value, pos);
     const header = section ? GIT_BINARY_HEADER.exec(section.text) : null;
@@ -273,16 +278,20 @@ function binaryPatchEndOffset(value: string, start: number): number {
       const line = lineAt(value, cur);
       if (!line) break;
       if (line.text === '') { cur = line.next; terminated = true; break; }
-      if (!isGitBase85Line(line.text)) return start;
+      if (!isGitBase85Line(line.text)) return { end: start, unverified: false };
       lines.push(line.text);
       cur = line.next;
     }
-    if (!lines.length || !isCompleteGitBinaryHunk(lines, expectedSize, terminated)) return start;
+    if (!lines.length) return { end: start, unverified: false };
+    const check = checkGitBinaryHunk(lines, expectedSize, budget.remaining);
+    budget.remaining = Math.max(0, budget.remaining - check.consumed);
+    if (check.status === 'invalid') return { end: start, unverified: false };
+    if (check.status === 'unverified') unverified = true;
     lastValid = cur;
     pos = cur;
     if (!terminated) break;
   }
-  return lastValid;
+  return { end: lastValid, unverified };
 }
 
 /** Validate `apply_patch` file headers and hunk lines between `*** Begin Patch` and `*** End Patch`. */
@@ -376,12 +385,16 @@ function findEndPatch(value: string, from: number): number {
   return line ? line.next : -1;
 }
 
-function patchEnd(value: string, start: number): { end: number; kind: 'apply' | 'binary' | 'diff' } {
+function patchEnd(
+  value: string,
+  start: number,
+  budget: { remaining: number },
+): { end: number; kind: 'apply' | 'binary' | 'diff'; unverified: boolean } {
   const first = lineAt(value, start);
-  if (!first) return { end: start, kind: 'diff' };
+  if (!first) return { end: start, kind: 'diff', unverified: false };
   if (first.text === '*** Begin Patch') {
     const end = findEndPatch(value, first.next);
-    return { end: end === -1 ? start : end, kind: 'apply' };
+    return { end: end === -1 ? start : end, kind: 'apply', unverified: false };
   }
   let pos = start;
   const git = first.text.startsWith('diff --git ');
@@ -393,8 +406,8 @@ function patchEnd(value: string, start: number): { end: number; kind: 'apply' | 
       pos = line.next;
     }
     if (lineAt(value, pos)?.text === 'GIT binary patch') {
-      const binEnd = binaryPatchEndOffset(value, pos);
-      return { end: binEnd > pos ? binEnd : start, kind: 'binary' };
+      const bin = binaryPatchEndOffset(value, pos, budget);
+      return { end: bin.end > pos ? bin.end : start, kind: 'binary', unverified: bin.end > pos && bin.unverified };
     }
   }
   const minus = lineAt(value, pos);
@@ -402,37 +415,44 @@ function patchEnd(value: string, start: number): { end: number; kind: 'apply' | 
   if (minus?.text.startsWith('--- ') && plus?.text.startsWith('+++ ')) {
     const firstHunk = plus.next;
     pos = hunkEndOffset(value, firstHunk);
-    if (pos === firstHunk) return { end: start, kind: 'diff' };
+    if (pos === firstHunk) return { end: start, kind: 'diff', unverified: false };
     for (let next = hunkEndOffset(value, pos); next > pos; next = hunkEndOffset(value, pos)) pos = next;
-    return { end: pos, kind: 'diff' };
+    return { end: pos, kind: 'diff', unverified: false };
   }
-  return { end: git && pos > first.next ? pos : start, kind: 'diff' };
+  return { end: git && pos > first.next ? pos : start, kind: 'diff', unverified: false };
 }
 
-export function patchEndOffset(value: string, start: number): number {
-  return patchEnd(value, start).end;
-}
-
-function extractPatches(value: string | null | undefined, keepRest: boolean): { patches: string[]; rest: string } {
+function extractPatches(
+  value: string | null | undefined,
+  keepRest: boolean,
+): { patches: string[]; rest: string; unverified?: number[] } {
   if (!value) return { patches: [], rest: '' };
   PATCH_START.lastIndex = 0;
   const patches: string[] = [];
+  const unverified: number[] = [];
   const rest: string[] = [];
+  const budget = { remaining: BINARY_PATCH_VERIFY_BUDGET };
   let cursor = 0;
   for (let match = PATCH_START.exec(value); match; match = PATCH_START.exec(value)) {
     const start = match.index;
-    const { end, kind } = patchEnd(value, start);
+    const { end, kind, unverified: patchUnverified } = patchEnd(value, start, budget);
     if (end === start) continue;
     if (keepRest && start > cursor) rest.push(value.slice(cursor, start));
     const raw = value.slice(start, end);
     let slice: string;
     if (kind === 'binary') {
-      // Preserve or restore the terminating blank line required by `git apply` for binary hunks.
-      const eol = raw.includes('\r\n') ? '\r\n' : '\n';
-      slice = raw.endsWith('\n\n') || raw.endsWith('\r\n\r\n') ? raw
-        : raw.endsWith('\r\n') ? `${raw}\r\n`
-        : raw.endsWith('\n') ? `${raw}\n`
-        : `${raw}${eol}${eol}`;
+      if (patchUnverified) {
+        unverified.push(patches.length);
+        // Keep unverified binary hunks verbatim without fabricating a terminating blank line.
+        slice = raw;
+      } else {
+        // Preserve or restore the terminating blank line required by `git apply` for verified binary hunks.
+        const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+        slice = raw.endsWith('\n\n') || raw.endsWith('\r\n\r\n') ? raw
+          : raw.endsWith('\r\n') ? `${raw}\r\n`
+          : raw.endsWith('\n') ? `${raw}\n`
+          : `${raw}${eol}${eol}`;
+      }
     } else if (kind === 'apply') {
       slice = raw.replace(/\r?\n$/, '');
     } else {
@@ -445,11 +465,15 @@ function extractPatches(value: string | null | undefined, keepRest: boolean): { 
   }
   if (!patches.length) return { patches, rest: keepRest ? value : '' };
   if (keepRest && cursor < value.length) rest.push(value.slice(cursor));
-  return { patches, rest: keepRest ? rest.join('').replace(/\r\n/g, '\n').trim() : '' };
+  return {
+    patches,
+    rest: keepRest ? rest.join('').replace(/\r\n/g, '\n').trim() : '',
+    ...(unverified.length ? { unverified } : {}),
+  };
 }
 
 /** A hunk's counts distinguish a context line from an indented log after it. */
-export function extractToolPatches(value: string | null | undefined): { patches: string[]; rest: string } {
+export function extractToolPatches(value: string | null | undefined): { patches: string[]; rest: string; unverified?: number[] } {
   return extractPatches(value, true);
 }
 

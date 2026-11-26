@@ -43,6 +43,7 @@ export const strings = {
       attachment: 'Attachment',
       input: 'Input',
       output: 'Output',
+      unverifiedBinaryDiff: 'Binary patch integrity was not verified (exceeds the 4 MiB verification limit).',
     },
   },
 

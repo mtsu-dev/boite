@@ -186,7 +186,8 @@ async function loadDeferredTools(
 }
 
 type Content =
-  | { kind: 'markdown' | 'attachment' | 'diff' | 'question' | 'error'; text: string }
+  | { kind: 'markdown' | 'attachment' | 'question' | 'error'; text: string }
+  | { kind: 'diff'; text: string; unverified?: boolean }
   | { kind: 'details'; title: string; text: string };
 
 function editPaths(part: Tool, changes: readonly { path: string }[]): string[] {
@@ -229,8 +230,20 @@ function toolContent(part: Tool, options: ExportOptions): Content[] {
     content.push({ kind: 'details', title: `${part.name} (${part.status})`, text: details.filter(Boolean).join('\n\n') });
   }
   if (options.includeDiffs && part.status === 'done') {
-    const patches = new Set([...changes.map(diffText), ...input.patches, ...output.patches]);
-    for (const patch of patches) if (patch) content.push({ kind: 'diff', text: patch });
+    const patches = new Map<string, boolean>();
+    const addPatch = (text: string, unverified = false) => {
+      if (!text) return;
+      const prev = patches.get(text);
+      patches.set(text, prev === undefined ? unverified : prev && unverified);
+    };
+    for (const change of changes) addPatch(diffText(change));
+    const inputUnverified = new Set(input.unverified);
+    for (const [index, patch] of input.patches.entries()) addPatch(patch, inputUnverified.has(index));
+    const outputUnverified = new Set(output.unverified);
+    for (const [index, patch] of output.patches.entries()) addPatch(patch, outputUnverified.has(index));
+    for (const [text, unverified] of patches) {
+      content.push(unverified ? { kind: 'diff', text, unverified: true } : { kind: 'diff', text });
+    }
   }
   return content;
 }
@@ -352,7 +365,10 @@ function markdownContent(content: Content): string {
         ? `<details>\n${summary}\n\n${codeFence(content.text)}\n\n</details>`
         : `<details>\n${summary}\n</details>`;
     }
-    case 'diff': return codeFence(content.text, 'diff');
+    case 'diff': {
+      const fenced = codeFence(content.text, 'diff');
+      return content.unverified ? `> ${markdownLabel(doc.unverifiedBinaryDiff)}\n\n${fenced}` : fenced;
+    }
   }
 }
 
@@ -386,7 +402,10 @@ function htmlContent(content: Content): string {
     case 'error': return `<p class="error"><strong>${escapeHtml(doc.error)}:</strong> ${escapeHtml(content.text)}</p>`;
     case 'attachment': return `<p class="attachment">${escapeHtml(content.text)}</p>`;
     case 'details': return `<details><summary>${escapeHtml(content.title)}</summary><pre>${escapeHtml(content.text)}</pre></details>`;
-    case 'diff': return `<pre><code class="language-diff">${escapeHtml(content.text).replace(/\r/g, '&#13;')}</code></pre>`;
+    case 'diff': {
+      const block = `<pre><code class="language-diff">${escapeHtml(content.text).replace(/\r/g, '&#13;')}</code></pre>`;
+      return content.unverified ? `<p class="attachment">${escapeHtml(doc.unverifiedBinaryDiff)}</p>\n${block}` : block;
+    }
   }
 }
 

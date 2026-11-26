@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { extractToolPatches, INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, MESSAGE_PAGE_MAX_BYTES, MESSAGE_SENT_MAX_BYTES, RPC_MAX_FRAME_BYTES, type Message } from '@boite/contracts';
+import { deflateSync } from 'node:zlib';
+import { BINARY_PATCH_VERIFY_BUDGET, checkGitBinaryHunk, extractToolPatches, INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, MESSAGE_PAGE_MAX_BYTES, MESSAGE_SENT_MAX_BYTES, RPC_MAX_FRAME_BYTES, type Message } from '@boite/contracts';
 import { echoThread, startTestCore } from './harness';
 import { thrown } from './settle.ts';
 
@@ -341,47 +342,162 @@ test('messages.toolPart with diffsOnly and messages.list with omitThinking keep 
     const withoutRunning = await client.call('threads.get', { threadId, limit: 1, ...light, omitTools: 'running' });
     expect(withoutRunning.messages[0]?.parts.map(part => part.type === 'tool' ? part.toolId : part.type)).toEqual(['text', 'done-edit']);
 
-    // Real `git diff --binary` and CRLF-to-LF `git diff` outputs survive `diffsOnly` projection + extraction and pass `git apply --check`.
-    const repo = mkdtempSync(join(tmpdir(), 'boite-binpatch-'));
-    try {
-      const git = (args: string[], input?: string) => Bun.spawnSync(['git', '-c', 'core.autocrlf=false', ...args], {
-        cwd: repo, stdin: input !== undefined ? new TextEncoder().encode(input) : undefined, stdout: 'pipe', stderr: 'pipe',
-      });
-      expect(git(['init', '-q']).exitCode).toBe(0);
-      writeFileSync(join(repo, 'logo.bin'), new Uint8Array([0, 1, 2, 3, 255, 10, 20, 30]));
-      writeFileSync(join(repo, 'win.txt'), 'alpha\r\nbeta\r\n');
-      expect(git(['add', 'logo.bin', 'win.txt']).exitCode).toBe(0);
-      expect(git(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'init']).exitCode).toBe(0);
-      writeFileSync(join(repo, 'logo.bin'), new Uint8Array([0, 1, 2, 99, 255, 10, 20, 30, 40]));
-      writeFileSync(join(repo, 'win.txt'), 'alpha\nbeta\n');
-      const generatedBin = git(['diff', '--binary', '--', 'logo.bin']);
-      const generatedCrlf = git(['diff', '--', 'win.txt']);
-      expect(generatedBin.exitCode).toBe(0);
-      expect(generatedCrlf.exitCode).toBe(0);
-      const binaryDiff = generatedBin.stdout.toString();
-      const crlfDiff = generatedCrlf.stdout.toString();
-      expect(git(['checkout', '--', 'logo.bin', 'win.txt']).exitCode).toBe(0);
+      // Real `git diff --binary` (literal and delta), CRLF-to-LF `git diff`, and Codex add/delete patches pass `git apply`.
+      const repo = mkdtempSync(join(tmpdir(), 'boite-binpatch-'));
+      try {
+        const git = (args: string[], input?: string) => Bun.spawnSync(['git', '-c', 'core.autocrlf=false', ...args], {
+          cwd: repo, stdin: input !== undefined ? new TextEncoder().encode(input) : undefined, stdout: 'pipe', stderr: 'pipe',
+        });
+        expect(git(['init', '-q']).exitCode).toBe(0);
+        const deltaBase = new Uint8Array(2048);
+        for (let i = 0; i < deltaBase.length; i++) deltaBase[i] = (i * 37 + (i >> 3)) & 0xff;
+        writeFileSync(join(repo, 'logo.bin'), new Uint8Array([0, 1, 2, 3, 255, 10, 20, 30]));
+        writeFileSync(join(repo, 'delta.bin'), deltaBase);
+        writeFileSync(join(repo, 'win.txt'), 'alpha\r\nbeta\r\n');
+        writeFileSync(join(repo, 'old.txt'), '@@ old heading\n');
+        expect(git(['add', 'logo.bin', 'delta.bin', 'win.txt', 'old.txt']).exitCode).toBe(0);
+        expect(git(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'init']).exitCode).toBe(0);
+        writeFileSync(join(repo, 'logo.bin'), new Uint8Array([0, 1, 2, 99, 255, 10, 20, 30, 40]));
+        const deltaNext = new Uint8Array(deltaBase);
+        deltaNext[1024] = (deltaNext[1024] ?? 0) ^ 0xff;
+        writeFileSync(join(repo, 'delta.bin'), deltaNext);
+        writeFileSync(join(repo, 'win.txt'), 'alpha\nbeta\n');
+        const generatedBin = git(['diff', '--binary', '--', 'logo.bin']);
+        const generatedDelta = git(['diff', '--binary', '--', 'delta.bin']);
+        const generatedCrlf = git(['diff', '--', 'win.txt']);
+        expect(generatedBin.exitCode).toBe(0);
+        expect(generatedDelta.exitCode).toBe(0);
+        expect(generatedCrlf.exitCode).toBe(0);
+        const binaryDiff = generatedBin.stdout.toString();
+        const deltaDiff = generatedDelta.stdout.toString();
+        const crlfDiff = generatedCrlf.stdout.toString();
+        expect(deltaDiff).toContain('\ndelta ');
+        expect(git(['checkout', '--', 'logo.bin', 'delta.bin', 'win.txt']).exitCode).toBe(0);
 
-      harness.core.journal.putMessage({
-        id: 'bin-diff', threadId, turnId: 'heavy-turn', role: 'assistant', state: 'complete', createdAt: 103,
-        parts: [
-          { type: 'tool', toolId: 'bin-cmd', name: 'Bash', status: 'done', input: { command: 'git diff --binary' }, output: `log before\n${binaryDiff}log after\n` },
-          { type: 'tool', toolId: 'bin-trimmed', name: 'Bash', status: 'done', input: { command: 'git diff --binary' }, output: `log before\n${binaryDiff.trimEnd()}` },
-          { type: 'tool', toolId: 'crlf-cmd', name: 'Bash', status: 'done', input: { command: 'git diff' }, output: `log before\n${crlfDiff}log after\n` },
-        ],
-      });
-      for (const toolId of ['bin-cmd', 'bin-trimmed']) {
-        const projectedBin = await client.call('messages.toolPart', { threadId, messageId: 'bin-diff', toolId, diffsOnly: true });
-        const extractedBin = extractToolPatches(projectedBin.part.output);
-        expect(extractedBin.patches).toHaveLength(1);
-        expect(git(['apply', '--check'], extractedBin.patches[0]!).exitCode).toBe(0);
-      }
+        harness.core.journal.putMessage({
+          id: 'bin-diff', threadId, turnId: 'heavy-turn', role: 'assistant', state: 'complete', createdAt: 103,
+          parts: [
+            { type: 'tool', toolId: 'bin-cmd', name: 'Bash', status: 'done', input: { command: 'git diff --binary' }, output: `log before\n${binaryDiff}log after\n` },
+            { type: 'tool', toolId: 'bin-trimmed', name: 'Bash', status: 'done', input: { command: 'git diff --binary' }, output: `log before\n${binaryDiff.trimEnd()}` },
+            { type: 'tool', toolId: 'delta-cmd', name: 'Bash', status: 'done', input: { command: 'git diff --binary' }, output: `log before\n${deltaDiff.trimEnd()}` },
+            { type: 'tool', toolId: 'crlf-cmd', name: 'Bash', status: 'done', input: { command: 'git diff' }, output: `log before\n${crlfDiff}log after\n` },
+          ],
+        });
+        for (const toolId of ['bin-cmd', 'bin-trimmed', 'delta-cmd']) {
+          const projectedBin = await client.call('messages.toolPart', { threadId, messageId: 'bin-diff', toolId, diffsOnly: true });
+          const extractedBin = extractToolPatches(projectedBin.part.output);
+          expect(extractedBin.patches).toHaveLength(1);
+          expect(extractedBin.unverified).toBeUndefined();
+          expect(git(['apply', '--check'], extractedBin.patches[0]!).exitCode).toBe(0);
+        }
 
-      const projectedCrlf = await client.call('messages.toolPart', { threadId, messageId: 'bin-diff', toolId: 'crlf-cmd', diffsOnly: true });
-      const extractedCrlf = extractToolPatches(projectedCrlf.part.output);
-      expect(extractedCrlf.patches).toHaveLength(1);
-      expect(extractedCrlf.patches[0]).toContain('-alpha\r\n-beta\r\n+alpha\n+beta');
-      expect(git(['apply', '--check'], `${extractedCrlf.patches[0]!}\n`).exitCode).toBe(0);
-    } finally { rmSync(repo, { recursive: true, force: true }); }
+        const projectedCrlf = await client.call('messages.toolPart', { threadId, messageId: 'bin-diff', toolId: 'crlf-cmd', diffsOnly: true });
+        const extractedCrlf = extractToolPatches(projectedCrlf.part.output);
+        expect(extractedCrlf.patches).toHaveLength(1);
+        expect(extractedCrlf.patches[0]).toContain('-alpha\r\n-beta\r\n+alpha\n+beta');
+        expect(git(['apply', '--check'], `${extractedCrlf.patches[0]!}\n`).exitCode).toBe(0);
+
+        const codexDeletePatch = 'diff --git a/old.txt b/old.txt\ndeleted file mode 100644\n--- a/old.txt\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-@@ old heading\n';
+        const codexAddPatch = 'diff --git a/new.txt b/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+@@ literal heading\n+body\n';
+        expect(git(['apply'], codexDeletePatch).exitCode).toBe(0);
+        expect(existsSync(join(repo, 'old.txt'))).toBe(false);
+        expect(git(['apply'], codexAddPatch).exitCode).toBe(0);
+        expect(readFileSync(join(repo, 'new.txt'), 'utf8')).toBe('@@ literal heading\nbody\n');
+      } finally { rmSync(repo, { recursive: true, force: true }); }
   } finally { await harness.stop(); }
+});
+
+const GIT_BASE85 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_`{|}~';
+
+function encodeGitBase85(data: Uint8Array): string[] {
+  const lines: string[] = [];
+  for (let offset = 0; offset < data.length; offset += 52) {
+    const chunk = data.subarray(offset, Math.min(offset + 52, data.length));
+    const prefix = chunk.length <= 26 ? String.fromCharCode(64 + chunk.length) : String.fromCharCode(96 + chunk.length - 26);
+    let line = prefix;
+    for (let i = 0; i < chunk.length; i += 4) {
+      const acc = (((chunk[i] ?? 0) << 24) | ((chunk[i + 1] ?? 0) << 16) | ((chunk[i + 2] ?? 0) << 8) | (chunk[i + 3] ?? 0)) >>> 0;
+      let v = acc;
+      const digits = new Array<string>(5);
+      for (let d = 4; d >= 0; d--) { digits[d] = GIT_BASE85[v % 85]!; v = Math.floor(v / 85); }
+      line += digits.join('');
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+function makeBinaryPatch(size: number, lines: readonly string[], terminated = true): string {
+  return `diff --git a/blob.bin b/blob.bin\nindex 0000000..1111111 100644\nGIT binary patch\nliteral ${size}\n${lines.join('\n')}${terminated ? '\n\n' : ''}`;
+}
+
+test('checkGitBinaryHunk verifies stored, fixed, and dynamic zlib streams and bounds verification per call', () => {
+  // literal 0 (empty payload)
+  const emptyDeflated = deflateSync(new Uint8Array(0));
+  expect(checkGitBinaryHunk(encodeGitBase85(emptyDeflated), 0, BINARY_PATCH_VERIFY_BUDGET)).toEqual({ status: 'valid', consumed: 0 });
+
+  // btype === 0 (uncompressed stored block)
+  const storedRaw = new TextEncoder().encode('stored block payload 0123456789');
+  const storedDeflated = deflateSync(storedRaw, { level: 0 });
+  expect((storedDeflated[2]! >> 1) & 3).toBe(0);
+  expect(checkGitBinaryHunk(encodeGitBase85(storedDeflated), storedRaw.length, BINARY_PATCH_VERIFY_BUDGET)).toEqual({
+    status: 'valid', consumed: storedRaw.length,
+  });
+
+  // btype === 1 (fixed Huffman)
+  const fixedRaw = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  const fixedDeflated = deflateSync(fixedRaw);
+  expect((fixedDeflated[2]! >> 1) & 3).toBe(1);
+  expect(checkGitBinaryHunk(encodeGitBase85(fixedDeflated), fixedRaw.length, BINARY_PATCH_VERIFY_BUDGET)).toEqual({
+    status: 'valid', consumed: fixedRaw.length,
+  });
+
+  // btype === 2 (dynamic Huffman with LZ77 back-references and multi-line base85)
+  const dynamicRaw = new TextEncoder().encode(
+    Array.from({ length: 120 }, (_, i) => `row-${i.toString(36)}: alpha beta gamma delta ${i % 7} ${'xyz'.repeat((i % 5) + 1)}\n`).join(''),
+  );
+  const dynamicDeflated = deflateSync(dynamicRaw, { level: 9 });
+  expect((dynamicDeflated[2]! >> 1) & 3).toBe(2);
+  const dynamicLines = encodeGitBase85(dynamicDeflated);
+  expect(dynamicLines.length).toBeGreaterThan(2);
+  expect(checkGitBinaryHunk(dynamicLines, dynamicRaw.length, BINARY_PATCH_VERIFY_BUDGET)).toEqual({
+    status: 'valid', consumed: dynamicRaw.length,
+  });
+
+  // Reject truncated stream, wrong size, and 1-bit Adler-32 corruption.
+  expect(checkGitBinaryHunk(dynamicLines.slice(0, -1), dynamicRaw.length, BINARY_PATCH_VERIFY_BUDGET).status).toBe('invalid');
+  expect(checkGitBinaryHunk(dynamicLines, dynamicRaw.length + 1, BINARY_PATCH_VERIFY_BUDGET).status).toBe('invalid');
+  const corrupt = new Uint8Array(dynamicDeflated);
+  corrupt[corrupt.length - 1] = (corrupt[corrupt.length - 1] ?? 0) ^ 1;
+  expect(checkGitBinaryHunk(encodeGitBase85(corrupt), dynamicRaw.length, BINARY_PATCH_VERIFY_BUDGET).status).toBe('invalid');
+
+  // Impossible deflate expansion ratio (> 1032:1) is rejected even above budget and even with a terminating blank line.
+  const truncatedOverBudget = makeBinaryPatch(16 * 1024 * 1024 + 1, ['QcmZQzWJ><eB_gK*00=Yz$^ZZW'], true);
+  expect(extractToolPatches(truncatedOverBudget).patches).toEqual([]);
+
+  // Structurally valid >4 MiB hunks are marked unverified consistently whether terminated or EOF-trimmed,
+  // and repeated 16 MiB blocks stay within a single bounded pass without inflating all of them.
+  const sixteenMiB = 16 * 1024 * 1024;
+  const sixteenMiBLines = encodeGitBase85(deflateSync(new Uint8Array(sixteenMiB)));
+  expect(checkGitBinaryHunk(sixteenMiBLines, sixteenMiB, BINARY_PATCH_VERIFY_BUDGET)).toEqual({ status: 'unverified', consumed: 0 });
+  const overTerminated = makeBinaryPatch(sixteenMiB, sixteenMiBLines, true);
+  const overTrimmed = makeBinaryPatch(sixteenMiB, sixteenMiBLines, false);
+  const resTerminated = extractToolPatches(overTerminated);
+  const resTrimmed = extractToolPatches(overTrimmed);
+  expect(resTerminated.patches).toEqual([overTerminated]);
+  expect(resTerminated.unverified).toEqual([0]);
+  expect(resTrimmed.patches).toEqual([overTrimmed]);
+  expect(resTrimmed.unverified).toEqual([0]);
+
+  const twentyBlocks = Array.from({ length: 20 }, () => overTerminated).join('');
+  const resTwenty = extractToolPatches(twentyBlocks);
+  expect(resTwenty.patches).toHaveLength(20);
+  expect(resTwenty.unverified).toEqual(Array.from({ length: 20 }, (_, i) => i));
+
+  // Cumulative budget across multiple verified hunks: first 3 MiB hunk is verified, second 3 MiB hunk exceeds remaining 1 MiB budget.
+  const threeMiB = 3 * 1024 * 1024;
+  const threeMiBPatch = makeBinaryPatch(threeMiB, encodeGitBase85(deflateSync(new Uint8Array(threeMiB))), true);
+  const resTwo = extractToolPatches(`${threeMiBPatch}${threeMiBPatch}`);
+  expect(resTwo.patches).toHaveLength(2);
+  expect(resTwo.unverified).toEqual([1]);
 });

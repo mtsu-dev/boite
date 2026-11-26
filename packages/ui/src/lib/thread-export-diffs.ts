@@ -1,4 +1,4 @@
-import { extractToolPatches, patchEndOffset } from '@boite/contracts';
+import { extractToolPatches } from '@boite/contracts';
 import { diffRowsOf } from './diff';
 import type { TurnDiff } from './turn-files';
 
@@ -6,8 +6,12 @@ export { extractToolPatches };
 
 const NO_NEWLINE = '\\ No newline at end of file';
 
-function diffHeader(path: string): string {
+type DiffMode = 'update' | 'add' | 'delete';
+
+function diffHeader(path: string, mode: DiffMode = 'update'): string {
   const display = path.replace(/[\r\n]+/g, ' ');
+  if (mode === 'add') return `diff --git a/${display} b/${display}\nnew file mode 100644\n--- /dev/null\n+++ b/${display}`;
+  if (mode === 'delete') return `diff --git a/${display} b/${display}\ndeleted file mode 100644\n--- a/${display}\n+++ /dev/null`;
   return `--- ${display}\n+++ ${display}`;
 }
 
@@ -24,7 +28,7 @@ function lastLine(text: string): string {
   return text.slice(prev + 1, end);
 }
 
-export function diffText(diff: TurnDiff): string {
+export function diffText(diff: TurnDiff, mode: DiffMode = 'update'): string {
   const oldCount = lineCount(diff.oldText);
   const newCount = lineCount(diff.newText);
   const oldNoNewline = oldCount > 0 && !diff.oldText.endsWith('\n');
@@ -96,7 +100,7 @@ export function diffText(diff: TurnDiff): string {
     ];
     lines.push(`@@ -${oldCount},1 +${newCount},1 @@`, body.join('\n'));
   }
-  return lines.length ? `${diffHeader(diff.path)}\n${lines.join('\n')}` : '';
+  return lines.length ? `${diffHeader(diff.path, mode)}\n${lines.join('\n')}` : '';
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -111,21 +115,28 @@ function codexPatch(path: string, diff: string, kind: unknown): string {
       const display = path.replace(/[\r\n]+/g, ' ');
       return `diff --git a/${display} b/${display}\n${type === 'add' ? 'new' : 'deleted'} file mode 100644`;
     }
-    return diffText({ kind: 'diff', path, oldText: type === 'delete' ? diff : '', newText: type === 'add' ? diff : '' });
+    return diffText({ kind: 'diff', path, oldText: type === 'delete' ? diff : '', newText: type === 'add' ? diff : '' }, type);
   }
   if (diff.startsWith('@@')) return `${diffHeader(path)}\n${diff}`;
-  if (patchEndOffset(diff, 0) > 0) return diff;
   return diff;
 }
 
-export function extractInputPatches(input: unknown, inputText: string | null | undefined): { patches: string[]; rest: string } {
+export function extractInputPatches(
+  input: unknown,
+  inputText: string | null | undefined,
+): { patches: string[]; rest: string; unverified?: number[] } {
   const fields = record(input);
   if (fields) {
     const rest = { ...fields };
     const patches: string[] = [];
+    const unverified: number[] = [];
     if (typeof fields['command'] === 'string') {
       const command = extractToolPatches(fields['command']);
+      const offset = patches.length;
       patches.push(...command.patches);
+      if (command.unverified) {
+        for (const index of command.unverified) unverified.push(offset + index);
+      }
       rest['command'] = command.rest;
     }
     if (Array.isArray(fields['changes'])) {
@@ -140,7 +151,9 @@ export function extractInputPatches(input: unknown, inputText: string | null | u
         return { path, kind, ...metadata };
       });
     }
-    if (patches.length) return { patches, rest: JSON.stringify(rest, null, 2) };
+    if (patches.length) {
+      return { patches, rest: JSON.stringify(rest, null, 2), ...(unverified.length ? { unverified } : {}) };
+    }
   }
   return extractToolPatches(inputText ?? (typeof input === 'string' ? input : JSON.stringify(input, null, 2)));
 }

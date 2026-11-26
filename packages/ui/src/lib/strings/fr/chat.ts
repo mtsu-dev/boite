@@ -45,6 +45,7 @@ export const fr: Translation = {
       attachment: 'Pièce jointe',
       input: 'Entrée',
       output: 'Sortie',
+      unverifiedBinaryDiff: 'L’intégrité du patch binaire n’a pas été vérifiée (dépasse la limite de vérification de 4 Mio).',
     },
   },
 

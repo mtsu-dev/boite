@@ -4,6 +4,7 @@ import { extractToolPatches, projectToolDiffs, RpcErrorCode, type Message, type 
 import { test } from '../test/fake-client';
 import { RpcFailure, type Client } from './client';
 import { longThread } from './fake-client/threads-seed';
+import { strings } from './strings';
 import { downloadExport, exportFilename, exportThreadHtml, exportThreadMarkdown, loadAllThreadMessages, type ExportOptions } from './thread-export';
 
 const thread: ThreadSummary = { ...longThread(), title: 'Fix auth flow', branch: 'fix/auth' };
@@ -487,8 +488,37 @@ test('patch extraction stays linear on unclosed Begin Patch headers, ignores unc
   expect(codexProjectedMd).toBe(codexDirectMd);
   expect(codexDirectMd).toContain('diff --git a/empty-new.txt b/empty-new.txt\nnew file mode 100644');
   expect(codexDirectMd).toContain('diff --git a/empty-old.txt b/empty-old.txt\ndeleted file mode 100644');
-  expect(codexDirectMd).toContain('--- at-header.txt\n+++ at-header.txt\n@@ -0,0 +1,2 @@\n+@@ literal heading\n+body');
-  expect(codexDirectMd).toContain('--- at-removed.txt\n+++ at-removed.txt\n@@ -1,1 +0,0 @@\n-@@ old heading');
+  expect(codexDirectMd).toContain('diff --git a/at-header.txt b/at-header.txt\nnew file mode 100644\n--- /dev/null\n+++ b/at-header.txt\n@@ -0,0 +1,2 @@\n+@@ literal heading\n+body');
+  expect(codexDirectMd).toContain('diff --git a/at-removed.txt b/at-removed.txt\ndeleted file mode 100644\n--- a/at-removed.txt\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-@@ old heading');
+
+  // Structurally valid >4 MiB binary patches keep both terminated and EOF-trimmed forms and emit an explicit unverified note,
+  // while truncated over-budget patches with impossible compression ratios are rejected even when blank-line terminated.
+  const fakeOverBudget = [
+    'diff --git a/huge.bin b/huge.bin',
+    'index 0000000..1111111 100644',
+    'GIT binary patch',
+    'literal 16777217',
+    'QcmZQzWJ><eB_gK*00=Yz$^ZZW',
+    '',
+    '',
+  ].join('\n');
+  expect(extractToolPatches(fakeOverBudget).patches).toEqual([]);
+  const overBudgetSize = 5 * 1024 * 1024;
+  // 52 bytes per `z` line with real Git base85 zlib header (`cmZQz`); 105 lines = 5460 bytes (> 5 MiB / 1032).
+  const overBudgetLines = [
+    `zcmZQz${'0'.repeat(60)}`,
+    ...Array.from({ length: 104 }, () => `z${'0'.repeat(65)}`),
+  ];
+  const overBudgetTrimmed = `diff --git a/huge.bin b/huge.bin\nindex 0000000..1111111 100644\nGIT binary patch\nliteral ${overBudgetSize}\n${overBudgetLines.join('\n')}`;
+  const overBudgetTool = { ...binTool, toolId: 't-huge-bin', output: overBudgetTrimmed };
+  const overBudgetProjected = projectToolDiffs(overBudgetTool);
+  expect(overBudgetProjected.output).toBe(overBudgetTrimmed);
+  const overBudgetMd = exportThreadMarkdown(thread, [{ ...messages[1]!, id: 'm-huge-bin', parts: [overBudgetProjected] }], { ...clean, includeDiffs: true });
+  const overBudgetHtml = exportThreadHtml(thread, [{ ...messages[1]!, id: 'm-huge-bin', parts: [overBudgetProjected] }], { ...clean, includeDiffs: true });
+  expect(overBudgetMd).toContain(`> ${strings.threadExport.doc.unverifiedBinaryDiff}`);
+  expect(overBudgetMd).toContain('literal 5242880');
+  expect(overBudgetHtml).toContain(`<p class="attachment">${strings.threadExport.doc.unverifiedBinaryDiff}</p>`);
+  expect(overBudgetHtml).toContain('literal 5242880');
 
   // CRLF-to-LF git diffs preserve carriage returns across projection, Markdown, and parsed standalone HTML.
   const crlfToLf = 'diff --git a/win.txt b/win.txt\nindex 17f2fc0..fbbee86 100644\n--- a/win.txt\n+++ b/win.txt\n@@ -1,2 +1,2 @@\n-alpha\r\n-beta\r\n+alpha\n+beta';
