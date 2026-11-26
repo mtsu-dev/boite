@@ -23,7 +23,7 @@
 
 {#if thread.forkOrigin}
   <section class="fork" data-testid="fork-return" aria-label={strings.chat.forkOrigin}>
-    <div class="origin"><span class="ui-label">{strings.chat.forkOrigin}</span><button type="button" class="ghost" disabled={!source || source.archived} onclick={() => void store.open(thread.forkOrigin!.threadId)}><span class="ui-label">{source?.title ?? strings.chat.forkSourceUnavailable}</span></button></div>
+    <div class="origin"><span class="ui-label">{strings.chat.forkOrigin}</span><button type="button" class="ghost" data-preload-thread={source && !source.archived ? source.id : undefined} disabled={!source || source.archived} onclick={() => void store.open(thread.forkOrigin!.threadId)}><span class="ui-label">{source?.title ?? strings.chat.forkSourceUnavailable}</span></button></div>
     <small>{thread.forkOrigin.mode === 'native' ? strings.chat.forkNative : strings.chat.forkSeeded}</small>
     <details bind:open>
       <summary>{strings.chat.forkReturn}</summary>

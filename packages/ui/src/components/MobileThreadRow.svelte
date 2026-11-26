@@ -124,7 +124,7 @@
   <!-- The row's contextmenu (a long press, Android's, a right click) opens the menu wherever it lands; the button inside stays the keyboard's target. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="body" use:swipeRow oncontextmenu={openMenu}>
-    <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={[thread.title, reason, thread.branch].filter(Boolean).join('\n')} onclick={onopen} use:longPress>
+    <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" data-preload-thread={thread.id} title={[thread.title, reason, thread.branch].filter(Boolean).join('\n')} onclick={onopen} use:longPress>
       <!-- One line for every list (ThreadHeadline.svelte): the title, then the mark and its word in the row's one slot
            and the time after it; in Activity the decision's kind over it, its glyph the card's mark, and the place
            line under it. A card with no kind wears the row's mark in that glyph's place. -->

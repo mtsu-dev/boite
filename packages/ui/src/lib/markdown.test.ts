@@ -1,3 +1,4 @@
+import { WORKER_IDLE_MS } from './worker-idle';
 import { describe, expect, test, vi } from 'vitest';
 import { headingAt, renderBlock, renderMarkdown } from './markdown';
 
@@ -218,6 +219,23 @@ describe('diagrams and formulas', () => {
     expect(renderMarkdown('```view\n<p>Hi')).toBe('<pre data-language="view"><code>&lt;p&gt;Hi</code></pre>');
     expect(renderMarkdown('```html\n<p>Hi</p>\n```')).toBe('<pre data-language="html"><code>&lt;p&gt;Hi&lt;/p&gt;</code></pre>');
   });
+
+  test('a closed steps, options, bars or stats block is marked in rich rendering only; one still being written stays code', () => {
+    for (const kind of ['steps', 'options', 'bars', 'stats']) {
+      expect(renderMarkdown(`\`\`\`${kind}\n* A | <b>1</b>\n\`\`\``, true)).toBe(
+        `<div class="md-native md-native-${kind}" data-kind="${kind}" data-source="* A | &lt;b&gt;1&lt;/b&gt;"><pre data-language="${kind}"><code>* A | &lt;b&gt;1&lt;/b&gt;</code></pre></div>`
+      );
+      expect(renderMarkdown(`\`\`\`${kind}\nA | 1\n\`\`\``)).toBe(`<pre data-language="${kind}"><code>A | 1</code></pre>`);
+      expect(renderMarkdown(`\`\`\`${kind}\nA | 1`, true)).toBe(`<pre data-language="${kind}"><code>A | 1</code></pre>`);
+    }
+    expect(renderMarkdown('```Steps\nA\n```', true)).toContain('data-kind="steps"');
+    expect(renderMarkdown('~~~steps\n1. Run | ```\n~~~', true)).toContain('data-fence="~~~"');
+    // Unclosed inline math delimiters finish in linear time rather than rescanning the tail.
+    const started = performance.now();
+    expect(renderMarkdown('$$ '.repeat(10_000))).not.toContain('md-math');
+    expect(renderMarkdown(`${'\\( '.repeat(10_000)}\n\\)`)).not.toContain('md-math');
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
 });
 
 test('a page of history is rendered in the worker before its rows draw, and here when the worker is missing or slow', async () => {
@@ -225,14 +243,17 @@ test('a page of history is rendered in the worker before its rows draw, and here
   try {
     let delay = 10;
     const posted: string[][] = [];
+    const terminated = vi.fn();
+    const created = vi.fn();
     class FakeWorker {
       onmessage: ((event: MessageEvent) => void) | null = null;
       onerror: ((event: Event) => void) | null = null;
+      constructor() { created(); }
       postMessage(data: { id: number; blocks: string[]; rich: boolean }): void {
         posted.push(data.blocks);
         setTimeout(() => this.onmessage?.({ data: { id: data.id, html: data.blocks.map(block => `<p>worker: ${block}</p>`) } } as MessageEvent), delay);
       }
-      terminate(): void {}
+      terminate(): void { terminated(); }
     }
     vi.stubGlobal('Worker', FakeWorker);
     vi.resetModules();
@@ -253,6 +274,14 @@ test('a page of history is rendered in the worker before its rows draw, and here
     expect(markdown.knownBlock('Slow block')).toBe(false);
     await vi.advanceTimersByTimeAsync(200);
     expect(markdown.knownBlock('Slow block')).toBe(true);
+    await vi.advanceTimersByTimeAsync(WORKER_IDLE_MS);
+    expect(terminated).toHaveBeenCalledOnce();
+    expect(created).toHaveBeenCalledOnce();
+    delay = 10;
+    const afterIdle = markdown.prepareBlocks(['After idle']);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await afterIdle).toBe('worker');
+    expect(created).toHaveBeenCalledTimes(2);
     // No worker: here, at once.
     vi.stubGlobal('Worker', undefined);
     vi.resetModules();

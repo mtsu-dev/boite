@@ -12,6 +12,7 @@
 </span>
 
 <style>
-  .wait-line { display: inline-flex; align-items: baseline; gap: var(--space-1); min-width: 0; max-width: 100%; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; }
-  .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wait-line { display: inline-flex; align-items: baseline; gap: var(--space-1); flex: 0 1 auto; min-width: 0; max-width: 100%; padding-block: 0.3em; margin-block: -0.3em; overflow: hidden; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; }
+  .label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wait-line :global(.elapsed) { flex: none; }
 </style>

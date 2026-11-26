@@ -125,6 +125,9 @@ test('closing an image and dragging chat text or a thread link preserves the con
     await page.waitFor(`document.querySelector('${id('image-viewer')}')`);
     await page.click(id('image-viewer-close'));
     await page.waitFor(`!document.querySelector('${id('image-viewer')}')`);
+    // The fake fixture seeds a pending contact request toast in the top-right corner; dismiss it so it cannot cover line-1 links.
+    await page.evaluate(`document.querySelector('[data-testid="contact-request-dismiss"]')?.click()`);
+    await page.waitFor(`!document.querySelector('[data-testid="contact-request-notice"]')`);
     await capture(page, 'thread-selection-before.png');
     await drag(page, `${id('text-part')} p`);
     await capture(page, 'thread-selection-after.png');
@@ -248,6 +251,10 @@ test('projects sink after losing recent threads and the sidebar follows a select
   try {
     await page.waitFor(`${state}.openThread`);
     await page.evaluate(`globalThis.__boiteTest.workspace.view = 'projects'`);
+    // Every project stays an open card, the paused ones included, so their order alone places them.
+    await page.click(id('grouping-options'));
+    await page.click(`${id('grouping-options-menu')} [data-value=other]`);
+    await page.click(id('grouping-options'));
     await page.evaluate(`(async () => {
       const s = ${state}; s.collapsedProjects = s.projects.map(p => p.id);
       for (let i = 0; i < 24; i++) {

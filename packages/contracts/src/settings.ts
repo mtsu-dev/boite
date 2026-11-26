@@ -5,6 +5,7 @@ import type { ClientPreferences, SettingAsk, SettingRequestParams } from './sett
 import type { AutoCompact, CacheKeepalive } from './settings-validation.ts';
 import type { SubscriptionProxy } from './subscription-proxy';
 import type { ThreadSummary } from './threads';
+import type { TranscriptStorage } from './transcripts';
 
 export type CompactionTarget = 'agent' | 'subagent' | 'bot';
 
@@ -48,6 +49,12 @@ export interface Settings {
   quotaOrder?: AccountId[];
   /** Days after deletion before history is purged. 0 keeps it indefinitely. Missing means 30. */
   threadDeletionRetentionDays?: number;
+  /**
+   * What this machine keeps of a conversation as it ages (`transcripts.ts`).
+   * Missing until the user picks a mode: nothing is compacted, and
+   * `threadDeletionRetentionDays` alone decides when a deleted conversation goes.
+   */
+  transcriptStorage?: TranscriptStorage;
   /** Days after marking done before deletion. 0 disables it. Missing means 3. */
   threadDoneRetentionDays?: number;
   /** New worktrees only. Missing means project mode; existing checkouts keep their path. */

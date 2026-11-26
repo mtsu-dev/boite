@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
+  import { on } from 'svelte/events';
   import { Archive, Check, ChevronDown, ChevronRight, Folder, FolderPlus, Layers } from '@lucide/svelte';
   import type { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
@@ -21,6 +22,7 @@
   import ProjectTile from './ProjectTile.svelte';
   import MachineIcon from './MachineIcon.svelte';
   import { openArchived } from '../lib/archived-view.svelte';
+  import { mochiLayout } from '../lib/mochi-layout.svelte';
 
   /**
    * The display menu over the thread list (DisplayOptions.svelte loads it on
@@ -72,6 +74,16 @@
     if (!popover.open) return;
     // The menu takes the keyboard, so Tab reaches its first row and Escape works, without a ring on a row nobody pointed at.
     void tick().then(() => panel?.focus({ preventScroll: true }));
+  });
+
+  $effect(() => {
+    const node = panel;
+    if (!node) return;
+    return on(node, 'animationcancel', event => {
+      if (event.target !== node) return;
+      // A resize can replace the exit animation. A hidden menu cannot finish its exit and would strand the backdrop.
+      if (node.checkVisibility?.({ visibilityProperty: true }) === false || !node.getAnimations?.().length) popover.end(event);
+    });
   });
 
   function onkeydown(event: KeyboardEvent): void {
@@ -198,6 +210,10 @@
       {@render toggle('other', strings.sidebar.groupIdleRow, recentPreferences.groupOtherProjects, strings.settings.groupOtherProjectsHint,
         () => recentPreferences.setGroupOtherProjects(!recentPreferences.groupOtherProjects))}
     {/if}
+    {#if !compact}
+      {@render toggle('mochi-layout', strings.sidebar.mochiLayoutRow, mochiLayout.on, strings.sidebar.mochiLayoutHint,
+        () => mochiLayout.toggle())}
+    {/if}
   </section>
   {#if merged}
     {@const project = merged}
@@ -220,7 +236,7 @@
       </button>
     {/if}
     {#if onaddproject}
-      <button type="button" class="row" data-testid="add-project" onclick={addProject}>
+      <button type="button" class="row" data-testid="add-project" data-preload-view="project" onclick={addProject}>
         <span class="glyph" aria-hidden="true"><FolderPlus size={16} /></span><span class="ui-label">{strings.sidebar.addProject}</span>
       </button>
     {/if}
@@ -304,7 +320,13 @@
   .filter :global(.trigger:hover) { background: var(--color-active); }
   .filter :global(.trigger .ui-label) { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .filter :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
-  @media (prefers-reduced-motion: reduce) { .row, .switch, .switch::after { transition: none; } }
+  /* Close in the same tick on desktop and mobile when motion is reduced. A desktop exit must not
+     survive long enough to acquire a sheet backdrop after the viewport changes. */
+  @media (prefers-reduced-motion: reduce) {
+    .panel.closing { animation: none !important; }
+    .row, .switch, .switch::after { transition: none; }
+  }
+  :global(html[data-motion='reduced']) .panel.closing { animation: none !important; }
   @media (max-width: 720px) {
     .panel { width: auto; padding: 8px 6px max(8px, env(safe-area-inset-bottom)); }
     .row, .filter :global(.trigger) { height: var(--touch-target); }

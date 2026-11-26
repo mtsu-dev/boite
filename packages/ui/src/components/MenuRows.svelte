@@ -46,6 +46,7 @@
     data-row
     data-value={item.id}
     data-testid={item.testid}
+    data-preload-view={item.preload}
     title={item.title}
     onclick={() => pick(item)}
   >

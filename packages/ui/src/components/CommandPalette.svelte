@@ -102,14 +102,16 @@
     for (const machine of machines) {
       const live = new Set(machine.store.threads.map(thread => thread.id));
       const every = [...machine.store.threads, ...(shelved.get(machine.store) ?? []).filter(thread => !live.has(thread.id))];
+      const projects = new Map(machine.store.projects.map(project => [project.id, project]));
+      const titles = new Map(every.map(thread => [thread.id, thread.title]));
       for (const thread of every) {
         if (thread.incognito) continue;
-        const project = machine.store.projects.find(p => p.id === thread.projectId) ?? null;
+        const project = thread.projectId ? projects.get(thread.projectId) ?? null : null;
         const id = `thread:${machine.store.threadKey(thread.id)}`;
         const bot = project ? null : agentDirectory(machine.store).ownerOf(thread);
         const botThread = !project && (bot !== null || !!thread.agentSessionId || !!thread.teamId);
         const section = botThread ? BOTS_SECTION : threadGroup(thread, threadState(thread, rowAsks(machine.store, thread.id)));
-        const parent = thread.parentThreadId ? every.find(one => one.id === thread.parentThreadId)?.title ?? null : null;
+        const parent = thread.parentThreadId ? titles.get(thread.parentThreadId) ?? null : null;
         places.set(id, { machine, project, thread, bot, parent });
         if (botThread && thread.archived) continue;
         items.push({

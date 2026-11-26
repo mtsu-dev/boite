@@ -100,8 +100,10 @@ A Claude or Codex thread stopped by a subscription limit resumes by itself a
 minute after the limit resets, once per window. Stop, a new message or a
 changed model cancels it, and the banner above the box has Do not resume.
 
-When a model is at capacity, Claude and Codex turns try again by themselves
-after 30 seconds, 2 minutes and 5 minutes. Stop retrying ends the wait.
+Claude and Codex try again when the model is at capacity. Antigravity also
+tries again when the account that started the conversation is temporarily
+unavailable. The waits are 30 seconds, 2 minutes and 5 minutes. Stop retrying
+ends the wait.
 
 ## The prompt cache timer
 

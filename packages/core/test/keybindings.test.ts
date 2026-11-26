@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { parseChord } from '@boite/contracts';
+import { parseChord, parseChordFor } from '@boite/contracts';
 import { Core } from '../src/core.ts';
 import { newToken } from '../src/ids.ts';
 import { readKeybindings } from '../src/keybindings.ts';
@@ -44,6 +44,24 @@ describe('the chord grammar', () => {
     expect(unknown.ok).toBe(false);
     if (!unknown.ok) expect(unknown.reason).toStartWith('"mod+banana" has an unknown key "banana"');
   });
+
+  test('the wheel ends a chord with a modifier, never bare or with Shift alone', () => {
+    expect(parseChord('mod+wheel')).toEqual({ ok: true, chord: { mod: true, ctrl: false, alt: false, shift: false, meta: false, key: 'wheel' } });
+    expect(parseChord('Alt+Wheel')).toEqual({ ok: true, chord: { mod: false, ctrl: false, alt: true, shift: false, meta: false, key: 'wheel' } });
+    expect(parseChord('mod+shift+wheel')).toEqual({ ok: true, chord: { mod: true, ctrl: false, alt: false, shift: true, meta: false, key: 'wheel' } });
+    expect(parseChord('wheel')).toEqual({ ok: false, reason: '"wheel" has no modifier: the wheel needs mod, ctrl, alt or meta with it, or it only scrolls' });
+    expect(parseChord('shift+wheel')).toEqual({ ok: false, reason: '"shift+wheel" has no modifier: the wheel needs mod, ctrl, alt or meta with it, or it only scrolls' });
+    expect(parseChord('wheel+mod')).toEqual({ ok: false, reason: '"wheel+mod" has "wheel" where a modifier was expected (mod, ctrl, alt, shift, meta)' });
+  });
+
+  test('the wheel binds only the wheel\'s command, and that command only the wheel', () => {
+    expect(parseChordFor('zoom-wheel', 'mod+wheel')).toEqual(parseChord('mod+wheel'));
+    expect(parseChordFor('new-thread', 'mod+n')).toEqual(parseChord('mod+n'));
+    expect(parseChordFor('zoom-wheel', 'mod+k')).toEqual({ ok: false, reason: '"mod+k" is a key, and zoom-wheel runs on the wheel: give it a chord ending on wheel, like mod+wheel' });
+    expect(parseChordFor('new-thread', 'mod+wheel')).toEqual({ ok: false, reason: '"mod+wheel" is the wheel, which only zoom-wheel takes: new-thread needs a key' });
+    // The grammar's own refusal comes first.
+    expect(parseChordFor('zoom-wheel', 'wheel')).toEqual(parseChord('wheel'));
+  });
 });
 
 describe('the keybindings file', () => {
@@ -59,12 +77,18 @@ describe('the keybindings file', () => {
       nope: 'mod+x',
       sidebar: 'b',
       settings: 12,
+      'zoom-wheel': 'Mod+Wheel',
+      pin: 'mod+wheel',
     }));
-    expect(result.bindings).toEqual({ 'new-thread': 'mod+shift+n', palette: null });
+    expect(result.bindings).toEqual({ 'new-thread': 'mod+shift+n', palette: null, 'zoom-wheel': 'mod+wheel' });
     expect(result.errors).toEqual([
       'keybindings.json: "nope" is not a command Boite has (the Keyboard settings list them)',
       'keybindings.json: "sidebar": "b" has no modifier: a chord needs mod, ctrl, alt or meta before its key',
       'keybindings.json: "settings" must be a chord string like mod+shift+k, or null to unbind it',
+      'keybindings.json: "pin": "mod+wheel" is the wheel, which only zoom-wheel takes: pin needs a key',
+    ]);
+    expect(readKeybindings('x', JSON.stringify({ 'zoom-wheel': 'alt+z' })).errors).toEqual([
+      'keybindings.json: "zoom-wheel": "alt+z" is a key, and zoom-wheel runs on the wheel: give it a chord ending on wheel, like mod+wheel',
     ]);
     expect(readKeybindings('x', '[1]').errors).toEqual([
       'keybindings.json: expected an object of command ids to chords, like {"new-thread": "mod+shift+n"}',
@@ -132,6 +156,15 @@ describe('the keybindings file', () => {
       'chord: "p" has no modifier: a chord needs mod, ctrl, alt or meta before its key',
     );
     expect(await thrown(client.call('keybindings.set', { command: 'nope' as 'pin', chord: 'mod+p' }))).toThrow('command: "nope" is not a command Boite has');
+    expect(await thrown(client.call('keybindings.set', { command: 'new-thread', chord: 'mod+wheel' }))).toThrow(
+      'chord: "mod+wheel" is the wheel, which only zoom-wheel takes: new-thread needs a key',
+    );
+    expect(await thrown(client.call('keybindings.set', { command: 'zoom-wheel', chord: 'mod+z' }))).toThrow(
+      'chord: "mod+z" is a key, and zoom-wheel runs on the wheel: give it a chord ending on wheel, like mod+wheel',
+    );
+    expect(await thrown(client.call('keybindings.set', { command: 'zoom-wheel', chord: 'shift+wheel' }))).toThrow('chord: "shift+wheel" has no modifier');
+    expect((await client.call('keybindings.set', { command: 'zoom-wheel', chord: 'Alt+Wheel' })).bindings['zoom-wheel']).toBe('alt+wheel');
+    expect((await client.call('keybindings.set', { command: 'zoom-wheel', chord: null })).bindings['zoom-wheel']).toBeNull();
     const path = join(harness.dataDir, 'keybindings.json');
     writeFileSync(path, '{"pin": ');
     expect(await thrown(client.call('keybindings.set', { command: 'pin', chord: 'mod+p' }))).toThrow('keybindings.json: not valid JSON');

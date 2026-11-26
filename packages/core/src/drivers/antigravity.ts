@@ -28,6 +28,11 @@ export function isAntigravity(provider: ProviderDescriptor): boolean {
   return provider.quirks?.includes('antigravity') === true;
 }
 
+/** The signed account can serve the conversation again after a wait. The ACP error text gives no Retry-After value. */
+export function isAntigravityAccountUnavailable(text: string): boolean {
+  return /^\s*Agent execution error: Error 0, Message: the Antigravity account that signed this conversation is temporarily unavailable; retry after Retry-After, Status:\s*$/.test(text);
+}
+
 /**
  * The `clientInfo` Antigravity is sent. The agent offers its Claude and GPT
  * models only to clients it allowlists, Zed among them: named `boite`, 1.4.5
@@ -138,6 +143,10 @@ const CWD_KEYS = ['Cwd', 'WorkingDirectory', 'working_dir', 'workingDir', 'cwd']
 const OUTPUT_KEYS = ['combinedOutput', 'combined_output'];
 const EXIT_KEYS = ['exitCode', 'exit_code'];
 
+export function antigravityCommandLine(raw: unknown): string | undefined {
+  return firstString(isPlainObject(raw) ? raw : null, COMMAND_KEYS);
+}
+
 /**
  * A tool call's input and output as the card should show them. `input` gains
  * `command` and `cwd` under one spelling whichever one the agent used; `output`
@@ -155,7 +164,7 @@ export function normalizeAntigravityTool(
 
   if (rawInput !== undefined) {
     const clean = sanitizeAntigravityPayload(rawInput);
-    const command = firstString(input, COMMAND_KEYS) ?? firstString(output, COMMAND_KEYS);
+    const command = antigravityCommandLine(rawInput) ?? antigravityCommandLine(rawOutput);
     const cwd = firstString(input, CWD_KEYS) ?? firstString(output, CWD_KEYS);
     result.input =
       isPlainObject(clean) && (command !== undefined || cwd !== undefined)

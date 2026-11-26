@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { RemoteBrowserFrame } from '@boite/contracts';
 import { browserBridge } from '../lib/browser-bridge';
-import { watchAgentBrowser } from '../lib/agent-browser-watch';
+import { watchAgentBrowser } from '../lib/agent-browser-watch.svelte';
 import { FakeClient } from '../lib/fake-client';
 import { liveViews } from '../lib/live-view.svelte';
 import { rightPanel } from '../lib/right-panel.svelte';

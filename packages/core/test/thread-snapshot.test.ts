@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { projectMessage, type Message } from '@boite/contracts';
 import { echoThread, holdAccountTurns, startTestCore, startTurn, type TestCore } from './harness';
 
 let harness: TestCore;
@@ -38,6 +39,53 @@ test('a quiet return omits its unchanged payload and an unseen tool suffix still
   expect(fresh.messagesUnchanged).toBeUndefined();
   expect(fresh.messages).toHaveLength(1);
   expect(fresh.messagesSync?.hash).not.toBe(first.messagesSync?.hash);
+});
+
+test('compact attachment pages skip cached blobs and match legacy rows in both resume proofs', async () => {
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client);
+  const { journal } = harness.core;
+  for (const turnId of ['older-turn', 'latest-turn']) journal.putTurn({ id: turnId, threadId, status: 'done', queuedAt: 1, startedAt: 1, finishedAt: 2, usage: null, error: null });
+  const png = Buffer.alloc(64 * 1024);
+  png.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  png.write('IHDR', 12);
+  png.writeUInt32BE(640, 16);
+  png.writeUInt32BE(480, 20);
+  const data = png.toString('base64');
+  const older: Message = { id: 'older', threadId, turnId: 'older-turn', role: 'user', state: 'complete', createdAt: 1,
+    parts: [{ type: 'file', mimeType: 'text/plain', name: 'notes.txt', data }, { type: 'file', mimeType: 'image/png', name: 'image.png', data }] };
+  const latest: Message = { id: 'latest', threadId, turnId: 'latest-turn', role: 'assistant', state: 'complete', createdAt: 2,
+    parts: [{ type: 'image', mimeType: 'image/png', alt: null, data }, { type: 'file', mimeType: 'application/pdf', name: 'inline.pdf', data }] };
+  journal.putMessage(older);
+  journal.putMessage(latest);
+  const options = { compactFiles: true, compactImages: true, sync: true } as const;
+  const blur = 'data:image/png;base64,blur';
+  journal.db.query('INSERT INTO media_previews (thread_id, message_id, part_index, preview) VALUES (?, ?, ?, ?)').run(threadId, 'older', 1, blur);
+  journal.db.query('INSERT INTO media_previews (thread_id, message_id, part_index, preview) VALUES (?, ?, ?, ?)').run(threadId, 'latest', 0, blur);
+  const first = await client.call('threads.get', { threadId, ...options });
+  expect(first.messages).toEqual([older, latest].map(message => projectMessage(message, options, () => blur)));
+  expect(first.messagesSync?.prefix?.count).toBe(1);
+  const blobs = journal.db.query('SELECT message_id AS id, data, preview FROM part_blobs WHERE field = ? AND part_index = 0').all('data') as { id: string; data: Uint8Array; preview: string }[];
+  expect(blobs.map(blob => JSON.parse(blob.preview))).toEqual(Array.from({ length: 2 }, () => ({ bytes: png.length, width: 640, height: 480 })));
+  journal.db.run("UPDATE part_blobs SET preview = NULL WHERE field = 'data'");
+  const legacy = await client.call('threads.get', { threadId, ...options });
+  expect(legacy.messages).toEqual(first.messages);
+  expect(legacy.messagesSync).toEqual(first.messagesSync);
+  const update = journal.db.query('UPDATE part_blobs SET data = ?, preview = ? WHERE message_id = ? AND part_index = 0');
+  for (const blob of blobs) update.run(Buffer.from('invalid zstd'), blob.preview, blob.id);
+  const resume = await client.call('threads.get', { threadId, ...options, after: latest.id, sync: first.messagesSync });
+  expect(resume.messagesUnchanged).toBe(true);
+  const forward = await client.call('messages.list', { threadId, after: older.id, limit: 1, compactFiles: true, compactImages: true });
+  expect(forward.messages).toEqual(first.messages.slice(1));
+  for (const blob of blobs) update.run(blob.data, blob.preview, blob.id);
+  expect(journal.getMessage(latest.id)?.parts).toEqual(latest.parts);
+  png[png.length - 1] = 1;
+  const image = latest.parts[0];
+  if (image?.type !== 'image') throw new Error('fixture needs an image');
+  journal.putMessage({ ...latest, parts: [{ ...image, data: png.toString('base64') }, latest.parts[1]!] });
+  const changed = await client.call('threads.get', { threadId, ...options, after: latest.id, sync: first.messagesSync });
+  expect(changed.messagesUnchanged).toBeUndefined();
+  expect(changed.messages).toEqual(first.messages.slice(1));
 });
 
 test('opening and quiet reconnect snapshots retain durable native background history after completion', async () => {

@@ -48,6 +48,7 @@ export function appCommands(store: Store, phone: boolean): PaletteItem[] {
     items.push(row('retitle', strings.palette.retitle, 'title agent name'));
     items.push(row('find', strings.palette.find, 'search text ctrl+f'));
     items.push(row('copy-answer', strings.keyboard.commands.copyAnswer, 'clipboard reply response'));
+    if (!open.councilId) items.push({ id: 'export-thread', kind: 'command', label: strings.threadExport.title, keywords: 'download markdown html transcript save' });
     items.push(row('panel', strings.palette.panel, 'browser surface'));
     // Following subagents and workflow runs is open to a paired device.
     items.push({ id: 'subagents', kind: 'command', label: strings.palette.subagents, keywords: 'subagent agent team workflow steps graph plan run' });

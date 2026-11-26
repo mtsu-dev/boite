@@ -37,3 +37,30 @@ export function watchAgentBrowser(store: Store, threadId: string, onlive: (live:
   ask(0);
   return () => { stopped = true; clearTimeout(retry); off(); };
 }
+
+export function agentBrowserActivity(current: () => Store, onshow: () => void) {
+  let live = $state(false);
+  const threadId = $derived(current().openThread?.id);
+
+  $effect(() => {
+    const store = current();
+    void store.connection;
+    live = false;
+    if (threadId && store.client?.state === 'ready') {
+      return watchAgentBrowser(store, threadId, value => { live = value; }, onshow);
+    }
+  });
+
+  return {
+    get background() {
+      if (!live) return false;
+      const store = current();
+      const panel = store.panel;
+      return !(panel.isOpen && panel.active?.kind === 'agent-browser'
+        && (store.localCore || liveViews.shown('agent-browser', store.threadKey(threadId ?? ''))));
+    },
+    open() {
+      if (threadId) showAgentBrowser(current(), threadId);
+    },
+  };
+}

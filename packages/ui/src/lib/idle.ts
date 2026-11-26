@@ -12,7 +12,7 @@
 export function whenIdle(task: () => void, { timeout = 1500, fallback = 300 } = {}): () => void {
   if (typeof requestIdleCallback === 'function') {
     const id = requestIdleCallback(task, { timeout });
-    return () => cancelIdleCallback(id);
+    return () => { if (typeof cancelIdleCallback === 'function') cancelIdleCallback(id); };
   }
   const id = setTimeout(task, fallback);
   return () => clearTimeout(id);

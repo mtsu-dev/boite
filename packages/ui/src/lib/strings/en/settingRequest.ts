@@ -79,6 +79,7 @@ export const strings = {
       titleModel: 'Title model',
       threadDoneRetentionDays: 'Delete done threads after',
       threadDeletionRetentionDays: 'Purge deleted threads after',
+      transcriptStorage: 'Conversation storage mode',
       worktreeStorage: 'Where new worktrees go',
       focusGuard: 'Keep agent windows out of the foreground',
       muteAgents: 'Mute agent audio',

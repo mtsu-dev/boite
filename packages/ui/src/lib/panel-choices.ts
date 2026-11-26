@@ -112,16 +112,17 @@ export function panelChoices(store: Store, thread: ThreadSummary | null, options
       label: kindName(kind),
       glyph: surfaceGlyph(kind),
       active: kind === showing,
+      preload: kind === 'agents' ? 'panel-agents' : undefined,
       ...(can(kind) ? {} : { disabled: true, hint: unavailable() })
     });
   }
   if (!options.phone && store.owner && plain && work.shows('header.terminal')) {
     rows.set('terminal-toggle', {
-      id: 'terminal-toggle', label: strings.terminal.title, glyph: SquareTerminal, active: !!thread && store.terminalShown(thread.id),
+      id: 'terminal-toggle', preload: 'terminal', label: strings.terminal.title, glyph: SquareTerminal, active: !!thread && store.terminalShown(thread.id),
       title: terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint
     });
   }
-  if (store.boardAvailable()) rows.set('board-toggle', { id: 'board-toggle', label: strings.board.open, glyph: SquareKanban, active: store.boardShown });
+  if (store.boardAvailable()) rows.set('board-toggle', { id: 'board-toggle', preload: 'board', label: strings.board.open, glyph: SquareKanban, active: store.boardShown });
   if (plain && !thread.agentSessionId) rows.set('coordination', { id: 'coordination', label: strings.coordination.heading, glyph: Network });
   for (const [id, row] of rows) {
     if (FORMERLY[id] && !row.title) row.title = FORMERLY[id]();

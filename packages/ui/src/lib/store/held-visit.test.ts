@@ -58,3 +58,40 @@ test('leaving immediately after a part grows reserves its new weight', async () 
   expect(reservation?.[1]).toBeGreaterThan(READING_CACHE_BYTES);
   expect(reserve.mock.results[0]?.value).toBe(false);
 });
+
+test('the renderer cache evicts preloads and off-screen visits before the active thread', () => {
+  const visible = new ReadingCache(undefined, () => true, () => 'open');
+  const offScreen = new ReadingCache(undefined, () => false, () => 'oldest');
+  const bytes = READING_CACHE_BYTES;
+  const page = (id: string) => ({ id, messages: [], turns: [], commands: [] }) as unknown as import('@boite/contracts').Thread;
+  try {
+    offScreen.remember('oldest', page('oldest'), bytes);
+    visible.remember('open', page('open'), bytes);
+    visible.prefill('ahead', page('ahead'), bytes);
+    for (const id of ['another', 'third', 'fourth']) offScreen.remember(id, page(id), bytes);
+
+    visible.remember('new', page('new'), bytes);
+    expect(visible.has('ahead')).toBe(false);
+    expect(offScreen.has('oldest')).toBe(true);
+    visible.remember('newest', page('newest'), bytes);
+    expect(offScreen.has('oldest')).toBe(false);
+    expect(visible.has('open')).toBe(true);
+  } finally { visible.clear(); offScreen.clear(); }
+});
+
+test('discarded ids only invalidate reads registered for that visit', () => {
+  const cache = new ReadingCache();
+  const discarded = cache.mark('visit');
+  const completed = cache.mark('visit');
+  completed.release();
+  cache.delete('visit');
+  expect(discarded.dropped).toBe(true);
+  expect(completed.dropped).toBe(false);
+  const next = cache.mark('visit');
+  discarded.release();
+  for (let index = 0; index < 4000; index++) cache.delete(`uncached-${index}`);
+  expect(next.dropped).toBe(false);
+  cache.clear();
+  expect(next.dropped).toBe(true);
+  next.release();
+});

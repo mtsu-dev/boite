@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { BrowserPage, freePort } from './lib/cdp.ts';
-import { mobileAction, screensSettled } from './lib/mobile.ts';
+import { mobileAction, openSettings, screensSettled } from './lib/mobile.ts';
 import { openDisplayOptions } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
 
@@ -16,7 +16,7 @@ test('the filter and settings search open the same archive and its rows open rea
     await page.click('[data-testid=grouping-options-menu] [data-testid$=archived-entry]');
     await page.waitFor(`document.querySelector('${archive} [data-testid=archived-list] li')`);
     expect(await page.evaluate(`document.querySelector('[data-testid=sidebar] [data-testid=archived-list]')`)).toBeNull();
-    await page.click('[data-testid=nav-settings]');
+    await openSettings(page);
     await page.type('[data-testid=settings-search]', 'Archived threads');
     await page.click('[data-testid=settings-search-result]');
     await page.waitFor(`document.querySelector('${archive} [data-testid=archived-list] li')`);

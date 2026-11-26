@@ -17,15 +17,16 @@
   /**
    * The rows of a fold under the project list (ProjectShelf.svelte draws the
    * fold and loads this on its own, out of the entry chunk): the idle
-   * projects, with nothing to do, or the archived ones, a step quieter. One
-   * compact row per project; choosing it starts a conversation there,
+   * projects, without a thread, or the archived ones, a step quieter. Each is
+   * a card as the ones above draw it (Sidebar.svelte), its header alone, in
+   * one list sorted by name whatever its machine; choosing it starts a conversation there,
    * restoring an archived project first. A row's one quick action shows under
    * the pointer (archive an idle project, restore an archived one) and its
    * full menu, removal included, opens with a right click or a long press.
    * Removal never sits on the row: a pointer reaching for the quick action
    * would land on it when the hover swaps the buttons in. An idle project that
    * still has done conversations shows their count, which unfolds that history
-   * under its row. With several machines the rows group under their machine.
+   * under its row. With several machines its header shows the machine's icon, as a card's does.
    * `onopen` runs once a draft or a conversation opens from the fold, so the
    * phone can show it. `onrows` receives the history conversations drawn, in
    * order, for Alt+digit, none while the fold is shut.
@@ -46,16 +47,8 @@
   /** The row whose action is in flight, so a second click cannot race it. */
   let busy = $state<string | null>(null);
 
-  const byName = (a: Project, b: Project) => projectName(a).localeCompare(projectName(b));
-  let groups = $derived.by(() => {
-    const byMachine = new Map<string, { machine: Machine; projects: Project[] }>();
-    for (const { machine, project } of projects) {
-      const group = byMachine.get(machine.id) ?? { machine, projects: [] };
-      group.projects.push(project);
-      byMachine.set(machine.id, group);
-    }
-    return [...byMachine.values()].map(group => ({ machine: group.machine, rows: group.projects.sort(byName) }));
-  });
+  /** One list by name, a machine's label settling a tie: the header's icon says where each lives. */
+  let rows = $derived(projects.slice().sort((a, b) => projectName(a.project).localeCompare(projectName(b.project)) || a.machine.label.localeCompare(b.machine.label)));
 
   const key = (machine: Machine, project: Project) => dropKey(machine.id, project.id);
 
@@ -70,10 +63,8 @@
   }
   let reported: Row[] = [];
   $effect(() => {
-    const visible = !open || kind !== 'idle' ? [] : groups.flatMap(({ machine, rows }) => rows.flatMap(project => history.flatMap(list => {
-      const entry = { machine, project };
-      return archiveCount(project, list) > 0 && projectThreadView.isOpen(entry, list) ? historyRows[historyKey(entry, list)] ?? [] : [];
-    })));
+    const visible = !open || kind !== 'idle' ? [] : rows.flatMap(entry => history.flatMap(list =>
+      archiveCount(entry.project, list) > 0 && projectThreadView.isOpen(entry, list) ? historyRows[historyKey(entry, list)] ?? [] : []));
     if (visible.length === reported.length && visible.every((row, index) => row.store === reported[index]?.store && row.threadId === reported[index]?.threadId)) return;
     reported = visible;
     onrows?.(visible);
@@ -103,24 +94,21 @@
     });
   }
 
-  /** What choosing the row does, above the folder it points at: the machine is already the group's header. */
-  function rowTitle(project: Project): string {
+  /** What choosing the row does, above the folder it points at, and on which machine once several are listed. */
+  function rowTitle(machine: Machine, project: Project): string {
+    const action = rowAction(project);
+    return multi ? `${action} · ${machine.label}` : action;
+  }
+  function rowAction(project: Project): string {
     if (project.missing === true) return kind === 'idle' ? strings.sidebar.projectMissing : `${strings.sidebar.restoreProject} ${projectName(project)}`;
     return fill(kind === 'idle' ? strings.sidebar.newThreadIn : strings.sidebar.restoreAndStart, { project: projectName(project) });
   }
 </script>
 
-{#each groups as { machine, rows } (machine.id)}
-  {#if multi}
-    <div class="machine" data-testid="project-shelf-machine" title={machine.label}>
-      <MachineIcon icon={machine.icon} os={machine.store.core?.os} size={13} />
-      <span class="machine-name ui-label">{machine.label}</span>
-    </div>
-  {/if}
-  <ul>
-    {#each rows as project (project.id)}
+<ul>
+    {#each rows as entry (key(entry.machine, entry.project))}
+      {@const { machine, project } = entry}
       {@const here = key(machine, project)}
-      {@const entry = { machine, project }}
       {@const kept = kind === 'idle' ? history.filter(list => archiveCount(project, list) > 0) : []}
       {@const controls = `${uid}-${encodeURIComponent(here)}`}
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -142,11 +130,12 @@
             type="button"
             class="ghost main"
             data-testid="{kind}-project-open"
-            title={`${rowTitle(project)}\n${project.path}`}
+            title={`${rowTitle(machine, project)}\n${project.path}`}
             disabled={busy !== null}
             onclick={(event) => start(event, machine, project)}
           >
-            <span class="tile" aria-hidden="true"><ProjectTile {project} store={machine.store} size={16} /></span>
+            <span class="tile" aria-hidden="true"><ProjectTile {project} store={machine.store} size={18} /></span>
+            {#if multi}<span class="host" data-testid="project-host" class:away={machine.store.connection !== 'ready'} aria-label={machine.label}><MachineIcon icon={machine.icon} os={machine.store.core?.os} size={14} /></span>{/if}
             <span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span>
             {#if project.missing === true}<span class="missing" title={strings.sidebar.projectMissing}><FolderX size={13} aria-label={strings.sidebar.projectMissing} /></span>{/if}
           </button>
@@ -194,23 +183,9 @@
         {/each}
       </li>
     {/each}
-  </ul>
-{/each}
+</ul>
 
 <style>
-  .machine {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px var(--fold-inset) 4px var(--fold-indent);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
-    font-weight: 500;
-  }
-  .machine :global(svg) {
-    flex: none;
-  }
-  .machine-name,
   .name {
     min-width: 0;
     overflow: hidden;
@@ -219,36 +194,39 @@
   }
   ul {
     margin: 0;
-    padding: 0 0 6px;
+    padding: 2px 0 0;
     list-style: none;
   }
+  /* A card as the open projects draw theirs (Sidebar.svelte .project): a quiet surface, its header alone. */
   li {
-    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+    padding: 4px;
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
     transition: background var(--dur-1) var(--ease-out-quint), box-shadow var(--dur-1) var(--ease-out-quint), opacity var(--dur-1) var(--ease-out-quint);
   }
+  /* The card header's measures: 38 px, the 18 px tile, its 8 px gap, the name at the title size. */
   .row {
     display: flex;
     align-items: center;
     gap: 2px;
-    min-height: var(--row);
+    min-height: 38px;
     padding-right: 2px;
     border-radius: var(--radius-sm);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
+    color: var(--color-foreground);
   }
   .row:hover,
   .row:focus-within {
     background: var(--color-hover);
-    color: var(--color-foreground);
   }
   .main {
     flex: 1;
     min-width: 0;
     height: auto;
-    min-height: var(--row);
+    min-height: 38px;
     justify-content: flex-start;
     gap: 8px;
-    padding: 0 4px 0 var(--fold-indent);
+    padding: 0 4px;
     border-color: transparent;
     color: inherit;
     font-size: inherit;
@@ -269,7 +247,13 @@
   }
   .name {
     flex: 1;
+    font-size: var(--text-title);
+    font-weight: var(--weight-title);
+    letter-spacing: -0.01em;
   }
+  /* The machine, once two are listed: its icon before the name, as on a card. */
+  .host { display: flex; flex: none; color: var(--color-muted-foreground); }
+  .host.away { color: var(--color-danger); }
   .name.gone {
     text-decoration: line-through;
     color: var(--color-subtle);
@@ -285,7 +269,7 @@
     gap: 2px;
   }
   /* An archived project reads a step quieter than an idle one; under the pointer it wakes. */
-  li.archived .row { color: var(--color-subtle); }
+  li.archived .row { color: var(--color-muted-foreground); }
   li.archived .tile { opacity: 0.55; filter: grayscale(0.6); }
   li.archived .row:hover, li.archived .row:focus-within { color: var(--color-foreground); }
   li.archived .row:hover .tile, li.archived .row:focus-within .tile { opacity: 1; filter: none; }
@@ -308,26 +292,28 @@
     flex: none;
     height: 26px;
     min-width: 30px;
-    padding: 0 4px;
-    gap: 3px;
+    padding: 0 6px;
+    gap: 4px;
     border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    color: var(--color-muted-foreground);
     font-size: var(--text-xs);
+    font-weight: 400;
     font-variant-numeric: tabular-nums;
   }
-  /* The project cards' pill, a size smaller: the same tint says the same thing. */
-  .counter.done {
-    height: 22px;
-    border-radius: var(--radius-full);
+  /* A project card's count (ProjectThreadCounters.svelte): the header's grey, Done's green on its mark alone, and
+     open, the fill and the ink stay as long as its list does. */
+  .counter.done :global(svg) {
     color: var(--color-success);
-    background-color: color-mix(in oklch, var(--color-success) 14%, transparent);
+  }
+  .counter.active,
+  .counter.active:hover:not(:disabled) {
+    background: var(--color-active);
+    color: var(--color-foreground);
     background-clip: padding-box;
   }
-  /* Open, a count says it by its ink, as on a project card: no box stays behind once the pointer leaves. */
-  .counter.active {
-    color: var(--color-foreground);
-  }
   .history {
-    padding: 0 0 4px calc(var(--fold-indent) - 8px);
+    padding: 0 0 2px;
   }
   @media (max-width: 720px) {
     .counter {
@@ -336,8 +322,8 @@
       padding: 0 7px;
       gap: 5px;
     }
-    /* The 44px target stays; the transparent border leaves the 22px pill drawn inside it. */
-    .counter.done { border-width: 11px 0; }
+    /* The 44px target stays; the transparent border keeps the fill to the 32px count drawn inside it. */
+    .counter { border-width: 6px 0; }
   }
   /* A dragged thread can land on an idle project: same edge and neutral fill as a project section. */
   :global(html.thread-dragging) li:not(.candidate) {

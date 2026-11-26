@@ -1,6 +1,7 @@
 import type { GoalTrackerModel, ModelFavorite, ModelFavorites, Settings, SubscriptionProxy, TitleModel } from './index.ts';
 import { BROWSER_ENGINES, BROWSER_PROFILE_NAME_MAX, BROWSER_PROFILES_MAX, browserProfileIdError, browserProfileNameError, browserUserAgentError, DEFAULT_BROWSER_PROFILE, type BrowserBuiltinProfiles, type BrowserEngine, type BrowserProfile } from './browser';
 import { SYNC_KEY_PATTERN, SYNC_OVERRIDES_MAX } from './settings-sync';
+import { TRANSCRIPT_DAYS_MAX, TRANSCRIPT_MODES, TRANSCRIPT_POLICY_FIELDS, transcriptPolicyValid } from './transcripts';
 import { AGENT_BOT_CREATION, COORDINATION_REACH, type AgentBotCreation, type CoordinationReach } from './settings';
 
 // Both supported hosts expose URL; contracts otherwise need no DOM or Node types.
@@ -196,6 +197,16 @@ function subscriptionProxyRule(value: unknown): Settings['subscriptionProxy'] | 
   return { enabled: proxy.enabled, kind: proxy.kind!, baseUrl, dashboardUrl, ...(mode === undefined ? {} : { mode }) };
 }
 
+function transcriptStorageRule(value: unknown): Settings['transcriptStorage'] | Refusal {
+  const storage = record(value);
+  if (storage === null || !(TRANSCRIPT_MODES as readonly unknown[]).includes(storage.mode)) return refuse(`transcriptStorage.mode must be ${TRANSCRIPT_MODES.join(', ')}`);
+  if (Object.keys(storage).some(key => key !== 'mode' && key !== 'custom')) return refuse('transcriptStorage holds mode and custom only');
+  if (storage.custom !== undefined && !transcriptPolicyValid(storage.custom)) {
+    return refuse(`transcriptStorage.custom must set ${TRANSCRIPT_POLICY_FIELDS.join(', ')}, each null (never) or an integer between 0 and ${TRANSCRIPT_DAYS_MAX} days`);
+  }
+  return { mode: storage.mode, ...(storage.custom === undefined ? {} : { custom: storage.custom }) } as Settings['transcriptStorage'];
+}
+
 function worktreeStorageRule(value: unknown): Settings['worktreeStorage'] | Refusal {
   const storage = record(value);
   if (storage === null || !['project', 'shared'].includes(storage.mode as string)) return refuse('worktreeStorage.mode must be project or shared');
@@ -285,6 +296,7 @@ const SETTING_RULES: { readonly [K in keyof Settings]-?: FieldRule<K> } = {
   agentBotCreation: value => (AGENT_BOT_CREATION as readonly unknown[]).includes(value) ? value as AgentBotCreation : refuse(`agentBotCreation must be one of ${AGENT_BOT_CREATION.join(', ')}`),
   coordinationReach: value => (COORDINATION_REACH as readonly unknown[]).includes(value) ? value as CoordinationReach : refuse(`coordinationReach must be one of ${COORDINATION_REACH.join(', ')}`),
   worktreeStorage: worktreeStorageRule,
+  transcriptStorage: transcriptStorageRule,
   publicUrl: value => {
     if (value === null) return null;
     return publicOrigin(value) ?? refuse('publicUrl must be an HTTPS origin without path, credentials, query or fragment');

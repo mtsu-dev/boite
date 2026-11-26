@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { renderBlock } from '../lib/markdown';
   import { workspace } from '../lib/workspace.svelte';
   import { ParagraphScan, answerText } from '../lib/message-display';
@@ -143,7 +143,7 @@
   const drafting = $derived.by(() => {
     void blocks;
     if (!live) return { text: '', drawing: false };
-    const draft = scan.drafting(answer);
+    const draft = scan.drafting(answer, rich);
     // A partial page link waits until its view can replace it.
     return views?.length && !draft.drawing && /^ {0,3}!\[[^\n]*$/.test(draft.text) ? { text: '', drawing: false } : draft;
   });
@@ -178,6 +178,7 @@
     if (viewing) URL.revokeObjectURL(viewing.items[0]!.src);
     viewing = null;
   }
+  onDestroy(closeViewer);
 
   // Attach copy buttons once the final paragraph has reached the DOM.
   $effect(() => {
@@ -195,8 +196,8 @@
   });
 
   function hangCopy(pre: HTMLPreElement): void {
-    // A diagram's or a view's code has its own buttons.
-    if (pre.parentElement?.matches('.code-block, .md-mermaid, .md-view')) return;
+    // A diagram's, a view's or a native block's code has its own buttons.
+    if (pre.parentElement?.matches('.code-block, .md-mermaid, .md-view, .md-native')) return;
     const wrap = document.createElement('div');
     wrap.className = 'code-block';
     pre.replaceWith(wrap);
@@ -286,6 +287,8 @@
   }
 
   .flow > .prose { max-width: min(100%, var(--prose)); }
+  /* A drawn block lays out to the width it is given, so its run takes the measure, not its text's width. */
+  .flow > .prose:has(:global(.md-native)) { align-self: stretch; }
 
   /* `pretty` keeps a paragraph from ending on one stranded word. */
   .prose :global(p) {

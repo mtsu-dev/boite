@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { codeLanguage, codeRow, highlightCode, HIGHLIGHT_LIMIT } from './code-highlight';
+import { WORKER_IDLE_MS } from './worker-idle';
 import { appCss } from '../test/app-css';
 
 test('file extensions and conventional names select a grammar, unknown files stay plain', () => {
@@ -55,6 +56,7 @@ test('CRLF files keep one displayed line per editor line and diff row', async ()
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.resetModules();
 });
@@ -63,23 +65,26 @@ afterEach(() => {
 async function fakeWorker(fails = false) {
   const { highlightText } = await import('./code-grammar');
   const sent: { id: number; text: string; language: string }[] = [];
+  const terminated = vi.fn();
+  const created = vi.fn();
   class FakeWorker {
     onmessage: ((event: MessageEvent) => void) | null = null;
     onerror: ((event: Event) => void) | null = null;
-    constructor(readonly url: URL, readonly options: WorkerOptions) {}
+    constructor(readonly url: URL, readonly options: WorkerOptions) { created(); }
     postMessage(job: { id: number; text: string; language: 'typescript' }) {
       sent.push(job);
       if (fails) { queueMicrotask(() => this.onerror?.(new Event('error', { cancelable: true }))); return; }
       void highlightText(job.text, job.language).then(lines => this.onmessage?.({ data: { id: job.id, lines } } as MessageEvent));
     }
-    terminate() {}
+    terminate() { terminated(); }
   }
   vi.stubGlobal('Worker', FakeWorker);
-  return { sent, module: await import('./code-highlight') };
+  return { sent, created, terminated, module: await import('./code-highlight') };
 }
 
 test('a long text goes through its grammar in a module worker, a short one here, both into the same cache', async () => {
-  const { sent, module } = await fakeWorker();
+  vi.useFakeTimers();
+  const { sent, created, terminated, module } = await fakeWorker();
   const long = 'const value = 1; // a line of code\n'.repeat(Math.ceil(module.WORKER_FROM / 35));
   const lines = await module.highlightCode(long, 'typescript');
   expect(sent).toHaveLength(1);
@@ -88,6 +93,11 @@ test('a long text goes through its grammar in a module worker, a short one here,
   expect(sent).toHaveLength(1);
   await module.highlightCode('const small = 1;', 'typescript');
   expect(sent).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(WORKER_IDLE_MS);
+  expect(terminated).toHaveBeenCalledOnce();
+  expect(created).toHaveBeenCalledOnce();
+  expect((await module.highlightCode(long + '\n// new page', 'typescript'))?.at(-1)).toContain('hljs-comment');
+  expect(created).toHaveBeenCalledTimes(2);
 });
 
 test('a worker that cannot start leaves every text to the page', async () => {
