@@ -408,6 +408,45 @@ test('patch extraction stays linear on unclosed Begin Patch headers, ignores unc
   });
   expect(projected.output).toBe(`${headerOnly}\n\n${realPatch}`);
   expect(extractToolPatches(projected.output).patches).toEqual([headerOnly, realPatch]);
+
+  // git diff --binary preserves its GIT binary patch hunks without absorbing trailing logs.
+  const binaryPatch = [
+    'diff --git a/logo.png b/logo.png',
+    'index 1234567..89abcdef 100644',
+    'GIT binary patch',
+    'literal 12',
+    'TcmZQzU|<0R002M$0001K0RR91',
+    '',
+    'literal 0',
+    'HcmV?d00001',
+  ].join('\n');
+  const binOut = extractToolPatches(`before\n${binaryPatch}\n\ntrailing diagnostic`);
+  expect(binOut.patches).toEqual([binaryPatch]);
+  expect(binOut.rest).toContain('trailing diagnostic');
+
+  // Diagnostic text wrapped in *** Begin Patch ... *** End Patch is rejected as non-patch log text.
+  const fakePatch = '*** Begin Patch\nerror: malformed patch syntax\n*** End Patch';
+  const fakeOut = extractToolPatches(fakePatch);
+  expect(fakeOut.patches).toEqual([]);
+  expect(fakeOut.rest).toBe(fakePatch);
+
+  // A custom tool classified as a command on its original input must not turn into a synthetic write after diffsOnly projection.
+  const customCommand: Message = {
+    ...messages[1]!, id: 'm-custom-cmd', parts: [{
+      type: 'tool', toolId: 't-cmd', name: 'RunScript', status: 'done',
+      input: { command: 'echo hello', path: 'notes.txt', content: 'not a file write' },
+      output: 'hello',
+    }],
+  };
+  const projectedCustom: Message = {
+    ...customCommand,
+    parts: [projectToolDiffs(customCommand.parts[0] as Extract<Message['parts'][number], { type: 'tool' }>)],
+  };
+  const directMd = exportThreadMarkdown(thread, [customCommand], { ...clean, includeDiffs: true });
+  const projectedMd = exportThreadMarkdown(thread, [projectedCustom], { ...clean, includeDiffs: true });
+  expect(projectedMd).toBe(directMd);
+  expect(projectedMd).not.toContain('not a file write');
+  expect(projectedMd).not.toContain('```diff');
 });
 
 test('export omits tool parts on the wire when tools are unchecked and omits running tools for diff-only exports', async ({ createClient }) => {

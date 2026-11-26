@@ -283,6 +283,7 @@ test('messages.toolPart with diffsOnly and messages.list with omitThinking keep 
             documents: [{ kind: 'diff', path: 'auth.ts', oldText: 'old\n', newText: 'new\n' }] },
           { type: 'tool', toolId: 'raw-edit', name: 'Edit', status: 'done', input: { file_path: 'raw.ts', old_string: 'before', new_string: 'after', note: 'drop me' }, output: 'ok' },
           { type: 'tool', toolId: 'raw-write', name: 'Write', status: 'done', input: { file_path: 'new.ts', content: 'export const x = 1;\n', note: 'drop me' }, output: 'ok' },
+          { type: 'tool', toolId: 'custom-cmd', name: 'RunScript', status: 'done', input: { command: 'echo ok', path: 'notes.txt', content: 'not a write' }, output: 'ok' },
           { type: 'tool', toolId: 'codex-patch', name: 'ApplyPatch', status: 'done', input: { changes: [{ path: 'c.ts', kind: { type: 'update' }, diff: '@@ -1 +1 @@\n-a\n+b' }], meta: 'drop me' }, output: null },
         ],
       });
@@ -302,9 +303,14 @@ test('messages.toolPart with diffsOnly and messages.list with omitThinking keep 
     const editDiff = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'real-edit', diffsOnly: true });
     expect(editDiff.part.documents).toEqual([{ kind: 'diff', path: 'auth.ts', oldText: 'old\n', newText: 'new\n' }]);
     const rawEdit = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'raw-edit', diffsOnly: true });
-    expect(rawEdit.part.input).toEqual({ file_path: 'raw.ts', old_string: 'before', new_string: 'after' });
+    expect(rawEdit.part.input).toBeNull();
+    expect(rawEdit.part.documents).toEqual([{ kind: 'diff', path: 'raw.ts', oldText: 'before', newText: 'after' }]);
     const rawWrite = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'raw-write', diffsOnly: true });
-    expect(rawWrite.part.input).toEqual({ file_path: 'new.ts', content: 'export const x = 1;\n' });
+    expect(rawWrite.part.input).toBeNull();
+    expect(rawWrite.part.documents).toEqual([{ kind: 'diff', path: 'new.ts', oldText: '', newText: 'export const x = 1;\n' }]);
+    const customCmd = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'custom-cmd', diffsOnly: true });
+    expect(customCmd.part).toMatchObject({ toolId: 'custom-cmd', input: null, output: null });
+    expect(customCmd.part.documents).toBeUndefined();
     const codexPatch = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'codex-patch', diffsOnly: true });
     expect(codexPatch.part.input).toEqual({ changes: [{ path: 'c.ts', kind: { type: 'update' }, diff: '@@ -1 +1 @@\n-a\n+b' }] });
 
