@@ -402,6 +402,10 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
 - `experimental: true` marks an agent Boite drives without long use behind it.
   It stays off until the user turns it on ([below](#turning-a-provider-off)),
   and its row on the Providers page carries an Experimental badge.
+- `deprecated: { replacedBy?: ProviderId }` marks an agent as Obsolete while
+  keeping it runnable. When present, `replacedBy` is a non-empty provider ID.
+  Providers shows the replacement, and Connect an AI and the model picker list
+  current providers first.
 - `capabilities` is six booleans: `approvals`, `hooks`, `checkpoint`, `images`,
   `planMode`, `resume`. `approvals: false` means the thread's permission mode
   never reaches that agent, and the UI stops promising a gate that does not exist.
@@ -715,8 +719,8 @@ is the deterministic fake the tests and the bench run on, loaded only under
 | Provider | Protocol | Launch |
 | --- | --- | --- |
 | Claude | `claude-sdk` | SDK-driven CLI |
-| OpenCode | `acp` | `opencode acp --port 0` |
-| OpenCode 2 | `acp` | `opencode2 acp`, experimental and off until turned on |
+| OpenCode 2 | `acp` | `opencode2 acp` |
+| OpenCode 1 (obsolete) | `acp` | `opencode acp --port 0` |
 | Antigravity | `acp` | Managed `agy_acp_server` for the host OS |
 | Grok | `acp` | `grok [permission flags] agent [approval flag] stdio` |
 | Hermes Agent | `acp` | `hermes acp` ([below](#hermes)) |
@@ -891,10 +895,10 @@ pass that size is drawn as a sentence giving its size.
 
 ## OpenCode 2
 
-OpenCode 2 is another program than OpenCode 1, published as `@opencode/cli`
-beside `opencode-ai`, and its descriptor `opencode-v2` ships beside `opencode`
-as an experimental provider. Both speak ACP to the same driver. What the
-descriptor accounts for, each point read off OpenCode 2.0.24 on Linux:
+OpenCode 2 ships as `@opencode/cli` with descriptor `opencode-v2`. It replaces
+the obsolete OpenCode 1 provider, which ships as `opencode-ai` with descriptor
+`opencode`. Both speak ACP to the same driver. What the OpenCode 2 descriptor
+accounts for, each point read off OpenCode 2.0.24 on Linux:
 
 - The two install under one name. The npm package and the installer both put
   a program called `opencode` on the machine, where OpenCode 1 already is, and

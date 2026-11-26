@@ -7,7 +7,7 @@
   import { mobileOverlay } from '../lib/mobile-history';
   import { focusInitial } from '../lib/focus';
   import { bytes, percent } from '../lib/format';
-  import { nextAccountLabel, setupStep, signInTarget, type SetupStep } from '../lib/provider-setup';
+  import { nextAccountLabel, preferCurrentProviders, setupStep, signInTarget, type SetupStep } from '../lib/provider-setup';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
@@ -27,6 +27,7 @@
     claude: 'https://code.claude.com/docs/en/setup',
     codex: 'https://developers.openai.com/codex/cli',
     opencode: 'https://opencode.ai/docs/',
+    'opencode-v2': 'https://opencode.ai/v2/docs/',
     grok: 'https://grok.com/build',
     muse: 'https://developer.meta.com/ai/products/muse-code/',
     pi: 'https://github.com/earendil-works/pi'
@@ -67,8 +68,9 @@
   // A step that replaces the pressed button hands the keyboard to its own first control, not to the page behind.
   $effect(() => { void [step, login?.url]; if (overlay.open) void focusFirst(true); });
 
-  let featured = $derived(store.offeredProviders.filter((p) => FEATURED.includes(p.id)).sort((a, b) => FEATURED.indexOf(a.id) - FEATURED.indexOf(b.id)));
-  let others = $derived(store.offeredProviders.filter((p) => !FEATURED.includes(p.id)));
+  const isFeatured = (provider: ProviderSummary): boolean => !provider.deprecated && FEATURED.includes(provider.id);
+  let featured = $derived(store.offeredProviders.filter(isFeatured).sort((a, b) => FEATURED.indexOf(a.id) - FEATURED.indexOf(b.id)));
+  let others = $derived(preferCurrentProviders(store.offeredProviders.filter((provider) => !isFeatured(provider))));
   let provider = $derived(providerId ? store.providerOf(providerId) : null);
   let accounts = $derived(provider ? store.accountsOf(provider.id) : []);
   const loggingIn = (id: string): boolean => store.logins[id]?.state === 'running' || store.loginTerminals.includes(id);
@@ -224,7 +226,7 @@
               {#each others as entry (entry.id)}
                 <button type="button" class="service" data-testid="connect-service" data-provider={entry.id} onclick={() => choose(entry)}>
                   <ProviderLogo providerId={entry.id} size={18} />
-                  <span class="who"><span class="name">{entry.name}</span></span>
+                  <span class="who"><span class="name">{entry.name}{#if entry.deprecated} <span class="plan">· {strings.providerSettings.obsolete}</span>{/if}</span></span>
                   {#if ready(entry)}<Check size={14} class="ok" />{:else}<ChevronRight size={14} />{/if}
                 </button>
               {/each}

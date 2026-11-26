@@ -64,12 +64,13 @@ test('an experimental provider is off until someone turns it on, and the choice 
   // Every other provider is on, and none of them says experimental unless its descriptor does.
   expect(loaded.loaded.find((provider) => provider.id === 'echo')).toMatchObject({ enabled: true });
   expect(loaded.loaded.find((provider) => provider.id === 'echo')?.experimental).toBeUndefined();
-  expect(loaded.loaded.find((provider) => provider.id === 'opencode-v2')).toMatchObject({ enabled: false, experimental: true });
+  expect(loaded.loaded.find((provider) => provider.id === 'opencode-v2')?.enabled).toBe(true);
 
   await client.call('providers.setEnabled', { providerId: 'lab', enabled: true });
   expect(harness.core.providers.enabled('lab')).toBe(true);
 
-  // A second registry over the same journal reads the stored choice.
+  await client.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: false });
+  // Reloading the stored choices preserves both the opt-in and the opt-out.
   harness.core.providers.loadSwitches(harness.core.journal.getSetting('provider-switches'));
   expect(harness.core.providers.enabled('lab')).toBe(true);
   expect(harness.core.providers.enabled('opencode-v2')).toBe(false);

@@ -200,19 +200,25 @@ test('the switch turns a provider off through providers.setEnabled and its row m
   expect(call).toHaveBeenLastCalledWith('providers.setEnabled', { providerId: 'claude', enabled: true });
 });
 
-test('an experimental provider is off until turned on and says so in both places', async ({ ready }) => {
+test('OpenCode shows its replacement and leads with it when both versions are connected', async ({ ready }) => {
   const { store } = await ready();
   mounted = mount(AccountsPage, { target: document.body, props: { store } });
   flushSync();
-  expect(group('opencode-v2')).toBe('providers-off');
-  expect(row('opencode-v2')?.querySelector('[data-testid="provider-experimental"]')?.textContent).toBe('Experimental');
-  expect(row('claude')?.querySelector('[data-testid="provider-experimental"]')).toBeNull();
-  // A row of its own with OpenCode's guide, never a member of OpenCode's row.
-  expect(row('opencode')?.querySelector('[data-testid="provider-member"]')).toBeNull();
+  expect(group('opencode')).toBe('providers-connected');
+  expect(row('opencode-v2')).toBeNull();
+  row('opencode')!.querySelector<HTMLButtonElement>('[data-testid="provider-details-toggle"]')!.click();
+  flushSync();
+  const members = () => Array.from(row('opencode')!.querySelectorAll<HTMLElement>('[data-testid="provider-member"]'));
+  expect(members().map((member) => member.dataset.providerId)).toEqual(['opencode-v2', 'opencode']);
+  expect(toggle('opencode-v2').checked).toBe(true);
+  expect(members()[0]?.querySelector('[data-testid="provider-experimental"], [data-testid="provider-obsolete"]')).toBeNull();
+  expect(members()[1]?.querySelector('[data-testid="provider-obsolete"]')?.textContent).toBe('Obsolete');
+  members()[1]?.querySelector<HTMLButtonElement>('[data-testid="provider-replacement"]')!.click();
+  await vi.waitFor(() => expect(row('opencode')?.querySelector('[data-testid="provider-replacement-text"]')?.textContent).toContain('Replaced by OpenCode 2'));
 
-  toggle('opencode-v2').click();
-  await vi.waitFor(() => expect(group('opencode-v2')).not.toBe('providers-off'));
-  expect(row('opencode-v2')?.querySelector('[data-testid="provider-experimental"]')).not.toBeNull();
+  store.accounts = store.accounts.filter((entry) => entry.providerId !== 'opencode-v2');
+  flushSync();
+  expect(members().map((member) => member.dataset.providerId)).toEqual(['opencode', 'opencode-v2']);
 });
 
 

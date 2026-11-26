@@ -9,16 +9,14 @@ with the account you already pay for, and shows its work in one app.
 | --- | --- | --- | --- | --- |
 | [Claude Code](https://code.claude.com/docs/en/setup) | Anthropic | Boite installs it | Install it yourself | From Boite |
 | [Codex](https://developers.openai.com/codex/cli) | OpenAI | Boite installs it | Install it yourself | From Boite |
-| [OpenCode](https://opencode.ai/docs/) | OpenCode | Boite installs it | Install it yourself | From Boite |
+| [OpenCode 2](https://opencode.ai/v2/docs/) | OpenCode | Boite installs it | Install it yourself | From Boite |
+| [OpenCode 1](https://opencode.ai/docs/) (obsolete, replaced by OpenCode 2) | OpenCode | Boite installs it | Install it yourself | From Boite |
 | [Muse Code](https://developer.meta.com/ai/products/muse-code/) | Meta | Boite installs it | Install it yourself | From Boite |
 | Antigravity | Google | Boite installs it | Boite installs it | From Boite, with a Google account |
 | [Grok](https://grok.com/build) | xAI | Install it yourself | Install it yourself | From Boite |
 | [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation) | Nous Research | Install it yourself | Install it yourself | From Boite, by choosing a model and its key |
 | [Mistral Vibe](https://github.com/mistralai/mistral-vibe#installation) | Mistral AI | Install it yourself | Install it yourself | From Boite, in a browser or with a Vibe key |
 | [pi](https://github.com/earendil-works/pi) | Earendil Works | Install it yourself | Install it yourself | In pi itself |
-
-[OpenCode 2](https://opencode.ai/v2/docs/) is also supported as an experiment.
-It is turned off until you turn it on in Settings, Providers.
 
 ## Connect an agent
 
@@ -35,14 +33,18 @@ An agent you already use in a terminal shows up as ready, with your existing
 sign-in. [Accounts](accounts.md) explains how to add a second account for the
 same agent.
 
+OpenCode 2 is on by default when you have made no choice in Providers. OpenCode
+1 still runs. In Providers, open the OpenCode row to see both versions and their
+individual switches.
+
 ## What each agent can do in Boite
 
 | Agent | Attach images | Plan mode | Asks before acting |
 | --- | --- | --- | --- |
 | Claude Code | Yes | Yes | Yes |
 | Codex | Yes | Yes | Yes |
-| OpenCode | No | Yes | Yes |
 | OpenCode 2 | Yes | Yes | Yes |
+| OpenCode 1 (obsolete) | No | Yes | Yes |
 | Muse Code | Yes | Yes | Yes |
 | Antigravity | Yes | No | Yes |
 | Grok | No | Yes | Yes |

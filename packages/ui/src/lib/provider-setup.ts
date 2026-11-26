@@ -49,6 +49,11 @@ export function connected(provider: ProviderSummary, accounts: Account[]): boole
   return providerEnabled(provider) && provider.available && accounts.some((account) => account.providerId === provider.id && account.status === 'ok');
 }
 
+/** Offer maintained providers first, keeping the listed order within each group. */
+export function preferCurrentProviders(providers: readonly ProviderSummary[]): ProviderSummary[] {
+  return [...providers.filter((provider) => !provider.deprecated), ...providers.filter((provider) => provider.deprecated)];
+}
+
 /** The account a sign-in from the row lands on: one Boite already made and nobody is logged into. */
 export function signInTarget(accounts: Account[]): Account | null {
   return accounts.find((account) => account.isolationDir !== null && account.status !== 'ok') ?? null;

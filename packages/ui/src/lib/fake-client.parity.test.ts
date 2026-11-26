@@ -293,16 +293,17 @@ test('a provider turned off refuses a turn and reports provider-disabled, as dri
   await client.call('turns.stop', { threadId: thread.id });
 });
 
-test('an experimental provider is off until its owner turns it on, and a paired device may not, as providers/loader.ts and access.ts', async () => {
+test('both OpenCode versions are on by default and only the owner can turn them off', async () => {
   const client = await fake();
-  const listed = (await client.call('providers.list', {})).loaded.find(provider => provider.id === 'opencode-v2');
-  expect(listed).toMatchObject({ name: 'OpenCode 2', protocol: 'acp', experimental: true, enabled: false, available: true });
+  const listed = (await client.call('providers.list', {})).loaded;
+  expect(listed.find(provider => provider.id === 'opencode-v2')).toMatchObject({ name: 'OpenCode 2', protocol: 'acp', enabled: true, available: true });
+  expect(listed.find(provider => provider.id === 'opencode')).toMatchObject({ enabled: true, deprecated: { replacedBy: 'opencode-v2' } });
   expect(await code(client.call('providers.setEnabled', { providerId: 'nope', enabled: true }))).toBe(RpcErrorCode.NotFound);
   expect(await code(client.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: 'yes' as unknown as boolean }))).toBe(RpcErrorCode.InvalidParams);
   const phone = await fake({ principal: 'session' });
-  expect(await code(phone.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: true }))).toBe(RpcErrorCode.Refused);
-  const { loaded } = await client.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: true });
-  expect(loaded.find(provider => provider.id === 'opencode-v2')?.enabled).toBe(true);
+  expect(await code(phone.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: false }))).toBe(RpcErrorCode.Refused);
+  const { loaded } = await client.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: false });
+  expect(loaded.find(provider => provider.id === 'opencode-v2')?.enabled).toBe(false);
 });
 
 test('an archived thread with no project reports archived before agent-session, as threads/capabilities.ts', async () => {

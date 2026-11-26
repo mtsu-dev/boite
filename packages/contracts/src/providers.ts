@@ -414,6 +414,8 @@ export interface ProviderDescriptor {
    * user turns it on in Providers, and its row says so.
    */
   experimental?: boolean;
+  /** Still runs and shows as Obsolete. The model picker and Connect an AI prefer its replacement. */
+  deprecated?: { replacedBy?: ProviderId };
   /** Native protocols may leave this empty; providers.probe supplies the account's catalog. */
   models: ModelInfo[];
   capabilities: ProviderCapabilities;
@@ -456,6 +458,8 @@ export interface ProviderSummary {
   policy?: PolicyRefusalData;
   /** The descriptor's `experimental`. Missing reads as false. */
   experimental?: boolean;
+  /** The descriptor's `deprecated`. */
+  deprecated?: { replacedBy?: ProviderId };
 }
 
 /** Whether a provider is turned on. A summary from a core older than the switch has no field and is on. */

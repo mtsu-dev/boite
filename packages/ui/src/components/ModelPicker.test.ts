@@ -578,8 +578,12 @@ test('a provider turned off leaves the picker, its favorites and the draft that 
   const chosen = store.defaultChoice()!.providerId;
   const other = tiles().find((id) => id !== chosen)!;
   expect(tiles()).toContain(chosen);
-  // An experimental provider nobody turned on was never offered.
-  expect(tiles()).not.toContain('opencode-v2');
+  expect(tiles()).toContain('opencode-v2');
+  expect(tiles().indexOf('opencode-v2')).toBeLessThan(tiles().indexOf('opencode'));
+  const openCode = document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] .tile[data-provider=opencode]')!;
+  expect(openCode.getAttribute('aria-label')).toBe('OpenCode · Obsolete');
+  openCode.click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu] .provider-name')?.textContent === 'OpenCode · Obsolete');
 
   expect(await store.setProviderEnabled(other, false)).toBe(true);
   await waitFor(() => !tiles().includes(other));

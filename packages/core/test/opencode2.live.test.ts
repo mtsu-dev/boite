@@ -39,7 +39,7 @@ live('opencode 2 native driver, live', () => {
   });
 
   test(
-    'turned on, a real turn answers over its native API, a second one resumes the session, and plan mode reaches the agent',
+    'a real turn answers over its native API, a second one resumes the session, and plan mode reaches the agent',
     async () => {
       const client = await harness.connect();
       const logs: string[] = [];
@@ -53,11 +53,7 @@ live('opencode 2 native driver, live', () => {
       harness.core.providers.list();
       await versionsSettled();
       await waitFor(() => harness.core.providers.summary('opencode-v2')?.available === true, 30_000);
-      const before = harness.core.providers.summary('opencode-v2');
-      expect(before).toMatchObject({ experimental: true, enabled: false });
-      // Off, it has no account and starts nothing; turning it on adopts the login it finds.
-      expect((await client.call('accounts.list', {})).some((entry) => entry.providerId === 'opencode-v2')).toBe(false);
-      await client.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: true });
+      expect(harness.core.providers.summary('opencode-v2')?.enabled).toBe(true);
 
       const project = await client.call('projects.add', { path: projectDir, name: 'opencode 2 live' });
       const account = (await client.call('accounts.list', {})).find((entry) => entry.providerId === 'opencode-v2' && entry.label === 'Default');

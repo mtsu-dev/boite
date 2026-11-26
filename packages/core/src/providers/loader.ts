@@ -130,6 +130,7 @@ export function summarize(
     enabled,
     ...(policy !== undefined ? { policy } : {}),
     ...(entry.descriptor.experimental === true ? { experimental: true } : {}),
+    ...(entry.descriptor.deprecated === undefined ? {} : { deprecated: entry.descriptor.deprecated }),
   };
 }
 

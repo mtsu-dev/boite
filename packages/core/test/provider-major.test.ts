@@ -197,18 +197,22 @@ function rejection(raw: unknown): { field: string; message: string } {
   throw new Error('the descriptor loaded');
 }
 
-test('a descriptor names a major, an experimental flag and a SQLite login, each refused with its field when wrong', () => {
+test('a descriptor accepts version, status and SQLite login metadata and rejects invalid fields', () => {
   const os = (executable: unknown[]) => ({ detect: {}, executable, isolation: { LAB_HOME: '{isolationDir}' } });
   const good = validateDescriptor(descriptor({
     experimental: true,
+    deprecated: { replacedBy: 'lab-v2' },
     profiles: { linux: os([{ kind: 'path', value: 'lab', major: 2 }]) },
     auth: { kind: 'oauth-cli', sqlite: { file: 'lab/login.db', tables: ['credential'] } },
   }), 'lab.json', new Set(), dir);
   expect(good.experimental).toBe(true);
+  expect(good.deprecated).toEqual({ replacedBy: 'lab-v2' });
   expect(good.profiles.linux?.executable[0]?.major).toBe(2);
   expect(good.auth.sqlite).toEqual({ file: 'lab/login.db', tables: ['credential'] });
 
   expect(rejection(descriptor({ experimental: 'yes' })).field).toBe('experimental');
+  expect(rejection(descriptor({ deprecated: true })).field).toBe('deprecated');
+  expect(rejection(descriptor({ deprecated: { replacedBy: '' } })).field).toBe('deprecated.replacedBy');
   expect(rejection(descriptor({ profiles: { linux: os([{ kind: 'path', value: 'lab', major: 0 }]) } })).field).toBe('profiles.linux.executable[0].major');
   expect(rejection(descriptor({ profiles: { linux: os([{ kind: 'npm', value: '@lab/agent', major: 2 }]) } }))).toEqual({
     field: 'profiles.linux.executable[0].major',

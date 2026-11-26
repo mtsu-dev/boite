@@ -4,12 +4,12 @@
   import type { ProviderSummary } from '@boite/contracts';
   import ProviderLogo from './ProviderLogo.svelte';
   import { strings } from '../lib/strings';
-  import { connected } from '../lib/provider-setup';
+  import { connected, preferCurrentProviders } from '../lib/provider-setup';
   import type { Choice, Store } from '../lib/store.svelte';
 
   /**
-   * The model picker's rail: the favorites tile, then one tile per provider in
-   * the order the core listed them, scrolling under a fade when the menu is
+   * The model picker's rail: the favorites tile, then one tile per provider,
+   * scrolling under a fade when the menu is
    * shorter than the rail; the add tile and the menu's `foot` stay pinned at
    * its end. A tile only moves the column beside it.
    */
@@ -68,7 +68,7 @@
   }
 
   /**
-   * One tile per provider the user can run, in the order the core listed them:
+   * One tile per provider the user can run, with obsolete providers last:
    * a provider with no signed-in account is Settings' business, not the
    * picker's. The one the choice is on stays, and with nothing connected at all
    * every provider shows, so the rail is never empty.
@@ -77,7 +77,7 @@
     // A provider turned off is offered nowhere, the one an open thread sits on included.
     const offered = store.offeredProviders;
     const usable = offered.filter((entry) => connected(entry, store.accountsOf(entry.id)) || entry.id === choice?.providerId);
-    return usable.some((entry) => connected(entry, store.accountsOf(entry.id))) ? usable : offered;
+    return preferCurrentProviders(usable.some((entry) => connected(entry, store.accountsOf(entry.id))) ? usable : offered);
   });
   let tiles = $derived.by((): Tile[] => {
     return listed.map((entry) => {
@@ -90,9 +90,9 @@
     });
   });
 
-  function tileTitle(tile: Tile): string {
+  function tileTitle(tile: Tile, name: string): string {
     if (tile.held) return strings.composer.lockedHint;
-    return tile.reason === null ? tile.provider.name : `${tile.provider.name}, ${tile.reason}`;
+    return tile.reason === null ? name : `${name}, ${tile.reason}`;
   }
 
   /** A tile only moves the column: the choice follows a model or an account chip. */
@@ -106,6 +106,7 @@
   <div class="tiles" class:hidden-start={hiddenStart} class:hidden-end={hiddenEnd} data-testid="picker-rail-tiles" bind:this={list}>
     <button type="button" class="tile" class:current={favoritesOpen} role="menuitem" data-row data-provider="favorites" title={strings.composer.favorites} aria-label={strings.composer.favorites} onclick={onfavorites}><Star size={24} /></button>
     {#each tiles as tile (tile.provider.id)}
+      {@const name = tile.provider.deprecated ? `${tile.provider.name} · ${strings.providerSettings.obsolete}` : tile.provider.name}
       <button
         type="button"
         class="tile"
@@ -115,8 +116,8 @@
         role="menuitem"
         data-row
         data-provider={tile.provider.id}
-        title={tileTitle(tile)}
-        aria-label={tile.provider.name}
+        title={tileTitle(tile, name)}
+        aria-label={name}
         onclick={() => pickTile(tile)}
       >
         <ProviderLogo providerId={tile.provider.id} size={28} />

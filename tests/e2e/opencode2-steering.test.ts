@@ -17,7 +17,6 @@ test('OpenCode 2 tools stay folded across automatic delivery and Send now interr
     const profile = { executable: [{ kind: 'file' as const, value: process.execPath }], detect: {}, isolation: {},
       launch: { args: [resolve('packages/core/test/fixtures/opencode2-server.ts'), 'acp'] }, env: { OPENCODE_FIXTURE_TOOL_GATE: join(core.dataDir, 'tool-ready') } };
     Object.assign(core.core.providers.require('opencode-v2'), { auth: { kind: 'none' }, env: {}, profiles: { windows: profile, linux: profile, macos: profile } });
-    await client.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: true });
     const account = await client.call('accounts.add', { providerId: 'opencode-v2', label: 'Fixture' });
     const project = await client.call('projects.add', { path: core.dataDir, name: 'Workspace' });
     for (const mobile of [false, true]) {
@@ -66,6 +65,16 @@ test('OpenCode 2 tools stay folded across automatic delivery and Send now interr
       await page.waitFor('document.body.textContent.includes("working tree clean")');
       expect(page.errors()).toEqual([]);
       await client.call('turns.stop', { threadId: thread.id });
+      if (!mobile) {
+        await page.click('[data-testid=nav-settings]');
+        await page.click('[data-testid=settings-tab-accounts]');
+        const row = '[data-testid=provider-settings][data-provider-id=opencode]';
+        const old = `${row} [data-testid=provider-member][data-provider-id=opencode]`;
+        await page.click(`${row} [data-testid=provider-details-toggle]`);
+        expect(await page.text(`${old} [data-testid=provider-obsolete]`)).toBe('Obsolete');
+        await page.click(`${old} [data-testid=provider-replacement]`);
+        expect(await page.text(`${old} [data-testid=provider-replacement-text]`)).toContain('Replaced by OpenCode 2');
+      }
       await page.close(); page = undefined;
     }
   } finally {
