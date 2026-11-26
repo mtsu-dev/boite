@@ -370,20 +370,18 @@ describe('accounts', () => {
     expect(after.status).toBe('ok');
   });
 
-  test('an isolated pi account stays usable without stored credentials', async () => {
+  test('an isolated pi account is runnable before pi has written its credential store', async () => {
     const client = await harness.connect();
     const account = await client.call('accounts.add', { providerId: 'pi', label: 'Second', useDefaultLocation: false });
     const auth = join(account.isolationDir!, 'auth.json');
 
+    // Keys may come from the environment or models.json: no file is no proof of a missing login.
     expect(existsSync(auth)).toBe(false);
     expect(account.status).toBe('unknown');
     expect((await client.call('accounts.check', { accountId: account.id })).status).toBe('unknown');
 
-    // pi creates an empty credential store when it starts, even if sign-in is cancelled.
+    // pi writes its store on its first start, from the sign-in terminal too: the account then reads signed in.
     writeFileSync(auth, '{}', 'utf8');
-    expect((await client.call('accounts.check', { accountId: account.id })).status).toBe('unknown');
-
-    writeFileSync(auth, '{"openai":{"type":"api_key","key":"test-key"}}', 'utf8');
     expect((await client.call('accounts.check', { accountId: account.id })).status).toBe('ok');
   });
 

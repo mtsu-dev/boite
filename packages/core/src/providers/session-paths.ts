@@ -1,7 +1,6 @@
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type { ProviderDescriptor } from '@boite/contracts';
-import { isRecord } from '../drivers/stdio.ts';
 import { homePath } from '../paths.ts';
 import { variableHome } from '../profile-share.ts';
 import { profileFor } from './resolve.ts';
@@ -28,21 +27,6 @@ export function providerSessionFiles(provider: ProviderDescriptor, profile = pro
     sqlite: provider.auth.sqlite,
     mayBeExternal: own?.length === 0,
   };
-}
-
-export function providerSessionFileHasLogin(provider: ProviderDescriptor, base: string, file: string): boolean {
-  const path = join(base, file);
-  if (provider.protocol !== 'pi' || file !== 'auth.json') return existsSync(path);
-
-  // pi creates an empty store on startup. A stored credential is evidence of
-  // sign-in, while environment keys and models.json may work without one.
-  try {
-    const credentials: unknown = JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/u, ''));
-    return isRecord(credentials) && Object.values(credentials).some((entry) =>
-      isRecord(entry) && (entry['type'] === 'oauth' || entry['type'] === 'api_key'));
-  } catch {
-    return false;
-  }
 }
 
 /** Add exact protected paths. Project admission also checks nested login folders themselves. */

@@ -72,7 +72,8 @@ test('Add another pi account opens its own sign-in terminal and explains /login'
   await waitFor(() => card.textContent?.includes('pi --no-session') === true);
   query<HTMLButtonElement>('[data-testid=account-login-terminal-close]').click();
   await waitFor(() => document.querySelector('[data-testid=account-login-terminal]') === null);
-  expect(store.accountOf(account.id)?.status).toBe('unknown');
+  // pi wrote its credential store on start: the account now reads signed in.
+  expect(store.accountOf(account.id)?.status).toBe('ok');
 });
 
 test('account lifecycle removal asks first and cancellation keeps the account', async ({ app: _app }) => {

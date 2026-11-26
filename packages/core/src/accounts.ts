@@ -15,7 +15,7 @@ import { openCodeBackgroundCompaction } from './providers/opencode.ts';
 import { activeSubscriptionProxy, subscriptionProxyEnv } from './subscription-proxy.ts';
 import { agentEnv, hostAgentsEnabled, profileFor, resolveLaunch } from './providers/resolve.ts';
 import { sqliteHasRows } from './providers/sqlite-login.ts';
-import { providerLoginHome, providerSessionFileHasLogin, providerSessionFiles } from './providers/session-paths.ts';
+import { providerLoginHome, providerSessionFiles } from './providers/session-paths.ts';
 import { browserNoopPath, browserNoopScript, currentOs, homePath } from './paths.ts';
 import { shareKeys, shareProfile, unshareProfile, type ShareProblem } from './profile-share.ts';
 import type { SpawnedPipedProcess } from './procs.ts';
@@ -825,7 +825,7 @@ export class AccountStore {
       const rows = sqliteHasRows(join(base, sqlite.file), sqlite.tables);
       if (rows !== false || session.length === 0) return rows === null ? 'unknown' : rows ? 'ok' : 'unauthenticated';
     }
-    if (session.every((file) => providerSessionFileHasLogin(provider, base, file))) return 'ok';
+    if (session.every((file) => existsSync(join(base, file)))) return 'ok';
     return mayBeExternal ? 'unknown' : 'unauthenticated';
   }
 

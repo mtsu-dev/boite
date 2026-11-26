@@ -44,7 +44,7 @@ for a conversation from the account chips in the model picker. Antigravity
 has no command-line login in Boite: each of its accounts is a Boite account.
 
 pi can also use API keys from the environment or from the account's own
-`models.json`. You can pick that account even if its sign-in status is unknown.
+`models.json`. Then open its terminal once and close it: the account is ready.
 
 Settings shows each account's name and its email. Emails stay blurred until
 you hover them, tap them on a phone, or press Reveal email.

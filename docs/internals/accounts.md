@@ -132,9 +132,11 @@ A provider that names `auth.sqlite` is read the same way from its database:
 ([providers.md](providers.md#opencode-2)).
 Claude on macOS and Windows reads `unknown` without its file, because its CLI
 can keep the login in the Keychain or in Credential Manager. A signed-out CLI
-reads `unknown` there too. pi also reads `unknown` with an absent or empty
-`auth.json`, so an account on environment credentials or its own
-`models.json` remains usable. A stored OAuth or API-key entry reads `ok`.
+reads `unknown` there too. pi also reads `unknown` while its `auth.json` is
+absent, so a thread on that account runs instead of moving to another one:
+environment keys or the account's own `models.json` may work without a
+sign-in. pi writes that file on its first start, the sign-in terminal
+included, and the account then reads `ok`.
 Startup reads every account stored as
 `unauthenticated` again: one written under an older rule recovers when it now
 reads otherwise, and one the agent itself refused stays signed out.
