@@ -563,14 +563,17 @@ them without doubt; any other failure ends the turn as before.
 | --- | --- | --- |
 | Codex | `codexErrorInfo` `serverOverloaded`, or "Selected model is at capacity" | `usageLimitExceeded`; the reset is the latest spent window of `account/rateLimits/updated` |
 | Claude | assistant error `overloaded` (HTTP 529, after the CLI's own retries) | assistant error `rate_limit`; the reset is the `rate_limit_event` marked `rejected` |
+| Antigravity | The ACP execution error says the account that signed the conversation is temporarily unavailable | None |
 | echo | `[capacity:n]` | `[usage-limit:<ms>]` |
 
-ACP agents, pi, Grok, Antigravity and Muse report neither: their failures
-are never retried here.
+Antigravity can send this refusal as a text update followed by `end_turn`. At
+the end of the prompt or a detached reply, the driver records the refusal as
+an error and uses the capacity retry schedule. The `Retry-After` placeholder
+comes with no delay value.
 
 ### Model at capacity
 
-The same turn tries again three times, after 30 s, 2 min and 5 min
+The same turn tries again up to three times, after 30 s, 2 min and 5 min
 (`CAPACITY_RETRY` in `threads/turn-attempts.ts`). The thread stays running and
 its row carries `retry` (`kind: 'capacity'`, the try's number and time), which
 the conversation shows above the composer with a countdown and Stop retrying.

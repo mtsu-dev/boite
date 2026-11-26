@@ -2,8 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { deviceAdmitInput, deviceHelloInput, deviceRevokedInput, groupRelayUrl, RpcCloseCode, RpcErrorCode, ungroupedInput, type DeviceRevokedData, type PushPayload, type RpcEvents } from '@boite/contracts';
 import { createECDH, createPublicKey, generateKeyPairSync, randomBytes, sign, verify, type KeyObject } from 'node:crypto';
 import { connect, type CoreClient } from '../src/client.ts';
-import { appOrigin, isAllowedOrigin } from '../src/server.ts';
-import { APP_ORIGIN } from '@boite/contracts';
+import { isAllowedOrigin } from '../src/server.ts';
 import { mergeDeviceKeys } from '../src/group/device-keys.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
@@ -223,6 +222,8 @@ test('a member trusts the origins the others are served from, learned from their
   expect(cross.device).toMatch(/^[0-9a-f]{64}$/);
   // An origin nobody of the group is served from stays out.
   await refused(b, connect(b.url, '', { headers: { origin: 'https://elsewhere.example' }, device: helloFor(phone, cross.device!, id(b)) }));
+  // The phone app's old public address is no longer served, so no core trusts it.
+  await refused(b, connect(b.url, '', { headers: { origin: 'https://boite.mtsu.dev' }, device: helloFor(phone, cross.device!, id(b)) }));
 });
 
 test('a device redeeming its grant again after a lost answer is answered until the grant expires, and a malformed key keeps its own refusal', async () => {
@@ -241,14 +242,6 @@ test('a device redeeming its grant again after a lost answer is answered until t
   const refusal = await connect(a.url, '', { grant, device: { publicKey: 'not-a-key', sig: 'x' } }).catch((error: { rpc?: { code: number; data?: { field?: string } } }) => error);
   await settled(a, before);
   expect((refusal as { rpc?: { code: number; data?: { field?: string } } }).rpc).toMatchObject({ code: -32602, data: { field: 'device.publicKey' } });
-});
-
-test('every core accepts the phone app\'s address, the published one or the one its start names, and refuses a misspelt one', () => {
-  expect(appOrigin({})).toBe(APP_ORIGIN);
-  expect(appOrigin({ BOITE_APP_ORIGIN: 'https://app.example/' })).toBe('https://app.example');
-  expect(appOrigin({ BOITE_APP_ORIGIN: 'HTTPS://APP.example:443' })).toBe('https://app.example');
-  expect(() => appOrigin({ BOITE_APP_ORIGIN: 'http://app.example' })).toThrow('BOITE_APP_ORIGIN');
-  expect(() => appOrigin({ BOITE_APP_ORIGIN: 'https://app.example/path' })).toThrow('BOITE_APP_ORIGIN');
 });
 
 test('a key handed over on two members keeps both older pairings, a removed key spends no link, and a device key gets no ticket', async () => {

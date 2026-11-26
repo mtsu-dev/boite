@@ -3,6 +3,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { FakeClient } from '../../lib/fake-client';
 import { Store } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
+import { mochiLayout } from '../../lib/mochi-layout.svelte';
 import MobileNavigation from '../MobileNavigation.svelte';
 import AgentsPage from '../agents/AgentsPage.svelte';
 import TeamChat from './TeamChat.svelte';
@@ -16,6 +17,7 @@ afterEach(async () => {
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
+  mochiLayout.load();
   document.documentElement.classList.remove('agents-detail-open');
 });
 
@@ -116,6 +118,7 @@ test("a phone's Mochis list holds the teams above the mochis, opens a team's cha
 });
 
 test("a desktop's column shows the open team: its picture, its name, who is in it, its chat, and its members open their mochi", async () => {
+  mochiLayout.set(true);
   const { store, team, huginn } = await skollheim();
   botsPage(store, false);
   // The desktop's default bot is open first; the rail then opens the team.

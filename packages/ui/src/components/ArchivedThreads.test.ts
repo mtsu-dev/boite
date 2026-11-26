@@ -223,23 +223,18 @@ test('a thread archived live takes its place by archive time, not the top', asyn
   expect(rows()).toEqual(['t-parser', 't-trace', 't-bench']);
 });
 
-test('an archived row reads without restoring and keeps Delete behind its menu', async () => {
+test('an archived row reads without restoring, Restore and Delete in sight', async () => {
   const { store } = await ready();
   await store.archive('t-trace');
   running = mount(ArchivedThreads, { target: document.body, props: { store } });
   await settle();
   const row = () => document.querySelector<HTMLElement>('[data-testid=archived-list] [data-thread-id="t-trace"]');
   // Opening an archived row leaves its archive flag in place.
-  row()!.querySelector<HTMLButtonElement>('[data-testid=archived-open]')!.click();
+  row()!.querySelector<HTMLButtonElement>('[data-testid=archived-title]')!.click();
   await vi.waitFor(() => expect(store.openThread?.id).toBe('t-trace'));
   expect(store.openThread?.archived).toBe(true);
-  expect([...row()!.querySelectorAll('.actions > button')].map(button => button.getAttribute('data-testid'))).toEqual(['archived-restore']);
-  expect(row()!.querySelector('[data-testid=archived-delete]')).toBeNull();
-  row()!.querySelector<HTMLButtonElement>('[data-testid=archived-menu-t-trace]')!.click();
-  await settle();
-  const remove = document.querySelector<HTMLElement>('[data-testid=archived-delete]')!;
-  expect(remove.closest('li')?.dataset['threadId']).toBe('t-trace');
-  remove.click();
+  expect([...row()!.querySelectorAll('.actions > button')].map(button => button.getAttribute('data-testid'))).toEqual(['archived-restore', 'archived-delete']);
+  row()!.querySelector<HTMLButtonElement>('[data-testid=archived-delete]')!.click();
   expect(confirm.current?.altLabel).toBeUndefined();
   confirm.answer('confirm');
   await vi.waitFor(() => expect(row()).toBeNull());

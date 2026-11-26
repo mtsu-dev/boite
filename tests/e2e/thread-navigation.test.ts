@@ -125,6 +125,9 @@ test('closing an image and dragging chat text or a thread link preserves the con
     await page.waitFor(`document.querySelector('${id('image-viewer')}')`);
     await page.click(id('image-viewer-close'));
     await page.waitFor(`!document.querySelector('${id('image-viewer')}')`);
+    // The fake fixture seeds a pending contact request toast in the top-right corner; dismiss it so it cannot cover line-1 links.
+    await page.evaluate(`document.querySelector('[data-testid="contact-request-dismiss"]')?.click()`);
+    await page.waitFor(`!document.querySelector('[data-testid="contact-request-notice"]')`);
     await capture(page, 'thread-selection-before.png');
     await drag(page, `${id('text-part')} p`);
     await capture(page, 'thread-selection-after.png');

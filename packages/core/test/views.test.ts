@@ -87,6 +87,7 @@ test('the session guide sends a visual to the chat\'s own Mermaid, TeX and view 
   const help = await cli('view', 'help');
   expect(help.code).toBe(0);
   expect(help.output).toContain(VIEW_HELP);
+  expect(help.output).toContain('Leave color-scheme to Boite');
   for (const told of ['--color-foreground', '--series-1', 'Nothing remote loads', 'one file each', 'data-reduced-motion', 'do not announce it', '```stats fence', 'units that compare']) expect(VIEW_HELP).toContain(told);
   // The app's look is explained, the kit is listed, and a full page is one command away.
   for (const told of ['The look', 'One accent', 'input[type=range]', '.segmented', '.stat', '.series-1', 'Never write a fixed color', 'boite view example', 'advice']) expect(VIEW_HELP).toContain(told);
@@ -230,6 +231,15 @@ test('a page of many small style blocks is read in one pass', () => {
   const built = buildView('<style>a{color:red}</style>'.repeat(32_000), join(harness.dataDir, 'views'), harness.dataDir);
   expect(performance.now() - started).toBeLessThan(1_000);
   expect(built.problems).toEqual([]);
+});
+
+test('color scheme advice detects linked and inline styles and ignores examples in the page text', () => {
+  const build = (source: string) => buildView(source, harness.dataDir, harness.dataDir);
+  write('scheme.css', ':root { COLOR-SCHEME /* theme */ : normal !important }');
+  expect(build('<link rel="stylesheet" href="scheme.css">').hasColorScheme).toBe(true);
+  expect(build('<html style="color-scheme: normal !important">').hasColorScheme).toBe(true);
+  expect(build('<meta content="light" name="color-scheme">').hasColorScheme).toBe(true);
+  expect(build('<p>color-scheme: normal</p><style>/* :root { color-scheme: normal } */</style>').hasColorScheme).toBe(false);
 });
 
 test('boite view publishes a page as an artifact that opens only on the view route, under its sandbox', async () => {
@@ -430,6 +440,24 @@ real('view check scripts run on a fresh page at each width and leave only local 
     expect(existsSync(join(harness.dataDir, 'artifacts'))).toBe(false);
     expect(existsSync(join(harness.dataDir, 'view-checks')) ? readdirSync(join(harness.dataDir, 'view-checks')) : []).toEqual([]);
   } finally { off(); }
+}, 180_000);
+
+real('view check keeps the app scheme when the page declares its own', async () => {
+  await restartWithBrowser();
+  write('scheme.html', '<style>:root{color-scheme:normal} p{color:var(--color-foreground)}</style><p>hello</p>');
+  write('scheme.js', 'return getComputedStyle(document.documentElement).colorScheme;');
+
+  for (const scheme of ['dark', 'light']) {
+    const checked = await cli('view', 'check', 'scheme.html', '--scheme', scheme, '--script', 'scheme.js', '--json');
+    expect(checked.code).toBe(0);
+    const result = JSON.parse(checked.output) as SavedCheck;
+    expect(result.checked).toBe(true);
+    expect(result.captures.map(({ width, value }) => ({ width, value }))).toEqual([
+      { width: 816, value: scheme },
+      { width: 330, value: scheme },
+    ]);
+    expect(result.advice).toEqual([expect.stringContaining('color-scheme')]);
+  }
 }, 180_000);
 
 real('view check keeps screenshots after a script error, returns failure and never overwrites a capture', async () => {

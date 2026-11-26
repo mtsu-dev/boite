@@ -2,7 +2,6 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startUi } from './lib/ui.ts';
-import { railBot } from './lib/bots.ts';
 
 let page: BrowserPage;
 let server: { close(): Promise<void> };
@@ -36,20 +35,24 @@ test('an agent entrusted with a project shows on its threads, and opens its conv
   // The header no longer carries a chip: the bot heads the title menu's named group, its row keeping the chip's id.
   const menu = '[data-testid="thread-menu-trigger-menu"]';
   const chip = `${menu} [data-value="thread-resident-chip"]`;
-  const openGroup = async () => {
-    await page.waitFor(`document.querySelector('[data-testid="thread-menu-trigger"]')?.getBoundingClientRect().width > 0`);
-    await page.click('[data-testid="thread-menu-trigger"]');
-    await page.waitFor(`document.querySelector('${menu} [data-value="more"]')`);
-    await page.click(`${menu} [data-value="more"]`);
-    await page.waitFor(`document.querySelector('${chip}')?.getBoundingClientRect().width > 0`);
-  };
   const closeMenu = async () => {
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await page.waitFor(`!document.querySelector('${menu}')`);
   };
-  // The menu lists the bots the directory read when it opened: wait for its reread after the save, which draws the bot's rail pin.
-  await page.waitFor(`document.querySelector('${railBot(ids.agent)}')`, 10_000);
+  const openGroup = async () => {
+    const deadline = Date.now() + 10_000;
+    while (true) {
+      await page.waitFor(`document.querySelector('[data-testid="thread-menu-trigger"]')?.getBoundingClientRect().width > 0`);
+      await page.click('[data-testid="thread-menu-trigger"]');
+      await page.waitFor(`document.querySelector('${menu} [data-value="more"]')`);
+      await page.click(`${menu} [data-value="more"]`);
+      if (await page.evaluate(`document.querySelector('${chip}')?.getBoundingClientRect().width > 0`)) return;
+      if (Date.now() >= deadline) throw new Error('resident agent row did not appear in thread menu');
+      await closeMenu();
+      await Bun.sleep(250);
+    }
+  };
   await openGroup();
   // The row shows what it does, with the bot's name; the sentence stays in its tooltip.
   expect(await page.evaluate(`document.querySelector('${chip}').title`)).toBe(`Looked after by ${ids.name}`);

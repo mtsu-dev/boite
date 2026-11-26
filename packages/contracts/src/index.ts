@@ -37,6 +37,7 @@ import type { GroupRpcEvents, GroupRpcMethods } from './group';
 import type { HooksRpcEvents, HooksRpcMethods } from './hooks';
 import type { ImportsRpcEvents, ImportsRpcMethods } from './imports';
 import type { KeybindingsRpcEvents, KeybindingsRpcMethods } from './keybindings';
+import type { TranscriptsRpcEvents, TranscriptsRpcMethods } from './transcripts';
 import type { MessagesRpcEvents, MessagesRpcMethods } from './messages';
 import type { PairingRpcMethods } from './pairing';
 import type { PanelRpcEvents, PanelRpcMethods } from './panel';
@@ -85,6 +86,7 @@ export { defaultSettings } from './settings-defaults';
 export * from './subscription-proxy';
 export * from './keybindings';
 export * from './imports';
+export * from './transcripts';
 export * from './core';
 export * from './agent-door';
 export * from './state';
@@ -161,6 +163,7 @@ export interface RpcMethods extends
   SubscriptionProxyRpcMethods,
   KeybindingsRpcMethods,
   ImportsRpcMethods,
+  TranscriptsRpcMethods,
   CoreRpcMethods,
   AgentDoorRpcMethods,
   StateRpcMethods,
@@ -210,6 +213,7 @@ export interface RpcEvents extends
   SubscriptionProxyRpcEvents,
   KeybindingsRpcEvents,
   ImportsRpcEvents,
+  TranscriptsRpcEvents,
   CoreRpcEvents,
   PanelRpcEvents,
   TodosRpcEvents,

@@ -803,6 +803,10 @@ permission waits for the user. It ends 3 s after the last of these, with no
 update from the session since. The reply the agent starts on its own is drawn
 into that turn. Stop on a held turn closes the
 process, and its children with it. An unreadable record holds nothing open.
+Background commands need both `execute` kind and `in_progress` status. They
+can arrive in either order. Later updates close the command by call ID, even
+when they omit or change its kind.
+The normal idle window resumes when the last tracked command finishes.
 The same quirk changes three things in how Boite talks to it, found on the 1.4.5
 agent on 2026-11-04:
 
