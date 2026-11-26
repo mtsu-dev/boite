@@ -9,11 +9,11 @@
 </script>
 
 {#await loading}
-  {@render props.between?.()}
+  {@render props.between?.()}{@render props.after?.()}
 {:then module}
   <module.default {...props} />
 {:catch reason}
-  {@render props.between?.()}
+  {@render props.between?.()}{@render props.after?.()}
   <p role="alert">{errorText(reason)}</p>
   <button class="ghost small" onclick={() => loading = import('./TurnFiles.svelte')}>{strings.common.refresh}</button>
 {/await}

@@ -29,8 +29,8 @@
     /** The automatic compactions said on this turn's line. */
     compactions?: CompactionPart[];
     actions?: Snippet;
-    /** The turn's change count, when it joins this line (`TurnSummary`), receiving trailing line items so DOM Tab order matches visual order. */
-    changes?: Snippet<[Snippet?]>;
+    /** The turn's change count, when it joins this line (`TurnSummary`), receiving middle and end-of-line items so DOM Tab order matches visual order. */
+    changes?: Snippet<[Snippet?, Snippet?]>;
   } = $props();
 
   const active = $derived(turn.status === 'running' ? messages.filter(current => current.turnId === turn.id && current.role === 'assistant') : []);

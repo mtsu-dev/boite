@@ -63,7 +63,7 @@
      * The turn's change count and its diff, on this line when it already counts the steps that made the changes
      * (`TurnFiles`, inline): one line says what was done and what it changed, never a card and a line.
      */
-    changes?: Snippet<[Snippet?]>;
+    changes?: Snippet<[Snippet?, Snippet?]>;
     /** The turn's own buttons (copy, retry, fork), at the end of the line. */
     actions?: Snippet;
     /**
@@ -138,7 +138,7 @@
   <span class="metric" class:meta><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
 {#if turn.status !== 'queued' && !(held && !still) && !(running && activeTool && !waiting && !stale && background.length === 0 && !observed && !compacting) && !(tucked && settled && !marked)}
-  <div class="summary" class:compacting class:stale class:settled class:pointed class:marked class:resting class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} data-tucked={tucked ? '' : undefined} role="status" aria-label={label} title={label}>
+  <div class="summary" class:compacting class:stale class:settled class:pointed class:marked class:resting class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} data-tucked={tucked ? '' : undefined} data-reveal={`turn:${turn.id}`} role="status" aria-label={label} title={label}>
     {#if compacting}
       <span class="compaction-icon"><Spinner size={16} paused={hidden || waiting} /></span>
       <div class="compaction-copy">
@@ -207,9 +207,11 @@
         </span>
       {/if}
       {#if actions && !running}<span class="tail">{@render actions()}</span>{/if}
+    {/snippet}
+    {#snippet endOfLine()}
       {#if settled && details}<span class="details"><InfoTip text={details} topic={strings.chat.turnDetails} testid="turn-details" /></span>{/if}
     {/snippet}
-    {#if changes && steps && !running}{@render changes(afterChanges)}{:else}{@render afterChanges()}{/if}
+    {#if changes && steps && !running}{@render changes(afterChanges, endOfLine)}{:else}{@render afterChanges()}{@render endOfLine()}{/if}
     {/if}
   </div>
 {/if}

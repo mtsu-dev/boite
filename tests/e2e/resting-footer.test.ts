@@ -54,6 +54,16 @@ test('a finished thread ends on one footer that keeps its time at rest and revea
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 790 });
     await page.evaluate(`(() => { const t = document.querySelector('[data-testid=timeline]'); t.scrollTop = t.scrollHeight; })()`);
     await page.waitFor(`(${READ}).tokens === 0`);
+    // Wait for two consecutive identical layouts after scrolling so measurements are settled under load.
+    await page.evaluate(`(async () => {
+      let prev = '';
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const cur = JSON.stringify((${READ}).marks);
+        if (cur === prev) break;
+        prev = cur;
+      }
+    })()`);
     const rest = await page.evaluate<Record<string, unknown>>(READ);
     expect(rest).toMatchObject({ turn: answered, elapsed: 1, finished: 0, tokens: 0, button: 0 });
     expect(await page.evaluate<number>(`document.querySelectorAll('[data-testid=turn-summary].resting').length`)).toBe(1);
@@ -80,15 +90,15 @@ test('a finished thread ends on one footer that keeps its time at rest and revea
     expect(viaKeyboard).toMatchObject({ finished: 1, tokens: 1, button: 1 });
     expect(viaKeyboard.marks).toEqual(rest.marks);
 
-    // Clicking Copy in the resting footer and moving the pointer away returns finished time and tokens to rest.
+    // Clicking Copy in the resting footer and moving the pointer away returns finished time, tokens and buttons to rest.
     const copyBox = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('${FOOTER} [data-testid=message-copy]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...copyBox });
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...copyBox });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...copyBox });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 790 });
-    await page.waitFor(`(${READ}).tokens === 0`);
+    await page.waitFor(`(${READ}).tokens === 0 && (${READ}).button === 0`);
     const afterCopyClick = await page.evaluate<Record<string, unknown>>(READ);
-    expect(afterCopyClick).toMatchObject({ elapsed: 1, finished: 0, tokens: 0 });
+    expect(afterCopyClick).toMatchObject({ elapsed: 1, finished: 0, tokens: 0, button: 0 });
 
     // Inline file changes on a resting turn with folded steps keep meta and actions on the summary row, before Show diff and above the opened file list, in matching DOM Tab order.
     await page.evaluate(`(() => {
@@ -116,12 +126,15 @@ test('a finished thread ends on one footer that keeps its time at rest and revea
       const tree = box('.tree');
       const copyEl = f.querySelector('[data-testid=message-copy]');
       const diffEl = f.querySelector('[data-testid=turn-diff-toggle]');
+      const detailsEl = f.querySelector('[data-testid=turn-details]');
       const treeEl = f.querySelector('.tree');
       return {
         sameRow: Math.abs(finished.top - tokens.top) <= 6 && Math.abs(tokens.top - tail.top) <= 6 && Math.abs(tail.top - diff.top) <= 6,
         leftToRight: finished.left < tokens.left && tokens.left < tail.left && tail.left < diff.left,
         treeBelow: tree.top >= Math.max(finished.bottom, tokens.bottom, tail.bottom, diff.bottom) - 1,
-        domTabOrder: Boolean(copyEl.compareDocumentPosition(diffEl) & Node.DOCUMENT_POSITION_FOLLOWING) && Boolean(diffEl.compareDocumentPosition(treeEl) & Node.DOCUMENT_POSITION_FOLLOWING),
+        domTabOrder: Boolean(copyEl.compareDocumentPosition(diffEl) & Node.DOCUMENT_POSITION_FOLLOWING)
+          && Boolean(diffEl.compareDocumentPosition(detailsEl) & Node.DOCUMENT_POSITION_FOLLOWING)
+          && Boolean(detailsEl.compareDocumentPosition(treeEl) & Node.DOCUMENT_POSITION_FOLLOWING),
       };
     })()`);
     expect(inlineOrder).toEqual({ sameRow: true, leftToRight: true, treeBelow: true, domTabOrder: true });

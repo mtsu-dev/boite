@@ -156,7 +156,7 @@
     const id = lastView && rows[lastView.first]?.id;
     anchors.remember(viewport, column, id ? anchors.nodes.get(id) : undefined);
   }
-  function rememberBeforePointer() { viaPointer = true; focused = null; focusedNode = null; rememberAnchor(); }
+  function rememberBeforePointer(event: Event) { viaPointer = true; if (narrow.current && focused !== null && event.target instanceof Element && event.target.closest('[data-testid="turn-summary"]')?.getAttribute('data-reveal') === `turn:${focused}`) reveal.revealed = `turn:${focused}`; focused = null; focusedNode = null; rememberAnchor(); }
   /** Typing in a field never leaves the thread: a chord, Enter, Escape or a key outside a field reads the anchor. */
   function rememberBeforeKey(event: KeyboardEvent) { viaPointer = false; const active = document.activeElement; if (viewport?.contains(active)) { focused = turnOf(active); focusedNode = focused ? active : null; } if (!typingKey(event)) rememberAnchor(); }
   function rememberBeforeClick() { if (anchors.pending) rememberAnchor(); }
@@ -732,9 +732,9 @@
         {@const joined = seam(rows[view.start + index - 1], row)}
         {@const host = turn ? turnChanges.hostOf(turn.id) : null}
         <!-- The turn's change count, on the tool line of its last change (`inline`) or at its end. -->
-        {#snippet changes(inline: boolean, between?: Snippet)}
+        {#snippet changes(inline: boolean, between?: Snippet, after?: Snippet)}
           {@const files = turn ? turnChanges.filesOf(turn) : null}
-          {#if files}<TurnFiles {store} {...files} {inline} {between} acquireDiff={source => store.acquireToolOutput(threadId, source.messageId, source.toolId, false)} />{:else}{@render between?.()}{/if}
+          {#if files}<TurnFiles {store} {...files} {inline} {between} {after} acquireDiff={source => store.acquireToolOutput(threadId, source.messageId, source.toolId, false)} />{:else}{@render between?.()}{@render after?.()}{/if}
         {/snippet}
         <article
           use:track={{ row, joined }}
@@ -771,11 +771,11 @@
             {@const marks = summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}
             <!-- A line that counts the turn's steps carries its changes too: one line, never a card over it. -->
             {@const merged = !host && !!marks.steps && turn.status !== 'running'}
-            {#snippet onLine(between?: Snippet)}{@render changes(true, between)}{/snippet}
+            {#snippet onLine(between?: Snippet, after?: Snippet)}{@render changes(true, between, after)}{/snippet}
             {#if !host && !merged}{@render changes(false)}{/if}
             {@const carded = failureCarded(turn, messages)}<!-- A failure's card holds its cause and its one Retry: the line keeps copy, fork and the background stop; a question at the composer's top is a running turn's status. -->
             {#if !(asking && turn.status === 'running')}
-            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id || focused === turn.id} tucked={!reveal.showsTurn(turn.id)} resting={restingShown === turn.id}
+            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id || focused === turn.id} tucked={!(reveal.showsTurn(turn.id) || reveal.shows(message))} resting={restingShown === turn.id}
               {...marks} changes={merged ? onLine : undefined}>
               {#snippet actions()}
                 <MessageActions

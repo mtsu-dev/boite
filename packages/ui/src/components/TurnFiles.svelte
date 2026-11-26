@@ -23,7 +23,7 @@
    * Changes panel, one click away for whoever can read the repository.
    */
   type Source = { messageId: string; toolId: string };
-  let { store, files, diffs = [], cwd, deferred = [], sources = [], acquireDiff, loadDiffs, inline = false, between }: {
+  let { store, files, diffs = [], cwd, deferred = [], sources = [], acquireDiff, loadDiffs, inline = false, between, after }: {
     store: Store; files: TurnFile[]; diffs?: TurnDiff[];
     /** The directory `files` were read against. */ cwd: string;
     deferred?: Source[]; sources?: Source[];
@@ -33,6 +33,8 @@
     inline?: boolean;
     /** Inline summary items placed between the change count and the diff controls so DOM Tab order matches visual order. */
     between?: Snippet;
+    /** Inline summary items placed at the end of the line after the diff controls and before the expanded tree/diffs (e.g. phone details "i"). */
+    after?: Snippet;
   } = $props();
   let diffToggled = $state<boolean | null>(null);
   let showDiff = $derived(diffToggled ?? chatPrefs.expandDiffs);
@@ -142,6 +144,7 @@
     {:else if repository}
       <span class="tools">{@render allChanges()}</span>
     {/if}
+    {@render after?.()}
   </header>
   {#if open}<div class="tree" data-testid="turn-files-tree">{@render branch(tree, 0)}</div>{/if}
   {#if showDiff}
@@ -289,6 +292,7 @@
   /* On the tool line: its buttons join the line's row, the list and diffs open
      under it at full width, with no surface of their own. */
   .inline, .inline header { display: contents; }
+  .inline header { font-weight: inherit; }
   .inline .fold { margin-left: 0; }
   /* Its own line on a phone, under the run's words rather than its glyph. */
   @media (max-width: 720px) { .inline .fold { margin-left: calc(var(--activity-glyph) + var(--activity-gap)); } }

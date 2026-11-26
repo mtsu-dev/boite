@@ -157,9 +157,12 @@ export class BottomGlide {
   }
 }
 
-/** The turn of the non-user message holding `target`, or null outside every answer. */
+/** The turn of the non-user message or turn summary holding `target`, or null outside every answer. */
 export function turnOf(target: EventTarget | null): string | null {
-  return (target as Element | null)?.closest?.('article.message:not(.user)')?.getAttribute('data-turn') ?? null;
+  const element = target as Element | null;
+  const article = element?.closest?.('[data-testid="turn-summary"]')?.closest?.('article.message')
+    ?? element?.closest?.('article.message:not(.user)');
+  return article?.getAttribute('data-turn') ?? null;
 }
 
 /**

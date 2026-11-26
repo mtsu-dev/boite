@@ -1872,6 +1872,13 @@ test('at phone width, keyboard focus inside an earlier unmarked answer mounts it
   expect(summaryOf('turn-a')).not.toBeNull();
   expect(summaryOf('turn-a')?.classList.contains('pointed')).toBe(true);
   expect(document.querySelector('[data-mid="m-a2"]')?.closest('article')?.hasAttribute('data-revealed')).toBe(true);
+  // Pressing Copy inside a keyboard-revealed narrow summary hands off to tap-reveal instead of unmounting before click.
+  const copy = summaryOf('turn-a')!.querySelector<HTMLButtonElement>('[data-testid=message-copy]')!;
+  copy.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  flushSync();
+  expect(summaryOf('turn-a')).not.toBeNull();
+  expect(copy.isConnected).toBe(true);
+  // Clicking outside the summary closes it again.
   document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
   flushSync();
   expect(summaryOf('turn-a')).toBeNull();
@@ -1905,7 +1912,7 @@ test('at phone width, keyboard focus inside an earlier unmarked answer mounts it
   expect(summaryOf('turn-a')).toBeNull();
 });
 
-test('on a phone, a turn whose summary sits under a steering prompt keeps its buttons visible when a newer prompt has not answered yet', async ({ createStore }) => {
+test('on a phone, a turn whose summary sits under a steering prompt keeps its buttons reachable by tap, keyboard and when a newer prompt is unanswered', async ({ createStore }) => {
   window.localStorage.clear();
   vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
   onTestFinished(() => { vi.unstubAllGlobals(); });
@@ -1914,12 +1921,16 @@ test('on a phone, a turn whose summary sits under a steering prompt keeps its bu
   const thread = owner.openThread!;
   const base = thread.turns[0]!;
   thread.turns = [
-    { ...base, id: 'turn-steered', startedAt: 1, finishedAt: 60_000, status: 'done' as const },
+    { ...base, id: 'turn-early-steered', startedAt: 1, finishedAt: 30_000, status: 'done' as const },
+    { ...base, id: 'turn-steered', startedAt: 40_000, finishedAt: 60_000, status: 'done' as const },
     { ...base, id: 'turn-next', startedAt: 100_000, finishedAt: null, status: 'running' as const },
   ];
   thread.memoryEvents = [];
   const msg = (id: string, turnId: string, role: Message['role'], text: string): Message => ({ id, threadId: thread.id, turnId, role, state: 'complete', createdAt: 1, parts: [{ type: 'text', text }] });
   thread.messages = [
+    msg('m-e0', 'turn-early-steered', 'user', 'Earlier task'),
+    msg('m-e1', 'turn-early-steered', 'assistant', 'See [early link](https://example.com/early).'),
+    msg('m-e2', 'turn-early-steered', 'user', 'Steer early'),
     msg('m-u1', 'turn-steered', 'user', 'Start task'),
     msg('m-a1', 'turn-steered', 'assistant', 'Working on it.'),
     msg('m-steer', 'turn-steered', 'user', 'Actually skip step 2'),
@@ -1934,6 +1945,29 @@ test('on a phone, a turn whose summary sits under a steering prompt keeps its bu
   expect(summary).not.toBeNull();
   expect(summary?.hasAttribute('data-tucked')).toBe(false);
   expect(summary?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+
+  // Earlier steered turn: Tab from the assistant link to Copy inside the steering row's summary keeps the summary mounted.
+  const earlySummary = () => document.querySelector<HTMLElement>('[data-mid="m-e2"]')?.closest('article')?.querySelector<HTMLElement>('[data-testid=turn-summary]');
+  expect(earlySummary()).toBeNull();
+  const earlyLink = document.querySelector<HTMLElement>('[data-mid="m-e1"] a')!;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  earlyLink.focus(); flushSync();
+  const earlyCopy = earlySummary()?.querySelector<HTMLButtonElement>('[data-testid=message-copy]');
+  expect(earlyCopy).not.toBeNull();
+  earlyCopy!.focus(); flushSync();
+  expect(earlySummary()).not.toBeNull();
+  expect(earlyCopy!.isConnected).toBe(true);
+  earlyCopy!.blur(); flushSync();
+  expect(earlySummary()).toBeNull();
+
+  // Tapping the earlier steered answer and then pressing Copy under its steering prompt keeps it open across pointerdown and click.
+  document.querySelector<HTMLElement>('[data-mid="m-e1"]')!.click(); flushSync();
+  const tappedCopy = earlySummary()?.querySelector<HTMLButtonElement>('[data-testid=message-copy]');
+  expect(tappedCopy).not.toBeNull();
+  tappedCopy!.dispatchEvent(new Event('pointerdown', { bubbles: true })); flushSync();
+  expect(tappedCopy!.isConnected).toBe(true);
+  tappedCopy!.click(); flushSync();
+  expect(earlySummary()).not.toBeNull();
 });
 
 test('a row counts at the height it is drawn, fractions included, so rows measured above the reader move the view by what they weigh', async () => {
