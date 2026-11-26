@@ -158,9 +158,10 @@ export class BotMoves {
 
   /** The machine a finished move took this bot to, from its receipt: an archived team restored later follows it. */
   movedTo(agentId: string): string | null {
-    const rows = this.#core.journal.db.query('SELECT key FROM settings WHERE key LIKE ?').all(`${MOVED_OUT}%`) as { key: string }[];
-    for (const { key } of rows) {
-      const done = this.#core.journal.getSetting(key) as AgentMoveResult | undefined;
+    // Newest first: a bot that came back and left again went where its last receipt says. A receipt is written once, so its row id orders them.
+    const rows = this.#core.journal.db.query('SELECT value FROM settings WHERE key LIKE ? ORDER BY rowid DESC').all(`${MOVED_OUT}%`) as { value: string }[];
+    for (const { value } of rows) {
+      const done = JSON.parse(value) as AgentMoveResult | null;
       if (done?.agentId === agentId) return done.machine;
     }
     return null;

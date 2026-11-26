@@ -156,6 +156,7 @@ export class TeamMirror {
     }
     for (const { post, wake } of posts) if (wake.length > 0) this.#store.repair(post.id);
     if (stays.length === 0) this.#forget(incoming.id);
+    else this.#store.followMoves([this.#store.get(incoming.id) ?? current]);
   }
 
   #forget(teamId: string): void {

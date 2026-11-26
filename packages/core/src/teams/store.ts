@@ -62,7 +62,7 @@ export class TeamStore extends StoredTeams {
    */
   recover(): void {
     this.snapshots.releaseOrphans();
-    this.#followMoves();
+    this.followMoves();
     this.repair();
     this.snapshots.replayAnswers();
     this.peers.start();
@@ -209,11 +209,13 @@ export class TeamStore extends StoredTeams {
    * Moves made while this machine held Teams off (a Release): a mochi that
    * left still sits here in its teams. Each team follows it now, the one held
    * here and the one held elsewhere (`team.moved`); a move already taken
-   * changes nothing on the machine holding the team.
+   * changes nothing on the machine holding the team. A team that reaches this
+   * machine after its mochi left again (`moveMember`, `TeamMirror.take`)
+   * follows it on the same way, one machine at a time.
    */
-  #followMoves(): void {
+  followMoves(teams: Team[] = this.all()): void {
     const gone = new Map<string, string>();
-    for (const team of this.all()) {
+    for (const team of teams) {
       for (const member of team.members) {
         if (member.coreId !== this.self || gone.has(member.botId) || this.core.workforce.records.find('profile', member.botId) !== null) continue;
         const to = this.core.workforce.moves.movedTo(member.botId);
@@ -280,7 +282,7 @@ export class TeamStore extends StoredTeams {
       db.query('DELETE FROM team_seen WHERE team_id = ? AND member = ?').run(team.id, member.key);
     });
     const saved = this.save(team, { members: team.members.map(entry => (entry.key === member.key ? { ...entry, coreId: to, joinedSeq } : entry)) });
-    if (to === this.self) this.repair();
+    if (to === this.self) { this.repair(); this.followMoves([saved]); }
     return saved;
   }
 

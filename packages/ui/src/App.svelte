@@ -556,7 +556,7 @@
    * it. The tour counts once it is drawn: offline with a cold cache it never is,
    * and the keyboard must not stay held for it.
    */
-  let modal = $derived((tour && appViews.Onboarding.current !== undefined) || confirm.current !== null || store.imports !== null || threadExport.request !== null || store.projectPickerOpen || (store.connectDialog !== null && appViews.ConnectFlow.current !== undefined));
+  let modal = $derived((tour && appViews.Onboarding.current !== undefined) || confirm.current !== null || (store.imports !== null && experimentOn('session-import')) || threadExport.request !== null || store.projectPickerOpen || (store.connectDialog !== null && appViews.ConnectFlow.current !== undefined));
 
   /**
    * Every app chord goes through the keyboard table (`lib/keybindings.ts`,

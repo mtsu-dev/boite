@@ -121,4 +121,26 @@ test('the desktop turning session import off closes its dialog, which then holds
   palette();
   expect(store.paletteOpen).toBe(true);
   store.paletteOpen = false;
+
+  // Turned off while an import runs: the dialog stays until the core answers, hidden, and holds no key meanwhile.
+  client.reportDesktopExperiments(['session-import']);
+  await waitFor(() => isExperimentEnabled('session-import'));
+  await store.openImports('p-boite');
+  await waitFor(() => document.querySelectorAll('[data-testid=import-row]').length === 3);
+  let answer!: () => void;
+  const call = client.call.bind(client);
+  const held = vi.spyOn(client, 'call').mockImplementation((async (method: string, params: unknown) => {
+    if (method === 'imports.run') await new Promise<void>((resolve) => { answer = resolve; });
+    return call(method as never, params as never);
+  }) as typeof client.call);
+  query<HTMLButtonElement>('[data-testid=import-row]:not(:disabled)').click();
+  await waitFor(() => store.imports?.running !== null && answer !== undefined);
+  client.reportDesktopExperiments([]);
+  await waitFor(() => document.querySelector('[data-testid=import-dialog]') === null);
+  palette();
+  expect(store.paletteOpen).toBe(true);
+  store.paletteOpen = false;
+  answer();
+  await waitFor(() => store.imports === null);
+  held.mockRestore();
 });

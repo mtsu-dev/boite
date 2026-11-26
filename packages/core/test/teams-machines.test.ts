@@ -410,25 +410,33 @@ async function versioned(version: string, previous?: TestCore): Promise<TestCore
 }
 const coreIdOf = (core: TestCore) => core.core.coordination.card().coreId;
 
-test('a mochi moved while its machine ran a Release takes its team along once that machine runs a Nightly again', async () => {
+test('a mochi moved, more than once, while its machine ran a Release takes its team along once that machine runs a Nightly again', async () => {
   const nightly = await versioned(NIGHTLY);
   const owner = await nightly.connect();
   const ada = await makeAgent(nightly, owner, { name: 'Ada' });
   const team = await owner.call('teams.create', { name: 'Crew', members: [ada.agent.id] });
   await nightly.stop();
   const release = await versioned(RELEASE, nightly);
-  const target = await versioned(NIGHTLY);
+  const [b, c, d] = [await versioned(NIGHTLY), await versioned(NIGHTLY), await versioned(NIGHTLY)];
   await release.core.group.create('Test group');
-  await join(target, release);
-  await (await release.connect()).call('agents.move', { agentId: ada.agent.id, machine: coreIdOf(target) });
-  expect(release.core.workforce.moves.movedTo(ada.agent.id)).toBe(coreIdOf(target));
+  for (const machine of [b, c, d]) await join(machine, release);
+  const move = async (from: TestCore, to: TestCore) => (await from.connect()).call('agents.move', { agentId: ada.agent.id, machine: coreIdOf(to) });
+  // Out, back, out again from the Release, then on from where it went: none of these machines holds the team.
+  await move(release, b);
+  await move(b, release);
+  await move(release, c);
+  await move(c, d);
+  // The newest receipt says where it went last.
+  expect(release.core.workforce.moves.movedTo(ada.agent.id)).toBe(coreIdOf(c));
   // The Release only keeps the record: the team still names the machine Ada left.
   expect(release.core.teams.get(team.id)?.members[0]?.coreId).toBe(coreIdOf(release));
   await release.stop();
 
   const reopened = await versioned(NIGHTLY, release);
-  expect(reopened.core.teams.get(team.id)?.members[0]?.coreId).toBe(coreIdOf(target));
-  await waitFor(() => target.core.teams.get(team.id)?.members[0]?.coreId === coreIdOf(target));
+  // C gets the team, finds Ada gone on to D, and tells the holder.
+  await waitFor(() => reopened.core.teams.get(team.id)?.members[0]?.coreId === coreIdOf(d));
+  await waitFor(() => d.core.teams.get(team.id)?.members[0]?.coreId === coreIdOf(d));
+  expect(b.core.teams.get(team.id)).toBeNull();
 });
 
 test('a move a Release holder refuses waits in the outbox and reaches it once it runs a Nightly again', async () => {
