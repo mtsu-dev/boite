@@ -399,6 +399,9 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   block of named levels with a default. A probed model may have `images: false`
   when it reads no images. Only pi reports this today, from the model's `input`
   list; pi's `default` entry copies the flag of the model pi reports as current.
+  A pi thread on `default` or on no model resumes its session on the model that
+  session last used, so image admission and `threads.capabilities` read that
+  model from the session file when there is one; the composer asks the core.
   Without the field, the model follows the agent's image capability.
   A native agent may declare an empty list and let the probe supply its catalog.
   The unnamed `default` alias remains accepted for existing descriptors. Echo

@@ -2120,6 +2120,30 @@ test('a provider that reads no image still takes files and refuses an image past
   expect(query('[data-testid=composer-attachment]').textContent).toContain('notes.txt');
 });
 
+test('pi default on an open thread follows the model its session resumes on', async () => {
+  await mountOnFake();
+  await openIdle('t-trace');
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  // pi starts new sessions on its text-only demo model; the core reads that this session resumes on one that reads images.
+  const capabilities = store.threadCapabilities.bind(store);
+  vi.spyOn(store, 'threadCapabilities').mockImplementation(async (threadId) => {
+    const value = await capabilities(threadId);
+    return value && { ...value, images: { supported: true, available: true, reason: null } };
+  });
+  expect(await store.update('t-trace', { accountId: account.id, model: 'default' })).toBe(true);
+  await send('Start a pi session');
+  await waitFor(() => store.openThread?.providerId === 'pi' && !!store.openThread.sessionId && !store.busy);
+  // Back on pi's own model, which a resumed session takes from the session itself.
+  expect(await store.update('t-trace', { model: 'default' })).toBe(true);
+  await waitFor(() => store.openThread?.model === 'default' && !!store.openThread.sessionId);
+  expect(chipText('composer-picker')).toBe('pi demo model');
+  paste(pngFile());
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
+  expect(store.error).toBeNull();
+  expect(document.querySelector('[data-testid=composer-image-warning]')).toBeNull();
+});
+
 test('switching a draft to a text-only pi model blocks its image but keeps file attachments', async ({ app: _app }) => {
   await openDraft();
   const account = store.accounts.find(entry => entry.providerId === 'pi')!;

@@ -243,7 +243,9 @@ const MODELS = [
 ];
 
 /** The model the session is on, which is the one pi reports as current. */
-const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0];
+const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0]!;
+/** `--model provider/id[:level]` without its level, or the current model. */
+const answering = model.length === 0 ? `${CURRENT.provider}/${CURRENT.id}` : model.replace(/:[a-z]+$/, '');
 const CURRENT_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 function assistantMessage(stopReason: string, usage: Record<string, unknown>): Record<string, unknown> {
@@ -251,8 +253,9 @@ function assistantMessage(stopReason: string, usage: Record<string, unknown>): R
     role: 'assistant',
     content: [],
     api: 'fake',
-    provider: 'fake',
-    model: model.length === 0 ? 'fake-pi' : model,
+    // As pi records it: the provider and id of the model that answered.
+    provider: answering.slice(0, answering.indexOf('/')),
+    model: answering.slice(answering.indexOf('/') + 1),
     usage,
     stopReason,
     timestamp: Date.now(),

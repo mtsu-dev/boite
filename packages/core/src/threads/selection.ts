@@ -3,6 +3,9 @@ import type { AccountId, AgentProfile, AgentSelection, ModelInfo, Protocol, Prov
 import type { Core } from '../core.ts';
 import { antigravityVariant } from '../drivers/acp/antigravity-catalog.ts';
 import { isAntigravity } from '../drivers/antigravity.ts';
+import { sessionDirOf } from '../drivers/pi/mapping.ts';
+import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
+import { sessionModelOf } from '../drivers/pi/session-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
 import { readSavedCatalog } from '../providers/saved-catalogs.ts';
@@ -41,15 +44,28 @@ export function selectionFor(provider: ProviderDescriptor, accountId: AccountId,
   return resolveModelSelection(modelsFor(provider, accountId), model, effort);
 }
 
-/** Image admission also uses pi's saved list before the first probe after a restart. */
-export function imageInputModel(core: Core, provider: ProviderDescriptor, { accountId, model }: Pick<Thread, 'accountId' | 'model'>): ModelInfo | undefined {
-  if (!model || !provider.capabilities.images) return undefined;
-  if (provider.protocol === 'pi' && probedModelsOf(provider.protocol, provider.id, accountId) === null) {
-    const saved = readSavedCatalog(core, provider.id, accountId);
-    const selected = saved && resolveModelSelection(saved.models, model);
-    if (selected) return selected.model;
+/**
+ * The model an image goes to. pi's own model (`default`, or none) is the one a
+ * resumed session restores, which may not be the one pi starts a new session
+ * on. Image admission also uses pi's saved list before the first probe after a restart.
+ */
+export function imageInputModel(
+  core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId'>>,
+): ModelInfo | undefined {
+  const pi = provider.protocol === 'pi';
+  const wanted = model ?? (pi ? AGENT_OWN_MODEL : null);
+  if (!wanted || !provider.capabilities.images) return undefined;
+  const listed = (choice: string) => {
+    const saved = pi && probedModelsOf(provider.protocol, provider.id, accountId) === null ? readSavedCatalog(core, provider.id, accountId) : null;
+    return (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
+  };
+  if (pi && wanted === AGENT_OWN_MODEL && id && sessionId) {
+    const account = core.accounts.list().find(entry => entry.id === accountId);
+    const resumed = account && sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId);
+    const found = resumed ? listed(resumed) : undefined;
+    if (found) return found;
   }
-  return selectionFor(provider, accountId, model)?.model;
+  return listed(wanted);
 }
 
 /**

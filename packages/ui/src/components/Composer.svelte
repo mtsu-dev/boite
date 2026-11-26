@@ -12,6 +12,7 @@
   import { rewindComposerEdit } from '../lib/composer-edit';
   import { editWhole } from '../lib/reading-window';
   import { fitHeight, selfSizing } from '../lib/composer-size';
+  import { ResumedImages } from '../lib/resumed-images.svelte';
   import { editComposerInput, imageRefusalOf, removeImageReferences, sameSend, sendShape, touchesImageReference, trackImageSend, type SendShape } from '../lib/composer-images';
   import { checkpoint, editKind, recordEdit, resetHistory, settled } from '../lib/composer-history';
   import { boxSelection, closeDraftUndo, copySelection, offerDraftUndo, pasteImages, travel, type EditingHost } from '../lib/composer-editing';
@@ -153,7 +154,8 @@
    * (`lib/question-reply.svelte.ts`). Editing a sent message takes precedence.
    */
   let reply = $derived(replyTarget(store));
-  let imageRefusal = $derived(imageRefusalOf(store, choice, reply !== null));
+  const resumed = new ResumedImages(() => store, () => thread, () => choice);
+  let imageRefusal = $derived(imageRefusalOf(store, choice, reply !== null, resumed.images));
   let imageWarning = $derived(imageRefusal !== null && attachments.some(item => item.kind === 'image') ? imageRefusal : null);
   /** The open thread's first page is still on its way: the field says so and Send waits (ChatView draws the shapes meanwhile). */
   let loadingThread = $derived(!!thread && store.loadingThreadId === thread.id && thread.messages.length === 0);

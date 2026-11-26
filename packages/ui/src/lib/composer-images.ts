@@ -22,13 +22,19 @@ export function trackImageSend(state: ComposerState, prompt: string, sentImages:
   };
 }
 
-/** Why the picked model takes no image, or null. An answer's files reach the agent as paths, so it takes images whatever the model reads. */
-export function imageRefusalOf(store: Store, choice: Choice | null, answering: boolean): string | null {
+/**
+ * Why the picked model takes no image, or null. An answer's files reach the agent as paths, so it takes images whatever the model reads.
+ * `resumed` is what the core read for the open thread when the choice leaves pi its own model (`ResumedImages`).
+ */
+export function imageRefusalOf(store: Store, choice: Choice | null, answering: boolean, resumed?: boolean): string | null {
   const provider = choice && !answering ? store.providerOf(choice.providerId) : null;
   if (!provider || !choice) return null;
-  const blocker = imageAttachmentBlocker(provider, resolveModelSelection(store.modelsOf(choice.providerId, choice.accountId), choice.model)?.model);
+  const model = resolveModelSelection(store.modelsOf(choice.providerId, choice.accountId), choice.model)?.model;
+  const { images: _listed, ...read } = model ?? { id: '', name: '' };
+  const blocker = imageAttachmentBlocker(provider, resumed === undefined || !model ? model : resumed ? read : { ...read, images: false });
   return blocker ? fill(strings.composer.attachNoImages, { name: blocker.name }) : null;
 }
+
 
 export function imageLabel(number: number): string {
   return fill(strings.composer.imageReference, { number: String(number) });

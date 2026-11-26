@@ -67,6 +67,20 @@ test('pi default refuses images while pi itself runs a text-only model', async (
     .toMatchObject({ rpc: { message: 'pi default takes no images: send the prompt without them' } });
 });
 
+test('pi default follows the model a resumed session restores, not the one pi starts on', async () => {
+  const { client, threadId } = await startThread(undefined, 'fake-b/plain');
+  expect((await (await startTurn(client, threadId, 'Remember this')).finished).status).toBe('done');
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId: harness!.core.threads.require(threadId).accountId });
+  const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+  // pi starts new sessions on Fake Smart, which reads images; this one resumes on Fake Plain.
+  for (const model of ['default', null]) {
+    await client.call('threads.update', { threadId, model });
+    expect((await rejection(client.call('turns.start', { threadId, prompt: 'Read this', attachments: [image] }))).reason)
+      .toMatchObject({ rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } });
+    expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ available: false, reason: 'unsupported' });
+  }
+});
+
 test('a text-only pi model refuses images on start and steer and still accepts files', async () => {
   const { client, threadId } = await startThread(undefined, 'fake-b/plain');
   const prompt = '[slow] Read this';

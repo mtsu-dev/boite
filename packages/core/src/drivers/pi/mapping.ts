@@ -89,7 +89,7 @@ export function contentText(value: unknown): string | null {
  * isolation directory, or under the core's data directory for an account on the
  * provider's own location, which must never write into the user's real `~/.pi`.
  */
-export function sessionDirOf(ctx: Pick<SessionContext, 'account' | 'thread'>, threadId = ctx.thread.id): string {
+export function sessionDirOf(ctx: { account: Pick<SessionContext['account'], 'isolationDir'>; thread: Pick<SessionContext['thread'], 'id'> }, threadId = ctx.thread.id): string {
   const base = ctx.account.isolationDir ?? resolveDataDir();
   return join(base, SESSION_ROOT, threadId);
 }
