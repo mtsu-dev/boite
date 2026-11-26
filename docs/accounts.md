@@ -14,11 +14,10 @@ agents through a subscription gateway.
    press Send. Codex works the other way: Boite shows a code and you enter it
    on the sign-in page.
 
-Some agents ask their sign-in questions in a terminal, with menus and arrow
-keys: OpenCode, Grok and Mistral Vibe. For those, a terminal opens under the row. Answer its
-questions there, then press Close the terminal once you are signed in.
+OpenCode, Grok, Mistral Vibe and pi open a terminal under the row. In pi,
+type `/login` and choose your sign-in method. Follow the terminal's prompts,
+then press Close the terminal once you are signed in.
 
-- pi signs in inside pi itself, not from Boite.
 - Antigravity signs in with a Google account.
 - On a phone you cannot sign in or manage accounts. Do it from the computer
   that runs Boite.
@@ -44,6 +43,9 @@ login files, in Boite's data folder, apart from your terminal login. Pick it
 for a conversation from the account chips in the model picker. Antigravity
 has no command-line login in Boite: each of its accounts is a Boite account.
 
+pi can also use API keys from the environment or from the account's own
+`models.json`. You can pick that account even if its sign-in status is unknown.
+
 Settings shows each account's name and its email. Emails stay blurred until
 you hover them, tap them on a phone, or press Reveal email.
 Everywhere else in the app, in the limits, menus and dialogs, an email in an
@@ -68,7 +70,7 @@ Before each start, Boite takes them from your usual agent folder:
 | Claude Code | `settings.json`, `CLAUDE.md`, `skills`, `plugins`, `agents`, `commands`, `hooks`, `output-styles`, and the MCP servers of `.claude.json` |
 | Codex | `config.toml`, `hooks.json`, `AGENTS.md`, `skills`, `rules`, `prompts`, `plugins` |
 | Grok | `config.toml`, `hooks`, `AGENTS.md`, `AGENT.md`, `skills`, `trusted_folders.toml`, `installed-plugins` |
-| pi | `settings.json`, `AGENTS.md`, `extensions`, `skills`, `prompts`, `themes` |
+| pi | `settings.json`, `AGENTS.md`, `APPEND_SYSTEM.md`, `SYSTEM.md`, `extensions`, `skills`, `prompts`, `themes` |
 | OpenCode | `opencode.json`, `opencode.jsonc`, `AGENTS.md`, `package.json`, its plugin, agent, command and skill folders, and `node_modules` |
 | Antigravity | Your user skills from `~/.gemini`; its MCP servers and settings stay out |
 | Mistral Vibe | `config.toml`, `AGENTS.md`, `agents`, `prompts`, `skills`, `skills.toml`, `tools`, `plugins`, `hooks.toml`, `trusted_folders.toml` |

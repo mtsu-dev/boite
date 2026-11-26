@@ -13,6 +13,7 @@ export const fr: Translation = {
     loginRedirectPlaceholder: "Sur un autre appareil ? Collez l'adresse localhost sur laquelle la page se termine",
     loginSend: 'Envoyer',
     terminalHint: 'Répondez à ses questions dans le terminal, puis fermez-le une fois connecté.',
+    piTerminalHint: 'Tapez /login dans pi, choisissez votre mode de connexion, puis fermez le terminal une fois connecté.',
     terminalDone: 'Fermer le terminal',
     remove: 'Supprimer',
     removeTitle: 'Supprimer {account} ?',

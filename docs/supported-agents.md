@@ -16,17 +16,16 @@ with the account you already pay for, and shows its work in one app.
 | [Grok](https://grok.com/build) | xAI | Install it yourself | Install it yourself | From Boite |
 | [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation) | Nous Research | Install it yourself | Install it yourself | From Boite, by choosing a model and its key |
 | [Mistral Vibe](https://github.com/mistralai/mistral-vibe#installation) | Mistral AI | Install it yourself | Install it yourself | From Boite, in a browser or with a Vibe key |
-| [pi](https://github.com/earendil-works/pi) | Earendil Works | Install it yourself | Install it yourself | In pi itself |
+| [pi](https://github.com/earendil-works/pi) | Earendil Works | Install it yourself | Install it yourself | Type `/login` in Boite's sign-in terminal |
 
 ## Connect an agent
 
 1. Open Settings, Providers and press Connect an AI.
 2. Pick your agent. Boite installs it when it can and tells you the download
    size first. Otherwise it opens the agent's own installer page.
-3. Sign in on the page your browser opens. This is the agent's own sign-in:
-   your password never goes through Boite. Two agents differ: for Hermes
-   Agent you choose a model and enter its key in Boite, and pi signs in from
-   pi itself, outside Boite.
+3. Follow the agent's sign-in prompts in the browser or in Boite's terminal.
+   For pi, type `/login` in that terminal and choose your sign-in method. For
+   Hermes Agent, choose a model and enter its key in Boite.
 4. Start a conversation and pick the agent and model under the message box.
 
 An agent you already use in a terminal shows up as ready, with your existing

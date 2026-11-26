@@ -12,6 +12,7 @@ export const strings = {
     loginRedirectPlaceholder: 'On another device? Paste the localhost address the page ends on',
     loginSend: 'Send',
     terminalHint: 'Answer its questions in the terminal, then close it once you are signed in.',
+    piTerminalHint: 'Type /login in pi, choose your sign-in method, then close the terminal once you are signed in.',
     terminalDone: 'Close the terminal',
     remove: 'Remove',
     removeTitle: 'Remove {account}?',

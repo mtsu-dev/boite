@@ -408,6 +408,7 @@
   {@const login = loginAccount ? store.logins[loginAccount.id] : undefined}
   {#each accounts.filter((account) => store.loginTerminals.includes(account.id)) as account (account.id)}
     <div class="login" data-testid="account-login-terminal" data-account-id={account.id}>
+      {#if provider.id === 'pi'}<p class="hint">{strings.accounts.piTerminalHint}</p>{/if}
       <div class="screen">
         {#await terminalView() then { default: TerminalView }}
           <TerminalView

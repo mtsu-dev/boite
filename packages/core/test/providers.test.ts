@@ -628,8 +628,9 @@ describe('providers', () => {
     const descriptor = harness.core.providers.require('pi');
     // One variable moves pi's whole config directory, `auth.json` included.
     expect(descriptor.auth).toEqual({ kind: 'oauth-cli', session: ['auth.json'] });
-    // No login block: `/login` is a slash command inside the tui, not a cli one.
-    expect(descriptor.login).toBeUndefined();
+    // The provider picker is a slash command inside pi's interactive UI.
+    expect(descriptor.login).toEqual({ command: ['pi', '--no-session'], terminal: true });
+    expect(pi?.login).toEqual({ kind: 'terminal' });
 
     const profile = descriptor.profiles[currentOs()];
     expect(profile?.isolation).toEqual({ PI_CODING_AGENT_DIR: '{isolationDir}' });

@@ -21,7 +21,8 @@ environment variables, with `{isolationDir}` substituted at spawn:
   files its login at `opencode/auth.json` under the data one.
 - Codex moves with `CODEX_HOME`, and files `auth.json` directly under it.
 - pi moves with `PI_CODING_AGENT_DIR`, which is the whole config directory, so
-  one variable is enough and the session file is `auth.json` under it.
+  one variable is enough. Stored credentials go in `auth.json` and custom
+  provider credentials in `models.json` stay with the account.
 - Claude moves with `CLAUDE_CONFIG_DIR`, and files `.credentials.json`.
 - Grok moves with `GROK_HOME`, and files `auth.json`.
 - Mistral Vibe moves with `VIBE_HOME`, and files its API key in `.env`, since
@@ -82,7 +83,7 @@ core (`BOITE_HOST_AGENTS=0`) shares nothing.
 | Claude | `settings.json`, `CLAUDE.md`, `skills`, `plugins`, `agents`, `commands`, `hooks`, `output-styles`; the `mcpServers` key of `.claude.json` |
 | Codex | `config.toml`, `hooks.json`, `AGENTS.md`, `skills`, `rules`, `prompts`, `plugins` |
 | Grok | `config.toml`, `hooks`, `AGENTS.md`, `AGENT.md`, `skills`, `trusted_folders.toml`, `installed-plugins` |
-| pi | `settings.json`, `AGENTS.md`, `extensions`, `skills`, `prompts`, `themes` |
+| pi | `settings.json`, `AGENTS.md`, `APPEND_SYSTEM.md`, `SYSTEM.md`, `extensions`, `skills`, `prompts`, `themes` |
 | OpenCode | `opencode/opencode.json`, `opencode/opencode.jsonc`, `opencode/AGENTS.md`, `opencode/package.json`, plugin/agent/command/skill directories and `opencode/node_modules` |
 | Mistral Vibe | `config.toml`, `AGENTS.md`, `agents`, `prompts`, `skills`, `skills.toml`, `tools`, `plugins`, `hooks.toml`, `trusted_folders.toml` |
 
@@ -131,7 +132,10 @@ A provider that names `auth.sqlite` is read the same way from its database:
 ([providers.md](providers.md#opencode-2)).
 Claude on macOS and Windows reads `unknown` without its file, because its CLI
 can keep the login in the Keychain or in Credential Manager. A signed-out CLI
-reads `unknown` there too. Startup reads every account stored as
+reads `unknown` there too. pi also reads `unknown` with an absent or empty
+`auth.json`, so an account on environment credentials or its own
+`models.json` remains usable. A stored OAuth or API-key entry reads `ok`.
+Startup reads every account stored as
 `unauthenticated` again: one written under an older rule recovers when it now
 reads otherwise, and one the agent itself refused stays signed out.
 
@@ -289,11 +293,13 @@ when it is not signed in, then to an isolated account nobody is signed into,
 then to a new one. OpenCode and Grok use it; the phone has no Providers page
 and no terminal.
 
+For pi, the terminal starts `pi --no-session` and the card prompts the user
+to type `/login`. The standalone `pi auth login` subcommand needs a provider
+name. The interactive menu lets the user choose.
+
 ## What the core refuses, and why
 
-- The provider has no `login` block. Nothing to run, so the answer is a refusal
-  naming the provider rather than a spinner. pi is the shipped example: its login
-  is a slash command inside its own interface, with no command-line equivalent.
+- The provider has no `login` block. The refusal names the provider.
 - A login is already running for that account. One at a time, or two processes
   race on one credentials file.
 - The account uses the provider's own default location and the login is piped.
