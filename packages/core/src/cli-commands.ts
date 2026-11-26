@@ -14,7 +14,7 @@ export const BUILTIN_COMMANDS: ReadonlySet<string> = new Set([
   // cli.ts
   'ask', 'attach', 'bot', 'browse', 'browser', 'contacts', 'delegate', 'desktop', 'device', 'diff', 'goal', 'issue',
   'journal-check', 'logs', 'open', 'pr', 'preview', 'preview-close', 'projects', 'proof', 'secret', 'server', 'settings', 'show',
-  'state', 'status', 'task', 'team', 'thread', 'threads', 'todo', 'view', 'where', 'window', 'workflow', 'plugin',
+  'state', 'status', 'task', 'team', 'thread', 'threads', 'todo', 'transcripts', 'view', 'where', 'window', 'workflow', 'plugin',
   // control-cli.ts
   'questions', 'answer', 'permissions', 'allow', 'deny',
   // The spellings `canonicalCommand` rewrites: `mochi` is the one help shows, `agent` and `agents` are old.

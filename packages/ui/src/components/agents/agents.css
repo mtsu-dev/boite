@@ -75,15 +75,15 @@
 
 /* The agent's header: its robot, its name, the live line; the desk and the menu on the right. */
 .agent-head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 60px; box-sizing: border-box; padding: 8px clamp(10px, 2vw, 18px); border-bottom: 1px solid var(--color-border); }
-.agent-head-identity { flex: 1; min-width: 0; height: auto; justify-content: flex-start; gap: 12px; padding: 4px 10px 4px 7px; margin-left: -4px; border-radius: var(--radius-lg); text-align: left; color: var(--color-foreground); }
+.agent-head-identity { flex: 1; min-width: 0; height: auto; justify-content: flex-start; gap: 12px; padding: 4px 10px 4px 7px; margin-left: -4px; border-radius: var(--radius-lg); text-align: left; color: var(--color-foreground); overflow: hidden; }
 .agent-head-identity:hover:not(:disabled) { background: var(--color-hover); }
 .agent-head-robot { display: inline-flex; flex: none; }
 /* A team's chat: its members' pictures, its name, who talks there. Nothing to open: the band under it names the members. */
-.team-head-identity { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 4px 10px 4px 7px; }
-.agent-head-text { display: grid; gap: 2px; min-width: 0; }
+.team-head-identity { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 4px 10px 4px 7px; overflow: hidden; }
+.agent-head-text { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; min-width: 0; }
 .agent-head-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .agent-head-text strong { font-size: var(--text-md); font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.agent-live { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
+.agent-live { display: flex; align-items: center; gap: 6px; min-width: 0; padding-block: 0.2em; margin-block: -0.2em; overflow: hidden; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 .agent-live-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-live-time { flex: none; display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
 /* Hue says status only, in the mark before the words (StatusMark.svelte); work reads in the foreground. */
@@ -252,9 +252,10 @@ fieldset.card { border: 0; padding: var(--settings-padding); }
   .agents-main { display: none; }
   :root.agents-detail-open .agents-rail { display: none; }
   :root.agents-detail-open .agents-main { display: flex; }
-  .agent-head { gap: 2px; min-height: 56px; padding: 6px 8px 6px 4px; }
+  .agent-head { gap: 2px; min-height: 56px; padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 6px max(4px, env(safe-area-inset-left)); }
   .agent-head-actions .menu .trigger.ghost, .agent-head > button.icon, .agent-head-actions > button.icon, .agents-detail-head > button.icon { width: var(--control-touch); height: var(--control-touch); }
-  .agents-detail-head { gap: 2px; min-height: 56px; padding: 6px 8px 6px 4px; }
+  .agents-detail-head { gap: 2px; min-height: 56px; padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 6px max(4px, env(safe-area-inset-left)); }
+  .agent-sheet-head { padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left)); }
   .agents-body, .agent-sheet-body { padding: 16px 16px 32px; }
   .agent-error { margin: 12px 16px 0; }
   .agents-main .card { padding: 16px; }

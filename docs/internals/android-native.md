@@ -5,8 +5,8 @@ phones without Google services. It is a Tauri 2 app that embeds the same UI
 bundle as the shell and the phone web app, built with
 `vite build --mode mobile`. It has no core of its own: it is a client of the
 machines its phone is added to, needs no Chrome and loads no page from the
-network. It replaced a Trusted Web Activity that opened the app's address in
-Chrome (`com.boite.two`, no longer built). The
+network. It replaced a Trusted Web Activity that opened Boite's former public
+address in Chrome (`com.boite.two`, no longer built). The
 package is `dev.mtsu.boite`. The nightly builds and signs it; until it is on
 Play, the app offers each new build and the browser downloads it for Android
 to install ([updates](#updates)).
@@ -38,14 +38,13 @@ What the app does not do yet, or what nobody has checked on a phone:
   instead of replacing the app's page. Every other build has `MOBILE_BUILD`
   false as a constant, so the bundler drops these branches.
 - The page origin is `http://tauri.localhost`, the app's packaged files.
-  `appPage()` is true there, as on the phone app's own address
-  ([phone](phone.md#the-app-on-its-own-address)): the page is never tried as a
+  `mobileApp()` is true there: the page is never tried as a
   core, and the first screen is the way in, scan or paste a link from another
   machine of the group. The core accepts that origin on its WebSocket
   (`SHELL_ORIGINS`), and `*.localhost` is a secure context, so the device key
   uses WebCrypto.
-- Cleartext traffic is allowed, release included, and `reachableFromApp()`
-  accepts plain `http:` addresses: no mixed content blocks a core on the LAN
+- Cleartext traffic is allowed, release included, and the page is plain
+  `http:` itself: no mixed content blocks a core on the LAN
   or a tailnet.
 - The app reports itself to the core as `pwa`, the phone client, so every rule
   the core applies to the phone web app applies to it.

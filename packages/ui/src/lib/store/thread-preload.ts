@@ -44,6 +44,7 @@ export interface Preload extends PageAsk {
   /** Its subscribe or page was refused: the open asks again rather than inherit the failure. */
   failed: boolean;
   summaryRead: ReturnType<StoreContext['threadReads']['begin']>;
+  holders: number;
 }
 
 /** What a press reads of the thread store. */
@@ -186,8 +187,18 @@ export class ThreadPreloads {
   /** The first sidebar threads, read ahead once the machine is ready and the page idle. */
   readonly idle: IdlePreloads;
 
-  constructor(private readonly ctx: StoreContext, private readonly opener: ReadAheadSource) {
+  constructor(
+    private readonly ctx: StoreContext,
+    private readonly opener: ReadAheadSource,
+    private readonly unloaded: ReadonlySet<ThreadId>,
+  ) {
     this.idle = new IdlePreloads(ctx, opener, threadId => this.#waiting?.threadId === threadId);
+  }
+
+  /** The loaded page already in memory for `threadId`; a bare row from an interrupted open is not one. */
+  held(threadId: ThreadId): Thread | undefined {
+    const page = this.opener.openThread?.id === threadId ? this.opener.openThread : this.opener.readingThreads.get(threadId);
+    return page && page.messages.length === 0 && this.unloaded.has(threadId) ? undefined : page;
   }
 
   /**
@@ -198,23 +209,36 @@ export class ThreadPreloads {
   preload(threadId: ThreadId): () => void {
     const client = this.ctx.client;
     const waiting = this.#waiting;
-    if (waiting && waiting.threadId === threadId && waiting.client === client) return () => this.#release(waiting);
-    this.#release(waiting);
+    if (waiting && waiting.threadId === threadId && waiting.client === client) {
+      waiting.holders += 1;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        this.#release(waiting);
+      };
+    }
+    this.#release(waiting, true);
     // The thread on screen is live already; a machine switched away from keeps
     // its last thread unsubscribed, and a press on it preloads like any other.
     if (!client || this.ctx.store.connection !== 'ready' || this.opener.subscribedThreadId === threadId) return () => {};
-    const held = this.opener.openThread?.id === threadId ? this.opener.openThread : this.opener.readingThreads.get(threadId);
+    const held = this.held(threadId);
     const summaryRead = this.ctx.threadReads.begin(threadId);
     let preload: Preload | null = null;
     const ask = askPage(this.ctx, this.opener, client, threadId, held, { requests: false }, () => preload !== null && this.#claimed === preload);
-    const made: Preload = { ...ask, threadId, client, held, thread: null, failed: false, summaryRead };
+    const made: Preload = { ...ask, threadId, client, held, thread: null, failed: false, summaryRead, holders: 1 };
     const failed = () => { made.failed = true; };
     ask.subscribed?.catch(failed);
     ask.fetched.catch(failed);
     preload = made;
     this.#waiting = made;
     void ask.fetched.then((thread) => { made.thread = thread; }, () => undefined);
-    return () => this.#release(made);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.#release(made);
+    };
   }
 
   /** The waiting press on `threadId`, from this socket and the same visit, handed to the open asking for it. */
@@ -344,8 +368,9 @@ export class ThreadPreloads {
     return null;
   }
 
-  #release(preload: Preload | null): void {
+  #release(preload: Preload | null, force = false): void {
     if (!preload || this.#waiting !== preload) return;
+    if (!force && --preload.holders > 0) return;
     this.#waiting = null;
     this.giveBack(preload);
   }

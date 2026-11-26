@@ -60,8 +60,11 @@ test('the owner finds a team on the Mochis page on a desktop and a phone, reads 
     const told = await boiteAs(harness, jeuxThread, ['team', 'dm', 'Skollheim', 'owner', 'Entre nous : le budget est serré.']);
     expect([said.code, said.err, told.code, told.err]).toEqual([0, '', 0, '']);
 
-    // Desktop: the app rail shows the team after the bots, its chat unread: a news mark on its
+    // Desktop: with Mochi layout on, the app rail shows the team after the bots, its chat unread: a news mark on its
     // picture, and its name read out with "nouvelles réponses".
+    await page.evaluate(`localStorage.setItem('boite.mochi-layout', '1')`);
+    await page.reload();
+    await page.waitFor(`document.documentElement.lang === 'fr'`);
     const pin = railTeam(team.id);
     const unread = `!!document.querySelector('${pin} .badge .news')`;
     await page.waitFor(`${unread} === true`);

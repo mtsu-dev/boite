@@ -77,12 +77,12 @@ for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
     }, 60000);
   }
 
-  test(`${name}: Mochis are in the ${name === 'desktop' ? 'app rail' : 'bottom bar'} on a fresh profile`, async () => {
+  test(`${name}: Mochis are in the ${name === 'desktop' ? 'sidebar foot' : 'bottom bar'} on a fresh profile`, async () => {
     await open('&agents=1', size);
     expect(await page.evaluate(`localStorage.getItem('boite.experiments')`)).toBeNull();
     // A phone opens on the conversation: its bar is on the list.
     if (name === 'phone') await toMobileList(page);
-    await page.waitFor(`document.querySelector('${name === 'desktop' ? '[data-testid="app-rail"] [data-testid="rail-add"]' : '[data-testid="mobile-tabs"] [data-testid="mobile-agents"]'}')?.getBoundingClientRect().width > 0`);
+    await page.waitFor(`document.querySelector('${name === 'desktop' ? '[data-testid="sidebar-foot"] [data-testid="nav-agents"]' : '[data-testid="mobile-tabs"] [data-testid="mobile-agents"]'}')?.getBoundingClientRect().width > 0`);
     await capture(`bots-launcher-${name}.png`);
   }, 60000);
 }

@@ -19,7 +19,7 @@
 
 <style>
   .offline-chip { flex: none; padding: 0 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); }
-  .branch { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+  .branch { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; padding-block: 0.3em; margin-block: -0.3em; overflow: hidden; }
   .branch :global(svg) { flex: none; }
   .branch .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

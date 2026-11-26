@@ -309,3 +309,49 @@ export function keepOnly(held: readonly (Map<string, unknown> | Set<string>)[], 
   const ids = new Set(lists.flatMap((list) => list.map((row) => row.id)));
   for (const kept of held) for (const id of [...kept.keys()]) if (!ids.has(id)) kept.delete(id);
 }
+
+export interface MeasuredDelta { id: string; at: number; next: number; previous: number }
+
+export interface MeasuredBatch {
+  boxResized: boolean;
+  nextViewHeight: number;
+  gapFixes: Array<{ node: HTMLElement; gap: string }>;
+  deltas: MeasuredDelta[];
+}
+
+/**
+ * Classifies ResizeObserver entries in a pure read pass so the caller can
+ * capture a reading anchor before mutating any row dataset or scroll state.
+ */
+export function collectMeasuredEntries<S extends { id: string }>(
+  entries: ResizeObserverEntry[],
+  box: HTMLElement | undefined,
+  currentViewHeight: number,
+  rows: readonly S[],
+  slots: SlotTotals<S>,
+  heights: Map<string, number>,
+): MeasuredBatch {
+  let boxResized = false;
+  let nextViewHeight = currentViewHeight;
+  const gapFixes: Array<{ node: HTMLElement; gap: string }> = [];
+  const deltas: MeasuredDelta[] = [];
+  for (const entry of entries) {
+    const node = entry.target as HTMLElement;
+    if (node === box) {
+      const measuredHeight = entry.borderBoxSize?.[0]?.blockSize;
+      const h = measuredHeight !== undefined && measuredHeight > 0 ? Math.round(measuredHeight) : node.clientHeight;
+      if (h !== currentViewHeight) { nextViewHeight = h; boxResized = true; }
+      continue;
+    }
+    const id = node.dataset['mid'];
+    if (!id) continue;
+    const gap = slotGap(node.dataset['seam'], node.dataset['rest'] !== undefined);
+    const gapText = String(gap);
+    if (node.dataset['gap'] !== gapText) gapFixes.push({ node, gap: gapText });
+    const next = (entry.borderBoxSize?.[0]?.blockSize ?? node.offsetHeight) + gap;
+    const at = slots.indexOf(rows, id);
+    const previous = heights.get(id) ?? slots.estimateOf(rows[at]);
+    if (previous !== next) deltas.push({ id, at, next, previous });
+  }
+  return { boxResized, nextViewHeight, gapFixes, deltas };
+}

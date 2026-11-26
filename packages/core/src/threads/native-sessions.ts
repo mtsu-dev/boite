@@ -11,6 +11,13 @@ export interface NativeSession {
   sessionId: string;
 }
 
+export interface NamedSession {
+  threadId: string;
+  sessionId: string;
+  /** The account the session ran under, when the journal says. */
+  accountId: string | null;
+}
+
 function fieldOf(text: string | null, field: 'accountId' | 'sessionId'): string | null {
   if (text === null) return null;
   try {
@@ -74,4 +81,22 @@ export function sessionReferenced(db: Database, sessionId: string): boolean {
       (execution LIKE '%' || ?1 || '%' AND json_valid(execution) AND json_extract(execution, '$.sessionId') = ?1)
       OR (checkpoint LIKE '%' || ?1 || '%' AND json_valid(checkpoint) AND json_extract(checkpoint, '$.sessionId') = ?1)
     LIMIT 1`).get(sessionId) !== null;
+}
+
+/**
+ * Every session the journal names with the thread that names it and the
+ * account it ran under, deleted threads included: a provider session whose id
+ * is not among them belongs to no conversation. A scan of every turn: run it
+ * off the core's thread.
+ */
+export function namedSessions(db: Database): NamedSession[] {
+  const rows = db.query(`SELECT id AS threadId, session_id AS sessionId, account_id AS accountId FROM threads WHERE session_id IS NOT NULL
+    UNION SELECT u.thread_id, json_extract(u.execution, '$.sessionId'), COALESCE(json_extract(u.execution, '$.accountId'), t.account_id)
+      FROM turns u JOIN threads t ON t.id = u.thread_id WHERE u.execution IS NOT NULL AND json_valid(u.execution)
+    UNION SELECT u.thread_id, json_extract(u.checkpoint, '$.sessionId'), COALESCE(CASE WHEN json_valid(u.execution) THEN json_extract(u.execution, '$.accountId') END, t.account_id)
+      FROM turns u JOIN threads t ON t.id = u.thread_id WHERE u.checkpoint IS NOT NULL AND json_valid(u.checkpoint)
+    UNION SELECT substr(settings.key, ${'account-sessions:'.length + 1}), json_extract(saved.value, '$.sessionId'), saved.key FROM settings, json_each(settings.value, '$.saved') AS saved
+      WHERE settings.key LIKE 'account-sessions:%' AND json_valid(settings.value)`).all() as { threadId: unknown; sessionId: unknown; accountId: unknown }[];
+  return rows.flatMap(row => typeof row.threadId === 'string' && typeof row.sessionId === 'string' && row.sessionId.length > 0
+    ? [{ threadId: row.threadId, sessionId: row.sessionId, accountId: typeof row.accountId === 'string' && row.accountId.length > 0 ? row.accountId : null }] : []);
 }

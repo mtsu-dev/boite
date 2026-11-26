@@ -6,6 +6,7 @@ import { AgentsView, agentOfThread, agentRows, openAgent } from '../../lib/agent
 import { rightPanel } from '../../lib/right-panel.svelte';
 import { strings } from '../../lib/strings';
 import { newBot } from '../../lib/agents-view.svelte';
+import { mochiLayout } from '../../lib/mochi-layout.svelte';
 import AgentsPage from './AgentsPage.svelte';
 import TitleBar from '../TitleBar.svelte';
 
@@ -152,6 +153,7 @@ test('a default mochi that cannot be opened offers a retry instead of loading fo
 test("a desktop's column is the open mochi's: who it is, its conversation, its threads; the rail's New mochi opens the form here", async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
   let bar: ReturnType<typeof mount> | null = null;
+  mochiLayout.set(true);
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
     const view = AgentsView.of(store);
@@ -201,11 +203,14 @@ test("a desktop's column is the open mochi's: who it is, its conversation, its t
     if (bar) unmount(bar);
     if (page) unmount(page);
     document.body.innerHTML = '';
+    localStorage.clear();
+    mochiLayout.load();
   }
 });
 
 test('an empty desk is one centred prompt in the column, the way into its first task', async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
+  mochiLayout.set(true);
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
     const view = AgentsView.of(store);
@@ -223,5 +228,120 @@ test('an empty desk is one centred prompt in the column, the way into its first 
     expect(document.querySelector('[data-testid=bot-first-task]')).toBeNull();
   } finally {
     if (page) unmount(page);
+    localStorage.clear();
+    mochiLayout.load();
+  }
+});
+
+test('on a phone, Back during a pending mochi open cancels it so the late response does not reopen detail', async ({ ready }) => {
+  let page: ReturnType<typeof mount> | null = null;
+  const origMatchMedia = window.matchMedia;
+  window.matchMedia = vi.fn((query: string) => ({
+    matches: query.includes('max-width: 720px'),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
+    const rawCall = client.call.bind(client);
+    const openResolvers: (() => void)[] = [];
+    vi.spyOn(client, 'call').mockImplementation(async (method: string, params?: unknown) => {
+      if (method === 'agents.open') {
+        await new Promise<void>(resolve => { openResolvers.push(resolve); });
+      }
+      return rawCall(method as never, params as never);
+    });
+
+    store.showAgents();
+    page = mount(AgentsPage, { target: document.body, props: { store } });
+    flushSync();
+
+    const row = document.querySelector<HTMLButtonElement>(`[data-testid="agent-entry-${mira.id}"]`)!;
+    expect(row).not.toBeNull();
+    row.click();
+    flushSync();
+    expect(document.documentElement.classList.contains('agents-detail-open')).toBe(true);
+
+    // Go back while agents.open is still in flight.
+    const backBtn = document.querySelector<HTMLButtonElement>('.agent-mobile-back')!;
+    expect(backBtn).not.toBeNull();
+    backBtn.click();
+    flushSync();
+    expect(document.documentElement.classList.contains('agents-detail-open')).toBe(false);
+
+    // Resolving the stale agents.open must not reopen detail or land the bot thread.
+    openResolvers.shift()!();
+    await new Promise(resolve => setTimeout(resolve, 40));
+    flushSync();
+    expect(document.documentElement.classList.contains('agents-detail-open')).toBe(false);
+    expect(store.openThread?.agentSessionId).toBeFalsy();
+
+    // Tap, Back, then immediately retap the same mochi: the cancelled first open settling must not drop the second open's detail/skeleton.
+    row.click();
+    flushSync();
+    document.querySelector<HTMLButtonElement>('.agent-mobile-back')!.click();
+    flushSync();
+    row.click();
+    flushSync();
+    expect(document.documentElement.classList.contains('agents-detail-open')).toBe(true);
+    openResolvers.shift()!();
+    await new Promise(resolve => setTimeout(resolve, 40));
+    flushSync();
+    expect(document.documentElement.classList.contains('agents-detail-open')).toBe(true);
+    openResolvers.shift()!();
+    await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
+  } finally {
+    if (page) unmount(page);
+    window.matchMedia = origMatchMedia;
+    document.body.innerHTML = '';
+  }
+});
+
+test('re-selecting the already open mochi cancels an in-flight open for a different mochi', async ({ ready }) => {
+  let page: ReturnType<typeof mount> | null = null;
+  try {
+    const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const rows = agentRows(view.snapshot);
+    const first = rows[0]!.profile;
+    const second = rows[1]!.profile;
+    const rawCall = client.call.bind(client);
+    let releaseSecond!: () => void;
+    vi.spyOn(client, 'call').mockImplementation(async (method: string, params?: unknown) => {
+      if (method === 'agents.open' && (params as { agentId?: string })?.agentId === second.id) {
+        await new Promise<void>(resolve => { releaseSecond = resolve; });
+      }
+      return rawCall(method as never, params as never);
+    });
+
+    store.showAgents(first.id);
+    page = mount(AgentsPage, { target: document.body, props: { store } });
+    await vi.waitFor(() => expect(agentOfThread(view.snapshot, store.openThread?.id)?.id).toBe(first.id));
+    flushSync();
+
+    // Start opening a different mochi, then re-select the already open one before the second responds.
+    const secondRow = document.querySelector<HTMLButtonElement>(`[data-testid="agent-entry-${second.id}"]`)!;
+    const firstRow = document.querySelector<HTMLButtonElement>(`[data-testid="agent-entry-${first.id}"]`)!;
+    secondRow.click();
+    flushSync();
+    firstRow.click();
+    flushSync();
+
+    releaseSecond();
+    await new Promise(resolve => setTimeout(resolve, 40));
+    flushSync();
+    expect(agentOfThread(view.snapshot, store.openThread?.id)?.id).toBe(first.id);
+  } finally {
+    if (page) unmount(page);
+    document.body.innerHTML = '';
   }
 });

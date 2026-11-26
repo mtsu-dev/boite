@@ -8,6 +8,7 @@ import { BUILD_STORAGE_KEY, writeExperiments } from '../lib/experiments';
 import { closeTour } from '../lib/onboarding.svelte';
 import { work } from '../lib/work-prefs.svelte';
 import { rightPanel } from '../lib/right-panel.svelte';
+import { mochiLayout } from '../lib/mochi-layout.svelte';
 import { openUrl } from './opener';
 import { mockPhoneViewport } from './phone-width';
 
@@ -42,6 +43,7 @@ afterEach(() => {
   rightPanel.maximized = false;
   window.localStorage.clear();
   work.load();
+  mochiLayout.load();
   delete window.__TAURI_INTERNALS__;
   openUrl.mockClear();
 });
@@ -206,7 +208,7 @@ export async function loginLink(): Promise<HTMLAnchorElement> {
 
 /** The store is one module-level singleton: leave the next test on the chat. */
 export async function backToChat(): Promise<void> {
-  query<HTMLButtonElement>('[data-testid=view-threads]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads], [data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 }
 

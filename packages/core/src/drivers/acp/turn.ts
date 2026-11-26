@@ -21,7 +21,7 @@ import { ANTHROPIC_DEFAULT, openAiCacheLife } from '../../prompt-cache.ts';
 import { isOpenCode } from '../../providers/opencode.ts';
 import { antigravitySubagentBatch, normalizeAntigravityTool } from '../antigravity.ts';
 import { imageDocument } from '../documents.ts';
-import type { PromptCacheLife, TurnContext, TurnResult } from '../types.ts';
+import type { PromptCacheLife, TurnContext, TurnRefusal, TurnResult } from '../types.ts';
 import { stringify } from '../tool-text.ts';
 import { TurnParts } from '../turn-parts.ts';
 
@@ -119,6 +119,8 @@ export class AcpTurn extends TurnParts {
   #status: TurnResult['status'] = 'done';
   #error: string | null = null;
   #diagnosticError: string | undefined;
+  #refusal: TurnRefusal | undefined;
+  #executionError: string | null = null;
   #usage: Usage | null = null;
 
   sessionId: string | null;
@@ -150,6 +152,21 @@ export class AcpTurn extends TurnParts {
 
   noteSession(sessionId: string): void {
     this.sessionId = sessionId;
+  }
+
+  get hasExecutionError(): boolean {
+    return this.#executionError !== null;
+  }
+
+  noteExecutionError(text: string): void {
+    this.#executionError = text;
+  }
+
+  /** Output continued past the candidate error or the prompt ended for another reason. */
+  flushExecutionError(): void {
+    const text = this.#executionError;
+    this.#executionError = null;
+    if (text !== null && !this.isStopped) this.writeText(text);
   }
 
   /** The id of every tool call this turn drew. */
@@ -211,6 +228,7 @@ export class AcpTurn extends TurnParts {
       usage: this.#usage,
       error: this.#error ?? undefined,
       ...(this.#diagnosticError === undefined ? {} : { diagnosticError: this.#diagnosticError }),
+      ...(this.#refusal === undefined ? {} : { refusal: this.#refusal }),
       promptCache: acpCacheLife(this.ctx.provider.id, this.ctx.thread.model),
       ...(this.sessionLost ? { sessionLost: true } : {}),
     }));
@@ -226,9 +244,14 @@ export class AcpTurn extends TurnParts {
   /** The prompt response: the stop reason becomes the status, the usage the numbers. */
   finish(response: PromptResponse): void {
     this.#usage = mapUsage(response.usage ?? null, this.#turnCost());
+    if (response.stopReason !== 'end_turn') this.flushExecutionError();
     switch (response.stopReason) {
-      case 'end_turn':
+      case 'end_turn': {
+        const text = this.#executionError;
+        this.#executionError = null;
+        if (text !== null && !this.isStopped) this.fail(text.trim(), undefined, { kind: 'capacity' });
         break;
+      }
       case 'cancelled':
         this.#status = 'stopped';
         break;
@@ -238,11 +261,13 @@ export class AcpTurn extends TurnParts {
     }
   }
 
-  fail(reason: string, diagnostic?: string): void {
+  fail(reason: string, diagnostic?: string, refusal?: TurnRefusal): void {
     if (this.#status === 'error') return;
+    this.flushExecutionError();
     this.#status = 'error';
     this.#error = reason;
     this.#diagnosticError = diagnostic;
+    this.#refusal = refusal;
     this.part(this.takeIndex(), { type: 'error', message: reason });
   }
 
