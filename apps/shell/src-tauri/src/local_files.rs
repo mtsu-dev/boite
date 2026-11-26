@@ -1,34 +1,22 @@
 use std::path::{Path, PathBuf};
 use tauri::Webview;
 
-fn resolve_file(directory: &Path, path: &Path) -> Result<PathBuf, String> {
-    if !directory.is_absolute() {
-        return Err(format!("directory {}: expected an absolute directory", directory.display()));
-    }
-    let root = directory.canonicalize().map_err(|error| format!("directory {}: {error}", directory.display()))?;
-    if !root.is_dir() {
-        return Err(format!("directory {}: expected a directory", directory.display()));
-    }
-    let candidate = root.join(path);
-    let file = candidate.canonicalize().map_err(|error| format!("path {}: {error}", path.display()))?;
-    if !file.starts_with(&root) || !file.is_file() {
-        return Err(format!("path {}: expected a file inside {}", path.display(), directory.display()));
-    }
-    Ok(file)
+/// What a chat link names on this computer, which decides what a click may do
+/// with it: a document or a folder opens at once, anything else only once the
+/// user confirmed it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ClientPathKind {
+    Missing,
+    Document,
+    Folder,
+    Program,
 }
 
-/// Only a click in the main UI uses this command; browsed pages cannot call it.
-#[tauri::command]
-pub async fn open_local_file(webview: Webview, directory: String, path: String) -> Result<(), String> {
-    crate::browser::only_main(&webview)?;
-    let file = resolve_file(Path::new(&directory), Path::new(&path))?;
-    crate::platform::open_file(&file)
-}
-
-/// What a chat link may open in its default app: documents, pictures, media and
-/// data. Anything else (a program, a script, a shortcut, a `.desktop` entry, an
-/// association that runs code such as `.js` or `.py` on Windows) is refused, so
-/// the list says what is allowed rather than what is not.
+/// What a chat link may open in its default app without asking: documents,
+/// pictures, media and data. Anything else (a program, a script, a shortcut, a
+/// `.desktop` entry, an association that runs code such as `.js` or `.py` on
+/// Windows) is a program, so the list says what is allowed rather than what is not.
 const CHAT_DOCUMENTS: &[&str] = &[
     "txt", "md", "markdown", "log", "csv", "tsv", "json", "yaml", "yml", "toml", "xml", "html", "htm",
     "pdf", "rtf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "epub",
@@ -43,56 +31,88 @@ fn extension(path: &Path) -> String {
 }
 
 #[cfg(unix)]
-fn runs(path: &Path) -> bool {
+fn runs(meta: &std::fs::Metadata) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path).map(|meta| meta.permissions().mode() & 0o111 != 0).unwrap_or(true)
+    meta.permissions().mode() & 0o111 != 0
 }
 
 #[cfg(not(unix))]
-fn runs(_path: &Path) -> bool {
+fn runs(_meta: &std::fs::Metadata) -> bool {
     false
 }
 
-/// A link's target inside the thread's folder: a folder, or a document that does not run.
-fn resolve_chat_path(directory: &Path, path: &str) -> Result<PathBuf, String> {
-    crate::platform::require_local_path(directory)?;
-    crate::platform::require_local_path(Path::new(path))?;
-    if path.is_empty() || path.chars().any(char::is_control) || path.starts_with("\\\\") || path.starts_with("//") {
-        return Err("path: expected a local file or folder, not a network or device path".into());
+/// The path a link names, as long as it is an absolute one on this computer
+/// (`require_client_path`): a relative one would resolve against wherever the
+/// shell runs from, which no link means.
+fn client_target(path: &str) -> Result<PathBuf, String> {
+    if path.is_empty() || path.chars().any(char::is_control) {
+        return Err(format!("path {path:?}: expected an absolute path on this computer"));
     }
-    let root = directory.canonicalize().map_err(|error| format!("directory {}: {error}", directory.display()))?;
-    if !directory.is_absolute() || !root.is_dir() {
-        return Err("directory: expected an existing absolute thread directory".into());
-    }
-    let candidate = root.join(path);
-    crate::platform::require_local_path(&candidate)?;
-    let resolved = candidate.canonicalize().map_err(|error| format!("path {path}: {error}"))?;
-    crate::platform::require_local_path(&resolved)?;
-    if !resolved.starts_with(&root) {
-        return Err(format!("path {path}: expected a file or folder inside {}", directory.display()));
-    }
-    let kind = extension(&resolved);
-    if resolved.is_dir() {
-        if BUNDLE_FOLDERS.contains(&kind.as_str()) {
-            return Err(format!("path {path}: expected a folder, not an application bundle"));
-        }
-        return Ok(resolved);
-    }
-    if !resolved.is_file() {
-        return Err(format!("path {path}: expected a file or folder"));
-    }
-    if !CHAT_DOCUMENTS.contains(&kind.as_str()) || runs(&resolved) {
-        return Err(format!("path {path}: expected a document ({}) that is not executable", CHAT_DOCUMENTS.join(", ")));
-    }
-    Ok(resolved)
+    let target = PathBuf::from(path);
+    crate::platform::require_client_path(&target)?;
+    Ok(target)
 }
 
-/// The opt-in chat-link action, invoked by a click in the main UI, never by an agent RPC or browsed page.
+/// Read through links, like the app the click opens. A drive that does not
+/// answer (an unplugged NAS) reads as missing.
+fn classify(path: &Path) -> ClientPathKind {
+    let Ok(meta) = std::fs::metadata(path) else { return ClientPathKind::Missing };
+    let kind = extension(path);
+    if meta.is_dir() {
+        return if BUNDLE_FOLDERS.contains(&kind.as_str()) { ClientPathKind::Program } else { ClientPathKind::Folder };
+    }
+    if meta.is_file() && CHAT_DOCUMENTS.contains(&kind.as_str()) && !runs(&meta) {
+        return ClientPathKind::Document;
+    }
+    ClientPathKind::Program
+}
+
+/// The click's action once the path is known: a program needs the confirmation the UI asked for.
+fn open_target(path: &str, confirmed: bool) -> Result<PathBuf, String> {
+    let target = client_target(path)?;
+    match classify(&target) {
+        ClientPathKind::Missing => Err(format!("path {path}: not found on this computer")),
+        ClientPathKind::Program if !confirmed => Err(format!("path {path}: a program or a file that may run one opens only once the user confirmed it")),
+        _ => Ok(target),
+    }
+}
+
+fn reveal_target(path: &str) -> Result<PathBuf, String> {
+    let target = client_target(path)?;
+    if classify(&target) == ClientPathKind::Missing {
+        return Err(format!("path {path}: not found on this computer"));
+    }
+    Ok(target)
+}
+
+/// A network drive can take seconds to answer: the check runs off the command thread.
+async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work).await.map_err(|error| format!("the file check did not finish: {error}"))?
+}
+
+/// What a chat link names on this computer. Only the main UI asks, to choose
+/// what its click does and to grey a link that leads nowhere.
 #[tauri::command]
-pub async fn open_chat_file(webview: Webview, directory: String, path: String) -> Result<(), String> {
+pub async fn client_path_info(webview: Webview, path: String) -> Result<ClientPathKind, String> {
     crate::browser::only_main(&webview)?;
-    let file = resolve_chat_path(Path::new(&directory), &path)?;
-    crate::platform::open_file(&file)
+    blocking(move || client_target(&path).map(|target| classify(&target))).await
+}
+
+/// A click on a chat link in the main UI, never an agent RPC or a browsed page.
+/// A program opens only with `confirmed`, which the UI sets once the user said yes.
+#[tauri::command]
+pub async fn open_client_path(webview: Webview, path: String, confirmed: bool) -> Result<(), String> {
+    crate::browser::only_main(&webview)?;
+    let target = blocking(move || open_target(&path, confirmed)).await?;
+    crate::platform::open_file(&target)
+}
+
+/// Shows the file selected in its folder, in the system's file manager; nothing runs.
+#[tauri::command]
+pub async fn reveal_client_path(webview: Webview, path: String) -> Result<(), String> {
+    crate::browser::only_main(&webview)?;
+    let target = blocking(move || reveal_target(&path)).await?;
+    tauri_plugin_opener::reveal_item_in_dir(&target).map_err(|error| format!("path {}: {error}", target.display()))
 }
 
 #[cfg(test)]
@@ -100,56 +120,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chat_links_open_only_folders_and_documents_inside_the_thread() {
-        let root = std::env::temp_dir().join(format!("boite-chat-links-{}", std::process::id()));
-        let project = root.join("project");
-        std::fs::create_dir_all(project.join("docs")).unwrap();
-        std::fs::create_dir_all(project.join("Tool.app")).unwrap();
-        std::fs::write(root.join("outside.pdf"), b"inert fixture").unwrap();
-        std::fs::write(project.join("notes.txt"), b"notes").unwrap();
-        std::fs::write(project.join("Report.PDF"), b"inert fixture").unwrap();
-        for name in ["test shortcut.lnk", "page.url", "run.hta", "run.vbs", "run.js", "run.ps1", "run.py", "run.bat", "game.exe", "settings.reg", "start.desktop", "tool.AppImage", "run.command", "Makefile"] {
-            std::fs::write(project.join(name), b"inert fixture").unwrap();
+    fn documents_and_folders_open_at_once_and_everything_else_waits_for_a_confirmation() {
+        let root = std::env::temp_dir().join(format!("boite-client-paths-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        std::fs::create_dir_all(root.join("Tool.app")).unwrap();
+        std::fs::write(root.join("notes.txt"), b"notes").unwrap();
+        std::fs::write(root.join("Report.PDF"), b"inert fixture").unwrap();
+        let path = |name: &str| root.join(name).to_string_lossy().into_owned();
+        let kind = |name: &str| classify(&client_target(&path(name)).unwrap());
+        assert_eq!(kind("notes.txt"), ClientPathKind::Document);
+        assert_eq!(kind("Report.PDF"), ClientPathKind::Document);
+        assert_eq!(kind("docs"), ClientPathKind::Folder);
+        assert_eq!(kind("missing.txt"), ClientPathKind::Missing);
+        assert_eq!(kind("Tool.app"), ClientPathKind::Program);
+        for name in ["test shortcut.lnk", "page.url", "run.hta", "run.vbs", "run.js", "run.ps1", "run.py", "run.bat", "game.exe", "setup.msi", "settings.reg", "start.desktop", "tool.AppImage", "run.command", "Makefile"] {
+            std::fs::write(root.join(name), b"inert fixture").unwrap();
+            assert_eq!(kind(name), ClientPathKind::Program, "{name}");
+            let refused = open_target(&path(name), false).unwrap_err();
+            assert!(refused.contains("confirmed"), "{name}: {refused}");
+            assert!(open_target(&path(name), true).is_ok(), "{name}");
         }
-        assert!(resolve_chat_path(&project, "notes.txt").is_ok());
-        assert!(resolve_chat_path(&project, "Report.PDF").is_ok());
-        assert!(resolve_chat_path(&project, &project.join("notes.txt").to_string_lossy()).is_ok());
-        assert!(resolve_chat_path(&project, "docs").unwrap().is_dir());
-        for path in ["test shortcut.lnk", "page.url", "run.hta", "run.vbs", "run.js", "run.ps1", "run.py", "run.bat", "game.exe", "settings.reg", "start.desktop", "tool.AppImage", "run.command", "Makefile", "Tool.app"] {
-            assert!(resolve_chat_path(&project, path).is_err(), "{path} must not open");
-        }
-        // Outside the thread's folder, by an absolute path or by climbing, nothing opens.
-        assert!(resolve_chat_path(&project, &root.join("outside.pdf").to_string_lossy()).is_err());
-        assert!(resolve_chat_path(&project, "../outside.pdf").is_err());
-        assert!(resolve_chat_path(&project, &root.to_string_lossy()).is_err());
+        assert!(open_target(&path("notes.txt"), false).is_ok());
+        assert!(open_target(&path("docs"), false).is_ok());
+        assert!(open_target(&path("missing.txt"), true).unwrap_err().contains("not found"));
+        assert!(reveal_target(&path("game.exe")).is_ok());
+        assert!(reveal_target(&path("missing.txt")).unwrap_err().contains("not found"));
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(project.join("notes.txt"), std::fs::Permissions::from_mode(0o755)).unwrap();
-            assert!(resolve_chat_path(&project, "notes.txt").is_err());
-        }
-        for path in ["", "//server/share/file.txt", "\\\\server\\share\\file.txt", "\\/server/share/file.txt", "/\\server/share/file.txt", "bad\0file", "missing.txt"] {
-            assert!(resolve_chat_path(&project, path).is_err());
+            std::fs::set_permissions(root.join("notes.txt"), std::fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(kind("notes.txt"), ClientPathKind::Program);
         }
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn resolves_existing_files_and_rejects_paths_outside_the_thread() {
-        let root = std::env::temp_dir().join(format!("boite-local-files-{}", std::process::id()));
-        let inside = root.join("project");
-        std::fs::create_dir_all(&inside).unwrap();
-        std::fs::write(inside.join("game.exe"), b"inert fixture").unwrap();
-        std::fs::write(root.join("outside.exe"), b"inert fixture").unwrap();
-        assert_eq!(resolve_file(&inside, Path::new("game.exe")).unwrap(), inside.join("game.exe").canonicalize().unwrap());
-        assert!(resolve_file(&inside, &inside.join("game.exe")).is_ok());
-        assert!(resolve_file(&inside, Path::new("../outside.exe")).is_err());
-        assert!(resolve_file(&inside, &root.join("outside.exe")).is_err());
-        assert!(resolve_file(&inside, Path::new("missing.exe")).is_err());
-        assert!(resolve_file(&inside, Path::new(".")).is_err());
-        assert!(resolve_file(Path::new("relative"), Path::new("game.exe")).is_err());
-        let error = resolve_file(&inside.join("game.exe"), &inside.join("game.exe")).unwrap_err();
-        assert!(error.starts_with("directory ") && error.contains("expected a directory"));
-        std::fs::remove_dir_all(root).unwrap();
+    fn refuses_relative_network_device_and_control_paths() {
+        for path in ["", "notes.txt", "docs/notes.txt", "//server/share/file.txt", "\\\\server\\share\\file.txt", "bad\0file", "/tmp/bad\nname"] {
+            assert!(client_target(path).is_err(), "{path:?}");
+            assert!(open_target(path, true).is_err(), "{path:?}");
+            assert!(reveal_target(path).is_err(), "{path:?}");
+        }
     }
 }

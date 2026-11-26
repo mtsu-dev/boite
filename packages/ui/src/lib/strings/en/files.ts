@@ -13,6 +13,8 @@ export const strings = {
     capped: 'Only the first {count} entries of this directory are listed.',
     // The viewer and the editor, one file per tab.
     readFailed: 'This file could not be read. {reason}',
+    notFound: 'File not found',
+    notFoundDetail: 'Boite looked for {path} in {folder}.',
     writeFailed: 'This file could not be saved. {reason}',
     readingFile: 'Reading this file',
     noFile: 'This tab carries no path',

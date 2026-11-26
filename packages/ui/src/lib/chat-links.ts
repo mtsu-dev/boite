@@ -1,6 +1,6 @@
-export function escapeHtml(text: string): string {
-  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
-}
+import { escapeHtml, fileChipHtml } from './file-links';
+
+export { escapeHtml };
 
 export type ChatLink = { kind: 'web' | 'file' | 'anchor' | 'email'; target: string; line?: number };
 
@@ -102,7 +102,7 @@ export function linkHtml(label: string, raw: string): string {
   const link = chatLink(raw);
   if (!link) return escapeHtml(label);
   const title = escapeHtml(label);
-  if (link.kind === 'file') return `<a href="#file" data-file-path="${escapeHtml(link.target)}"${link.line ? ` data-file-line="${link.line}"` : ''}>${title}</a>`;
+  if (link.kind === 'file') return fileChipHtml(label, raw, link.target, link.line);
   return `<a href="${escapeHtml(link.target)}"${link.kind === 'web' ? ' target="_blank" rel="noopener noreferrer"' : ''}>${title}</a>`;
 }
 

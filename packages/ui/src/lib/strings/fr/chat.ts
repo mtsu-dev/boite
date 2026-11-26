@@ -270,6 +270,17 @@ export const fr: Translation = {
     openLink: 'Ouvrir',
     copyPath: 'Copier le chemin',
     copyThreadAddress: "Copier l'adresse du fil",
+    fileLink: {
+      reveal: 'Afficher dans le dossier',
+      copyRelative: 'Copier le chemin relatif',
+      notFoundOn: 'Introuvable sur {machine}',
+      notFoundHere: 'Introuvable sur cet ordinateur',
+      outside: 'Hors du projet sur {machine}',
+      elsewhere: "Seul l'ordinateur qui contient ce fichier peut l'ouvrir",
+      launchTitle: 'Lancer {name} ?',
+      launchBody: "{path} est un programme : il s'exécute sur cet ordinateur avec vos droits. Lancez-le seulement si vous savez d'où il vient.",
+      launch: 'Lancer'
+    },
     editMessage: 'Modifier et renvoyer depuis ici',
     retry: 'Relancer cette réponse',
     fork: 'Bifurquer depuis ici',

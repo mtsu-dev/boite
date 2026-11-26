@@ -28,7 +28,9 @@ test('rich markdown supports local paths, spaces, line numbers, file URIs and ba
   expect(html).toContain('data-file-line="3"');
   expect(html).toContain('href="https://example.test/a_(b)"');
   expect(html).toContain('href="https://example.test/page"');
-  expect(html).toContain('<code><a href="#file" data-file-path="src/main.ts" data-file-line="8">');
+  // A path in code is a chip of its own, never a link inside a code span.
+  expect(html).toContain('<a href="#file" class="file-chip" data-file-path="src/main.ts" data-file-line="8"');
+  expect(html).not.toContain('<code>');
   expect(renderMarkdown('[file](src/main.ts)')).not.toContain('data-file-path');
   expect(renderMarkdown('Read src/main.ts:4 next.', true)).toContain('data-file-path="src/main.ts" data-file-line="4"');
   expect(renderMarkdown('# Project files\n\n[Jump](#project-files)', true)).toContain('id="project-files"');

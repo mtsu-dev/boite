@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { renderMarkdown } from './markdown';
 import { richMarkdown, type RichMarkdownOptions } from './rich-markdown';
-import { selectedSource } from './rich-markdown-draw';
+import { selectedSource } from './selection-copy';
 
 let mounted: { destroy(): void } | null = null;
 

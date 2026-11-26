@@ -43,14 +43,27 @@ That evidence appears under the answer when the turn ends.
 ## Links in answers
 
 Settings, General, Chat files and previews is on by default. Each device keeps
-its own choice. With it on, a file path in an answer becomes a link:
+its own choice. With it on, a file path in an answer becomes a chip: an icon
+for the kind of file, its name, and the whole path when you hover it. Two files
+of the same name in one answer show their folder too. A chip turns grey and
+dashed when the file is not there.
 
 - Markdown links, bare web addresses, absolute paths, `file:///` links and
-  paths written in inline code.
-- A click opens a preview of the file from the conversation's machine.
+  paths written in inline code become chips or links.
+- A click on a file of the conversation's folder opens it in the side panel,
+  at its line. A picture or a video opens in the viewer.
+- A path on your computer, such as a mapped drive `N:\dev\game.exe` named by
+  an agent on a Linux machine, opens on your computer in the desktop app.
+- A program (`.exe`, `.msi`, a script, a shortcut) never starts on a click:
+  Boite asks first, with Launch, Show in folder and Cancel.
+- A file that is not found shows a notice with where Boite looked and a Copy
+  path button.
+- Right-click a chip, or press and hold it on a phone, for Open, Show in
+  folder, Copy path and Copy relative path.
 - A relative path that is not found as written is looked up by its end, so
   `core.md` can open `.local/core.md`. When two files match, Boite names both
   instead of guessing.
+- Copying a selection keeps each chip as the path the agent wrote.
 - An image hosted on the web stays a link, so reading an answer contacts no
   site.
 
@@ -60,12 +73,9 @@ agent sent stay downloadable.
 ### Open links in their own apps
 
 Settings, General, Open chat links in their apps is off by default and exists
-only in the desktop app. On, a click on a document or folder inside the
-conversation's folder opens it in its default app. Programs, scripts, shortcuts
-and files outside that folder never open this way: they show in the preview.
-A program on this computer starts only from the preview's Open button.
-Only links from this computer open this way. On another machine or a phone, links keep the
-preview.
+only in the desktop app. On, a click on a document or folder of a conversation
+on this computer opens it in its default app instead of the side panel. A
+program still asks first.
 
 ## Pages drawn in an answer
 
@@ -106,11 +116,13 @@ Answers, plans and Markdown previews draw these blocks:
 - Links and images inside a diagram are never drawn.
 - Mermaid features the renderer does not support show as an error with the
   code.
-- Previews from a link stay inside the conversation's working directory.
-- On a paired phone a link to a local file does not open. Ask the agent to
-  attach the file instead.
-- A drive mapped on your computer does not give another machine access to a
-  path. To get a file from that machine, ask its agent to attach it.
+- The side panel shows only files inside the conversation's folder. A file
+  elsewhere on another machine shows a notice instead: ask its agent to attach
+  it.
+- A paired phone opens the conversation's files in the panel, but cannot open
+  a path of your computer or show a file in its folder.
+- A network share (`\\server\share`) never opens from a chip. A drive
+  mapped to a letter does.
 - An experimental kit of ready-made controls exists for agents that write
   pages. It is a prototype and is not loaded into pages by default.
 
