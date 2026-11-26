@@ -37,6 +37,8 @@ const DEFAULT_BINDINGS: Record<KeybindingCommand, string | null> = {
   'theme-system': null,
   archive: null,
   'import-session': null,
+  // Ctrl with the wheel is a pinch on a trackpad and a picture's own zoom: off until the user picks a chord.
+  'zoom-wheel': null,
   terminal: 'mod+j',
   // T3 Code's, and only while a terminal has the keyboard: there they win over
   // the global chord on the same keys (`TERMINAL_COMMANDS`).
@@ -86,17 +88,27 @@ export function resolveBindings(overrides: Keybindings['bindings']): BindingTabl
   return table;
 }
 
-/** True while this keydown is exactly this chord: the same modifiers, no more, and the key. */
-export function matchesChord(event: KeyboardEvent, chord: Chord, mac: boolean = isMac()): boolean {
+type Modifiers = Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
+
+/** True while exactly the chord's modifiers are down, no more. */
+export function holdsModifiers(event: Modifiers, chord: Chord, mac: boolean = isMac()): boolean {
   const ctrl = chord.ctrl || (chord.mod && !mac);
   const meta = chord.meta || (chord.mod && mac);
-  if (event.ctrlKey !== ctrl || event.metaKey !== meta || event.altKey !== chord.alt || event.shiftKey !== chord.shift) {
-    return false;
-  }
+  return event.ctrlKey === ctrl && event.metaKey === meta && event.altKey === chord.alt && event.shiftKey === chord.shift;
+}
+
+/** True while this keydown is exactly this chord: the same modifiers, no more, and the key. A wheel chord is no key's. */
+export function matchesChord(event: KeyboardEvent, chord: Chord, mac: boolean = isMac()): boolean {
+  if (chord.key === 'wheel' || !holdsModifiers(event, chord, mac)) return false;
   if (event.key.toLowerCase() === chord.key) return true;
   // A digit is its key cap, not the character: on a French layout the key
   // marked 1 reports `&` unless Shift is down.
   return /^[0-9]$/.test(chord.key) && event.code === `Digit${chord.key}`;
+}
+
+/** True when this turn of the wheel is exactly this wheel chord: its modifiers, no more. */
+export function matchesWheel(event: Modifiers, chord: Chord, mac: boolean = isMac()): boolean {
+  return chord.key === 'wheel' && holdsModifiers(event, chord, mac);
 }
 
 /**
@@ -153,6 +165,7 @@ const KEY_LABELS: Record<string, string> = {
 export function keyCap(key: string): string {
   const normalized = key.toLowerCase();
   if (normalized === 'escape') return strings.keyboard.escapeKey;
+  if (normalized === 'wheel') return strings.keyboard.wheelKey;
   return KEY_LABELS[normalized] ?? normalized.toUpperCase();
 }
 
@@ -193,19 +206,27 @@ const MODIFIER_KEYS = new Set(['control', 'shift', 'alt', 'meta', 'os', 'altgrap
 export function chordFromEvent(event: KeyboardEvent, mac: boolean = isMac()): string | null {
   const key = event.key.toLowerCase();
   if (MODIFIER_KEYS.has(key) || key === 'dead' || key === 'unidentified' || key === 'process' || key === '') return null;
+  return [...modifierNames(event, mac), FILE_KEYS[key] ?? key].join('+');
+}
+
+/** The chord a turn of the wheel spells with the modifiers held: `mod+wheel`, or a bare `wheel` for `parseChord` to refuse. */
+export function chordFromWheel(event: Modifiers, mac: boolean = isMac()): string {
+  return [...modifierNames(event, mac), 'wheel'].join('+');
+}
+
+function modifierNames(event: Modifiers, mac: boolean): string[] {
   const parts: string[] = [];
   if (mac ? event.metaKey : event.ctrlKey) parts.push('mod');
   if (mac && event.ctrlKey) parts.push('ctrl');
   if (event.altKey) parts.push('alt');
   if (event.shiftKey) parts.push('shift');
   if (!mac && event.metaKey) parts.push('meta');
-  parts.push(FILE_KEYS[key] ?? key);
-  return parts.join('+');
+  return parts;
 }
 
 /** The Keyboard page's sections. Every command sits in exactly one; a test holds that. */
 export const COMMAND_GROUPS: { id: 'general' | 'surfaces' | 'terminal' | 'thread' | 'jump' | 'theme'; commands: KeybindingCommand[] }[] = [
-  { id: 'general', commands: ['new-thread', 'palette', 'sidebar', 'panel', 'settings', 'providers', 'appearance', 'add-project', 'pair', 'import-session'] },
+  { id: 'general', commands: ['new-thread', 'palette', 'sidebar', 'panel', 'settings', 'providers', 'appearance', 'add-project', 'pair', 'import-session', 'zoom-wheel'] },
   { id: 'surfaces', commands: ['terminal', 'browser', 'changes', 'files', 'tasks', 'trace', 'close-surface'] },
   { id: 'terminal', commands: ['terminal-new', 'terminal-split', 'terminal-split-vertical', 'terminal-close', 'terminal-find', 'terminal-history', 'terminal-previous-command', 'terminal-next-command'] },
   { id: 'thread', commands: ['send-and-draft', 'stash', 'pin', 'rename', 'retitle', 'archive', 'reopen-thread', 'copy-answer', 'find'] },

@@ -1,4 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
+
+vi.mock('@tauri-apps/api/webview', () => ({ getCurrentWebview: () => ({ setZoom: () => Promise.resolve() }) }));
 import { strings } from '../lib/strings';
 import { flushSync, mount, unmount } from 'svelte';
 import AppearancePage from './AppearancePage.svelte';
@@ -282,4 +284,25 @@ test('the new thread background is offered while its experiment is on, and the p
   setExperiment('draft-backdrop', false);
   flushSync();
   expect(document.querySelector('[data-testid=backdrop-crates]')).toBeNull();
+});
+
+test('the zoom hint names the wheel chord once one is bound, and keeps its own words while none is', () => {
+  const shell = window as unknown as Record<string, unknown>;
+  shell.__TAURI_INTERNALS__ = {};
+  try {
+    const hint = (bound: string | null): string | null => {
+      running = mount(AppearancePage, { target: document.body, props: { store: { owner: true, keyLabel: (id: string) => id === 'zoom-wheel' ? bound : null } as unknown as Store } });
+      flushSync();
+      const text = [...document.querySelectorAll('[data-tip-topic]')].find((tip) => tip.getAttribute('data-tip-topic') === strings.settings.zoom)?.getAttribute('data-tip-text') ?? null;
+      unmount(running, { outro: false });
+      running = null;
+      return text;
+    };
+    expect(hint(null)).toBe(strings.settings.zoomHint);
+    const named = hint('Ctrl+Wheel');
+    expect(named).toContain('Ctrl+Wheel');
+    expect(named).not.toBe(strings.settings.zoomHint);
+  } finally {
+    delete shell.__TAURI_INTERNALS__;
+  }
 });
