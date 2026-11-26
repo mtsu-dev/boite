@@ -41,7 +41,6 @@ import { findChromium } from './browser/chromium.ts';
 import { PageProbes, PROBE_TIMEOUT_MS, type PageProbe, type ViewCheckOptions } from './browser/probe.ts';
 import { TabRecorder } from './browser/recorder.ts';
 import { freshCalls, watchPage } from './browser/page-events.ts';
-import { pageHealth } from './browser/page-health.ts';
 import { BrowserHost } from './browser/host.ts';
 import { BrowserEngines } from './browser/engines.ts';
 import { addProfile, profileName, pruneProfiles } from './browser/profiles.ts';
@@ -302,8 +301,7 @@ export class AgentBrowser {
     const on = (method: string, listener: (params: Record<string, unknown>) => void) =>
       tab.off.push(engine.cdp.on(method, (params, session) => { if (session === sessionId || (session && session === frames.runtime?.session)) listener(params); }));
     const frames = tab.page.frames = pageFrames(engine.cdp, sessionId, on, engine.hosted ? null : targetId);
-    tab.health = pageHealth(on, () => { if (this.#tabs.get(tab.id) === tab) this.#changed(threadId); });
-    watchPage(tab, on, (accept, promptText) => void engine.cdp.send('Page.handleJavaScriptDialog', { accept, ...(promptText === undefined ? {} : { promptText }) }, sessionId).catch(() => {}),
+    tab.health = watchPage(tab, on, (accept, promptText) => void engine.cdp.send('Page.handleJavaScriptDialog', { accept, ...(promptText === undefined ? {} : { promptText }) }, sessionId).catch(() => {}),
       url => {
         tab.url = url;
         if (this.#tabs.get(tab.id) === tab) { this.#remote.stale(tab); this.#changed(threadId); }
