@@ -160,7 +160,7 @@ const DIFF_HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 const DIFF_NO_NEWLINE = '\\ No newline at end of file';
 const DIFF_GIT_HEADER = /^(?:index [\da-f]+\.\.[\da-f]+(?: \d+)?|(?:(?:old|new|new file|deleted file) mode) \d+|(?:dis)?similarity index \d+%|(?:rename|copy) (?:from|to) .+|Binary files .+ differ)$/;
 const GIT_BINARY_HEADER = /^(?:literal|delta) \d+$/;
-const GIT_BASE85_LINE = /^[A-Za-z][0-9A-Za-z!#$%&()*+\-;<=>?@^_`{|}~]*$/;
+const GIT_BASE85_CHARS = /^[0-9A-Za-z!#$%&()*+\-;<=>?@^_`{|}~]+$/;
 const APPLY_FILE_HEADER = /^\*\*\* (?:Add|Delete|Update) File: .+$/;
 const PATCH_START = /^(?:diff --git |--- |\*\*\* Begin Patch\r?$)/gm;
 const PATCH_MARKER = /^\*\*\* (?:Begin|End) Patch\r?$/gm;
@@ -255,6 +255,16 @@ function hunkEndOffset(value: string, start: number): number {
   return pos;
 }
 
+function isGitBase85Line(text: string): boolean {
+  if (text.length < 6) return false;
+  const code = text.charCodeAt(0);
+  const bytes = code >= 65 && code <= 90 ? code - 64
+    : code >= 97 && code <= 122 ? code - 96 + 26
+    : 0;
+  if (bytes === 0) return false;
+  return text.length === 1 + Math.ceil(bytes / 4) * 5 && GIT_BASE85_CHARS.test(text.slice(1));
+}
+
 /** Consume a `GIT binary patch` section (forward and optional reverse base85 hunks). */
 function binaryPatchEndOffset(value: string, start: number): number {
   const head = lineAt(value, start);
@@ -265,21 +275,19 @@ function binaryPatchEndOffset(value: string, start: number): number {
     const section = lineAt(value, pos);
     if (!section || !GIT_BINARY_HEADER.test(section.text)) break;
     let cur = section.next;
-    let bodyEnd = section.next;
     let sawData = false;
     let terminated = false;
     for (; ;) {
       const line = lineAt(value, cur);
-      if (!line) { cur = value.length; break; }
+      if (!line) break;
       if (line.text === '') { cur = line.next; terminated = true; break; }
-      if (!GIT_BASE85_LINE.test(line.text)) return lastValid;
+      if (!isGitBase85Line(line.text)) return start;
       sawData = true;
       cur = line.next;
-      bodyEnd = cur;
     }
-    if (!sawData) return lastValid;
-    // Preserve the terminating blank line required by `git apply` for binary hunks.
-    lastValid = terminated ? cur : bodyEnd;
+    // Git's apply.c requires each binary hunk to carry base85 lines ended by a blank line.
+    if (!sawData || !terminated) return start;
+    lastValid = cur;
     pos = cur;
   }
   return lastValid;
@@ -392,8 +400,10 @@ export function patchEndOffset(value: string, start: number): number {
       if (!line || !DIFF_GIT_HEADER.test(line.text)) break;
       pos = line.next;
     }
-    const binEnd = binaryPatchEndOffset(value, pos);
-    if (binEnd > pos) return binEnd;
+    if (lineAt(value, pos)?.text === 'GIT binary patch') {
+      const binEnd = binaryPatchEndOffset(value, pos);
+      return binEnd > pos ? binEnd : start;
+    }
   }
   const minus = lineAt(value, pos);
   const plus = minus ? lineAt(value, minus.next) : null;
@@ -419,9 +429,10 @@ function extractPatches(value: string | null | undefined, keepRest: boolean): { 
     if (end === start) continue;
     if (keepRest && start > cursor) rest.push(value.slice(cursor, start));
     const raw = value.slice(start, end);
-    const normalized = raw.includes('\r') ? raw.replace(/\r\n/g, '\n') : raw;
-    // Keep the trailing blank line (`\n\n`) that terminates a `GIT binary patch` hunk.
-    const slice = normalized.endsWith('\n\n') ? normalized : normalized.replace(/\n$/, '');
+    // Keep the terminating blank line of `GIT binary patch` hunks, and preserve exact
+    // diff line bytes (including `\r` on CRLF lines) instead of normalizing `\r\n`.
+    const isBinaryTerminated = raw.endsWith('\n\n') || raw.endsWith('\r\n\r\n');
+    const slice = isBinaryTerminated ? raw : raw.endsWith('\n') ? raw.slice(0, -1) : raw;
     patches.push(slice);
     cursor = end;
     PATCH_START.lastIndex = end;

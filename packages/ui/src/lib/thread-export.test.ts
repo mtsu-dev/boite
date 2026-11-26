@@ -438,6 +438,30 @@ test('patch extraction stays linear on unclosed Begin Patch headers, ignores unc
   const htmlCode = new DOMParser().parseFromString(binHtml, 'text/html').querySelector('code.language-diff');
   expect(htmlCode?.textContent).toBe(binaryPatch);
 
+  // An incomplete GIT binary patch (missing blank terminator or followed by non-base85 log text like `Diagnostic`) is rejected.
+  const incompleteBinWithLog = [
+    'diff --git a/logo.png b/logo.png',
+    'index 1234567..89abcdef 100644',
+    'GIT binary patch',
+    'literal 12',
+    'TcmZQzU|<0R002M$0001K0RR91',
+    'Diagnostic',
+    '',
+  ].join('\n');
+  expect(extractToolPatches(incompleteBinWithLog).patches).toEqual([]);
+  expect(projectToolDiffs({ ...binTool, output: incompleteBinWithLog }).output).toBeNull();
+  const unterminatedBin = incompleteBinWithLog.replace('\nDiagnostic\n', '');
+  expect(extractToolPatches(unterminatedBin).patches).toEqual([]);
+
+  // CRLF-to-LF and LF-to-CRLF git diffs preserve carriage returns on diff lines across projection and Markdown export.
+  const crlfToLf = 'diff --git a/win.txt b/win.txt\nindex 17f2fc0..fbbee86 100644\n--- a/win.txt\n+++ b/win.txt\n@@ -1,2 +1,2 @@\n-alpha\r\n-beta\r\n+alpha\n+beta';
+  const crlfExtracted = extractToolPatches(`before\n${crlfToLf}\nafter`);
+  expect(crlfExtracted.patches).toEqual([crlfToLf]);
+  const crlfProjected = projectToolDiffs({ ...binTool, output: `before\n${crlfToLf}\nafter` });
+  expect(crlfProjected.output).toBe(crlfToLf);
+  const crlfMd = exportThreadMarkdown(thread, [{ ...messages[1]!, id: 'm-crlf', parts: [crlfProjected] }], { ...clean, includeDiffs: true });
+  expect(crlfMd).toContain('-alpha\r\n-beta\r\n+alpha\n+beta\n```');
+
   // Valid Codex apply_patch forms: first hunk without @@, empty context line, and blank line after *** End of File.
   const noHunkHeaderPatch = '*** Begin Patch\n*** Update File: no-at.ts\n context\n-old\n+new\n*** End Patch';
   expect(extractToolPatches(`log\n${noHunkHeaderPatch}\nend`).patches).toEqual([noHunkHeaderPatch]);

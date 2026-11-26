@@ -341,31 +341,44 @@ test('messages.toolPart with diffsOnly and messages.list with omitThinking keep 
     const withoutRunning = await client.call('threads.get', { threadId, limit: 1, ...light, omitTools: 'running' });
     expect(withoutRunning.messages[0]?.parts.map(part => part.type === 'tool' ? part.toolId : part.type)).toEqual(['text', 'done-edit']);
 
-    // A real `git diff --binary` survives `diffsOnly` projection + extraction and still passes `git apply --check`.
+    // Real `git diff --binary` and CRLF-to-LF `git diff` outputs survive `diffsOnly` projection + extraction and pass `git apply --check`.
     const repo = mkdtempSync(join(tmpdir(), 'boite-binpatch-'));
     try {
-      const git = (args: string[], input?: string) => Bun.spawnSync(['git', ...args], {
+      const git = (args: string[], input?: string) => Bun.spawnSync(['git', '-c', 'core.autocrlf=false', ...args], {
         cwd: repo, stdin: input !== undefined ? new TextEncoder().encode(input) : undefined, stdout: 'pipe', stderr: 'pipe',
       });
       expect(git(['init', '-q']).exitCode).toBe(0);
       writeFileSync(join(repo, 'logo.bin'), new Uint8Array([0, 1, 2, 3, 255, 10, 20, 30]));
-      expect(git(['add', 'logo.bin']).exitCode).toBe(0);
-      expect(git(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-q', '-m', 'init']).exitCode).toBe(0);
+      writeFileSync(join(repo, 'win.txt'), 'alpha\r\nbeta\r\n');
+      expect(git(['add', 'logo.bin', 'win.txt']).exitCode).toBe(0);
+      expect(git(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'init']).exitCode).toBe(0);
       writeFileSync(join(repo, 'logo.bin'), new Uint8Array([0, 1, 2, 99, 255, 10, 20, 30, 40]));
-      const generated = git(['diff', '--binary']);
-      expect(generated.exitCode).toBe(0);
-      const binaryDiff = generated.stdout.toString();
-      expect(git(['checkout', '--', 'logo.bin']).exitCode).toBe(0);
+      writeFileSync(join(repo, 'win.txt'), 'alpha\nbeta\n');
+      const generatedBin = git(['diff', '--binary', '--', 'logo.bin']);
+      const generatedCrlf = git(['diff', '--', 'win.txt']);
+      expect(generatedBin.exitCode).toBe(0);
+      expect(generatedCrlf.exitCode).toBe(0);
+      const binaryDiff = generatedBin.stdout.toString();
+      const crlfDiff = generatedCrlf.stdout.toString();
+      expect(git(['checkout', '--', 'logo.bin', 'win.txt']).exitCode).toBe(0);
 
       harness.core.journal.putMessage({
         id: 'bin-diff', threadId, turnId: 'heavy-turn', role: 'assistant', state: 'complete', createdAt: 103,
-        parts: [{ type: 'tool', toolId: 'bin-cmd', name: 'Bash', status: 'done', input: { command: 'git diff --binary' }, output: `log before\n${binaryDiff}log after\n` }],
+        parts: [
+          { type: 'tool', toolId: 'bin-cmd', name: 'Bash', status: 'done', input: { command: 'git diff --binary' }, output: `log before\n${binaryDiff}log after\n` },
+          { type: 'tool', toolId: 'crlf-cmd', name: 'Bash', status: 'done', input: { command: 'git diff' }, output: `log before\n${crlfDiff}log after\n` },
+        ],
       });
       const projectedBin = await client.call('messages.toolPart', { threadId, messageId: 'bin-diff', toolId: 'bin-cmd', diffsOnly: true });
-      const extracted = extractToolPatches(projectedBin.part.output);
-      expect(extracted.patches).toHaveLength(1);
-      const check = git(['apply', '--check'], extracted.patches[0]!);
-      expect(check.exitCode).toBe(0);
+      const extractedBin = extractToolPatches(projectedBin.part.output);
+      expect(extractedBin.patches).toHaveLength(1);
+      expect(git(['apply', '--check'], extractedBin.patches[0]!).exitCode).toBe(0);
+
+      const projectedCrlf = await client.call('messages.toolPart', { threadId, messageId: 'bin-diff', toolId: 'crlf-cmd', diffsOnly: true });
+      const extractedCrlf = extractToolPatches(projectedCrlf.part.output);
+      expect(extractedCrlf.patches).toHaveLength(1);
+      expect(extractedCrlf.patches[0]).toContain('-alpha\r\n-beta\r\n+alpha\n+beta');
+      expect(git(['apply', '--check'], `${extractedCrlf.patches[0]!}\n`).exitCode).toBe(0);
     } finally { rmSync(repo, { recursive: true, force: true }); }
   } finally { await harness.stop(); }
 });
