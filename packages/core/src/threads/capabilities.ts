@@ -37,6 +37,7 @@ export function threadCapabilities(core: Core, threadId: string): ThreadCapabili
   const hasForkHistory = core.journal.db.query("SELECT 1 FROM messages WHERE thread_id = ? AND state != 'streaming' LIMIT 1").get(threadId) !== null;
   const hasRewindHistory = core.journal.db.query("SELECT 1 FROM messages WHERE thread_id = ? AND role = 'user' LIMIT 1").get(threadId) !== null;
   const model = provider && imageInputModel(core, provider, thread);
+  const native = protocol !== null && (protocol === 'claude-sdk' || getDriver(protocol).forkSession !== undefined);
   const capabilities = deriveThreadCapabilities({
     threadId, providerId: thread.providerId, protocol, selectionVersion: thread.selectionVersion ?? 0,
     providerCapabilities: provider?.capabilities ?? null, modelImages: model?.images, runtimeReason,
@@ -46,8 +47,8 @@ export function threadCapabilities(core: Core, threadId: string): ThreadCapabili
     pendingApprovals: core.threads.listPermissions(threadId).length > 0,
     pendingQuestions: core.threads.listQuestions(threadId).length > 0,
     hasForkHistory, hasRewindHistory,
-    nativeForkSupported: protocol === 'claude-sdk' || protocol === 'codex-appserver', nativeForkAvailable: (protocol === 'claude-sdk' || protocol === 'codex-appserver') && core.threads.branching.nativeForkAvailable(thread),
-    nativeRewindSupported: protocol === 'claude-sdk' || protocol === 'codex-appserver', nativeRewindAvailable: (protocol === 'claude-sdk' || protocol === 'codex-appserver') && core.threads.branching.nativeRewindAvailable(thread),
+    nativeForkSupported: native, nativeForkAvailable: native && core.threads.branching.nativeForkAvailable(thread),
+    nativeRewindSupported: native, nativeRewindAvailable: native && core.threads.branching.nativeRewindAvailable(thread),
     backgroundSupported: protocol === 'claude-sdk' || core.threads.agentState.background.has(threadId),
   });
   if (!thread.agentSessionId) return capabilities;

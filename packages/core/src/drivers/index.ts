@@ -34,7 +34,7 @@ const DRIVERS = new Map<Protocol, Driver>([
     lazyDriver('codex-appserver', () => import('./codex.ts').then((module) => module.createCodexDriver()), { titles: true, prepare: true, forkSession: true }),
   ],
   ['muse', lazyDriver('muse', () => import('./muse.ts').then((module) => module.createMuseDriver()), { prepare: true })],
-  ['pi', lazyDriver('pi', () => import('./pi.ts').then((module) => module.createPiDriver()), { prepare: true })],
+  ['pi', lazyDriver('pi', () => import('./pi.ts').then((module) => module.createPiDriver()), { titles: true, prepare: true, sideQuestion: true, forkSession: true })],
 ]);
 
 const RUNNABLE = new Set<Protocol>(['echo', 'claude-sdk', 'acp', 'codex-appserver', 'muse', 'pi']);

@@ -1,4 +1,5 @@
 import type { AccountId, Protocol, ProviderCapabilities, ProviderDescriptor, ProviderId, ProviderSummary, ThreadCapabilities, ThreadCapability, ThreadCapabilityReason, ThreadId } from './index.ts';
+import { supportsSideQuestions } from './providers.ts';
 
 export interface ThreadControlsRpcMethods {
   /** Supported operations and their current availability for this thread. */
@@ -62,6 +63,7 @@ export function deriveThreadCapabilities(s: ThreadCapabilitySnapshot): ThreadCap
     approvals: capability(s.providerCapabilities?.approvals === true, s.pendingApprovals ? null : 'no-request'),
     // Boite also accepts asynchronous question cards through its scoped CLI, independently of native questions.
     questions: capability(known, s.pendingQuestions ? null : 'no-request'),
+    btw: capability(s.protocol !== null && supportsSideQuestions(s.protocol), s.runtimeReason ?? s.conversationReason),
     fork: { seeded: capability(known, forkReason), native: capability(s.nativeForkSupported, forkReason ?? (s.nativeForkAvailable ? null : 'no-checkpoint')) },
     rewind: { seeded: capability(known, rewindReason), native: capability(s.nativeRewindSupported, rewindReason ?? (s.nativeRewindAvailable ? null : 'no-checkpoint')) },
     sessionPreparation: capability(s.preparationSupported, idle),

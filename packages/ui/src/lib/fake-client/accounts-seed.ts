@@ -237,14 +237,14 @@ export function seedAccounts() {
     executable: `${DATA_DIR}\\demo\\${provider.id}.exe`,
     models: [{ id: 'default', name: `${provider.name} default`, default: true }],
     capabilities: {
-      approvals: provider.protocol !== 'pi', hooks: false, checkpoint: false,
+      approvals: provider.protocol !== 'pi', hooks: false, checkpoint: provider.protocol === 'pi',
       images: provider.protocol === 'pi', planMode: provider.protocol !== 'pi', resume: true
     },
     install: null,
     alwaysIsolated: false
   })));
   // The core's drivers that write titles (`ProviderSummary.titles`).
-  for (const provider of providers) provider.titles = ['claude-sdk', 'codex-appserver', 'echo'].includes(provider.protocol);
+  for (const provider of providers) provider.titles = ['claude-sdk', 'codex-appserver', 'echo', 'pi'].includes(provider.protocol);
   // The core's `summarize`: every summary says whether it is on, and an
   // experimental one is off until the user turns it on.
   for (const provider of providers) provider.enabled = provider.experimental !== true;

@@ -1751,6 +1751,18 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
 - After each turn `get_session_stats` feeds the context meter with a five-second
   control-read expiry. A timed-out response is removed and cannot update a later
   turn's context.
+- Titles use a separate, tool-free RPC process with no session file, extensions,
+  MCP, context files, skills or prompt templates. Boite uses the selected title
+  model or the thread's own model at low effort and allows 30 seconds per call.
+- `/btw` uses the same tool-free launch. At a settled checkpoint, it opens a
+  temporary copy of the session cut at that checkpoint. When the current
+  conversation has no matching checkpoint, it receives Boite's frozen text
+  snapshot in memory. The main session stays intact in either case.
+- A completed turn records the last persisted JSONL entry from the session
+  named by `get_session_stats`. Native fork and rewind copy that entry and its
+  `parentId` ancestry into a new session ID in the destination thread's folder.
+  Rewind switches the thread to the copy after the journal and file checks pass.
+  Older turns without checkpoints and cuts inside a turn use the seeded path.
 
 ### Hermes
 

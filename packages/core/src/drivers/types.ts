@@ -542,7 +542,7 @@ export interface Driver {
   protocol: Protocol;
   capabilities?: DriverCapabilities;
   /** Exact inclusive completed turn boundary; no prompt or source mutation. */
-  forkSession?(ctx: SessionContext, checkpoint: { sessionId: string; entry: string }): Promise<ForkedSession>;
+  forkSession?(ctx: SessionContext, checkpoint: NonNullable<TurnResult['checkpoint']>, sourceThreadId: ThreadId): Promise<ForkedSession>;
   startTurn(ctx: TurnContext): TurnHandle;
   /** A separate, tool-free request. No native session or chat transcript is changed. */
   sideQuestion?(ctx: SideQuestionContext): Promise<string>;
@@ -580,7 +580,10 @@ export interface Driver {
 
 export interface SideQuestionContext {
   thread: ThreadSummary;
+  account: Account;
   provider: ProviderDescriptor;
+  /** A settled boundary matching the visible snapshot, when the driver can copy it. */
+  checkpoint?: TurnResult['checkpoint'];
   accountEnv: Record<string, string>;
   prompt: string;
   question: string;

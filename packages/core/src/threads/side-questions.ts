@@ -1,4 +1,4 @@
-import { sideQuestionSnapshot, type Message, type ThreadId, type ThreadSummary, type Turn } from '@boite/contracts';
+import { sideQuestionSnapshot, threadActive, type Message, type ThreadId, type ThreadSummary, type Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, getDriver } from '../drivers/index.ts';
 import { invalidParams, refused } from '../errors.ts';
@@ -55,6 +55,10 @@ export class SideQuestions {
     const turns = [...new Set(messages.map(message => message.turnId))].flatMap(id => {
       const turn = this.#core.journal.getTurn(id); return turn ? [structuredClone(turn)] : [];
     });
+    const last = turns.at(-1);
+    const checkpoint = !threadActive(source.status) && last?.status === 'done'
+      && last.checkpoint?.sessionId === source.sessionId && last.execution?.accountId === source.accountId
+      && last.execution?.sessionGeneration === (source.sessionGeneration ?? 0) ? last.checkpoint : undefined;
     const prompt = sideQuestionPrompt(messages, question.trim());
     const controller = new AbortController();
     const pending: Pending = { controller, requestId, timer: setTimeout(() => {
@@ -67,7 +71,7 @@ export class SideQuestions {
       let answer: string | null = null, error: string | null = null;
       try {
         answer = await driver.sideQuestion!({
-          thread: source, provider, question: question.trim(), prompt,
+          thread: source, provider, account, checkpoint, question: question.trim(), prompt,
           accountEnv: this.#core.accounts.accountEnv(account, provider, source), signal: controller.signal,
           spawnChild: this.threads.contexts.leasedSpawnChild(threadId, provider),
           log: (level, message) => this.#core.log(level, message),

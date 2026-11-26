@@ -39,18 +39,18 @@ individual switches.
 
 ## What each agent can do in Boite
 
-| Agent | Attach images | Plan mode | Asks before acting |
-| --- | --- | --- | --- |
-| Claude Code | Yes | Yes | Yes |
-| Codex | Yes | Yes | Yes |
-| OpenCode 2 | Yes | Yes | Yes |
-| OpenCode 1 (obsolete) | No | Yes | Yes |
-| Muse Code | Yes | Yes | Yes |
-| Antigravity | Yes | No | Yes |
-| Grok | No | Yes | Yes |
-| Hermes Agent | Yes | No | Yes |
-| Mistral Vibe | Yes | No | Yes |
-| pi | On models that read images | No | No |
+| Agent | Attach images | Plan mode | Asks before acting | Automatic titles | Side questions | Native fork and rewind |
+| --- | --- | --- | --- | --- | --- | --- |
+| Claude Code | Yes | Yes | Yes | Yes | Yes | Yes |
+| Codex | Yes | Yes | Yes | Yes | No | Yes |
+| OpenCode 2 | Yes | Yes | Yes | No | No | No |
+| OpenCode 1 (obsolete) | No | Yes | Yes | No | No | No |
+| Muse Code | Yes | Yes | Yes | No | No | No |
+| Antigravity | Yes | No | Yes | No | No | No |
+| Grok | No | Yes | Yes | No | No | No |
+| Hermes Agent | Yes | No | Yes | No | No | No |
+| Mistral Vibe | Yes | No | Yes | No | No | No |
+| pi | On models that read images | No | No | Yes | Yes | Yes |
 
 - On a pi model that takes text only, you can still attach other files. If
   you switch to that model with an image in your draft, remove the image or
@@ -59,6 +59,8 @@ individual switches.
   changes anything.
 - Asks before acting: the agent requests permission in the chat before it runs
   a command or edits a file. pi never asks.
+- Native fork and rewind can resume the agent's saved session at a turn
+  boundary. Other cuts carry the retained conversation into a new session.
 
 When Antigravity starts helpers (`/swarm` or its own subagents) and pauses to
 wait for them, the conversation keeps working until they report and Antigravity
