@@ -335,7 +335,7 @@ function codeFence(text: string, language = ''): string {
   let longest = 2;
   for (const match of text.matchAll(/`+/g)) longest = Math.max(longest, match[0].length);
   const fence = '`'.repeat(longest + 1);
-  return `${fence}${language}\n${text}\n${fence}`;
+  return `${fence}${language}\n${text.endsWith('\n') ? text : `${text}\n`}${fence}`;
 }
 
 function markdownContent(content: Content): string {

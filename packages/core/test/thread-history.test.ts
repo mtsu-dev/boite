@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
-import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, MESSAGE_PAGE_MAX_BYTES, MESSAGE_SENT_MAX_BYTES, RPC_MAX_FRAME_BYTES, type Message } from '@boite/contracts';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { extractToolPatches, INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, MESSAGE_PAGE_MAX_BYTES, MESSAGE_SENT_MAX_BYTES, RPC_MAX_FRAME_BYTES, type Message } from '@boite/contracts';
 import { echoThread, startTestCore } from './harness';
 import { thrown } from './settle.ts';
 
@@ -337,5 +340,32 @@ test('messages.toolPart with diffsOnly and messages.list with omitThinking keep 
     expect(withoutTools.messages[0]?.parts).toEqual([{ type: 'text', text: 'Still running' }]);
     const withoutRunning = await client.call('threads.get', { threadId, limit: 1, ...light, omitTools: 'running' });
     expect(withoutRunning.messages[0]?.parts.map(part => part.type === 'tool' ? part.toolId : part.type)).toEqual(['text', 'done-edit']);
+
+    // A real `git diff --binary` survives `diffsOnly` projection + extraction and still passes `git apply --check`.
+    const repo = mkdtempSync(join(tmpdir(), 'boite-binpatch-'));
+    try {
+      const git = (args: string[], input?: string) => Bun.spawnSync(['git', ...args], {
+        cwd: repo, stdin: input !== undefined ? new TextEncoder().encode(input) : undefined, stdout: 'pipe', stderr: 'pipe',
+      });
+      expect(git(['init', '-q']).exitCode).toBe(0);
+      writeFileSync(join(repo, 'logo.bin'), new Uint8Array([0, 1, 2, 3, 255, 10, 20, 30]));
+      expect(git(['add', 'logo.bin']).exitCode).toBe(0);
+      expect(git(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-q', '-m', 'init']).exitCode).toBe(0);
+      writeFileSync(join(repo, 'logo.bin'), new Uint8Array([0, 1, 2, 99, 255, 10, 20, 30, 40]));
+      const generated = git(['diff', '--binary']);
+      expect(generated.exitCode).toBe(0);
+      const binaryDiff = generated.stdout.toString();
+      expect(git(['checkout', '--', 'logo.bin']).exitCode).toBe(0);
+
+      harness.core.journal.putMessage({
+        id: 'bin-diff', threadId, turnId: 'heavy-turn', role: 'assistant', state: 'complete', createdAt: 103,
+        parts: [{ type: 'tool', toolId: 'bin-cmd', name: 'Bash', status: 'done', input: { command: 'git diff --binary' }, output: `log before\n${binaryDiff}log after\n` }],
+      });
+      const projectedBin = await client.call('messages.toolPart', { threadId, messageId: 'bin-diff', toolId: 'bin-cmd', diffsOnly: true });
+      const extracted = extractToolPatches(projectedBin.part.output);
+      expect(extracted.patches).toHaveLength(1);
+      const check = git(['apply', '--check'], extracted.patches[0]!);
+      expect(check.exitCode).toBe(0);
+    } finally { rmSync(repo, { recursive: true, force: true }); }
   } finally { await harness.stop(); }
 });

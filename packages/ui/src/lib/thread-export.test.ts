@@ -409,8 +409,8 @@ test('patch extraction stays linear on unclosed Begin Patch headers, ignores unc
   expect(projected.output).toBe(`${headerOnly}\n\n${realPatch}`);
   expect(extractToolPatches(projected.output).patches).toEqual([headerOnly, realPatch]);
 
-  // git diff --binary preserves its GIT binary patch hunks without absorbing trailing logs.
-  const binaryPatch = [
+  // git diff --binary preserves its GIT binary patch hunks and trailing blank line separator across projection and exports.
+  const binaryPatch = `${[
     'diff --git a/logo.png b/logo.png',
     'index 1234567..89abcdef 100644',
     'GIT binary patch',
@@ -419,10 +419,32 @@ test('patch extraction stays linear on unclosed Begin Patch headers, ignores unc
     '',
     'literal 0',
     'HcmV?d00001',
-  ].join('\n');
-  const binOut = extractToolPatches(`before\n${binaryPatch}\n\ntrailing diagnostic`);
+  ].join('\n')}\n\n`;
+  const binOut = extractToolPatches(`before\n${binaryPatch}trailing diagnostic`);
   expect(binOut.patches).toEqual([binaryPatch]);
   expect(binOut.rest).toContain('trailing diagnostic');
+  const binTool = {
+    type: 'tool' as const, toolId: 't-bin', name: 'Bash', status: 'done' as const,
+    input: { command: 'git diff --binary' }, output: `before\n${binaryPatch}trailing diagnostic`,
+  };
+  const binProjected = projectToolDiffs(binTool);
+  expect(binProjected.output).toBe(binaryPatch);
+  expect(extractToolPatches(binProjected.output).patches).toEqual([binaryPatch]);
+  const binMsg: Message = { ...messages[1]!, id: 'm-bin', parts: [binProjected] };
+  const binMd = exportThreadMarkdown(thread, [binMsg], { ...clean, includeDiffs: true });
+  const mdFence = new MarkdownIt('commonmark').parse(binMd, {}).find(token => token.type === 'fence');
+  expect(mdFence?.content).toBe(binaryPatch);
+  const binHtml = exportThreadHtml(thread, [binMsg], { ...clean, includeDiffs: true });
+  const htmlCode = new DOMParser().parseFromString(binHtml, 'text/html').querySelector('code.language-diff');
+  expect(htmlCode?.textContent).toBe(binaryPatch);
+
+  // Valid Codex apply_patch forms: first hunk without @@, empty context line, and blank line after *** End of File.
+  const noHunkHeaderPatch = '*** Begin Patch\n*** Update File: no-at.ts\n context\n-old\n+new\n*** End Patch';
+  expect(extractToolPatches(`log\n${noHunkHeaderPatch}\nend`).patches).toEqual([noHunkHeaderPatch]);
+  const emptyContextAndEofBlank = '*** Begin Patch\n*** Update File: eof.ts\n@@\n first\n\n-old\n+new\n*** End of File\n\n*** End Patch';
+  expect(extractToolPatches(`log\n${emptyContextAndEofBlank}\nend`).patches).toEqual([emptyContextAndEofBlank]);
+  const eofThenDiagnostic = '*** Begin Patch\n*** Update File: eof.ts\n@@\n-old\n+new\n*** End of File\nerror: trailing log\n*** End Patch';
+  expect(extractToolPatches(eofThenDiagnostic).patches).toEqual([]);
 
   // Diagnostic text wrapped in *** Begin Patch ... *** End Patch is rejected as non-patch log text.
   const fakePatch = '*** Begin Patch\nerror: malformed patch syntax\n*** End Patch';

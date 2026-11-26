@@ -267,17 +267,19 @@ function binaryPatchEndOffset(value: string, start: number): number {
     let cur = section.next;
     let bodyEnd = section.next;
     let sawData = false;
+    let terminated = false;
     for (; ;) {
       const line = lineAt(value, cur);
       if (!line) { cur = value.length; break; }
-      if (line.text === '') { cur = line.next; break; }
+      if (line.text === '') { cur = line.next; terminated = true; break; }
       if (!GIT_BASE85_LINE.test(line.text)) return lastValid;
       sawData = true;
       cur = line.next;
       bodyEnd = cur;
     }
     if (!sawData) return lastValid;
-    lastValid = bodyEnd;
+    // Preserve the terminating blank line required by `git apply` for binary hunks.
+    lastValid = terminated ? cur : bodyEnd;
     pos = cur;
   }
   return lastValid;
@@ -287,7 +289,7 @@ function binaryPatchEndOffset(value: string, start: number): number {
 function isValidApplyPatch(value: string, from: number, end: number): boolean {
   let pos = from;
   let files = 0;
-  let mode: null | 'add' | 'delete' | 'update-head' | 'update-hunk' = null;
+  let mode: null | 'add' | 'delete' | 'update-head' | 'update-hunk' | 'update-eof' = null;
   let moved = false;
   let sawHunkLine = false;
   while (pos < end) {
@@ -316,9 +318,16 @@ function isValidApplyPatch(value: string, from: number, end: number): boolean {
         moved = true;
         continue;
       }
+      if (text === '') continue;
       if (text === '@@' || text.startsWith('@@ ')) {
         mode = 'update-hunk';
         sawHunkLine = false;
+        continue;
+      }
+      const prefix = text[0];
+      if (prefix === ' ' || prefix === '+' || prefix === '-') {
+        mode = 'update-hunk';
+        sawHunkLine = true;
         continue;
       }
       return false;
@@ -331,13 +340,18 @@ function isValidApplyPatch(value: string, from: number, end: number): boolean {
       }
       if (text === '*** End of File') {
         if (!sawHunkLine) return false;
+        mode = 'update-eof';
         continue;
       }
       const prefix = text[0];
-      if (prefix === ' ' || prefix === '+' || prefix === '-') {
+      if (text === '' || prefix === ' ' || prefix === '+' || prefix === '-') {
         sawHunkLine = true;
         continue;
       }
+      return false;
+    }
+    if (mode === 'update-eof') {
+      if (text.trim() === '') continue;
       return false;
     }
     return false;
@@ -404,8 +418,11 @@ function extractPatches(value: string | null | undefined, keepRest: boolean): { 
     const end = patchEndOffset(value, start);
     if (end === start) continue;
     if (keepRest && start > cursor) rest.push(value.slice(cursor, start));
-    const slice = value.slice(start, end).replace(/\r?\n$/, '');
-    patches.push(slice.includes('\r') ? slice.replace(/\r\n/g, '\n') : slice);
+    const raw = value.slice(start, end);
+    const normalized = raw.includes('\r') ? raw.replace(/\r\n/g, '\n') : raw;
+    // Keep the trailing blank line (`\n\n`) that terminates a `GIT binary patch` hunk.
+    const slice = normalized.endsWith('\n\n') ? normalized : normalized.replace(/\n$/, '');
+    patches.push(slice);
     cursor = end;
     PATCH_START.lastIndex = end;
   }
