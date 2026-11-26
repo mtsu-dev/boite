@@ -164,12 +164,13 @@ test('retrying clipboard copy reuses the fetched export without re-reading histo
   expect(history).toHaveBeenCalledTimes(1);
 });
 
-test('desktop download shows the saved path in the dialog', async ({ app: _app }) => {
+test('desktop download shows the saved path in the dialog and re-reads fresh content on a second download', async ({ app: _app }) => {
   onTestFinished(mockDialogMethods());
   const invoke = vi.fn().mockResolvedValue({ path: '/home/user/Downloads/trace.md', opened: false });
   vi.stubGlobal('__TAURI_INTERNALS__', { invoke });
   onTestFinished(() => { vi.unstubAllGlobals(); });
   await store.open('t-trace');
+  const history = vi.spyOn(store, 'threadExportMessages');
   query<HTMLButtonElement>(trigger).click();
   const item = '[data-testid=thread-menu-trigger-menu] [data-value=export-thread]';
   await waitFor(() => !!document.querySelector(item));
@@ -178,4 +179,9 @@ test('desktop download shows the saved path in the dialog', async ({ app: _app }
   button('Download').click();
   await waitFor(() => query(dialog).querySelector('[role=status]')?.textContent?.includes('/home/user/Downloads/trace.md') === true);
   expect(document.querySelector<HTMLDialogElement>(dialog)?.open).toBe(true);
+  expect(history).toHaveBeenCalledTimes(1);
+  // A second download after the conversation mutates must re-read instead of reusing a stale export.
+  button('Download').click();
+  await waitFor(() => invoke.mock.calls.length === 2);
+  expect(history).toHaveBeenCalledTimes(2);
 });

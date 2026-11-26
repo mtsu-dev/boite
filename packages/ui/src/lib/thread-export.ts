@@ -372,9 +372,9 @@ export function exportThreadHtml(thread: ThreadSummary, messages: readonly Messa
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>${title}</title>
 <style>
-  :root { color-scheme: light dark; --surface: #fff; --ink: #1d1d24; --muted: #545461; --line: #dcdce4; --code: #f3f3f7; --link: #4e368c; --danger: #b42318; }
+  :root { color-scheme: light dark; --surface: #fff; --ink: #1d1d24; --muted: #545461; --line: #dcdce4; --code: #f3f3f7; --danger: #b42318; }
   @media (prefers-color-scheme: dark) {
-    :root { --surface: #17171c; --ink: #eeeef2; --muted: #b8b8c4; --line: #3a3a44; --code: #24242c; --link: #c9b7ff; --danger: #fda29b; }
+    :root { --surface: #17171c; --ink: #eeeef2; --muted: #b8b8c4; --line: #3a3a44; --code: #24242c; --danger: #fda29b; }
   }
   body { margin: 0; background: var(--surface); color: var(--ink); font: 16px/1.65 system-ui, sans-serif; }
   main { max-width: 74ch; margin: auto; padding: clamp(1rem, 4vw, 3rem); overflow-wrap: anywhere; }
@@ -391,9 +391,8 @@ export function exportThreadHtml(thread: ThreadSummary, messages: readonly Messa
   pre { overflow: auto; }
   table { display: block; overflow: auto; border-collapse: collapse; }
   th, td { border: 1px solid var(--line); padding: .3rem .6rem; }
-  a { color: var(--link); }
   @media print {
-    :root { --surface: #fff; --ink: #000; --muted: #444; --line: #ccc; --code: #f5f5f5; --link: #000; --danger: #900; }
+    :root { --surface: #fff; --ink: #000; --muted: #444; --line: #ccc; --code: #f5f5f5; --danger: #900; }
     main { max-width: none; padding: 0; }
     section > header { break-after: avoid; }
     pre, details { break-inside: avoid; }
@@ -451,7 +450,7 @@ export async function downloadExport(filename: string, content: string, mimeType
   try {
     browserDownload(url, filename);
   } finally {
-    window.setTimeout(() => revoke(url), 1000);
+    window.setTimeout(() => revoke(url), 60_000);
   }
   return {};
 }

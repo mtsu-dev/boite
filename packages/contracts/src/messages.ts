@@ -522,6 +522,8 @@ export interface MessagesRpcMethods {
    * refused by name. `offset` is the position of the page's first message,
    * left out by cores without that feature.
    * `maxBytes` lowers the byte budget as it does for `threads.get`.
+   * `fullText` keeps prose whole while leaving heavy tool inputs, documents
+   * and images deferred as `compactToolParts` does.
    */
   'messages.list': {
     params: { threadId: ThreadId; before?: MessageId; after?: MessageId; from?: number; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean; fullText?: boolean };

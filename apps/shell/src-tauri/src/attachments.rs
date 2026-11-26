@@ -5,7 +5,7 @@
 //! Opening runs the system's default application, so only inert documents and
 //! media are opened; anything else is shown selected in its folder instead. An
 //! agent, local or remote, can therefore not run a program through a click.
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use tauri::ipc::{InvokeBody, Request};
@@ -81,9 +81,20 @@ pub(crate) fn openable(path: &Path) -> bool {
 }
 
 fn same_bytes(path: &Path, expected: &[u8]) -> bool {
-    let Ok(mut file) = File::open(path) else { return false; };
-    let Ok(meta) = file.metadata() else { return false; };
+    let Ok(meta) = fs::symlink_metadata(path) else { return false; };
     if !meta.is_file() || meta.len() != expected.len() as u64 {
+        return false;
+    }
+    let mut open = OpenOptions::new();
+    open.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        open.custom_flags(libc::O_NONBLOCK);
+    }
+    let Ok(mut file) = open.open(path) else { return false; };
+    let Ok(opened) = file.metadata() else { return false; };
+    if !opened.is_file() || opened.len() != expected.len() as u64 {
         return false;
     }
     let mut buffer = [0u8; COMPARE_CHUNK_BYTES];
@@ -263,6 +274,24 @@ mod tests {
         *big.last_mut().unwrap() = b'b';
         assert_eq!(save_into(&root, "export.md", &big).unwrap(), root.join("export (2).md"));
         assert_eq!(fs::read(root.join("shot (2).png")).unwrap(), b"two");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saving_skips_named_pipe_without_blocking() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = std::env::temp_dir().join(format!("boite-attachments-fifo-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let fifo = root.join("export.md");
+        let c_fifo = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c_fifo.as_ptr(), 0o600) }, 0);
+        let saved = save_into(&root, "export.md", b"# Hello\n").unwrap();
+        assert_eq!(saved, root.join("export (2).md"));
+        assert_eq!(fs::read(&saved).unwrap(), b"# Hello\n");
         fs::remove_dir_all(root).unwrap();
     }
 

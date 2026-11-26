@@ -9,6 +9,7 @@
   import { mobileOverlay } from '../lib/mobile-history';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
+  import { activeLocale } from '../lib/i18n.svelte';
   import { downloadExport, exportFilename, exportThreadHtml, exportThreadMarkdown, type ExportOptions, type ExportProgress } from '../lib/thread-export';
   import PrivateText from './PrivateText.svelte';
 
@@ -20,7 +21,7 @@
   let progress = $state<ExportProgress | null>(null);
   let failure = $state('');
   let savedPath = $state('');
-  let prepared: { key: string; content: string } | null = null;
+  let retryCopy: { key: string; content: string } | null = null;
   let releaseHistory: (() => void) | null = null;
   const controller = new AbortController();
   const overlay = new Closing();
@@ -30,6 +31,9 @@
     if (!progress) return strings.threadExport.loading;
     if (progress.phase === 'tools' && progress.total) {
       return fill(strings.threadExport.loadingTools, { done: String(progress.done), total: String(progress.total) });
+    }
+    if (progress.phase === 'messages' && progress.total) {
+      return fill(strings.threadExport.loadingMessages, { done: String(progress.done), total: String(progress.total) });
     }
     if (progress.phase === 'pages' && progress.done > 1) {
       return fill(strings.threadExport.loadingPages, { count: String(progress.done) });
@@ -84,27 +88,29 @@
   }
 
   function cacheKey(selected: ExportOptions): string {
+    const summary = store.threads.find(entry => entry.id === thread.id) ?? thread;
     const open = store.openThread?.id === thread.id ? store.openThread : null;
-    const live = open
-      ? `${open.messages.length}:${open.messages.at(-1)?.id ?? ''}:${open.messages.at(-1)?.parts.length ?? 0}`
-      : '';
-    return JSON.stringify([selected, thread.updatedAt, live]);
+    const tail = open?.messages.at(-1);
+    const parts = tail?.parts.map(part => {
+      if (part.type === 'text') return `t:${part.text.length}:${part.displayText?.length ?? 0}`;
+      if (part.type === 'thinking') return `k:${part.text.length}`;
+      if (part.type === 'tool') return `o:${part.toolId}:${part.status}:${part.output?.length ?? 0}:${part.documents?.length ?? 0}`;
+      if (part.type === 'error') return `e:${part.message.length}`;
+      return part.type;
+    }).join(',') ?? '';
+    return JSON.stringify([selected, activeLocale(), summary.updatedAt, open?.status ?? '', open?.messages.length ?? 0, tail?.id ?? '', tail?.state ?? '', parts]);
   }
 
   async function buildContent(selected: ExportOptions): Promise<string> {
-    const key = cacheKey(selected);
-    if (prepared?.key === key) return prepared.content;
     progress = null;
     const messages = await store.threadExportMessages(thread.id, selected, controller.signal, next => { progress = next; });
     controller.signal.throwIfAborted();
     const project = store.projects.find(entry => entry.id === thread.projectId);
     const model = store.modelsOf(thread.providerId, thread.accountId).find(entry => entry.id === thread.model);
     const meta = { projectName: project ? projectName(project) : null, modelName: model?.name };
-    const content = selected.format === 'markdown'
+    return selected.format === 'markdown'
       ? exportThreadMarkdown(thread, messages, selected, meta)
       : exportThreadHtml(thread, messages, selected, meta);
-    prepared = { key, content };
-    return content;
   }
 
   async function exportConversation(copy: boolean): Promise<void> {
@@ -118,15 +124,17 @@
     const markdown = selected.format === 'markdown';
     try {
       if (copy) {
-        // When already built for the current conversation state, copy directly inside this click gesture.
-        if (prepared?.key === key) {
-          if (!await store.copy(prepared.content, { reportFailure: false, within: dialog })) {
+        // After a failed clipboard write, retry synchronously inside the next click gesture if nothing changed.
+        if (retryCopy?.key === key) {
+          if (!await store.copy(retryCopy.content, { reportFailure: false, within: dialog })) {
             failure = strings.errors.clipboard;
             return;
           }
+          retryCopy = null;
           close();
           return;
         }
+        retryCopy = null;
         const pending = buildContent(selected);
         // Safari requires clipboard writes to start synchronously during the user gesture.
         const clipboard = navigator.clipboard;
@@ -143,11 +151,13 @@
         }
         const content = await pending;
         if (!await store.copy(content, { reportFailure: false, within: dialog })) {
+          retryCopy = { key: cacheKey(selected), content };
           failure = strings.errors.clipboard;
           return;
         }
         close();
       } else {
+        retryCopy = null;
         const content = await buildContent(selected);
         const result = await downloadExport(exportFilename(thread.title, selected.format), content, `${markdown ? 'text/markdown' : 'text/html'};charset=utf-8`);
         if (result.cancelled) return;
@@ -231,8 +241,8 @@
   .formats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1); padding: var(--space-1); border-radius: var(--radius-md); background: var(--color-surface-3); }
   .formats label { position: relative; }
   .formats input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-  .formats span { display: grid; place-items: center; min-height: var(--control); padding: 0 var(--space-1); border-radius: var(--radius-sm); text-align: center; }
-  .formats input:checked + span { background: var(--color-accent-soft); }
+  .formats span { display: grid; place-items: center; min-height: var(--control); margin: 0; padding: 0 var(--space-1); border-radius: var(--radius-sm); text-align: center; }
+  .formats input:checked + span { background: var(--color-accent-soft); color: var(--color-foreground); }
   .formats input:focus-visible + span { outline: var(--focus-ring); outline-offset: -2px; }
   .includes { display: grid; margin-top: var(--space-3); }
   .includes label { display: flex; align-items: center; min-height: var(--row); gap: var(--space-2); }

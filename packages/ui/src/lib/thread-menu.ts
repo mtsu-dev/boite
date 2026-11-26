@@ -95,11 +95,12 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
   const loose = group.length ? [] : manageParts(store, thread, options).rows;
   const retitling = store.retitling.includes(thread.id);
   const opening: MenuItem[] = options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }, separator('sep-open')];
+  const canExport = Boolean(options.exportConversation && !thread.councilId);
   const items: MenuItem[] = [
     ...opening,
     ...own,
-    ...(options.exportConversation ? [threadExportItem()] : []),
-    ...(own.length || options.exportConversation ? [separator('sep-thread-tools')] : []),
+    ...(canExport ? [threadExportItem()] : []),
+    ...(own.length || canExport ? [separator('sep-thread-tools')] : []),
     { id: 'rename', label: strings.common.rename, glyph: PencilLine },
     // The title made again sits with the one typed: both name the thread.
     { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
@@ -142,7 +143,7 @@ export function pickThreadAction(store: Store, thread: ThreadSummary, action: st
     case 'rename': view.rename(); return true;
     case 'retitle': void store.retitle(thread.id); return true;
     case 'copy-thread-id': void store.copy(thread.id); return true;
-    case 'export-thread': openThreadExport(store, thread); return true;
+    case 'export-thread': if (!thread.councilId) openThreadExport(store, thread); return true;
     case 'copy': void store.copy(thread.cwd); return true;
     case 'pr': view.refreshPr?.(); return true;
     case 'delete': void deleteThread(store, thread); return true;

@@ -306,8 +306,10 @@ test('multi-paragraph details and unclosed HTML blocks keep CommonMark structure
 
 test('edit metadata, trailing-newline diffs, failed tool diffs, errors and standalone HTML cleanup behave consistently', () => {
   const trailingDiff = { kind: 'diff' as const, path: 'newline.ts', oldText: 'const a = 1;', newText: 'const a = 1;\n' };
+  const addedNewline = { kind: 'diff' as const, path: 'empty-add.ts', oldText: '', newText: '\n' };
+  const removedNewline = { kind: 'diff' as const, path: 'empty-del.ts', oldText: '\n', newText: '' };
   const msg: Message = { ...messages[1]!, parts: [
-    { type: 'tool', toolId: 'edit-path', name: 'Edit', status: 'done', input: { file_path: 'src/app.ts', old_string: 'a', new_string: 'b' }, output: null, documents: [trailingDiff] },
+    { type: 'tool', toolId: 'edit-path', name: 'Edit', status: 'done', input: { file_path: 'src/app.ts', old_string: 'a', new_string: 'b' }, output: null, documents: [trailingDiff, addedNewline, removedNewline] },
     { type: 'tool', toolId: 'failed-patch', name: 'Bash', status: 'error', input: 'git diff', output: '--- bad.ts\n+++ bad.ts\n@@ -1 +1 @@\n-x\n+y' },
     { type: 'error', message: 'Provider timeout' },
     { type: 'text', text: 'See `thr_abcdef123456` and [docs](https://example.com/docs).' },
@@ -320,6 +322,8 @@ test('edit metadata, trailing-newline diffs, failed tool diffs, errors and stand
   const diffsMd = exportThreadMarkdown(thread, [msg], { ...clean, includeDiffs: true });
   expect(diffsMd).toContain('--- newline.ts\n+++ newline.ts');
   expect(diffsMd).toContain('\\ No newline at end of file');
+  expect(diffsMd).toContain('--- empty-add.ts\n+++ empty-add.ts\n@@ -0,0 +1,1 @@\n+');
+  expect(diffsMd).toContain('--- empty-del.ts\n+++ empty-del.ts\n@@ -1,1 +0,0 @@\n-');
   expect(diffsMd).not.toContain('bad.ts');
 
   const html = exportThreadHtml(thread, [msg], { ...clean, includeTools: true });

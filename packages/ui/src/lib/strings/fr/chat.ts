@@ -16,6 +16,7 @@ export const fr: Translation = {
     download: 'Télécharger',
     loading: 'Lecture de la conversation...',
     loadingPages: 'Lecture de la conversation ({count} pages)...',
+    loadingMessages: 'Lecture des messages ({done}/{total})...',
     loadingTools: 'Lecture des outils ({done}/{total})...',
     savedTo: 'Enregistré dans {path}',
     failed: 'Impossible d’exporter la conversation',

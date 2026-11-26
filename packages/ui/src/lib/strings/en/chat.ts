@@ -14,6 +14,7 @@ export const strings = {
     download: 'Download',
     loading: 'Reading conversation...',
     loadingPages: 'Reading conversation ({count} pages)...',
+    loadingMessages: 'Reading messages ({done}/{total})...',
     loadingTools: 'Reading tool calls ({done}/{total})...',
     savedTo: 'Saved to {path}',
     failed: 'Could not export the conversation',
