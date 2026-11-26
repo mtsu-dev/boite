@@ -192,3 +192,37 @@ test('an enabled file trigger warns when its project is archived or ungranted, a
     expect(element('trigger-form')).toBeNull();
   } finally { await unmount(component); view.close(); }
 });
+
+test('converting an existing webhook trigger to file asks for confirmation before deleting its secret', async ({ ready }) => {
+  const { confirm } = await import('../../lib/confirm.svelte');
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = new AgentsView(store);
+  await view.refresh();
+  const nova = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
+  const { trigger } = await client.call('agents.trigger.save', { value: {
+    agentId: nova.id, source: { kind: 'webhook' }, name: 'Hook to file', prompt: 'Handle event.', enabled: true, cooldownSeconds: 60,
+  } });
+  await view.refresh();
+  const component = mount(AgentTriggers, { target: document.body, props: { view, agentId: nova.id } });
+  const latest = async () => (await client.call('agents.snapshot', {})).triggers!.find(row => row.id === trigger.id)!;
+  try {
+    flushSync(() => element('trigger-edit').click());
+    flushSync(() => element('trigger-kind-file').click());
+    flushSync(() => element('trigger-save').click());
+    await vi.waitFor(() => expect(confirm.current?.title).toBe('Remove the webhook secret?'));
+    confirm.answer(false);
+    await vi.waitFor(() => expect(confirm.current).toBeNull());
+    expect((await latest()).hasSecret).toBe(true);
+    expect(element('trigger-form')).not.toBeNull();
+
+    flushSync(() => element('trigger-save').click());
+    await vi.waitFor(() => expect(confirm.current?.title).toBe('Remove the webhook secret?'));
+    confirm.answer(true);
+    await vi.waitFor(async () => expect((await latest()).source.kind).toBe('file'));
+    expect((await latest()).hasSecret).toBe(false);
+  } finally {
+    if (confirm.current) confirm.answer(false);
+    await unmount(component);
+    view.close();
+  }
+});

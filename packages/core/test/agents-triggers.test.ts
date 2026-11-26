@@ -1242,15 +1242,18 @@ test('repeated scheduler ticks while queued do not bump trigger revision, and we
   for (let i = 0; i < 5; i++) h.core.workforce.triggers.tick();
   expect(read(trigger).revision).toBe(revBeforeTicks);
 
-  // During cooldown while busy -> 429; after 1s cooldown while still busy -> 503 with Retry-After: 10.
+  // During cooldown while busy -> 429; after 1s cooldown while still busy -> 409 for duplicate delivery, 503 for new delivery.
   expect((await post('{"step":4}')).status).toBe(429);
   await Bun.sleep(1050);
+  expect((await post('{"step":3}', 'dlv-paused-1')).status).toBe(409);
+  expect(h.core.journal.db.query("SELECT 1 FROM agent_requests WHERE actor = 'trigger-webhook-delivery'").all()).toHaveLength(0);
   const busyPastCooldown = await post('{"step":5}');
   expect(busyPastCooldown.status).toBe(503);
   expect(busyPastCooldown.headers.get('retry-after')).toBe('10');
 
   driver.release();
   await waitFor(() => read(trigger).lastOutcome === 'fired' && settled(h, threadId));
+  expect(h.core.journal.db.query("SELECT 1 FROM agent_requests WHERE actor = 'trigger-webhook-delivery'").all()).toHaveLength(1);
 });
 
 test('a queued test across restart never locks out real webhooks, and a test never shortens a real webhook cooldown', async () => {

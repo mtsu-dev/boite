@@ -113,7 +113,9 @@ the event that should wake it and say what to do when it wakes.
   or leave them blank for all source paths. Boite groups changes before
   waking the mochi, skips ignored, dependency, build and Git folders, and
   ignores changes in that project while one of that mochi's file-trigger turns
-  on that project is running.
+  on that project is running (edits during chat, routine or pull-request turns
+  still trigger, and two mochis watching the same project can wake each other up
+  to their cooldown and daily budget).
   The trigger shows when Boite cannot watch the project (for example, if it
   has more than 512 watchable folders) and is retrying.
 - **Pull requests** listens to pull requests that Boite already watches in a

@@ -34,6 +34,8 @@ type PendingWake = {
   fileWatch?: FileWatch;
   deferred?: true;
   test?: true;
+  deliveryReceiptId?: string;
+  digestKey?: string;
 };
 
 /** Resolves a folder's canonical path, following broken symlinks and walking up missing tail segments so offline or missing folders still anchor cleanly. */
@@ -283,32 +285,32 @@ export class AgentTriggers {
       if (latestSecret !== secret) return new Response(null, { status: 401 });
       const digestKey = !shared && body.digest ? `${id}:${body.digest.toString('hex')}` : null;
       const now = Date.now();
-      if (digestKey && (this.#seenDigests.get(digestKey) ?? 0) > now) {
+      const pending = this.#pending.get(id);
+      if (digestKey && ((this.#seenDigests.get(digestKey) ?? 0) > now || pending?.digestKey === digestKey)) {
         return new Response(null, { status: 409, headers: { 'cache-control': 'no-store' } });
       }
       const cooldownWait = this.#webhookCooldown(current, now);
       if (cooldownWait > 0) return new Response(null, { status: 429, headers: { 'retry-after': String(Math.ceil(cooldownWait / 1000)) } });
-      if (this.#pending.has(id)) return new Response(null, { status: 503, headers: { 'retry-after': '10' } });
       const rawDelivery = (request.headers.get('x-github-delivery') ?? request.headers.get('idempotency-key'))?.trim() ?? null;
       const deliveryId = rawDelivery && /^[A-Za-z0-9_.:-]{1,128}$/.test(rawDelivery) ? rawDelivery : null;
       const receiptId = deliveryId ? createHash('sha256').update(JSON.stringify([id, deliveryId])).digest('hex') : null;
-      if (receiptId && this.#core.journal.db.query('SELECT 1 FROM agent_requests WHERE actor = ? AND request_id = ?').get('trigger-webhook-delivery', receiptId)) {
+      if (receiptId && (pending?.deliveryReceiptId === receiptId
+        || this.#core.journal.db.query('SELECT 1 FROM agent_requests WHERE actor = ? AND request_id = ?').get('trigger-webhook-delivery', receiptId))) {
         return new Response(null, { status: 409, headers: { 'cache-control': 'no-store' } });
       }
+      if (pending) return new Response(null, { status: 503, headers: { 'retry-after': '10' } });
       const payload = new TextDecoder().decode(body.preview).replaceAll(secret, '[redacted]');
       const eventName = request.headers.get('x-github-event');
-      const result = this.#dispatch(current, {
+      this.#dispatch(current, {
         event: {
           kind: 'webhook',
           summary: payload.slice(0, WEBHOOK_SUMMARY_CHARS),
           ...(eventName && /^[a-z_]{1,60}$/i.test(eventName) ? { eventName } : {}),
         },
         requestId: newId('trigger-'),
+        ...(receiptId ? { deliveryReceiptId: receiptId } : {}),
+        ...(digestKey ? { digestKey } : {}),
       }, now);
-      if (result.outcome === 'fired' || result.outcome === 'queued') {
-        if (receiptId) this.#records.command('trigger-webhook-delivery', receiptId, null, () => null);
-        if (digestKey) this.#rememberDigest(digestKey, now);
-      }
       return new Response(null, { status: 202, headers: { 'cache-control': 'no-store' } });
     } finally {
       release();
@@ -625,7 +627,11 @@ export class AgentTriggers {
       if (wake.test) this.#recordTestAt(trigger, stamp);
       else {
         this.#clearTestAt(trigger.id);
-        if (wake.event.kind === 'webhook') this.#clearWebhookAt(trigger.id);
+        if (wake.event.kind === 'webhook') {
+          this.#clearWebhookAt(trigger.id);
+          if (wake.deliveryReceiptId) this.#records.command('trigger-webhook-delivery', wake.deliveryReceiptId, null, () => null);
+          if (wake.digestKey) this.#rememberDigest(wake.digestKey, stamp);
+        }
       }
     } else if (!wake.test && wake.event.kind === 'webhook' && !fromTick) {
       this.#recordWebhookAt(trigger.id, now);

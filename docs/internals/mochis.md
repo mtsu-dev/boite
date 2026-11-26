@@ -1053,9 +1053,10 @@ the trigger's configuration has stayed the same since that revision.
   interfere), an already pending real wake
   past cooldown 503 with `Retry-After: 10`, and a replayed delivery 409.
   Duplicate `X-GitHub-Delivery`
-  or `Idempotency-Key` values are rejected via durable receipts (recorded only
-  when a delivery wakes or queues the mochi so a skipped delivery can be
-  redelivered manually once unpaused), and every
+  or `Idempotency-Key` values are rejected via durable receipts (written when a
+  turn actually starts, while an in-memory queued wake deduplicates its own
+  delivery id until then so a skipped delivery or one lost to a restart before
+  execution stays redeliverable), and every
   HMAC-signed request is also checked against a bounded 15-minute digest cache
   so unsigned delivery headers cannot bypass replay protection (identical signed
   bodies within 15 minutes return 409).
@@ -1069,7 +1070,7 @@ the trigger's configuration has stayed the same since that revision.
   reverse proxy forwarding untrusted traffic to loopback must strip
   `Tailscale-Funnel-Request`. Remote and Funnel requests also share the
   server's per-source refusal budget (`Refusals`, counting 400, 401, 404, 405,
-  408 and 413 responses) and are tracked in
+  408, 413 and 429 responses) and are tracked in
   `peerRequests` so core shutdown drains in-flight deliveries cleanly. Only a
   bounded, quoted payload excerpt and untrusted `X-GitHub-Event` label reach
   the mochi. Use HTTPS when exposing the route.
