@@ -38,10 +38,15 @@ baseRef{target{... on Commit{oid statusCheckRollup{contexts(last:100){checkRunCo
 commits(last:1){nodes{commit{statusCheckRollup{state contexts(last:100){checkRunCountsByState{state count} statusContextCountsByState{state count} nodes{... on CheckRun{completedAt} ... on StatusContext{createdAt}}}}}}}
 }}}`;
 
-const CHECK_NODES = (required: string) => `contexts(last:100){nodes{__typename
-... on CheckRun{name status conclusion detailsUrl startedAt completedAt ${required} checkSuite{workflowRun{workflow{name}}}}
-... on StatusContext{context state targetUrl createdAt ${required}}
-}}`;
+const CHECK_FIELDS = `nodes{__typename
+... on CheckRun{name status conclusion detailsUrl startedAt completedAt %REQ% checkSuite{workflowRun{workflow{name}}}}
+... on StatusContext{context state targetUrl createdAt %REQ%}
+}`;
+
+const CHECK_NODES = (required: string) => {
+  const fields = CHECK_FIELDS.replaceAll('%REQ%', required);
+  return `contexts(first:100){${fields}} latestContexts:contexts(last:100){${fields}}`;
+};
 
 /** The detailed read, made only when the fingerprint moved: the checks one by one, with whether the base branch requires each. */
 export const DETAIL_QUERY = `query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){pullRequest(number:$number){
@@ -199,7 +204,8 @@ export function parseDetail(raw: string): WatchDetail {
 }
 
 function checksOf(commit: Row): { check: WatchCheck; at: string }[] {
-  const nodes = list(contextsOf(commit).nodes).map(row);
+  const rollup = row(commit.statusCheckRollup);
+  const nodes = [...list(row(rollup.contexts).nodes), ...list(row(rollup.latestContexts).nodes)].map(row);
   const runs = new Map<string, { check: WatchCheck; at: string }>();
   for (const node of nodes) {
     let name: string, job: string, status: CheckStatus, conclusion: string, url: string, at: string, createdAt = '', workflow = '', started = '', finished = '';

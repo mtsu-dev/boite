@@ -1143,4 +1143,105 @@ test('a persisted test timestamp does not block a real webhook after core restar
   }
 });
 
+test.skipIf(process.platform === 'win32')('a persisted file-root anchor survives restart to recover a symlinked project and reject redirection', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-trigger-anchor-'));
+  const realDir = join(dataDir, 'real-project');
+  const outsideDir = join(dataDir, 'outside-project');
+  const linkDir = join(dataDir, 'linked-project');
+  mkdirSync(realDir);
+  mkdirSync(outsideDir);
+  symlinkSync(realDir, linkDir);
+  let first: TestCore | undefined;
+  let second: TestCore | undefined;
+  try {
+    first = await startTestCore({ dataDir });
+    const client = await first.connect();
+    const project = await client.call('projects.add', { path: linkDir, name: 'Linked' });
+    const { agent } = await makeAgent(first, client, { projectIds: [project.id] });
+    const { trigger } = await client.call('agents.trigger.save', {
+      value: { agentId: agent.id, source: { kind: 'file', projectId: project.id, patterns: ['*.txt'], debounceMs: 50 }, name: 'Anchored', prompt: 'Watch.', enabled: true, cooldownSeconds: 60 },
+    });
+    await waitFor(() => !first!.core.workforce.records.get('trigger', trigger.id).watchUnavailable);
+    await first.stop();
+    first = undefined;
+
+    // Case 1: symlink temporarily absent across restart recovers on retry when the same target returns.
+    fs.unlinkSync(linkDir);
+    second = await startTestCore({ dataDir });
+    await waitFor(() => second!.core.workforce.records.get('trigger', trigger.id).watchUnavailable === true);
+    symlinkSync(realDir, linkDir);
+    await waitFor(() => {
+      second!.core.workforce.triggers.tick();
+      return !second!.core.workforce.records.get('trigger', trigger.id).watchUnavailable;
+    }, 6000);
+    await second.stop();
+    second = undefined;
+
+    // Case 2: symlink redirected to outside while core is stopped stays rejected after restart and after disable/re-enable.
+    fs.unlinkSync(linkDir);
+    symlinkSync(outsideDir, linkDir);
+    second = await startTestCore({ dataDir });
+    await waitFor(() => second!.core.workforce.records.get('trigger', trigger.id).watchUnavailable === true);
+    const client2 = await second.connect();
+    const current = second.core.workforce.records.get('trigger', trigger.id);
+    const disabled = await client2.call('agents.trigger.save', {
+      id: trigger.id, expectedRevision: current.revision, value: { ...current, enabled: false },
+    });
+    await client2.call('agents.trigger.save', {
+      id: trigger.id, expectedRevision: disabled.trigger.revision, value: { ...disabled.trigger, enabled: true },
+    });
+    await waitFor(() => second!.core.workforce.records.get('trigger', trigger.id).watchUnavailable === true);
+  } finally {
+    await first?.stop();
+    await second?.stop();
+    await removeDir(dataDir);
+  }
+});
+
+test('repeated scheduler ticks while queued do not bump trigger revision, and webhooks enforce 429 on paused and 503 on busy past cooldown', async () => {
+  const { agent, threadId } = await makeAgent(h, owner);
+  const { trigger, secret } = await owner.call('agents.trigger.save', {
+    value: { agentId: agent.id, source: { kind: 'webhook' }, name: 'Throttled', prompt: 'Handle hook.', enabled: true, cooldownSeconds: 1 },
+  });
+  const url = new URL(trigger.webhookPath!, h.url.replace(/^ws/, 'http'));
+  const post = (body: string) => fetch(url, { method: 'POST', headers: { 'x-boite-secret': secret! }, body });
+
+  // Paused mochi skips the wake, records lastOutcomeAt without lastFiredAt, and enforces 429 cooldown.
+  await owner.call('agents.profile.save', { id: agent.id, expectedRevision: agent.revision, value: { ...agent, status: 'paused' } });
+  expect((await post('{"step":1}')).status).toBe(202);
+  const afterPause = read(trigger);
+  expect(afterPause.lastOutcome).toBe('skipped');
+  expect(afterPause.lastFiredAt).toBeNull();
+  expect(afterPause.lastOutcomeAt).toEqual(expect.any(Number));
+  const limitedPaused = await post('{"step":2}');
+  expect(limitedPaused.status).toBe(429);
+  expect(Number(limitedPaused.headers.get('retry-after'))).toBeGreaterThanOrEqual(1);
+
+  // Resume, wait past 1s cooldown, hold the mochi busy, and verify queued tick stability + 503 past cooldown.
+  const latestProfile = h.core.workforce.records.get('profile', agent.id);
+  await owner.call('agents.profile.save', { id: agent.id, expectedRevision: latestProfile.revision, value: { ...latestProfile, status: 'active' } });
+  await Bun.sleep(1050);
+  await owner.call('turns.start', { threadId, prompt: 'manual hold' });
+  await waitFor(() => driver.held.length === 1);
+
+  expect((await post('{"step":3}')).status).toBe(202);
+  const queued = read(trigger);
+  expect(queued.lastOutcome).toBe('queued');
+  expect(queued.lastFiredAt).toBeNull();
+  expect(queued.lastOutcomeAt).toEqual(expect.any(Number));
+  const revBeforeTicks = queued.revision;
+  for (let i = 0; i < 5; i++) h.core.workforce.triggers.tick();
+  expect(read(trigger).revision).toBe(revBeforeTicks);
+
+  // During cooldown while busy -> 429; after 1s cooldown while still busy -> 503 with Retry-After: 10.
+  expect((await post('{"step":4}')).status).toBe(429);
+  await Bun.sleep(1050);
+  const busyPastCooldown = await post('{"step":5}');
+  expect(busyPastCooldown.status).toBe(503);
+  expect(busyPastCooldown.headers.get('retry-after')).toBe('10');
+
+  driver.release();
+  await waitFor(() => read(trigger).lastOutcome === 'fired' && settled(h, threadId));
+});
+
 

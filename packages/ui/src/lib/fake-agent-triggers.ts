@@ -66,8 +66,9 @@ export class FakeAgentTriggers {
     if (normalizedSource.kind === 'file') {
       const trimmed = normalizedSource.patterns.map(pattern => pattern.trim());
       if (!Number.isInteger(normalizedSource.debounceMs) || normalizedSource.debounceMs < 50 || normalizedSource.debounceMs > 60_000
-        || trimmed.length > 20 || new Set(trimmed).size !== trimmed.length
-        || trimmed.some(pattern => !pattern || pattern.length > 160 || /[\\:\x00-\x1f]/.test(pattern) || pattern.split('/').some(part => !part || part === '.' || part === '..') || !validGlob(pattern))) {
+        || normalizedSource.patterns.length > 20 || new Set(trimmed).size !== trimmed.length
+        || normalizedSource.patterns.some(pattern => pattern.length > 160)
+        || trimmed.some(pattern => !pattern || /[\\:\x00-\x1f]/.test(pattern) || pattern.split('/').some(part => !part || part === '.' || part === '..') || !validGlob(pattern))) {
         this.#refuse('source: expected relative patterns and a debounce from 50 to 60000 milliseconds');
       }
       normalizedSource = { ...normalizedSource, patterns: trimmed };
@@ -76,7 +77,7 @@ export class FakeAgentTriggers {
       || normalizedSource.events.some(event => !AGENT_TRIGGER_PR_EVENTS.includes(event)))) this.#refuse('source.events: expected pull request events');
     const name = value.name.trim();
     const prompt = value.prompt.trim();
-    if (!name || name.length > 80 || !prompt || prompt.length > 4000
+    if (!name || value.name.length > 80 || !prompt || value.prompt.length > 4000
       || typeof value.enabled !== 'boolean' || !Number.isInteger(value.cooldownSeconds) || value.cooldownSeconds < 1 || value.cooldownSeconds > 86_400) this.#refuse('trigger: check its name, instructions, enabled status and cooldown');
     if (!previous && this.list().filter(trigger => trigger.agentId === agent.id).length >= AGENT_TRIGGERS_MAX) this.#refuse(`trigger: a mochi may have at most ${AGENT_TRIGGERS_MAX} triggers`);
     const now = Date.now();
@@ -86,7 +87,9 @@ export class FakeAgentTriggers {
       agentId: agent.id, name, prompt, enabled: value.enabled, cooldownSeconds: value.cooldownSeconds,
       source: normalizedSource, hasSecret: webhook, webhookPath: webhook ? AGENT_TRIGGER_WEBHOOK_ROUTE + id : null,
       id, revision, configRevision: revision, createdAt: previous?.createdAt ?? now, updatedAt: now,
-      lastFiredAt: previous?.lastFiredAt ?? null, lastOutcome: previous?.lastOutcome === 'queued' ? 'skipped' : previous?.lastOutcome ?? null,
+      lastFiredAt: previous?.lastFiredAt ?? null,
+      lastOutcome: previous?.lastOutcome === 'queued' ? 'skipped' : previous?.lastOutcome ?? null,
+      lastOutcomeAt: previous?.lastOutcome === 'queued' ? now : previous?.lastOutcomeAt ?? null,
     };
     this.#pendingTests.delete(id);
     this.#put(trigger);
@@ -129,7 +132,7 @@ export class FakeAgentTriggers {
   flush(agentId: string): void {
     for (const id of this.#pendingTests) {
       const trigger = this.#get(id);
-      if (trigger.agentId === agentId) this.#dispatch(trigger, trigger.lastFiredAt);
+      if (trigger.agentId === agentId) this.#dispatch(trigger, null);
     }
   }
 
@@ -141,8 +144,13 @@ export class FakeAgentTriggers {
     const outcome = held ?? (turnId ? 'fired' : 'error');
     if (outcome === 'queued') this.#pendingTests.add(trigger.id);
     else this.#pendingTests.delete(trigger.id);
-    if (trigger.lastOutcome !== outcome || trigger.lastFiredAt !== at) {
-      this.#put({ ...trigger, lastFiredAt: at, lastOutcome: outcome, revision: trigger.revision + 1, updatedAt: Date.now() });
+    const now = Date.now();
+    const nextFiredAt = outcome === 'fired' ? (at ?? now) : (at ?? trigger.lastFiredAt);
+    const nextOutcomeAt = outcome === 'queued' && at === null && trigger.lastOutcome === 'queued'
+      ? (trigger.lastOutcomeAt ?? trigger.lastFiredAt ?? now)
+      : (at ?? now);
+    if (trigger.lastOutcome !== outcome || trigger.lastFiredAt !== nextFiredAt || trigger.lastOutcomeAt !== nextOutcomeAt) {
+      this.#put({ ...trigger, lastFiredAt: nextFiredAt, lastOutcome: outcome, lastOutcomeAt: nextOutcomeAt, revision: trigger.revision + 1, updatedAt: now });
     }
     return { outcome, turnId };
   }

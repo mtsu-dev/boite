@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import {
   AGENT_TRIGGERS_MAX, AGENT_TRIGGER_WEBHOOK_ROUTE, pullRequestAddress,
   type AgentProfile, type AgentTrigger, type AgentTriggerEvent, type AgentTriggerPrEvent, type RpcParams, type RpcResult, type ThreadId, type Turn,
@@ -19,9 +20,11 @@ const MAX_COALESCED_PRS = 20;
 const WATCH_RETRY_MS = 2000;
 const WATCH_RETRY_MAX_MS = 60_000;
 const TEST_AT_KEY = 'agents:trigger-test-at:';
+const ANCHOR_KEY = 'agents:trigger-anchor:';
 export type PrTriggerTransition = { kind: AgentTriggerPrEvent; key: string };
 type TestResult = RpcResult<'agents.trigger.test'>;
 type TestStamp = { testAt: number; realAt: number | null };
+type WatchAnchor = { folder: string; realPath: string };
 type FileWatch = { folder: string } & ReturnType<typeof watchTriggerFiles>;
 type PendingWake = {
   event: AgentTriggerEvent;
@@ -42,7 +45,7 @@ export class AgentTriggers {
   readonly #watches = new Map<string, FileWatch>();
   readonly #rootProbes = new TriggerRootProbes();
   readonly #watchRetries = new Map<string, { folder: string; at: number; delayMs: number }>();
-  readonly #watchAnchors = new Map<string, { folder: string; realPath: string }>();
+  readonly #watchAnchors = new Map<string, WatchAnchor | null>();
   readonly #pending = new Map<string, PendingWake>();
   readonly #pendingTests = new Map<string, PendingWake>();
   readonly #testFiredAt = new Map<string, TestStamp | null>();
@@ -96,6 +99,19 @@ export class AgentTriggers {
     }
     const id = previous?.id ?? newId('agt_trigger_');
     const secret = createsSecret ? newToken() : undefined;
+    const sameFileProject = previous?.source.kind === 'file' && value.source.kind === 'file'
+      && previous.source.projectId === value.source.projectId;
+    let nextAnchor: WatchAnchor | null | undefined;
+    if (value.source.kind !== 'file') {
+      nextAnchor = null;
+    } else if (!sameFileProject) {
+      nextAnchor = null;
+      const project = this.#core.journal.getProject(value.source.projectId);
+      if (project) {
+        try { nextAnchor = { folder: project.path, realPath: realpathSync(project.path) }; }
+        catch { /* Folder may not exist yet; the first non-retry open will anchor it. */ }
+      }
+    }
     const record = {
       ...value,
       configRevision: (previous?.revision ?? 0) + 1,
@@ -103,18 +119,22 @@ export class AgentTriggers {
       webhookPath: webhook ? AGENT_TRIGGER_WEBHOOK_ROUTE + id : null,
       lastFiredAt: previous?.lastFiredAt ?? null,
       lastOutcome: previous?.lastOutcome === 'queued' ? 'skipped' as const : previous?.lastOutcome ?? null,
+      lastOutcomeAt: previous?.lastOutcome === 'queued' ? Date.now() : previous?.lastOutcomeAt ?? null,
     };
     const trigger = this.#records.transaction(() => {
       const saved = previous
         ? this.#records.update('trigger', id, previous.revision, record)
         : this.#records.adopt('trigger', id, record);
+      if (nextAnchor === null) this.#core.journal.deleteSetting(ANCHOR_KEY + id);
+      else if (nextAnchor !== undefined) this.#core.journal.setSetting(ANCHOR_KEY + id, nextAnchor);
       if (secret !== undefined) this.#secrets.set(id, secret);
       return saved;
     });
     this.#core.bus.whenCommitted(() => {
       this.#pending.delete(id);
       this.#pendingTests.delete(id);
-      this.#watchAnchors.delete(id);
+      if (nextAnchor === null) this.#watchAnchors.delete(id);
+      else if (nextAnchor !== undefined) this.#watchAnchors.set(id, nextAnchor);
       this.#stopWatch(id);
       this.#syncWatch(trigger, agent);
       this.#core.workforce.changed();
@@ -125,8 +145,11 @@ export class AgentTriggers {
 
   remove(params: RpcParams<'agents.trigger.remove'>): { removed: true } {
     const trigger = this.#get(params.triggerId);
-    this.#records.remove('trigger', trigger.id);
-    this.#core.journal.deleteSetting(TEST_AT_KEY + trigger.id);
+    this.#records.transaction(() => {
+      this.#records.remove('trigger', trigger.id);
+      this.#core.journal.deleteSetting(TEST_AT_KEY + trigger.id);
+      this.#core.journal.deleteSetting(ANCHOR_KEY + trigger.id);
+    });
     this.#core.bus.whenCommitted(() => {
       this.#pending.delete(trigger.id);
       this.#pendingTests.delete(trigger.id);
@@ -196,8 +219,9 @@ export class AgentTriggers {
       if (digestKey && (this.#seenDigests.get(digestKey) ?? 0) > now) {
         return new Response(null, { status: 409, headers: { 'cache-control': 'no-store' } });
       }
-      const wait = this.#pending.has(id) ? current.cooldownSeconds * 1000 : this.#cooldown(current);
-      if (wait > 0) return new Response(null, { status: 429, headers: { 'retry-after': String(Math.ceil(wait / 1000)) } });
+      const cooldownWait = this.#webhookCooldown(current, now);
+      if (cooldownWait > 0) return new Response(null, { status: 429, headers: { 'retry-after': String(Math.ceil(cooldownWait / 1000)) } });
+      if (this.#pending.has(id)) return new Response(null, { status: 503, headers: { 'retry-after': '10' } });
       const rawDelivery = (request.headers.get('x-github-delivery') ?? request.headers.get('idempotency-key'))?.trim() ?? null;
       const deliveryId = rawDelivery && /^[A-Za-z0-9_.:-]{1,128}$/.test(rawDelivery) ? rawDelivery : null;
       if (deliveryId) {
@@ -269,7 +293,6 @@ export class AgentTriggers {
     const held = this.#watches.get(trigger.id);
     if (!trigger.enabled || agent?.status !== 'active' || !agent.projectIds?.includes(projectId) || !project || project.archived) {
       this.#stopWatch(trigger.id);
-      this.#watchAnchors.delete(trigger.id);
       if (trigger.watchUnavailable) this.#watchStatus(trigger.id, undefined, undefined);
       return;
     }
@@ -280,9 +303,11 @@ export class AgentTriggers {
       if (pendingRetry.folder !== project.path) this.#watchRetries.delete(trigger.id);
     }
     if (held) this.#stopWatch(trigger.id);
-    const savedAnchor = this.#watchAnchors.get(trigger.id);
-    if (savedAnchor && savedAnchor.folder !== project.path) this.#watchAnchors.delete(trigger.id);
-    const anchor = this.#watchAnchors.get(trigger.id);
+    let anchor = this.#readAnchor(trigger.id);
+    if (anchor && anchor.folder !== project.path) {
+      this.#clearAnchor(trigger.id);
+      anchor = null;
+    }
     const failed = (error: unknown) => {
       this.#watches.delete(trigger.id);
       const reason = error instanceof WatchLimitError ? 'limit' as const : undefined;
@@ -312,7 +337,7 @@ export class AgentTriggers {
       }, undefined, {
         realPath: anchor?.realPath,
         allowInitialLink: !fromRetry && !anchor,
-        onAnchor: realPath => { this.#watchAnchors.set(trigger.id, { folder: project.path, realPath }); },
+        onAnchor: realPath => { this.#writeAnchor(trigger.id, { folder: project.path, realPath }); },
       });
       this.#watches.set(trigger.id, { folder: project.path, ...watch });
     } catch (error) { failed(error); return; }
@@ -357,6 +382,25 @@ export class AgentTriggers {
     return false;
   }
 
+  #readAnchor(id: string): WatchAnchor | null {
+    if (this.#watchAnchors.has(id)) return this.#watchAnchors.get(id) ?? null;
+    const stored = this.#core.journal.getSetting(ANCHOR_KEY + id) as Partial<WatchAnchor> | undefined;
+    const valid: WatchAnchor | null = stored && typeof stored.folder === 'string' && typeof stored.realPath === 'string'
+      ? { folder: stored.folder, realPath: stored.realPath } : null;
+    this.#watchAnchors.set(id, valid);
+    return valid;
+  }
+
+  #writeAnchor(id: string, anchor: WatchAnchor): void {
+    this.#watchAnchors.set(id, anchor);
+    this.#core.journal.setSetting(ANCHOR_KEY + id, anchor);
+  }
+
+  #clearAnchor(id: string): void {
+    this.#watchAnchors.set(id, null);
+    this.#core.journal.deleteSetting(ANCHOR_KEY + id);
+  }
+
   #readTestAt(id: string): TestStamp | null {
     if (this.#testFiredAt.has(id)) return this.#testFiredAt.get(id) ?? null;
     const stored = this.#core.journal.getSetting(TEST_AT_KEY + id) as Partial<TestStamp> | undefined;
@@ -379,11 +423,21 @@ export class AgentTriggers {
     this.#core.journal.deleteSetting(TEST_AT_KEY + id);
   }
 
-  #cooldown(trigger: AgentTrigger): number {
+  #cooldown(trigger: AgentTrigger, now = Date.now()): number {
     let base = trigger.lastFiredAt;
     const tested = this.#readTestAt(trigger.id);
     if (base !== null && tested && base === tested.testAt) base = tested.realAt;
-    return base === null ? 0 : base + trigger.cooldownSeconds * 1000 - Date.now();
+    return base === null ? 0 : base + trigger.cooldownSeconds * 1000 - now;
+  }
+
+  #webhookCooldown(trigger: AgentTrigger, now: number): number {
+    const firedWait = this.#cooldown(trigger, now);
+    if (trigger.lastOutcome === 'fired' || trigger.lastOutcome === null) return firedWait;
+    let outcomeBase = trigger.lastOutcomeAt ?? null;
+    const tested = this.#readTestAt(trigger.id);
+    if (outcomeBase !== null && tested && outcomeBase === tested.testAt) outcomeBase = null;
+    const outcomeWait = outcomeBase === null ? 0 : outcomeBase + trigger.cooldownSeconds * 1000 - now;
+    return Math.max(firedWait, outcomeWait);
   }
 
   #webhook(id: string): AgentTrigger | null {
@@ -449,7 +503,7 @@ export class AgentTriggers {
     }
     if (this.#cooldown(trigger) > 0) {
       this.#pending.set(trigger.id, { event: merged, requestId, fileWatch, deferred: true });
-      this.#outcome(trigger.id, null, 'queued');
+      if (trigger.lastOutcome !== 'queued') this.#outcome(trigger.id, null, 'queued', Date.now());
       return { outcome: 'queued', turnId: null };
     }
     return this.#dispatch(trigger, { event: merged, requestId, fileWatch }, Date.now());
@@ -461,7 +515,7 @@ export class AgentTriggers {
       + quoted(JSON.stringify(wake.event));
   }
 
-  #dispatch(trigger: AgentTrigger, wake: PendingWake, at: number | null): TestResult {
+  #dispatch(trigger: AgentTrigger, wake: PendingWake, at: number | null, fromTick = false): TestResult {
     const agent = this.#eligible(trigger);
     const label = `Trigger · ${trigger.name}`;
     const prompt = this.#promptOf(trigger, wake);
@@ -472,9 +526,9 @@ export class AgentTriggers {
       queue.set(trigger.id, wake.deferred ? { ...wake, deferred: undefined } : wake);
       if (wake.test && at !== null) {
         this.#recordTestAt(trigger, at);
-        this.#outcome(trigger.id, at, 'queued');
-      } else {
-        this.#outcome(trigger.id, null, 'queued');
+        this.#outcome(trigger.id, at, 'queued', at);
+      } else if (!fromTick || trigger.lastOutcome !== 'queued') {
+        this.#outcome(trigger.id, null, 'queued', at ?? Date.now());
       }
       return { outcome: 'queued', turnId: null };
     }
@@ -484,20 +538,24 @@ export class AgentTriggers {
     if (turnId && !wake.test && trigger.source.kind === 'file') {
       this.#activeFileTurns.set(turnId, { agentId: trigger.agentId, projectId: trigger.source.projectId });
     }
-    const stamp = turnId ? (at ?? Date.now()) : (wake.test ? at : null);
+    const now = at ?? Date.now();
+    const stamp = turnId ? now : (wake.test ? at : null);
     if (stamp !== null) {
       if (wake.test) this.#recordTestAt(trigger, stamp);
       else this.#clearTestAt(trigger.id);
     }
-    this.#outcome(trigger.id, stamp, outcome);
+    this.#outcome(trigger.id, stamp, outcome, now);
     return { outcome, turnId };
   }
 
-  #outcome(id: string, at: number | null, outcome: TestResult['outcome']): void {
+  #outcome(id: string, at: number | null, outcome: TestResult['outcome'], outcomeAt = at ?? Date.now()): void {
     const current = this.#records.find('trigger', id);
     if (!current) return;
+    const nextFiredAt = at ?? current.lastFiredAt;
+    if (current.lastFiredAt === nextFiredAt && current.lastOutcome === outcome && current.lastOutcomeAt === outcomeAt) return;
     this.#records.update('trigger', id, current.revision, {
-      ...current, configRevision: current.configRevision ?? current.revision, lastFiredAt: at ?? current.lastFiredAt, lastOutcome: outcome,
+      ...current, configRevision: current.configRevision ?? current.revision,
+      lastFiredAt: nextFiredAt, lastOutcome: outcome, lastOutcomeAt: outcomeAt,
     });
     this.#core.workforce.changed();
   }
@@ -508,11 +566,11 @@ export class AgentTriggers {
     for (const [id, watch] of this.#watches) {
       const wake = this.#pending.get(id);
       const trigger = wake ? this.#records.find('trigger', id) : undefined;
-      const readyWake = wake?.fileWatch === watch && trigger?.enabled && (!wake.deferred || this.#cooldown(trigger) <= 0) ? wake : undefined;
+      const readyWake = wake?.fileWatch === watch && trigger?.enabled && (!wake.deferred || this.#cooldown(trigger, now) <= 0) ? wake : undefined;
       watch.checkRoot(readyWake ? () => {
         if (this.#pending.get(id) !== readyWake) return;
         const current = this.#records.find('trigger', id);
-        if (current?.enabled) this.#dispatch(current, readyWake, Date.now());
+        if (current?.enabled) this.#dispatch(current, readyWake, Date.now(), true);
       } : undefined);
     }
     for (const [id, retry] of this.#watchRetries) {
@@ -526,16 +584,16 @@ export class AgentTriggers {
       if (!trigger?.enabled) this.#pending.delete(id);
       else if (wake.fileWatch && this.#watches.get(id) !== wake.fileWatch) {
         this.#pending.delete(id);
-        this.#outcome(id, null, 'skipped');
-      } else if (!wake.fileWatch && (!wake.deferred || this.#cooldown(trigger) <= 0)) {
-        this.#dispatch(trigger, wake, Date.now());
+        this.#outcome(id, null, 'skipped', now);
+      } else if (!wake.fileWatch && (!wake.deferred || this.#cooldown(trigger, now) <= 0)) {
+        this.#dispatch(trigger, wake, Date.now(), true);
       }
     }
     for (const [id, wake] of this.#pendingTests) {
       if (this.#pending.has(id)) continue;
       const trigger = this.#records.find('trigger', id);
       if (!trigger?.enabled) this.#pendingTests.delete(id);
-      else this.#dispatch(trigger, wake, null);
+      else this.#dispatch(trigger, wake, null, true);
     }
   }
 

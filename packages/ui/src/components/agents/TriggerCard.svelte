@@ -23,8 +23,12 @@
   const t = $derived(strings.agents.triggers);
   const icons = { webhook: Webhook, file: Files, pr: GitPullRequest };
   const Icon = $derived(icons[trigger.source.kind]);
-  const last = $derived(trigger.lastFiredAt !== null && trigger.lastOutcome !== null
-    ? fill(t.last, { state: t.outcomes[trigger.lastOutcome], when: dateTime(trigger.lastFiredAt) }) : null);
+  const outcomeAt = $derived(trigger.lastOutcomeAt ?? trigger.lastFiredAt);
+  const last = $derived(trigger.lastOutcome !== null
+    ? outcomeAt !== null
+      ? fill(t.last, { state: t.outcomes[trigger.lastOutcome], when: dateTime(outcomeAt) })
+      : t.outcomes[trigger.lastOutcome]
+    : null);
   const projectId = $derived(trigger.source.kind === 'webhook' ? null : trigger.source.projectId);
   const project = $derived(view.store.projects.find(candidate => candidate.id === projectId));
   const endpoint = $derived(trigger.webhookPath
@@ -81,7 +85,7 @@
           {#if copied === 'endpoint'}<Check size={14} strokeWidth={1.75} />{:else}<Copy size={14} strokeWidth={1.75} />{/if}
         </button>
       </div>
-      {#if !compact && isLocalEndpoint}<p class="hint">{t.localOnly}</p>{/if}
+      {#if isLocalEndpoint}<p class="hint">{t.localOnly}</p>{/if}
       {#if !compact}<p class="hint">{t.auth}</p>{/if}
       {#if secret && canEdit}
         <div class="secret-display" data-testid="trigger-secret">
@@ -90,7 +94,9 @@
           </div>
           <div class="copy-line">
             <input type="text" readonly value={secret} bind:this={secretField} aria-label={t.secret} autocomplete="off" spellcheck="false" />
-            <button type="button" class="small ghost" aria-label={copied === 'secret' ? t.copied : t.copy} onclick={() => void copy('secret', secret, secretField)}><Copy size={14} strokeWidth={1.75} />{copied === 'secret' ? t.copied : t.copy}</button>
+            <button type="button" class="small ghost" aria-label={copied === 'secret' ? t.copied : t.copy} onclick={() => void copy('secret', secret, secretField)}>
+              {#if copied === 'secret'}<Check size={14} strokeWidth={1.75} />{:else}<Copy size={14} strokeWidth={1.75} />{/if}{copied === 'secret' ? t.copied : t.copy}
+            </button>
           </div>
           <p class="hint">{t.secretHint}</p>
         </div>
@@ -115,6 +121,8 @@
 <style>
   .trigger-card { min-width: 0; }
   .trigger-card.card { margin: 0; padding: 16px; }
+  .trigger-card.routine-card .agent-actions { gap: 4px; padding-left: 44px; }
+  .trigger-card.routine-card .agent-actions button { padding-inline: 6px; gap: 4px; font-size: var(--text-xs); }
   .trigger-card.compact { display: grid; gap: 5px; padding: 7px 0; border-bottom: 1px solid var(--color-border); }
   .compact > header { display: flex; align-items: center; gap: 7px; min-width: 0; }
   .compact .routine-icon { width: 24px; height: 24px; }
@@ -132,6 +140,7 @@
   .secret-head { display: flex; align-items: center; justify-content: space-between; }
   @media (max-width: 720px) {
     .webhook-fields { margin-left: 0; }
+    .trigger-card.routine-card .agent-actions { padding-left: 0; }
     .compact .agent-actions button,
     .copy-line button { min-width: var(--control-touch); min-height: var(--control-touch); }
   }

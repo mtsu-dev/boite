@@ -258,6 +258,36 @@ test('the base branch names what it requires through its rulesets and its classi
   expect(evaluate(initialMemory(since), withRequired(detail([{ name: 'CI required' }]), ['CI required', 'PR title']), null).changes).toEqual([]);
 });
 
+test('detail merges first and last check context pages so older passed required checks are not evicted', () => {
+  const raw = JSON.stringify({
+    data: {
+      viewer: { login: 'meetsu' },
+      repository: {
+        pullRequest: {
+          url: URL, state: 'OPEN', mergeable: 'MERGEABLE', headRefOid: 'a'.repeat(40), baseRefName: 'main',
+          commits: {
+            nodes: [{
+              commit: {
+                oid: 'a'.repeat(40),
+                statusCheckRollup: {
+                  contexts: { nodes: [checkRun({ name: 'Early required', completedAt: '2026-10-15T10:01:00Z' }), checkRun({ name: 'Flaky', conclusion: 'FAILURE', completedAt: '2026-10-15T10:02:00Z' })] },
+                  latestContexts: { nodes: [checkRun({ name: 'Flaky', conclusion: 'SUCCESS', completedAt: '2026-10-15T10:09:00Z' }), checkRun({ name: 'Latest check', completedAt: '2026-10-15T10:10:00Z' })] },
+                },
+              },
+            }],
+          },
+        },
+      },
+    },
+  });
+  const checks = withRequired(parseDetail(raw), ['Early required', 'Flaky']).checks;
+  expect(checks.map(({ name, status, required }) => ({ name, status, required }))).toEqual([
+    { name: 'CI / Early required', status: 'passed', required: true },
+    { name: 'CI / Flaky', status: 'passed', required: true },
+    { name: 'CI / Latest check', status: 'passed', required: false },
+  ]);
+});
+
 test('a draft passes on the required checks it reports, without waiting for one it never reports', () => {
   // A repository whose draft run names its planning job apart, so a draft never satisfies its ruleset.
   const required = ['Plan and repository checks', 'Build UI'];

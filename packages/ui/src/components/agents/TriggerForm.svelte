@@ -116,6 +116,7 @@
   .event-filters { display: flex; flex-wrap: wrap; gap: 8px 16px; }
   .event-filters label { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
   @media (max-width: 480px) {
-    .segmented button { padding-inline: 8px; gap: 4px; font-size: var(--text-xs); }
+    .agent-schedule .segmented { display: flex; width: 100%; flex-wrap: nowrap; }
+    .agent-schedule .segmented button { flex: 1 1 auto; min-width: 0; justify-content: center; padding: 0 6px; gap: 4px; font-size: var(--text-xs); white-space: nowrap; }
   }
 </style>

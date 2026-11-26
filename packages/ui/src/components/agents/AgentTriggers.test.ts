@@ -98,3 +98,25 @@ test('a file trigger over the watch limit shows the actionable folder-cap warnin
   } finally { await unmount(component); view.close(); }
 });
 
+test('a compact webhook card shows the local-only warning, renders non-firing outcomes via lastOutcomeAt, and refuses padded names over 80 characters', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = new AgentsView(store);
+  await view.refresh();
+  const agent = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
+  await expect(client.call('agents.trigger.save', { value: {
+    agentId: agent.id, source: { kind: 'webhook' }, name: ` ${'a'.repeat(80)} `, prompt: 'Check hook.', enabled: true, cooldownSeconds: 60,
+  } })).rejects.toThrow('trigger:');
+  const { trigger } = await client.call('agents.trigger.save', { value: {
+    agentId: agent.id, source: { kind: 'webhook' }, name: 'Local hook', prompt: 'Check hook.', enabled: true, cooldownSeconds: 60,
+  } });
+  await view.refresh();
+  const row = view.snapshot!.triggers!.find(item => item.id === trigger.id)!;
+  row.lastFiredAt = null;
+  row.lastOutcome = 'queued';
+  row.lastOutcomeAt = Date.now();
+  const component = mount(AgentTriggers, { target: document.body, props: { view, agentId: agent.id, compact: true } });
+  try {
+    expect(document.body.textContent).toContain('Queued at');
+    expect(document.body.textContent).toContain('Local address only');
+  } finally { await unmount(component); view.close(); }
+});

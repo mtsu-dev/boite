@@ -142,6 +142,8 @@ export interface AgentTrigger extends AgentRecord, AgentTriggerConfig {
   watchUnavailableReason?: 'limit';
   lastFiredAt: number | null;
   lastOutcome: 'fired' | 'queued' | 'skipped' | 'error' | null;
+  /** When `lastOutcome` was recorded, including queued, skipped or failed attempts. */
+  lastOutcomeAt?: number | null;
 }
 
 /** How long a single-date routine stays listed once it ran, then the core removes it. */
