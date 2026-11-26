@@ -6,14 +6,13 @@
   import SyncMark from './SyncMark.svelte';
   import TitleModelSetting from './TitleModelSetting.svelte';
   import GoalTrackerSetting from './GoalTrackerSetting.svelte';
-  import AutoGoalSetting from './AutoGoalSetting.svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
   /**
    * How a machine's agents answer: the questions they may leave, the length
    * and the tool summaries of a reply, the models that title a thread and
-   * keep its checklist, and the automatic goals a long prompt starts. Saved on the machine, so it has its own card under General.
+   * keep its checklist. Saved on the machine, under General.
    */
   let { store }: { store: Store } = $props();
   const fields = [
@@ -41,5 +40,5 @@
       {/snippet}
     </SettingField>
   {/each}
-  {#if store.settings}<TitleModelSetting {store} /><GoalTrackerSetting {store} /><AutoGoalSetting {store} />{/if}
+  {#if store.settings}<TitleModelSetting {store} /><GoalTrackerSetting {store} />{/if}
 </SettingsSection>

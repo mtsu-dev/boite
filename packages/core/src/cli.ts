@@ -599,7 +599,16 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
   try {
     const help = parsed.help ?? (parsed.positional.length === 1 && DEFAULT_HELP.has(parsed.positional[0]!) ? parsed.positional : undefined);
     if (help) {
-      const text = await cliHelp(help);
+      // Device help describes the host's capabilities. It remains available
+      // with the bundled version when run from a terminal or a core is down.
+      if (help[0] === 'device' && (io.env[AGENT_ENV.threadId] || parsed.thread || parsed.core)) {
+        try {
+          const target = targetOf(parsed, io.env);
+          const { connect } = await families();
+          client = await connect(target.url, target.token, { timeoutMs: 1000, client: { name: 'cli', version: CORE_VERSION } });
+        } catch { /* Help is also available offline. */ }
+      }
+      const text = await cliHelp(help, client?.core.version);
       if (!help.length && !parsed.json) io.err(text + '\n');
       else print([text], { help: text });
       return 0;

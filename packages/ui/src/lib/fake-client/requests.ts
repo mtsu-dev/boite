@@ -153,7 +153,7 @@ function agentSettingText(ctx: FakeContext, setting: AgentSettingAsk, answer: Qu
  * experiment's once an app flipped its switch.
  */
 export function settleSettings(ctx: FakeContext, settings: Settings, report?: { preferences: ClientPreferences; before: readonly ExperimentId[] | null }): void {
-  settleWith(ctx, setting => (report ? settledExperiment(setting, report.preferences, report.before) : settledSetting(setting, settings)));
+  settleWith(ctx, setting => (report ? settledExperiment(setting, report.preferences, report.before) : settledSetting(setting, settings, ctx.core.version)));
 }
 
 /** As the core's `setting.changed`: the cards of `ctx` about that machine's setting settle. */

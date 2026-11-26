@@ -42,8 +42,8 @@ iOS Simulators are view only in the panel: the agent drives them itself.
 
 ### Live device stream
 
-Off by default: turn it on in Settings, System, Live device stream. Only the
-owner sees the switch, and it changes that machine only.
+Live device stream is available in Nightly and Dev builds and is off by
+default. The owner can turn it on for a machine in Settings, Experiments.
 
 Without it, the panel shows screenshots, a few per second, and only printable
 ASCII text reaches an Android device. With it on, an Android emulator or phone

@@ -5,7 +5,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { MOBILE_DEVICE_KEYS, mobileDeviceInputError, type MobileDeviceInput, type MobileDeviceKey, type MobileDeviceSession, type MobilePlatform } from '@boite/contracts';
+import { featureRuns, MOBILE_DEVICE_KEYS, mobileDeviceInputError, type MobileDeviceInput, type MobileDeviceKey, type MobileDeviceSession, type MobilePlatform } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import type { CliIo } from './cli.ts';
 import { Usage } from './cli-args.ts';
@@ -14,7 +14,7 @@ import { Usage } from './cli-args.ts';
 export const STREAM_REQUEST = 'boite settings request deviceStream true --why "<what the live stream is for>"';
 const STREAM_HINT = `The live stream is off by default; to ask the owner for it: ${STREAM_REQUEST}`;
 
-export const DEVICE_HELP = `boite device <command> [args] [--json]
+const DEVICE_HELP = `boite device <command> [args] [--json]
   list                           iOS Simulators and Android emulators or phones on
                                  this machine, which platforms it runs, and what
                                  this conversation's Device panel has open
@@ -36,8 +36,11 @@ panel: drive them with the xcrun simctl prefix that open prints.
 While the user watches an Android device with the live stream on, tap, swipe,
 type and key go through its scrcpy session (real touches, Unicode text);
 otherwise through adb shell input. screenshot always uses adb screencap.
-${STREAM_HINT}
 Use boite attach <file.png> to show a screenshot in chat.`;
+
+export function deviceHelp(version: string): string {
+  return featureRuns('device-stream', version) ? `${DEVICE_HELP}\n${STREAM_HINT}` : DEVICE_HELP;
+}
 
 export interface DeviceCliResult {
   lines: string[];
@@ -86,7 +89,7 @@ async function listDevices(rest: string[], client: CoreClient, threadId: string)
   if (list.devices.length === 0) lines.push('devices: none. No simulators or emulators were found on this machine.');
   for (const d of list.devices) lines.push(`${d.id} ${d.platform} ${d.kind} ${d.state} (${d.name}${d.runtime ? `, ${d.runtime}` : ''})`);
   lines.push(list.sessions.length === 0 ? 'open here: none' : `open here: ${list.sessions.map((s) => `${s.deviceId} (${s.state})`).join(', ')}`);
-  if (list.liveStream === false && list.devices.some((d) => d.platform === 'android' && d.kind === 'physical')) {
+  if (featureRuns('device-stream', client.core.version) && list.liveStream === false && list.devices.some((d) => d.platform === 'android' && d.kind === 'physical')) {
     lines.push(`hint: the live stream is off, so a phone gets screenshots and adb input only; to ask for it: ${STREAM_REQUEST}`);
   }
   return { lines, value: list };
@@ -148,7 +151,10 @@ function swipeInput(rest: string[]): { deviceId: string | undefined; value: Mobi
 
 export async function deviceCommand(args: string[], io: CliIo, client: CoreClient, threadId: string, timeoutS = 200): Promise<DeviceCliResult> {
   const [command = 'list', ...rest] = args;
-  if (command === 'help') return { lines: [DEVICE_HELP], value: { help: DEVICE_HELP } };
+  if (command === 'help') {
+    const help = deviceHelp(client.core.version);
+    return { lines: [help], value: { help } };
+  }
   const input = async (deviceId: string | undefined, value: MobileDeviceInput) => {
     const problem = mobileDeviceInputError(value);
     if (problem) throw new Usage(problem);

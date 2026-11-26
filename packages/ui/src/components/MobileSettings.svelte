@@ -35,7 +35,6 @@
   import SettingsPageHeader from './SettingsPageHeader.svelte';
   import SettingsSection from './SettingsSection.svelte';
   import CacheKeepaliveSettings from './CacheKeepaliveSettings.svelte';
-  import DeviceStreamSettings from './DeviceStreamSettings.svelte';
   import PolicyBanner from './PolicyBanner.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import PolicySettings from './PolicySettings.svelte';
@@ -100,7 +99,7 @@
     : page === 'experiments' ? strings.settings.tabs.experiments : strings.settings.tabs.machines;
   let detail = $derived(page !== 'home');
   /** The pages that change one machine whole, its bar under their header. */
-  const MACHINE_PAGES = ['accounts', 'plugins', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'archived'];
+  const MACHINE_PAGES = ['accounts', 'plugins', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'archived', 'experiments'];
   /**
    * A page of one machine's agent settings says so under its header, the machine's name the picker
    * where there are several; other pages show their title alone. Limits names its machine in its title already.
@@ -303,12 +302,11 @@
         </div>
       {:else if shown === 'advanced'}
         <div class="page index" data-testid="mobile-settings-advanced">
-          <!-- The cards of System a phone carries, under the machine they change: the prompt cache, compaction and the Device panel's stream. -->
+          <!-- The cards of System a phone carries, under the machine they change: the prompt cache and compaction. -->
           {#if target.owner}
             {#if bar}<div class="bar inline">{@render bar()}</div>{/if}
             <CacheKeepaliveSettings store={target} />
             <div class="card-slot" id="settings-auto-compact"><CompactionSettings store={target} /></div>
-            <DeviceStreamSettings store={target} />
           {/if}
         </div>
       {:else if shown === 'accounts' && target.owner}
@@ -347,7 +345,7 @@
       {:else if shown === 'plugins' && target.owner}
         <PluginsPage store={target} />
       {:else if shown === 'experiments'}
-        <ExperimentsPage />
+        <ExperimentsPage store={target} />
       {:else if shown === 'diagnostics' && target.owner}
         <div class="stack">
           <DiagnosticsPage store={target} {onopenthread} />

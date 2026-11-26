@@ -1,6 +1,7 @@
 import { errorText } from '../errors';
 import { isSyncKey, RpcErrorCode, type AgentCommand, type SyncKey } from '@boite/contracts';
 import { RpcFailure } from '../client';
+import { heardSettings } from '../experiments';
 import type {
   KeybindingCommand,
   Keybindings,
@@ -46,6 +47,7 @@ export class CoreSettings {
   get settings(): Settings | null { return this.#settings; }
   set settings(value: Settings | null) {
     this.#settings = value;
+    heardSettings(this.ctx.store, value);
     // Every arrival, whether read, pushed by the core or answered to a save.
     this.ctx.models.syncFavorites();
   }

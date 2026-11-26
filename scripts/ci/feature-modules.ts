@@ -5,8 +5,6 @@
  * `feature-cut.test.ts` checks that and fails on a file of a feature's
  * directory that is neither here nor in `STAYS`.
  *
- * The five features cut before this one (the Whip, the Council, Contacts,
- * Teams and Automatic goals) are finished and left the list.
  */
 import type { ExperimentId } from '../../packages/contracts/src/experiments.ts';
 
@@ -23,6 +21,10 @@ export const FEATURE_MODULES: Partial<Record<ExperimentId, { ui: string[]; core:
       'packages/ui/src/lib/backdrop/scenes.ts',
     ],
     core: [],
+  },
+  'auto-goal': {
+    ui: ['packages/ui/src/components/AutoGoalSetting.svelte'],
+    core: ['packages/core/src/auto-goal.ts'],
   },
 };
 

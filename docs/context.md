@@ -59,9 +59,10 @@ left it.
 - On a phone connected as the owner, Automatic compaction is a row in the
   machine's settings.
 
-Background compaction is off by default. Turn it on in Settings, System,
-under Automatic compaction, for each type or for all. Every automatic
-compaction then runs on a copy of the session:
+Background compaction is available in Nightly and Dev builds and is off by
+default. Turn it on for a machine in Settings, Experiments. Customize it for
+each conversation type under Settings, System, Automatic compaction. Every
+automatic compaction then runs on a copy of the session:
 no compaction shows in the conversation, which stays free and takes the
 summary once it is ready, behind a small divider. With a token limit, the copy
 also starts once the conversation reaches 85% of it, while you keep working. It works with Claude and Codex; OpenCode 2 uses its
