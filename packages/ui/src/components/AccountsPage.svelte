@@ -94,13 +94,14 @@
     return setupStep(provider, store.installOf(provider.id), store.accountsOf(provider.id), loggingIn);
   }
 
-  /** The member a row speaks for, current versions before obsolete ones: one signed in, else one turned on with a step Boite can take, else the first turned on, else the head. */
+  /** The member a row speaks for, current versions before obsolete ones: one signed in, else one turned on with a step Boite can take, else the first turned on, else the first. */
   function leadOf(row: ProviderRow): ProviderSummary {
-    const on = preferCurrentProviders(row.members.filter((member) => providerEnabled(member)));
+    const members = preferCurrentProviders(row.members);
+    const on = members.filter((member) => providerEnabled(member));
     return on.find((member) => connected(member, store.accountsOf(member.id)))
       ?? on.find((member) => stepOf(member) !== 'manual')
       ?? on[0]
-      ?? row.members[0]!;
+      ?? members[0]!;
   }
 
   /**

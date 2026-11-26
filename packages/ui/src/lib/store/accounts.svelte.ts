@@ -12,6 +12,7 @@ import type {
   SubscriptionProxyQuotas
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
+import { preferCurrentProviders } from '../provider-setup';
 import { strings } from '../strings';
 import type { LoginState } from '../store.svelte';
 import { updateStale } from '../update-freshness';
@@ -138,11 +139,12 @@ export class Accounts {
   }
 
   /**
-   * The providers a picker may offer: the ones turned on, in the core's order.
-   * The Providers page alone reads the whole list, to show the ones that are off.
+   * The providers a picker may offer: the ones turned on, in the core's order
+   * with obsolete ones last, so nothing opens on one by default. The Providers
+   * page alone reads the whole list, to show the ones that are off.
    */
   get offeredProviders(): ProviderSummary[] {
-    return this.providers.filter((provider) => providerEnabled(provider));
+    return preferCurrentProviders(this.providers.filter((provider) => providerEnabled(provider)));
   }
 
   /** Whether this provider is known here and turned on. */

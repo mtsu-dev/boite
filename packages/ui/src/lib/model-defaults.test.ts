@@ -297,3 +297,12 @@ test('a draft on a model the core already listed is created without reading the 
   expect(await store.prepareDraftChoice(choice)).toEqual(choice);
   expect(calls.mock.calls.some(([method]) => method === 'providers.probe')).toBe(false);
 });
+
+test('a new prompt never opens on an obsolete provider while its replacement can run', async ({ ready }) => {
+  const { store } = await ready({ delayMs: 0 });
+  // The core lists OpenCode before OpenCode 2; both are signed in and nothing is remembered.
+  store.providers = ['opencode', 'opencode-v2'].map((id) => store.providerOf(id)!);
+  store.prefs.providerId = null;
+  expect(store.accountsOf('opencode-v2').length).toBeGreaterThan(0);
+  expect(store.defaultChoice()?.providerId).toBe('opencode-v2');
+});
