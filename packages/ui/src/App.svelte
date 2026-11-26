@@ -5,7 +5,7 @@
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { opensFromLink, readStoredEndpoint, shellStarting, takeNotificationTarget } from './lib/endpoint';
-  import { watchAgentBrowser } from './lib/agent-browser-watch';
+  import { agentBrowserActivity } from './lib/agent-browser-watch.svelte';
   import { watchDevices } from './lib/device-watch';
   import { watchWindows } from './lib/window-watch';
   import { browserProfiles } from './lib/browser-profiles.svelte';
@@ -97,12 +97,6 @@
   if (voice.current.enabled) void parts.Dictation.load().catch(() => undefined);
   // The id alone: the full conversation replacing the row a click drew must not start the watchers again.
   const watchedThreadId = $derived(store.openThread?.id);
-  // New agent pages bring the panel forward on wider clients; phones stay on the user's chosen view.
-  $effect(() => {
-    const threadId = watchedThreadId;
-    void store.connection;
-    if (threadId && store.client?.state === 'ready') return watchAgentBrowser(store, threadId);
-  });
   // A simulator or emulator the agent opens shows up in the panel, here and on a phone (docs/internals/devices.md); so does a desktop window it watches.
   $effect(() => {
     const threadId = watchedThreadId;
@@ -118,6 +112,9 @@
   let desktopViewsSettled = $state(!desktopStartup);
   let appRoot = $state<HTMLDivElement | undefined>(undefined);
   let mobileScreen = $state<'chat' | 'threads' | 'activity'>('chat'), mobileTabs = $state(false);
+  const browserActivity = agentBrowserActivity(() => store, () => {
+    if (!inShell && narrow.current) mobileScreen = 'chat';
+  });
   let waitForMobileNavigation = $state(!inShell && narrow.current);
   const mobileRecovery = $derived(!inShell && (store.pairingRequired || (!store.core && store.connection !== 'ready'))
     && !workspace.machines.some(machine => machine.store.connection === 'ready'));
@@ -588,7 +585,7 @@
       <MobilePairing {store} screen={mobileScreen} navigate={(screen) => { mobileScreen = screen; }} onpaired={() => { mobileScreen = 'threads'; }} />
     {:else if mobileNavigation.current}
       {@const MobileNavigation = mobileNavigation.current}
-      <MobileNavigation {store} recover={mobileRecovery} onleavesettings={leaveSettings} bind:screen={mobileScreen} bind:tabbed={mobileTabs} />
+      <MobileNavigation {store} browserBackground={browserActivity.background} onbrowser={browserActivity.open} recover={mobileRecovery} onleavesettings={leaveSettings} bind:screen={mobileScreen} bind:tabbed={mobileTabs} />
     {:else if narrow.current && mobileNavigation.failed}
       <p class="mobile-navigation-failed" role="alert" data-testid="mobile-navigation-failed">
         <span>{strings.parts.navigationFailed}</span>
@@ -619,7 +616,7 @@
     {:else if store.page === 'agents' && experimentOn('resident-agents')}
       <Deferred part={agentsLayout}>{#snippet pending()}<main><div class="thread-chat framed">{@render loadingFrame()}</div></main>{/snippet}{#snippet children(AgentsLayout)}<AgentsLayout {store} panel={panelSlot} showPanel={(panelShown || panelSlot.shown) && panelThread !== null} RightPanel={appViews.RightPanel.current} panelFailure={appViews.RightPanel.failed ? () => need('RightPanel') : undefined} />{/snippet}</Deferred>
     {:else}
-      <Deferred part={sidebar}>{#snippet children(Sidebar)}<Sidebar {store} />{/snippet}</Deferred>
+      <Deferred part={sidebar}>{#snippet children(Sidebar)}<Sidebar {store} browserBackground={browserActivity.background} onbrowser={browserActivity.open} />{/snippet}</Deferred>
       {#if scrim.shown}
         <button
           type="button"

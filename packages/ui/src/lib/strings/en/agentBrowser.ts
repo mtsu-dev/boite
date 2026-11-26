@@ -1,6 +1,12 @@
 export const strings = {
   /** The browser the thread's agent drives on the machine that runs it, watched from any client. */
   agentBrowser: {
+    background: 'Boite browser in the background',
+    cookies: 'Cookies: {name}',
+    changeCookies: 'Change cookies and reload',
+    pageLoading: 'Page loading',
+    pageError: 'Page returned HTTP {status}',
+    scriptsFailed: 'Failed scripts: {count}',
     cover: 'This agent controls a browser on {machine}', coverHint: 'Nothing streams to this device until you show it.',
     show: 'Show', hide: 'Hide', hideHint: 'Stop watching and cover the view again',
     none: 'The agent has no browser open', noneHint: 'It appears here when the agent opens a page.',

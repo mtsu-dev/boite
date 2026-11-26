@@ -14,14 +14,17 @@ export type BrowserAction =
    * list already holds, in any case, answers that profile instead.
    */
   | { kind: 'profile-add'; name: string }
+  | { kind: 'profile-switch'; profile: string }
   /**
    * `profile` is a profile's name or id, `default` or `private`; absent opens the default profile.
    * `reuse` navigates the active tab when there is one, as agent-browser's `open` does.
    */
-  | { kind: 'open'; url: string; profile?: string; reuse?: boolean }
+  | { kind: 'open'; url: string; profile?: string; reuse?: boolean; manual?: boolean }
   | { kind: 'navigate'; url: string }
   /** Makes the command's tab the active one. */
   | { kind: 'activate' }
+  /** Reveals the active tab in the conversation's panel. */
+  | { kind: 'show' }
   | { kind: 'history'; direction: 'back' | 'forward' | 'reload' }
   /**
    * agent-browser's snapshot options: -i, -c, -d, -s and -u. `view` says the
@@ -303,7 +306,8 @@ export function browserPresetSize(preset: BrowserPreset, orientation?: 'portrait
  * `since` is when it was given up, in ms since the epoch.
  */
 export interface BrowserStuckAction { action: BrowserAction['kind']; since: number }
-export interface AgentBrowserTab { tabId: string; url: string; title: string; profile: string; active: boolean; view?: string; stuck?: BrowserStuckAction }
+export interface BrowserPageHealth { loading: boolean; httpError?: number; failedScripts: number }
+export interface AgentBrowserTab { tabId: string; url: string; title: string; profile: string; profileName?: string; active: boolean; view?: string; stuck?: BrowserStuckAction; health?: BrowserPageHealth }
 /**
  * What a viewer shows for a conversation: whether its agent has a browser open
  * (`live`), the tabs, and whether this machine can run one at all. `reason`
@@ -362,7 +366,7 @@ export interface BrowserRpcMethods {
 }
 export interface BrowserRpcEvents {
   /** For the clients subscribed to the conversation: its agent's tabs changed, opened, navigated or closed. */
-  'browser.remoteChanged': { threadId: string; live: boolean; tabs: AgentBrowserTab[] };
+  'browser.remoteChanged': { threadId: string; live: boolean; tabs: AgentBrowserTab[]; show?: true };
   /** To the attached host only: one DevTools message for its webviews of `profile`. */
   'browser.hostMessage': { profile: string; message: string };
 }
@@ -443,6 +447,7 @@ function checkSnapshot(action: BrowserAction & { kind: 'snapshot' }): string | n
 function checkOpenUrl(action: BrowserAction & { kind: 'open' | 'navigate' }): string | null {
   if (action.kind === 'open' && action.profile !== undefined && !text(action.profile, BROWSER_PROFILE_NAME_MAX)) return `browser profile must be a profile name or id of 1 to ${BROWSER_PROFILE_NAME_MAX} characters, default or private`;
   if (action.kind === 'open' && action.reuse !== undefined && typeof action.reuse !== 'boolean') return 'browser open reuse must be a boolean';
+  if (action.kind === 'open' && action.manual !== undefined && typeof action.manual !== 'boolean') return 'browser open manual must be a boolean';
   if (text(action.url, 16384) && /^https?:\/\/[^\s/?#]+(?:[/?#][^\s]*)?$/i.test(action.url)) return null;
   return 'browser url must be an absolute HTTP or HTTPS address';
 }
@@ -506,6 +511,8 @@ const ACTION_CHECKS: BrowserActionChecks = {
   'status': checkNoInput,
   'profiles': checkNoInput,
   'profile-add': action => browserProfileNameError(action.name),
+  'profile-switch': action => text(action.profile, BROWSER_PROFILE_NAME_MAX) ? null : 'choose a browser profile from browser profiles',
+  'show': checkNoInput,
   'screenshot': checkNoInput,
   'close': checkNoInput,
   'reset-viewport': checkNoInput,

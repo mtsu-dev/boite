@@ -294,8 +294,10 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
       // `shown` says whether there was one to receive it.
       const shown = ctx.bus.subscribed.has(thread.id);
       // As the core does: a page is a new tab of the conversation's browser.
-      if (surface.kind === 'browser') await all()['browser.command']({ threadId: thread.id, action: { kind: 'open', url: surface.url } });
-      else ctx.emitToThread(thread.id, 'panel.requested', { threadId: thread.id, surface, at: ctx.now() });
+      if (surface.kind === 'browser') {
+        const { tabId } = await all()['browser.command']({ threadId: thread.id, action: { kind: 'open', url: surface.url, manual: true } });
+        await all()['browser.command']({ threadId: thread.id, tabId, action: { kind: 'show' } });
+      } else ctx.emitToThread(thread.id, 'panel.requested', { threadId: thread.id, surface, at: ctx.now() });
       return { shown };
     },
     'questions.openPage': async ({ threadId, questionId }) => {
@@ -303,7 +305,7 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
       const question = ctx.pendingQuestions.get(questionId)?.request;
       if (question?.threadId !== thread.id || !question.open) throw refusal(`questions.openPage: ${questionId} is not a pending question with a page`);
       const surface = checkSurface(ctx, thread, { kind: 'browser', url: question.open.url });
-      if (surface.kind === 'browser') await all()['browser.command']({ threadId: thread.id, action: { kind: 'open', url: surface.url } });
+      if (surface.kind === 'browser') await all()['browser.command']({ threadId: thread.id, action: { kind: 'open', url: surface.url, manual: true } });
       return { ok: true as const };
     },
     'git.status': async (params) => {

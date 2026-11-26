@@ -2,6 +2,12 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
   agentBrowser: {
+    background: 'Navigateur Boite en arrière-plan',
+    cookies: 'Cookies : {name}',
+    changeCookies: 'Changer de cookies et recharger',
+    pageLoading: 'Chargement de la page',
+    pageError: 'La page a renvoyé HTTP {status}',
+    scriptsFailed: 'Scripts en échec : {count}',
     cover: 'Cet agent contrôle un navigateur sur {machine}', coverHint: 'Rien n’est diffusé vers cet appareil avant que vous l’affichiez.',
     show: 'Afficher', hide: 'Masquer', hideHint: 'Arrêter de regarder et recouvrir la vue',
     none: 'L’agent n’a pas de navigateur ouvert', noneHint: 'Il apparaît ici quand l’agent ouvre une page.',

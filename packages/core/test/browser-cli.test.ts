@@ -109,6 +109,7 @@ test('the browser CLI reads agent-browser command lines into actions', () => {
   expect(read(['open', 'https://example.com', '--profile', 'private']).action).toEqual({ kind: 'open', url: 'https://example.com', reuse: true, profile: 'private' });
   expect(read(['tab', 'new', 'https://example.com']).action).toEqual({ kind: 'open', url: 'https://example.com' });
   expect(read(['tab', 'browser:abc'])).toEqual({ action: { kind: 'activate' }, tabId: 'browser:abc' });
+  expect(read(['show', '--tab', 'browser:abc'])).toEqual({ action: { kind: 'show' }, tabId: 'browser:abc' });
   expect(read(['snapshot', '-i', '-c', '-d', '3', '-s', '#main', '-u']).action).toEqual({ kind: 'snapshot', interactive: true, compact: true, urls: true, depth: 3, selector: '#main', view: 'diff' });
   expect(read(['snapshot', '--full', '-i']).action).toEqual({ kind: 'snapshot', interactive: true, view: 'full' });
   expect(read(['dblclick', '@e2']).action).toEqual({ kind: 'click', selector: '@e2', count: 2 });
