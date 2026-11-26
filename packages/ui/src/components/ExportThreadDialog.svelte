@@ -14,6 +14,7 @@
   import PrivateText from './PrivateText.svelte';
 
   let { store, thread, onclose }: { store: Store; thread: ThreadSummary; onclose: () => void } = $props();
+  let currentThread = $derived(store.threads.find(entry => entry.id === thread.id) ?? thread);
   let dialog: HTMLDialogElement;
   let options = $state<ExportOptions>({ format: 'markdown', includeTools: false, includeDiffs: false, includeThinking: false });
   let busyAction = $state<null | 'copy' | 'download'>(null);
@@ -21,7 +22,9 @@
   let progress = $state<ExportProgress | null>(null);
   let failure = $state('');
   let savedPath = $state('');
+  let shareReady = $state(false);
   let retryCopy: { key: string; content: string } | null = null;
+  let retryShare: { key: string; filename: string; content: string; mimeType: string } | null = null;
   let releaseHistory: (() => void) | null = null;
   const controller = new AbortController();
   const overlay = new Closing();
@@ -42,12 +45,14 @@
   });
 
   $effect(() => {
-    // Clear prior desktop save confirmation once the user adjusts export options.
+    // Clear prior save/share state once the user adjusts export options.
     void options.format;
     void options.includeTools;
     void options.includeDiffs;
     void options.includeThinking;
     savedPath = '';
+    shareReady = false;
+    retryShare = null;
   });
 
   onMount(() => {
@@ -88,7 +93,6 @@
   }
 
   function cacheKey(selected: ExportOptions): string {
-    const summary = store.threads.find(entry => entry.id === thread.id) ?? thread;
     const open = store.openThread?.id === thread.id ? store.openThread : null;
     const tail = open?.messages.at(-1);
     const parts = tail?.parts.map(part => {
@@ -98,19 +102,20 @@
       if (part.type === 'error') return `e:${part.message.length}`;
       return part.type;
     }).join(',') ?? '';
-    return JSON.stringify([selected, activeLocale(), summary.updatedAt, open?.status ?? '', open?.messages.length ?? 0, tail?.id ?? '', tail?.state ?? '', parts]);
+    return JSON.stringify([selected, activeLocale(), currentThread.updatedAt, currentThread.title, currentThread.branch ?? '', currentThread.model ?? '', open?.status ?? '', open?.messages.length ?? 0, tail?.id ?? '', tail?.state ?? '', parts]);
   }
 
   async function buildContent(selected: ExportOptions): Promise<string> {
     progress = null;
-    const messages = await store.threadExportMessages(thread.id, selected, controller.signal, next => { progress = next; });
+    const target = currentThread;
+    const messages = await store.threadExportMessages(target.id, selected, controller.signal, next => { progress = next; });
     controller.signal.throwIfAborted();
-    const project = store.projects.find(entry => entry.id === thread.projectId);
-    const model = store.modelsOf(thread.providerId, thread.accountId).find(entry => entry.id === thread.model);
+    const project = store.projects.find(entry => entry.id === target.projectId);
+    const model = store.modelsOf(target.providerId, target.accountId).find(entry => entry.id === target.model);
     const meta = { projectName: project ? projectName(project) : null, modelName: model?.name };
     return selected.format === 'markdown'
-      ? exportThreadMarkdown(thread, messages, selected, meta)
-      : exportThreadHtml(thread, messages, selected, meta);
+      ? exportThreadMarkdown(target, messages, selected, meta)
+      : exportThreadHtml(target, messages, selected, meta);
   }
 
   async function exportConversation(copy: boolean): Promise<void> {
@@ -124,6 +129,8 @@
     const markdown = selected.format === 'markdown';
     try {
       if (copy) {
+        shareReady = false;
+        retryShare = null;
         // After a failed clipboard write, retry synchronously inside the next click gesture if nothing changed.
         if (retryCopy?.key === key) {
           if (!await store.copy(retryCopy.content, { reportFailure: false, within: dialog })) {
@@ -151,15 +158,40 @@
         }
         const content = await pending;
         if (!await store.copy(content, { reportFailure: false, within: dialog })) {
-          retryCopy = { key: cacheKey(selected), content };
+          // Only cache for retry if the conversation did not mutate while reading history.
+          retryCopy = cacheKey(selected) === key ? { key, content } : null;
           failure = strings.errors.clipboard;
           return;
         }
         close();
       } else {
         retryCopy = null;
+        // If mobile Web Share lost user activation on a slow read, invoke it synchronously on this fresh tap.
+        if (retryShare?.key === key) {
+          const prepared = retryShare;
+          retryShare = null;
+          shareReady = false;
+          const result = await downloadExport(prepared.filename, prepared.content, prepared.mimeType, { retryShare: true });
+          if (result.cancelled) return;
+          close();
+          return;
+        }
+        retryShare = null;
+        shareReady = false;
         const content = await buildContent(selected);
-        const result = await downloadExport(exportFilename(thread.title, selected.format), content, `${markdown ? 'text/markdown' : 'text/html'};charset=utf-8`);
+        const filename = exportFilename(currentThread.title, selected.format);
+        const mimeType = `${markdown ? 'text/markdown' : 'text/html'};charset=utf-8`;
+        const result = await downloadExport(filename, content, mimeType);
+        if (result.sharePending) {
+          if (cacheKey(selected) === key) {
+            retryShare = { key, filename, content, mimeType };
+            shareReady = true;
+            return;
+          }
+          await downloadExport(filename, content, mimeType, { retryShare: true });
+          close();
+          return;
+        }
         if (result.cancelled) return;
         if (result.path) {
           savedPath = result.path;
@@ -182,7 +214,7 @@
   <header>
     <div class="heading">
       <h2 id="thread-export-title">{strings.threadExport.title}</h2>
-      <p id="thread-export-thread" class="muted"><PrivateText text={thread.title} /></p>
+      <p id="thread-export-thread" class="muted"><PrivateText text={currentThread.title} /></p>
     </div>
     <button type="button" class="ghost icon close-btn" aria-label={strings.common.close} onclick={close}><X size={16} /></button>
   </header>
@@ -202,6 +234,7 @@
       <label><input type="checkbox" bind:checked={options.includeThinking} />{strings.threadExport.thinking}</label>
     </fieldset>
     {#if savedPath}<p class="saved" role="status">{fill(strings.threadExport.savedTo, { path: savedPath })}</p>{/if}
+    {#if shareReady}<p class="saved" role="status">{strings.threadExport.shareReady}</p>{/if}
     {#if failure}<p class="error" role="alert">{strings.threadExport.failed}. {failure}</p>{/if}
   </div>
 
@@ -209,7 +242,7 @@
     {#if options.format === 'markdown'}
       <button type="button" class="ghost" disabled={busy} onclick={() => void exportConversation(true)}><Clipboard size={15} /><span>{busyAction === 'copy' ? loadingLabel : strings.threadExport.copy}</span></button>
     {/if}
-    <button type="button" class="primary" disabled={busy} onclick={() => void exportConversation(false)}><Download size={16} /><span>{busyAction === 'download' ? loadingLabel : strings.threadExport.download}</span></button>
+    <button type="button" class="primary" disabled={busy} onclick={() => void exportConversation(false)}><Download size={16} /><span>{busyAction === 'download' ? loadingLabel : shareReady ? strings.threadExport.share : strings.threadExport.download}</span></button>
   </footer>
 </dialog>
 

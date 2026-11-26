@@ -90,7 +90,7 @@ fn same_bytes(path: &Path, expected: &[u8]) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        open.custom_flags(libc::O_NONBLOCK);
+        open.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
     }
     let Ok(mut file) = open.open(path) else { return false; };
     let Ok(opened) = file.metadata() else { return false; };

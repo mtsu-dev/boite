@@ -151,6 +151,7 @@ test('retrying clipboard copy reuses the fetched export without re-reading histo
   });
   await store.open('t-trace');
   const history = vi.spyOn(store, 'threadExportMessages');
+  onTestFinished(() => { history.mockRestore(); });
   query<HTMLButtonElement>(trigger).click();
   const item = '[data-testid=thread-menu-trigger-menu] [data-value=export-thread]';
   await waitFor(() => !!document.querySelector(item));
@@ -167,10 +168,15 @@ test('retrying clipboard copy reuses the fetched export without re-reading histo
 test('desktop download shows the saved path in the dialog and re-reads fresh content on a second download', async ({ app: _app }) => {
   onTestFinished(mockDialogMethods());
   const invoke = vi.fn().mockResolvedValue({ path: '/home/user/Downloads/trace.md', opened: false });
-  vi.stubGlobal('__TAURI_INTERNALS__', { invoke });
-  onTestFinished(() => { vi.unstubAllGlobals(); });
+  const prevTauri = Object.getOwnPropertyDescriptor(window, '__TAURI_INTERNALS__');
+  Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: { invoke } });
+  onTestFinished(() => {
+    if (prevTauri) Object.defineProperty(window, '__TAURI_INTERNALS__', prevTauri);
+    else Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
+  });
   await store.open('t-trace');
   const history = vi.spyOn(store, 'threadExportMessages');
+  onTestFinished(() => { history.mockRestore(); });
   query<HTMLButtonElement>(trigger).click();
   const item = '[data-testid=thread-menu-trigger-menu] [data-value=export-thread]';
   await waitFor(() => !!document.querySelector(item));
@@ -184,4 +190,82 @@ test('desktop download shows the saved path in the dialog and re-reads fresh con
   button('Download').click();
   await waitFor(() => invoke.mock.calls.length === 2);
   expect(history).toHaveBeenCalledTimes(2);
+  query<HTMLButtonElement>(`${dialog} .close-btn`).click();
+  await waitFor(() => !document.querySelector(dialog));
+});
+
+test('clipboard retry re-reads when the thread mutates during the initial export read', async ({ app: _app }) => {
+  onTestFinished(mockDialogMethods());
+  const writeText = vi.fn().mockRejectedValueOnce(new Error('Denied')).mockResolvedValue(undefined);
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  onTestFinished(() => {
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  });
+  await store.open('t-trace');
+  const original = store.threadExportMessages.bind(store);
+  let calls = 0;
+  const history = vi.spyOn(store, 'threadExportMessages').mockImplementation(async (...args) => {
+    calls += 1;
+    const result = await original(...args);
+    if (calls === 1) {
+      const tail = store.openThread?.messages.at(-1);
+      const text = tail?.parts.find(part => part.type === 'text');
+      if (text && text.type === 'text') text.text += ' (streamed update)';
+    }
+    return result;
+  });
+  onTestFinished(() => { history.mockRestore(); });
+  query<HTMLButtonElement>(trigger).click();
+  const item = '[data-testid=thread-menu-trigger-menu] [data-value=export-thread]';
+  await waitFor(() => !!document.querySelector(item));
+  query<HTMLButtonElement>(item).click();
+  await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
+  button('Copy Markdown').click();
+  await waitFor(() => writeText.mock.calls.length === 1 && document.querySelector(dialog)?.getAttribute('aria-busy') !== 'true');
+  expect(history).toHaveBeenCalledTimes(1);
+  // Because the message mutated while reading, retry must NOT reuse the stale snapshot.
+  button('Copy Markdown').click();
+  await waitFor(() => writeText.mock.calls.length === 2 && !document.querySelector(dialog));
+  expect(history).toHaveBeenCalledTimes(2);
+});
+
+test('mobile Web Share NotAllowedError offers a fresh Share tap that shares synchronously without re-reading', async ({ app: _app }) => {
+  onTestFinished(mockDialogMethods());
+  const matchMedia = window.matchMedia;
+  const share = vi.fn().mockRejectedValueOnce(new DOMException('Activation expired', 'NotAllowedError')).mockResolvedValueOnce(undefined);
+  const canShare = vi.fn().mockReturnValue(true);
+  const origShare = Object.getOwnPropertyDescriptor(navigator, 'share');
+  const origCanShare = Object.getOwnPropertyDescriptor(navigator, 'canShare');
+  window.matchMedia = vi.fn().mockImplementation((queryText: string) => ({
+    matches: queryText === '(pointer: coarse)',
+    media: queryText,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }) as unknown as MediaQueryList);
+  Object.defineProperty(navigator, 'share', { configurable: true, value: share });
+  Object.defineProperty(navigator, 'canShare', { configurable: true, value: canShare });
+  onTestFinished(() => {
+    window.matchMedia = matchMedia;
+    if (origShare) Object.defineProperty(navigator, 'share', origShare);
+    else Reflect.deleteProperty(navigator, 'share');
+    if (origCanShare) Object.defineProperty(navigator, 'canShare', origCanShare);
+    else Reflect.deleteProperty(navigator, 'canShare');
+  });
+  await store.open('t-trace');
+  const history = vi.spyOn(store, 'threadExportMessages');
+  onTestFinished(() => { history.mockRestore(); });
+  query<HTMLButtonElement>(trigger).click();
+  const item = '[data-testid=thread-menu-trigger-menu] [data-value=export-thread]';
+  await waitFor(() => !!document.querySelector(item));
+  query<HTMLButtonElement>(item).click();
+  await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
+  button('Download').click();
+  await waitFor(() => query(dialog).querySelector('[role=status]')?.textContent?.includes('Tap Share to save') === true);
+  expect(history).toHaveBeenCalledTimes(1);
+  expect(share).toHaveBeenCalledTimes(1);
+  button('Share').click();
+  await waitFor(() => share.mock.calls.length === 2 && !document.querySelector(dialog));
+  expect(history).toHaveBeenCalledTimes(1);
 });

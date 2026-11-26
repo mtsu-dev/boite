@@ -159,7 +159,8 @@ Command Palette. Pick Markdown (.md) or HTML (.html), then Download. On desktop,
 Download saves to your Downloads folder and shows the saved path. HTML opens
 offline in a browser. When Markdown is selected, Copy Markdown puts the text on
 the clipboard. Include tool calls, Include diffs and Include thinking are optional.
-The export covers the complete conversation and lists attachments by name.
+The export covers the complete conversation and lists attachments by name. Council
+conversations are not exported.
 
 ## Notifications
 

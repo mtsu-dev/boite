@@ -3,6 +3,7 @@ import MarkdownIt from 'markdown-it';
 import { browserDownload, saveAttachment } from './attachment-save';
 import { escapeHtml } from './chat-links';
 import { RpcFailure, type Client } from './client';
+import { errorText } from './errors';
 import { activeLocale } from './i18n.svelte';
 import { renderMarkdown } from './markdown';
 import { desktopShell } from './shell-platform';
@@ -28,6 +29,8 @@ export interface DownloadResult {
   path?: string;
   /** True when the user dismissed the mobile share sheet without saving. */
   cancelled?: boolean;
+  /** True when mobile Web Share needs a fresh tap because async export outlived user activation. */
+  sharePending?: boolean;
 }
 
 interface ExportMeta {
@@ -75,10 +78,11 @@ export async function loadAllThreadMessages(
   function omitted(message: Message): boolean {
     return message.parts.some(part => (part.type === 'text' || part.type === 'thinking' && options?.includeThinking) && !!part.omitted);
   }
-  for (const [from, message] of messages.entries()) {
-    if (!omitted(message)) continue;
+  const omittedIndexes = messages.flatMap((message, from) => omitted(message) ? [from] : []);
+  for (const [index, from] of omittedIndexes.entries()) {
+    const message = messages[from]!;
     signal?.throwIfAborted();
-    onProgress?.({ phase: 'messages', done: from + 1, total: messages.length });
+    onProgress?.({ phase: 'messages', done: index + 1, total: omittedIndexes.length });
     // Keep heavy tool parts deferred while asking for complete prose so a message with
     // large tool inputs/documents does not exceed RPC_MAX_FRAME_BYTES.
     let { messages: [full] } = await client.call('messages.list', { threadId, ...flags, from, limit: 1, fullText: true });
@@ -91,17 +95,19 @@ export async function loadAllThreadMessages(
     }
     messages[from] = full;
   }
-  if (options?.includeTools || options?.includeDiffs) await loadDeferredTools(client, threadId, messages, signal, onProgress);
+  const diffsOnly = Boolean(options?.includeDiffs && !options?.includeTools);
+  if (options?.includeTools || options?.includeDiffs) await loadDeferredTools(client, threadId, messages, diffsOnly, signal, onProgress);
   signal?.throwIfAborted();
   return messages;
 }
 
-function deferredTools(messages: Message[]) {
+function deferredTools(messages: Message[], diffsOnly: boolean) {
   const list: { messageId: string; parts: MessagePart[]; partIndex: number; tool: Tool }[] = [];
   for (const [index, message] of messages.entries()) {
     let parts: MessagePart[] | undefined;
     for (const [partIndex, part] of message.parts.entries()) {
       if (part.type !== 'tool' || !part.outputDeferred && !part.inputDeferred && !part.documentsDeferred) continue;
+      if (diffsOnly && part.status !== 'done') continue;
       if (!parts) messages[index] = { ...message, parts: parts = [...message.parts] };
       list.push({ messageId: message.id, parts, partIndex, tool: part });
     }
@@ -114,10 +120,11 @@ async function loadDeferredTools(
   client: Client,
   threadId: string,
   messages: Message[],
+  diffsOnly: boolean,
   signal?: AbortSignal,
   onProgress?: (progress: ExportProgress) => void,
 ): Promise<void> {
-  const list = deferredTools(messages);
+  const list = deferredTools(messages, diffsOnly);
   const total = list.length;
   if (total === 0) return;
   let cursor = 0;
@@ -134,10 +141,19 @@ async function loadDeferredTools(
         const { part } = await client.call('messages.toolPart', ref);
         entry.parts[entry.partIndex] = part;
       } catch (error) {
-        if (!(error instanceof RpcFailure) || error.code !== RpcErrorCode.MethodNotFound || entry.tool.inputDeferred || entry.tool.documentsDeferred) throw error;
-        signal?.throwIfAborted();
-        const { output } = await client.call('messages.toolOutput', ref);
-        entry.parts[entry.partIndex] = { ...entry.tool, output, outputDeferred: undefined };
+        if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound && !entry.tool.inputDeferred && !entry.tool.documentsDeferred) {
+          signal?.throwIfAborted();
+          try {
+            const { output } = await client.call('messages.toolOutput', ref);
+            entry.parts[entry.partIndex] = { ...entry.tool, output, outputDeferred: undefined };
+          } catch (fallbackError) {
+            if (signal?.aborted) throw fallbackError;
+            throw new Error(fill(strings.threadExport.incompleteTool, { name: entry.tool.name, id: entry.messageId, reason: errorText(fallbackError) }), { cause: fallbackError });
+          }
+        } else {
+          if (signal?.aborted) throw error;
+          throw new Error(fill(strings.threadExport.incompleteTool, { name: entry.tool.name, id: entry.messageId, reason: errorText(error) }), { cause: error });
+        }
       }
       done += 1;
       onProgress?.({ phase: 'tools', done, total });
@@ -426,7 +442,7 @@ export function exportFilename(title: string, format: ExportOptions['format'], n
   return `${slug || 'conversation'}-${now.toISOString().slice(0, 10)}.${format === 'markdown' ? 'md' : 'html'}`;
 }
 
-export async function downloadExport(filename: string, content: string, mimeType: string): Promise<DownloadResult> {
+export async function downloadExport(filename: string, content: string, mimeType: string, options?: { retryShare?: boolean }): Promise<DownloadResult> {
   if (desktopShell()) {
     const bytes = new TextEncoder().encode(content);
     if (bytes.byteLength > DESKTOP_EXPORT_MAX_MIB * 1024 * 1024) {
@@ -443,6 +459,7 @@ export async function downloadExport(filename: string, content: string, mimeType
       return {};
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return { cancelled: true };
+      if (error instanceof DOMException && error.name === 'NotAllowedError' && !options?.retryShare) return { sharePending: true };
     }
   }
   const url = URL.createObjectURL(file);

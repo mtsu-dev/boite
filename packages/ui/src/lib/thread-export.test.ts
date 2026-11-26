@@ -241,8 +241,34 @@ test('export reads from an old core when only tool output is deferred', async ({
 test.for(['inputDeferred', 'documentsDeferred'] as const)('export refuses the old core fallback with %s', async (deferred, { createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const { call, ref, missingMethod } = await mockLegacyToolRead(client, deferred);
-  await expect(loadAllThreadMessages(client, ref.threadId, { ...clean, includeTools: true, includeDiffs: true })).rejects.toBe(missingMethod);
+  let caught: unknown;
+  try {
+    await loadAllThreadMessages(client, ref.threadId, { ...clean, includeTools: true, includeDiffs: true });
+  } catch (err) {
+    caught = err;
+  }
+  expect(caught).toBeInstanceOf(Error);
+  expect((caught as Error).message).toContain('"Read"');
+  expect((caught as Error).message).toContain(ref.messageId);
+  expect((caught as Error).cause).toBe(missingMethod);
   expect(call.mock.calls.some(([method]) => method === 'messages.toolOutput')).toBe(false);
+});
+
+test('diff-only export skips failed deferred tool calls and names oversized tools that fail to hydrate', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  const snapshot = await client.call('threads.get', { threadId: 't-trace' });
+  const failedTool: Message = {
+    ...messages[1]!, id: 'm-diff-only', threadId: 't-trace', parts: [
+      { type: 'tool', toolId: 't-err', name: 'Bash', status: 'error', input: 'git diff', output: null, outputDeferred: true },
+    ],
+  };
+  const original = client.call.bind(client);
+  const call = vi.spyOn(client, 'call').mockImplementation((method, params) => {
+    if (method === 'threads.get') return Promise.resolve({ ...snapshot, messages: [failedTool], messagesBefore: null });
+    return original(method, params);
+  });
+  await loadAllThreadMessages(client, 't-trace', { ...clean, includeDiffs: true });
+  expect(call.mock.calls.some(([method]) => method === 'messages.toolPart')).toBe(false);
 });
 
 test('a core that returns the same cursor cannot hang or silently export half a conversation', async ({ createClient }) => {
