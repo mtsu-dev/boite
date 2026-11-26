@@ -414,9 +414,9 @@
     .title.team { max-width: none; }
     /* Back, the title, then the menu at the row's end, whatever the header draws between. */
     .title-menu { order: 1; }
-    /* app.css's icon button, its box as large as its 44 px target. */
-    .title-menu :global(.trigger.icon-button) { margin: calc((var(--icon-button-target) - var(--icon-button)) / 2); }
-    .title-lines { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; line-height: 1.25; font-weight: 600; color: var(--color-foreground); }
+    /* Full touch target on phone so the thread menu is easy to hit with a thumb. */
+    .title-menu :global(.trigger.icon-button) { width: var(--touch-target); height: var(--touch-target); min-width: var(--touch-target); min-height: var(--touch-target); margin: 0; }
+    .title-lines { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; overflow: hidden; line-height: 1.25; font-weight: 600; color: var(--color-foreground); }
     .title-lines ~ .spacer { display: none; }
     .title-lines.waiting { line-height: 1.1; }
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */

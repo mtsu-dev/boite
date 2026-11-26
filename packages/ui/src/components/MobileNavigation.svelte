@@ -321,7 +321,7 @@
 
 <!-- Resizing releases the phone's controls, but keeps this navigation's filters and list state. -->
 {#if narrow.current}
-<header class="mobile-header" class:chatting={chatting && !firstRun} class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
+<header class="mobile-header" class:chatting={chatting && !firstRun} class:settings={store.page !== 'chat'} class:detail-hidden={store.page === 'agents' && mobileChrome.detail} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
   {#if chatting && !firstRun}
     <!-- The only way out of a conversation on a phone. A thread that waits elsewhere is in its name and the tab bar's count, not a dot on the arrow. -->
     {#if store.openThread?.parentThreadId}
@@ -555,6 +555,7 @@
   @media (max-width: 720px) {
 
     .mobile-header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 60px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); background: var(--color-background); border-bottom: 1px solid var(--color-border); padding-top: max(8px, env(safe-area-inset-top)); }
+    .mobile-header.detail-hidden { display: none; }
     .chat-heading { flex: 1; min-width: 0; height: 44px; }
     .mobile-header.chatting { gap: 6px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
     .chat-heading :global(.thread-header) { gap: 2px; }
@@ -564,15 +565,18 @@
     /* A list's row holds the view switch and up to four finger squares (the machine, the display menu, the search, a
        new thread): the squares touch, their glyphs still 24 px apart, so the switch keeps its room at 360 px. */
     .mobile-header:not(.chatting) > :is(.icon, .header-display) { margin-left: -10px; }
-    /* The new thread's button: filled, shorter than the finger squares beside it, its target the header's height,
-       10 px from the glyphs on both sides. At 360 px the row holds the views, three squares and "+ New" once the
-       views' sides give 3 px each, the search reaches 6 px into the display menu's square (glyphs still 18 px apart)
-       and the button and the gear 2 px into the square before them; past 480 px it says "New thread". From 381 px
-       the search keeps to its own square, so a finger on the display menu's edge never opens the search. */
-    .mobile-header > .primary.new { position: relative; flex: none; gap: 4px; height: 36px; margin-left: -12px; padding: 0 8px 0 6px; }
-    @media (max-width: 380px) { .mobile-header:has(> .primary.new) > [data-testid=mobile-search-open] { margin-left: -16px; } }
+    /* The new thread's button: filled, 40 px drawn inside a 44 px target, 10 px from the glyphs on both sides. At 360 px
+       the row holds the views, three squares and "+ New" once the views' sides give 3 px each, the search reaches 6 px
+       into the display menu's square (glyphs still 18 px apart) and the button and the gear 2 px into the square before
+       them; past 480 px it says "New thread". From 381 px the search keeps to its own square, so a finger on the display
+       menu's edge never opens the search. */
+    .mobile-header > .primary.new { position: relative; flex: none; gap: 5px; height: 40px; margin-left: -12px; padding: 0 11px 0 9px; font-size: var(--text-sm); }
+    @media (max-width: 380px) {
+      .mobile-header > .primary.new { gap: 4px; padding: 0 8px 0 6px; }
+      .mobile-header:has(> .primary.new) > [data-testid=mobile-search-open] { margin-left: -16px; }
+    }
     .mobile-header:has(> .primary.new) > .gear { margin-left: -12px; }
-    .mobile-header > .primary.new::before { content: ''; position: absolute; inset: -4px 0; }
+    .mobile-header > .primary.new::before { content: ''; position: absolute; inset: -2px 0; }
     .new .long { display: none; }
     .mobile-header:has(> .primary.new) .brand strong :global(.view-switch .side) { padding-inline: 7px; }
     @media (min-width: 480px) { .new .long { display: block; } .new .short { display: none; } }

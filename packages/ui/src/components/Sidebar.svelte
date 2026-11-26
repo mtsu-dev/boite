@@ -130,16 +130,18 @@
   let selected = $derived(projectView.selected(groups));
   let recentGroups = $derived(selected ? [selected] : groups);
   let recent = $derived(
-    recentGroups
-      .flatMap(({ machine, project }) =>
-        machine.store
-          .threadsOf(project.id)
-          .map((thread) => ({ machine, project, thread }))
-      )
-      .sort(compareRecent)
+    workspace.view === 'recent'
+      ? recentGroups
+          .flatMap(({ machine, project }) =>
+            machine.store
+              .threadsOf(project.id)
+              .map((thread) => ({ machine, project, thread }))
+          )
+          .sort(compareRecent)
+      : []
   );
   /** Recent's second line: where each row lives, once the tiles alone may not tell them apart; this app's own machine goes unsaid. */
-  const places = $derived(rowPlaces(recent, machines.find(machine => machine.store === workspace.primary)?.id));
+  const places = $derived(workspace.view === 'recent' ? rowPlaces(recent, machines.find(machine => machine.store === workspace.primary)?.id) : () => undefined);
   let workingOpen = $state(false);
   let doneRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
   let archivedRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
@@ -157,8 +159,8 @@
     if (previous.length === rows.length && previous.every((row, index) => row.store === rows[index]?.store && row.threadId === rows[index]?.threadId)) return;
     projectDoneRows = { ...projectDoneRows, [key]: rows };
   }
-  let working = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => groupWorkingThread(machine.store, thread)) : []);
-  let attention = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => !groupWorkingThread(machine.store, thread)) : recent);
+  let working = $derived(workspace.view === 'recent' && recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => groupWorkingThread(machine.store, thread)) : []);
+  let attention = $derived(workspace.view === 'recent' ? (recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => !groupWorkingThread(machine.store, thread)) : recent) : []);
   const listsFor = projectListMap();
   /** The cards whose quiet threads the user unfolded, by project key, for this session. */
   let unfolded = $state<Record<string, true>>({});
@@ -179,7 +181,7 @@
   /** A card lists its done threads under the display menu's switch, or once its own Done count is pressed. */
   const doneShown = (entry: ProjectEntry) => doneFilter.shown || projectThreadView.isOpen(entry, 'done');
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
-  let projectLists = $derived(listsFor(activeGroups));
+  let projectLists = $derived(workspace.view === 'recent' ? listsFor([]) : listsFor(activeGroups));
   /** The rows of the listed projects in drawn order, read only as far as the ninth: projects below it cost nothing. */
   function projectRows(): { store: Store; threadId: ThreadId }[] {
     const rows: { store: Store; threadId: ThreadId }[] = [];

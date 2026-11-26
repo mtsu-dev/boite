@@ -569,6 +569,7 @@ export class Store {
   get threads() { return this.#ctx.threads.threads; }
   set threads(value) { this.#ctx.threads.threads = value; }
   get openThread() { return this.#ctx.threads.openThread; }
+  get subscribedThreadId() { return this.#ctx.threads.subscribedThreadId; }
   /** Where a thread opens: an agent's own on the Agents page, any other in the chat. */
   pageOf(thread: Parameters<Threads['pageOf']>[0]) { return this.#ctx.threads.pageOf(thread); }
   set openThread(value) { this.#ctx.threads.openThread = value; }

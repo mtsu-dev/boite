@@ -63,3 +63,21 @@ test('a press preloads on the owning machine, a click inside the grace keeps it,
   press(document.getElementById('local')!, 'pointerdown');
   expect(preloaded).toHaveLength(3);
 });
+
+test('a button carrying both data-preload-view and data-preload-thread warms the thread alongside the view', () => {
+  vi.useFakeTimers();
+  Object.defineProperty(navigator, 'webdriver', { value: false, configurable: true });
+  document.body.innerHTML = `<button id="bot" data-machine-id="m-1" data-preload-view="agents" data-preload-thread="t-bot">Mochi</button>`;
+  const preloaded: string[] = [];
+  const released: string[] = [];
+  const store = { preload: (id: string) => { preloaded.push(id); return () => released.push(id); } };
+  const stop = startPressPreload({ machines: [{ id: 'm-1', store }], active: store });
+  try {
+    press(document.getElementById('bot')!, 'pointerdown');
+    expect(preloaded).toEqual(['t-bot']);
+    press(document.getElementById('bot')!, 'pointercancel');
+    expect(released).toEqual(['t-bot']);
+  } finally {
+    stop();
+  }
+});

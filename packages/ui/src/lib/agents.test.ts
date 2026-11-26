@@ -208,3 +208,126 @@ test('Open on an agent\'s login question shows the page beside its conversation,
   expect(panel.isOpen).toBe(true);
   expect((await client.call('browser.remoteStatus', { threadId })).tabs).toMatchObject([{ url: 'https://dashboard.example.com/login', active: true }]);
 });
+
+test('openAgent preloads a known thread from the directory in parallel with agents.open and releases it on refusal', async () => {
+  const events: string[] = [];
+  let resolveOpen!: (value: { threadId: string }) => void;
+  let rejectOpen!: (reason: Error) => void;
+  const client = {
+    call: vi.fn((method: string) => {
+      events.push(`call:${method}`);
+      return new Promise<{ threadId: string }>((resolve, reject) => { resolveOpen = resolve; rejectOpen = reject; });
+    }),
+    on: vi.fn(() => () => {}),
+  };
+  const store = {
+    client,
+    threads: [],
+    preload: vi.fn((id: string) => { events.push(`preload:${id}`); return () => { events.push(`release:${id}`); }; }),
+    open: vi.fn(async (id: string) => { events.push(`open:${id}`); }),
+  } as unknown as Store;
+  const directory = agentDirectory(store);
+  directory.snapshot = {
+    profiles: [{ id: 'agt_1', name: 'Nova', avatar: '' }],
+    sessions: [{ id: 'ses_1', agentId: 'agt_1', threadId: 'thr_1' }],
+    status: [{ agentId: 'agt_1', threadId: 'thr_1', state: 'idle' }],
+  } as unknown as AgentsSnapshot;
+
+  const first = openAgent(store, 'agt_1');
+  expect(events).toEqual(['preload:thr_1', 'call:agents.open']);
+  resolveOpen({ threadId: 'thr_1' });
+  expect(await first).toBe('thr_1');
+  expect(events).toEqual(['preload:thr_1', 'call:agents.open', 'open:thr_1', 'release:thr_1']);
+
+  events.length = 0;
+  const second = openAgent(store, 'agt_1');
+  expect(events).toEqual(['preload:thr_1', 'call:agents.open']);
+  rejectOpen(new Error('refused'));
+  expect(await second).toBeNull();
+  expect(store.error).toBe('refused');
+  expect(events).toEqual(['preload:thr_1', 'call:agents.open', 'release:thr_1']);
+});
+
+test('releasing a pointer preload while agents.open is still in flight keeps openAgent\'s shared preload alive', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
+  const knownThreadId = view.snapshot!.sessions.find(s => s.agentId === mira.id)!.threadId;
+  const rawCall = client.call.bind(client);
+  let releaseOpen!: () => void;
+  let gets = 0;
+  let unsubs = 0;
+  vi.spyOn(client, 'call').mockImplementation(async (method: string, params?: unknown) => {
+    if (method === 'threads.get' && (params as { threadId?: string })?.threadId === knownThreadId) gets += 1;
+    if (method === 'threads.unsubscribe' && (params as { threadId?: string })?.threadId === knownThreadId) unsubs += 1;
+    if (method === 'agents.open') {
+      await new Promise<void>(resolve => { releaseOpen = resolve; });
+    }
+    return rawCall(method as never, params as never);
+  });
+
+  // Pointerdown starts the preload; click invokes openAgent which shares it; pointerup grace expires before agents.open returns.
+  const releasePress = store.preload(knownThreadId);
+  const opening = openAgent(store, mira.id);
+  releasePress();
+  await Promise.resolve();
+  releaseOpen();
+  expect(await opening).toBe(knownThreadId);
+  expect(store.openThread?.id).toBe(knownThreadId);
+  expect(gets).toBe(1);
+  expect(unsubs).toBe(0);
+});
+
+test('reopening a mochi after Back cancels a claimed open reuses the new preload and keeps the core subscribed', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
+  const threadId = view.snapshot!.sessions.find(s => s.agentId === mira.id)!.threadId;
+  const rawCall = client.call.bind(client);
+  const getResolvers: (() => void)[] = [];
+  let releaseSecondOpen!: () => void;
+  let openCalls = 0;
+  let getCalls = 0;
+  let unsubs = 0;
+  vi.spyOn(client, 'call').mockImplementation(async (method: string, params?: unknown) => {
+    if (method === 'threads.get' && (params as { threadId?: string })?.threadId === threadId) {
+      getCalls += 1;
+      await new Promise<void>(resolve => { getResolvers.push(resolve); });
+    }
+    if (method === 'threads.unsubscribe' && (params as { threadId?: string })?.threadId === threadId) {
+      unsubs += 1;
+    }
+    if (method === 'agents.open') {
+      openCalls += 1;
+      if (openCalls === 2) await new Promise<void>(resolve => { releaseSecondOpen = resolve; });
+    }
+    return rawCall(method as never, params as never);
+  });
+
+  // First open claims preload #1 and paints the unloaded bare row while threads.get #1 is still in flight.
+  store.showAgents();
+  const first = openAgent(store, mira.id);
+  await vi.waitFor(() => expect(getResolvers).toHaveLength(1));
+  await vi.waitFor(() => expect(store.openThread?.id).toBe(threadId));
+
+  // Back invalidates open #1, then the user immediately re-opens Mira (preload #2 starts while agents.open #2 waits).
+  store.showAgents();
+  const second = openAgent(store, mira.id);
+  await vi.waitFor(() => expect(getResolvers).toHaveLength(2));
+
+  // Resolving threads.get #1 retires open #1 while preload #2 is waiting: it must not unsubscribe Mira on the core.
+  getResolvers.shift()!();
+  await first;
+
+  // Resolving agents.open #2 and threads.get #2 must claim preload #2 (no 3rd fetch) and stay subscribed on the core.
+  releaseSecondOpen();
+  getResolvers.shift()!();
+  expect(await second).toBe(threadId);
+  expect(store.openThread?.id).toBe(threadId);
+  expect(store.subscribedThreadId).toBe(threadId);
+  expect(getCalls).toBe(2);
+  expect(unsubs).toBe(0);
+  expect(client.coreSubscribers).toContain(threadId);
+});

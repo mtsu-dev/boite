@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { lineCount, wordCut } from './word-fit';
+import { lineCount, wordCut, wordFit } from './word-fit';
 
 // One unit per character: widths a test can count.
 const measure = (text: string): number => text.length;
@@ -24,4 +24,18 @@ test('a clamped title fills its lines before the cut', () => {
   expect(cut).toBe('Rework the onboarding flow so a new user sees the first\u2026');
   // A word longer than a line breaks inside it, the way overflow-wrap does.
   expect(lineCount('a verylongwordthatbreaks', 10, measure)).toBe(4);
+});
+
+test('wordFit.update writes new text immediately without waiting for an animation frame', () => {
+  const node = document.createElement('span');
+  document.body.append(node);
+  const action = wordFit(node, 'Waiting on 2 subagents');
+  try {
+    expect(node.textContent).toBe('Waiting on 2 subagents');
+    action.update('Waiting on 3 subagents and workflows');
+    expect(node.textContent).toBe('Waiting on 3 subagents and workflows');
+  } finally {
+    action.destroy();
+    node.remove();
+  }
 });
