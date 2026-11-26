@@ -30,7 +30,7 @@ export class AgentTriggers {
   readonly #core: Core;
   readonly #watches = new Map<string, FileWatch>();
   readonly #rootProbes = new TriggerRootProbes();
-  readonly #watchRetries = new Map<string, { at: number; delayMs: number }>();
+  readonly #watchRetries = new Map<string, { folder: string; at: number; delayMs: number }>();
   readonly #pending = new Map<string, Wake>();
   readonly #shutdown = new AbortController();
   readonly #off: () => void;
@@ -218,7 +218,7 @@ export class AgentTriggers {
     this.syncWatches();
   }
 
-  #syncWatch(trigger: AgentTrigger, agent: AgentProfile | null): void {
+  #syncWatch(trigger: AgentTrigger, agent: AgentProfile | null, fromRetry = false): void {
     if (trigger.source.kind !== 'file') return;
     const { patterns, debounceMs, projectId } = trigger.source;
     const project = this.#core.journal.getProject(projectId);
@@ -229,12 +229,17 @@ export class AgentTriggers {
       return;
     }
     if (held?.folder === project.path) return;
+    const pendingRetry = this.#watchRetries.get(trigger.id);
+    if (pendingRetry) {
+      if (!fromRetry && pendingRetry.folder === project.path && pendingRetry.at > Date.now()) return;
+      if (pendingRetry.folder !== project.path) this.#watchRetries.delete(trigger.id);
+    }
     if (held) this.#stopWatch(trigger.id);
     const failed = (error: unknown) => {
       this.#watches.delete(trigger.id);
       const retry = this.#watchRetries.get(trigger.id);
       const delayMs = retry ? Math.min(retry.delayMs * 2, WATCH_RETRY_MAX_MS) : WATCH_RETRY_MS;
-      this.#watchRetries.set(trigger.id, { at: Date.now() + delayMs, delayMs });
+      this.#watchRetries.set(trigger.id, { folder: project.path, at: Date.now() + delayMs, delayMs });
       if (!retry) {
         this.#core.log('warn', `trigger ${trigger.id}: could not watch its project: ${messageOf(error)}`);
         this.#watchStatus(trigger.id, true);
@@ -354,7 +359,7 @@ export class AgentTriggers {
     for (const [id, retry] of this.#watchRetries) {
       if (retry.at > now) continue;
       const trigger = this.#records.find('trigger', id);
-      if (trigger?.source.kind === 'file') this.#syncWatch(trigger, this.#records.find('profile', trigger.agentId));
+      if (trigger?.source.kind === 'file') this.#syncWatch(trigger, this.#records.find('profile', trigger.agentId), true);
       else this.#watchRetries.delete(id);
     }
     for (const [id, wake] of this.#pending) {
