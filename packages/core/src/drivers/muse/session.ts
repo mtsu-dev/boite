@@ -272,8 +272,9 @@ export class MuseSession {
       }
       if (turn.compacting) {
         const result = await rpc.command<{ status?: string; reason?: string }>('session/compact', { sessionId });
+        // Nothing to summarize is no failure: the conversation stays as it was.
         if (result.status === 'noop') {
-          turn.fail(`Muse had nothing to compact${result.reason === undefined ? '' : ` (${result.reason})`}`);
+          turn.part(turn.takeIndex(), { type: 'notice', notice: { kind: 'nothing_to_compact' }, detail: `Muse had nothing to compact${result.reason === undefined ? '' : ` (${result.reason})`}` });
         }
       } else {
         let prompt = ctx.prompt, attachments = ctx.attachments;

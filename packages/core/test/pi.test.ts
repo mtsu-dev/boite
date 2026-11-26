@@ -315,6 +315,20 @@ test('manual compaction uses the compact RPC response without sending a prompt',
   client.close();
 });
 
+test('a Compact with nothing to summarize ends as a quiet notice, not a failed turn', async () => {
+  const { client, threadId } = await startThread();
+  let finished = client.next('turn.finished', (turn) => turn.threadId === threadId);
+  await client.call('turns.start', { threadId, prompt: '[small] hi' });
+  await finished;
+  finished = client.next('turn.finished', (turn) => turn.threadId === threadId);
+  await client.call('threads.compact', { threadId });
+  expect((await finished).status).toBe('done');
+  const parts = (await client.call('threads.get', { threadId })).messages.flatMap((m) => m.parts);
+  expect(parts.find((p) => p.type === 'notice')).toMatchObject({ notice: { kind: 'nothing_to_compact' } });
+  expect(parts.some((p) => p.type === 'error' || p.type === 'compaction')).toBe(false);
+  client.close();
+});
+
 /** The same thread, on a fake pi the test wrote rather than the shared fixture. */
 async function threadOnAgent(client: CoreClient, agent: string): Promise<string> {
   const { projectId, accountId } = await piAccount(client, agent);

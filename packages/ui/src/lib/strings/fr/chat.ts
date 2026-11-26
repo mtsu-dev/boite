@@ -204,6 +204,7 @@ export const fr: Translation = {
       instructionsLarge: "Les fichiers d'instructions font {chars} caractères, au-delà des {limit} conseillés : l'agent risque d'être plus lent et moins précis",
       instructionsLargeOne: "Le fichier d'instructions fait {chars} caractères, au-delà des {limit} conseillés : l'agent risque d'être plus lent et moins précis",
       mirrorFailed: "Une partie de cette conversation n'a pas été copiée dans le stockage de session : cette copie en manque",
+      nothingToCompact: 'Rien à compacter pour le moment : la conversation est encore trop courte',
     },
     permissionAsk: {
       command: 'Lancer une commande',

@@ -16,7 +16,7 @@
  *
  * The framing is copied from the real mode on purpose: strict JSONL, LF only.
  */
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { instructionsOf } from './history.ts';
 
 const DIRECTIVE = /\[(agents|tool|thought|usage|slow|crash|splitcrash|ask|select|input|editor|retry|giveup|deaf|noclear|notify|timeout|compacted|swapped|taken)\]/g;
@@ -90,6 +90,12 @@ function log(line: string): void {
   const file = process.env['PI_FAKE_LOG'];
   if (file === undefined || file.length === 0) return;
   appendFileSync(file, `${line}\n`, 'utf8');
+}
+
+/** What this test's fake processes logged so far, a session's earlier prompts included. */
+function loggedLines(): string[] {
+  const file = process.env['PI_FAKE_LOG'];
+  return file === undefined || file.length === 0 || !existsSync(file) ? [] : readFileSync(file, 'utf8').split('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -471,6 +477,11 @@ function handle(message: Record<string, unknown>): void {
   log(type);
   switch (type) {
     case 'compact': {
+      // pi's own refusal when no entry is old enough to summarize: a test marks such a session with a `[small]` prompt.
+      if (loggedLines().includes('small-session')) {
+        send({ id, type: 'response', command: 'compact', success: false, error: 'Nothing to compact (session too small)' });
+        return;
+      }
       send({ id, type: 'response', command: 'compact', success: true, data: { tokensBefore: 150000, summary: 'remember this', firstKeptEntryId: 'm-1' } });
       return;
     }
@@ -530,6 +541,7 @@ function handle(message: Record<string, unknown>): void {
         }
       }
       const text = textOf(message['message']);
+      if (text.includes('[small]')) log('small-session');
       const instructions = instructionsOf(text);
       if (text.trimStart().startsWith('/fake-report')) {
         // An extension command: pi runs it, answers the prompt and starts no run,

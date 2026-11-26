@@ -138,7 +138,9 @@ export type AgentNotice =
   | { kind: 'writes_lost'; cause: 'disk_full' | 'quota' | 'other'; transcript: boolean }
   | { kind: 'attachments_missing'; missing: number; sent: number }
   | { kind: 'instructions_large'; chars: number; limit: number; files: number }
-  | { kind: 'mirror_failed' };
+  | { kind: 'mirror_failed' }
+  /** A Compact the user asked for found too little to summarize: the conversation is unchanged. */
+  | { kind: 'nothing_to_compact' };
 
 /**
  * The marker a mochi's new conversation leaves in its thread
