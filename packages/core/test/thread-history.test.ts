@@ -313,5 +313,23 @@ test('messages.toolPart with diffsOnly and messages.list with omitThinking keep 
     const proseOnly = await client.call('messages.list', { threadId, from: basePos + 1, limit: 1, ...light, fullText: true, omitThinking: true });
     expect(proseOnly.messages[0]?.parts[0]).toEqual({ type: 'thinking', text: '', omitted: bigThought.length });
     expect(proseOnly.messages[0]?.parts[1]).toEqual({ type: 'text', text: bigProse });
+
+    // An active running tool call exceeding RPC_MAX_FRAME_BYTES blocks default page reads,
+    // while omitTools: true (no tools) and omitTools: 'running' (diffs only) keep export working.
+    harness.core.journal.putMessage({
+      id: 'active-running', threadId, turnId: 'heavy-turn', role: 'assistant', state: 'streaming', createdAt: 102,
+      parts: [
+        { type: 'text', text: 'Still running' },
+        { type: 'tool', toolId: 'huge-running', name: 'Bash', status: 'running', input: { command: 'tail -f' }, output: hugeOutput },
+        { type: 'tool', toolId: 'done-edit', name: 'Edit', status: 'done', input: { file_path: 'a.ts', old_string: 'x', new_string: 'y' }, output: 'ok' },
+      ],
+    });
+    expect(await thrown(client.call('threads.get', { threadId, limit: 1, ...light }))).toThrow('message active-running');
+    expect(await thrown(client.call('threads.get', { threadId, limit: 1, ...light, omitTools: 'bad' as unknown as boolean }))).toThrow('omitTools');
+    expect(await thrown(client.call('messages.list', { threadId, from: basePos + 1, limit: 1, fullText: 'yes' as unknown as boolean }))).toThrow('fullText');
+    const withoutTools = await client.call('threads.get', { threadId, limit: 1, ...light, omitTools: true });
+    expect(withoutTools.messages[0]?.parts).toEqual([{ type: 'text', text: 'Still running' }]);
+    const withoutRunning = await client.call('threads.get', { threadId, limit: 1, ...light, omitTools: 'running' });
+    expect(withoutRunning.messages[0]?.parts.map(part => part.type === 'tool' ? part.toolId : part.type)).toEqual(['text', 'done-edit']);
   } finally { await harness.stop(); }
 });

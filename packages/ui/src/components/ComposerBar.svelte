@@ -329,7 +329,7 @@
       <PermissionChip items={modeChoices} active={displayedMode} onpick={pickMode} disabled={picking} readonly={botLocked} hint={botHint} />
     {/if}
     {#if signedOut && store.owner}
-      <button type="button" class="ui-chip signed-out" data-testid="composer-reconnect" title={fill(strings.connect.signedOut, { provider: provider?.name ?? '' })} onclick={() => store.openConnect(signedOut.providerId, signedOut.id)}><span class="ui-label">{strings.connect.reconnect}</span></button>
+      <button type="button" class="ui-chip signed-out" data-testid="composer-reconnect" data-preload-view="connect" title={fill(strings.connect.signedOut, { provider: provider?.name ?? '' })} onclick={() => store.openConnect(signedOut.providerId, signedOut.id)}><span class="ui-label">{strings.connect.reconnect}</span></button>
     {/if}
     {#if providerOff}
       {@const sentence = fill(strings.providerSettings.threadOff, { provider: providerOff.name })}

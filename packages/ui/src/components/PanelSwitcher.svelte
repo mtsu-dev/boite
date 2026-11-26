@@ -119,7 +119,7 @@
             <div class="separator" role="separator"></div>
           {:else}
             <button type="button" class="row" class:active={item.active} class:first={!!query.trim() && item === first} role="menuitem" disabled={item.disabled}
-              data-row data-value={item.id} data-testid={item.testid} title={item.title} onclick={() => pick(item)}>
+              data-row data-value={item.id} data-testid={item.testid} data-preload-view={item.preload} title={item.title} onclick={() => pick(item)}>
               {#if item.glyph}<span class="glyph" aria-hidden="true"><item.glyph size={18} strokeWidth={1.75} /></span>{/if}
               <span class="words">
                 <span class="name ui-label">{item.label}</span>

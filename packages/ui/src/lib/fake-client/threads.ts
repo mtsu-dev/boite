@@ -158,7 +158,7 @@ function tailOf(messages: Message[], from: number, limit = MESSAGE_PAGE, project
 
 /** Opaque fixture proofs. The real core uses native SHA-256 over the same complete message data. */
 function snapshotHash(messages: Message[], options: RpcParams<'threads.get'>): string {
-  const json = `${!!options.compactTools}:${!!options.compactFiles}:${!!options.compactImages}:${!!options.compactToolParts}:` + JSON.stringify(messages);
+  const json = `${!!options.compactTools}:${!!options.compactFiles}:${!!options.compactImages}:${!!options.compactToolParts}:${options.omitThinking ? 'nt:' : ''}${options.omitTools ? `${options.omitTools}:` : ''}` + JSON.stringify(messages);
   let a = 0x811c9dc5, b = 0x9e3779b9;
   for (let i = 0; i < json.length; i++) {
     a = Math.imul(a ^ json.charCodeAt(i), 0x01000193);

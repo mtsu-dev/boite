@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Condvar, Mutex};
+use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -89,40 +89,52 @@ struct Slot {
     extended: u32,
 }
 
-/// Everything a start of the core depends on, decided once when the app is
-/// set up and never read from the environment again.
-#[derive(Clone)]
+/// Inputs for every start of the core in this shell. The command and hash are
+/// resolved once by the background resolver, before it probes a running core.
 pub(crate) struct Launch {
     /// The data directory, resolved once: the core is told it with
     /// `--data-dir`, so the shell and the core can never look in two places.
     directory: PathBuf,
-    /// An error here is only reported when a core has to be started, since a
-    /// running core can be adopted without one.
-    command: Result<CoreCommand, String>,
+    channel: Channel,
+    binary: OnceLock<LaunchBinary>,
     resources: Option<PathBuf>,
     resident: bool,
     /// The shell's own version. A running core that reports another version
     /// belongs to the install an update replaced, and is stopped.
     version: String,
-    /// The installed split bundle, even when a reinstall keeps the same version.
-    bundle_hash: Option<String>,
     /// How long a started core gets to answer `/health`.
     timeout: Duration,
 }
 
+struct LaunchBinary {
+    /// An error here is only reported when a core has to be started, since a
+    /// running core can be adopted without a command.
+    command: Result<CoreCommand, String>,
+    /// The installed split bundle, even when a reinstall keeps the same version.
+    bundle_hash: Option<String>,
+}
+
 impl Launch {
     pub(crate) fn new(channel: Channel, directory: PathBuf, resources: Option<PathBuf>, version: String) -> Self {
-        let command = core_command(channel, &directory);
-        let bundle_hash = command.as_ref().ok().and_then(CoreCommand::bundle_hash);
         Self {
-            command,
-            bundle_hash,
+            channel,
+            binary: OnceLock::new(),
             directory,
             resources,
             resident: resident_core(),
             version,
             timeout: START_TIMEOUT,
         }
+    }
+
+    fn binary(&self) -> &LaunchBinary {
+        self.binary.get_or_init(|| {
+            let started = Instant::now();
+            let command = core_command(self.channel, &self.directory);
+            let bundle_hash = command.as_ref().ok().and_then(CoreCommand::bundle_hash);
+            crate::phase("core-command", started);
+            LaunchBinary { command, bundle_hash }
+        })
     }
 
     /// How long a caller of `core_endpoint` may wait on one resolution: the

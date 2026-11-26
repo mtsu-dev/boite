@@ -7,6 +7,33 @@ export const READING_CACHE_MESSAGES = 2000;
 /** At most this many timelines are kept, and this many bytes of them together. */
 export const READING_CACHE_THREADS = 16;
 const READING_CACHE_TOTAL = 4 * READING_CACHE_BYTES;
+export const READING_CACHE_GLOBAL_BYTES = 24 * 1024 * 1024;
+
+interface ReadingEntry {
+  bytes: number;
+  preloaded: boolean;
+  priority: () => number;
+  evict: () => void;
+}
+
+const rendererEntries = new Set<ReadingEntry>();
+let rendererBytes = 0;
+
+function evictionCandidate(entries: Iterable<ReadingEntry>): ReadingEntry | undefined {
+  let candidate: ReadingEntry | undefined;
+  let rank = Infinity;
+  for (const entry of entries) {
+    const priority = entry.priority();
+    const next = priority === Infinity ? priority : priority + (entry.preloaded ? 0 : 2);
+    if (next < rank) { candidate = entry; rank = next; }
+  }
+  return candidate;
+}
+
+export interface ReadingMark {
+  dropped: boolean;
+  release(): void;
+}
 
 function documentChars(document: ToolDocument): number {
   if (document.kind === 'diff') return document.oldText.length + document.newText.length;
@@ -61,16 +88,16 @@ export class ReadingCache {
   readonly #threads = new Map<string, Thread>();
   readonly #pending = new Map<string, { prepare: () => void; cancel: () => void }>();
   readonly #copies = new Map<string, () => void>();
-  readonly #bytes = new Map<string, number>();
+  readonly #entries = new Map<string, ReadingEntry>();
   #total = 0;
-  /** Counts every delete and clear, kept or not: what a page read before it no longer vouches for. */
-  #changes = 0;
-  /** The count at each thread's last delete, and at the last clear. */
-  readonly #dropped = new Map<string, number>();
-  #cleared = 0;
+  readonly #marks = new Map<string, Set<ReadingMark>>();
 
   /** `forgotten` hears of a thread whose visit is no longer one to resume from (`forget`). */
-  constructor(private readonly forgotten?: (id: string) => void) {}
+  constructor(
+    private readonly forgotten?: (id: string) => void,
+    private readonly visible: () => boolean = () => true,
+    private readonly open: () => string | undefined = () => undefined
+  ) {}
 
   get size(): number { return this.#threads.size; }
 
@@ -79,6 +106,22 @@ export class ReadingCache {
   get(id: string): Thread | undefined {
     this.#pending.get(id)?.prepare();
     return this.#threads.get(id);
+  }
+
+  visited(id: string): void {
+    const entry = this.#entries.get(id);
+    if (!entry) return;
+    entry.preloaded = false;
+    this.#entries.delete(id);
+    this.#entries.set(id, entry);
+    rendererEntries.delete(entry);
+    rendererEntries.add(entry);
+  }
+
+  canPrefill(id: string, bytes: number): boolean {
+    return !this.has(id) && bytes <= READING_CACHE_BYTES
+      && this.#entries.size < READING_CACHE_THREADS && this.#total + bytes <= READING_CACHE_TOTAL
+      && rendererBytes + bytes <= READING_CACHE_GLOBAL_BYTES && rendererEntries.size < 4 * READING_CACHE_THREADS;
   }
 
   /** Prepare a visit after the destination can paint. A quick return can still use the page. */
@@ -96,7 +139,7 @@ export class ReadingCache {
     };
     this.#pending.set(id, { prepare, cancel: whenIdle(prepare) });
     this.#retain(id, bytes);
-    return true;
+    return this.has(id);
   }
 
   /**
@@ -113,7 +156,7 @@ export class ReadingCache {
     if (bytes > READING_CACHE_BYTES) { this.delete(id); return; }
     this.#threads.set(id, thread);
     this.#retain(id, bytes);
-    if (copy) this.#copies.set(id, whenIdle(() => {
+    if (copy && this.#threads.get(id) === thread) this.#copies.set(id, whenIdle(() => {
       this.#copies.delete(id);
       if (this.#threads.get(id) === thread && settle()) this.#threads.set(id, copy(thread));
     }));
@@ -125,25 +168,54 @@ export class ReadingCache {
    * Answers whether it was kept.
    */
   prefill(id: string, thread: Thread, bytes: number): boolean {
-    if (this.has(id) || bytes > READING_CACHE_BYTES) return false;
-    if (this.#bytes.size >= READING_CACHE_THREADS || this.#total + bytes > READING_CACHE_TOTAL) return false;
+    if (!this.canPrefill(id, bytes)) return false;
     this.#threads.set(id, thread);
-    this.#retain(id, bytes);
+    this.#retain(id, bytes, true);
     return true;
   }
 
-  #retain(id: string, bytes: number): void {
-    this.#total += bytes - (this.#bytes.get(id) ?? 0);
-    this.#bytes.set(id, bytes);
-    while (this.#bytes.size > READING_CACHE_THREADS || this.#total > READING_CACHE_TOTAL) this.delete(this.#bytes.keys().next().value!);
+  #retain(id: string, bytes: number, preloaded = false): void {
+    this.#unaccount(id);
+    const entry = {
+      bytes, preloaded,
+      priority: () => this.visible() ? (this.open() === id ? Infinity : 1) : 0,
+      evict: () => this.delete(id)
+    };
+    this.#entries.set(id, entry);
+    rendererEntries.add(entry);
+    this.#total += bytes;
+    rendererBytes += bytes;
+    while (this.#entries.size > READING_CACHE_THREADS || this.#total > READING_CACHE_TOTAL) {
+      const victim = evictionCandidate(this.#entries.values());
+      if (!victim) break;
+      victim.evict();
+    }
+    while (rendererBytes > READING_CACHE_GLOBAL_BYTES || rendererEntries.size > 4 * READING_CACHE_THREADS) {
+      const victim = evictionCandidate(rendererEntries);
+      if (!victim) break;
+      victim.evict();
+    }
   }
 
-  /** The point a read starts from; `droppedSince` answers whether its thread left the cache after it. */
-  mark(): number { return this.#changes; }
+  #unaccount(id: string): void {
+    const entry = this.#entries.get(id);
+    if (!entry) return;
+    this.#entries.delete(id);
+    rendererEntries.delete(entry);
+    this.#total -= entry.bytes;
+    rendererBytes -= entry.bytes;
+  }
 
-  /** Whether `id` was deleted, or the cache cleared, since `mark`: a page read before then may hold what left the thread. */
-  droppedSince(id: string, mark: number): boolean {
-    return this.#cleared > mark || (this.#dropped.get(id) ?? 0) > mark;
+  /** Only reads currently in flight need to hear that a page was invalidated. */
+  mark(id: string): ReadingMark {
+    const marks = this.#marks.get(id) ?? new Set<ReadingMark>();
+    const mark: ReadingMark = { dropped: false, release: () => {
+      marks.delete(mark);
+      if (!marks.size && this.#marks.get(id) === marks) this.#marks.delete(id);
+    } };
+    marks.add(mark);
+    this.#marks.set(id, marks);
+    return mark;
   }
 
   /** Another copy of the same timeline in place of `held`: same size, same place in the order. */
@@ -152,8 +224,8 @@ export class ReadingCache {
   }
 
   delete(id: string): boolean {
-    // Counted even when nothing is held: a read ahead of the thread may be on its way.
-    this.#dropped.set(id, ++this.#changes);
+    for (const mark of this.#marks.get(id) ?? []) mark.dropped = true;
+    this.#marks.delete(id);
     this.#copies.get(id)?.();
     this.#copies.delete(id);
     const pending = this.#pending.get(id);
@@ -161,10 +233,7 @@ export class ReadingCache {
       pending.cancel();
       this.#pending.delete(id);
     }
-    const bytes = this.#bytes.get(id);
-    if (bytes === undefined) return pending !== undefined;
-    this.#total -= bytes;
-    this.#bytes.delete(id);
+    this.#unaccount(id);
     return this.#threads.delete(id) || pending !== undefined;
   }
 
@@ -175,14 +244,7 @@ export class ReadingCache {
   }
 
   clear(): void {
-    this.#cleared = ++this.#changes;
-    this.#dropped.clear();
-    for (const cancel of this.#copies.values()) cancel();
-    this.#copies.clear();
-    for (const pending of this.#pending.values()) pending.cancel();
-    this.#pending.clear();
-    this.#threads.clear();
-    this.#bytes.clear();
-    this.#total = 0;
+    for (const id of this.#entries.keys()) this.delete(id);
+    for (const id of this.#marks.keys()) this.delete(id);
   }
 }

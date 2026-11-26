@@ -104,7 +104,7 @@ test('a rejected clipboard write keeps the export dialog open and allows retry',
   query<HTMLButtonElement>(item).click();
   await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
   button('Copy Markdown').click();
-  await waitFor(() => writeText.mock.calls.length === 1 && document.querySelector(dialog)?.getAttribute('aria-busy') !== 'true');
+  await waitFor(() => writeText.mock.calls.length === 1 && !document.querySelector(`${dialog} [aria-busy="true"]`));
   expect(query(dialog).querySelector('[role=alert]')?.textContent).toMatch(/clipboard/i);
   expect(button('Download').disabled).toBe(false);
   button('Copy Markdown').click();
@@ -158,7 +158,7 @@ test('retrying clipboard copy reuses the fetched export without re-reading histo
   query<HTMLButtonElement>(item).click();
   await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
   button('Copy Markdown').click();
-  await waitFor(() => writeText.mock.calls.length === 1 && document.querySelector(dialog)?.getAttribute('aria-busy') !== 'true');
+  await waitFor(() => writeText.mock.calls.length === 1 && !document.querySelector(`${dialog} [aria-busy="true"]`));
   expect(history).toHaveBeenCalledTimes(1);
   button('Copy Markdown').click();
   await waitFor(() => writeText.mock.calls.length === 2 && !document.querySelector(dialog));
@@ -223,7 +223,7 @@ test('clipboard retry re-reads when the thread mutates during the initial export
   query<HTMLButtonElement>(item).click();
   await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
   button('Copy Markdown').click();
-  await waitFor(() => writeText.mock.calls.length === 1 && document.querySelector(dialog)?.getAttribute('aria-busy') !== 'true');
+  await waitFor(() => writeText.mock.calls.length === 1 && !document.querySelector(`${dialog} [aria-busy="true"]`));
   expect(history).toHaveBeenCalledTimes(1);
   // Because the message mutated while reading, retry must NOT reuse the stale snapshot.
   button('Copy Markdown').click();
@@ -255,8 +255,12 @@ test('mobile Web Share NotAllowedError offers a fresh Share tap that shares sync
   });
   await store.open('t-trace');
   const original = store.threadExportMessages.bind(store);
-  const history = vi.spyOn(store, 'threadExportMessages').mockImplementation(async (...args) => {
-    const result = await original(...args);
+  let releaseRead!: () => void;
+  const readHeld = new Promise<void>(resolve => { releaseRead = resolve; });
+  const history = vi.spyOn(store, 'threadExportMessages').mockImplementation(async (id, opts, signal, onProgress) => {
+    onProgress?.({ phase: 'tools', done: 1, total: 3 });
+    await readHeld;
+    const result = await original(id, opts, signal, onProgress);
     const tail = store.openThread?.messages.at(-1);
     const text = tail?.parts.find(part => part.type === 'text');
     if (text && text.type === 'text') text.text += ' (live tick during read)';
@@ -269,6 +273,11 @@ test('mobile Web Share NotAllowedError offers a fresh Share tap that shares sync
   query<HTMLButtonElement>(item).click();
   await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
   button('Download').click();
+  await waitFor(() => query(dialog).querySelector('[data-testid=thread-export-status]')?.textContent?.includes('1/3') === true);
+  const liveStatus = query(dialog).querySelector('[data-testid=thread-export-status]')!;
+  expect(liveStatus.getAttribute('role')).toBe('status');
+  expect(liveStatus.closest('[aria-busy="true"]')).toBeNull();
+  releaseRead();
   await waitFor(() => query(dialog).querySelector('[role=status]')?.textContent?.includes('Tap Share to save') === true);
   expect(history).toHaveBeenCalledTimes(1);
   expect(share).toHaveBeenCalledTimes(1);

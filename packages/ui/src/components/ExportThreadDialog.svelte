@@ -203,7 +203,7 @@
 </script>
 
 <dialog bind:this={dialog} use:overlay.attach class:closing={overlay.closing} onanimationend={overlay.end}
-  aria-labelledby="thread-export-title" aria-describedby="thread-export-thread" aria-busy={busy}
+  aria-labelledby="thread-export-title" aria-describedby="thread-export-thread"
   data-testid="thread-export-dialog" onclick={backdrop} onkeydown={keydown} oncancel={(event) => { event.preventDefault(); close(); }}>
   <header>
     <div class="heading">
@@ -214,29 +214,32 @@
   </header>
 
   <div class="fields">
-    <fieldset disabled={busy}>
-      <legend>{strings.threadExport.format}</legend>
-      <div class="formats">
-        <label><input type="radio" name="thread-export-format" value="markdown" bind:group={options.format} /><span>{strings.threadExport.markdown}</span></label>
-        <label><input type="radio" name="thread-export-format" value="html" bind:group={options.format} /><span>{strings.threadExport.html}</span></label>
-      </div>
-    </fieldset>
-    <fieldset class="includes" disabled={busy}>
-      <legend class="visually-hidden">{strings.threadExport.options}</legend>
-      <label><input type="checkbox" bind:checked={options.includeTools} />{strings.threadExport.tools}</label>
-      <label><input type="checkbox" bind:checked={options.includeDiffs} />{strings.threadExport.diffs}</label>
-      <label><input type="checkbox" bind:checked={options.includeThinking} />{strings.threadExport.thinking}</label>
-    </fieldset>
+    <div class="controls" aria-busy={busy}>
+      <fieldset disabled={busy}>
+        <legend>{strings.threadExport.format}</legend>
+        <div class="formats">
+          <label><input type="radio" name="thread-export-format" value="markdown" bind:group={options.format} /><span>{strings.threadExport.markdown}</span></label>
+          <label><input type="radio" name="thread-export-format" value="html" bind:group={options.format} /><span>{strings.threadExport.html}</span></label>
+        </div>
+      </fieldset>
+      <fieldset class="includes" disabled={busy}>
+        <legend class="visually-hidden">{strings.threadExport.options}</legend>
+        <label><input type="checkbox" bind:checked={options.includeTools} />{strings.threadExport.tools}</label>
+        <label><input type="checkbox" bind:checked={options.includeDiffs} />{strings.threadExport.diffs}</label>
+        <label><input type="checkbox" bind:checked={options.includeThinking} />{strings.threadExport.thinking}</label>
+      </fieldset>
+    </div>
     {#if savedPath}<p class="saved" role="status">{fill(strings.threadExport.savedTo, { path: savedPath })}</p>{/if}
     {#if shareReady}<p class="saved" role="status">{strings.threadExport.shareReady}</p>{/if}
+    <p class="visually-hidden" role="status" aria-live="polite" aria-atomic="true" data-testid="thread-export-status">{busy ? loadingLabel : ''}</p>
     {#if failure}<p class="error" role="alert">{strings.threadExport.failed}. {failure}</p>{/if}
   </div>
 
   <footer>
     {#if options.format === 'markdown'}
-      <button type="button" class="ghost" disabled={busy} onclick={() => void exportConversation(true)}><Clipboard size={15} /><span>{busyAction === 'copy' ? loadingLabel : strings.threadExport.copy}</span></button>
+      <button type="button" class="ghost" disabled={busy} aria-busy={busyAction === 'copy'} onclick={() => void exportConversation(true)}><Clipboard size={15} /><span>{busyAction === 'copy' ? loadingLabel : strings.threadExport.copy}</span></button>
     {/if}
-    <button type="button" class="primary" disabled={busy} onclick={() => void exportConversation(false)}><Download size={16} /><span>{busyAction === 'download' ? loadingLabel : shareReady ? strings.threadExport.share : strings.threadExport.download}</span></button>
+    <button type="button" class="primary" disabled={busy} aria-busy={busyAction === 'download'} onclick={() => void exportConversation(false)}><Download size={16} /><span>{busyAction === 'download' ? loadingLabel : shareReady ? strings.threadExport.share : strings.threadExport.download}</span></button>
   </footer>
 </dialog>
 

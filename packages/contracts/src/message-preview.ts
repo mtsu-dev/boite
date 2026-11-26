@@ -160,7 +160,7 @@ const DIFF_HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 const DIFF_NO_NEWLINE = '\\ No newline at end of file';
 const DIFF_GIT_HEADER = /^(?:index [\da-f]+\.\.[\da-f]+(?: \d+)?|(?:(?:old|new|new file|deleted file) mode) \d+|(?:dis)?similarity index \d+%|(?:rename|copy) (?:from|to) .+|Binary files .+ differ)$/;
 const PATCH_START = /^(?:diff --git |--- |\*\*\* Begin Patch\r?$)/gm;
-const PATCH_END = /^\*\*\* End Patch\r?$/gm;
+const PATCH_MARKER = /^\*\*\* (?:Begin|End) Patch\r?$/gm;
 const NON_CHANGE_TOOL_NAMES = new Set([
   'bash', 'shell', 'exec', 'execute', 'runshellcommand', 'command', 'powershell',
   'read', 'readfile', 'view', 'cat', 'notebookread',
@@ -199,24 +199,23 @@ function hunkEndOffset(value: string, start: number): number {
   return pos;
 }
 
-/** Find the next `*** End Patch` end offset at or after `from`, advancing monotonically. */
+/**
+ * Find the matching `*** End Patch` after `from` without crossing a newer
+ * `*** Begin Patch`, so an unclosed header cannot absorb intervening log lines
+ * and each byte is scanned at most once across `extractPatches`.
+ */
 function findEndPatch(value: string, from: number): number {
-  PATCH_END.lastIndex = from;
-  const match = PATCH_END.exec(value);
-  if (!match) return -1;
+  PATCH_MARKER.lastIndex = from;
+  const match = PATCH_MARKER.exec(value);
+  if (!match || match[0].startsWith('*** Begin')) return -1;
   const line = lineAt(value, match.index);
   return line ? line.next : -1;
 }
 
-export function patchEndOffset(value: string, start: number, cachedEndPatch?: { pos: number }): number {
+export function patchEndOffset(value: string, start: number): number {
   const first = lineAt(value, start);
   if (!first) return start;
   if (first.text === '*** Begin Patch') {
-    if (cachedEndPatch) {
-      if (cachedEndPatch.pos === -1) return start;
-      if (cachedEndPatch.pos < first.next) cachedEndPatch.pos = findEndPatch(value, first.next);
-      return cachedEndPatch.pos === -1 ? start : cachedEndPatch.pos;
-    }
     const end = findEndPatch(value, first.next);
     return end === -1 ? start : end;
   }
@@ -245,13 +244,12 @@ export function patchEndOffset(value: string, start: number, cachedEndPatch?: { 
 function extractPatches(value: string | null | undefined, keepRest: boolean): { patches: string[]; rest: string } {
   if (!value) return { patches: [], rest: '' };
   PATCH_START.lastIndex = 0;
-  const endPatch = { pos: -2 };
   const patches: string[] = [];
   const rest: string[] = [];
   let cursor = 0;
   for (let match = PATCH_START.exec(value); match; match = PATCH_START.exec(value)) {
     const start = match.index;
-    const end = patchEndOffset(value, start, endPatch);
+    const end = patchEndOffset(value, start);
     if (end === start) continue;
     if (keepRest && start > cursor) rest.push(value.slice(cursor, start));
     const slice = value.slice(start, end).replace(/\r?\n$/, '');

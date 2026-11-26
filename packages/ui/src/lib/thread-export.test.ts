@@ -385,11 +385,21 @@ test('edit metadata, trailing-newline diffs, failed tool diffs, errors and stand
   expect(doc.querySelector('a[href="#thread"], a[href="#file"], [data-file-path], a[href]:not([href^="#"])')).toBeNull();
 });
 
-test('patch extraction stays linear on unclosed Begin Patch headers and separates header-only git diffs', () => {
+test('patch extraction stays linear on unclosed Begin Patch headers, ignores unclosed blocks before valid patches, and separates header-only git diffs', () => {
   const realPatch = '--- ok.ts\n+++ ok.ts\n@@ -1 +1 @@\n-old\n+new';
   const unclosed = `${'*** Begin Patch\nnoise line\n'.repeat(10_000)}${realPatch}`;
   const extracted = extractToolPatches(unclosed);
   expect(extracted.patches).toEqual([realPatch]);
+
+  const validBeginPatch = '*** Begin Patch\n*** Update File: a.ts\n@@\n-before\n+after\n*** End Patch';
+  const unclosedThenValid = `*** Begin Patch\nsecret tool log line\nmore noise\n${validBeginPatch}\ntrailing log`;
+  const isolated = extractToolPatches(unclosedThenValid);
+  expect(isolated.patches).toEqual([validBeginPatch]);
+  expect(isolated.rest).toContain('secret tool log line');
+  const diffProjected = projectToolDiffs({
+    type: 'tool', toolId: 't-unclosed', name: 'Bash', status: 'done', input: null, output: unclosedThenValid,
+  });
+  expect(diffProjected.output).toBe(validBeginPatch);
 
   const headerOnly = 'diff --git a/empty.txt b/empty.txt\nnew file mode 100644';
   const projected = projectToolDiffs({
@@ -398,4 +408,15 @@ test('patch extraction stays linear on unclosed Begin Patch headers and separate
   });
   expect(projected.output).toBe(`${headerOnly}\n\n${realPatch}`);
   expect(extractToolPatches(projected.output).patches).toEqual([headerOnly, realPatch]);
+});
+
+test('export omits tool parts on the wire when tools are unchecked and omits running tools for diff-only exports', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  const call = vi.spyOn(client, 'call');
+  await loadAllThreadMessages(client, 't-trace', clean);
+  expect(call).toHaveBeenCalledWith('threads.get', expect.objectContaining({ threadId: 't-trace', omitTools: true, omitThinking: true }));
+
+  call.mockClear();
+  await loadAllThreadMessages(client, 't-trace', { ...clean, includeDiffs: true });
+  expect(call).toHaveBeenCalledWith('threads.get', expect.objectContaining({ threadId: 't-trace', omitTools: 'running', omitThinking: true }));
 });

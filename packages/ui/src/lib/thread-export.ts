@@ -58,7 +58,16 @@ export async function loadAllThreadMessages(
   const pageFlags = features
     ? lightPageFlags(features)
     : ({ compactImages: true, compactFiles: true, compactTools: true, compactToolParts: true } as const);
-  const flags = { ...pageFlags, limit: MESSAGE_PAGE_MAX } as const;
+  const omitTools = options
+    ? !options.includeTools && !options.includeDiffs ? true : !options.includeTools ? ('running' as const) : undefined
+    : undefined;
+  const omitThinking = options && !options.includeThinking ? true : undefined;
+  const flags = {
+    ...pageFlags,
+    limit: MESSAGE_PAGE_MAX,
+    ...(omitTools !== undefined ? { omitTools } : {}),
+    ...(omitThinking ? { omitThinking } : {}),
+  } as const;
   signal?.throwIfAborted();
   const tail = await client.call('threads.get', { threadId, ...flags });
   const pages = [tail.messages];
@@ -85,8 +94,8 @@ export async function loadAllThreadMessages(
     onProgress?.({ phase: 'messages', done: index + 1, total: omittedIndexes.length });
     // Keep heavy tool parts deferred while asking for complete prose so a message with
     // large tool inputs/documents (or unchecked thinking) does not exceed RPC_MAX_FRAME_BYTES.
-    const omitThinking = !options?.includeThinking;
-    let { messages: [full] } = await client.call('messages.list', { threadId, ...flags, from, limit: 1, fullText: true, ...(omitThinking ? { omitThinking: true } : {}) });
+    const stripThinking = !options?.includeThinking;
+    let { messages: [full] } = await client.call('messages.list', { threadId, ...flags, from, limit: 1, fullText: true, ...(stripThinking ? { omitThinking: true } : {}) });
     if (full?.id === message.id && omitted(full)) {
       // Older cores ignore `fullText`; fall back to disabling `compactToolParts` for this single message.
       ({ messages: [full] } = await client.call('messages.list', { threadId, ...flags, from, limit: 1, compactToolParts: false }));

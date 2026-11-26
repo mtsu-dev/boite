@@ -17,6 +17,23 @@ describe('the right panel', () => {
     window.localStorage.clear();
   });
 
+  test('forgetting a thread releases its facade even without a saved layout', () => {
+    const { root, bound } = panel();
+    root.forget('t-1');
+    expect(root.for('t-1')).not.toBe(bound);
+  });
+
+  test('releasing a machine forgets its facades and keeps its saved layouts', () => {
+    const key = JSON.stringify(['remote', 't-1']);
+    const { root, bound } = panel(key);
+    const local = root.for('t-1');
+    bound.showSurface({ kind: 'tasks' });
+    root.releaseMachine('remote');
+    expect(root.for(key)).not.toBe(bound);
+    expect(root.for(key).active?.kind).toBe('tasks');
+    expect(root.for('t-1')).toBe(local);
+  });
+
   test('a workflow run opens in the subagents tab, which follows the run it was last pointed at across a reload', () => {
     const { bound } = panel();
 

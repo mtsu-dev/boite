@@ -28,7 +28,7 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "gzi
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 # `catch_unwind` for async work: a panicking update command must still answer.
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-tokio = { version = "1", features = ["fs", "io-util"] }
+tokio = { version = "1", features = ["fs", "io-util", "time"] }
 semver = "1"
 sha2 = "0.11"
 serde = { version = "1", features = ["derive"] }

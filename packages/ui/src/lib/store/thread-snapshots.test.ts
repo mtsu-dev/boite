@@ -46,7 +46,7 @@ async function until(check: () => boolean | Promise<boolean>, ms = 4000): Promis
   }
 }
 
-test('a thread opened before a reload opens from its snapshot, then asks only for what came after it', async () => {
+test('a thread opened before a reload paints a summary and starts the network before its snapshot is ready', async () => {
   const db = new MemorySnapshotDb();
   setThreadSnapshots(new ThreadSnapshots({ db, subtle: crypto.subtle }));
   const first = await load();
@@ -60,15 +60,37 @@ test('a thread opened before a reload opens from its snapshot, then asks only fo
   let release!: () => void;
   const second = await load(new Promise<void>(resolve => { release = resolve; }));
   const opening = second.store.open('t-descriptors');
-  await until(() => second.gets.some(params => params.threadId === 't-descriptors'));
+  expect(second.gets.some(params => params.threadId === 't-descriptors')).toBe(true);
+  expect(second.store.loadingThreadId).toBeNull();
+  await until(() => (second.store.openThread?.messages.length ?? 0) > 0);
   expect(second.store.openThread?.id).toBe('t-descriptors');
   expect(second.store.loadingThreadId).toBeNull();
   expect(second.store.openThread!.messages.map(message => message.id)).toEqual(shown);
   release();
   await opening;
   const ask = second.gets.find(params => params.threadId === 't-descriptors')!;
-  expect(ask.after).toBe(shown.at(-1));
+  expect(ask.after).toBeUndefined();
   expect(second.store.openThread!.messages.map(message => message.id)).toEqual(shown);
+});
+
+test('a device snapshot can still fill the summary after a network failure', async () => {
+  const { store, client } = await load();
+  const threadId = 't-descriptors';
+  const cached = await client.call('threads.get', { threadId });
+  let resolveSnapshot!: (thread: Thread) => void;
+  vi.spyOn(DeviceSnapshots.prototype, 'mayHold').mockReturnValue(true);
+  vi.spyOn(DeviceSnapshots.prototype, 'read').mockImplementation(() => new Promise(resolve => { resolveSnapshot = resolve; }));
+  const call = FakeClient.prototype.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: Params, options?: unknown) => {
+    if (method === 'threads.get' && params.threadId === threadId) return Promise.reject(new Error('Request timed out'));
+    return call(method as never, params as never, options as never);
+  }) as typeof client.call);
+
+  await store.open(threadId);
+  expect(store.openThread?.messages).toHaveLength(0);
+  resolveSnapshot(cached);
+  await until(() => !!store.openThread?.messages.length);
+  expect(store.openThread?.messages).toEqual(cached.messages);
 });
 
 test('a snapshot whose cursor the core does not know is dropped, and the thread shows only what the core sent', async () => {
@@ -86,8 +108,9 @@ test('a snapshot whose cursor the core does not know is dropped, and the thread 
   const page = await client.call('threads.get', { threadId: 't-descriptors' });
   expect(page.messages.map(message => message.id)).not.toContain(cursor);
   gets.length = 0;
+  store.preload('t-descriptors');
   await store.open('t-descriptors');
-  expect(gets.find(params => params.threadId === 't-descriptors')?.after).toBe(cursor);
+  expect(gets.find(params => params.threadId === 't-descriptors')?.after).toBeUndefined();
   expect(store.openThread!.messages.map(message => message.id)).toEqual(page.messages.map(message => message.id));
   await snapshots.purgeMachine('none');
   expect(await db.data('core-fixture', 't-descriptors')).toBeUndefined();

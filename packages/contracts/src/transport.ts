@@ -27,6 +27,12 @@ export interface TransportOptions {
   fullText?: boolean;
   /** Strip thinking text so unchecked reasoning does not consume the frame budget. */
   omitThinking?: boolean;
+  /**
+   * Drop tool parts (`true`) or only running tool calls (`'running'`) before
+   * measuring page/frame budgets, so an active tool output cannot block a read
+   * that excludes it.
+   */
+  omitTools?: boolean | 'running';
 }
 
 /**
@@ -40,7 +46,7 @@ export const MESSAGE_SENT_MAX_BYTES = 8 * 1024 * 1024;
 
 /** Whether the options defer anything at all. */
 function compacts(options: TransportOptions): boolean {
-  return !!(options.compactTools || options.compactFiles || options.compactImages || options.compactToolParts || options.omitThinking);
+  return !!(options.compactTools || options.compactFiles || options.compactImages || options.compactToolParts || options.omitThinking || options.omitTools);
 }
 
 function omitThinkingParts(message: Message): Message {
@@ -51,6 +57,11 @@ function omitThinkingParts(message: Message): Message {
     return { ...part, text: '', omitted: (part.omitted ?? 0) + part.text.length };
   });
   return changed ? { ...message, parts } : message;
+}
+
+function omitToolParts(message: Message, mode: true | 'running'): Message {
+  const parts = message.parts.filter(part => part.type !== 'tool' || (mode === 'running' && part.status !== 'running'));
+  return parts.length === message.parts.length ? message : { ...message, parts };
 }
 
 function toolParts(message: Message, options: { inputs: boolean; strict: boolean; folded: true }): Message {
@@ -65,7 +76,8 @@ function toolParts(message: Message, options: { inputs: boolean; strict: boolean
 }
 
 function project(message: Message, options: TransportOptions, strict: boolean, previews?: ImagePreviews): Message {
-  const base = options.omitThinking ? omitThinkingParts(message) : message;
+  const withoutThinking = options.omitThinking ? omitThinkingParts(message) : message;
+  const base = options.omitTools ? omitToolParts(withoutThinking, options.omitTools) : withoutThinking;
   // A page is history: its cards are drawn folded.
   const tools = options.compactTools || options.compactToolParts
     ? toolParts(base, { inputs: !!options.compactToolParts, strict, folded: true }) : base;

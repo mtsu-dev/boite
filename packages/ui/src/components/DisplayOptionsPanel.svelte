@@ -236,7 +236,7 @@
       </button>
     {/if}
     {#if onaddproject}
-      <button type="button" class="row" data-testid="add-project" onclick={addProject}>
+      <button type="button" class="row" data-testid="add-project" data-preload-view="project" onclick={addProject}>
         <span class="glyph" aria-hidden="true"><FolderPlus size={16} /></span><span class="ui-label">{strings.sidebar.addProject}</span>
       </button>
     {/if}

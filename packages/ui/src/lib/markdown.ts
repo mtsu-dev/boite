@@ -1,5 +1,6 @@
 import { inline, mathHtml } from './markdown-inline';
 import { FenceScan, closesFence, fenceLanguage, openFence } from './fences';
+import { workerIdle } from './worker-idle';
 /**
  * The markdown an agent answer needs: paragraphs, headings, nested and task
  * lists, block quotes, tables, rules, fenced and inline code, bold, italic,
@@ -160,6 +161,16 @@ export const PREPARE_WAIT_MS = 50;
 let preparer: Worker | null | undefined;
 let lastPrepare = 0;
 const preparing = new Map<number, (html: string[] | null) => void>();
+const idle = workerIdle(() => stopPreparer(undefined));
+
+function stopPreparer(next: null | undefined): void {
+  idle.stop();
+  preparer?.terminate();
+  preparer = next;
+  const waiting = [...preparing.values()];
+  preparing.clear();
+  for (const done of waiting) done(null);
+}
 
 function prepareWorker(): Worker | null {
   if (preparer !== undefined) return preparer;
@@ -169,19 +180,18 @@ function prepareWorker(): Worker | null {
   } catch {
     return preparer = null;
   }
-  preparer.onmessage = ({ data }: MessageEvent<{ id: number; html?: string[] }>) => {
+  const active = preparer;
+  active.onmessage = ({ data }: MessageEvent<{ id: number; html?: string[] }>) => {
+    if (preparer !== active) return;
     const done = preparing.get(data.id);
     preparing.delete(data.id);
+    idle.touch();
     done?.(data.html ?? null);
   };
   // A worker that failed to load answers nothing: the rows render here, as without one.
-  preparer.onerror = (event) => {
+  active.onerror = (event) => {
     event.preventDefault();
-    preparer?.terminate();
-    preparer = null;
-    const waiting = [...preparing.values()];
-    preparing.clear();
-    for (const done of waiting) done(null);
+    if (preparer === active) stopPreparer(null);
   };
   return preparer;
 }
@@ -208,7 +218,12 @@ export function prepareBlocks(sources: readonly string[], rich = false, wait = P
       if (html) blocks.forEach((block, index) => { const value = html[index]; if (value !== undefined && !rendered.has(prefix + block)) keep(prefix + block, value); });
       settle(html ? 'worker' : 'here');
     });
-    away.postMessage({ id, blocks, rich });
+    if (away === preparer) idle.touch();
+    try { away.postMessage({ id, blocks, rich }); }
+    catch {
+      if (away === preparer) stopPreparer(null);
+      else { preparing.get(id)?.(null); preparing.delete(id); }
+    }
   });
 }
 
