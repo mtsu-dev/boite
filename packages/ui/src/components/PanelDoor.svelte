@@ -23,7 +23,7 @@
 
 {#if !mobile.current && !inPanel}
   <button type="button" class="icon-button panel-glyph" title={`${strings.thread.panelHint}${store.keyHint('panel')}`} aria-label={strings.thread.panelHint}
-    aria-pressed={store.panelOpen} data-testid={testid} onclick={() => ontoggle?.()}>
+    aria-pressed={store.panelOpen} data-testid={testid} data-preload-view="panel" onclick={() => ontoggle?.()}>
     <PanelRight size={16} strokeWidth={1.75} />
   </button>
 {:else}
@@ -32,7 +32,7 @@
     <panelSwitch.door {inPanel} />
   {:else}
     <!-- Open with its panel still loading, the door stays pressed; its name comes with the panel. -->
-    <button type="button" class="ghost door" title={`${strings.thread.panelHint}${store.keyHint('panel')}`} aria-pressed={store.panelOpen} data-testid={testid} onclick={() => ontoggle?.()}>
+    <button type="button" class="ghost door" title={`${strings.thread.panelHint}${store.keyHint('panel')}`} aria-pressed={store.panelOpen} data-testid={testid} data-preload-view="panel" onclick={() => ontoggle?.()}>
       <span class="door-face">
         {#if !mobile.current}<PanelRight size={16} strokeWidth={1.75} aria-hidden="true" />{/if}
         <span class="ui-label">{strings.thread.panelMenu}</span>

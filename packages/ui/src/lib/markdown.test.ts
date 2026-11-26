@@ -1,3 +1,4 @@
+import { WORKER_IDLE_MS } from './worker-idle';
 import { describe, expect, test, vi } from 'vitest';
 import { headingAt, renderBlock, renderMarkdown } from './markdown';
 
@@ -225,14 +226,17 @@ test('a page of history is rendered in the worker before its rows draw, and here
   try {
     let delay = 10;
     const posted: string[][] = [];
+    const terminated = vi.fn();
+    const created = vi.fn();
     class FakeWorker {
       onmessage: ((event: MessageEvent) => void) | null = null;
       onerror: ((event: Event) => void) | null = null;
+      constructor() { created(); }
       postMessage(data: { id: number; blocks: string[]; rich: boolean }): void {
         posted.push(data.blocks);
         setTimeout(() => this.onmessage?.({ data: { id: data.id, html: data.blocks.map(block => `<p>worker: ${block}</p>`) } } as MessageEvent), delay);
       }
-      terminate(): void {}
+      terminate(): void { terminated(); }
     }
     vi.stubGlobal('Worker', FakeWorker);
     vi.resetModules();
@@ -253,6 +257,14 @@ test('a page of history is rendered in the worker before its rows draw, and here
     expect(markdown.knownBlock('Slow block')).toBe(false);
     await vi.advanceTimersByTimeAsync(200);
     expect(markdown.knownBlock('Slow block')).toBe(true);
+    await vi.advanceTimersByTimeAsync(WORKER_IDLE_MS);
+    expect(terminated).toHaveBeenCalledOnce();
+    expect(created).toHaveBeenCalledOnce();
+    delay = 10;
+    const afterIdle = markdown.prepareBlocks(['After idle']);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await afterIdle).toBe('worker');
+    expect(created).toHaveBeenCalledTimes(2);
     // No worker: here, at once.
     vi.stubGlobal('Worker', undefined);
     vi.resetModules();

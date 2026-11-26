@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { findBar as lazyFindBar } from '../lib/chat-views';
   import { flushSync, onDestroy, onMount, tick, untrack, type Snippet } from 'svelte';
   import { MESSAGE_PAGE, type Message } from '@boite/contracts';
   import { strings } from '../lib/strings';
@@ -67,9 +68,9 @@
   let { store, threadId, messages, resting = null }: { store: Store; threadId: string; messages: Message[]; resting?: string | null } = $props();
   const viewer = new ListViewer();
   /** The find bar is its own chunk, fetched the first time it opens. A failed fetch tries again on the next open. */
-  let FindBar = $state.raw<typeof import('./FindBar.svelte').default>();
+  const FindBar = $derived(lazyFindBar.current);
   $effect(() => {
-    if (store.findOpen && !FindBar) void import('./FindBar.svelte').then((module) => { FindBar = module.default; }).catch(() => { store.findOpen = false; });
+    if (store.findOpen && !FindBar) void lazyFindBar.load().catch(() => { store.findOpen = false; });
   });
   const mail = $derived(agentMailFor(store, threadId));
   /** The thread's account is signed out and no other of its agent can take the next turn: an error carries the way back in. */

@@ -79,7 +79,7 @@
 
   /** The thread menu's order: the view's own Find first, then what is done to the bot, its danger last. */
   const menuItems = $derived<MenuItem[]>([
-    ...(thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }, separator('sep-find')] : []),
+    ...(thread ? [{ id: 'find', preload: 'find', label: strings.palette.find, glyph: Search }, separator('sep-find')] : []),
     { id: 'settings', label: labels.settings, glyph: Settings2 },
     { id: 'brain', label: labels.brain, glyph: Brain },
     ...(store.owner && agent.status !== 'archived' ? agentLifecycleItems(agent, !!thread) : []),

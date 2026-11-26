@@ -342,7 +342,15 @@ export class RightPanelStore {
    * keys it may judge: a machine not connected yet must keep its own.
    */
   prune(stale: (key: string) => boolean): void {
-    this.#forget(Object.keys(this.threads).filter((key) => key !== '' && stale(key)));
+    this.#forget([...new Set([...Object.keys(this.threads), ...this.#bound.keys()])].filter((key) => key !== '' && stale(key)));
+  }
+
+  /** A disconnected Store can reconnect with the same saved layout. */
+  releaseMachine(machineId: string | null): void {
+    const prefix = machineId ? JSON.stringify([machineId]).slice(0, -1) + ',' : null;
+    for (const key of this.#bound.keys()) {
+      if (prefix ? key.startsWith(prefix) : !key.startsWith('["')) this.#bound.delete(key);
+    }
   }
 
   /** A deleted profile's tabs close in every thread, their views with them. */
@@ -367,6 +375,9 @@ export class RightPanelStore {
     const kept = { ...this.threads };
     let changed = false;
     for (const key of keys) {
+      this.#bound.delete(key);
+      this.documents.forget(key);
+      this.phoneShut.delete(key);
       const state = kept[key];
       if (!state) continue;
       // The strip goes with the layout, so nothing will ever list these surfaces
@@ -376,9 +387,6 @@ export class RightPanelStore {
         if (surface.kind === 'browser') browserBridge.destroy(surface.id);
       }
       delete kept[key];
-      this.#bound.delete(key);
-      this.documents.forget(key);
-      this.phoneShut.delete(key);
       changed = true;
     }
     if (!changed) return;
