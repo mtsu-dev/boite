@@ -48,8 +48,11 @@ same agent.
 | Grok | No | Yes | Yes |
 | Hermes Agent | Yes | No | Yes |
 | Mistral Vibe | Yes | No | Yes |
-| pi | Yes | No | No |
+| pi | On models that read images | No | No |
 
+- On a pi model that takes text only, you can still attach other files. If
+  you switch to that model with an image in your draft, remove the image or
+  switch models to send.
 - Plan mode: the agent proposes a plan and waits for your approval before it
   changes anything.
 - Asks before acting: the agent requests permission in the chat before it runs

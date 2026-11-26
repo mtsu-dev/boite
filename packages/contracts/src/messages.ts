@@ -30,8 +30,8 @@ export type ToolDocument =
 /**
  * An image sent with a prompt. `data` is base64 with no `data:` prefix. The
  * core refuses one over `ATTACHMENT_MAX_BYTES`, more than `ATTACHMENTS_PER_TURN`
- * of them, a format outside `IMAGE_MIME_TYPES`, and any of them on a provider
- * whose `capabilities.images` is false, each by name.
+ * of them, a format outside `IMAGE_MIME_TYPES`, and any of them when the agent
+ * or its selected model reports that it takes no images.
  */
 export interface ImageAttachment {
   kind: 'image';

@@ -2120,6 +2120,34 @@ test('a provider that reads no image still takes files and refuses an image past
   expect(query('[data-testid=composer-attachment]').textContent).toContain('notes.txt');
 });
 
+test('switching a draft to a text-only pi model blocks its image but keeps file attachments', async ({ app: _app }) => {
+  await openDraft();
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  store.draftChoice = { ...store.defaultChoice()!, providerId: 'pi', accountId: account.id, model: 'default', effort: null };
+  await waitFor(() => chipText('composer-picker') === 'pi');
+  paste(pngFile());
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
+  await type('Read the attachments');
+
+  store.draftChoice = { ...store.draftChoice!, model: 'pi-demo' };
+  await waitFor(() => chipText('composer-picker')?.includes('demo model') === true);
+  expect(query('[data-testid=composer-image-warning]').textContent).toContain('pi demo model');
+  const send = query<HTMLButtonElement>('[data-testid=composer-send]');
+  expect(send.disabled).toBe(true);
+  press('Enter');
+  expect(input().value).toBe('Read the attachments');
+
+  query<HTMLButtonElement>('[data-testid=composer-attachment-remove]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') === null);
+  paste(pngFile());
+  await waitFor(() => store.error?.startsWith('pi demo model takes no images') === true);
+  expect(document.querySelector('[data-testid=composer-attachment]')).toBeNull();
+  paste(new File(['hello'], 'notes.txt', { type: 'text/plain' }));
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]')?.textContent?.includes('notes.txt') === true);
+  expect(send.disabled).toBe(false);
+});
+
 // -- the slash menu -----------------------------------------------------------
 
 function slashRows(): string[] {

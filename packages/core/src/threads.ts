@@ -52,7 +52,7 @@ import { ResumePlanner } from './threads/resume.ts';
 import { ThreadTitles } from './threads/retitle.ts';
 import { SideQuestions } from './threads/side-questions.ts';
 import { messagePage, threadSnapshot, type MessagePage } from './threads/snapshot.ts';
-import { checkEffort, checkModel, checkSelection, checkSpeed, checkStoredEffort, checkStoredSpeed, defaultModel, selectionFor } from './threads/selection.ts';
+import { checkEffort, checkModel, checkSelection, checkSpeed, checkStoredEffort, checkStoredSpeed, defaultModel, imageInputModel, selectionFor } from './threads/selection.ts';
 import { TurnContexts } from './threads/turn-context.ts';
 import { TurnRunner } from './threads/turn-runner.ts';
 import { markQueuedStopped, userStopKey } from './threads/turn-settlement.ts';
@@ -639,7 +639,7 @@ export class ThreadStore {
     );
     checkStoredEffort(provider, thread.accountId, thread.model, thread.effort);
     checkStoredSpeed(provider, thread.accountId, thread.model, thread.speed ?? null);
-    checkAttachments(attachments, provider);
+    checkAttachments(attachments, provider, () => imageInputModel(this.#core, provider, thread));
     this.#core.sharedAccess.uploads(threadId, attachments);
 
     if (!operation && !activity && !startedBy) {

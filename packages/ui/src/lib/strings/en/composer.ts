@@ -150,7 +150,7 @@ export const strings = {
     attachTooMany: 'A turn carries at most {max} files, so {name} was left out.',
     attachTotalOver: 'These files still weigh over {max} together, even with the pictures at their smallest: remove some before sending.',
     attachTotalTooLarge: 'The files of one turn weigh {max} at most together, so {name} was left out.',
-    attachNoImages: '{provider} takes no images: send the prompt without them.',
+    attachNoImages: '{name} takes no images: send the prompt without them.',
     /** The agent's suggested next message in the empty box (Settings > General > Suggest the next message). */
     suggestion: {
       /** Read by a screen reader before the suggested text. */

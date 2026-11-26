@@ -99,6 +99,6 @@ export async function editWhole(store: Store, threadId: string, message: Message
     (now?.previewReferences?.length ?? 0) !== references.length || references.some((reference, index) => now?.previewReferences?.[index] !== reference)) return false;
   store.startEdit(threadId, message);
   const edited = store.composerStates[threadId]!;
-  offerDraftUndo({ store, key: threadId, box: undefined, state: edited, provider: null, moved: () => {} }, { text: text ?? '', attachments: attachments.length }, strings.composer.draftReplaced);
+  offerDraftUndo({ store, key: threadId, box: undefined, state: edited, imageRefusal: null, moved: () => {} }, { text: text ?? '', attachments: attachments.length }, strings.composer.draftReplaced);
   return true;
 }

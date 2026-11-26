@@ -1,6 +1,7 @@
 import { noteUserMessage } from './checklist';
 import { attachmentError, previewPrompt, previewReferencesError, providerSupportsSteering, type MessagePart, type Message, type RpcParams } from '@boite/contracts';
 import type { FakeContext } from './context';
+import { threadModel } from './provider-catalog';
 import { refusal } from './shared';
 
 /** The fixture accepts live user messages without opening or stopping a turn. */
@@ -16,11 +17,11 @@ export async function steerUser(ctx: FakeContext, params: RpcParams<'turns.steer
   if (referenceError) throw refusal(referenceError);
   const provider = ctx.providers.find(provider => provider.id === thread.providerId);
   if (!provider) throw ctx.notFound('provider', thread.providerId);
-  const error = attachmentError(attachments, provider);
-  if (error) throw refusal(error.message);
-  const content = 'steer:' + JSON.stringify([params.turnId, params.prompt, attachments, references]);
   const key = `${params.threadId}:${params.clientRequestId}`;
   const previous = ctx.turnRequests.get(key);
+  const error = attachmentError(attachments, provider, previous ? undefined : threadModel(ctx, thread));
+  if (error) throw refusal(error.message, error.data);
+  const content = 'steer:' + JSON.stringify([params.turnId, params.prompt, attachments, references]);
   if (previous) {
     if (previous.content !== content) throw refusal('clientRequestId was already used for different content');
     return { accepted: true };

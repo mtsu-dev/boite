@@ -25,6 +25,7 @@ export interface ThreadCapabilitySnapshot {
   protocol: Protocol | null;
   selectionVersion: number;
   providerCapabilities: ProviderCapabilities | null;
+  modelImages?: false;
   runtimeReason: ThreadCapabilityReason | null;
   conversationReason: ThreadCapabilityReason | null;
   busy: boolean;
@@ -56,7 +57,7 @@ export function deriveThreadCapabilities(s: ThreadCapabilitySnapshot): ThreadCap
     threadId: s.threadId, providerId: s.providerId, protocol: s.protocol, selectionVersion: s.selectionVersion,
     steering: capability(s.steeringSupported, s.runtimeReason ?? s.conversationReason ?? s.steeringReason),
     compaction: capability(known, idle ?? s.compactionReason),
-    images: capability(s.providerCapabilities?.images === true, s.steeringReason === null ? s.runtimeReason ?? s.conversationReason : idle),
+    images: capability(s.providerCapabilities?.images === true && s.modelImages !== false, s.steeringReason === null ? s.runtimeReason ?? s.conversationReason : idle),
     plan: capability(s.providerCapabilities?.planMode === true, idle),
     approvals: capability(s.providerCapabilities?.approvals === true, s.pendingApprovals ? null : 'no-request'),
     // Boite also accepts asynchronous question cards through its scoped CLI, independently of native questions.

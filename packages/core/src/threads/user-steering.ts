@@ -7,6 +7,7 @@ import { requireAgent } from './agentless.ts';
 import { newId } from '../ids.ts';
 import type { ThreadStore } from '../threads.ts';
 import { checkAttachmentArray, checkAttachments } from './inputs.ts';
+import { imageInputModel } from './selection.ts';
 import { saveThread } from './records.ts';
 import { expandSlashPrompt } from '../plugins/extensions.ts';
 
@@ -39,9 +40,11 @@ export async function steerUser(core: Core, threads: ThreadStore, params: RpcPar
   checkAttachmentArray(attachments);
   const referenceError = previewReferencesError(references, prompt);
   if (referenceError) throw refused(referenceError);
-  checkAttachments(attachments, core.providers.require(thread.providerId));
-  const fingerprint = createHash('sha256').update(JSON.stringify([turnId, prompt, attachments, references])).digest('hex');
+  const provider = core.providers.require(thread.providerId);
   const previous = core.journal.turnRequest(threadId, clientRequestId);
+  // A receipt belongs to the turn that accepted it, even after the model changes.
+  checkAttachments(attachments, provider, previous ? undefined : () => imageInputModel(core, provider, thread));
+  const fingerprint = createHash('sha256').update(JSON.stringify([turnId, prompt, attachments, references])).digest('hex');
   if (previous) {
     if (!previous.fingerprint.endsWith(`:${fingerprint}`)) throw refused('clientRequestId was already used for different content');
     if (previous.fingerprint === `steer:accepted:${fingerprint}`) return { accepted: true };

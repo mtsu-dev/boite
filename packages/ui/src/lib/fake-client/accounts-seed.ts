@@ -240,7 +240,7 @@ export function seedAccounts() {
     models: [{ id: 'default', name: `${provider.name} default`, default: true }],
     capabilities: {
       approvals: provider.protocol !== 'pi', hooks: false, checkpoint: false,
-      images: false, planMode: provider.protocol !== 'pi', resume: true
+      images: provider.protocol === 'pi', planMode: provider.protocol !== 'pi', resume: true
     },
     install: null,
     alwaysIsolated: false

@@ -325,6 +325,8 @@ export interface ModelInfo {
   legacy?: boolean;
   /** A small mark next to the name in the picker. */
   badge?: 'new';
+  /** False when this model reads no images although its agent does. Absent follows the agent. */
+  images?: false;
   /**
    * Reasoning effort this model offers. A model without it has no effort control.
    * `default` is the level the agent runs this model on when none is picked;

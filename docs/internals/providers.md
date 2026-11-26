@@ -396,9 +396,12 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   from Boite; its account controls show the refusal.
 - `models` is a `ModelInfo` list: `id`, `name`, an optional `default`, `legacy`
   (still accepted, folded away in the picker), `badge: "new"`, and an `effort`
-  block of named levels with a default. A native agent may declare an empty list
-  and let the probe supply its catalog. The unnamed `default` alias remains
-  accepted for existing descriptors. Echo requires at least one static model.
+  block of named levels with a default. A probed model may have `images: false`
+  when it reads no images. Only pi reports this today, from the model's `input`
+  list. Without the field, the model follows the agent's image capability.
+  A native agent may declare an empty list and let the probe supply its catalog.
+  The unnamed `default` alias remains accepted for existing descriptors. Echo
+  requires at least one static model.
 - `experimental: true` marks an agent Boite drives without long use behind it.
   It stays off until the user turns it on ([below](#turning-a-provider-off)),
   and its row on the Providers page carries an Experimental badge.

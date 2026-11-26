@@ -118,7 +118,7 @@ test('real and fake capability RPCs agree on echo facts and idle steering for ev
   const { capabilityMethods } = await import(new URL('../../ui/src/lib/fake-client/capabilities.ts', import.meta.url).href);
   const full = h.core.threads.get(threadId);
   const ctx = { thread: () => full, providers: h.core.providers.list().loaded, accounts: h.core.accounts.list(),
-    inFlight: new Map(), pendingPermissions: new Map(), pendingQuestions: new Map() };
+    inFlight: new Map(), pendingPermissions: new Map(), pendingQuestions: new Map(), modelCatalogs: new Map() };
   expect(await capabilityMethods(ctx)['threads.capabilities']({ threadId })).toEqual(real);
   const provider = h.core.providers.require('echo');
   const get = spyOn(h.core.providers, 'get');

@@ -1,10 +1,11 @@
 import { resolveModelSelection } from '@boite/contracts';
-import type { AccountId, AgentProfile, AgentSelection, ModelInfo, Protocol, ProviderDescriptor } from '@boite/contracts';
+import type { AccountId, AgentProfile, AgentSelection, ModelInfo, Protocol, ProviderDescriptor, Thread } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { antigravityVariant } from '../drivers/acp/antigravity-catalog.ts';
 import { isAntigravity } from '../drivers/antigravity.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
+import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 
 /** The protocols whose models come from the agent, not from the descriptor. */
 export const PROBED_PROTOCOLS: readonly Protocol[] = ['claude-sdk', 'acp', 'codex-appserver', 'muse', 'pi'];
@@ -38,6 +39,17 @@ export function modelsFor(provider: ProviderDescriptor, accountId: AccountId): M
 
 export function selectionFor(provider: ProviderDescriptor, accountId: AccountId, model: string | null, effort?: string | null) {
   return resolveModelSelection(modelsFor(provider, accountId), model, effort);
+}
+
+/** Image admission also uses pi's saved list before the first probe after a restart. */
+export function imageInputModel(core: Core, provider: ProviderDescriptor, { accountId, model }: Pick<Thread, 'accountId' | 'model'>): ModelInfo | undefined {
+  if (!model || !provider.capabilities.images) return undefined;
+  if (provider.protocol === 'pi' && probedModelsOf(provider.protocol, provider.id, accountId) === null) {
+    const saved = readSavedCatalog(core, provider.id, accountId);
+    const selected = saved && resolveModelSelection(saved.models, model);
+    if (selected) return selected.model;
+  }
+  return selectionFor(provider, accountId, model)?.model;
 }
 
 /**

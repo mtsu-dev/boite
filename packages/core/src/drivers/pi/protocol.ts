@@ -80,6 +80,7 @@ export interface PiModel {
   name?: string;
   provider?: string;
   reasoning?: boolean;
+  input?: string[];
   /** Per model: `null` drops a level, and `xhigh` or `max` exist only when present. */
   thinkingLevelMap?: Record<string, string | null>;
 }
