@@ -38,6 +38,10 @@ Ask the agent to show a check it ran. It can publish the recorded command,
 the line that shows its result, what still needs checking and a capture.
 That evidence appears under the answer when the turn ends.
 
+An image the agent only opens to look at, a screenshot it checks for
+instance, stays in the line that sums up its steps. Click that line to see the
+step and its image.
+
 ![An image and a video sent by the agent](images/chat-media-desktop.png)
 
 ## Links in answers
