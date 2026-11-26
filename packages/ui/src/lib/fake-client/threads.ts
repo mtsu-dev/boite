@@ -1,4 +1,4 @@
-import { chatPreviewSizeProblem, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, resolveModelSelection, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
+import { chatPreviewSizeProblem, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, projectToolDiffs, resolveModelSelection, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread, writeFakeFork } from './create-thread';
@@ -445,7 +445,10 @@ export function threadMethods(ctx: FakeContext) {
       return pagingReply({ ...page, offset, turns: thread.turns.filter((turn) => turns.has(turn.id)) });
     },
     'messages.toolOutput': async (params) => ({ output: toolOf(ctx.thread(params.threadId), params).output }),
-    'messages.toolPart': async (params) => pagingReply({ part: toolOf(ctx.thread(params.threadId), params) }),
+    'messages.toolPart': async (params) => {
+      const part = toolOf(ctx.thread(params.threadId), params);
+      return pagingReply({ part: params.diffsOnly ? projectToolDiffs(part) : part });
+    },
     'messages.attachment': async (params): Promise<RpcResult<'messages.attachment'>> => {
       const thread = ctx.thread(params.threadId);
       if (!Number.isSafeInteger(params.partIndex) || params.partIndex < 0) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'messages.attachment.partIndex: expected a nonnegative integer', data: { field: 'partIndex', expected: 'a nonnegative integer' } });

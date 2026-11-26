@@ -155,3 +155,172 @@ export function previewToolOutputs(messages: readonly Message[]): Message[] {
     return changed ? { ...message, parts } : message;
   });
 }
+
+const DIFF_HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
+const DIFF_NO_NEWLINE = '\\ No newline at end of file';
+const DIFF_GIT_HEADER = /^(?:index [\da-f]+\.\.[\da-f]+(?: \d+)?|(?:(?:old|new|new file|deleted file) mode) \d+|(?:dis)?similarity index \d+%|(?:rename|copy) (?:from|to) .+|Binary files .+ differ)$/;
+const PATCH_START = /^(?:diff --git |--- |\*\*\* Begin Patch\r?$)/gm;
+const NON_CHANGE_TOOL_NAMES = new Set([
+  'bash', 'shell', 'exec', 'execute', 'runshellcommand', 'command', 'powershell',
+  'read', 'readfile', 'view', 'cat', 'notebookread',
+  'grep', 'glob', 'search', 'find', 'ls', 'listdirectory', 'searchfiles',
+  'webfetch', 'fetch', 'readurl',
+]);
+const PATH_KEYS = ['file_path', 'path', 'notebook_path', 'grantRoot'] as const;
+
+function lineAt(value: string, pos: number): { text: string; next: number } | null {
+  if (pos >= value.length) return null;
+  const nl = value.indexOf('\n', pos);
+  const end = nl === -1 ? value.length : nl;
+  const next = nl === -1 ? value.length : nl + 1;
+  const text = end > pos && value.charCodeAt(end - 1) === 13 ? value.slice(pos, end - 1) : value.slice(pos, end);
+  return { text, next };
+}
+
+function hunkEndOffset(value: string, start: number): number {
+  const head = lineAt(value, start);
+  const header = head ? DIFF_HUNK.exec(head.text) : null;
+  if (!head || !header) return start;
+  let before = Number(header[1] ?? 1);
+  let after = Number(header[2] ?? 1);
+  let pos = head.next;
+  while (before > 0 || after > 0) {
+    const line = lineAt(value, pos);
+    const prefix = line?.text[0];
+    if (prefix === ' ' || prefix === '-') before--;
+    if (prefix === ' ' || prefix === '+') after--;
+    if (!line || (prefix !== ' ' && prefix !== '-' && prefix !== '+')) return start;
+    if (before < 0 || after < 0) return start;
+    pos = line.next;
+    const peek = lineAt(value, pos);
+    if (peek?.text === DIFF_NO_NEWLINE) pos = peek.next;
+  }
+  return pos;
+}
+
+export function patchEndOffset(value: string, start: number): number {
+  const first = lineAt(value, start);
+  if (!first) return start;
+  if (first.text === '*** Begin Patch') {
+    for (let pos = first.next; ;) {
+      const line = lineAt(value, pos);
+      if (!line) return start;
+      if (line.text === '*** End Patch') return line.next;
+      pos = line.next;
+    }
+  }
+  let pos = start;
+  const git = first.text.startsWith('diff --git ');
+  if (git) {
+    pos = first.next;
+    for (; ;) {
+      const line = lineAt(value, pos);
+      if (!line || !DIFF_GIT_HEADER.test(line.text)) break;
+      pos = line.next;
+    }
+  }
+  const minus = lineAt(value, pos);
+  const plus = minus ? lineAt(value, minus.next) : null;
+  if (minus?.text.startsWith('--- ') && plus?.text.startsWith('+++ ')) {
+    const firstHunk = plus.next;
+    pos = hunkEndOffset(value, firstHunk);
+    if (pos === firstHunk) return start;
+    for (let next = hunkEndOffset(value, pos); next > pos; next = hunkEndOffset(value, pos)) pos = next;
+    return pos;
+  }
+  return git && pos > first.next ? pos : start;
+}
+
+function extractPatches(value: string | null | undefined, keepRest: boolean): { patches: string[]; rest: string } {
+  if (!value) return { patches: [], rest: '' };
+  PATCH_START.lastIndex = 0;
+  const patches: string[] = [];
+  const rest: string[] = [];
+  let cursor = 0;
+  for (let match = PATCH_START.exec(value); match; match = PATCH_START.exec(value)) {
+    const start = match.index;
+    const end = patchEndOffset(value, start);
+    if (end === start) continue;
+    if (keepRest && start > cursor) rest.push(value.slice(cursor, start));
+    const slice = value.slice(start, end).replace(/\r?\n$/, '');
+    patches.push(slice.includes('\r') ? slice.replace(/\r\n/g, '\n') : slice);
+    cursor = end;
+    PATCH_START.lastIndex = end;
+  }
+  if (!patches.length) return { patches, rest: keepRest ? value : '' };
+  if (keepRest && cursor < value.length) rest.push(value.slice(cursor));
+  return { patches, rest: keepRest ? rest.join('').replace(/\r\n/g, '\n').trim() : '' };
+}
+
+/** A hunk's counts distinguish a context line from an indented log after it. */
+export function extractToolPatches(value: string | null | undefined): { patches: string[]; rest: string } {
+  return extractPatches(value, true);
+}
+
+function recordOf(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function diffOnlyInput(part: ToolPart, hasDiffDocs: boolean): unknown {
+  const fields = recordOf(part.input);
+  if (fields) {
+    const kept: Record<string, unknown> = {};
+    if (typeof fields['command'] === 'string') {
+      const { patches } = extractPatches(fields['command'], false);
+      if (patches.length) kept['command'] = patches.join('\n');
+    }
+    if (Array.isArray(fields['changes'])) {
+      const changes = fields['changes'].flatMap(entry => {
+        const change = recordOf(entry);
+        if (!change || typeof change['path'] !== 'string' || typeof change['diff'] !== 'string' || !change['diff']) return [];
+        return [{ path: change['path'], diff: change['diff'], ...(change['kind'] !== undefined ? { kind: change['kind'] } : {}) }];
+      });
+      if (changes.length) kept['changes'] = changes;
+    }
+    if (!hasDiffDocs && !NON_CHANGE_TOOL_NAMES.has(part.name.toLowerCase().replace(/[\s_-]/g, ''))) {
+      const hasPath = PATH_KEYS.some(key => typeof fields[key] === 'string' && fields[key]);
+      const hasEdit = typeof fields['old_string'] === 'string' || typeof fields['new_string'] === 'string';
+      const hasWrite = typeof fields['content'] === 'string' || typeof fields['contents'] === 'string';
+      if (hasPath && (hasEdit || hasWrite)) {
+        for (const key of PATH_KEYS) if (typeof fields[key] === 'string' && fields[key]) kept[key] = fields[key];
+        if (typeof fields['old_string'] === 'string') kept['old_string'] = fields['old_string'];
+        if (typeof fields['new_string'] === 'string') kept['new_string'] = fields['new_string'];
+        if (typeof fields['content'] === 'string') kept['content'] = fields['content'];
+        if (typeof fields['contents'] === 'string') kept['contents'] = fields['contents'];
+      }
+    }
+    if (Object.keys(kept).length > 0) return kept;
+  }
+  const raw = typeof part.input === 'string' ? part.input : part.inputText;
+  const { patches } = extractPatches(raw, false);
+  return patches.length ? patches.join('\n') : null;
+}
+
+/**
+ * Strip non-diff payloads from a tool call for `messages.toolPart` with
+ * `diffsOnly: true` so large unrelated outputs, inputs or documents do not
+ * breach `RPC_MAX_FRAME_BYTES`.
+ */
+export function projectToolDiffs(part: ToolPart): ToolPart {
+  const base: ToolPart = {
+    type: 'tool',
+    toolId: part.toolId,
+    name: part.name,
+    input: null,
+    output: null,
+    status: part.status,
+    ...(part.exitCode !== undefined ? { exitCode: part.exitCode } : {}),
+    ...(part.startedAt !== undefined ? { startedAt: part.startedAt } : {}),
+    ...(part.finishedAt !== undefined ? { finishedAt: part.finishedAt } : {}),
+  };
+  if (part.status !== 'done') return base;
+  const documents = part.documents?.filter(doc => doc.kind === 'diff') ?? [];
+  const { patches } = extractPatches(part.output, false);
+  return {
+    ...base,
+    input: diffOnlyInput(part, documents.length > 0),
+    output: patches.length ? patches.join('\n') : null,
+    ...(documents.length ? { documents } : {}),
+  };
+}
+

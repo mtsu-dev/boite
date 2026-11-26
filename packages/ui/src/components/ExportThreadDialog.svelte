@@ -24,7 +24,7 @@
   let savedPath = $state('');
   let shareReady = $state(false);
   let retryCopy: { key: string; content: string } | null = null;
-  let retryShare: { key: string; filename: string; content: string; mimeType: string } | null = null;
+  let retryShare: { filename: string; content: string; mimeType: string } | null = null;
   let releaseHistory: (() => void) | null = null;
   const controller = new AbortController();
   const overlay = new Closing();
@@ -45,11 +45,12 @@
   });
 
   $effect(() => {
-    // Clear prior save/share state once the user adjusts export options.
+    // Clear prior save/share state once the user adjusts export options or language.
     void options.format;
     void options.includeTools;
     void options.includeDiffs;
     void options.includeThinking;
+    void activeLocale();
     savedPath = '';
     shareReady = false;
     retryShare = null;
@@ -167,7 +168,7 @@
       } else {
         retryCopy = null;
         // If mobile Web Share lost user activation on a slow read, invoke it synchronously on this fresh tap.
-        if (retryShare?.key === key) {
+        if (retryShare) {
           const prepared = retryShare;
           retryShare = null;
           shareReady = false;
@@ -176,20 +177,13 @@
           close();
           return;
         }
-        retryShare = null;
-        shareReady = false;
         const content = await buildContent(selected);
         const filename = exportFilename(currentThread.title, selected.format);
         const mimeType = `${markdown ? 'text/markdown' : 'text/html'};charset=utf-8`;
         const result = await downloadExport(filename, content, mimeType);
         if (result.sharePending) {
-          if (cacheKey(selected) === key) {
-            retryShare = { key, filename, content, mimeType };
-            shareReady = true;
-            return;
-          }
-          await downloadExport(filename, content, mimeType, { retryShare: true });
-          close();
+          retryShare = { filename, content, mimeType };
+          shareReady = true;
           return;
         }
         if (result.cancelled) return;

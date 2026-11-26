@@ -1,6 +1,6 @@
 import { archiveState } from '../merged-pr-archive-state.ts';
 import { worktreeRemovalOf } from '../worktree-cleanup-state.ts';
-import { backgroundWait, pullRequestWatchWaits, threadActive } from '@boite/contracts';
+import { backgroundWait, projectToolDiffs, pullRequestWatchWaits, threadActive } from '@boite/contracts';
 import type { BackgroundTask, BackgroundWait, MessageId, MessagePart, MoveNotice, PluginActor, RpcParams, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { notFound } from '../errors.ts';
@@ -22,7 +22,8 @@ export function readToolOutput(core: Core, params: RpcParams<'messages.toolOutpu
 
 /** The whole call, for a card whose page deferred its output, input or documents. */
 export function readToolPart(core: Core, params: RpcParams<'messages.toolPart'>): { part: Extract<MessagePart, { type: 'tool' }> } {
-  return { part: journalledTool(core, params) };
+  const part = journalledTool(core, params);
+  return { part: params.diffsOnly ? projectToolDiffs(part) : part };
 }
 
 // The thread row as every part of the store writes it: one event, the row, and the clients told.

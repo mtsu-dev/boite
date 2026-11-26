@@ -259,3 +259,33 @@ test('no message keeps a thread from opening: heavy inputs, documents and texts 
     expect(fullMixed.messages[0]?.parts[1]).toMatchObject({ type: 'tool', inputDeferred: true, documentsDeferred: true });
   } finally { await harness.stop(); }
 });
+
+test('messages.toolPart with diffsOnly strips oversized non-diff outputs and preserves patches', async () => {
+  const harness = await startTestCore();
+  try {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const hugeOutput = 'log line\n'.repeat(2_000_000);
+    const patch = '--- auth.ts\n+++ auth.ts\n@@ -1 +1 @@\n-old\n+new';
+    harness.core.journal.append({ type: 'message.started', threadId, version: 1, payload: {} }, () => {
+      harness.core.journal.putMessage({
+        id: 'huge-tools', threadId, turnId: 'heavy-turn', role: 'assistant', state: 'complete', createdAt: 100,
+        parts: [
+          { type: 'tool', toolId: 'huge-read', name: 'Read', status: 'done', input: { file_path: 'big.log' }, output: hugeOutput,
+            documents: [{ kind: 'markdown', title: 'Notes', text: hugeOutput }] },
+          { type: 'tool', toolId: 'huge-bash-diff', name: 'Bash', status: 'done', input: { command: 'git diff' }, output: `${hugeOutput}\n${patch}\n${hugeOutput}` },
+          { type: 'tool', toolId: 'real-edit', name: 'Edit', status: 'done', input: { file_path: 'auth.ts', old_string: 'old', new_string: 'new' }, output: 'ok',
+            documents: [{ kind: 'diff', path: 'auth.ts', oldText: 'old\n', newText: 'new\n' }] },
+        ],
+      });
+    });
+    expect(await thrown(client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'huge-read' }))).toThrow(`exceeds ${RPC_MAX_FRAME_BYTES}`);
+    const strippedRead = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'huge-read', diffsOnly: true });
+    expect(strippedRead.part).toMatchObject({ toolId: 'huge-read', input: null, output: null });
+    expect(strippedRead.part.documents).toBeUndefined();
+    const bashDiff = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'huge-bash-diff', diffsOnly: true });
+    expect(bashDiff.part.output).toBe(patch);
+    const editDiff = await client.call('messages.toolPart', { threadId, messageId: 'huge-tools', toolId: 'real-edit', diffsOnly: true });
+    expect(editDiff.part.documents).toEqual([{ kind: 'diff', path: 'auth.ts', oldText: 'old\n', newText: 'new\n' }]);
+  } finally { await harness.stop(); }
+});

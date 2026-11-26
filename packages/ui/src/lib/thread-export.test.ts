@@ -254,7 +254,7 @@ test.for(['inputDeferred', 'documentsDeferred'] as const)('export refuses the ol
   expect(call.mock.calls.some(([method]) => method === 'messages.toolOutput')).toBe(false);
 });
 
-test('diff-only export skips failed deferred tool calls and names oversized tools that fail to hydrate', async ({ createClient }) => {
+test('diff-only export skips failed deferred tool calls, requests diffsOnly and names oversized tools that fail to hydrate', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const snapshot = await client.call('threads.get', { threadId: 't-trace' });
   const failedTool: Message = {
@@ -269,6 +269,20 @@ test('diff-only export skips failed deferred tool calls and names oversized tool
   });
   await loadAllThreadMessages(client, 't-trace', { ...clean, includeDiffs: true });
   expect(call.mock.calls.some(([method]) => method === 'messages.toolPart')).toBe(false);
+
+  const oversized: Message = {
+    ...messages[1]!, id: 'm-oversized', threadId: 't-trace', parts: [
+      { type: 'tool', toolId: 't-big', name: 'Write', status: 'done', input: { file_path: 'huge.bin' }, output: null, documentsDeferred: true },
+    ],
+  };
+  const frameError = new RpcFailure({ code: RpcErrorCode.Refused, message: 'response exceeds 16 MiB frame limit' });
+  call.mockImplementation((method, params) => {
+    if (method === 'threads.get') return Promise.resolve({ ...snapshot, messages: [oversized], messagesBefore: null });
+    if (method === 'messages.toolPart') return Promise.reject(frameError);
+    return original(method, params);
+  });
+  await expect(loadAllThreadMessages(client, 't-trace', { ...clean, includeDiffs: true })).rejects.toThrow(/"Write".*m-oversized.*16 MiB/);
+  expect(call).toHaveBeenCalledWith('messages.toolPart', { threadId: 't-trace', messageId: 'm-oversized', toolId: 't-big', diffsOnly: true });
 });
 
 test('a core that returns the same cursor cannot hang or silently export half a conversation', async ({ createClient }) => {
@@ -332,10 +346,16 @@ test('multi-paragraph details and unclosed HTML blocks keep CommonMark structure
 
 test('edit metadata, trailing-newline diffs, failed tool diffs, errors and standalone HTML cleanup behave consistently', () => {
   const trailingDiff = { kind: 'diff' as const, path: 'newline.ts', oldText: 'const a = 1;', newText: 'const a = 1;\n' };
+  const contentAndNewline = { kind: 'diff' as const, path: 'both.ts', oldText: 'old', newText: 'new\n' };
+  const removedNewlineOnEdit = { kind: 'diff' as const, path: 'drop-nl.ts', oldText: 'old\n', newText: 'new' };
+  const contextEofChange = { kind: 'diff' as const, path: 'ctx-eof.ts', oldText: 'x\nlast', newText: 'y\nlast\n' };
+  const appendAfterNoNl = { kind: 'diff' as const, path: 'append.ts', oldText: 'a\nlast', newText: 'a\nlast\nextra\n' };
+  const gapEofChange = { kind: 'diff' as const, path: 'gap-eof.ts', oldText: '1\n2\n3\n4\n5\nlast', newText: 'ONE\n2\n3\n4\n5\nlast\n' };
   const addedNewline = { kind: 'diff' as const, path: 'empty-add.ts', oldText: '', newText: '\n' };
   const removedNewline = { kind: 'diff' as const, path: 'empty-del.ts', oldText: '\n', newText: '' };
   const msg: Message = { ...messages[1]!, parts: [
-    { type: 'tool', toolId: 'edit-path', name: 'Edit', status: 'done', input: { file_path: 'src/app.ts', old_string: 'a', new_string: 'b' }, output: null, documents: [trailingDiff, addedNewline, removedNewline] },
+    { type: 'tool', toolId: 'edit-path', name: 'Edit', status: 'done', input: { file_path: 'src/app.ts', old_string: 'a', new_string: 'b' }, output: null,
+      documents: [trailingDiff, contentAndNewline, removedNewlineOnEdit, contextEofChange, appendAfterNoNl, gapEofChange, addedNewline, removedNewline] },
     { type: 'tool', toolId: 'failed-patch', name: 'Bash', status: 'error', input: 'git diff', output: '--- bad.ts\n+++ bad.ts\n@@ -1 +1 @@\n-x\n+y' },
     { type: 'error', message: 'Provider timeout' },
     { type: 'text', text: 'See `thr_abcdef123456` and [docs](https://example.com/docs).' },
@@ -346,8 +366,12 @@ test('edit metadata, trailing-newline diffs, failed tool diffs, errors and stand
   expect(toolsMd).toContain('Provider timeout');
 
   const diffsMd = exportThreadMarkdown(thread, [msg], { ...clean, includeDiffs: true });
-  expect(diffsMd).toContain('--- newline.ts\n+++ newline.ts');
-  expect(diffsMd).toContain('\\ No newline at end of file');
+  expect(diffsMd).toContain('--- newline.ts\n+++ newline.ts\n@@ -1,1 +1,1 @@\n-const a = 1;\n\\ No newline at end of file\n+const a = 1;');
+  expect(diffsMd).toContain('--- both.ts\n+++ both.ts\n@@ -1,1 +1,1 @@\n-old\n\\ No newline at end of file\n+new');
+  expect(diffsMd).toContain('--- drop-nl.ts\n+++ drop-nl.ts\n@@ -1,1 +1,1 @@\n-old\n+new\n\\ No newline at end of file');
+  expect(diffsMd).toContain('--- ctx-eof.ts\n+++ ctx-eof.ts\n@@ -1,2 +1,2 @@\n-x\n+y\n-last\n\\ No newline at end of file\n+last');
+  expect(diffsMd).toContain('--- append.ts\n+++ append.ts\n@@ -1,2 +1,3 @@\n a\n-last\n\\ No newline at end of file\n+last\n+extra');
+  expect(diffsMd).toContain('--- gap-eof.ts\n+++ gap-eof.ts\n@@ -1,4 +1,4 @@\n-1\n+ONE\n 2\n 3\n 4\n@@ -6,1 +6,1 @@\n-last\n\\ No newline at end of file\n+last');
   expect(diffsMd).toContain('--- empty-add.ts\n+++ empty-add.ts\n@@ -0,0 +1,1 @@\n+');
   expect(diffsMd).toContain('--- empty-del.ts\n+++ empty-del.ts\n@@ -1,1 +0,0 @@\n-');
   expect(diffsMd).not.toContain('bad.ts');

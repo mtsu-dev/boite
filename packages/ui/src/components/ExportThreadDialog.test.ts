@@ -254,7 +254,14 @@ test('mobile Web Share NotAllowedError offers a fresh Share tap that shares sync
     else Reflect.deleteProperty(navigator, 'canShare');
   });
   await store.open('t-trace');
-  const history = vi.spyOn(store, 'threadExportMessages');
+  const original = store.threadExportMessages.bind(store);
+  const history = vi.spyOn(store, 'threadExportMessages').mockImplementation(async (...args) => {
+    const result = await original(...args);
+    const tail = store.openThread?.messages.at(-1);
+    const text = tail?.parts.find(part => part.type === 'text');
+    if (text && text.type === 'text') text.text += ' (live tick during read)';
+    return result;
+  });
   onTestFinished(() => { history.mockRestore(); });
   query<HTMLButtonElement>(trigger).click();
   const item = '[data-testid=thread-menu-trigger-menu] [data-value=export-thread]';
@@ -265,6 +272,10 @@ test('mobile Web Share NotAllowedError offers a fresh Share tap that shares sync
   await waitFor(() => query(dialog).querySelector('[role=status]')?.textContent?.includes('Tap Share to save') === true);
   expect(history).toHaveBeenCalledTimes(1);
   expect(share).toHaveBeenCalledTimes(1);
+  // Even if another stream tick arrives before the user taps Share, keep the prepared file ready.
+  const tail = store.openThread?.messages.at(-1);
+  const text = tail?.parts.find(part => part.type === 'text');
+  if (text && text.type === 'text') text.text += ' (live tick before tap)';
   button('Share').click();
   await waitFor(() => share.mock.calls.length === 2 && !document.querySelector(dialog));
   expect(history).toHaveBeenCalledTimes(1);

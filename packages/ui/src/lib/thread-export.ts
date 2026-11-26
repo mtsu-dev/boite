@@ -138,7 +138,7 @@ async function loadDeferredTools(
       signal?.throwIfAborted();
       const ref = { threadId, messageId: entry.messageId, toolId: entry.tool.toolId };
       try {
-        const { part } = await client.call('messages.toolPart', ref);
+        const { part } = await client.call('messages.toolPart', diffsOnly ? { ...ref, diffsOnly: true } : ref);
         entry.parts[entry.partIndex] = part;
       } catch (error) {
         if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound && !entry.tool.inputDeferred && !entry.tool.documentsDeferred) {

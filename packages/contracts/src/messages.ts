@@ -538,9 +538,11 @@ export interface MessagesRpcMethods {
    * The whole tool call a page deferred (`outputDeferred`, `inputDeferred`,
    * `documentsDeferred`), as journalled. No filesystem path is accepted. A call
    * too heavy for one frame is refused by name; the thread around it still reads.
+   * With `diffsOnly`, only diff documents and diff-bearing inputs or outputs are
+   * returned so an unrelated heavy output or attachment does not block a diff export.
    */
   'messages.toolPart': {
-    params: { threadId: ThreadId; messageId: MessageId; toolId: string };
+    params: { threadId: ThreadId; messageId: MessageId; toolId: string; diffsOnly?: boolean };
     result: { part: Extract<MessagePart, { type: 'tool' }> };
   };
   /**
