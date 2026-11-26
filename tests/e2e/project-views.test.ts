@@ -319,3 +319,48 @@ test('phone exposes project filtering and custom-order controls without overflow
   expect(await page.evaluate(`(() => { const head = document.querySelector('${id('grouping-options')}')?.closest('.list-head'); const box = head?.getBoundingClientRect(); return !!head && head.scrollWidth <= head.clientWidth && [...head.querySelectorAll('button')].every(b => b.getBoundingClientRect().right <= box.right + 0.5); })()`)).toBe(true);
   expect(page.errors()).toEqual([]);
 }, 20_000);
+
+test('changing to phone Conversations during the grouping menu exit leaves project headers tappable', async () => {
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 1300, height: 850, deviceScaleFactor: 1, mobile: false });
+  await page.navigate(url);
+  await showThreadView(page, 'projects');
+  await openDisplayOptions(page);
+  await capture('grouping-menu-exit-desktop.png');
+
+  const menu = `document.querySelector('${id('grouping-options-menu')}')`;
+  await page.evaluate(`(() => {
+    const panel = ${menu};
+    panel.addEventListener('animationcancel', event => {
+      if (event.target === panel && event.animationName === 'sheet-down') globalThis.groupingExitCancelled = true;
+    });
+    // Keep the CSS exit in flight across CDP calls so the resize and navigation always interrupt it.
+    panel.style.setProperty('animation-duration', '60s', 'important');
+  })()`);
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await page.waitFor(`${menu}?.classList.contains('closing')`);
+  expect(await page.evaluate(`document.activeElement?.matches('${id('grouping-options')}')`)).toBe(true);
+
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  await page.waitFor(`${menu}?.getAnimations().some(animation => animation.animationName === 'sheet-down')`);
+  await mobileAction(page, 'mobile-conversations');
+  await showThreadView(page, 'projects', 'mobile-');
+  const header = `document.querySelector('${id('mobile-project-toggle')}')`;
+  await page.waitFor(`globalThis.groupingExitCancelled && ${header}`);
+  await page.settleAnimations();
+  const backdropCleared = await page.evaluate(`!document.querySelector('.mobile-sheet-backdrop')`);
+  await page.screenshot(join(import.meta.dir, '.artifacts', backdropCleared ? 'grouping-menu-exit-phone.png' : 'grouping-menu-exit-phone-covered.png'));
+
+  expect(await page.evaluate(`${header}.getAttribute('aria-expanded')`)).toBe('true');
+  const at = await page.evaluate<{ x: number; y: number }>(`(() => {
+    const box = ${header}.getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  })()`);
+  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, id: 1 }] });
+  await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  expect({
+    backdropCleared,
+    menuCleared: await page.evaluate(`!${menu}`),
+    expanded: await page.evaluate(`${header}.getAttribute('aria-expanded')`),
+  }).toEqual({ backdropCleared: true, menuCleared: true, expanded: 'false' });
+}, 20_000);

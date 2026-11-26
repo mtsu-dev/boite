@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
+  import { on } from 'svelte/events';
   import { Archive, Check, ChevronDown, ChevronRight, Folder, FolderPlus, Layers } from '@lucide/svelte';
   import type { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
@@ -73,6 +74,16 @@
     if (!popover.open) return;
     // The menu takes the keyboard, so Tab reaches its first row and Escape works, without a ring on a row nobody pointed at.
     void tick().then(() => panel?.focus({ preventScroll: true }));
+  });
+
+  $effect(() => {
+    const node = panel;
+    if (!node) return;
+    return on(node, 'animationcancel', event => {
+      if (event.target !== node) return;
+      // A resize can replace the exit animation. A hidden menu cannot finish its exit and would strand the backdrop.
+      if (node.checkVisibility?.({ visibilityProperty: true }) === false || !node.getAnimations?.().length) popover.end(event);
+    });
   });
 
   function onkeydown(event: KeyboardEvent): void {
