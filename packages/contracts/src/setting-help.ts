@@ -43,4 +43,5 @@ export const SETTING_HELP: Readonly<Record<string, string>> = {
   "coordinationReach": "This project: An agent lists, reads and writes to the conversations of its own project only. This machine: An agent lists, reads and writes to the conversations of every project on this machine. All my machines: An agent lists, reads and writes to the conversations of every project, here and on the machines you trust.",
   "contacts": "Agents work with other people's Boites, and Contacts shows in the rail.",
   "experiment.draft-backdrop": "An animated scene in the manner of an early 2000s console behind the empty new thread screen. Pick it under Appearance. Respects reduced motion.",
+  "experiment.discord-presence": "Shows Playing Boite in your Discord profile, with what your agents are doing: their number, their models and how long they have been working. Works with Discord, Vesktop, Legcord and the other clients that read rich presence, and with any app that reads the same socket, such as the bridges to Fluxer. Desktop app only.",
 };
