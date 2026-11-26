@@ -1,5 +1,5 @@
 import type { Message, MessagePart, MoveNotice, NewConversationNotice, ThreadLink, ThreadSummary } from '@boite/contracts';
-import { QUOTE } from './markdown';
+import { HEADING, ITEM, QUOTE, RULE } from './markdown';
 import { FenceScan, fenceLanguage, openFence } from './fences';
 
 /** Older cores journalled the whole goal instruction as a user message. */
@@ -130,7 +130,10 @@ export class ParagraphScan {
   #previous = '';
   #epoch: object | undefined;
   #start = 0;
-  #fences = new BlockFences();
+  // ParagraphScan never splits inside a fenced block: keeping FenceScan here
+  // guarantees a closing fence after a blank line cannot orphan and swallow
+  // following paragraphs, even when indented under a list item.
+  #fences = new FenceScan();
   #done: string[] = [];
   #tail = '';
   #result: string[] | null = null;
@@ -235,48 +238,13 @@ function drawingLine(lines: string[], rich: boolean): number {
   return -1;
 }
 
-const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+\S/;
 const LIST_CONT = /^\s{2,}\S/;
-
-/**
- * Shared fence tracker matching `renderMarkdown`: an indented line under an
- * open list item continues the item instead of opening a fenced block, so both
- * `ParagraphScan` and `DrawingScan` agree on where blocks open and split.
- */
-class BlockFences {
-  #fences = new FenceScan();
-  #inList = false;
-
-  get inside(): boolean { return this.#fences.inside; }
-
-  /** The fence opened by `line` (without mutating state), or null when inside a fence or continuing a list item. */
-  openedBy(line: string): ReturnType<typeof openFence> {
-    if (this.#fences.inside || (this.#inList && LIST_CONT.test(line))) return null;
-    return openFence(line);
-  }
-
-  /** Advances state by one complete line. */
-  line(line: string): void {
-    if (line.endsWith('\r')) line = line.slice(0, -1);
-    if (this.#fences.inside) { this.#fences.line(line); return; }
-    if (!line.trim()) { this.#inList = false; return; }
-    if (this.#inList && LIST_CONT.test(line)) return;
-    if (openFence(line)) { this.#fences.line(line); this.#inList = false; return; }
-    this.#inList = LIST_ITEM.test(line);
-  }
-
-  leaveList(): void { this.#inList = false; }
-
-  reset(): void {
-    this.#fences.reset();
-    this.#inList = false;
-  }
-}
 
 /** Each contiguous quote is its own document, including its own nested fences. */
 class DrawingScan {
-  #fences = new BlockFences();
+  #fences = new FenceScan();
   #quote: DrawingScan | null = null;
+  #inList = false;
   readonly #rich: boolean;
 
   constructor(rich: boolean) { this.#rich = rich; }
@@ -289,24 +257,37 @@ class DrawingScan {
       return false;
     }
     if (!line.trim()) {
-      if (complete) { this.#quote = null; this.#fences.line(line); }
+      if (complete) { this.#quote = null; this.#inList = false; }
       return false;
     }
-    const fence = this.#fences.openedBy(line);
+    // Mirrors `renderMarkdown`: an indented line under an open list item
+    // continues the item rather than opening a fenced block.
+    const fence = this.#inList && LIST_CONT.test(line) ? null : openFence(line);
     if (fence) {
-      if (complete) { this.#fences.line(line); this.#quote = null; }
+      if (complete) { this.#fences.line(line); this.#quote = null; this.#inList = false; }
       const kind = fenceLanguage(fence).toLowerCase();
       return DRAWN.has(kind) || (this.#rich && DRAWN_RICH.has(kind));
     }
-    if (DISPLAY_MATH.test(line.trim())) return true;
-    const quote = QUOTE.exec(line);
-    if (!quote) {
-      if (complete) { this.#quote = null; this.#fences.line(line); }
+    if (DISPLAY_MATH.test(line.trim())) {
+      if (complete) { this.#quote = null; this.#inList = false; }
+      return true;
+    }
+    if (RULE.test(line) || HEADING.test(line)) {
+      if (complete) { this.#quote = null; this.#inList = false; }
       return false;
     }
-    const inner = this.#quote ?? new DrawingScan(this.#rich);
-    if (complete) { this.#quote = inner; this.#fences.leaveList(); }
-    return inner.line(quote[1]!, complete);
+    const quote = QUOTE.exec(line);
+    if (quote) {
+      const inner = this.#quote ?? new DrawingScan(this.#rich);
+      if (complete) { this.#quote = inner; this.#inList = false; }
+      return inner.line(quote[1]!, complete);
+    }
+    if (complete) {
+      this.#quote = null;
+      if (ITEM.test(line)) this.#inList = true;
+      else if (!(this.#inList && LIST_CONT.test(line))) this.#inList = false;
+    }
+    return false;
   }
 }
 

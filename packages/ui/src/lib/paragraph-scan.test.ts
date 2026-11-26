@@ -96,13 +96,27 @@ test('a paragraph being written stops where a diagram, a formula or a view opens
   // A quote is drawn as a document of its own, so a view opened in it is held back from its first line.
   expect(pendingDrawing('Look:\n> Here:\n> ```view\n> <svg')).toEqual({ text: 'Look:\n> Here:', drawing: true });
   expect(renderMarkdown('> ```view\n> <p>Hi</p>\n> ```')).toContain('md-view');
-  // An indented fence under an open list item continues the item in `renderMarkdown`, so streaming holds nothing back
-  // and `ParagraphScan.blocks` still flushes the list at the blank line instead of trapping following paragraphs.
+  // An indented fence under an open list item continues the item in `renderMarkdown`, so streaming holds nothing back.
   const underItem = '- item\n  ```bars\n  A | 1 s\n  ```';
   expect(pendingDrawing(underItem, true)).toEqual({ text: underItem, drawing: false });
   expect(renderMarkdown(underItem, true)).not.toContain('md-native');
-  const liveList = new ParagraphScan();
-  const streamed = '- item\n  ```steps\n  1. First\n\nFollowing paragraph\n\nNext';
-  expect(liveList.blocks(streamed, true)).toEqual(['- item\n  ```steps\n  1. First', 'Following paragraph']);
-  expect(liveList.drafting(streamed, true)).toEqual({ text: 'Next', drawing: false });
+  // ParagraphScan keeps fenced blocks whole across blank lines even under a list item, so a closing fence never orphans and swallows following paragraphs.
+  const fencedUnderNumbered = '1. Run:\n   ```sh\n   a\n\n   b\n   ```\n\nAfter paragraph.\n\nSecond paragraph.';
+  const numberedBlocks = new ParagraphScan().blocks(fencedUnderNumbered, false);
+  expect(numberedBlocks).toEqual(['1. Run:\n   ```sh\n   a\n\n   b\n   ```', 'After paragraph.', 'Second paragraph.']);
+  expect(renderMarkdown(numberedBlocks[1]!, false)).toBe('<p>After paragraph.</p>');
+  expect(renderMarkdown(numberedBlocks[2]!, false)).toBe('<p>Second paragraph.</p>');
+  // An indented quote or rule closes the list in both renderMarkdown and DrawingScan, while ParagraphScan keeps the following native block intact across blank lines.
+  const quotedSteps = '- item\n  > quote\n  ```steps\n  1. One\n\n  2. Two\n  ```';
+  const liveQuoted = new ParagraphScan();
+  expect(liveQuoted.blocks(quotedSteps, true)).toEqual([]);
+  expect(liveQuoted.drafting(quotedSteps, true)).toEqual({ text: '- item\n  > quote', drawing: true });
+  const finalQuoted = liveQuoted.blocks(quotedSteps, false);
+  expect(finalQuoted).toEqual([quotedSteps]);
+  const quotedHtml = renderMarkdown(finalQuoted[0]!, true);
+  expect(quotedHtml).toContain('md-native-steps');
+  expect(quotedHtml).toContain('1. One\n\n2. Two');
+  const ruledSteps = '- item\n  ---\n  ```steps\n  1. One\n  ```';
+  expect(pendingDrawing(ruledSteps, true)).toEqual({ text: '- item\n  ---', drawing: true });
+  expect(renderMarkdown(ruledSteps, true)).toContain('md-native-steps');
 });

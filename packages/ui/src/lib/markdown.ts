@@ -25,7 +25,7 @@ function escape(text: string): string {
 }
 
 
-const HEADING = /^(#{1,6})\s+(.+)$/;
+export const HEADING = /^(#{1,6})\s+(.+)$/;
 
 /** The anchor a heading titled `title` gets: what a `#fragment` link to it names. */
 function headingId(title: string): string {
@@ -53,8 +53,8 @@ export function headingAt(text: string, id: string): number {
   }
   return -1;
 }
-const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
-const ITEM = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/;
+export const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
+export const ITEM = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/;
 const BULLET_MARK = /^\s*[-*+]\s/;
 const TASK = /^\[([ xX])\]\s+(.*)$/;
 /** A quoted line: its text is a document of its own once the mark is off (`readQuote`). */

@@ -180,7 +180,10 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
 .md-bar-track { height: 8px; overflow: hidden; border-radius: var(--radius-full); background: var(--color-surface-3); }
 .md-bar-fill { display: block; width: var(--share); min-width: 2px; height: 100%; border-radius: inherit; background: var(--color-accent); }
 .md-bar-fill.md-bar-zero { min-width: 0; }
-.md-has-accent > .md-bar:not(.md-accent) .md-bar-fill { background: color-mix(in oklch, var(--color-muted-foreground) 40%, transparent); }
+.md-has-accent > .md-bar:not(.md-accent) .md-bar-fill {
+  background: var(--color-edge);
+  background: color-mix(in oklch, var(--color-muted-foreground) 40%, transparent);
+}
 .md-bar.md-accent > .md-bar-label { font-weight: 600; }
 .md-bar-value { color: var(--color-foreground); font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; min-width: var(--md-bar-value, auto); max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }
 .md-bar-note { grid-column: 2 / -1; color: var(--color-muted-foreground); font-size: var(--text-xs); overflow-wrap: anywhere; }
@@ -197,7 +200,8 @@ div.md-math:not(.md-drawn) { white-space: pre-wrap; }
   .md-option.md-accent,
   .md-stat.md-accent { outline: 2px solid Highlight; }
   .md-bar-track { border: 1px solid CanvasText; }
-  .md-bar-fill { forced-color-adjust: none; background: CanvasText; }
+  .md-bar-fill,
+  .md-has-accent > .md-bar:not(.md-accent) .md-bar-fill { forced-color-adjust: none; background: CanvasText; }
   .md-bar.md-accent .md-bar-fill { background: Highlight; }
 }
 
