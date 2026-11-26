@@ -1,5 +1,6 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs';
+import { join, posix, win32 } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { isRecord } from '../stdio.ts';
 import { VIRTUAL_API } from './protocol.ts';
 
@@ -18,28 +19,74 @@ const read = new Map<string, { stamp: string; model: SessionModel | null }>();
 /**
  * The model pi resumes a session on when no `--model` is given (pi 1.6.1
  * `getBranchSelection` in core/virtual-models.js, used by `createAgentSession`
- * only when the branch holds a message). Null without a readable session or a
- * model in it, or when two files claim the session, as `copySession` refuses
- * them too. The answer is kept until the file changes.
+ * only when the branch holds a message). The file is the one pi opens for
+ * `--session-id` and `--session-dir` from `cwd`. Null without a readable
+ * session or a model in it. The answer is kept until the file changes.
  */
-export function sessionModelOf(dir: string, sessionId: string): SessionModel | null {
+export function sessionModelOf(dir: string, sessionId: string, cwd: string): SessionModel | null {
   try {
-    const names = readdirSync(dir).filter(entry => entry.endsWith(`_${sessionId}.jsonl`));
-    if (names.length !== 1) return null;
-    const path = join(dir, names[0]!);
+    const path = resumedFile(dir, sessionId, cwd);
+    if (path === null) return null;
     const stat = statSync(path);
     const stamp = `${stat.size}:${stat.mtimeMs}`;
     const known = read.get(path);
     if (known?.stamp === stamp) return known.model;
-    const text = readFileSync(path, 'utf8');
-    const header: unknown = JSON.parse(text.split('\n', 1)[0]!);
-    const model = isRecord(header) && header['type'] === 'session' && header['id'] === sessionId ? branchModel(branchOf(text)) : null;
+    const model = branchModel(branchOf(readFileSync(path, 'utf8')));
     read.delete(path);
     read.set(path, { stamp, model });
     if (read.size > READ_LIMIT) read.delete(read.keys().next().value!);
     return model;
   } catch {
     return null;
+  }
+}
+
+/**
+ * pi 1.6.1 `SessionManager.findById` with a session directory of its own: the
+ * first `.jsonl` file, in directory order, whose header has this id and `cwd`.
+ */
+function resumedFile(dir: string, sessionId: string, cwd: string): string | null {
+  const paths = process.platform === 'win32' ? win32 : posix;
+  const key = (path: string) => process.platform === 'win32' ? paths.resolve(path).toLowerCase() : paths.resolve(path);
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.jsonl')) continue;
+    const path = join(dir, name);
+    const header = headerOf(path);
+    if (header?.['id'] === sessionId && typeof header['cwd'] === 'string' && header['cwd'] !== '' && key(header['cwd']) === key(cwd)) return path;
+  }
+  return null;
+}
+
+const HEADER_SCAN = 1024 * 1024;
+
+/** pi's discovery header: the first non-blank line that parses, if it is a session. */
+function headerOf(path: string): Record<string, unknown> | null {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, 'r');
+    const buffer = Buffer.allocUnsafe(4096);
+    const decoder = new StringDecoder('utf8');
+    let pending = '';
+    for (let scanned = 0; scanned < HEADER_SCAN;) {
+      const length = readSync(fd, buffer, 0, Math.min(buffer.length, HEADER_SCAN - scanned), null);
+      const ended = length === 0;
+      scanned += length;
+      pending += ended ? decoder.end() : decoder.write(buffer.subarray(0, length));
+      const lines = pending.split('\n');
+      pending = ended ? '' : lines.pop()!;
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let entry: unknown;
+        try { entry = JSON.parse(line); } catch { continue; }
+        return isRecord(entry) && entry['type'] === 'session' && typeof entry['id'] === 'string' ? entry : null;
+      }
+      if (ended) return null;
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 }
 

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -55,6 +55,16 @@ test('coordination steers a running pi turn over its RPC connection', async () =
   await waitFor(() => harness!.core.journal.getTurn(turn.id)?.status === 'stopped');
   await client.call('threads.update', { threadId, model: 'fake-b/plain' });
   expect(await client.call('turns.steer', correction)).toEqual({ accepted: true });
+  // Nor once the thread moved to another provider and the turn's was removed.
+  const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+  const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as object;
+  writeFileSync(join(harness!.dataDir, 'providers', 'pi-other.json'), JSON.stringify({ ...descriptor, id: 'pi-other', name: 'Other pi', shortName: 'PiOther' }));
+  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+  const other = await client.call('accounts.add', { providerId: 'pi-other', label: 'Other', useDefaultLocation: true });
+  await client.call('threads.update', { threadId, accountId: other.id });
+  rmSync(descriptorFile);
+  expect((await client.call('providers.reload', {})).loaded.some(provider => provider.id === 'pi-fake')).toBe(false);
+  expect(await client.call('turns.steer', correction)).toEqual({ accepted: true });
 });
 
 test('pi default refuses images while pi itself runs a text-only model', async () => {
@@ -80,9 +90,16 @@ test('pi default follows the model a resumed session restores, not the one pi st
       .toMatchObject({ rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } });
     expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ available: false, reason: 'unsupported' });
   }
-  // Two files for one session: Boite cannot tell which one pi resumes, so it reads the model pi starts on.
+  // A copy of the session under another name: pi opens one of them and still restores Fake Plain.
   const file = piSessionFile(threadId);
   writeFileSync(join(file, '..', `2020-01-01T00-00-00-000Z_${harness!.core.threads.require(threadId).sessionId}.jsonl`), readFileSync(file, 'utf8'));
+  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: false });
+  // pi skips a session whose header names another folder.
+  for (const name of readdirSync(join(file, '..'))) {
+    const path = join(file, '..', name);
+    const [header, ...rest] = readFileSync(path, 'utf8').split('\n');
+    writeFileSync(path, [JSON.stringify({ ...JSON.parse(header!) as object, cwd: join(harness!.dataDir, 'elsewhere') }), ...rest].join('\n'));
+  }
   expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
 });
 
@@ -375,6 +392,24 @@ test('pi titles a new thread with a tool-free request on its chosen model', asyn
   const args = JSON.parse(invocation.slice('one-shot '.length)) as string[];
   expect(args).toEqual(expect.arrayContaining(['--no-session', '--no-tools', '--no-extensions', '--no-mcp', '--no-context-files', '--no-skills', '--no-prompt-templates']));
   expect(args[args.indexOf('--model') + 1]).toBe('anthropic/claude-sonnet-5');
+});
+
+test('pi one-shots on its own model keep the profile model its --api-key needs', async () => {
+  const client = await startCore();
+  const { projectId, accountId } = await piAccount(client);
+  const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+  const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
+  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--model', 'fake-a/smart', '--api-key', 'test-key');
+  writeFileSync(descriptorFile, JSON.stringify(descriptor));
+  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+  const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId });
+  expect(harness!.core.threads.require(threadId).model).toBe('default');
+  expect((await (await startTurn(client, threadId, 'Add a feature')).finished).status).toBe('done');
+  await settle(() => harness!.core.threads.require(threadId).titleSource === 'agent');
+  const invocation = fakeLog().split('\n').find(line => line.startsWith('one-shot [') && line.includes('--no-session'))!;
+  const args = JSON.parse(invocation.slice('one-shot '.length)) as string[];
+  expect(args.filter(arg => arg === '--model')).toHaveLength(1);
+  expect(args[args.indexOf('--model') + 1]).toBe('fake-a/smart');
 });
 
 test('pi answers /btw from a disposable session copy and leaves the source intact', async () => {

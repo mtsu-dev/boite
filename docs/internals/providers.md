@@ -401,7 +401,9 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   list; pi's `default` entry copies the flag of the model pi reports as current.
   A pi thread on `default` or on no model resumes its session on the model that
   session last used, so image admission and `threads.capabilities` read that
-  model from the session file when there is one, as pi 1.6.1 does: the newest
+  model from the session file pi opens (the first `.jsonl` in the thread's
+  session folder whose header has the session id and the thread's folder),
+  as pi 1.6.1 does: the newest
   `model_change`, else the model of the newest answer, unless the change before
   that answer names a router pi still lists (`virtual: true`, from its
   `pi-virtual` api). A `--model` in the profile wins over the session. The
@@ -1768,8 +1770,10 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
 - Titles use a separate, tool-free RPC process with no session file, extensions,
   MCP, context files, skills or prompt templates. Boite uses the selected title
   model or the thread's own model at low effort and allows 30 seconds per call.
-  The profile's own tool, session and model flags, short aliases included, are
-  dropped from these launches.
+  The profile's own tool and session flags, short aliases included, are
+  dropped from these launches. Its `--model` and `--provider` are dropped when
+  Boite names a model and kept when the thread leaves the model to pi, so a
+  profile `--api-key` still has the model it binds to.
 - `/btw` reuses that isolated launch, with a session and tools as below. At a
   settled checkpoint, it opens a temporary copy of the session cut at that
   checkpoint and keeps pi's read-only tools

@@ -51,7 +51,7 @@ export function selectionFor(provider: ProviderDescriptor, accountId: AccountId,
  * on. Image admission also uses pi's saved list before the first probe after a restart.
  */
 export function imageInputModel(
-  core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId'>>,
+  core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId, cwd }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId' | 'cwd'>>,
 ): ModelInfo | undefined {
   const pi = provider.protocol === 'pi';
   const wanted = model ?? (pi ? AGENT_OWN_MODEL : null);
@@ -61,9 +61,9 @@ export function imageInputModel(
     return (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
   };
   // A `--model` in the profile beats the session, as it does in pi.
-  if (pi && wanted === AGENT_OWN_MODEL && id && sessionId && !profileFor(provider)?.launch?.args?.includes('--model')) {
+  if (pi && wanted === AGENT_OWN_MODEL && id && sessionId && cwd && !profileFor(provider)?.launch?.args?.includes('--model')) {
     const account = core.accounts.list().find(entry => entry.id === accountId);
-    const resumed = account && sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId);
+    const resumed = account && sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId, cwd);
     // A registered virtual model holds over the physical models it answered through.
     const router = resumed?.router ? listed(resumed.router) : undefined;
     const found = router?.virtual ? router : resumed ? listed(resumed.model) : undefined;

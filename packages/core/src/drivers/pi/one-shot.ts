@@ -38,15 +38,18 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   if (!launch) throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
   const declared = profile?.launch?.args ?? [];
   const args = [...launch.prefix];
+  const own = model !== null && model !== AGENT_OWN_MODEL;
   for (let i = 0; i < declared.length; i++) {
     const arg = declared[i]!;
-    if (VALUE_FLAGS.has(arg)) i++;
+    // Left to pi, the model is the profile's, as in the conversation: its `--api-key` needs it.
+    if (!own && (arg === '--model' || arg === '--provider') && i + 1 < declared.length) args.push(arg, declared[++i]!);
+    else if (VALUE_FLAGS.has(arg)) i++;
     else if (!OWNED_SWITCHES.has(arg)) args.push(arg);
   }
   const context = contextArgs(TOOL_FREE_CONTEXT);
   args.push('--mode', 'rpc', ...(sessionFile ? context.flatMap(arg => arg === '--no-tools' ? ['--tools', READ_ONLY_TOOLS] : [arg]) : context), '--no-mcp');
   args.push(...(sessionFile ? ['--session', sessionFile] : ['--no-session']));
-  if (model !== null && model !== AGENT_OWN_MODEL) args.push('--model', model);
+  if (own) args.push('--model', model);
   const effort = 'signal' in ctx ? ctx.thread.effort : 'low';
   if (effort !== null) args.push('--thinking', effort);
 

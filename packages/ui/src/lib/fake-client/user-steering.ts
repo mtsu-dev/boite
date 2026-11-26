@@ -15,11 +15,14 @@ export async function steerUser(ctx: FakeContext, params: RpcParams<'turns.steer
   if (!Array.isArray(attachments) || attachments.some(attachment => !attachment || typeof attachment !== 'object')) throw refusal('attachments must be an array of attachment objects');
   const referenceError = previewReferencesError(references, params.prompt);
   if (referenceError) throw refusal(referenceError);
-  const provider = ctx.providers.find(provider => provider.id === thread.providerId);
-  if (!provider) throw ctx.notFound('provider', thread.providerId);
   const key = `${params.threadId}:${params.clientRequestId}`;
   const previous = ctx.turnRequests.get(key);
-  const error = attachmentError(attachments, provider, previous ? undefined : threadModel(ctx, thread));
+  // As in the core: new input goes to the active turn's model; a receipt keeps the turn that accepted it.
+  const active = previous ? undefined : thread.turns.find(turn => turn.id === params.turnId)?.execution;
+  const runs = active ?? thread;
+  const provider = ctx.providers.find(provider => provider.id === runs.providerId);
+  if (!provider) throw ctx.notFound('provider', runs.providerId);
+  const error = attachmentError(attachments, provider, previous ? undefined : threadModel(ctx, runs));
   if (error) throw refusal(error.message, error.data);
   const content = 'steer:' + JSON.stringify([params.turnId, params.prompt, attachments, references]);
   if (previous) {

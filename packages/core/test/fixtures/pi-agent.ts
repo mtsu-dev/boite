@@ -113,6 +113,11 @@ const sessionDir = flag('--session-dir');
 const model = flag('--model');
 const sideCopy = flag('--session');
 const oneShot = process.argv.includes('--no-session') || Boolean(sideCopy);
+// As pi 1.6.1 main.js: an inline key needs a model to bind to.
+if (process.argv.includes('--api-key') && !process.argv.includes('--model')) {
+  process.stderr.write('Error: --api-key requires a model to be specified via --model, --provider/--model, or --models\n');
+  process.exit(1);
+}
 const sessionFile = sideCopy || (sessionId && join(sessionDir,
   readdirSync(sessionDir).find(name => name.endsWith(`_${sessionId}.jsonl`)) ?? `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`));
 const saved = sessionFile && existsSync(sessionFile)

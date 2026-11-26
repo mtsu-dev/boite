@@ -197,7 +197,7 @@ export class ActivityStore {
       const runs = executionChoice ?? thread;
       const provider = this.#core.providers.require(runs.providerId);
       // On the thread's own account, a turn resumes its session and the model pi restores there.
-      const session = runs.providerId === thread.providerId && runs.accountId === thread.accountId ? { id: thread.id, sessionId: thread.sessionId } : {};
+      const session = runs.providerId === thread.providerId && runs.accountId === thread.accountId ? { id: thread.id, sessionId: thread.sessionId, cwd: thread.cwd } : {};
       checkAttachments(attachments, provider, () => imageInputModel(this.#core, provider, { ...runs, ...session }));
     }
     if (attachments.length && Number(!!params.goal) + Number(!!params.loop) !== 1) throw invalidParams('attachments require exactly one new goal or loop');
