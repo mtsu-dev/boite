@@ -171,6 +171,13 @@ export function pointedTurn(event: Event): string | null {
   return turnOf(event.target);
 }
 
+/** Clear focus state when focus lands outside `box`, e.g. after an in-place unmount skipped `focusout`. */
+export function watchOutsideFocus(box: HTMLElement | undefined, onLeave: () => void): () => void {
+  const away = (event: FocusEvent) => { if (!(event.target instanceof Node) || !box?.contains(event.target)) onLeave(); };
+  window.addEventListener('focusin', away, true);
+  return () => window.removeEventListener('focusin', away, true);
+}
+
 /**
  * What lies under the last row inside the viewport: its bottom padding and
  * the fade at its end, which takes its own room in the flow (MessageList's

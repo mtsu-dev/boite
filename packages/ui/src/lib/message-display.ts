@@ -258,16 +258,17 @@ export function newConversationOf(message: Message): NewConversationNotice | nul
 }
 
 /**
- * The last turn in `timeline` that carries a summary line (`TurnSummary`), past
- * new-conversation markers, folded wakes (`folds`), cache pings and queued turns.
+ * The last non-user row's turn in `timeline` that carries a summary line, past
+ * new-conversation markers, folded wakes (`folds`), cache pings and queued turns:
+ * an unanswered running, failed or stopped user prompt leaves the previous answer's buttons on a phone.
  */
-export function lastSummaryTurn(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): Pick<Turn, 'id' | 'status' | 'execution'> | null {
+export function lastAnswerTurn(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
   for (let index = timeline.length - 1; index >= 0; index--) {
     const message = timeline[index]!;
-    if (newConversationOf(message) || folds.has(message.id)) continue;
+    if (message.role === 'user' || newConversationOf(message) || folds.has(message.id)) continue;
     const turn = turns.find(current => current.id === message.turnId);
     if (!turn || turn.execution?.operation === 'keepalive' || turn.status === 'queued') continue;
-    return turn;
+    return turn.id;
   }
   return null;
 }
@@ -278,8 +279,14 @@ export function lastSummaryTurn(timeline: readonly Message[], folds: ReadonlyMap
  * the thread rests at all.
  */
 export function lastLined(timeline: readonly Message[], folds: ReadonlyMap<string, unknown>, turns: readonly Pick<Turn, 'id' | 'status' | 'execution'>[]): string | null {
-  const turn = lastSummaryTurn(timeline, folds, turns);
-  return turn?.status === 'done' ? turn.id : null;
+  for (let index = timeline.length - 1; index >= 0; index--) {
+    const message = timeline[index]!;
+    if (newConversationOf(message) || folds.has(message.id)) continue;
+    const turn = turns.find(current => current.id === message.turnId);
+    if (!turn || turn.execution?.operation === 'keepalive') continue;
+    return turn.status === 'done' ? turn.id : null;
+  }
+  return null;
 }
 
 /** The core's line for a thread the agent started (`boite thread new`). */

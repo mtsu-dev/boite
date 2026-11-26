@@ -33,7 +33,7 @@
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { lastLined, lastSummaryTurn, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
+  import { lastAnswerTurn, lastLined, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
@@ -49,7 +49,7 @@
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
   import { glides } from '../lib/motion';
-  import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, timelineEndRoom, turnOf, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
+  import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, timelineEndRoom, turnOf, typingKey, watchOutsideFocus, watchWheel, wheelsUp } from '../lib/timeline-follow';
   import { selectionClicks } from '../lib/selection-clicks';
   import { editWhole, fillShort, pullNewer, pullOlder } from '../lib/reading-window';
   import { ReadingAnchor, type RowAnchor } from '../lib/reading-anchor';
@@ -156,8 +156,9 @@
     const id = lastView && rows[lastView.first]?.id;
     anchors.remember(viewport, column, id ? anchors.nodes.get(id) : undefined);
   }
+  function rememberBeforePointer() { viaPointer = true; rememberAnchor(); }
   /** Typing in a field never leaves the thread: a chord, Enter, Escape or a key outside a field reads the anchor. */
-  function rememberBeforeKey(event: KeyboardEvent) { if (!typingKey(event)) rememberAnchor(); }
+  function rememberBeforeKey(event: KeyboardEvent) { viaPointer = false; if (!typingKey(event)) rememberAnchor(); }
   function rememberBeforeClick() { if (anchors.pending) rememberAnchor(); }
   function restoreAnchor(anchor: RowAnchor | undefined = anchors.current) {
     if (!anchor || !viewport?.isConnected || pinned || navigationTarget || promptTarget) return;
@@ -170,11 +171,11 @@
   function releaseAnchor() { anchors.restoring = false; anchors.held = false; }
   onMount(() => {
     // Capture the settled layout before a navigation click removes this list.
-    document.addEventListener('pointerdown', rememberAnchor, true);
+    document.addEventListener('pointerdown', rememberBeforePointer, true);
     document.addEventListener('click', rememberBeforeClick, true);
     document.addEventListener('keydown', rememberBeforeKey, true);
     return () => {
-      document.removeEventListener('pointerdown', rememberAnchor, true);
+      document.removeEventListener('pointerdown', rememberBeforePointer, true);
       document.removeEventListener('click', rememberBeforeClick, true);
       document.removeEventListener('keydown', rememberBeforeKey, true);
     };
@@ -561,8 +562,8 @@
   }
   /** The turns whose answer is under the pointer and holds the keyboard: the summary shows from any of its messages (`pointedTurn`). */
   let pointed = $state<string | null>(null);
-  let focused = $state<string | null>(null), focusedNode: Element | null = null;
-  $effect(() => { void rendered; if (focused !== null && (!focusedNode?.isConnected || !viewport?.contains(focusedNode))) { focused = null; focusedNode = null; } });
+  let focused = $state<string | null>(null), focusedNode: Element | null = null, viaPointer = false;
+  $effect(() => { void rendered; if (focused === null) return; if (!focusedNode?.isConnected || !viewport?.contains(focusedNode)) { focused = null; focusedNode = null; return; } return watchOutsideFocus(viewport, () => { focused = null; focusedNode = null; }); });
   /** Whether the list keeps to the bottom right now: pinned, and nobody is moving it. */
   const following = () => pinned && !navigationTarget && !glide.active && !hold.held;
 
@@ -655,8 +656,8 @@
     }
   });
 
-  /** The last turn with a summary line, so a phone's buttons and the resting footer pick the same row. */
-  const lastSummary = $derived(lastSummaryTurn(timeline, shaped.folds, shownTurns)?.id ?? (shownTurns.length === 0 ? timeline.findLast((message) => message.role === 'assistant')?.turnId ?? null : null));
+  /** The last non-user row with a summary line, so a phone's buttons and the resting footer pick the same row without dropping them on an unanswered prompt. */
+  const lastSummary = $derived(lastAnswerTurn(timeline, shaped.folds, shownTurns) ?? (shownTurns.length === 0 ? timeline.findLast((message) => message.role === 'assistant')?.turnId ?? null : null));
   /** Only once the loaded window reaches the thread's end: newer history still unread is not its last word. */
   let restingShown = $derived(resting !== null && store.messagesAfter === null && !store.loadingNewer ? lastLined(timeline, shaped.folds, shownTurns) : null);
   /** A line lands at the foot of a pinned list: the bottom takes it in, like a new message. */
@@ -715,7 +716,7 @@
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- The top fade is sticky inside the padding: it is told the padding a sent prompt's lead adds, or it would hang that far under the header, a dark band across the prompt's lines. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onfocusin={(event) => { focused = pointedTurn(event); focusedNode = event.target instanceof Element ? event.target : null; }} onfocusout={(event) => { focused = turnOf(event.relatedTarget); focusedNode = event.relatedTarget instanceof Element && viewport?.contains(event.relatedTarget) ? event.relatedTarget : null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onfocusin={(event) => { focused = viaPointer ? null : pointedTurn(event); focusedNode = !viaPointer && event.target instanceof Element ? event.target : null; }} onfocusout={(event) => { focused = viaPointer ? null : turnOf(event.relatedTarget); focusedNode = !viaPointer && event.relatedTarget instanceof Element && viewport?.contains(event.relatedTarget) ? event.relatedTarget : null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}

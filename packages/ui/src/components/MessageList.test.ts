@@ -1752,7 +1752,7 @@ test('a phone keeps the buttons under the last prompt and answer, shows another 
   expect(earlier.hasAttribute('data-revealed')).toBe(false);
 });
 
-test('a prompt queued behind a finished turn keeps the buttons of the answer before it on a phone', async ({ ready }) => {
+test.for(['queued', 'running', 'error', 'stopped'] as const)('an unanswered %s prompt behind a finished turn keeps the buttons of the answer before it on a phone', async (status, { ready }) => {
   window.localStorage.clear();
   vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
   onTestFinished(() => { vi.unstubAllGlobals(); });
@@ -1761,15 +1761,16 @@ test('a prompt queued behind a finished turn keeps the buttons of the answer bef
   const thread = live.openThread!;
   const messages = thread.messages;
   const answer = messages.findLast((message) => message.role === 'assistant')!;
-  // Its turn is queued and nothing answers it yet: the newest turn has no answer row.
-  thread.turns.push({ id: 'turn-queued', threadId: 't-long', status: 'queued', queuedAt: Date.now(), startedAt: null, finishedAt: null, usage: null, error: null });
-  messages.push({ id: 'm-queued', threadId: 't-long', turnId: 'turn-queued', role: 'user', parts: [{ type: 'text', text: 'and then?' }], state: 'complete', createdAt: Date.now() });
+  // Its turn has not answered yet: the newest turn has no answer row.
+  thread.turns.push({ id: `turn-${status}`, threadId: 't-long', status, queuedAt: Date.now(), startedAt: status === 'queued' ? null : Date.now(), finishedAt: status === 'error' || status === 'stopped' ? Date.now() : null, usage: null, error: status === 'error' ? 'rate limit' : null });
+  messages.push({ id: `m-${status}`, threadId: 't-long', turnId: `turn-${status}`, role: 'user', parts: [{ type: 'text', text: 'and then?' }], state: 'complete', createdAt: Date.now() });
   stubLayout(messages.length * ESTIMATE);
   running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
   await settle();
 
-  expect(document.querySelector('[data-mid="m-queued"]')?.closest('article')?.hasAttribute('data-latest')).toBe(true);
+  expect(document.querySelector(`[data-mid="m-${status}"]`)?.closest('article')?.hasAttribute('data-latest')).toBe(true);
   expect(document.querySelector(`[data-mid="${answer.id}"]`)?.closest('article')?.hasAttribute('data-latest')).toBe(true);
+  expect(document.querySelector(`[data-mid="${answer.id}"]`)?.closest('article')?.querySelector('[data-testid=message-actions]')).not.toBeNull();
 });
 
 // A reply the timeline hides was the phone's last answer: the real answer above it lost its buttons and its footer.
@@ -1836,7 +1837,7 @@ test('a tool-only wake on a phone keeps its resting line and buttons on the same
   expect(priorRow?.hasAttribute('data-latest')).toBe(false);
 });
 
-test('at phone width, keyboard focus inside an earlier unmarked answer mounts its summary and clears when the focused row unmounts', async ({ createStore }) => {
+test('at phone width, keyboard focus inside an earlier unmarked answer mounts its summary, pointer focus does not, and unmount clears it', async ({ createStore }) => {
   window.localStorage.clear();
   vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
   onTestFinished(() => { vi.unstubAllGlobals(); });
@@ -1858,17 +1859,38 @@ test('at phone width, keyboard focus inside an earlier unmarked answer mounts it
   flushSync();
 
   const summaryOf = (turnId: string) => document.querySelector<HTMLElement>(`article[data-turn="${turnId}"] [data-testid=turn-summary]`);
-  expect(summaryOf('turn-a')).toBeNull();
   const link = document.querySelector<HTMLElement>('[data-mid="m-a1"] a')!;
+  // A pointer tap on a link in an earlier answer does not mount its summary.
+  document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  link.focus(); flushSync();
+  expect(summaryOf('turn-a')).toBeNull();
+  link.blur(); flushSync();
+
+  // Keyboard navigation mounts the summary and sets data-revealed.
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
   link.focus(); flushSync();
   expect(summaryOf('turn-a')).not.toBeNull();
   expect(summaryOf('turn-a')?.classList.contains('pointed')).toBe(true);
   expect(document.querySelector('[data-mid="m-a2"]')?.closest('article')?.hasAttribute('data-revealed')).toBe(true);
 
-  // Removing the focused message without a focusout event still clears the stale focus state.
+  // Focusing outside the timeline after an in-place unmount (without focusout) still clears focus state.
+  const outside = document.createElement('button');
+  document.body.appendChild(outside);
+  onTestFinished(() => outside.remove());
+  link.remove();
+  outside.focus(); flushSync();
+  expect(summaryOf('turn-a')).toBeNull();
+
+  // Removing a whole focused row during a render update also clears focus state.
+  thread.messages.splice(1, 0, msg('m-a1b', 'turn-a', 'assistant', 'See [second link](https://example.com/b).'));
+  flushSync();
+  const second = document.querySelector<HTMLElement>('[data-mid="m-a1b"] a')!;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  second.focus(); flushSync();
+  expect(summaryOf('turn-a')).not.toBeNull();
   thread.messages.splice(1, 1);
   flushSync();
-  expect(document.querySelector('[data-mid="m-a1"]')).toBeNull();
+  expect(document.querySelector('[data-mid="m-a1b"]')).toBeNull();
   expect(summaryOf('turn-a')).toBeNull();
 });
 
