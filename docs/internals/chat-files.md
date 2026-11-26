@@ -110,8 +110,9 @@ older look that a click replaced is dropped.
    Files tab at its line (`panel.openFile`), a folder in its tree
    (`panel.openFiles`), and a picture or a video in the media viewer through
    `files.read`. Without a trailing slash, a name is a folder only when its
-   parent's `files.list` says `dir` (`glossary` is a file, `v1.2` may be a
-   folder); the name's look decides only when that listing fails. The panel is the open thread's,
+   parent's `files.list` says `dir`: `glossary` may be a file, and `v1.2` or
+   `takes.mp4` a folder, which opens in the tree, never the viewer. The name's
+   look decides only when that listing fails. The panel is the open thread's,
    so a click whose thread was left while the core looked opens nothing. A
    paired phone does the same without `files.locate`, which it may not call.
 5. Anything else shows `FileLinkToast`: where the file was looked for (this

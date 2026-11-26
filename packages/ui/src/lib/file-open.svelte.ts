@@ -80,7 +80,8 @@ export function locate(store: Store, threadId: string, written: string, fresh = 
     // A later look (a click) replaced this one: its answer is the chip's, not this older one.
     if (byStore.get(key) !== entry) return;
     located.dispatchEvent(new CustomEvent('located', { detail: { store, threadId, written, missing: where.at === 'missing' } }));
-  }, () => { if (byStore.get(key) === entry) byStore.delete(key); });
+  // A failed look is asked again next time, yet stays the newest until then, so an older one cannot paint over it.
+  }, () => { entry.at = 0; });
   return answer;
 }
 
@@ -166,11 +167,12 @@ async function isFolder(ctx: LinkContext, relative: string): Promise<boolean> {
  * it looked opens nothing in another one.
  */
 async function showInProject(ctx: LinkContext, relative: string, line: number | undefined): Promise<void> {
-  const item = mediaItem(ctx, relative);
-  const folder = !item && await isFolder(ctx, relative);
+  // A folder may carry a media name (`takes.mp4/`): the listing goes first.
+  const folder = await isFolder(ctx, relative);
   if (ctx.store.openThread?.id !== ctx.threadId) return;
-  if (item) return ctx.show(item);
   if (folder) { ctx.store.panel.openFiles(relative.replace(/[\\/]$/, '')); return; }
+  const item = mediaItem(ctx, relative);
+  if (item) return ctx.show(item);
   ctx.store.panel.openFile(relative, line);
 }
 
@@ -258,9 +260,10 @@ export function fileChecks(node: HTMLElement, read: () => { store?: Store; threa
     if (!store?.owner || !threadId || !written) return;
     // A kept answer greys a new chip at once; one a newer look (a click) replaced is dropped.
     const answer = locate(store, threadId, written);
+    const newest = (): boolean => checks.get(store)?.get(`${threadId}\n${written}`)?.answer === answer;
     void answer.then(where => {
-      if (checks.get(store)?.get(`${threadId}\n${written}`)?.answer === answer) chip.toggleAttribute('data-missing', where.at === 'missing');
-    }, () => chip.removeAttribute('data-missing'));
+      if (newest()) chip.toggleAttribute('data-missing', where.at === 'missing');
+    }, () => { if (newest()) chip.removeAttribute('data-missing'); });
   };
   const near = typeof IntersectionObserver === 'function'
     ? new IntersectionObserver(entries => {

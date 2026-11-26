@@ -138,11 +138,12 @@ test('a dotless file opens as a file, a greyed chip lights up once a click finds
   const listFiles = async () => ({ ok: true as const, value: [
     { name: 'glossary', path: 'refs/glossary', kind: 'file' as const, bytes: 4, modifiedAt: 0 },
     { name: 'docs', path: 'refs/docs', kind: 'dir' as const, bytes: null, modifiedAt: 0 },
-    { name: 'v1.2', path: 'refs/v1.2', kind: 'dir' as const, bytes: null, modifiedAt: 0 }
+    { name: 'v1.2', path: 'refs/v1.2', kind: 'dir' as const, bytes: null, modifiedAt: 0 },
+    { name: 'takes.mp4', path: 'refs/takes.mp4', kind: 'dir' as const, bytes: null, modifiedAt: 0 }
   ] });
   const { store, panel } = storeOf({ locateFile, listFiles });
-  show('`refs/glossary`, `refs/docs`, `refs/v1.2`, `notes.md` and `src/app.ts`', store);
-  const [glossary, docs, dotted, notes, app] = document.querySelectorAll<HTMLAnchorElement>('a.file-chip');
+  show('`refs/glossary`, `refs/docs`, `refs/v1.2`, `refs/takes.mp4`, `notes.md` and `src/app.ts`', store);
+  const [glossary, docs, dotted, takes, notes, app] = document.querySelectorAll<HTMLAnchorElement>('a.file-chip');
   glossary!.click();
   await vi.waitFor(() => expect(panel.openFile).toHaveBeenCalledWith('refs/glossary', undefined));
   expect(panel.openFiles).not.toHaveBeenCalled();
@@ -152,6 +153,9 @@ test('a dotless file opens as a file, a greyed chip lights up once a click finds
   // A dot in a folder's name does not make it a file.
   await tick(); dotted!.click();
   await vi.waitFor(() => expect(panel.openFiles).toHaveBeenLastCalledWith('refs/v1.2'));
+  // Nor does a video's name: a folder of takes opens in the tree, not the viewer.
+  await tick(); takes!.click();
+  await vi.waitFor(() => expect(panel.openFiles).toHaveBeenLastCalledWith('refs/takes.mp4'));
 
   await vi.waitFor(() => expect(notes!.hasAttribute('data-missing')).toBe(true));
   written = true;
@@ -185,6 +189,23 @@ test('a slow look started as the chip came in cannot grey it again after a click
   late({ ok: true, value: [] });
   await new Promise(resolve => setTimeout(resolve, 20));
   expect(chip.hasAttribute('data-missing')).toBe(false);
+});
+
+test('a slow look that fails cannot clear the grey a newer click put on a missing chip', async () => {
+  let late!: (value: { ok: true; value: string[] }) => void;
+  const locateFile = vi.fn<Store['locateFile']>()
+    .mockImplementationOnce(() => new Promise(resolve => { late = resolve; }))
+    .mockImplementation(async () => ({ ok: true, value: [] }));
+  const { store } = storeOf({ locateFile });
+  show('`notes.md`', store);
+  const chip = query<HTMLAnchorElement>('a.file-chip');
+  await vi.waitFor(() => expect(late).toBeTypeOf('function'));
+  chip.click();
+  await vi.waitFor(() => expect(chip.hasAttribute('data-missing')).toBe(true));
+  // Two candidates make the old look fail.
+  late({ ok: true, value: ['a/notes.md', 'b/notes.md'] });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(chip.hasAttribute('data-missing')).toBe(true);
 });
 
 test.each([false, true])('a thread on this computer opens a program only once confirmed, and documents per the switch (open-chat-links: %s)', async (direct) => {
