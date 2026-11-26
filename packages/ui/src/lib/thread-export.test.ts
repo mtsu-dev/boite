@@ -159,7 +159,7 @@ test('export reads every page of a long conversation in order for a paired devic
   expect(call.mock.calls.filter(([method]) => method === 'messages.list')).toHaveLength(1);
 });
 
-test('export reads full prose when a page omitted part of the text', async ({ createClient }) => {
+test('export reads full prose with fullText first and falls back for older cores', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const original = client.call.bind(client);
   const snapshot = await client.call('threads.get', { threadId: 't-trace' });
@@ -172,6 +172,19 @@ test('export reads full prose when a page omitted part of the text', async ({ cr
   });
   const exported = await loadAllThreadMessages(client, 't-trace');
   expect(exported[1]).toEqual(full);
+  expect(call).toHaveBeenCalledWith('messages.list', expect.objectContaining({ from: 1, limit: 1, compactToolParts: true, fullText: true }));
+
+  // Older core ignores fullText and keeps returning omitted until compactToolParts: false.
+  call.mockImplementation((method, params) => {
+    if (method === 'threads.get') return Promise.resolve({ ...snapshot, messages: [messages[0]!, preview], messagesBefore: null });
+    if (method === 'messages.list') {
+      const compact = (params as { compactToolParts?: boolean }).compactToolParts;
+      return Promise.resolve({ messages: [compact === false ? full : preview], before: null });
+    }
+    return original(method, params);
+  });
+  const legacy = await loadAllThreadMessages(client, 't-trace');
+  expect(legacy[1]).toEqual(full);
   expect(call).toHaveBeenCalledWith('messages.list', expect.objectContaining({ from: 1, limit: 1, compactToolParts: false }));
 });
 
@@ -248,8 +261,8 @@ test('filenames keep readable Unicode, discard path separators and fall back for
   expect(exportFilename('..\\ /', 'markdown', now)).toBe('conversation-2026-11-25.md');
 });
 
-test('desktop downloads mark exports and refuse an oversized body before IPC', async () => {
-  const invoke = vi.fn().mockResolvedValue({ path: 'conversation.md', opened: false });
+test('desktop downloads mark exports, return the saved path and refuse an oversized body before IPC', async () => {
+  const invoke = vi.fn().mockResolvedValue({ path: '/home/user/Downloads/conversation.md', opened: false });
   vi.stubGlobal('__TAURI_INTERNALS__', { invoke });
   const largeBody = new Uint8Array(0);
   Object.defineProperty(largeBody, 'byteLength', { value: 64 * 1024 * 1024 + 1 });
@@ -261,7 +274,8 @@ test('desktop downloads mark exports and refuse an oversized body before IPC', a
 
   await expect(downloadExport('conversation.md', 'oversized export', 'text/markdown')).rejects.toThrow('64 MiB');
   expect(invoke).not.toHaveBeenCalled();
-  await downloadExport('conversation.md', '# Conversation', 'text/markdown');
+  const saved = await downloadExport('conversation.md', '# Conversation', 'text/markdown');
+  expect(saved).toEqual({ path: '/home/user/Downloads/conversation.md' });
   expect(invoke).toHaveBeenCalledWith('save_attachment', new TextEncoder().encode('# Conversation'), {
     headers: { 'x-boite-export': '1', 'x-boite-name': 'conversation.md', 'x-boite-open': '0' },
   });
@@ -271,4 +285,47 @@ test('exportFilename caps multibyte Unicode titles in UTF-8 bytes below filesyst
   const title = '𠮷'.repeat(60);
   const name = exportFilename(title, 'html', new Date('2026-11-25T10:00:00Z'));
   expect(name).toBe(`${'𠮷'.repeat(45)}-2026-11-25.html`);
+});
+
+test('multi-paragraph details and unclosed HTML blocks keep CommonMark structure intact', () => {
+  const md = new MarkdownIt('commonmark');
+  const tricky: Message = { ...messages[1]!, parts: [
+    { type: 'thinking', text: 'First idea\n\n# Not a heading\n* item _x_\n</details>\n```' },
+    { type: 'text', text: '<!-- unclosed comment' },
+    { type: 'text', text: '<pre>unclosed pre' },
+  ] };
+  const markdown = exportThreadMarkdown(thread, [tricky, messages[0]!], { ...clean, includeThinking: true });
+  const rendered = md.render(markdown);
+  expect(rendered).not.toContain('<h1>Not a heading</h1>');
+  expect(rendered).not.toContain('<li>item');
+  expect(rendered).toContain('* item _x_');
+  expect(rendered).toContain('&lt;/details&gt;');
+  expect(rendered).toContain('<h2>User ·');
+  expect(rendered).toContain('Can you fix this?');
+});
+
+test('edit metadata, trailing-newline diffs, failed tool diffs, errors and standalone HTML cleanup behave consistently', () => {
+  const trailingDiff = { kind: 'diff' as const, path: 'newline.ts', oldText: 'const a = 1;', newText: 'const a = 1;\n' };
+  const msg: Message = { ...messages[1]!, parts: [
+    { type: 'tool', toolId: 'edit-path', name: 'Edit', status: 'done', input: { file_path: 'src/app.ts', old_string: 'a', new_string: 'b' }, output: null, documents: [trailingDiff] },
+    { type: 'tool', toolId: 'failed-patch', name: 'Bash', status: 'error', input: 'git diff', output: '--- bad.ts\n+++ bad.ts\n@@ -1 +1 @@\n-x\n+y' },
+    { type: 'error', message: 'Provider timeout' },
+    { type: 'text', text: 'See `thr_abcdef123456` and [docs](https://example.com/docs).' },
+  ] };
+  const toolsMd = exportThreadMarkdown(thread, [msg], { ...clean, includeTools: true });
+  expect(toolsMd).toContain('newline.ts');
+  expect(toolsMd).toContain('src/app.ts');
+  expect(toolsMd).toContain('Provider timeout');
+
+  const diffsMd = exportThreadMarkdown(thread, [msg], { ...clean, includeDiffs: true });
+  expect(diffsMd).toContain('--- newline.ts\n+++ newline.ts');
+  expect(diffsMd).toContain('\\ No newline at end of file');
+  expect(diffsMd).not.toContain('bad.ts');
+
+  const html = exportThreadHtml(thread, [msg], { ...clean, includeTools: true });
+  expect(html).toContain('@media print');
+  expect(html).toContain('Provider timeout');
+  expect(html).toContain('docs (https://example.com/docs)');
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  expect(doc.querySelector('a[href="#thread"], a[href="#file"], [data-file-path], a[href]:not([href^="#"])')).toBeNull();
 });

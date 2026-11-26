@@ -57,7 +57,7 @@ test('the header menu opens export, downloads the chosen format and restores foc
   const history = vi.spyOn(store, 'threadExportMessages');
   button('Download').click();
   await waitFor(() => filename.endsWith('.html') && !document.querySelector(dialog));
-  expect(history).toHaveBeenCalledWith('t-trace', { format: 'html', includeTools: true, includeDiffs: true, includeThinking: true }, expect.any(AbortSignal));
+  expect(history).toHaveBeenCalledWith('t-trace', { format: 'html', includeTools: true, includeDiffs: true, includeThinking: true }, expect.any(AbortSignal), expect.any(Function));
   const blob = blobs[0];
   expect(blob).toBeInstanceOf(Blob);
   if (!(blob instanceof Blob)) throw new Error('No export Blob was created');
@@ -83,7 +83,7 @@ test('the palette opens export and copies the Markdown conversation', async ({ a
   const history = vi.spyOn(store, 'threadExportMessages');
   button('Copy Markdown').click();
   await waitFor(() => copy.mock.calls.length === 1 && !document.querySelector(dialog));
-  expect(history).toHaveBeenCalledWith('t-trace', { format: 'markdown', includeTools: true, includeDiffs: false, includeThinking: false }, expect.any(AbortSignal));
+  expect(history).toHaveBeenCalledWith('t-trace', { format: 'markdown', includeTools: true, includeDiffs: false, includeThinking: false }, expect.any(AbortSignal), expect.any(Function));
   expect(copy.mock.calls[0]?.[0]).toMatch(/^# .+\n/);
   expect(copy.mock.calls[0]?.[0]).not.toContain('<summary>Thinking</summary>');
 });
@@ -162,4 +162,20 @@ test('retrying clipboard copy reuses the fetched export without re-reading histo
   button('Copy Markdown').click();
   await waitFor(() => writeText.mock.calls.length === 2 && !document.querySelector(dialog));
   expect(history).toHaveBeenCalledTimes(1);
+});
+
+test('desktop download shows the saved path in the dialog', async ({ app: _app }) => {
+  onTestFinished(mockDialogMethods());
+  const invoke = vi.fn().mockResolvedValue({ path: '/home/user/Downloads/trace.md', opened: false });
+  vi.stubGlobal('__TAURI_INTERNALS__', { invoke });
+  onTestFinished(() => { vi.unstubAllGlobals(); });
+  await store.open('t-trace');
+  query<HTMLButtonElement>(trigger).click();
+  const item = '[data-testid=thread-menu-trigger-menu] [data-value=export-thread]';
+  await waitFor(() => !!document.querySelector(item));
+  query<HTMLButtonElement>(item).click();
+  await waitFor(() => document.querySelector<HTMLDialogElement>(dialog)?.open === true);
+  button('Download').click();
+  await waitFor(() => query(dialog).querySelector('[role=status]')?.textContent?.includes('/home/user/Downloads/trace.md') === true);
+  expect(document.querySelector<HTMLDialogElement>(dialog)?.open).toBe(true);
 });

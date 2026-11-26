@@ -154,10 +154,11 @@ replaced.
 
 ## Export a conversation
 
-Choose Export in the conversation or mochi menu, or Export conversation in the
-Command Palette. Pick Markdown or HTML, then Download. HTML opens offline in a
-browser. When Markdown is selected, Copy Markdown puts the text on the
-clipboard. Tool calls, diffs and reasoning are optional.
+Choose Export... in the conversation or mochi menu, or Export conversation in the
+Command Palette. Pick Markdown (.md) or HTML (.html), then Download. On desktop,
+Download saves to your Downloads folder and shows the saved path. HTML opens
+offline in a browser. When Markdown is selected, Copy Markdown puts the text on
+the clipboard. Include tool calls, Include diffs and Include thinking are optional.
 The export covers the complete conversation and lists attachments by name.
 
 ## Notifications

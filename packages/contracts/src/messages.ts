@@ -524,7 +524,7 @@ export interface MessagesRpcMethods {
    * `maxBytes` lowers the byte budget as it does for `threads.get`.
    */
   'messages.list': {
-    params: { threadId: ThreadId; before?: MessageId; after?: MessageId; from?: number; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean };
+    params: { threadId: ThreadId; before?: MessageId; after?: MessageId; from?: number; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean; fullText?: boolean };
     result: { messages: Message[]; before: MessageId | null; after?: MessageId | null; turns?: Turn[]; offset?: number };
   };
   /** The full output of a tool already visible in this conversation. No filesystem path is accepted. */

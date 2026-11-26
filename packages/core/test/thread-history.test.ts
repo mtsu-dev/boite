@@ -243,5 +243,19 @@ test('no message keeps a thread from opening: heavy inputs, documents and texts 
     const live = client.next('message.part', event => event.messageId === 'last');
     harness.core.bus.emit('message.part', { threadId, messageId: 'last', partIndex: 1, part: writes[0]! });
     expect((await live).part).toMatchObject({ inputDeferred: true, documentsDeferred: true });
+
+    // fullText returns complete prose up to RPC_MAX_FRAME_BYTES while keeping heavy tool parts deferred.
+    const mixedText = 'x'.repeat(9_000_000);
+    const mixedPos = harness.core.journal.listMessages(threadId).length;
+    harness.core.journal.putMessage({
+      id: 'mixed', threadId, turnId: 'heavy-turn', role: 'assistant', state: 'complete', createdAt: 99,
+      parts: [{ type: 'text', text: mixedText }, ...writes],
+    });
+    const previewMixed = await client.call('messages.list', { threadId, from: mixedPos, limit: 1, ...light });
+    expect(previewMixed.messages[0]?.parts[0]).toMatchObject({ type: 'text', omitted: expect.any(Number) });
+    expect(await thrown(client.call('messages.list', { threadId, from: mixedPos, limit: 1, compactTools: true, compactToolParts: false }))).toThrow('message mixed');
+    const fullMixed = await client.call('messages.list', { threadId, from: mixedPos, limit: 1, ...light, fullText: true });
+    expect(fullMixed.messages[0]?.parts[0]).toEqual({ type: 'text', text: mixedText });
+    expect(fullMixed.messages[0]?.parts[1]).toMatchObject({ type: 'tool', inputDeferred: true, documentsDeferred: true });
   } finally { await harness.stop(); }
 });

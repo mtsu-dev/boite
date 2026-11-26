@@ -93,6 +93,21 @@ export function diffText(diff: TurnDiff): string {
     if (row.kind !== 'remove') added++;
   }
   flush();
+  if (!lines.length && diff.oldText !== diff.newText) {
+    // diffRows strips a single trailing newline; emit a hunk when only the final newline changed.
+    const oldLines = diff.oldText.endsWith('\n') ? diff.oldText.slice(0, -1).split('\n') : diff.oldText ? diff.oldText.split('\n') : [];
+    const last = oldLines.at(-1) ?? '';
+    const lineNo = Math.max(1, oldLines.length);
+    const oldEnds = diff.oldText.endsWith('\n');
+    const newEnds = diff.newText.endsWith('\n');
+    const body = [
+      `-${last}`,
+      ...(!oldEnds ? [NO_NEWLINE] : []),
+      `+${last}`,
+      ...(!newEnds ? [NO_NEWLINE] : []),
+    ];
+    lines.push(`@@ -${lineNo},1 +${lineNo},1 @@`, body.join('\n'));
+  }
   return lines.length ? `${diffHeader(diff.path)}\n${lines.join('\n')}` : '';
 }
 

@@ -2,6 +2,7 @@ import { startDiagnosticsReport } from './diagnostics-report';
 import { RpcErrorCode, type AgentShape, type Message, type MessageId, type PermissionMode, type ProjectId, type ProviderId, type RpcParams, type ThreadId } from '@boite/contracts';
 import type { Client } from './client';
 import { RpcFailure, wasClosed, wasDropped } from './rpc-error';
+import { strings } from './strings';
 import { readModelDefaults } from './model-defaults';
 import { followDesktopOf } from './experiments';
 import { modelFavorites } from './model-favorites.svelte';
@@ -647,12 +648,17 @@ export class Store {
     try { await client.call('turns.cancelRetry', { threadId }); } catch (error) { this.#ctx.fail(error); }
   }
   threadCapabilities(...args: Parameters<Threads['capabilities']>) { return this.#ctx.threads.capabilities(...args); }
-  async threadExportMessages(threadId: ThreadId, options: import('./thread-export').ExportOptions, signal: AbortSignal): Promise<Message[]> {
+  async threadExportMessages(
+    threadId: ThreadId,
+    options: import('./thread-export').ExportOptions,
+    signal: AbortSignal,
+    onProgress?: (progress: import('./thread-export').ExportProgress) => void,
+  ): Promise<Message[]> {
     const { client, clientGeneration } = this.#ctx;
-    if (!client) throw new Error('Not connected');
+    if (!client) throw new Error(strings.threadExport.notConnected);
     const { loadAllThreadMessages } = await import('./thread-export');
-    const messages = await loadAllThreadMessages(client, threadId, options, signal);
-    if (!this.#ctx.currentClient(client, clientGeneration)) throw new Error('Connection changed while reading the conversation');
+    const messages = await loadAllThreadMessages(client, threadId, options, signal, this.core?.features, onProgress);
+    if (!this.#ctx.currentClient(client, clientGeneration)) throw new Error(strings.threadExport.connectionChanged);
     return messages;
   }
   previewAccountSwitch(...args: Parameters<Threads['previewAccountSwitch']>) { return this.#ctx.threads.previewAccountSwitch(...args); }

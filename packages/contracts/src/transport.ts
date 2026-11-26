@@ -19,6 +19,12 @@ export interface TransportOptions {
    * further, so no single message can keep a thread from opening.
    */
   compactToolParts?: boolean;
+  /**
+   * Keep complete prose and thinking text even when `compactToolParts` defers
+   * heavy tool parts, instead of cutting text at `MESSAGE_SENT_MAX_BYTES`. The
+   * frame limit (`RPC_MAX_FRAME_BYTES`) still applies.
+   */
+  fullText?: boolean;
 }
 
 /**
@@ -128,6 +134,7 @@ export function projectMessage(message: Message, options: TransportOptions, prev
   const lightBytes = heavyBytes(light, max);
   if (lightBytes < max) return light;
   const strict = project(message, options, true, previews);
+  if (options.fullText) return strict;
   const strictBytes = strict === light ? lightBytes : heavyBytes(strict, max);
   return strictBytes < max ? strict : cutTexts(strict, strictBytes, max);
 }
