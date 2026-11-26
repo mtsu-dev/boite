@@ -148,6 +148,8 @@ or its siblings. The component is `AgentDock.svelte`.
 
 A parent's row in the sidebar, the Recent list and the phone's list carries a
 chip with the number of its subagents at work, in every state of the parent.
+The owning core includes the latest reports from subagents on other machines
+in the parent's summary. The list adds those to the subagents it sees locally.
 Only an active turn (`working`) spins its ring; passive waits never spin and
 pulse their own glyph beside the elapsed clock instead (the bot chip while
 waiting on subagents, `GitMerge` for the merge queue, `GitPullRequest` for CI,

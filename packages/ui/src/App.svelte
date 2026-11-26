@@ -1,6 +1,7 @@
 <script lang="ts">
   import { desktopShell, MOBILE_BUILD } from './lib/shell-platform';
   import { errorText } from './lib/errors';
+  import { watchZoomWheel } from './lib/zoom';
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { opensFromLink, readStoredEndpoint, shellStarting, takeNotificationTarget } from './lib/endpoint';
@@ -9,6 +10,7 @@
   import { watchWindows } from './lib/window-watch';
   import { browserProfiles } from './lib/browser-profiles.svelte';
   import UndoToast from './components/UndoToast.svelte';
+  import { closeThreadExport, threadExport } from './lib/thread-export-request.svelte';
   import ErrorToast from './components/ErrorToast.svelte';
   import Notice from './components/Notice.svelte';
   import { CircleAlert } from '@lucide/svelte';
@@ -55,6 +57,8 @@
   import { prefetchAllowed, prefetchNames, warmPages } from './lib/prefetch';
   import { parts, prefetchParts } from './lib/deferred-parts';
   import { LazyComponent } from './lib/lazy-component.svelte';
+  import { appViews } from './lib/app-views';
+  import { settingsShell as lazySettingsShell, agentsLayout as lazyAgentsLayout } from './lib/navigation-views';
   import { mobileNavigation } from './lib/mobile-navigation';
   import { voice } from './lib/voice-prefs.svelte';
   import { startTheme } from './lib/theme';
@@ -110,7 +114,7 @@
   const desktopStartup = !MOBILE_BUILD && (inShell || !narrow.current);
   const sidebar = new LazyComponent(() => import('./components/Sidebar.svelte'));
   const chatView = new LazyComponent(() => import('./components/ChatView.svelte'));
-  const agentsLayout = new LazyComponent(() => import('./components/agents/AgentsLayout.svelte'));
+  const agentsLayout = lazyAgentsLayout;
   let desktopViewsSettled = $state(!desktopStartup);
   let appRoot = $state<HTMLDivElement | undefined>(undefined);
   let mobileScreen = $state<'chat' | 'threads' | 'activity'>('chat'), mobileTabs = $state(false);
@@ -187,35 +191,15 @@
   // booted and is idle, so a key pressed a second later finds them and the service
   // worker has them for a phone that loses its link. The tour is the same case
   // taken further: a device draws it once, then only when asked.
-  const deferredLoaders = {
-    RightPanel: () => import('./components/RightPanel.svelte'),
-    CommandPalette: () => import('./components/CommandPalette.svelte'),
-    ProjectPicker: () => import('./components/ProjectPicker.svelte'),
-    ImportDialog: () => import('./components/ImportDialog.svelte'),
-    ConnectFlow: () => import('./components/ConnectFlow.svelte'),
-    Onboarding: () => import('./components/Onboarding.svelte'),
-    // The drawer, then xterm.js and its stylesheet: only once a terminal is asked for.
-    TerminalDrawer: () => import('./components/TerminalDrawer.svelte'),
-    TerminalView: () => import('./components/TerminalView.svelte'),
-    // The project board, in the same drawer: only once it is asked for.
-    BoardDrawer: () => import('./components/BoardDrawer.svelte'),
-    PluginUpdateNotice: () => import('./components/PluginUpdateNotice.svelte'),
-    // A memory stop's corner card: only once a thread is open or a stop lands.
-    MemoryCorner: () => import('./components/MemoryCorner.svelte'),
-    // Plugin interfaces load after startup, on any link: what they add is part of the app.
-    PluginUiHost: () => import('./components/PluginUiHost.svelte')
-  };
-  type Deferred = { [K in keyof typeof deferredLoaders]?: Awaited<ReturnType<(typeof deferredLoaders)[K]>>['default'] };
-  let deferred = $state.raw<Deferred>({});
-  const requested = new Set<keyof Deferred>();
+  type AppView = keyof typeof appViews;
+  const requested = new Set<AppView>();
   let boardShown = $derived(store.openThread !== null && store.boardShown && store.boardAvailable());
   // One drawer at a time: the board, when it holds the drawer, wins over a terminal left open.
   let terminalShown = $derived(store.openThread !== null && store.owner && store.terminalShown(store.openThread.id) && !boardShown);
-  function need(name: keyof Deferred): void {
-    if (requested.has(name)) return;
+  function need(name: AppView): void {
+    if (appViews[name].current || requested.has(name)) return;
     requested.add(name);
-    void deferredLoaders[name]()
-      .then((module) => { deferred = { ...deferred, [name]: module.default }; })
+    void appViews[name].load()
       // Offline with a cold cache: the next ask tries again. A dialog that was
       // asked for is closed and said to be missing, or its open state would
       // hold the keyboard for something that never draws.
@@ -223,6 +207,7 @@
         requested.delete(name);
         if (name === 'ProjectPicker' && store.projectPickerOpen) store.projectPickerOpen = false;
         else if (name === 'ImportDialog' && store.imports) store.closeImports();
+        else if (name === 'ExportThreadDialog' && threadExport.request) closeThreadExport();
         else if (name === 'ConnectFlow' && store.connectDialog) store.closeConnect();
         else if (name === 'CommandPalette' && store.paletteOpen) store.paletteOpen = false;
         else return;
@@ -230,7 +215,7 @@
       });
   }
   function needAll(): void {
-    const names = Object.keys(deferredLoaders) as (keyof Deferred)[];
+    const names = Object.keys(appViews) as AppView[];
     for (const name of prefetchNames(names, { tourSeen: tourSeen(), owner: store.owner })) need(name);
   }
   // Once the first load has landed rather than against it, and the rest only on a
@@ -251,7 +236,7 @@
     browserProfiles.source = workspace.machines.find((machine) => machine.store.localCore)?.store ?? store;
   });
   hostLocalAgentBrowser();
-  let SettingsShell = $state<typeof import('./components/SettingsShell.svelte').default>();
+  const SettingsShell = $derived(lazySettingsShell.current);
   // Switched off with the page open: every machine goes back to its chat, so
   // switching it on again does not reopen a page nobody navigated to.
   $effect(() => {
@@ -263,7 +248,7 @@
   $effect(() => {
     if (store.page !== 'settings' || SettingsShell) return;
     settingsLoadError = '';
-    void import('./components/SettingsShell.svelte').then(module => { SettingsShell = module.default; })
+    void lazySettingsShell.load()
       .catch(() => { settingsLoadError = strings.phone.settingsOffline; });
   });
 
@@ -275,12 +260,13 @@
 
   // Asked for before the idle prefetch got to it: fetch it now. `need` fetches each part once.
   $effect(() => {
-    if (panelSlot.shown) need('RightPanel');
+    if (panelShown) need('RightPanel');
     if (terminalShown) { need('TerminalDrawer'); need('TerminalView'); }
     if (boardShown) need('BoardDrawer');
     if (store.paletteOpen) need('CommandPalette');
     if (store.projectPickerOpen) need('ProjectPicker');
     if (store.imports) need('ImportDialog');
+    if (threadExport.request) need('ExportThreadDialog');
     if (store.connectDialog) need('ConnectFlow');
     if (tour) need('Onboarding');
   });
@@ -348,6 +334,12 @@
   let quitting = $state(false);
   const requestQuit = desktopQuit(() => closingStores(workspace.machines), () => { quitting = true; });
   onMount(() => { if (inShell) return installQuitGuard(requestQuit, error => { store.error = String(error); }); });
+  // The `zoom-wheel` chord, unbound by default, zooms the interface as `Ctrl+=` does (`lib/zoom.ts`), and
+  // follows the Keyboard page and the file as the keys do; a browser tab keeps its own wheel.
+  $effect(() => {
+    const chord = store.bindings['zoom-wheel'].chord;
+    return untrack(() => watchZoomWheel(chord, error => { store.error = errorText(error); }));
+  });
   const quitHold = inShell
     ? confirmedQuitHold(requestQuit, {
         onHolding: (holding) => {
@@ -370,13 +362,13 @@
    * Agents page has no panel there.
    */
   const panelThread = $derived(store.page === 'agents' ? (store.openThread?.agentSessionId ? store.openThread : null) : store.openThread);
+  const panelShown = $derived(store.panelOpen && panelThread !== null);
   $effect(() => {
-    if (store.panelOpen && panelThread) panelSlot.show();
+    if (panelShown) panelSlot.show();
     else panelSlot.hide();
   });
   $effect(() => {
-    // The drawer opens once its chunk is here, so its opening animation plays whole.
-    if (terminalShown && deferred.TerminalDrawer) terminalSlot.show();
+    if (terminalShown) terminalSlot.show();
     else {
       // The drawer goes inert as it leaves, which drops the focus on `<body>`:
       // the keyboard goes back to the composer first.
@@ -385,7 +377,7 @@
     }
   });
   $effect(() => {
-    if (boardShown && deferred.BoardDrawer) boardSlot.show();
+    if (boardShown) boardSlot.show();
     else {
       if (document.activeElement?.closest('[data-testid=board-drawer]')) focusComposer();
       boardSlot.hide();
@@ -532,7 +524,8 @@
    * Both reach the window's top, so the main column's bar starts right of them.
    */
   let desktopReady = $derived(booted && !wideRecovery);
-  let railShown = $derived(desktopReady && mochiLayout.on);
+  // A phone-width window never mounts the rail: CSS hides it there, but it would still load teams and contacts.
+  let railShown = $derived(desktopReady && mochiLayout.on && !narrow.current);
   let noRailDesktop = $derived(desktopReady && !railShown && !narrow.current);
   let macEdge = $derived(desktopReady && !railShown && inShell && isMac());
   // Acting from Activity opens a thread; the root lives as long as the desktop frame, so it walks the way back.
@@ -563,7 +556,7 @@
    * it. The tour counts once it is drawn: offline with a cold cache it never is,
    * and the keyboard must not stay held for it.
    */
-  let modal = $derived((tour && deferred.Onboarding !== undefined) || confirm.current !== null || store.imports !== null || store.projectPickerOpen || (store.connectDialog !== null && deferred.ConnectFlow !== undefined));
+  let modal = $derived((tour && appViews.Onboarding.current !== undefined) || confirm.current !== null || store.imports !== null || threadExport.request !== null || store.projectPickerOpen || (store.connectDialog !== null && appViews.ConnectFlow.current !== undefined));
 
   /**
    * Every app chord goes through the keyboard table (`lib/keybindings.ts`,
@@ -624,7 +617,7 @@
         </button>
       </div>
     {:else if store.page === 'agents' && experimentOn('resident-agents')}
-      <Deferred part={agentsLayout}>{#snippet children(AgentsLayout)}<AgentsLayout {store} panel={panelSlot} showPanel={panelSlot.shown && panelThread !== null} RightPanel={deferred.RightPanel} />{/snippet}</Deferred>
+      <Deferred part={agentsLayout}>{#snippet pending()}<main><div class="thread-chat framed">{@render loadingFrame()}</div></main>{/snippet}{#snippet children(AgentsLayout)}<AgentsLayout {store} panel={panelSlot} showPanel={(panelShown || panelSlot.shown) && panelThread !== null} RightPanel={appViews.RightPanel.current} panelFailure={appViews.RightPanel.failed ? () => need('RightPanel') : undefined} />{/snippet}</Deferred>
     {:else}
       <Deferred part={sidebar}>{#snippet children(Sidebar)}<Sidebar {store} />{/snippet}</Deferred>
       {#if scrim.shown}
@@ -655,27 +648,29 @@
             {/key}
           {/if}
         </div>
-        {#if terminalSlot.shown && store.openThread && deferred.TerminalDrawer}
-          {@const TerminalDrawer = deferred.TerminalDrawer}
+        {#if (terminalShown || terminalSlot.shown) && store.openThread && appViews.TerminalDrawer.current}
+          {@const TerminalDrawer = appViews.TerminalDrawer.current}
           {#key store}
             {#key store.openThread.id}
               <TerminalDrawer {store} threadId={store.openThread.id} cwd={store.openThread.cwd}
-                view={deferred.TerminalView}
+                view={appViews.TerminalView.current}
                 closing={terminalSlot.closing} attach={terminalSlot.attach} onexit={terminalSlot.end} />
             {/key}
           {/key}
+        {:else if terminalShown}<div class="cold-drawer framed">{@render loadingFrame("TerminalDrawer")}</div>
         {/if}
-        {#if boardSlot.shown && store.openThread && deferred.BoardDrawer}
-          {@const BoardDrawer = deferred.BoardDrawer}
+        {#if (boardShown || boardSlot.shown) && store.openThread && appViews.BoardDrawer.current}
+          {@const BoardDrawer = appViews.BoardDrawer.current}
           <!-- Not keyed on the thread: the board is the project's, the same in each of its threads. -->
           {#key store}
             <BoardDrawer {store} threadId={store.openThread.id}
               closing={boardSlot.closing} attach={boardSlot.attach} onexit={boardSlot.end} />
           {/key}
+        {:else if boardShown}<div class="cold-drawer framed">{@render loadingFrame("BoardDrawer")}</div>
         {/if}
       </main>
-      {#if panelSlot.shown && store.openThread && deferred.RightPanel}
-        {@const RightPanel = deferred.RightPanel}
+      {#if (panelShown || panelSlot.shown) && store.openThread && appViews.RightPanel.current}
+        {@const RightPanel = appViews.RightPanel.current}
         {#key store}
           <RightPanel
             {store}
@@ -685,6 +680,7 @@
             onexit={panelSlot.end}
           />
         {/key}
+      {:else if panelShown}<aside class="cold-panel framed" style:width={`${rightPanel.width}px`}>{@render loadingFrame("RightPanel")}</aside>
       {/if}
       {/if}
       <!-- Not keyed on the machine: the column lists every machine's contacts, and a new one would slide in again.
@@ -719,22 +715,36 @@
     </div>
   {/if}
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
-  {#if (store.page === 'chat' || store.memoryStop) && deferred.MemoryCorner}{@const MemoryCorner = deferred.MemoryCorner}<MemoryCorner {store} chat={store.page === 'chat'} />{/if}
+  {#if (store.page === 'chat' || store.memoryStop) && appViews.MemoryCorner.current}{@const MemoryCorner = appViews.MemoryCorner.current}<MemoryCorner {store} chat={store.page === 'chat'} />{/if}
   {#if store.booted && featureOn('whip') && whipEntry.overlay}{@const WhipOverlay = whipEntry.overlay}
     <WhipOverlay onerror={(error) => (store.error = errorText(error))} />
   {/if}
 </div>
 
+{#snippet loadingFrame(name?: AppView)}
+  {#if name && appViews[name].failed}
+    <p class="empty" role="alert">{strings.parts.failed} <button type="button" onclick={() => need(name)}>{strings.common.retry}</button></p>
+  {:else}
+    <p class="empty" role="status" aria-busy="true">{strings.parts.loading}</p>
+  {/if}
+{/snippet}
+
 <ContextMenu />
 <MoveProjectPicker />
 <DragGhost />
-{#if tour && deferred.Onboarding}{@const Onboarding = deferred.Onboarding}<Onboarding {store} />{:else if deferred.PluginUpdateNotice}{@const PluginUpdateNotice = deferred.PluginUpdateNotice}<PluginUpdateNotice />{/if}
-{#if deferred.PluginUiHost}{@const PluginUiHost = deferred.PluginUiHost}<PluginUiHost />{/if}
-{#if deferred.ProjectPicker}{@const ProjectPicker = deferred.ProjectPicker}<ProjectPicker {store} />{/if}
+{#if tour && appViews.Onboarding.current}{@const Onboarding = appViews.Onboarding.current}<Onboarding {store} />{:else if appViews.PluginUpdateNotice.current}{@const PluginUpdateNotice = appViews.PluginUpdateNotice.current}<PluginUpdateNotice />{/if}
+{#if appViews.PluginUiHost.current}{@const PluginUiHost = appViews.PluginUiHost.current}<PluginUiHost />{/if}
+{#if appViews.ProjectPicker.current}{@const ProjectPicker = appViews.ProjectPicker.current}<ProjectPicker {store} />{:else if store.projectPickerOpen}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
 <ConfirmDialog />
-{#if deferred.ImportDialog}{@const ImportDialog = deferred.ImportDialog}<ImportDialog {store} />{/if}
-{#if deferred.ConnectFlow}{@const ConnectFlow = deferred.ConnectFlow}<ConnectFlow {store} />{/if}
-{#if deferred.CommandPalette}{@const CommandPalette = deferred.CommandPalette}<CommandPalette {store} />{/if}
+{#if appViews.ImportDialog.current}{@const ImportDialog = appViews.ImportDialog.current}<ImportDialog {store} />{:else if store.imports}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
+{#if threadExport.request && appViews.ExportThreadDialog.current}
+  {@const ExportThreadDialog = appViews.ExportThreadDialog.current}
+  {#key threadExport.request}<ExportThreadDialog {...threadExport.request} onclose={closeThreadExport} />{/key}
+{:else if threadExport.request}
+  <div class="cold-overlay">{@render loadingFrame()}</div>
+{/if}
+{#if appViews.ConnectFlow.current}{@const ConnectFlow = appViews.ConnectFlow.current}<ConnectFlow {store} />{:else if store.connectDialog}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
+{#if appViews.CommandPalette.current}{@const CommandPalette = appViews.CommandPalette.current}<CommandPalette {store} />{:else if store.paletteOpen}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
 
 <style>
   .app {
@@ -765,6 +775,13 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+  }
+
+  .cold-panel { flex: none; max-width: 45%; }
+  .cold-drawer { min-height: 8rem; }
+  .cold-overlay { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; background: var(--color-background); }
+  @media (max-width: 720px) {
+    .cold-panel { position: absolute; inset: 0; width: 100% !important; max-width: none; z-index: 5; }
   }
 
   .thread-chat {

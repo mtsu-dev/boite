@@ -21,6 +21,7 @@ const card = (title: string) => [...document.querySelectorAll<HTMLElement>('[dat
 
 test('Nova\'s desk is one column: who it is, its routines and its notes, its live step only away from its conversation, and no spend', async ({ ready }) => {
   let desk: ReturnType<typeof mount> | null = null;
+  mochiLayout.set(false);
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
     const view = AgentsView.of(store);

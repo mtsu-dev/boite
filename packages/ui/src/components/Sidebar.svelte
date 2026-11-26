@@ -264,7 +264,7 @@
         {#if loading}<LoaderCircle size={16} class="spinner" aria-hidden="true" /><span class="ui-label">{strings.sidebar.loadingProjects}</span>
         {:else}
           <span class="ui-label">{strings.sidebar.noProjects}</span>
-          {#if canAddProject}<button type="button" class="ghost small add" data-testid="add-project" onclick={() => { store.projectPickerOpen = true; }}><FolderPlus size={14} /><span class="ui-label">{strings.sidebar.addProject}</span></button>{/if}
+          {#if canAddProject}<button type="button" class="ghost small add" data-testid="add-project" data-preload-view="project" onclick={() => { store.projectPickerOpen = true; }}><FolderPlus size={14} /><span class="ui-label">{strings.sidebar.addProject}</span></button>{/if}
         {/if}
       </div>
     {/if}

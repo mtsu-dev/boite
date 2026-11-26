@@ -11,6 +11,7 @@ import { deleteThread } from './thread-removal';
  * to the owning machine's banner, unless that machine reconnected meanwhile.
  */
 export class ThreadRestore {
+  #revision = 0;
   restoring = $state<ThreadId | null>(null);
   deleting = $state<ThreadId | null>(null);
   readonly busy = $derived(this.restoring !== null || this.deleting !== null);
@@ -18,7 +19,9 @@ export class ThreadRestore {
   /** The restored summary, or null when refused, failed or answered by a client since replaced. */
   async restore(store: Store, threadId: ThreadId): Promise<ThreadSummary | null> {
     if (this.busy) return null;
-    const current = sameClient(store);
+    const revision = ++this.#revision;
+    const same = sameClient(store);
+    const current = () => revision === this.#revision && same();
     this.restoring = threadId;
     try {
       const summary = await restoreThread(store, threadId);
@@ -27,7 +30,7 @@ export class ThreadRestore {
       if (current()) store.error = errorText(error);
       return null;
     } finally {
-      this.restoring = null;
+      if (revision === this.#revision) this.restoring = null;
     }
   }
 
@@ -37,7 +40,9 @@ export class ThreadRestore {
    */
   async remove(store: Store, thread: ThreadSummary, keepLock = false): Promise<boolean> {
     if (this.busy) return false;
-    const current = sameClient(store);
+    const revision = ++this.#revision;
+    const same = sameClient(store);
+    const current = () => revision === this.#revision && same();
     this.deleting = thread.id;
     let removed = false;
     try {
@@ -45,13 +50,14 @@ export class ThreadRestore {
     } catch (error) {
       if (current()) store.error = errorText(error);
     } finally {
-      if (!removed || !keepLock) this.deleting = null;
+      if (revision === this.#revision && (!removed || !keepLock)) this.deleting = null;
     }
-    return removed;
+    return current() && removed;
   }
 
   /** Forgets a restore or delete still on its way, for a list rebuilt from a new connection. */
   reset() {
+    this.#revision++;
     this.restoring = null;
     this.deleting = null;
   }

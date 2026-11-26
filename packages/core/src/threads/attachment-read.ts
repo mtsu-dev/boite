@@ -75,27 +75,22 @@ function attachmentOf(core: Core, threadId: string, messageId: string, partIndex
  */
 async function displayed(core: Core, threadId: string, messageId: string, partIndex: number, size: DisplaySize, original: () => Attachment): Promise<{ size: DisplaySize; bytes: Uint8Array; kept: boolean } | null> {
   const media = core.media;
+  const source = () => {
+    const part = original();
+    return DISPLAY_TYPES.test(part.mimeType) ? part.data : null;
+  };
   if (size === 'thumb') {
     const keptThumb = media.kept(threadId, messageId, partIndex, 'thumb');
-    let thumb = keptThumb === null ? null : { data: keptThumb, kept: true };
-    const large = media.kept(threadId, messageId, partIndex, 'large');
-    if (thumb === null) {
-      if (large !== null && large.length > 0) thumb = await media.display(threadId, messageId, partIndex, 'thumb', large);
-      else {
-        const part = original();
-        if (!DISPLAY_TYPES.test(part.mimeType)) return null;
-        thumb = await media.display(threadId, messageId, partIndex, 'thumb', part.data);
-      }
-    }
+    const thumb = keptThumb === null ? await media.display(threadId, messageId, partIndex, 'thumb', () => {
+      const large = media.kept(threadId, messageId, partIndex, 'large');
+      return large?.length ? large : source();
+    }) : { data: keptThumb, kept: true };
     if (thumb.data.length > 0) return { size: 'thumb', bytes: thumb.data, kept: thumb.kept };
+    const large = media.kept(threadId, messageId, partIndex, 'large');
     return large !== null && large.length > 0 ? { size: 'large', bytes: large, kept: true } : null;
   }
   const kept = media.kept(threadId, messageId, partIndex, 'large');
   let large = kept === null ? null : { data: kept, kept: true };
-  if (large === null) {
-    const part = original();
-    if (!DISPLAY_TYPES.test(part.mimeType)) return null;
-    large = await media.display(threadId, messageId, partIndex, 'large', part.data);
-  }
+  if (large === null) large = await media.display(threadId, messageId, partIndex, 'large', source);
   return large.data.length > 0 ? { size: 'large', bytes: large.data, kept: large.kept } : null;
 }

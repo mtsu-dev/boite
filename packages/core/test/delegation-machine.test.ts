@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { RpcErrorCode, type DelegatedAgent, type ModelInfo, type RpcParams } from '@boite/contracts';
+import { mergeWorkingChildren, RpcErrorCode, threadState, workingChildren, type DelegatedAgent, type ModelInfo, type RpcParams, type ThreadSummary } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -35,7 +35,7 @@ function answering(stopping?: () => Promise<void>) {
     const finished = Promise.withResolvers<TurnResult>();
     held.set(ctx.thread.id, () => { held.delete(ctx.thread.id); answer(); finished.resolve(done); });
     const end = () => finished.resolve({ status: 'stopped', sessionId: null, usage: null });
-    return { done: finished.promise, stop() { held.delete(ctx.thread.id); if (stopping) void stopping().then(end); else end(); } };
+    return { done: finished.promise, setPermissionMode: async () => true, stop() { held.delete(ctx.thread.id); if (stopping) void stopping().then(end); else end(); } };
   } }));
   const wakes = (threadId: string) => (prompts.get(threadId) ?? []).filter(prompt => prompt.includes('Boite delegation messages')).length;
   return { prompts, held, wakes };
@@ -75,6 +75,38 @@ const TWIN_MODELS: ModelInfo[] = [
   { id: 'twin-a', name: 'Twin A', default: true, effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }], default: 'high' } },
   { id: 'twin-b', name: 'Twin B', aliases: [{ id: 'twin-b-max', effort: 'max' }, { id: 'twin-b-low', effort: 'low' }], effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'max', label: 'Max' }], default: 'max' } },
 ];
+
+test('a parent row counts its remote subagent before opening the conversation and clears when it finishes', async () => {
+  const { held } = answering();
+  const { desk, owner, threadId, spawn } = await setup();
+  const updates: ThreadSummary[] = [];
+  owner.on('thread.updated', row => { if (row.id === threadId) updates.push(row); });
+  const child = await spawn('Review the index HOLD-ON', '--project', 'notes');
+  await waitFor(() => {
+    const report = desk.core.delegation.remote.members(threadId)[0]?.thread;
+    return report?.status === 'running' && report.runningSince != null;
+  });
+  const rows = await owner.call('threads.list', {});
+  const parent = rows.find(row => row.id === threadId)!;
+  const children = mergeWorkingChildren(workingChildren(rows).get(threadId) ?? null, parent.remoteSubagents ?? null);
+  expect(rows.some(row => row.id === child.thread.id)).toBe(false);
+  expect(threadState(parent, children)).toBe('delegating');
+  expect(children).toEqual({ count: 1, asking: 0, since: desk.core.delegation.remote.members(threadId)[0]!.thread.runningSince ?? null });
+  await waitFor(() => updates.at(-1)?.remoteSubagents?.count === 1);
+
+  await owner.call('turns.start', { threadId, prompt: 'Review the glossary HOLD-ON' });
+  await waitFor(() => held.has(threadId));
+  const selected = await owner.call('threads.update', { threadId, permissionMode: 'yolo' });
+  const selectionUpdates = () => updates.filter(row => row.selectionVersion === selected.selectionVersion);
+  await waitFor(() => selectionUpdates().length >= 2);
+  expect(selectionUpdates().every(row => row.remoteSubagents?.count === 1)).toBe(true);
+
+  await waitFor(() => held.has(child.thread.id));
+  held.get(child.thread.id)!();
+  await waitFor(() => !desk.core.delegation.remote.busy(threadId));
+  expect((await owner.call('threads.list', {})).find(row => row.id === threadId)?.remoteSubagents).toBeNull();
+  await waitFor(() => updates.at(-1)?.remoteSubagents === null);
+});
 
 test('remote child questions update the parent question summary and clear after another client answers', async () => {
   answering();

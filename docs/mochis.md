@@ -5,10 +5,10 @@ works on its own, wakes on a schedule or when something happens in its
 projects, and tells you what matters. Teams put a few mochis and you in one
 chat.
 
-On the desktop, open Mochis from the button at the foot of the sidebar to see
-your mochis and teams in the left column, or turn on Mochi layout under Filter,
-Display to show each mochi and team as a picture in the left app rail. A phone
-shows a Mochis tab in its bottom bar. In the app rail, teams come first; drag a
+On the desktop, each mochi and team shows as a picture in the app rail, the
+column down the window's left edge. With Mochi layout turned off under Filter,
+Display, open Mochis from the button at the foot of the sidebar to list them in
+the left column instead. A phone shows a Mochis tab in its bottom bar. In the app rail, teams come first; drag a
 picture up or down to put mochis and teams in your own order, which this device
 keeps. A small mark on a picture says the mochi needs you, failed or is at
 work; a mochi with unread answers shows how many, and a team shows a dot. A
@@ -18,9 +18,9 @@ pictures to scroll to.
 
 ## Create a mochi
 
-1. On the desktop, open Mochis and press `+` in the column head (or, with Mochi
-   layout on, press `+` under the mochis in the app rail; under a mouse it
-   fades in when the pointer comes to the rail) and pick New mochi. On a phone,
+1. On the desktop, press the `+` under the mochis in the app rail (under a
+   mouse, it fades in when the pointer comes to the rail), or with Mochi layout
+   off, open Mochis and press `+` in the column head, and pick New mochi. On a phone,
    open Mochis and press New mochi.
 2. Give it a name and, under What it does, its standing instructions, for
    example "every morning, read the new issues and sum them up in five lines".

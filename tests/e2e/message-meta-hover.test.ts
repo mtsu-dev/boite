@@ -6,27 +6,30 @@ import { startUi } from './lib/ui.ts';
 let server: { close(): Promise<void> };
 let url: string;
 const store = 'globalThis.__boiteTest.workspace.active';
-const summary = '[data-testid="turn-summary"][data-status="done"]';
-const stamp = '[data-testid="message-time"]';
-const ticks = '[data-testid="message-receipts"].settled [data-testid="receipt-responded"]';
-const opacity = (selector: string) => `getComputedStyle([...document.querySelectorAll('${selector}')].at(-1)).opacity`;
+const turnId = 'turn-seed-4';
+const row = `article[data-turn="${turnId}"]`;
+const summary = `${row} [data-testid="turn-summary"][data-status="done"]`;
+const footer = 'article[data-turn="follow-up"] [data-testid="turn-summary"][data-status="done"]';
+const stamp = `${row}.user [data-testid="message-time"]`;
+const ticks = `${row}.user [data-testid="message-receipts"].settled [data-testid="receipt-responded"]`;
+const opacity = (selector: string) => `getComputedStyle(document.querySelector('${selector}')).opacity`;
 
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
-  url = `http://127.0.0.1:${port}/?fake=1&open=recent`;
+  url = `http://127.0.0.1:${port}/?fake=1&open=recent&contactNotice=0`;
 }, 60_000);
 afterAll(async () => { await server?.close(); }, 30_000);
 
-/** Points the mouse at the middle of the last element the selector matches. */
+/** Points the mouse inside the message that owns the selected element. */
 async function hover(page: BrowserPage, selector: string): Promise<void> {
-  const at = await page.evaluate<{ x: number; y: number }>(`(() => { const r = [...document.querySelectorAll('${selector}')].at(-1).closest('.message').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + Math.min(r.height / 2, 20) }; })()`);
+  const at = await page.evaluate<{ x: number; y: number }>(`(() => {
+    const message = document.querySelector('${selector}').closest('.message');
+    message.scrollIntoView({ block: 'nearest' });
+    const r = message.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + Math.min(r.height / 2, 20) };
+  })()`);
   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
-}
-
-async function settle(page: BrowserPage): Promise<void> {
-  await page.evaluate('document.fonts.ready');
-  await page.evaluate('new Promise(resolve => setTimeout(resolve, 400))');
 }
 
 for (const [name, width, height, touch] of [['desktop', 1280, 900, false], ['phone', 390, 844, true]] as const) {
@@ -39,24 +42,40 @@ for (const [name, width, height, touch] of [['desktop', 1280, 900, false], ['pho
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: touch });
       expect(await page.evaluate<boolean>(`matchMedia('(hover: hover)').matches`)).toBe(!touch);
       await page.waitFor(`${store}?.connection === 'ready'`);
-      await page.waitFor(`document.querySelector('${summary}') && document.querySelector('${stamp}')`);
+      await page.waitFor(`document.querySelector('${summary}') && document.querySelector('${stamp}') && document.querySelector('${ticks}')`);
+      if (!touch) {
+        // A newer answer owns the resting footer. The seeded turn still waits for hover.
+        await page.evaluate(`(() => {
+          const thread = ${store}.openThread, turn = thread.turns.find(t => t.id === '${turnId}');
+          const at = turn.finishedAt + 1000;
+          thread.turns.push({ ...turn, id: 'follow-up', queuedAt: at, startedAt: at, finishedAt: at + 1000 });
+          thread.messages.push(
+            { id: 'follow-up-prompt', threadId: thread.id, turnId: 'follow-up', role: 'user', state: 'complete', createdAt: at,
+              parts: [{ type: 'text', text: 'Can we check that too?' }] },
+            { id: 'follow-up-answer', threadId: thread.id, turnId: 'follow-up', role: 'assistant', state: 'complete', createdAt: at + 1000,
+              parts: [{ type: 'text', text: 'Yes, the checks passed.' }] },
+          );
+        })()`);
+        await page.waitFor(`document.querySelector('${footer}')`);
+      }
       // Away from every message.
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: height - 1 });
-      await settle(page);
+      await page.settleAnimations();
       await capture('rest');
       const shown = touch ? '1' : '0';
       expect(await page.evaluate<string>(opacity(summary))).toBe(shown);
+      if (!touch) expect(await page.evaluate<string>(opacity(footer))).toBe('1');
       expect(await page.evaluate<string>(opacity(stamp))).toBe(shown);
       // A finger has no pointer to bring settled ticks up: they are not drawn at all, so nothing waits for a hover that never comes.
-      if (touch) expect(await page.evaluate<string>(`getComputedStyle([...document.querySelectorAll('${ticks}')].at(-1)).display`)).toBe('none');
+      if (touch) expect(await page.evaluate<string>(`getComputedStyle(document.querySelector('${ticks}')).display`)).toBe('none');
       else expect(await page.evaluate<string>(opacity(ticks))).toBe(shown);
       if (touch) return;
       await hover(page, summary);
-      await settle(page);
+      await page.settleAnimations();
       await capture('hover-answer');
       expect(await page.evaluate<string>(opacity(summary))).toBe('1');
       await hover(page, stamp);
-      await settle(page);
+      await page.settleAnimations();
       await capture('hover-prompt');
       expect(await page.evaluate<string>(opacity(stamp))).toBe('1');
       expect(await page.evaluate<string>(opacity(ticks))).toBe('1');
@@ -64,12 +83,13 @@ for (const [name, width, height, touch] of [['desktop', 1280, 900, false], ['pho
       expect(await page.evaluate<string>(opacity(summary))).toBe('0');
       // A Claude turn is many messages: pointing at an earlier one shows the summary the last one closes on.
       await page.evaluate(`(() => {
-        const thread = ${store}.openThread, at = thread.messages.findLastIndex(message => message.role === 'assistant'), last = thread.messages[at];
+        const thread = ${store}.openThread, at = thread.messages.findLastIndex(message => message.turnId === '${turnId}' && message.role === 'assistant'), last = thread.messages[at];
         thread.messages.splice(at, 1, { ...last, id: last.id + '-a', parts: last.parts.slice(0, 1) }, { ...last, id: last.id + '-b', parts: last.parts.slice(1), createdAt: last.createdAt + 1 });
       })()`);
-      await page.waitFor(`document.querySelectorAll('article.message.assistant').length >= 2`);
-      await hover(page, 'article.message.assistant:not(:has([data-testid="turn-summary"])) [data-kind="text"]');
-      await settle(page);
+      const earlier = `${row}.assistant:not(:has([data-testid="turn-summary"])) [data-kind="text"]`;
+      await page.waitFor(`document.querySelector('${earlier}') && document.querySelector('${summary}')`);
+      await hover(page, earlier);
+      await page.settleAnimations();
       await capture('hover-earlier-answer');
       expect(await page.evaluate<string>(opacity(summary))).toBe('1');
       expect(await page.evaluate<string>(opacity(`${summary} [data-testid="message-copy"]`))).toBe('1');

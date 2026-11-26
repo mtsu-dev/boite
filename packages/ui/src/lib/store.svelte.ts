@@ -2,6 +2,7 @@ import { startDiagnosticsReport } from './diagnostics-report';
 import { RpcErrorCode, type AgentShape, type Message, type MessageId, type PermissionMode, type ProjectId, type ProviderId, type RpcParams, type ThreadId } from '@boite/contracts';
 import type { Client } from './client';
 import { RpcFailure, wasClosed, wasDropped } from './rpc-error';
+import { strings } from './strings';
 import { readModelDefaults } from './model-defaults';
 import { followDesktopOf } from './experiments';
 import { modelFavorites } from './model-favorites.svelte';
@@ -185,6 +186,7 @@ export class Store {
 
   detach(): void {
     const ctx = this.#ctx;
+    ctx.threads.releaseCaches(this.machineId);
     ctx.shared.reset();
     ctx.requests.resetSecrets();
     ctx.clientGeneration++;
@@ -596,6 +598,7 @@ export class Store {
   /** Reads ahead (`IdlePreloads`) stop for an open and wait for the next idle moment after it. */
   open(...args: Parameters<Threads['open']>) { const resume = this.#ctx.threads.preloads.idle.pause(); return this.#ctx.threads.open(...args).finally(resume); }
   preload(threadId: ThreadId) { return this.#ctx.threads.preloads.preload(threadId); }
+  previewAgentThread(threadId: ThreadId) { return this.#ctx.threads.previewAgentThread(threadId); }
   loadToolOutput(...args: Parameters<Threads['loadToolOutput']>) { return this.#ctx.threads.loadToolOutput(...args); }
   acquireToolOutput(...args: Parameters<Threads['acquireToolOutput']>) { return this.#ctx.threads.acquireToolOutput(...args); }
   /** A card shows a running call of `threadId`: a phone streams its live output until the release (`store/stream-channels.ts`). */
@@ -648,6 +651,19 @@ export class Store {
     try { await client.call('turns.cancelRetry', { threadId }); } catch (error) { this.#ctx.fail(error); }
   }
   threadCapabilities(...args: Parameters<Threads['capabilities']>) { return this.#ctx.threads.capabilities(...args); }
+  async threadExportMessages(
+    threadId: ThreadId,
+    options: import('./thread-export').ExportOptions,
+    signal: AbortSignal,
+    onProgress?: (progress: import('./thread-export').ExportProgress) => void,
+  ): Promise<Message[]> {
+    const { client, clientGeneration } = this.#ctx;
+    if (!client) throw new Error(strings.threadExport.notConnected);
+    const { loadAllThreadMessages } = await import('./thread-export');
+    const messages = await loadAllThreadMessages(client, threadId, options, signal, this.core?.features, onProgress);
+    if (!this.#ctx.currentClient(client, clientGeneration)) throw new Error(strings.threadExport.connectionChanged);
+    return messages;
+  }
   previewAccountSwitch(...args: Parameters<Threads['previewAccountSwitch']>) { return this.#ctx.threads.previewAccountSwitch(...args); }
   threadStats(...args: Parameters<Threads['stats']>) { return this.#ctx.threads.stats(...args); }
   /** What the thread's last Claude request carried, read from its transcript on this store's machine. */

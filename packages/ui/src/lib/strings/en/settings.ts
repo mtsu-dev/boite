@@ -188,6 +188,7 @@ export const strings = {
     monoSystem: 'System',
     zoom: 'Interface size',
     zoomHint: 'Ctrl+= and Ctrl+- anywhere in the app, Ctrl+0 back to 100%.',
+    zoomHintWheel: 'Ctrl+= and Ctrl+- or {chord} anywhere in the app, Ctrl+0 back to 100%.',
     zoomOut: 'Smaller',
     zoomIn: 'Larger',
     zoomReset: 'Back to 100%',

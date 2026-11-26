@@ -9,7 +9,7 @@ const DAY = 86_400_000;
 function scanReferences(path: string, signal?: AbortSignal): Promise<Set<string>> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(signal.reason); return; }
-    const worker = new Worker(workerEntry(import.meta.url, 'artifact-retention-worker'));
+    const worker = new Worker(workerEntry(import.meta.url, 'artifact-retention-worker', './artifact-retention-worker.js'));
     let settled = false;
     const finish = (error?: unknown, ids?: string[]) => {
       if (settled) return;

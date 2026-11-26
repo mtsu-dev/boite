@@ -48,7 +48,7 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
     ] : []),
     ...(owner.owner
       ? [
-          { id: 'import', label: strings.sidebar.importSession, glyph: Import },
+          { id: 'import', preload: 'import', label: strings.sidebar.importSession, glyph: Import },
           ...(project.kind !== 'drafts' && project.repository === true ? [{ id: 'worktree-default', label: strings.sidebar.worktreeDefault, glyph: GitBranch, checked: project.worktreeDefault === true }, { id: 'worktrees', label: strings.settings.worktrees.heading, glyph: GitBranch }] : []),
           ...(project.kind !== 'drafts' && project.repository !== false && project.autoArchiveMergedPr !== undefined ? [{
             id: 'auto-archive-merged-pr', label: strings.sidebar.autoArchiveMergedPr, glyph: Archive,

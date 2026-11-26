@@ -151,16 +151,16 @@
   });
 
   /** The view's own tool, first on the menu. A phone has no Ctrl+F: this row is its way to the find bar. */
-  let tools = $derived.by((): MenuItem[] => thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }] : []);
+  let tools = $derived.by((): MenuItem[] => thread ? [{ id: 'find', preload: 'find', label: strings.palette.find, glyph: Search }] : []);
   /**
    * One menu on a desktop and a phone: find, then the frequent actions, then
    * the named group, which opens in place (`Menu.svelte`): its bot, its title,
    * its folder, its pull request first. A phone's has no path.
    */
-  let menuShown = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true, phone: mobile.current }) : []);
+  let menuShown = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true, exportConversation: true, phone: mobile.current }) : []);
   /** The right-click's two levels, which the shared context menu swaps through the picks. */
   let toolItems = $derived(thread ? threadToolItems(store, thread, { lead: identity, place: where }) : []);
-  let desktopItems = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true }) : []);
+  let desktopItems = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true, exportConversation: true }) : []);
   /** Every row in view on a desktop: the first level and its group stay short, but a long bot name still wants the room. */
   const MENU_CAP = 560;
   function titleAction(action: string) {

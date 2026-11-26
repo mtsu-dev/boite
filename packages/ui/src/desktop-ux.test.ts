@@ -50,11 +50,17 @@ afterEach(() => {
   undo.dismiss();
 });
 
-test('Mochi layout starts off with a compact sidebar foot, opens Mochis in the sidebar list, toggles the rail from Filter, and keeps Settings reachable when folded', async () => {
+test('Mochi layout starts on with the app rail; switched off, a compact sidebar foot opens Mochis in the sidebar list, toggles the rail from Filter, and keeps Settings reachable when folded', async () => {
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {
-    // Default desktop: no vertical AppRail, compact footer holds Activity, Mochis, Limits and Settings.
+    // A fresh desktop draws the vertical AppRail and no sidebar foot.
+    await waitFor(() => document.querySelector('[data-testid=app-rail]') !== null);
+    expect(document.querySelector('[data-testid=sidebar-foot]')).toBeNull();
+    expect(window.localStorage.getItem(MOCHI_LAYOUT_STORAGE_KEY)).toBeNull();
+
+    // Switched off: no AppRail, the compact footer holds Activity, Mochis, Limits and Settings.
+    mochiLayout.set(false);
     await waitFor(() => document.querySelector('[data-testid=sidebar-foot]') !== null);
     expect(document.querySelector('[data-testid=app-rail]')).toBeNull();
     const foot = query('[data-testid=sidebar-foot]');

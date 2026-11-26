@@ -1,5 +1,6 @@
 import { inline, mathHtml } from './markdown-inline';
 import { FenceScan, closesFence, fenceLanguage, openFence } from './fences';
+import { workerIdle } from './worker-idle';
 /**
  * The markdown an agent answer needs: paragraphs, headings, nested and task
  * lists, block quotes, tables, rules, fenced and inline code, bold, italic,
@@ -10,6 +11,8 @@ import { FenceScan, closesFence, fenceLanguage, openFence } from './fences';
  * A closed ```` ```mermaid ```` or ```` ```view ```` block and math between
  * `$$…$$`, `\[…\]`, `\(…\)` or in a ```` ```math ```` block become marked
  * elements that hold their source (`md-mermaid`, `md-view`, `md-math`);
+ * so do ```` ```steps ````, ```` ```options ````, ```` ```bars ```` and
+ * ```` ```stats ```` in rich rendering (`md-native`).
  * `lib/rich-markdown.ts` draws them once they are in the page. A ```` ```html ````
  * block stays code. A single `$` is never math: prices and `$PATH` stay text.
  */
@@ -23,7 +26,7 @@ function escape(text: string): string {
 }
 
 
-const HEADING = /^(#{1,6})\s+(.+)$/;
+export const HEADING = /^(#{1,6})\s+(.+)$/;
 
 /** The anchor a heading titled `title` gets: what a `#fragment` link to it names. */
 function headingId(title: string): string {
@@ -51,8 +54,8 @@ export function headingAt(text: string, id: string): number {
   }
   return -1;
 }
-const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
-const ITEM = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/;
+export const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
+export const ITEM = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/;
 const BULLET_MARK = /^\s*[-*+]\s/;
 const TASK = /^\[([ xX])\]\s+(.*)$/;
 /** A quoted line: its text is a document of its own once the mark is off (`readQuote`). */
@@ -160,6 +163,16 @@ export const PREPARE_WAIT_MS = 50;
 let preparer: Worker | null | undefined;
 let lastPrepare = 0;
 const preparing = new Map<number, (html: string[] | null) => void>();
+const idle = workerIdle(() => stopPreparer(undefined));
+
+function stopPreparer(next: null | undefined): void {
+  idle.stop();
+  preparer?.terminate();
+  preparer = next;
+  const waiting = [...preparing.values()];
+  preparing.clear();
+  for (const done of waiting) done(null);
+}
 
 function prepareWorker(): Worker | null {
   if (preparer !== undefined) return preparer;
@@ -169,19 +182,18 @@ function prepareWorker(): Worker | null {
   } catch {
     return preparer = null;
   }
-  preparer.onmessage = ({ data }: MessageEvent<{ id: number; html?: string[] }>) => {
+  const active = preparer;
+  active.onmessage = ({ data }: MessageEvent<{ id: number; html?: string[] }>) => {
+    if (preparer !== active) return;
     const done = preparing.get(data.id);
     preparing.delete(data.id);
+    idle.touch();
     done?.(data.html ?? null);
   };
   // A worker that failed to load answers nothing: the rows render here, as without one.
-  preparer.onerror = (event) => {
+  active.onerror = (event) => {
     event.preventDefault();
-    preparer?.terminate();
-    preparer = null;
-    const waiting = [...preparing.values()];
-    preparing.clear();
-    for (const done of waiting) done(null);
+    if (preparer === active) stopPreparer(null);
   };
   return preparer;
 }
@@ -208,7 +220,12 @@ export function prepareBlocks(sources: readonly string[], rich = false, wait = P
       if (html) blocks.forEach((block, index) => { const value = html[index]; if (value !== undefined && !rendered.has(prefix + block)) keep(prefix + block, value); });
       settle(html ? 'worker' : 'here');
     });
-    away.postMessage({ id, blocks, rich });
+    if (away === preparer) idle.touch();
+    try { away.postMessage({ id, blocks, rich }); }
+    catch {
+      if (away === preparer) stopPreparer(null);
+      else { preparing.get(id)?.(null); preparing.delete(id); }
+    }
   });
 }
 
@@ -239,7 +256,7 @@ export function renderMarkdown(source: string, rich = false): string {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? '';
     // An indented line under an open item belongs to the item, a fence included, as it always has.
-    const fence = list.takes(line) ? null : readFence(lines, index);
+    const fence = list.takes(line) ? null : readFence(lines, index, rich);
     if (fence) {
       flushAll();
       html.push(fence.html);
@@ -314,7 +331,7 @@ export function renderMarkdown(source: string, rich = false): string {
 interface Block { html: string; end: number }
 
 /** A fenced block under the grammar of `lib/fences.ts`, its code shifted left by the opening line's indent. */
-function readFence(lines: string[], start: number): Block | null {
+function readFence(lines: string[], start: number, rich: boolean): Block | null {
   const fence = openFence(lines[start] ?? '');
   if (!fence) return null;
   const outdent = new RegExp(`^ {0,${fence.indent}}`);
@@ -331,9 +348,14 @@ function readFence(lines: string[], start: number): Block | null {
   }
   const language = name ? ` data-language="${escape(name)}"` : '';
   const pre = `<pre${language}><code>${escape(source)}</code></pre>`;
-  if (closed && (kind === 'mermaid' || kind === 'view') && source.trim()) return { html: `<div class="md-${kind}" data-source="${escape(source)}">${pre}</div>`, end };
+  const mark = fence.marker === '```' ? '' : ` data-fence="${escape(fence.marker)}"`;
+  if (closed && (kind === 'mermaid' || kind === 'view') && source.trim()) return { html: `<div class="md-${kind}"${mark} data-source="${escape(source)}">${pre}</div>`, end };
+  if (closed && rich && NATIVE.has(kind) && source.trim()) return { html: `<div class="md-native md-native-${kind}" data-kind="${kind}"${mark} data-source="${escape(source)}">${pre}</div>`, end };
   return { html: pre, end };
 }
+
+/** The blocks `lib/native-blocks.ts` draws from plain lines; without rich rendering they stay code. */
+const NATIVE = new Set(['steps', 'options', 'bars', 'stats']);
 
 /**
  * A formula on lines of its own: `$$` or `\[` opens it at the start of a

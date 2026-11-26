@@ -131,19 +131,44 @@ function parser(rich: boolean): MarkdownParser {
   md.renderer.rules.hardbreak = () => '<br>';
   md.renderer.rules.s_open = () => '<del>';
   md.renderer.rules.s_close = () => '</del>';
+  type SpanCache = { from: number; found: number };
+  type MathCursor = { nl?: SpanCache; close: Map<string, SpanCache> };
+  const mathCursors = new WeakMap<StateInline, MathCursor>();
+  const findFrom = (src: string, needle: string, from: number, cached: SpanCache | undefined): SpanCache => {
+    if (cached && cached.from <= from && (cached.found === -1 || cached.found >= from)) return cached;
+    return { from, found: src.indexOf(needle, from) };
+  };
   md.inline.ruler.before('escape', 'boite_math', (state, silent) => {
-    const marker = state.src.charCodeAt(state.pos);
-    if (marker !== 36 && marker !== 92) return false;
-    const source = state.src.slice(state.pos);
-    const match = /^(?:\$\$(.+?)\$\$|\\\[(.+?)\\\]|\\\((.+?)\\\))/.exec(source);
-    const tex = (match?.[1] ?? match?.[2] ?? match?.[3] ?? '').trim();
-    if (!match || !tex) return false;
+    const pos = state.pos;
+    const src = state.src;
+    const marker = src.charCodeAt(pos);
+    let close: string;
+    let display: boolean;
+    if (marker === 36) {
+      if (src.charCodeAt(pos + 1) !== 36) return false;
+      close = '$$';
+      display = true;
+    } else if (marker === 92) {
+      const next = src.charCodeAt(pos + 1);
+      if (next === 91) { close = '\\]'; display = true; }
+      else if (next === 40) { close = '\\)'; display = false; }
+      else return false;
+    } else return false;
+    let cursor = mathCursors.get(state);
+    if (!cursor) { cursor = { close: new Map() }; mathCursors.set(state, cursor); }
+    const start = pos + 2;
+    cursor.nl = findFrom(src, '\n', start, cursor.nl);
+    const end = findFrom(src, close, start, cursor.close.get(close));
+    cursor.close.set(close, end);
+    if (end.found <= start || end.found + close.length > state.posMax || (cursor.nl.found !== -1 && cursor.nl.found < end.found)) return false;
+    const tex = src.slice(start, end.found).trim();
+    if (!tex) return false;
     if (!silent) {
       const token = state.push('boite_math', '', 0);
       token.content = tex;
-      token.meta = { source: match[0], display: match[3] === undefined };
+      token.meta = { source: src.slice(pos, end.found + close.length), display };
     }
-    state.pos += match[0].length;
+    state.pos = end.found + close.length;
     return true;
   });
   md.renderer.rules.boite_math = (tokens, index) => {
