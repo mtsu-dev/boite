@@ -1,4 +1,4 @@
-import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, posix, win32 } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { isRecord } from '../stdio.ts';
@@ -42,17 +42,32 @@ export function sessionModelOf(dir: string, sessionId: string, cwd: string): Ses
 }
 
 /**
+ * The folder pi sees as `process.cwd()` when started in `cwd`, which it writes
+ * in a session header and matches a resumed one against: Linux and macOS
+ * resolve symbolic links, Windows keeps the path it was given.
+ */
+export function piProcessCwd(cwd: string): string {
+  if (process.platform === 'win32') return win32.resolve(cwd);
+  try {
+    return realpathSync(cwd);
+  } catch {
+    return posix.resolve(cwd);
+  }
+}
+
+/**
  * pi 1.6.1 `SessionManager.findById` with a session directory of its own: the
- * first `.jsonl` file, in directory order, whose header has this id and `cwd`.
+ * first `.jsonl` file, in directory order, whose header has this id and pi's `cwd`.
  */
 function resumedFile(dir: string, sessionId: string, cwd: string): string | null {
   const paths = process.platform === 'win32' ? win32 : posix;
   const key = (path: string) => process.platform === 'win32' ? paths.resolve(path).toLowerCase() : paths.resolve(path);
+  const wanted = key(piProcessCwd(cwd));
   for (const name of readdirSync(dir)) {
     if (!name.endsWith('.jsonl')) continue;
     const path = join(dir, name);
     const header = headerOf(path);
-    if (header?.['id'] === sessionId && typeof header['cwd'] === 'string' && header['cwd'] !== '' && key(header['cwd']) === key(cwd)) return path;
+    if (header?.['id'] === sessionId && typeof header['cwd'] === 'string' && header['cwd'] !== '' && key(header['cwd']) === wanted) return path;
   }
   return null;
 }

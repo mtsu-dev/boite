@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -55,10 +55,11 @@ test('coordination steers a running pi turn over its RPC connection', async () =
   await waitFor(() => harness!.core.journal.getTurn(turn.id)?.status === 'stopped');
   await client.call('threads.update', { threadId, model: 'fake-b/plain' });
   expect(await client.call('turns.steer', correction)).toEqual({ accepted: true });
-  // Nor once the thread moved to another provider and the turn's was removed.
+  // Nor once the thread moved to a provider that takes no images and the turn's was removed.
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
   const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as object;
-  writeFileSync(join(harness!.dataDir, 'providers', 'pi-other.json'), JSON.stringify({ ...descriptor, id: 'pi-other', name: 'Other pi', shortName: 'PiOther' }));
+  writeFileSync(join(harness!.dataDir, 'providers', 'pi-other.json'), JSON.stringify({ ...descriptor, id: 'pi-other', name: 'Other pi', shortName: 'PiOther',
+    capabilities: { ...(descriptor as { capabilities: object }).capabilities, images: false } }));
   expect((await client.call('providers.reload', {})).rejected).toEqual([]);
   const other = await client.call('accounts.add', { providerId: 'pi-other', label: 'Other', useDefaultLocation: true });
   await client.call('threads.update', { threadId, accountId: other.id });
@@ -101,6 +102,30 @@ test('pi default follows the model a resumed session restores, not the one pi st
     writeFileSync(path, [JSON.stringify({ ...JSON.parse(header!) as object, cwd: join(harness!.dataDir, 'elsewhere') }), ...rest].join('\n'));
   }
   expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
+});
+
+test('pi in a folder reached through a link reads the session pi resumes and forks into one pi reopens', async () => {
+  const client = await startCore();
+  const { accountId } = await piAccount(client);
+  const real = join(harness!.dataDir, 'real-project');
+  const linked = join(harness!.dataDir, 'linked-project');
+  mkdirSync(real);
+  symlinkSync(real, linked, process.platform === 'win32' ? 'junction' : 'dir');
+  const project = await client.call('projects.add', { path: linked, name: 'linked' });
+  const { id: threadId } = await client.call('threads.create', { projectId: project.id, providerId: 'pi-fake', accountId, model: 'fake-b/plain' });
+  await client.call('threads.subscribe', { threadId });
+  expect((await (await startTurn(client, threadId, 'Remember this')).finished).status).toBe('done');
+  expect(harness!.core.threads.require(threadId).cwd).toBe(linked);
+  // pi writes and matches the folder as its process sees it.
+  const seen = process.platform === 'win32' ? linked : realpathSync(linked);
+  const headerCwd = (id: string) => (JSON.parse(readFileSync(piSessionFile(id), 'utf8').split('\n', 1)[0]!) as { cwd: string }).cwd;
+  expect(headerCwd(threadId)).toBe(seen);
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+  await client.call('threads.update', { threadId, model: 'default' });
+  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: false });
+  const reply = (await client.call('threads.get', { threadId })).messages.at(-1)!;
+  const fork = await client.call('threads.fork', { threadId, messageId: reply.id });
+  expect(headerCwd(fork.id)).toBe(seen);
 });
 
 test('pi default on a session holds a registered router over the models it answered through, and yields to a profile --model', async () => {

@@ -17,18 +17,17 @@ export async function steerUser(ctx: FakeContext, params: RpcParams<'turns.steer
   if (referenceError) throw refusal(referenceError);
   const key = `${params.threadId}:${params.clientRequestId}`;
   const previous = ctx.turnRequests.get(key);
-  // As in the core: new input goes to the active turn's model; a receipt keeps the turn that accepted it.
-  const active = previous ? undefined : thread.turns.find(turn => turn.id === params.turnId)?.execution;
-  const runs = active ?? thread;
-  const provider = ctx.providers.find(provider => provider.id === runs.providerId);
-  if (!provider) throw ctx.notFound('provider', runs.providerId);
-  const error = attachmentError(attachments, provider, previous ? undefined : threadModel(ctx, runs));
-  if (error) throw refusal(error.message, error.data);
   const content = 'steer:' + JSON.stringify([params.turnId, params.prompt, attachments, references]);
+  // As in the core: a receipt keeps the turn that accepted it; new input goes to the active turn's model.
   if (previous) {
     if (previous.content !== content) throw refusal('clientRequestId was already used for different content');
     return { accepted: true };
   }
+  const runs = thread.turns.find(turn => turn.id === params.turnId)?.execution ?? thread;
+  const provider = ctx.providers.find(provider => provider.id === runs.providerId);
+  if (!provider) throw ctx.notFound('provider', runs.providerId);
+  const error = attachmentError(attachments, provider, threadModel(ctx, runs));
+  if (error) throw refusal(error.message, error.data);
   if (params.expectedSelectionVersion !== undefined && params.expectedSelectionVersion !== (thread.selectionVersion ?? 0)) throw refusal('the model selection changed; review the selected model and send again');
   const turn = thread.turns.find(turn => turn.id === params.turnId);
   const running = ctx.inFlight.get(thread.id);

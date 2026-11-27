@@ -41,18 +41,18 @@ export async function steerUser(core: Core, threads: ThreadStore, params: RpcPar
   const referenceError = previewReferencesError(references, prompt);
   if (referenceError) throw refused(referenceError);
   const previous = core.journal.turnRequest(threadId, clientRequestId);
-  // The input joins the active turn, so its images go to that turn's model, which a queued prompt may have picked.
-  // A receipt belongs to the turn that accepted it, even after the model or its provider changes.
-  const active = previous ? undefined : core.journal.getTurn(turnId);
-  const runs = active?.threadId === threadId && active.execution ? { ...active.execution, id: threadId, cwd: thread.cwd } : thread;
-  const provider = core.providers.require(runs.providerId);
-  checkAttachments(attachments, provider, previous ? undefined : () => imageInputModel(core, provider, runs));
   const fingerprint = createHash('sha256').update(JSON.stringify([turnId, prompt, attachments, references])).digest('hex');
+  // A receipt belongs to the turn that accepted it, whatever provider the thread is on now.
   if (previous) {
     if (!previous.fingerprint.endsWith(`:${fingerprint}`)) throw refused('clientRequestId was already used for different content');
     if (previous.fingerprint === `steer:accepted:${fingerprint}`) return { accepted: true };
     throw refused('delivery of this message is unconfirmed; it will not be submitted again automatically', { reason: 'delivery-uncertain', threadId });
   }
+  // The input joins the active turn, so its images go to that turn's model, which a queued prompt may have picked.
+  const active = core.journal.getTurn(turnId);
+  const runs = active?.threadId === threadId && active.execution ? { ...active.execution, id: threadId, cwd: thread.cwd } : thread;
+  const provider = core.providers.require(runs.providerId);
+  checkAttachments(attachments, provider, () => imageInputModel(core, provider, runs));
   if (expectedSelectionVersion !== undefined && expectedSelectionVersion !== (thread.selectionVersion ?? 0)) throw refused('the model selection changed; review the selected model and send again');
   const turn = core.journal.getTurn(turnId);
   const runner = threads.runner;

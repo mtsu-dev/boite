@@ -402,7 +402,9 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   A pi thread on `default` or on no model resumes its session on the model that
   session last used, so image admission and `threads.capabilities` read that
   model from the session file pi opens (the first `.jsonl` in the thread's
-  session folder whose header has the session id and the thread's folder),
+  session folder whose header has the session id and the thread's folder as
+  pi's process sees it, symbolic links resolved outside Windows; a native fork
+  writes that same folder in its copy's header),
   as pi 1.6.1 does: the newest
   `model_change`, else the model of the newest answer, unless the change before
   that answer names a router pi still lists (`virtual: true`, from its

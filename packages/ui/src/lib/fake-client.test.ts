@@ -356,6 +356,20 @@ test('a fake steer checks its images against the model of the turn it joins', as
   await client.settled();
 });
 
+test('a fake steer receipt replays after the thread moves to a provider without images', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 5 });
+  const turn = await client.call('turns.start', { threadId: 't-trace', prompt: '[tools] Keep reading', clientRequestId: 'steer_receipt_turn' });
+  const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+  const params = { threadId: 't-trace', turnId: turn.id, prompt: 'Use this', attachments: [image], clientRequestId: 'steer_receipt_image' };
+  expect(await client.call('turns.steer', params)).toEqual({ accepted: true });
+  await client.call('turns.stop', { threadId: 't-trace' });
+  await client.settled();
+  const textOnly = (await client.call('providers.list', {})).loaded.find(provider => !provider.capabilities.images && provider.available)!;
+  const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === textOnly.id)!;
+  await client.call('threads.update', { threadId: 't-trace', accountId: account.id });
+  expect(await client.call('turns.steer', params)).toEqual({ accepted: true });
+});
+
 test('fake agent receives selected element context while the visible prompt stays compact', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const prompt = 'Change @Save';

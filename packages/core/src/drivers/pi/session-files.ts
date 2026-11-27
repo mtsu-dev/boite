@@ -4,6 +4,7 @@ import { NativeForkUnsupported } from '../native-fork.ts';
 import { isRecord } from '../stdio.ts';
 import type { ForkedSession, SessionContext, TurnResult } from '../types.ts';
 import { sessionDirOf } from './mapping.ts';
+import { piProcessCwd } from './session-model.ts';
 
 type Checkpoint = NonNullable<TurnResult['checkpoint']>;
 
@@ -86,6 +87,7 @@ export async function copySession(sourceDir: string, checkpoint: Checkpoint, tar
 }
 
 export async function forkSession(ctx: SessionContext, checkpoint: Checkpoint, sourceThreadId: string): Promise<ForkedSession> {
-  const copy = await copySession(sessionDirOf(ctx, sourceThreadId), checkpoint, sessionDirOf(ctx), ctx.thread.cwd);
+  // pi reopens the fork by its header's folder, as it sees it.
+  const copy = await copySession(sessionDirOf(ctx, sourceThreadId), checkpoint, sessionDirOf(ctx), piProcessCwd(ctx.thread.cwd));
   return { sessionId: copy.id, release: async () => {}, discard: async () => { await rm(copy.path, { force: true }); } };
 }
