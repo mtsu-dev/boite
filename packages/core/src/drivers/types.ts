@@ -217,6 +217,11 @@ export interface TurnContext {
   /** The isolation environment of this account, empty for the provider's own login. */
   accountEnv: Record<string, string>;
   /**
+   * The account's models as the core admits them: the probe, a list held while it refreshes, else the list saved
+   * before a restart. pi names a model's provider from it at launch, as image admission does. Absent for other drivers.
+   */
+  catalog?: readonly ModelInfo[] | null;
+  /**
    * Boite's guide for a driver that puts it in its agent's system prompt
    * (`takesSystemGuide`); the prompt then does not carry it. Absent for the
    * other drivers, and when a context mode or the brain turns the guide off.
@@ -352,7 +357,7 @@ export interface TurnContext {
 /** Native session setup without a prompt, a turn or a message sink. */
 export type SessionContext = Pick<TurnContext,
   'thread' | 'account' | 'provider' | 'sessionId' | 'resumeAt' | 'sessionBefore' |
-  'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'promptSuggestions' | 'suggestion' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
+  'accountEnv' | 'catalog' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'promptSuggestions' | 'suggestion' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
   'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'stopChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
 
 type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -497,6 +502,8 @@ export interface TitleContext {
   account: Account;
   /** The isolation environment of this account, empty for the provider's own login. */
   accountEnv: Record<string, string>;
+  /** The writer account's models, as `TurnContext.catalog`. */
+  catalog?: readonly ModelInfo[] | null;
   /** The first prompt of the thread, its text parts only. */
   prompt: string;
   /** The first answer of the thread, its text parts only. Empty when the agent wrote no text. */
@@ -585,6 +592,8 @@ export interface SideQuestionContext {
   /** A settled boundary matching the visible snapshot, when the driver can copy it. */
   checkpoint?: TurnResult['checkpoint'];
   accountEnv: Record<string, string>;
+  /** As `TurnContext.catalog`. */
+  catalog?: readonly ModelInfo[] | null;
   prompt: string;
   question: string;
   signal: AbortSignal;

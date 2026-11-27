@@ -49,6 +49,15 @@ export function selectionFor(provider: ProviderDescriptor, accountId: AccountId,
 }
 
 /**
+ * The pi account's models as image admission and the launch read them: the probe, or a list held while it refreshes,
+ * else the list saved before a restart. Undefined for another protocol, whose driver reads its own.
+ */
+export function piCatalogOf(core: Core, provider: ProviderDescriptor, accountId: AccountId): ModelInfo[] | null | undefined {
+  if (provider.protocol !== 'pi') return undefined;
+  return probedModelsOf(provider.protocol, provider.id, accountId) ?? readSavedCatalog(core, provider.id, accountId)?.models ?? null;
+}
+
+/**
  * The model an image goes to. pi's own model (`default`, or none) is the one a
  * resumed session restores, else the one a new session starts on in `cwd`
  * (`folderStartModel`), else the account's. Undefined when only pi can tell.

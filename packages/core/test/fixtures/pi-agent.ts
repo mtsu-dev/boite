@@ -258,6 +258,9 @@ if (process.env['PI_FAKE_LITERAL']) {
   MODELS.push({ ...MODELS[0]!, provider: 'fake-a', id: 'team/base', name: 'Fake Team Base' });
   MODELS.push({ ...MODELS[2]!, provider: 'fake-a/team', id: 'base', name: 'Fake Base', reasoning: true });
 }
+// The catalog keeps `base` on `fake-a/team` for the text `fake-a/team/base`: a scope's `team/base` is then on
+// `fake-a` or on `fake-b`, which only pi picks.
+if (process.env['PI_FAKE_SHADOW']) MODELS.push({ ...MODELS[2]!, provider: 'fake-b', id: 'team/base', name: 'Fake Other Base' });
 /** The model the session is on, which is the one pi reports as current. */
 const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0]!;
 /** `--model provider/id[:level]` without its level, or the current model. */

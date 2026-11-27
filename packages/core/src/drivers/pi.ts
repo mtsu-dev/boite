@@ -1,7 +1,7 @@
 import type { AccountId, ModelInfo, ProviderId, ThreadId } from '@boite/contracts';
 import { ModelProbes } from './model-probes.ts';
 import { compactionSetting } from './pi/compaction.ts';
-import { sessionKey } from './pi/mapping.ts';
+import { agentEnv, piAgentDirFollowsCwd, sessionKey } from './pi/mapping.ts';
 import { readModels } from './pi/models.ts';
 import { sideQuestion, title } from './pi/one-shot.ts';
 import { forkSession } from './pi/session-files.ts';
@@ -17,7 +17,10 @@ const MINUTE_MS = 60_000;
 export function createPiDriver(): Driver {
   const sessions = new ThreadSessions<PiSession>();
   const probes = new ModelProbes(readModels);
-  const catalog = (ctx: { provider: { id: ProviderId }; account: { id: AccountId } }) => probes.models(ctx.provider.id, ctx.account.id);
+  // The core's catalog, the one image admission reads, names a launch's pair only where pi reads the same configuration
+  // folder: a relative one is another one in each folder pi starts in, so there the model goes as its text and pi resolves it.
+  const catalog = (ctx: { accountEnv: Record<string, string>; catalog?: readonly ModelInfo[] | null }) =>
+    piAgentDirFollowsCwd(agentEnv(ctx.accountEnv)) ? null : ctx.catalog ?? null;
 
   function acquire(ctx: SessionContext): PiSession {
     const threadId = ctx.thread.id;

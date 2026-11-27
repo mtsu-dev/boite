@@ -436,7 +436,9 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   provider of the longest known `provider/` prefix (a provider id may hold a
   `/`; when two pairs spell one `provider/id`, the catalog keeps that longest
   provider's, the one pi reads the text as), else a bare id on one provider; a partial or ambiguous match is pi's pick, and a `:suffix` is
-  dropped only when the whole text matches nothing. A leading BOM and an empty
+  dropped only when the whole text matches nothing. A pattern that would name
+  another model if the dropped shorter pair were there (`team/base` beside
+  `gateway/team` + `base`) is pi's pick too. A leading BOM and an empty
   `enabledModels` count as pi counts them. A protected run starts a new pi
   session with `--no-approve` and settings of its own, so pi decides there,
   whatever the thread's last session was on. When
@@ -1804,7 +1806,11 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   <provider>/<id>`, the pair the catalog names, which pi reads as that exact
   pair rather than by a partial match, and the level as `--thinking`, never as a
   `:<level>` tail pi could read as part of an id; a model no probe listed goes
-  as `--model` alone. Titles and `/btw` launch the same way.
+  as `--model` alone. The catalog is the one image admission reads: the probe,
+  the list held while it refreshes, else the list saved before a restart. With a
+  relative configuration folder the probe read another folder's providers, so
+  the model goes as `--model` alone there too. Titles and `/btw` launch the same
+  way.
 - A warm process follows a change of model or level with `set_model` and
   `set_thinking_level`. `set_model` takes the pair pi's own
   `get_available_models` spells the thread's `provider/id` with, the longest

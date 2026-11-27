@@ -6,7 +6,7 @@ import { TOOL_FREE_CONTEXT } from '@boite/contracts';
 import type { FileAttachment, ImageAttachment, MessagePart, RpcEvents, RpcParams, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import type { SharedAccess } from '../src/contacts/access-policy.ts';
-import { forgetProbes, getDriver } from '../src/drivers/index.ts';
+import { forgetProbes, getDriver, probedModelsOf } from '../src/drivers/index.ts';
 import { setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
 import { USER_ORIGIN } from '../src/threads/turn-origin.ts';
@@ -192,6 +192,11 @@ test('pi default reads the folder as the launch decides: its approval flags, its
   // The longest provider a pattern starts with names it, as in pi: `base` on `fake-a/team`, not `team/base` on `fake-a`.
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['fake-a/team/base'] }));
   expect(await launch([])).toBe(false);
+  // A bare `team/base` is the dropped `fake-a` pair's id as much as `fake-b`'s: pi picks, and answers for images.
+  process.env['PI_FAKE_SHADOW'] = '1';
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['team/base'] }));
+  expect(await launch([])).toBe(true);
+  delete process.env['PI_FAKE_SHADOW'];
   // A protected run starts pi on settings of its own, so pi decides there.
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
   expect(await launch([])).toBe(false);
@@ -372,6 +377,7 @@ afterEach(async () => {
   delete process.env['PI_CODING_AGENT_DIR'];
   delete process.env['PI_FAKE_VIRTUAL'];
   delete process.env['PI_FAKE_LITERAL'];
+  delete process.env['PI_FAKE_SHADOW'];
   if (open !== null) await open.stop();
 });
 
@@ -856,6 +862,27 @@ describe('pi driver', () => {
       await runTurn(client, id, 'first');
       expect(argvLines().find(entry => entry.startsWith(`argv sessionId=${harness!.core.threads.require(id).sessionId} `))).toContain(line);
     }
+    // A thread made before a restart runs before the next probe on the list saved before, as image admission does.
+    const { projectId } = harness!.core.threads.require(threadId);
+    const onAccount = async (model: string, restart = false): Promise<string> => {
+      const { id } = await client.call('threads.create', { projectId: projectId!, providerId: 'pi-fake', accountId, model, effort: 'high' });
+      await client.call('threads.update', { threadId: id, title: 'pi thread' });
+      await client.call('threads.subscribe', { threadId: id });
+      if (restart) forgetProbes({ providerId: 'pi-fake', accountId });
+      if (restart) expect(probedModelsOf('pi', 'pi-fake', accountId)).toBeNull();
+      await runTurn(client, id, 'first');
+      return argvLines().find(entry => entry.startsWith(`argv sessionId=${harness!.core.threads.require(id).sessionId} `)) ?? '';
+    };
+    expect(await onAccount('fake-a/team/base', true)).toContain('model=fake-a/team/base provider=fake-a/team thinking=high');
+    // A relative configuration folder: the probe read another folder's providers, so the model goes as its text.
+    const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+    const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { env?: Record<string, string> }> };
+    for (const profile of Object.values(descriptor.profiles)) profile.env = { ...profile.env, PI_CODING_AGENT_DIR: 'relative-pi' };
+    writeFileSync(descriptorFile, JSON.stringify(descriptor));
+    expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    // On the probed account itself: `piThread` would rewrite the descriptor and add an unprobed account.
+    expect(await onAccount('fake-a/smart')).toContain('model=fake-a/smart provider= thinking=high');
   });
 
   test('a conversation that must run no tool starts pi with none, and no extension, context file, skill or template', async () => {

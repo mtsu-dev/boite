@@ -1,6 +1,7 @@
 import { sideQuestionSnapshot, threadActive, type Message, type ThreadId, type ThreadSummary, type Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, getDriver } from '../drivers/index.ts';
+import { piCatalogOf } from './selection.ts';
 import { invalidParams, refused } from '../errors.ts';
 import type { ThreadStore } from '../threads.ts';
 
@@ -73,6 +74,7 @@ export class SideQuestions {
         answer = await driver.sideQuestion!({
           thread: source, provider, account, checkpoint, question: question.trim(), prompt,
           accountEnv: this.#core.accounts.accountEnv(account, provider, source), signal: controller.signal,
+          catalog: piCatalogOf(this.#core, provider, account.id),
           spawnChild: this.threads.contexts.leasedSpawnChild(threadId, provider),
           log: (level, message) => this.#core.log(level, message),
         });
