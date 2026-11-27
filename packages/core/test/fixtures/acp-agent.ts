@@ -416,6 +416,7 @@ const app = agent({ name: 'acp-fake' })
     log('session/prompt');
     const sessionId = params.sessionId;
     const text = promptText(params.prompt);
+    if (text.includes('<interrupted-user-messages>') && text.includes('[parallel-tools]')) log('replayed interrupted prompt');
     // Historical test directives are context, never another request to execute.
     const instructions = instructionsOf(text);
     for (const block of params.prompt) {
@@ -431,18 +432,27 @@ const app = agent({ name: 'acp-fake' })
       send({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: chunk } });
 
     if (instructions.includes('[parallel-tools]')) {
+      const detached = instructions.includes('[detached-delegation]');
       const stopped = Promise.withResolvers<void>();
       cancels.set(sessionId, () => { log('session/cancel'); stopped.resolve(); });
       try {
         for (const id of ['first', 'second']) {
-          await send({ sessionUpdate: 'tool_call', toolCallId: id, title: id, status: 'in_progress' });
+          await send({ sessionUpdate: 'tool_call', toolCallId: id, title: detached && id === 'second' ? 'delegate_task: Review the parser' : id, status: 'in_progress' });
         }
         for (const id of ['first', 'second']) {
           const gate = `${process.env['ACP_FAKE_LOG']}.${id}`;
           while (!existsSync(gate)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
           }
-          await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed' });
+          await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed',
+            ...(detached && id === 'second' ? { content: [{ type: 'content', content: { type: 'text', text: '{"status": "dispatched", "mode": "background", "delegation_id": "fixture-child"}' } }] } : {}),
+          });
+        }
+        if (detached || instructions.includes('[finish-on-gate]')) {
+          while (!existsSync(`${process.env['ACP_FAKE_LOG']}.end`)) {
+            if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+          }
+          return { stopReason: 'end_turn' };
         }
         await stopped.promise;
         return { stopReason: 'cancelled' };

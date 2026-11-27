@@ -194,15 +194,13 @@ export function normalizeAntigravityTool(
  */
 const SUBAGENT_TITLES = new Set(['Running invoke_subagent', 'Run invoke_subagent?', 'Running start_subagent', 'Run start_subagent?']);
 
-/**
- * What one tool update says about a subagent launch: `subagent` for
- * Antigravity's `invoke_subagent`, `mcp` for an MCP tool that happens to share
- * its title, null when the update does not say (a later update carries no
- * title). The launcher is an ordinary tool: no child ids, names or models.
- */
-export function antigravitySubagentKind(update: { title?: unknown; kind?: unknown; _meta?: unknown }): 'subagent' | 'mcp' | null {
-  if ((update.kind !== undefined && update.kind !== null && update.kind !== 'other') || typeof update.title !== 'string' || !SUBAGENT_TITLES.has(update.title)) return null;
-  return isPlainObject(update._meta) && update._meta['is_mcp_tool_call'] === true ? 'mcp' : 'subagent';
+export type AntigravityLaunch = 'subagent' | 'swarm' | 'mcp';
+
+/** Identify native launchers by their tool titles, including updates that identify a namesake MCP tool. */
+export function antigravityLaunchKind(update: { title?: unknown; kind?: unknown; _meta?: unknown }): AntigravityLaunch | null {
+  if ((update.kind !== undefined && update.kind !== null && update.kind !== 'other') || typeof update.title !== 'string') return null;
+  const launch = SUBAGENT_TITLES.has(update.title) ? 'subagent' : /^(?:(?:Running )?swarm|Run swarm\?)$/.test(update.title) ? 'swarm' : null;
+  return launch && isPlainObject(update._meta) && update._meta['is_mcp_tool_call'] === true ? 'mcp' : launch;
 }
 
 /**

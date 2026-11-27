@@ -19,7 +19,7 @@ import type {
 } from '@boite/contracts';
 import { ANTHROPIC_DEFAULT, openAiCacheLife } from '../../prompt-cache.ts';
 import { isOpenCode } from '../../providers/opencode.ts';
-import { antigravitySubagentBatch, normalizeAntigravityTool } from '../antigravity.ts';
+import { antigravitySubagentBatch, normalizeAntigravityTool, type AntigravityLaunch } from '../antigravity.ts';
 import { imageDocument } from '../documents.ts';
 import type { PromptCacheLife, TurnContext, TurnRefusal, TurnResult } from '../types.ts';
 import { stringify } from '../tool-text.ts';
@@ -58,8 +58,7 @@ interface ToolEntry {
   output: string | null;
   status: ToolStatus;
   documents: ToolDocument[];
-  /** Antigravity's `invoke_subagent`, or an MCP tool of that title, once an update said which. */
-  subagent: 'subagent' | 'mcp' | null;
+  launch: AntigravityLaunch | null;
 }
 
 /**
@@ -122,6 +121,7 @@ export class AcpTurn extends TurnParts {
   #refusal: TurnRefusal | undefined;
   #executionError: string | null = null;
   #usage: Usage | null = null;
+  #queuedInputCancelled = false;
 
   sessionId: string | null;
   /**
@@ -143,6 +143,8 @@ export class AcpTurn extends TurnParts {
 
   /** This agent's dialect fixes, read once from the descriptor. */
   readonly antigravity: boolean;
+  launchedHermesDelegation = false;
+  stoppedForQueuedInput = false;
 
   constructor(ctx: TurnContext) {
     super(ctx);
@@ -178,7 +180,14 @@ export class AcpTurn extends TurnParts {
   mayHaveDetachedChildren(): boolean {
     if (!this.antigravity) return false;
     for (const tool of this.#tools.values()) {
-      if (tool.status !== 'error' && (tool.subagent === 'subagent' || /^(?:Running )?swarm$|^Run swarm\?$/.test(tool.name))) return true;
+      if (tool.status !== 'error' && (tool.launch === 'subagent' || tool.launch === 'swarm')) return true;
+    }
+    return false;
+  }
+
+  launchedSwarm(): boolean {
+    for (const tool of this.#tools.values()) {
+      if (tool.status === 'done' && tool.launch === 'swarm') return true;
     }
     return false;
   }
@@ -190,7 +199,7 @@ export class AcpTurn extends TurnParts {
    */
   hasRunningTool(before: ReadonlySet<string>): boolean {
     for (const [id, entry] of this.#tools) {
-      if (!before.has(id) && entry.status === 'running' && entry.subagent !== 'subagent') return true;
+      if (!before.has(id) && entry.status === 'running' && entry.launch !== 'subagent') return true;
     }
     return false;
   }
@@ -240,6 +249,7 @@ export class AcpTurn extends TurnParts {
       ...(this.#refusal === undefined ? {} : { refusal: this.#refusal }),
       promptCache: acpCacheLife(this.ctx.provider.id, this.ctx.thread.model),
       ...(this.sessionLost ? { sessionLost: true } : {}),
+      ...(this.#queuedInputCancelled ? { queuedInputCancelled: true } : {}),
     }));
   }
 
@@ -263,6 +273,7 @@ export class AcpTurn extends TurnParts {
       }
       case 'cancelled':
         this.#status = 'stopped';
+        this.#queuedInputCancelled = this.stoppedForQueuedInput;
         break;
       default:
         this.fail(`the agent stopped: ${response.stopReason}`);
@@ -297,7 +308,7 @@ export class AcpTurn extends TurnParts {
    * `tool_call` opens the part, `tool_call_update` replaces the same one by id.
    * `content` replaces the documents when the agent sends one, the protocol's
    * own word for that field; null or absent leaves the ones already there.
-   * `subagent` is what this update says the call is, kept from the first
+   * `launch` is what this update says the call is, kept from the first
    * update that says it: the later ones carry no title.
    */
   upsertTool(
@@ -307,7 +318,7 @@ export class AcpTurn extends TurnParts {
     output: unknown,
     status: ToolCallStatus | null | undefined,
     content: ToolCallContent[] | null | undefined,
-    subagent: 'subagent' | 'mcp' | null = null,
+    launch: AntigravityLaunch | null = null,
     fallbackName: string | null = null,
   ): void {
     const entry = this.#tools.get(toolCallId) ?? {
@@ -317,9 +328,9 @@ export class AcpTurn extends TurnParts {
       output: null,
       status: 'running' as ToolStatus,
       documents: [] as ToolDocument[],
-      subagent: null,
+      launch: null,
     };
-    entry.subagent ??= subagent;
+    if (launch === 'mcp' || entry.launch === null) entry.launch = launch;
     if (name !== null && name.length > 0) entry.name = name;
     // Antigravity carries a shell call's command, its cwd and its combined
     // output under half a dozen spellings, and pads `_meta` with base64
@@ -344,6 +355,12 @@ export class AcpTurn extends TurnParts {
         entry.documents = documentsOf(content.filter(item => item.type !== 'content' || item.content.type !== 'text'));
       } else entry.documents = documentsOf(content);
     }
+    if (this.ctx.provider.quirks?.includes('hermes') && entry.status === 'done' && /^delegate_task(?::|$)/.test(entry.name)) {
+      // Hermes sends this JSON as text content, without rawInput or rawOutput.
+      // Its formatter can truncate the rest of the JSON after the dispatch fields.
+      this.launchedHermesDelegation ||= entry.documents.some(document => document.kind === 'markdown'
+        && /^\{\s*"status"\s*:\s*"dispatched"\s*,\s*"mode"\s*:\s*"background"/.test(document.text));
+    }
     this.#tools.set(toolCallId, entry);
     this.part(entry.index, {
       type: 'tool',
@@ -353,7 +370,7 @@ export class AcpTurn extends TurnParts {
       output: entry.output,
       status: entry.status,
       ...(entry.documents.length > 0 ? { documents: entry.documents } : {}),
-      ...(entry.subagent === 'subagent' ? { nativeAgents: [antigravitySubagentBatch(toolCallId, entry.status, entry.output)] } : {}),
+      ...(entry.launch === 'subagent' ? { nativeAgents: [antigravitySubagentBatch(toolCallId, entry.status, entry.output)] } : {}),
     });
   }
 }

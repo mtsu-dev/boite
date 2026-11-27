@@ -785,9 +785,13 @@ Grok and OpenCode 2's native server steer the running prompt. On other ACP
 transports, a queued message can start after Boite receives a tool completion
 and no other tool is running. Boite cancels the current prompt, waits for it
 to settle, then starts a new turn using the saved session or the conversation
-history if the agent cannot load it. A pending card, a changed selection,
-or work that must keep running, such as a goal or Antigravity's detached
-workers, leaves the message queued. Explicit Send now can still interrupt.
+history if the agent cannot load it. When the agent acknowledges cancellation,
+Boite skips replay of the original input in that same session. A pending card,
+a changed selection, or work that must keep running, such as a goal or
+Antigravity's detached workers, leaves the message queued. Hermes background delegations and
+Antigravity swarm launches also prevent automatic cancellation on later prompts
+in the same process, where the children can still be active. Explicit Send now
+can still interrupt.
 
 `quirks` turns on a dialect the ACP driver knows, and there are three.
 `quirks: ["antigravity"]` folds a tool call's command, working directory and

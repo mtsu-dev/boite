@@ -26,7 +26,7 @@ export class Composer {
   readonly #pending = new Map<string, Pick<ComposerRecord, 'section' | 'id'>>();
   readonly #dirty = new Set<string>();
   readonly #captured = new Map<string, ComposerQueuedPrompt[]>();
-  readonly #boundaries = new Map<string, RpcEvents['turn.toolCompleted']>();
+  readonly #boundaries = new Map<string, RpcEvents['turn.toolCompleted'] & { fresh: boolean }>();
   readonly #forced = new Map<string, string>();
   #stopWaiting!: () => void;
   readonly #stopped = new Promise<null>(resolve => { this.#stopWaiting = () => resolve(null); });
@@ -39,10 +39,12 @@ export class Composer {
     this.storage = new ComposerStorage(core);
     this.#unsubscribe = core.bus.onCommitted((name, payload) => {
       if (name === 'turn.toolCompleted') {
-        const boundary = payload as RpcEvents['turn.toolCompleted'];
+        const boundary = { ...payload as RpcEvents['turn.toolCompleted'], fresh: true };
         if (!this.storage.queued.has(recordKey('inputs', boundary.threadId))) return;
         this.#boundaries.set(boundary.threadId, boundary);
         this.#schedule([{ section: 'inputs', id: boundary.threadId }]);
+        // A later wake may still steer natively, but only this completion can stop a prompt.
+        queueMicrotask(() => { boundary.fresh = false; });
       } else if (['turn.finished', 'thread.updated', 'permission.resolved', 'question.answered'].includes(name)) {
         const thread = payload as { threadId?: string; id?: string };
         const id = thread.threadId ?? thread.id!;
@@ -284,18 +286,18 @@ export class Composer {
         if (active && (!turn || boundary?.turnId !== turn.id || boundary.boundary === item.afterBoundary || item.request || isComposerActivity(item.text)
           || !choice || !sameChoice(choice, choiceOf({ ...thread, ...turn.execution })))) return;
         const steeringReason = turn ? userSteeringUnavailable(this.#core, this.#core.threads, id, turn) : null;
-        const interrupt = turn !== null && steeringReason === 'unsupported' && this.#canInterruptForQueuedInput(turn);
+        const interrupt = turn !== null && boundary?.fresh === true && steeringReason === 'unsupported' && this.#canInterruptForQueuedInput(turn);
         if (steeringReason !== null && !interrupt) return;
         const batch = composerBatch(value.input.queued, this.storage);
         const attachments = batch.attachments;
         this.#captured.set(key, batch.entries);
         if (interrupt) {
           // Validate the input before cancelling work. The next pass uses the normal durable start.
-          checkAttachments(attachments, this.#core.providers.require(thread.providerId));
+          checkAttachments(attachments, this.#core.providers.require(turn.execution?.providerId ?? thread.providerId));
           const error = previewReferencesError(batch.previewReferences, batch.text);
           if (error) throw refused(error);
           this.#boundaries.delete(recordId);
-          await Promise.race([this.#stopped, this.#core.scheduler.stopAndWait(id)]);
+          await Promise.race([this.#stopped, this.#core.scheduler.stopAndWait(id, 'queued-input')]);
           continue;
         }
         if (turn) {

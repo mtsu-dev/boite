@@ -362,6 +362,8 @@ interface DiagnosticContext { event: string; durationMs?: number; data?: Record<
 export interface TurnResult {
   status: 'done' | 'stopped' | 'error';
   sessionId: string | null;
+  /** The agent acknowledged cancellation at a tool boundary to accept queued input. */
+  queuedInputCancelled?: true;
   usage: Usage | null;
   error?: string;
   /** Safe technical failure for diagnostics when error includes raw provider output. */
@@ -428,9 +430,11 @@ export interface LiveTurnSettings {
   speed?: string | null;
 }
 
+export type TurnStopReason = 'queued-input';
+
 export interface TurnHandle {
   done: Promise<TurnResult>;
-  stop(): void;
+  stop(reason?: TurnStopReason): void;
   /**
    * Change the effort or the speed of the active native turn, for the model
    * requests it has not sent yet. Only the named fields changed. The answer

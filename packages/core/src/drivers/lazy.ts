@@ -116,9 +116,9 @@ export function lazyDriver(
         get steer() { return inner?.steer?.bind(inner); },
         get steerUser() { return inner?.steerUser?.bind(inner); },
         get canInterruptForQueuedInput() { return inner?.canInterruptForQueuedInput?.bind(inner); },
-        stop() {
+        stop(reason) {
           stopRequested = true;
-          if (inner !== null) inner.stop();
+          if (inner !== null) inner.stop(reason);
           else deferred.cancel();
         },
       };

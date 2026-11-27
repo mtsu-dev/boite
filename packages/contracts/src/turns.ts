@@ -20,6 +20,8 @@ export type TurnExecution = Pick<ThreadSummary,
   selectionVersion: number;
   /** A server-owned queued prompt keeps its captured effort and speed while the next picker changes. */
   frozenSelection?: true;
+  /** The prompt was cancelled after a tool finished and is already in this native session. */
+  queuedInputSession?: string;
   /**
    * `background`: the agent resumed on its own after background work it
    * started finished; the turn carries no prompt of the user's.

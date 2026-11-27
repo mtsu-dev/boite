@@ -1,7 +1,7 @@
 import type { ProviderId, ThreadId, ThreadRetry, ThreadSummary, Turn, TurnId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, getDriver, releaseThread } from '../drivers/index.ts';
-import type { TurnHandle, TurnResult } from '../drivers/types.ts';
+import type { TurnHandle, TurnResult, TurnStopReason } from '../drivers/types.ts';
 import { messageOf, refused, RpcFailure } from '../errors.ts';
 import { logMessageOf } from '../log-errors.ts';
 import { reportSettlementError, settleTurn, userStopKey } from './turn-settlement.ts';
@@ -187,6 +187,8 @@ export class TurnRunner {
       finishedAt: Date.now(),
       usage: result.usage,
       error: result.error ?? null,
+      ...(running.execution && result.queuedInputCancelled && result.sessionId !== null
+        ? { execution: { ...running.execution, queuedInputSession: result.sessionId } } : {}),
       ...(result.checkpoint ? { checkpoint: result.checkpoint } : {}),
       ...(result.agentTotals ? { agentTotals: result.agentTotals } : {}),
     };
@@ -262,8 +264,8 @@ export class TurnRunner {
     }
   }
 
-  stopRunning(threadId: ThreadId): boolean {
-    return this.#attempts.stopRunning(threadId);
+  stopRunning(threadId: ThreadId, reason?: TurnStopReason): boolean {
+    return this.#attempts.stopRunning(threadId, reason);
   }
 
   async #finishCheckpoint(state: TurnAttemptState): Promise<void> {

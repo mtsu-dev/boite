@@ -23,9 +23,13 @@ import { thrown } from './settle.ts';
 /** The fake ACP agent: a real ACP process over stdio, run by bun. */
 const FAKE_AGENT = fileURLToPath(new URL('./fixtures/acp-agent.ts', import.meta.url));
 
-test.each(['antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local ACP'])('%s delivers queued input when its parallel tools finish', async provider => {
+test.each(['antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local ACP', 'hermes with detached work', 'antigravity with a paused queue'])('%s handles queued input when its parallel tools finish', async scenario => {
   const client = await startCore();
   const core = harness!.core;
+  const detached = scenario === 'hermes with detached work';
+  const paused = scenario === 'antigravity with a paused queue';
+  const holds = detached || paused;
+  const provider = detached ? 'hermes' : paused ? 'antigravity' : scenario;
   let threadId: string;
   if (provider === 'local ACP') threadId = await acpThread(client);
   else {
@@ -42,31 +46,48 @@ test.each(['antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local AC
     await client.call('threads.subscribe', { threadId });
   }
   const secondTool = client.next('message.part', ({ threadId: id, part }) => id === threadId && part.type === 'tool' && part.toolId === 'second', 10_000);
-  const turn = await client.call('turns.start', { threadId, prompt: '[parallel-tools]' });
+  const turn = await client.call('turns.start', { threadId, prompt: `[parallel-tools]${detached ? ' [detached-delegation]' : paused ? ' [finish-on-gate]' : ''}` });
   await secondTool;
   const originalSession = core.threads.require(threadId).sessionId;
   expect(originalSession).toBeString();
   const attachment: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'shot.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
   const { assetId } = await client.call('composer.asset.put', { attachment });
   const firstTool = client.next('turn.toolCompleted', event => event.turnId === turn.id, 10_000);
+  const queued = [{
+    id: 'parallel-tools-follow-up', text: 'Use the new instructions',
+    attachments: provider === 'opencode' ? [] : [{ kind: attachment.kind, mimeType: attachment.mimeType, name: attachment.name, assetId }],
+  }];
   const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
-    value: { input: { text: '', attachments: [], paused: false, queued: [{
-      id: 'parallel-tools-follow-up', text: 'Use the new instructions',
-      attachments: provider === 'opencode' ? [] : [{ kind: attachment.kind, mimeType: attachment.mimeType, name: attachment.name, assetId }],
-    }] } } });
+    value: { input: { text: '', attachments: [], paused, queued } } });
   expect(saved.accepted).toBe(true);
   writeFileSync(`${logFile}.first`, 'ready');
   await firstTool;
   expect(core.journal.getTurn(turn.id)?.status).toBe('running');
   expect(fakeLog()).not.toContain('session/cancel');
+  const lastTool = client.next('turn.toolCompleted', event => event.turnId === turn.id, 10_000);
   writeFileSync(`${logFile}.second`, 'ready');
+  await lastTool;
+  if (paused) {
+    const record = core.composer.storage.get('inputs', threadId);
+    await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision,
+      value: { input: { text: '', attachments: [], paused: false, queued } } });
+  }
+  if (holds) {
+    await Bun.sleep(150);
+    expect(fakeLog()).not.toContain('session/cancel');
+    writeFileSync(`${logFile}.end`, 'ready');
+  }
   await waitFor(() => countLogLines(fakeLog(), 'session/prompt') === 2);
   await waitFor(() => core.journal.listTurns(threadId).at(-1)?.status === 'done');
   const current = await client.call('threads.get', { threadId });
-  expect(current.turns.map(at => at.status)).toEqual(['stopped', 'done']);
+  expect(current.turns.map(at => at.status)).toEqual([holds ? 'done' : 'stopped', 'done']);
+  const finishedTools = current.messages.filter(message => message.turnId === turn.id).flatMap(message => message.parts)
+    .flatMap(part => part.type === 'tool' && ['first', 'second'].includes(part.toolId) ? [part.status] : []);
+  expect(finishedTools).toEqual(['done', 'done']);
   expect(current.sessionId).toBe(originalSession);
-  expect(fakeLog()).toContain(`loaded:${originalSession}`);
-  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+  if (!holds) expect(fakeLog()).toContain(`loaded:${originalSession}`);
+  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(holds ? 0 : 1);
+  expect(fakeLog()).not.toContain('replayed interrupted prompt');
   expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' ? 0 : 1);
   expect(current.messages.filter(message => message.role === 'user')).toHaveLength(2);
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);

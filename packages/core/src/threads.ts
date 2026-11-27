@@ -1,6 +1,7 @@
 import { archiveState, archiveStateKey } from './merged-pr-archive-state.ts';
 import { assertIdleFamily } from './threads/completion.ts';
 import { AgentDoneRequests } from './threads/agent-done.ts';
+import type { TurnStopReason } from './drivers/types.ts';
 import { previewReferencesError, previewPrompt, threadActive, unreadInterruptionAt, type AgentProfile } from '@boite/contracts';
 import type {
   Account, AccountId, Attachment,
@@ -828,8 +829,8 @@ export class ThreadStore {
     this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
   }
 
-  stopRunning(threadId: ThreadId): boolean {
-    return this.runner.stopRunning(threadId);
+  stopRunning(threadId: ThreadId, reason?: TurnStopReason): boolean {
+    return this.runner.stopRunning(threadId, reason);
   }
 
   markQueuedStopped(turnId: TurnId): void {

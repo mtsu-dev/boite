@@ -411,7 +411,7 @@ export class TurnContexts {
       const interrupted = stoppedInput(this.#core.journal, threadId, missed?.turnId ?? turn.id, input, (part, place) => {
         this.#core.sharedAccess.uploads(threadId, [part]);
         return this.#files.of(threadId, part, place);
-      }, missed !== null);
+      }, missed !== null, missed === null && thread.sessionResumeAt == null ? thread.sessionId : null);
       // The first stopped prompt may never have created a native session or
       // advanced its generation. That fresh start still needs journal history.
       continued = thread.sessionId === null && interrupted !== input ? carry() : interrupted;

@@ -21,6 +21,7 @@ export function stoppedInput(
   input: HistoryInput,
   fileReference: (file: FilePart, place: PartPlace) => string,
   through = false,
+  sessionId: string | null = null,
 ): HistoryInput {
   const opening = journal.db.query(through
     ? 'SELECT MAX(rowid) + 1 AS first FROM messages WHERE thread_id = ? AND turn_id = ?'
@@ -38,6 +39,7 @@ export function stoppedInput(
       if (nativeCommandPrompt(parts.filter(part => part.type === 'text').map(part => part.text).join(''))) continue;
       if (turn.status === 'done') break;
       if (turn.status === 'stopped') {
+        if (turn.execution?.queuedInputSession === sessionId) continue;
         const message = journal.getMessage(row.id);
         if (message) messages.push(message);
       }
