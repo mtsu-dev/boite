@@ -24,7 +24,7 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX, UI_DIALOGS, UI_NOTICES } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
-import { piCatalogPair, piListsPair, piModelArgs, piPairOf, piReadsImages } from './models.ts';
+import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piPairOf, piReadsImages } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
 import { drawDialog } from './dialogs.ts';
@@ -68,6 +68,8 @@ export function setPiReadDeadlineForTests(ms: number | null): void {
  */
 export class PiSession {
   #child: SpawnedChild | null = null;
+  /** The old process `#reopen` waits on, which a stop or a close kills, and the wake that ends that wait. */
+  #draining: { child: SpawnedChild | null; wake: () => void } | null = null;
   #peer: PiPeer | null = null;
   #starting: Promise<void> | null = null;
 
@@ -236,8 +238,10 @@ export class PiSession {
   async steer(turn: PiTurn, message: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.settled || turn.isStopped || !this.#peer || this.#switching) return false;
     // A run cannot change its process: images a text-only model would drop wait for the next turn, which reopens it.
+    // Nothing is written yet, so a state pi does not give refuses the steer rather than leave its delivery unconfirmed.
     const peer = this.#peer;
-    if (imagesOf(attachments).length > 0 && piReadsImages(dataOf(await peer.command('get_state'))['model'] as PiModel | null) === false) return false;
+    if (imagesOf(attachments).length > 0 && await peer.command('get_state', {}, { signal, timeoutMs: readDeadlineMs })
+      .then(state => piReadsImages(dataOf(state)['model'] as PiModel | null) === false, () => true)) return false;
     if (this.#current !== turn || turn.settled || turn.isStopped || this.#peer !== peer || this.#switching) return false;
     this.#steered = true;
     await peer.command('steer', { message, ...(attachments.length ? { images: imagesOf(attachments) } : {}) }, { onAccepted, signal, writeKind: 'steer' });
@@ -331,7 +335,7 @@ export class PiSession {
         }
         turn.settleRun();
       } else {
-        if (imagesOf(turn.ctx.attachments).length > 0) peer = await this.#imagesReach(turn, peer);
+        if ((turn.ctx.ownImages ?? imagesOf(turn.ctx.attachments).length) > 0) peer = await this.#imagesReach(turn, peer);
         let prompt = turn.ctx.prompt, attachments = turn.ctx.attachments;
         if (this.#replaces !== null && this.#replaces === turn.ctx.sessionId) {
           this.#replaces = null;
@@ -417,12 +421,9 @@ export class PiSession {
   }
 
   /**
-   * The process goes, the session stays: a new process opens this turn's
-   * session with the thread's model and level, as a cold turn does, once the
-   * old one has exited, since pi runs its shutdown hooks first and they may
-   * still write the session file. Only pi itself is stopped; what its tools
-   * left running stays with the thread. A stop meanwhile drops the session, as
-   * during a cold start.
+   * The process goes, the session stays: a new process opens this turn's session with the thread's model and level,
+   * as a cold turn does, once the old one has exited, since pi's shutdown hooks may still write the session file. Only
+   * pi itself is stopped, not what its tools left running. A stop meanwhile drops the session, as during a cold start.
    */
   async #reopen(turn: PiTurn): Promise<PiPeer> {
     this.#opening = turn;
@@ -431,13 +432,17 @@ export class PiSession {
       this.#protection?.close(exited ?? closed);
       this.#peer?.fail('the pi process was replaced');
       this.#protection = null; this.#peer = null; this.#child = null; this.#starting = null;
+      // What a failure from here reports is the new process's exit, not the old one's, a stuck old one included.
+      this.#exited = null; this.#processClosed = Promise.resolve(); this.#exitCode = null; this.#lastStderr = '';
       releaseChild(child);
-      if (await exitWithin(exited, stopDeadlineMs, closed) === undefined && exited !== null) {
+      const code = await new Promise<number | null | undefined | 'dropped'>((resolve) => {
+        this.#draining = { child, wake: () => resolve('dropped') };
+        void exitWithin(exited, stopDeadlineMs, closed).then(resolve);
+      }).finally(() => { this.#draining = null; });
+      if (code === undefined && exited !== null) {
         releaseChild(child, this.#killTree);
         throw new Error('the pi process on the previous model did not exit, so its session cannot be reopened yet');
       }
-      // What the next failure reports is the new process's exit, not the old one's.
-      this.#exited = null; this.#processClosed = Promise.resolve(); this.#exitCode = null; this.#lastStderr = '';
       if (turn.isStopped || this.#ended) throw new Error('the pi turn was stopped before its new process started');
       turn.ctx.log('info', `pi session: ${turn.ctx.thread.model} is not in the running process's models, a new process opens on it`);
       await this.#start(turn.ctx);
@@ -452,24 +457,28 @@ export class PiSession {
 
   /**
    * Images go only to a model pi says reads them. Admission checked the list
-   * the turn was queued under: a refresh since may put a text-only pair behind
-   * the same id, and pi reads `models.json` once, so a pair that gained images
-   * after the launch is still text-only in this process. That one opens a new
-   * process; any other text-only model fails the turn with admission's
-   * sentence. A model pi reports without its inputs is pi's to handle.
+   * the turn was queued under, and pi reads `models.json` once: when the pair pi
+   * runs (whatever the thread names) gained images after the launch, a new
+   * process opens; any other text-only model fails the turn with admission's
+   * sentence. A model without its inputs is pi's. Steered input waits meanwhile.
    */
   async #imagesReach(turn: PiTurn, peer: PiPeer): Promise<PiPeer> {
     const running = async (to: PiPeer) => dataOf(await to.command('get_state'))['model'] as PiModel | null | undefined;
-    let model = await running(peer);
-    if (piReadsImages(model) !== false) return peer;
-    const wanted = turn.ctx.thread.model;
-    const listed = wanted === null ? undefined : this.catalog(turn.ctx)?.find(entry => entry.id === wanted);
-    if (listed !== undefined && listed.images !== false && !turn.isStopped) {
-      peer = await this.#reopen(turn);
-      model = await running(peer);
+    this.#switching = true;
+    try {
+      let model = await running(peer);
       if (piReadsImages(model) !== false) return peer;
+      const ran = model;
+      const listed = this.catalog(turn.ctx)?.find(entry => { const pair = piModelOf(entry); return pair?.provider === ran?.provider && pair?.id === ran?.id; });
+      if (listed !== undefined && listed.images !== false && !turn.isStopped) {
+        peer = await this.#reopen(turn);
+        model = await running(peer);
+        if (piReadsImages(model) !== false) return peer;
+      }
+      throw new Error(`${listed?.name ?? (model?.name || turn.ctx.thread.model || 'pi\'s model')} takes no images: send the prompt without them`);
+    } finally {
+      this.#switching = false;
     }
-    throw new Error(`${listed?.name ?? (model?.name || wanted || 'pi\'s model')} takes no images: send the prompt without them`);
   }
 
   /**
@@ -716,8 +725,10 @@ export class PiSession {
     endOnClose(turn, 'the pi session was closed');
     this.#peer?.fail('the pi session was closed');
     this.#peer = null;
-    const child = this.#child;
+    const child = this.#child ?? this.#draining?.child ?? null;
     this.#child = null;
+    this.#draining?.wake();
+    this.#draining = null;
     // The bash tool's children (a dev server started with `&`) are not pi's to
     // reap once bash exits; the thread's tree is. On Linux and macOS the tree
     // is the direct children only, which is `kill()`.

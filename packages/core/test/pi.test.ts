@@ -7,7 +7,7 @@ import type { FileAttachment, ImageAttachment, MessagePart, RpcEvents, RpcParams
 import type { CoreClient } from '../src/client.ts';
 import type { SharedAccess } from '../src/contacts/access-policy.ts';
 import { forgetProbes, getDriver, probedModelsOf } from '../src/drivers/index.ts';
-import { setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
+import { setPiReadDeadlineForTests, setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
 import { folderStartModel } from '../src/drivers/pi/start-model.ts';
 import { forgetSavedCatalog, readSavedCatalog } from '../src/providers/saved-catalogs.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
@@ -403,6 +403,7 @@ afterEach(async () => {
   delete process.env['PI_FAKE_NO_TEAM'];
   delete process.env['PI_FAKE_PLAIN_IMAGES'];
   delete process.env['PI_FAKE_SLOW_EXIT'];
+  delete process.env['PI_FAKE_SLOW_STATE'];
   if (open !== null) await open.stop();
 });
 
@@ -1495,10 +1496,70 @@ describe('pi driver', () => {
     const other = harness!.core.threads.require(stopped).sessionId;
     await waitFor(() => fakeLog().includes(`shutting down ${other}`));
     await client.call('turns.stop', { threadId: stopped });
+    // The stop does not wait for the old pi's shutdown: it ends the turn and takes that process down at once.
     expect((await finished).status).toBe('stopped');
-    await waitFor(() => fakeLog().includes(`exited ${other}`));
-    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(fakeLog()).not.toContain(`exited ${other}`);
+    await new Promise(resolve => setTimeout(resolve, 1_800));
     expect(argvLines()).toHaveLength(launched);
+  }, 20_000);
+
+  test('a plain prompt reaches a text-only pi model when the conversation it carries holds images', async () => {
+    const client = await startCore();
+    const { projectId, accountId } = await piAccount(client);
+    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'history', model: 'fake-a/smart' });
+    await client.call('threads.subscribe', { threadId });
+    // A real picture, which the carried history keeps as its preview.
+    const image: ImageAttachment = { kind: 'image', name: 'dot.png', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+    const shown = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+    await client.call('turns.start', { threadId, prompt: 'Read this', attachments: [image] });
+    expect(await shown).toMatchObject({ status: 'done', error: null });
+    // Another account starts a new session, which gets the conversation, its image included; pi replaces it for a model that reads none.
+    const other = await client.call('accounts.add', { providerId: 'pi-fake', label: 'Other', useDefaultLocation: true });
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId: other.id });
+    await client.call('threads.update', { threadId, accountId: other.id, model: 'fake-b/plain' });
+    const asked = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+    await client.call('turns.start', { threadId, prompt: 'What did it say?' });
+    expect(await asked).toMatchObject({ status: 'done', error: null });
+    expect(fakeLog().split('\n').filter(line => line.startsWith('image image/png'))).toHaveLength(2);
+  });
+
+  test('input steered while the driver checks that the running pi reads images waits for the next turn', async () => {
+    process.env['PI_FAKE_SLOW_STATE'] = '600';
+    const client = await startCore({ warmProcessMinutes: 5 });
+    const { projectId, accountId } = await piAccount(client);
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'checking', model: 'fake-b/plain' });
+    await client.call('threads.subscribe', { threadId });
+    await runTurn(client, threadId, 'first');
+    process.env['PI_FAKE_PLAIN_IMAGES'] = '1';
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+    const asked = fakeLog().split('\n').filter(line => line === 'state asked').length;
+    const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+    const turn = await client.call('turns.start', { threadId, prompt: 'Read this', attachments: [image] });
+    await waitFor(() => fakeLog().split('\n').filter(line => line === 'state asked').length > asked);
+    // The old process is about to be replaced: what it accepted now would go with it.
+    expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'Also this', clientRequestId: 'pi_checking_steer' })).toEqual({ accepted: false });
+    expect(await finished).toMatchObject({ status: 'done', error: null });
+    expect(fakeLog()).not.toContain('steering Also this');
+  }, 20_000);
+
+  test('an image steer refused because pi gave no state in time leaves no unconfirmed delivery behind', async () => {
+    process.env['PI_FAKE_SLOW_STATE'] = '600';
+    setPiReadDeadlineForTests(100);
+    try {
+      const { client, threadId } = await startThread(undefined, 'fake-a/smart');
+      const turn = await client.call('turns.start', { threadId, prompt: '[slow] Deploy' });
+      await waitFor(() => fakeLog().includes('waiting for abort'));
+      const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+      expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'Use this', attachments: [image], clientRequestId: 'pi_late_state' })).toEqual({ accepted: false });
+      expect(harness!.core.journal.db.query('SELECT 1 FROM turn_requests WHERE request_id = ?').all('pi_late_state')).toEqual([]);
+      const ended = client.next('turn.finished', done => done.id === turn.id, 20_000);
+      await client.call('turns.stop', { threadId });
+      await ended;
+    } finally {
+      setPiReadDeadlineForTests(null);
+    }
   }, 20_000);
 
   test('images reach a pair that gained them after the warm process started through a new process, and wait while a run holds the old one', async () => {

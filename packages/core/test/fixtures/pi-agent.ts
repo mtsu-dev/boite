@@ -634,7 +634,10 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'get_state': {
-      send({
+      // `PI_FAKE_SLOW_STATE` (ms) holds each answer, so a test can act while the driver waits for it.
+      const slowState = Number(process.env['PI_FAKE_SLOW_STATE'] ?? 0);
+      if (slowState > 0) log('state asked');
+      const answer = (): void => send({
         id,
         type: 'response',
         command: 'get_state',
@@ -649,6 +652,8 @@ function handle(message: Record<string, unknown>): void {
           pendingMessageCount: 0,
         },
       });
+      if (slowState > 0) setTimeout(answer, slowState);
+      else answer();
       return;
     }
     case 'get_available_models': {

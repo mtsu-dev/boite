@@ -191,6 +191,13 @@ export interface TurnContext {
    * turns; a driver hands each one to its agent in that protocol's shape.
    */
   attachments: ImageAttachment[];
+  /**
+   * How many of `attachments` the user sent with this turn's own prompt, the
+   * ones admission checked against the model; the others are earlier images a
+   * continuation carries, which an agent may replace for a model that reads
+   * none. Undefined: all of them.
+   */
+  ownImages?: number;
   sessionId: string | null;
   /**
    * Resume `sessionId` only up to this entry of its transcript and fork the

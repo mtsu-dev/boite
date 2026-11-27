@@ -1828,17 +1828,24 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   launch) is not in the running process's listing, so a new process opens the
   same session on it with `--provider` once the old one has exited (pi runs its
   shutdown hooks first, and they may still write the session file), and only
-  pi itself stops, not what its tools left running. A stop meanwhile drops the
-  session as during a cold start. Input steered while that switch may happen
-  waits for the next turn. Images steered into a running turn are checked
+  pi itself stops, not what its tools left running. A stop or a close meanwhile
+  drops the session as during a cold start, without waiting for that exit: the
+  old process goes down with the thread's processes. Input steered while that
+  switch may happen waits for the next turn. Images steered into a running turn are checked
   against the list that turn was given, the one its process runs, not a list
   refreshed since.
-- Before a prompt with images, the driver asks pi (`get_state`) whether the
-  model it runs reads them: admission checked the list the turn was sent
-  under, and a later attempt may run another pair. A pair that gained images
-  after the launch (pi reads `models.json` once) gets a new process; any other
-  text-only model fails the turn with admission's sentence. Images steered into
-  a run on a text-only model wait for the next turn.
+- Before a prompt with images of its own, the driver asks pi (`get_state`)
+  whether the model it runs reads them: admission checked the list the turn
+  was sent under, and a later attempt may run another pair. When the catalog
+  says the pair pi runs reads images (it gained them after the launch, since pi
+  reads `models.json` once), a new process opens, whatever model the thread
+  names, `default` included; any other text-only model fails the turn with
+  admission's sentence. Earlier images a continuation carries (a new session,
+  a resume) are pi's to replace, as for any model that reads none. Input
+  steered during that check waits for the next turn. Images steered into a run
+  on a text-only model wait for the next turn too, and so do they when pi does
+  not give its state within the read deadline, so the steer is refused before
+  anything is written rather than left unconfirmed.
   There is no call that goes back to pi's own model or to no level, so either
   change starts a new process.
 - Pi can refresh prompt caches during a turn. Refreshes between turns require
