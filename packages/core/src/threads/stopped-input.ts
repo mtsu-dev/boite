@@ -28,7 +28,7 @@ export function stoppedInput(
     ? 'SELECT MAX(rowid) + 1 AS first FROM messages WHERE thread_id = ? AND turn_id = ?'
     : 'SELECT MIN(rowid) AS first FROM messages WHERE thread_id = ? AND turn_id = ?').get(threadId, turnId) as { first: number | null };
   if (opening.first === null) return input;
-  // Read user rows without blobs until a completed request: assistant/tool
+  // Read user rows and resume notes without blobs until a completed request: assistant/tool
   // payloads are irrelevant, and stopped attachments load only when carried.
   const statement = journal.db.prepare("SELECT id, turn_id AS turnId, role, parts FROM messages WHERE thread_id = ? AND role IN ('user', 'system') AND rowid < ? ORDER BY rowid DESC");
   const messages: Message[] = [];
@@ -36,8 +36,8 @@ export function stoppedInput(
     for (const row of statement.iterate(threadId, opening.first) as Iterable<{ id: string; turnId: TurnId; role: 'user' | 'system'; parts: string }>) {
       const turn = journal.getTurn(row.turnId);
       if (row.role === 'system') {
-        // A completed handoff carried the source request and its interrupted context.
-        if (turn?.status === 'done' && turn.execution?.handoffSourceTurnId !== undefined) break;
+        // A completed resume carried the source request and its interrupted context.
+        if (turn?.status === 'done' && turn.execution?.resumeSourceTurnId !== undefined) break;
         continue;
       }
       if (!turn || turn.execution?.operation || turn.execution?.automatic) continue;

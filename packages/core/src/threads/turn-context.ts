@@ -414,20 +414,21 @@ export class TurnContexts {
     };
     const tail = !fresh && resumePrompt === undefined && thread.sessionId !== null && kind !== 'compact' && kind !== 'keepalive'
       && kind !== 'background' && kind !== 'resume' && !nativeCommandPrompt(input.prompt) ? compactionTail(this.#core, thread) : null;
-    const handoffSource = provider.protocol === 'acp' ? turn.execution?.handoffSourceTurnId : undefined;
-    const carryStopped = resumePrompt === undefined && !kind && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt);
+    const resumeSource = provider.protocol === 'acp' ? turn.execution?.resumeSourceTurnId : undefined;
+    const carryStopped = resumeSource !== undefined
+      || (resumePrompt === undefined && !kind && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt));
     // ACP chooses the stopped-input cutoff once it has the receiving process.
     const livePrompt = deferInterruptedInput && provider.protocol === 'acp' && carryStopped && thread.sessionId !== null
       && thread.sessionResumeAt == null && missed === null && tail === null;
     const interruptedInput = (receivedTurns?: ReadonlySet<TurnId>): HistoryInput =>
-      stoppedInput(this.#core.journal, threadId, missed?.turnId ?? handoffSource ?? turn.id, request, fileReference, missed !== null, receivedTurns);
+      stoppedInput(this.#core.journal, threadId, missed?.turnId ?? resumeSource ?? turn.id, request, fileReference, missed !== null, receivedTurns);
     if (fresh) continued = carry();
     // After a switch back, the prompts a stop cut before the resumed session's last turn: the missed exchanges hold the later ones.
-    else if ((carryStopped && !livePrompt) || handoffSource !== undefined) {
+    else if (carryStopped && !livePrompt) {
       const interrupted = interruptedInput();
       // The first stopped prompt may never have created a native session or
       // advanced its generation. That fresh start still needs journal history.
-      continued = thread.sessionId === null && interrupted !== input ? carry() : interrupted;
+      continued = thread.sessionId === null && interrupted !== request ? carry() : interrupted;
     }
     // A session swapped in by a background compaction summarizes up to its fork:
     // the turns since then go with the next prompt the agent reads as such.
@@ -436,7 +437,7 @@ export class TurnContexts {
       this.#threads.backgroundCompact.carried(threadId, turn.id);
     }
     if (missed !== null) {
-      continued = switchBackInput(this.#core.journal, threadId, missed, handoffSource ?? turn.id, continued, provider, fileReference);
+      continued = switchBackInput(this.#core.journal, threadId, missed, resumeSource ?? turn.id, continued, provider, fileReference);
       this.#threads.accountSessions.carried(threadId, turn.id);
       recordHandover(this.#core, turn, 'resumed', continued.carried ?? { full: 0, cut: 0, omitted: 0, chars: 0 });
     }
@@ -499,7 +500,7 @@ export class TurnContexts {
       let prompt = livePrompt ? undefined : compose(preparedPrompt, thread.sessionId);
       const prepareSessionPrompt: TurnContext['prepareSessionPrompt'] = livePrompt ? async receivedTurns => {
         let interrupted = interruptedInput(receivedTurns);
-        if (interrupted === input) return { prompt: prompt ??= compose(preparedPrompt, thread.sessionId), attachments: prepared.attachments };
+        if (interrupted === request) return { prompt: prompt ??= compose(preparedPrompt, thread.sessionId), attachments: prepared.attachments };
         this.#core.sharedAccess.uploads(threadId, interrupted.attachments);
         if (interrupted.historicalImages?.length) interrupted = await prepareHistoryImages(this.#core.dataDir, interrupted);
         signal?.throwIfAborted();

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -28,6 +28,7 @@ test.each([
   'antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local ACP',
   'hermes with split delegation output', 'antigravity with a paused queue', 'antigravity without image support', 'antigravity ignoring cancellation',
   'local ACP switching back to an account', 'local ACP reporting its first result', 'local ACP rejecting cancellation',
+  'local ACP rejecting cancellation with a paused follow-up',
   'local ACP with an expired session', 'local ACP carrying a manually stopped prompt',
   'local ACP receiving tool updates for a different session',
   'local ACP reloading the same session after cancellation', 'local ACP with a blocked upload', 'local ACP with a disabled provider',
@@ -43,7 +44,8 @@ test.each([
   const ignoresCancel = scenario === 'antigravity ignoring cancellation';
   const switchesBack = scenario === 'local ACP switching back to an account';
   const spawned = scenario === 'local ACP reporting its first result';
-  const rejectsCancel = scenario === 'local ACP rejecting cancellation';
+  const pausesOnCancel = scenario === 'local ACP rejecting cancellation with a paused follow-up';
+  const rejectsCancel = scenario === 'local ACP rejecting cancellation' || pausesOnCancel;
   const expires = scenario === 'local ACP with an expired session';
   const reloads = scenario === 'local ACP reloading the same session after cancellation';
   const foreignTools = scenario === 'local ACP receiving tool updates for a different session';
@@ -98,7 +100,7 @@ test.each([
   const pause = scenario === 'local ACP' ? spyOn(core.coordination, 'pause') : null;
   const directives = [
     detached && '[detached-delegation]', holds && '[finish-on-gate]', ignoresCancel && '[ignore-cancel]',
-    rejectsCancel && '[error-on-cancel]', expires && '[expire-on-cancel]', reloads && '[confirm-on-gate]',
+    rejectsCancel && '[error-on-cancel]', expires && '[expire-on-cancel]', (reloads || pausesOnCancel) && '[confirm-on-gate]',
     foreignTools && '[foreign-tools]',
   ].filter(Boolean);
   const prompt = ['[parallel-tools]', ...directives].join(' ');
@@ -149,7 +151,7 @@ test.each([
   const lastTool = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
   writeFileSync(`${logFile}.second`, 'ready');
   await lastTool;
-  if (reloads) {
+  if (reloads || pausesOnCancel) {
     await waitFor(() => fakeLog().includes('session/cancel'));
     const setPaused = async (paused: boolean) => {
       const record = core.composer.storage.get('inputs', threadId);
@@ -159,9 +161,16 @@ test.each([
     };
     await setPaused(true);
     writeFileSync(`${logFile}.end`, 'ready');
-    await waitFor(() => core.journal.getTurn(turnId)?.status === 'stopped');
-    getDriver('acp').releaseThread?.(threadId);
-    await waitFor(() => core.procs.liveCount(threadId) === 0);
+    await waitFor(() => !core.scheduler.state().running.some(item => item.turnId === turnId));
+    if (pausesOnCancel) {
+      expect(core.journal.getTurn(turnId)?.status).toBe('error');
+      expect(core.threads.resumes.planned(threadId)).toBe(false);
+      expect(core.journal.listTurns(threadId)).toHaveLength(1);
+    } else {
+      expect(core.journal.getTurn(turnId)?.status).toBe('stopped');
+      getDriver('acp').releaseThread?.(threadId);
+      await waitFor(() => core.procs.liveCount(threadId) === 0);
+    }
     await setPaused(false);
   }
   if (paused) {
@@ -222,7 +231,7 @@ test.each([
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(refusesInput ? ['parallel-tools-follow-up'] : []);
 }, 20_000);
 
-test('an ACP restart during a queued follow-up recovers both requests on the loaded session', async () => {
+test.each(['restart', 'manual recovery'])('ACP %s during a queued follow-up recovers both requests on the loaded session', async method => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const first = harness!;
   const earlierRequest = 'Earlier request from before the follow-up';
@@ -237,16 +246,23 @@ test('an ACP restart during a queued follow-up recovers both requests on the loa
   writeFileSync(`${logFile}.second`, 'ready');
   await waitFor(() => fakeLog().includes('waiting for cancel'));
   expect(first.core.journal.getTurn(earlier)?.status).toBe('stopped');
-  expect(first.core.journal.lastTurn(threadId)?.status).toBe('running');
+  const followUp = first.core.journal.lastTurn(threadId)!;
+  expect(followUp.status).toBe('running');
   expect(countLogLines(fakeLog(), 'initialize')).toBe(1);
   expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(0);
 
-  await first.core.threads.handoff.begin(0);
-  await first.core.drain();
-  await first.server.stop();
-  await first.core.close();
-  writeFileSync(`${logFile}.release-slow`, 'ready');
-  const next = await startTestCore({ dataDir: first.dataDir });
+  let next = first;
+  if (method === 'restart') {
+    await closeForHandoff(first);
+    next = await startTestCore({ dataDir: first.dataDir });
+  } else {
+    await client.call('turns.stop', { threadId });
+    await waitFor(() => !first.core.scheduler.state().running.some(item => item.turnId === followUp.id));
+    const stopped = first.core.journal.getTurn(followUp.id)!;
+    expect(stopped.status).toBe('stopped');
+    first.core.threads.resumes.offer(stopped, { kind: 'interrupted' });
+    await client.call('turns.resume', { threadId, turnId: stopped.id });
+  }
   try {
     const { journal } = next.core;
     await waitFor(() => journal.listTurns(threadId)[2]?.status === 'done');
@@ -261,8 +277,47 @@ test('an ACP restart during a queued follow-up recovers both requests on the loa
     const after = await startTurn(await next.connect(), threadId, 'New request after the restart');
     expect((await after.finished).status).toBe('done');
     expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
-  } finally { await next.stop(); }
+  } finally { if (next !== first) await next.stop(); }
 }, 20_000);
+
+test('two ACP restarts recover the source attachment after the first resume acquired a native session', async () => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const first = harness!;
+  const image: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'target.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+  process.env['ACP_FAKE_HANG_INIT'] = '1';
+  await client.call('turns.start', { threadId, prompt: 'Use this attachment', attachments: [image] });
+  await waitFor(() => fakeLog().includes('initialize'));
+  expect(first.core.threads.require(threadId).sessionId).toBeNull();
+  await closeForHandoff(first);
+
+  delete process.env['ACP_FAKE_HANG_INIT'];
+  const hold = `${logFile}.hold-prompt`;
+  writeFileSync(hold, 'ready');
+  const second = await startTestCore({ dataDir: first.dataDir });
+  let third: TestCore | undefined;
+  try {
+    await waitFor(() => fakeLog().includes('waiting for cancel') && second.core.threads.require(threadId).sessionId !== null);
+    const sessionId = second.core.threads.require(threadId).sessionId;
+    const imageLog = `image image/png ${image.data.length}`;
+    expect(countLogLines(fakeLog(), imageLog)).toBe(1);
+    await closeForHandoff(second);
+    rmSync(hold);
+    third = await startTestCore({ dataDir: first.dataDir });
+    await waitFor(() => third!.core.journal.listTurns(threadId)[2]?.status === 'done');
+    expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(1);
+    expect(countLogLines(fakeLog(), imageLog)).toBe(2);
+  } finally {
+    await third?.stop();
+    await second.stop();
+  }
+}, 20_000);
+
+async function closeForHandoff(current: TestCore): Promise<void> {
+  await current.core.threads.handoff.begin(0);
+  await current.core.drain();
+  await current.server.stop();
+  await current.core.close();
+}
 
 test.each(['another tool finishes', 'the user sends now'])('ACP delivers queued input when %s during a working-folder check', async action => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });

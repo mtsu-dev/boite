@@ -244,7 +244,7 @@ export class TurnRunner {
     const keepalive = queued.execution?.operation === 'keepalive';
     if (result.status === 'stopped' && !keepalive && !result.queuedInputCancelled) this.#core.coordination.pause(threadId);
     // A spent subscription window: the thread may resume by itself once it resets (`threads/limit-resume.ts`).
-    if (result.status === 'error' && result.refusal?.kind === 'usage-limit' && !next.archived && !keepalive) this.threads.limitResumes.turnFailed(next, finished, result.refusal.resetsAt);
+    if (result.status === 'error' && !queuedInputInterrupted && result.refusal?.kind === 'usage-limit' && !next.archived && !keepalive) this.threads.limitResumes.turnFailed(next, finished, result.refusal.resetsAt);
     // Any other stop before the answer resumes by itself, twice in a row at most (`threads/auto-continue.ts`).
     this.threads.autoContinue.turnFinished(next, finished, result);
     if (result.status === 'done' && sameSession && !queued.execution?.operation) this.threads.titles.autoRefine(threadId);

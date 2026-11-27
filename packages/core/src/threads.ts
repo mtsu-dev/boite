@@ -613,8 +613,8 @@ export class ThreadStore {
     let accountLeft: ReturnType<typeof followedAgent>[1];
     if (!executionChoice) [thread, accountLeft] = followedAgent(this.#core, thread);
     thread = prepareTurnExecution(this.#core, thread, attachments, executionChoice);
-    const handoffSourceTurnId = origin.kind === 'resume' && origin.reason === 'handoff'
-      && this.#core.providers.require(thread.providerId).protocol === 'acp' ? origin.sourceTurnId : undefined;
+    const resumeSourceTurnId = typeof input !== 'string' && origin.kind === 'resume' && input.resumeSourceTurnId !== undefined
+      && this.#core.providers.require(thread.providerId).protocol === 'acp' ? input.resumeSourceTurnId : undefined;
 
     if (!operation && !activity && !startedBy) {
       const expanded = expandSlashPrompt(this.#core, prompt, this.agentState.commands.get(threadId));
@@ -648,7 +648,7 @@ export class ThreadStore {
         sessionGeneration: thread.sessionGeneration ?? 0, selectionVersion: thread.selectionVersion ?? 0,
         ...(executionChoice ? { frozenSelection: true as const } : {}),
         ...(operation ? { operation } : {}), ...(automatic ? { automatic: true as const } : {}),
-        ...(handoffSourceTurnId === undefined ? {} : { handoffSourceTurnId }),
+        ...(resumeSourceTurnId === undefined ? {} : { resumeSourceTurnId }),
         ...(origin.kind === 'delegation' && origin.workflowSummary ? { workflowSummary: true as const } : {}),
         ...(originAgentWrites(origin) && threadAtRest(this.#core, thread) ? { opensRequest: true as const } : {}),
         ...(accountLeft ? { accountLeft } : {}),

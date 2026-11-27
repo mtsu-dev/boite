@@ -218,9 +218,8 @@ export class RestartHandoff {
           }
           const read = this.#core.providers.pendingVersion(thread.providerId);
           if (waitForVersion(read, this.#versionReads, () => this.resume())) continue;
-          const sourceTurnId = turn.execution?.handoffSourceTurnId ?? (turn.execution?.operation === undefined ? turn.id : undefined);
           const continuation = this.#threads.startTurn(thread.id, this.continuation(turn), {
-            kind: 'resume', reason: 'handoff', requestId: this.#requestId(entry), sourceTurnId,
+            kind: 'resume', reason: 'handoff', requestId: this.#requestId(entry),
           });
           this.#remember(entry, continuation.id);
           resumed += 1;
@@ -292,13 +291,22 @@ export class RestartHandoff {
       ? `\n\nThe thread's task list at resume:\n${tasks.map(task => `- [${task.status}] ${task.text}`).join('\n')}`
       : '';
     const prompt = `${lead}${checklist}${text ? `${REQUEST_START}${text}${REQUEST_END}` : ''}`;
+    const resumeSourceTurnId = turn.status === 'done' ? undefined
+      : turn.execution?.resumeSourceTurnId ?? (turn.execution?.operation === undefined ? turn.id : undefined);
+    const input: TurnInput = { prompt, ...(resumeSourceTurnId === undefined ? {} : { resumeSourceTurnId }) };
     const thread = journal.getThread(turn.threadId);
     const attachments: Attachment[] = [];
     // A fresh session reads these messages through conversation history.
-    if (!thread?.sessionId) return { prompt };
+    if (!thread?.sessionId) return input;
+    const attachmentMessages = opening ? [opening, ...requests] : requests;
+    // The previous resume may have loaded its attachments from history when it opened a fresh session.
+    if (resumeSourceTurnId !== undefined && opening && !opening.parts.some(part => part.type === 'file' || part.type === 'image')) {
+      const original = [...journal.walkTurnMessages(turn.threadId, resumeSourceTurnId, { blobs: false })];
+      attachmentMessages.unshift(...original.filter(message => message.role === 'user'));
+    }
     const images = this.#core.providers.require(thread.providerId).capabilities.images;
     let room = ATTACHMENTS_TOTAL_MAX_BYTES;
-    for (const message of (opening ? [opening, ...requests] : requests).toReversed()) {
+    for (const message of attachmentMessages.toReversed()) {
       for (let index = message.parts.length - 1; index >= 0 && attachments.length < ATTACHMENTS_PER_TURN; index--) {
         const stored = message.parts[index]!;
         if (stored.type !== 'file' && !(stored.type === 'image' && images)) continue;
@@ -312,7 +320,7 @@ export class RestartHandoff {
           : { kind: 'file', mimeType: part.mimeType, data: part.data, name: part.name });
       }
     }
-    return { prompt, attachments };
+    return { ...input, attachments };
   }
 
   /**

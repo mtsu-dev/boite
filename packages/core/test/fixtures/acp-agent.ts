@@ -545,6 +545,7 @@ const app = agent({ name: 'acp-fake' })
     }
 
     const directives = directivesOf(instructions);
+    if (existsSync(`${process.env['ACP_FAKE_LOG']}.hold-prompt`)) directives.push('slow');
     // A real agent reasons before it answers, so the thought chunks go first.
     for (const directive of directives) {
       if (directive !== 'thought') continue;
@@ -677,7 +678,6 @@ const app = agent({ name: 'acp-fake' })
           }
           break;
         case 'slow':
-          if (existsSync(`${process.env['ACP_FAKE_LOG']}.release-slow`)) break;
           log('waiting for cancel');
           await new Promise<void>((resolve) => {
             cancels.set(sessionId, resolve);
