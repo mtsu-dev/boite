@@ -17,6 +17,7 @@ const MINUTE_MS = 60_000;
 export function createPiDriver(): Driver {
   const sessions = new ThreadSessions<PiSession>();
   const probes = new ModelProbes(readModels);
+  const catalog = (ctx: { provider: { id: ProviderId }; account: { id: AccountId } }) => probes.models(ctx.provider.id, ctx.account.id);
 
   function acquire(ctx: SessionContext): PiSession {
     const threadId = ctx.thread.id;
@@ -34,7 +35,7 @@ export function createPiDriver(): Driver {
       session = null;
     }
     if (session === null) {
-      session = new PiSession(key, warmMs, ended => sessions.ended(threadId, ended), compaction);
+      session = new PiSession(key, warmMs, ended => sessions.ended(threadId, ended), compaction, catalog);
       sessions.current.set(threadId, session);
     }
     const running = session;
@@ -43,8 +44,8 @@ export function createPiDriver(): Driver {
   }
 
   return {
-    title,
-    sideQuestion,
+    title: ctx => title(ctx, catalog(ctx)),
+    sideQuestion: ctx => sideQuestion(ctx, catalog(ctx)),
     forkSession,
     prepare: (ctx, options) => acquire(ctx).prepare(ctx, options?.forTurn),
     setViewed: sessions.setViewed,

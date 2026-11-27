@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TOOL_FREE_CONTEXT } from '@boite/contracts';
+import type { ModelInfo } from '@boite/contracts';
 import { abortable } from '../../abortable.ts';
 import { unavailable } from '../../errors.ts';
 import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
@@ -10,6 +11,7 @@ import { NativeForkUnsupported } from '../native-fork.ts';
 import { releaseChild } from '../session-close.ts';
 import type { SideQuestionContext, TitleContext } from '../types.ts';
 import { agentEnv, contextArgs, imagesOf, sessionDirOf, textOf } from './mapping.ts';
+import { piModelArgs } from './models.ts';
 import { AGENT_OWN_MODEL, STDERR_MAX } from './protocol.ts';
 import { PiPeer } from './rpc.ts';
 import { copySession } from './session-files.ts';
@@ -31,7 +33,7 @@ const OWNED_SWITCHES = new Set([
  */
 const READ_ONLY_TOOLS = 'read,grep,find,ls';
 
-async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, model: string | null, signal: AbortSignal, sessionFile?: string): Promise<string> {
+async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, model: string | null, catalog: readonly ModelInfo[] | null, signal: AbortSignal, sessionFile?: string): Promise<string> {
   signal.throwIfAborted();
   const profile = profileFor(ctx.provider);
   const launch = resolveLaunch(profile);
@@ -49,9 +51,8 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   const context = contextArgs(TOOL_FREE_CONTEXT);
   args.push('--mode', 'rpc', ...(sessionFile ? context.flatMap(arg => arg === '--no-tools' ? ['--tools', READ_ONLY_TOOLS] : [arg]) : context), '--no-mcp');
   args.push(...(sessionFile ? ['--session', sessionFile] : ['--no-session']));
-  if (own) args.push('--model', model);
   const effort = 'signal' in ctx ? ctx.thread.effort : 'low';
-  if (effort !== null) args.push('--thinking', effort);
+  args.push(...(own ? piModelArgs(model, effort, catalog) : effort === null ? [] : ['--thinking', effort]));
 
   const child = ctx.spawnChild(launch.executable, args, { cwd: ctx.thread.cwd, env: agentEnv(ctx.accountEnv) });
   let stderr = '', text = '', error = '';
@@ -88,12 +89,12 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   }
 }
 
-export async function title(ctx: TitleContext): Promise<string | null> {
+export async function title(ctx: TitleContext, catalog: readonly ModelInfo[] | null = null): Promise<string | null> {
   const model = ctx.model ?? ctx.thread.model;
-  return await ask(ctx, titleRequest(ctx.prompt, ctx.answer, ctx.initial, ctx.nameBranch), model, AbortSignal.timeout(30_000)) || null;
+  return await ask(ctx, titleRequest(ctx.prompt, ctx.answer, ctx.initial, ctx.nameBranch), model, catalog, AbortSignal.timeout(30_000)) || null;
 }
 
-export async function sideQuestion(ctx: SideQuestionContext): Promise<string> {
+export async function sideQuestion(ctx: SideQuestionContext, catalog: readonly ModelInfo[] | null = null): Promise<string> {
   let directory: string | undefined;
   try {
     let sessionFile: string | undefined;
@@ -110,7 +111,7 @@ export async function sideQuestion(ctx: SideQuestionContext): Promise<string> {
       'Do not change anything, resume the main task or ask follow-up questions. Say when the context does not contain the answer.',
       '<side-question>', ctx.question, '</side-question>',
     ].join('\n');
-    const answer = await ask(ctx, prompt, ctx.thread.model, ctx.signal, sessionFile);
+    const answer = await ask(ctx, prompt, ctx.thread.model, catalog, ctx.signal, sessionFile);
     if (!answer) throw new Error('pi wrote no side answer');
     return answer;
   } finally {

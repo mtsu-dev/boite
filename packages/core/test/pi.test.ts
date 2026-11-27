@@ -229,8 +229,14 @@ test('pi default follows the model a resumed session restores, not the one pi st
   for (const profile of Object.values(relative.profiles)) profile.env = { ...profile.env, PI_CODING_AGENT_DIR: 'relative-pi' };
   writeFileSync(descriptorFile, JSON.stringify(relative));
   expect((await client.call('providers.reload', {})).rejected).toEqual([]);
-  expect((await client.call('providers.probe', { providerId: 'pi-fake', accountId: harness!.core.threads.require(threadId).accountId, refresh: true })).models.map(model => model.id)).toContain('fake-b/plain');
+  const elsewhere = (await client.call('providers.probe', { providerId: 'pi-fake', accountId: harness!.core.threads.require(threadId).accountId, refresh: true })).models;
+  expect(elsewhere.find(model => model.id === 'fake-b/plain')).toMatchObject({ id: 'fake-b/plain' });
   expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
+  // Nor of a named model's images: this folder's own `models.json` may give it some, so the catalog marks none text-only.
+  expect(elsewhere.filter(model => model.images === false)).toEqual([]);
+  await client.call('threads.update', { threadId, model: 'fake-b/plain' });
+  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
+  await client.call('threads.update', { threadId, model: null });
   writeFileSync(descriptorFile, descriptor);
   expect((await client.call('providers.reload', {})).rejected).toEqual([]);
   // A model gone from the catalog resumes on pi's saved default, which only pi reads, even where pi starts on a text-only one.
@@ -306,6 +312,9 @@ test('pi default on a session holds a registered router over the models it answe
   // A physical model_change does not hold: pi resumes on the model that answered.
   writeFileSync(file, readFileSync(file, 'utf8') + routed('smart', 's', 'ra'));
   expect(await images()).toBe(false);
+  // A router the catalog does not hold may be one this folder's own extension registers: pi alone can tell.
+  writeFileSync(file, readFileSync(file, 'utf8') + routed('project-router', 'p', 'sa'));
+  expect(await images()).toBe(true);
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
   const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
   for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--model', 'fake-a/smart');
@@ -833,9 +842,20 @@ describe('pi driver', () => {
   });
 
   test('the model and the effort ride on the command line, as pi takes them', async () => {
+    process.env['PI_FAKE_LITERAL'] = '1';
     const { client, threadId } = await startThread(undefined, 'anthropic/claude-sonnet-5', 'high');
     await runTurn(client, threadId, 'first');
-    expect(argvLines()[0]).toContain('model=anthropic/claude-sonnet-5:high');
+    // A model no probe listed goes as its text; the level as `--thinking`, never a `:high` tail pi may read as an id.
+    expect(argvLines()[0]).toContain('model=anthropic/claude-sonnet-5 provider= thinking=high');
+    // A listed model goes as its exact pair: `fake-a/smart` with `high` is not the text-only `fake-a` + `smart:high`,
+    // and `fake-a/team/base` is `base` on `fake-a/team`, the pair the catalog keeps.
+    const { accountId } = harness!.core.threads.require(threadId);
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    for (const [model, line] of [['fake-a/smart', 'model=fake-a/smart provider=fake-a thinking=high'], ['fake-a/team/base', 'model=fake-a/team/base provider=fake-a/team thinking=high']] as const) {
+      const id = await piThread(client, model, 'high');
+      await runTurn(client, id, 'first');
+      expect(argvLines().find(entry => entry.startsWith(`argv sessionId=${harness!.core.threads.require(id).sessionId} `))).toContain(line);
+    }
   });
 
   test('a conversation that must run no tool starts pi with none, and no extension, context file, skill or template', async () => {
@@ -1153,7 +1173,7 @@ describe('pi driver', () => {
     await client.call('threads.subscribe', { threadId: thread.id });
     await runTurn(client, thread.id, 'first');
     const turnProcess = argvLines().find(line => line.startsWith(`argv sessionId=${harness!.core.threads.require(thread.id).sessionId} `));
-    expect(turnProcess).toContain('model=fake-a/quick:high');
+    expect(turnProcess).toContain('model=fake-a/quick provider=fake-a thinking=high');
   });
 
   test('a 529 that pi retried by itself ends the turn done, with no error card', async () => {
@@ -1351,7 +1371,7 @@ describe('pi driver', () => {
     await runTurn(client, threadId, 'third');
     const turnProcesses = argvLines().filter((line) => !line.includes('sessionId= '));
     expect(turnProcesses).toHaveLength(1);
-    expect(turnProcesses[0]).toContain('model=fake-a/smart:low');
+    expect(turnProcesses[0]).toContain('model=fake-a/smart provider=fake-a thinking=low');
     expect(fakeLog()).toContain('level high\n');
     expect(fakeLog()).toContain('model fake-a quick\nset_thinking_level\nlevel high\n');
     // pi's listing names the pair of a text two pairs spell: `base` on `fake-a/team`, as at a cold start.

@@ -1,6 +1,5 @@
 import { readFileSync, realpathSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { isRecord } from '../stdio.ts';
 import { piModelOf } from './models.ts';
 import { piProcessCwd } from './session-model.ts';
@@ -56,23 +55,6 @@ export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
     }
   }
   return choices;
-}
-
-/** `PI_CODING_AGENT_DIR` with its `~` expanded, else pi's own folder in the home. */
-function configuredAgentDir(env: Record<string, string | undefined>): string {
-  const home = env['HOME'] || homedir();
-  const configured = env['PI_CODING_AGENT_DIR'] || join(home, '.pi', 'agent');
-  return configured === '~' ? home : configured.startsWith('~/') ? join(home, configured.slice(2)) : configured;
-}
-
-/** Where pi keeps an account's settings and trust decisions, from the environment it starts with. */
-export function piAgentDir(env: Record<string, string | undefined>, cwd: string): string {
-  return resolve(cwd, configuredAgentDir(env));
-}
-
-/** Whether that folder is relative, so each folder pi starts in has its own: the account's probe, run elsewhere, read another one. */
-export function piAgentDirFollowsCwd(env: Record<string, string | undefined>): boolean {
-  return !isAbsolute(configuredAgentDir(env));
 }
 
 /**

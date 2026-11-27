@@ -8,7 +8,7 @@
  * is proved without the real binary and without a login.
  *
  * Run as `bun <this file>`. `PI_FAKE_LOG` names a file it appends to: one
- * `argv sessionId=<id> sessionDir=<dir> model=<m>` line per process at start,
+ * `argv sessionId=<id> sessionDir=<dir> model=<m> provider=<p> thinking=<t>` line per process at start,
  * then one line per command it receives (`prompt`, `abort`), and one
  * `image <mimeType> <byte length>` line per `images` entry a `prompt` command
  * carries. The argv line is what tells a test how many agent processes a warm
@@ -124,7 +124,7 @@ const saved = sessionFile && existsSync(sessionFile)
   ? readFileSync(sessionFile, 'utf8').trim().split('\n').flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } }) : [];
 let leaf: string | null = saved.at(-1)?.id ?? null;
 let activePrompt = '';
-log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model}`);
+log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model} provider=${flag('--provider')} thinking=${flag('--thinking')}`);
 if (oneShot) log(`one-shot ${JSON.stringify(process.argv.slice(2))}`);
 for (const [index, arg] of process.argv.entries()) {
   if (arg === '--extension') log(`extension ${process.argv[index + 1] ?? ''}`);

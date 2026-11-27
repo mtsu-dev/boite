@@ -1,4 +1,5 @@
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
 import type { AgentCommand, ImageAttachment, ThreadContextMode } from '@boite/contracts';
 import { stringify } from '../tool-text.ts';
 import { resolveDataDir } from '../../paths.ts';
@@ -111,18 +112,6 @@ export function contextArgs(mode: ThreadContextMode | null | undefined): string[
 }
 
 /**
- * pi takes the model on the command line and nowhere else at launch:
- * `--model provider/id`, with `:<thinking>` appended for the reasoning level.
- * `default` is Boite's own id for "the agent keeps its own", so it sends
- * nothing at all.
- */
-export function modelArgs(ctx: SessionContext): string[] {
-  const model = ctx.thread.model;
-  if (model === null || model === AGENT_OWN_MODEL) return [];
-  return ['--model', ctx.thread.effort === null ? model : `${model}:${ctx.thread.effort}`];
-}
-
-/**
  * What a session was started with. A turn that differs on any of it needs its
  * own, because pi reads all of it once, on the command line. A change from one
  * named model or level to another is not in here: pi's RPC mode takes both on
@@ -144,4 +133,21 @@ export function sessionKey(ctx: SessionContext): string {
     providerId: ctx.provider.id,
     env: ctx.accountEnv,
   });
+}
+
+/** `PI_CODING_AGENT_DIR` with its `~` expanded, else pi's own folder in the home. */
+function configuredAgentDir(env: Record<string, string | undefined>): string {
+  const home = env['HOME'] || homedir();
+  const configured = env['PI_CODING_AGENT_DIR'] || join(home, '.pi', 'agent');
+  return configured === '~' ? home : configured.startsWith('~/') ? join(home, configured.slice(2)) : configured;
+}
+
+/** Where pi keeps an account's settings and trust decisions, from the environment it starts with. */
+export function piAgentDir(env: Record<string, string | undefined>, cwd: string): string {
+  return resolve(cwd, configuredAgentDir(env));
+}
+
+/** Whether that folder is relative, so each folder pi starts in has its own: the account's probe, run elsewhere, read another one. */
+export function piAgentDirFollowsCwd(env: Record<string, string | undefined>): boolean {
+  return !isAbsolute(configuredAgentDir(env));
 }

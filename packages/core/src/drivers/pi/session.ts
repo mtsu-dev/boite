@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import { messageOf, unavailable } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
+import type { ModelInfo } from '@boite/contracts';
 import type { LiveTurnSettings, SessionContext, TurnContext } from '../types.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import { IdleTimer } from '../idle-timer.ts';
@@ -15,7 +16,6 @@ import {
   contentText,
   contextArgs,
   imagesOf,
-  modelArgs,
   numberOf,
   piCacheLife,
   sessionDirOf,
@@ -24,7 +24,7 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX, UI_DIALOGS, UI_NOTICES } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiUsage } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
-import { piPairOf } from './models.ts';
+import { piModelArgs, piPairOf } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
 import { answerText } from '../../attachments.ts';
@@ -118,6 +118,8 @@ export class PiSession {
     private readonly onEnded: (session: PiSession) => void,
     /** `BOITE_COMPACTION` for this process, null for none (`compaction.ts`). */
     readonly compaction: string | null = null,
+    /** The account's probed catalog, which names the pi pair behind a model at launch. */
+    private readonly catalog: (ctx: SessionContext) => readonly ModelInfo[] | null = () => null,
   ) {}
 
   /**
@@ -509,7 +511,7 @@ export class PiSession {
       sessionId,
       '--session-dir',
       sessionDir,
-      ...modelArgs(ctx),
+      ...piModelArgs(ctx.thread.model, ctx.thread.effort, this.catalog(ctx)),
       // Protected launch already removes every native/discovered resource.
       // --no-tools would also suppress its mandatory registered tools; the
       // captured toolsAllowed field still enforces a host tool-free context.

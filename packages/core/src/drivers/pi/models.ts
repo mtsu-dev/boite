@@ -3,7 +3,7 @@ import { unavailable } from '../../errors.ts';
 import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import type { ProbeContext } from '../types.ts';
 import { probeModels } from '../model-probe.ts';
-import { agentEnv, textOf } from './mapping.ts';
+import { agentEnv, piAgentDirFollowsCwd, textOf } from './mapping.ts';
 import { AGENT_OWN_MODEL, PROBE_TIMEOUT_MS, STDERR_MAX, THINKING_LEVELS, VIRTUAL_API } from './protocol.ts';
 import type { PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
@@ -67,11 +67,6 @@ function providerLabel(provider: string): string {
 }
 
 /**
- * The pi provider, id and name behind a catalog entry, read back from the id and
- * the name `modelsFrom` gives it: a provider id may hold a `/` itself, which the
- * `<provider>/<id>` text alone cannot tell. Undefined for an entry of another shape.
- */
-/**
  * The pair pi reads a `<provider>/<id>` text as among `models` (its `get_available_models` answer): a provider id
  * may hold a `/`, and pi takes the longest provider that spells the text, as the catalog keeps. Without one, the text
  * splits at its first `/` and pi answers for that pair itself.
@@ -86,6 +81,24 @@ export function piPairOf(models: unknown, text: string): { provider: string; mod
   return best ?? (slash > 0 && slash < text.length - 1 ? { provider: text.slice(0, slash), modelId: text.slice(slash + 1) } : undefined);
 }
 
+/**
+ * pi's launch arguments for a named model. A provider id may hold a `/` and pi matches a text in part, or reads a
+ * `:<level>` tail as part of an id, so the pair the catalog lists goes as `--provider` with the whole
+ * `<provider>/<id>`, which pi then reads as that exact pair, and the level goes as `--thinking`. A model the catalog
+ * does not list (no probe yet) goes as its text alone. `default` is Boite's id for "pi keeps its own": nothing.
+ */
+export function piModelArgs(model: string | null, effort: string | null, catalog: readonly ModelInfo[] | null): string[] {
+  if (model === null || model === AGENT_OWN_MODEL) return [];
+  const listed = catalog?.find(entry => entry.id === model);
+  const pair = listed && piModelOf(listed);
+  return [...(pair ? ['--provider', pair.provider] : []), '--model', model, ...(effort === null ? [] : ['--thinking', effort])];
+}
+
+/**
+ * The pi provider, id and name behind a catalog entry, read back from the id and
+ * the name `modelsFrom` gives it: a provider id may hold a `/` itself, which the
+ * `<provider>/<id>` text alone cannot tell. Undefined for an entry of another shape.
+ */
 export function piModelOf(model: { id: string; name: string }): { provider: string; id: string; name: string } | undefined {
   for (let slash = model.id.indexOf('/'); slash > 0 && slash + 1 < model.id.length; slash = model.id.indexOf('/', slash + 1)) {
     const provider = model.id.slice(0, slash);
@@ -114,9 +127,12 @@ interface PiListing {
  * The descriptor's `default` stays first so the choice can always go back to
  * pi's own configuration, and it carries no effort of its own. An agent that
  * lists nothing, which is what an unauthenticated pi does, leaves the
- * descriptor's models standing.
+ * descriptor's models standing. With a relative configuration folder, each
+ * folder pi starts in reads its own `models.json`, so what the probe read
+ * elsewhere says nothing of a model's images (`imagesKnown` false): none is
+ * marked text-only and pi answers for each.
  */
-function modelsFrom(provider: ProviderDescriptor, listing: PiListing): ModelInfo[] {
+function modelsFrom(provider: ProviderDescriptor, listing: PiListing, imagesKnown = true): ModelInfo[] {
   const models: ModelInfo[] = [];
   // Each id's provider, so a later pair that spells the same id can take its place.
   const seen = new Map<string, string>();
@@ -142,14 +158,14 @@ function modelsFrom(provider: ProviderDescriptor, listing: PiListing): ModelInfo
       id: full,
       name: `${providerLabel(providerId)} / ${entry.name ?? id}`,
       default: current,
-      ...(Array.isArray(entry.input) && !entry.input.includes('image') ? { images: false as const } : {}),
+      ...(imagesKnown && Array.isArray(entry.input) && !entry.input.includes('image') ? { images: false as const } : {}),
       ...(entry.api === VIRTUAL_API ? { virtual: true as const } : {}),
       ...(effort === null ? {} : { effort }),
     });
   }
   // "pi default" runs the current model, so it reads images only when that model does.
   const current = listing.models.find((model) => model.provider === listing.currentProvider && `${model.provider}/${model.id ?? ''}` === listing.current);
-  if (own !== undefined && Array.isArray(current?.input) && !current.input.includes('image')) models[0]!.images = false;
+  if (imagesKnown && own !== undefined && Array.isArray(current?.input) && !current.input.includes('image')) models[0]!.images = false;
   return models.length === (own === undefined ? 0 : 1) ? provider.models : models;
 }
 
@@ -199,7 +215,7 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
     return listing;
   }, (listing) => {
     checkLevels(ctx, listing);
-    return modelsFrom(ctx.provider, listing);
+    return modelsFrom(ctx.provider, listing, !piAgentDirFollowsCwd(agentEnv(ctx.accountEnv)));
   });
 }
 

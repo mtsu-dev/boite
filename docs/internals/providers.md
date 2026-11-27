@@ -408,7 +408,8 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   as pi 1.6.1 does: the newest
   `model_change`, else the model of the newest answer, unless the change before
   that answer names a router pi still lists (`virtual: true`, from its
-  `pi-virtual` api); pi restores that provider and id as a pair, so a catalog
+  `pi-virtual` api; a router the catalog does not hold, which a folder's own
+  extension may register, leaves the answer to pi); pi restores that provider and id as a pair, so a catalog
   entry spelling the same `provider/id` for another pair says nothing of it, and
   a session model gone from the catalog resumes on pi's saved default, which
   only pi reads. A `--model` in the profile wins over the session. Without
@@ -422,7 +423,9 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   environment the driver starts pi with (`PI_CODING_AGENT_DIR` from the core's
   environment or the profile's, else `~/.pi/agent`); a relative folder is another
   one in each folder pi starts in, so neither the probe's model nor its catalog
-  says anything there, for a resumed session as for a new one, and pi decides. With a scope (the
+  says anything there, for a resumed session as for a new one, and pi decides;
+  that catalog marks no model text-only either, since the folder's own
+  `models.json` may give it images. With a scope (the
   profile's `--models`, else `enabledModels`), the saved
   `defaultProvider`/`defaultModel` wins when the scope holds it, else the first
   scoped model; without one, the saved default when available. A `--models`
@@ -1797,6 +1800,11 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   and an error notice becomes an error card that does not fail the turn.
   `setStatus`, `setWidget`, `setTitle` and `set_editor_text` get no answer and
   are not drawn.
+- A new process takes a listed model as `--provider <provider> --model
+  <provider>/<id>`, the pair the catalog names, which pi reads as that exact
+  pair rather than by a partial match, and the level as `--thinking`, never as a
+  `:<level>` tail pi could read as part of an id; a model no probe listed goes
+  as `--model` alone. Titles and `/btw` launch the same way.
 - A warm process follows a change of model or level with `set_model` and
   `set_thinking_level`. `set_model` takes the pair pi's own
   `get_available_models` spells the thread's `provider/id` with, the longest

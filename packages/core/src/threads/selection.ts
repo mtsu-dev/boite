@@ -3,12 +3,12 @@ import type { AccountId, AgentProfile, AgentSelection, ModelInfo, Protocol, Prov
 import type { Core } from '../core.ts';
 import { antigravityVariant } from '../drivers/acp/antigravity-catalog.ts';
 import { isAntigravity } from '../drivers/antigravity.ts';
-import { agentEnv as piLaunchEnv, sessionDirOf } from '../drivers/pi/mapping.ts';
+import { agentEnv as piLaunchEnv, piAgentDir, piAgentDirFollowsCwd, sessionDirOf } from '../drivers/pi/mapping.ts';
 import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
 import { piModelOf } from '../drivers/pi/models.ts';
 import { sessionModelOf } from '../drivers/pi/session-model.ts';
 import type { PiPair } from '../drivers/pi/session-model.ts';
-import { folderStartModel, piAgentDir, piAgentDirFollowsCwd, piLaunchChoices } from '../drivers/pi/start-model.ts';
+import { folderStartModel, piLaunchChoices } from '../drivers/pi/start-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
 import { profileFor } from '../providers/resolve.ts';
@@ -87,8 +87,10 @@ export function imageInputModel(
       };
       // A registered virtual model holds over the physical models it answered through. pi resumes a model gone
       // from the catalog on its saved default, outside any scope, which only it reads.
-      const router = resumed.router ? pair(resumed.router) : undefined;
-      return router?.virtual ? router : pair(resumed.model);
+      // A router the catalog does not hold may still be one pi registers in this folder (a project extension).
+      if (!resumed.router) return pair(resumed.model);
+      const router = pair(resumed.router);
+      return router === undefined ? undefined : router.virtual ? router : pair(resumed.model);
     }
     // A new session starts where the folder's own pi settings say, which the account's probe, run elsewhere, cannot
     // see. When only pi can name that model, it handles the images itself. Boite's own `default` entry names no model.
