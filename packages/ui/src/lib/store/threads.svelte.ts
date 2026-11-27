@@ -7,7 +7,7 @@ import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, mergeWorkingChildren, READING
 import { DeferredParts } from './deferred-parts';
 import { askPage, resumedPage, ThreadPreloads } from './thread-preload';
 import { markThreadOpened, openThreadRequests, paintWhileFetching, retireThreadOpen, showThreadTrace, type PreviewOrigin } from './thread-open';
-import { lightPage, NewerPages, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
+import { publishSearchJump, lightPage, NewerPages, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
 import { LiveWeights } from './live-weights.svelte';
 export type { ReadingPosition } from './reading-pages.svelte';
 import { forgetArchivedThread } from '../archive-history';
@@ -157,6 +157,7 @@ export class Threads {
     this.newer.reset();
     this.loadingThreadId = null;
     this.loadingBytes = null;
+    this.ctx.store.messageSearchJump = null;
     return ++this.openGeneration;
   }
 
@@ -344,10 +345,13 @@ export class Threads {
    * The newest visit owns the screen and subscribes before leaving the previous
    * thread. A `listed` open shares its summary with the startup list read.
    */
-  async open(threadId: ThreadId, navigate = true, options: { requests?: boolean; liveCreation?: boolean; listed?: boolean } = {}): Promise<void> {
+  async open(threadId: ThreadId, navigate = true, options: { requests?: boolean; liveCreation?: boolean; listed?: boolean; match?: { messageId: MessageId; query: string } } = {}): Promise<void> {
     const s = this.ctx.store;
-    const { delegation } = this.ctx;
-    const client = this.ctx.client;
+    if (options.match && this.openThread?.id === threadId && this.openThread.messages.some(message => message.id === options.match!.messageId)) {
+      if (navigate) s.page = this.pageOf(this.openThread);
+      publishSearchJump(s, this.openThread, options.match); return;
+    }
+    const { delegation, client } = this.ctx;
     if (!client) return;
     const preview = this.#preview && this.#preview.generation === this.openGeneration && this.openThread?.id === this.#preview.threadId ? this.#preview : null;
     const generation = this.invalidateNavigation(navigate);
@@ -356,9 +360,9 @@ export class Threads {
     const newest = (): boolean => this.ctx.currentNavigation(client, generation);
     const retire = () => retireThreadOpen(this.ctx, client, threadId, newest);
     const previousThread = preview ? preview.previous : this.openThread;
-    const memory = this.preloads.held(threadId);
-    // A press on this thread already asked for its page (`thread-preload.ts`): the open takes it over.
-    const preloaded = this.preloads.claim(threadId, client, memory);
+    // A search hit needs the page around its message; other opens can take over a press's page or held copy.
+    const memory = options.match ? undefined : this.preloads.held(threadId);
+    const preloaded = options.match ? null : this.preloads.claim(threadId, client, memory);
     let snapshot = !memory ? preloaded?.snapshot?.page : undefined;
     let held = memory ?? snapshot;
     const ready = preloaded?.thread;
@@ -379,7 +383,7 @@ export class Threads {
       this.#unloaded.add(threadId);
       this.#show({ ...row, messages: [], turns: [], commands: [], messagesBefore: null }, navigate);
     }
-    const local = !ready && !held ? (preloaded?.snapshot?.read ?? (this.snapshots.mayHold(threadId) ? this.snapshots.read(threadId) : undefined)) : undefined;
+    const local = !options.match && !ready && !held ? (preloaded?.snapshot?.read ?? (this.snapshots.mayHold(threadId) ? this.snapshots.read(threadId) : undefined)) : undefined;
     this.loadingThreadId = ready || held || local ? null : threadId;
     this.loadingBytes = this.loadingThreadId ? preloaded?.progress ?? null : null;
     const deselected = deselect ? s.selectDelegatedAgent(null) : Promise.resolve();
@@ -392,7 +396,7 @@ export class Threads {
       const bundled = s.core?.features?.threadSnapshots === true;
       // A claimed press left the previous thread, the unread mark and the requests to this open.
       const ask = preloaded ?? askPage(this.ctx, this, client, threadId, held,
-        { ...(previous && previous !== threadId && previous !== delegation.delegationSubscribedThreadId ? { previous } : {}), ...(options.requests === false ? { requests: false } : {}), markRead: true }, newest);
+        { ...(previous && previous !== threadId && previous !== delegation.delegationSubscribedThreadId ? { previous } : {}), ...(options.requests === false ? { requests: false } : {}), markRead: true }, newest, undefined, options.match?.messageId);
       const { subscribed, fetched } = ask;
       paintWhileFetching(local, fetched, newest, page => {
         snapshot = page;
@@ -433,6 +437,7 @@ export class Threads {
 
       if (options.liveCreation && this.openThread?.id === threadId) mergeCreationSnapshot(thread, this.openThread);
       this.#unloaded.delete(threadId);
+      if (options.match) publishSearchJump(s, thread, options.match);
       const shown = this.openThread?.id === threadId && (ready || held) ? this.openThread : held;
       if (shown && thread.messagesAfter === undefined) delete shown.messagesAfter;
       this.#show(shown ? reconcileThread(shown, thread) : thread, navigate, true);

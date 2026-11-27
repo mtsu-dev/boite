@@ -554,6 +554,7 @@ export class Core {
     this.worktreeCleanup = new WorktreeCleanup(this);
     this.worktreeCleanup.start();
     this.pullRequestWatches.start();
+    this.workforce.triggers.start();
     this.delegation.retirements.sweep();
     this.logs.record('info', `Core ${this.version} started in ${Date.now() - this.startedAt} ms, ${process.platform} ${process.arch}, Bun ${process.versions.bun ?? 'unknown'}`, {
       source: 'core', event: 'core.started', durationMs: Date.now() - this.startedAt,
@@ -599,7 +600,7 @@ export class Core {
       version: this.version,
       ...(this.bundleHash ? { bundleHash: this.bundleHash } : {}),
       protocolVersion: PROTOCOL_VERSION,
-      features: { threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, composerPages: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, threadListPages: true, streamChannels: true, browserStream: true, diffOnlyToolParts: true },
+      features: { threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, composerPages: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, threadListPages: true, messageSearch: true, streamChannels: true, browserStream: true, diffOnlyToolParts: true },
       coreId: this.coordination.card().coreId,
       hostname: machineName(),
       os: currentOs(),
@@ -636,6 +637,7 @@ export class Core {
     void this.mergedPrAsk.close();
     void this.worktreeCleanup.close();
     void this.pullRequestWatches.close();
+    this.workforce.triggers.close();
     this.group.beginClose();
     this.contacts.beginClose();
     this.sharedProjects.beginClose();

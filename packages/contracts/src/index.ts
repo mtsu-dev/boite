@@ -77,6 +77,7 @@ export * from './prompt-suggestions';
 export * from './usage';
 export * from './turns';
 export * from './messages';
+export * from './message-search';
 export * from './permissions';
 export * from './questions';
 export * from './secrets';

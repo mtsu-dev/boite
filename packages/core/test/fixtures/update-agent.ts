@@ -57,7 +57,7 @@ else if (command === 'check') {
   console.log('updated to 1.2.0');
 } else if (command === 'update-stuck') {
   // What `opencode upgrade` prints through @clack/prompts, colors and ASCII fallback included.
-  for (const line of ['\x1b[90m┌\x1b[39m  Upgrade', '│', '●  Using method: npm', '│', `●  From ${installed} → 1.1.0`, '│', '◇  Upgrade failed', '│', 'x  Upgrade failed for npm (exit code 1).', '│', '—  Done']) console.log(line);
+  for (const line of ['\x1b[90m┌\x1b[39m  Upgrade', '│', '●  Using method: npm', '│', `●  From ${installed} → 1.1.0`, '│', '◇  Upgrade failed', '│', 'x  Upgrade failed for npm (exit code 1).', '│', '\u2014  Done']) console.log(line);
 } else if (command === 'update-broken') {
   console.log('Using global installation update method...');
   console.error('error: the release server refused the download');

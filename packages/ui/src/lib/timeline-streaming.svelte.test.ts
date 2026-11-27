@@ -1,8 +1,28 @@
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import { expect, test } from 'vitest';
 import type { Message } from '@boite/contracts';
 import { flushSync, mount, unmount } from 'svelte';
 import MessageOutline from '../components/MessageOutline.svelte';
+import { TimelineRows } from './timeline-rows';
 import { ReactiveTimelineRows } from './timeline-rows.svelte';
+
+function forceGc(): () => void {
+  v8.setFlagsFromString('--expose_gc');
+  const fn = vm.runInNewContext('gc');
+  expect(typeof fn).toBe('function');
+  return fn as () => void;
+}
+
+async function waitForCollection(ref: WeakRef<object>): Promise<boolean> {
+  const gc = forceGc();
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    gc();
+    if (ref.deref() === undefined) return true;
+  }
+  return ref.deref() === undefined;
+}
 
 function answer(index: number): Message {
   return { id: `m-${index}`, turnId: `t-${index}`, threadId: 'thread', role: 'assistant', parts: [{ type: 'text', text: 'Work done' }], state: 'complete', createdAt: index };
@@ -69,4 +89,84 @@ test('the outline indexes a prompt appended after history without rereading prio
   } finally {
     await unmount(outline);
   }
+});
+
+test('unmounting the outline releases its reactive links to a long-lived message list', async () => {
+  const messages = $state<Message[]>(Array.from({ length: 8 }, (_, index) => ({
+    ...answer(index),
+    role: index % 2 === 0 ? 'user' : 'assistant',
+  })));
+  let ref!: WeakRef<object>;
+  const mountAndLeave = async () => {
+    const sentinel = { tag: 'unmounted-outline' };
+    ref = new WeakRef(sentinel);
+    const outline = mount(MessageOutline, {
+      target: document.body,
+      props: {
+        get messages() { return messages; },
+        active: null,
+        jump: () => { void sentinel; },
+        hasOlder: false,
+        loading: false,
+        loadOlder: () => {},
+      },
+    });
+    flushSync();
+    expect(document.querySelector('[data-testid=message-outline]')?.getAttribute('data-message-count')).toBe('4');
+    await unmount(outline);
+    flushSync();
+  };
+  await mountAndLeave();
+  expect(await waitForCollection(ref)).toBe(true);
+});
+
+test('streaming parts do not recreate memos or retain them after the timeline stops', async () => {
+  let memos = 0;
+  const rows = new TimelineRows(read => {
+    memos++;
+    return read;
+  });
+  const live: Message = { ...answer(0), state: 'streaming' };
+  const list = [live];
+  rows.prepare(list);
+  const afterPrepare = memos;
+  expect(afterPrepare).toBeGreaterThan(0);
+  rows.build(list);
+  expect(memos).toBe(afterPrepare);
+  for (let index = 0; index < 10; index++) {
+    live.parts.push({ type: 'text', text: `Part ${index}` });
+    rows.prepare(list);
+    rows.build(list);
+  }
+  expect(memos).toBe(afterPrepare);
+
+  // Also verify real Svelte deriveds detach cleanly from a shared reactive message list.
+  const shared = $state<Message[]>([{ ...answer(0), state: 'streaming' }]);
+  let ref!: WeakRef<object>;
+  const runAndStop = () => {
+    const sentinel = { id: 'mem-1', messageId: shared[0]!.id, partIndex: 0, kind: 'remembered', text: 'note', at: 1 } as never;
+    const memory = new Map([[shared[0]!.id, [sentinel]]]);
+    ref = new WeakRef(sentinel);
+    let runs = 0;
+    let stop: (() => void) | null = $effect.root(() => {
+      const timeline = new ReactiveTimelineRows(() => ({ timeline: shared, memory }));
+      $effect(() => {
+        void timeline.build();
+        runs++;
+      });
+    });
+    flushSync();
+    const initialRuns = runs;
+    expect(initialRuns).toBeGreaterThan(0);
+    for (let index = 0; index < 10; index++) {
+      shared[0]!.parts.push({ type: 'text', text: `Chunk ${index}` });
+      flushSync();
+    }
+    expect(runs).toBeGreaterThan(initialRuns);
+    stop();
+    stop = null;
+    flushSync();
+  };
+  runAndStop();
+  expect(await waitForCollection(ref)).toBe(true);
 });

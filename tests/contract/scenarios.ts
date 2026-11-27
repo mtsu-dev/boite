@@ -15,6 +15,7 @@ import { TEAM_SCENARIOS } from './teams.ts';
 import { COUNCIL_SCENARIOS } from './council.ts';
 import { STATE_SCENARIOS } from './state.ts';
 import { PRESENCE_SCENARIOS } from './presence.ts';
+import { MESSAGE_SEARCH_SCENARIOS } from './message-search.ts';
 import { TRANSCRIPT_SCENARIOS } from './transcripts.ts';
 import {
   GROUP_INVITE_PREFIX,
@@ -256,6 +257,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...COUNCIL_SCENARIOS,
   ...STATE_SCENARIOS,
   ...PRESENCE_SCENARIOS,
+  ...MESSAGE_SEARCH_SCENARIOS,
   ...TRANSCRIPT_SCENARIOS,
   'worktree recovery paths are visible to the owner only': async env => {
     same(await env.call('worktrees.recoveries', {}), [], 'the empty recovery inventory');

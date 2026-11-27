@@ -51,31 +51,32 @@ Engine is Chrome.
 
 ## Watch the agent's pages
 
-1. Open the panel's Browser surface. When the agent opens a tab in the
-   conversation on screen, the panel opens on it by itself, except on a phone.
-2. On most clients a card says "This agent controls a browser on" and the
-   machine's name. Press Show. Nothing is captured or sent before that.
-3. Press Hide in the tab strip to cover the page again.
+For the conversation you're viewing, **Boite browser in the background**
+appears above the conversation list while the agent has tabs open. Select it
+to see the active tab. The agent can also show a tab when it has something
+to share or needs you to act on the page.
 
-The desktop app on the agent's own machine shows the page at once, with no
-card. On a phone, the header's Browser button opens it, and Chat or Back
-returns to the conversation without closing any tab.
+You can also open the panel's Browser surface and press Show. Press Hide to
+cover a remote page again. On the agent's own desktop app, the page appears
+as soon as you open the Browser surface. On a phone, Back returns to the
+conversation and leaves the tabs open.
 
 ## Take over the page
 
 - On a computer, click the page, then type. Drag to select, double-click a
   word, scroll with the wheel. Copy, cut and paste use your own clipboard.
-- On a touch screen, tap to click and drag to scroll. Type in the field under
-  the page. Double-tap a word, then press Copy to copy it.
+- On a touch screen, tap to click and drag to scroll. Use the keyboard button
+  to show or hide the typing controls. Double-tap a word, then press Copy.
 - A list opens on your screen, and your pick reaches the page.
 - Press **+** to open a tab of your own, then enter an address. The agent sees
   it and can use it. A tab's close button closes it, the agent's tabs
   included.
-- Display sets the page size: Phone, Tablet or your own width and height. The
-  agent sees the same size. Fit this screen goes back to your view's size.
+- The preview fits your screen. Use Display to change the shared page size
+  to Phone, Tablet or your own dimensions. The agent sees that page size too.
 
 Some sites still show a captcha. Solve it in the panel: clicks and drags reach
-the page as you make them.
+the page as you make them. The panel reports when the page is still loading,
+the server returns an HTTP error or a script fails to load.
 
 ## Sign-ins and profiles
 
@@ -83,6 +84,11 @@ The agent's sign-ins live on the machine that runs the agent, not on the
 device you watch from. Each browser profile keeps its own cookies and
 sign-ins after a restart. A private tab keeps nothing once the last private
 tab closes.
+
+The cookies pill in the tab bar names the active profile. From an owner
+client, choose another profile in that pill to reload the address in the
+same tab with that profile's cookies. Paired devices can see the profile
+used by the tab.
 
 To sign the agent in to a site:
 

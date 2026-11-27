@@ -15,6 +15,7 @@ import { AgentsRepository } from './repository.ts';
 import { AgentEntrustments } from './entrust.ts';
 import { ResidentAgents } from './resident.ts';
 import { AgentRoutines } from './routines.ts';
+import { AgentTriggers } from './triggers.ts';
 import { AgentProjects } from './projects.ts';
 import { AgentNewSessions } from './new-session.ts';
 import { GroupBots, remoteGrant } from './group-bots.ts';
@@ -68,6 +69,7 @@ interface ContextSent extends Partial<ContextSnapshot> { hash: string; sessionGe
 export class AgentStore {
   readonly resident: ResidentAgents;
   readonly routines: AgentRoutines;
+  readonly triggers: AgentTriggers;
   readonly records: AgentsRepository;
   readonly entrusted: AgentEntrustments;
   readonly projects: AgentProjects;
@@ -96,6 +98,7 @@ export class AgentStore {
   readonly #off: () => void;
   constructor(readonly core: Core) {
     this.records = new AgentsRepository(core.journal); this.resident = new ResidentAgents(core, this.records); this.routines = new AgentRoutines(core);
+    this.triggers = new AgentTriggers(core);
     this.pictures = new AgentPictures(core.dataDir, () => this.records.list('profile').map(agent => agent.avatar));
     // Stewards became agents with projects; their grants have nothing left to grant.
     core.journal.db.query("DELETE FROM settings WHERE key LIKE 'steward:%'").run();
@@ -137,6 +140,7 @@ export class AgentStore {
     });
   }
   close(): void {
+    this.triggers.close();
     this.#off(); this.projects.close(); this.group.close(); this.groupHost.close(); this.memory.close(); this.settingCards.close();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
@@ -347,6 +351,9 @@ export class AgentStore {
     }
     if (saved.status === 'archived') this.core.agentRuntime.forget(saved.id);
     if (previous.status !== saved.status) this.resident.enforce();
+    if (previous.status !== saved.status || JSON.stringify(previous.projectIds ?? []) !== JSON.stringify(saved.projectIds ?? [])) {
+      this.core.bus.whenCommitted(() => this.triggers.syncWatches(saved.id));
+    }
     if ((previous.projectIds ?? []).some(id => !(saved.projectIds ?? []).includes(id))) this.projects.forget(saved);
     if (previous.instructions !== saved.instructions) this.#wakeSoon(saved, 'instructions', 'Instructions changed', INSTRUCTIONS_PROMPT);
   }
@@ -664,6 +671,7 @@ export class AgentStore {
       profiles,
       sessions: sessions.filter(s => mine(s.agentId)),
       routines: routines.filter(r => mine(r.agentId)),
+      triggers: this.records.list('trigger').filter(t => mine(t.agentId)),
       status: profiles.map(agent => this.status(agent, sessions, routines)),
       watches: profiles.filter(agent => own !== null || desk === undefined || agent.id === desk).flatMap(agent => this.#watchesOf(agent.id)),
       accountGrants: own ? [] : this.resident.grants(),
@@ -699,6 +707,10 @@ export function registerPersistentAgents(core: Core): void {
   core.router.register('agents.routine.save', p => store.routines.save(p));
   core.router.register('agents.routine.remove', p => store.routines.remove(p));
   core.router.register('agents.routine.run', p => store.routines.run(p));
+  core.router.register('agents.trigger.save', (p, ctx) => store.triggers.save(p, ctx.connection.encrypted === true));
+  core.router.register('agents.trigger.remove', p => store.triggers.remove(p));
+  core.router.register('agents.trigger.test', p => store.triggers.test(p));
+  core.router.register('agents.trigger.rotateSecret', (p, ctx) => store.triggers.rotateSecret(p, ctx.connection.encrypted === true));
   core.router.register('agents.watch', p => store.watch(p));
   core.router.register('agents.event', (p, ctx) => store.outsideEvent(p, ctx.connection));
   core.router.register('agents.limits.set', p => store.setLimits(p));

@@ -28,10 +28,23 @@ test('rich markdown supports local paths, spaces, line numbers, file URIs and ba
   expect(html).toContain('data-file-line="3"');
   expect(html).toContain('href="https://example.test/a_(b)"');
   expect(html).toContain('href="https://example.test/page"');
-  expect(html).toContain('<code><a href="#file" data-file-path="src/main.ts" data-file-line="8">');
+  // A path in code is a chip of its own, never a link inside a code span.
+  expect(html).toContain('<a href="#file" class="file-chip" data-file-path="src/main.ts" data-file-line="8"');
+  expect(html).not.toContain('<code>');
   expect(renderMarkdown('[file](src/main.ts)')).not.toContain('data-file-path');
   expect(renderMarkdown('Read src/main.ts:4 next.', true)).toContain('data-file-path="src/main.ts" data-file-line="4"');
   expect(renderMarkdown('# Project files\n\n[Jump](#project-files)', true)).toContain('id="project-files"');
+});
+
+test('a slash inside a word starts no absolute path, so the text reads as written', () => {
+  for (const text of ['[image image/png, 329 bytes]', 'shows cwd/project/branch.', '(state/completion/pause/archive)', 'Task/shared only', '`--max`/`--crop`']) {
+    const html = renderMarkdown(text, true);
+    expect(html, text).not.toContain('data-file-path');
+  }
+  // A real absolute path after a space, a quote or a bracket stays a chip.
+  for (const text of ['open /etc/hosts', 'open "/etc/hosts"', '(/etc/hosts)', 'run C:\\dev\\game.exe']) {
+    expect(renderMarkdown(text, true), text).toContain('data-file-path');
+  }
 });
 
 test('a bare local address with its port opens in the browser instead of naming a file', () => {

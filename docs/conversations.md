@@ -97,6 +97,17 @@ permissions stay, and so does the button's number. On a phone, or without a
 middle button, Mark all as read at the top of Activity clears the finished
 threads along with failures and stops.
 
+## Find conversations and messages
+
+Press Ctrl+K (Cmd+K on Mac). On a phone, tap the magnifying glass in the
+thread list and choose Search all. Search by thread title, project, model,
+branch or pull request number. For example,
+type `opus orchard` to find Orchard conversations that used Opus.
+
+Mentions in messages shows the best matching message in each conversation,
+including archives. Put a phrase in double quotes to find its words together.
+Choose a mention to open the conversation at that message.
+
 ## Drafts without a project
 
 A new device opens a draft. Drafts live in `Documents/Boite`, and each
@@ -193,9 +204,11 @@ above the message box or the bottom tabs.
 
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up
   later; the toast offers Undo, or press Ctrl+Z.
-- Archived threads is a section of Settings > General. Filter, a project's
-  menu and the command palette open it there; from a project's menu it lists
-  that project's threads until you choose All projects. Each row shows the
+- A project's archived threads open under its card from the archive count in
+  its heading, beside the Done count, on desktop and phone, ten rows at a time.
+  Select a row to read the conversation.
+- Archived threads is also a section of Settings > General, for every project.
+  Filter and the command palette open it there. Each row shows the
   project, why the thread was archived and when it will be deleted, with
   Restore and Delete. Select a title to read the conversation. Restore it from
   the row or from the open conversation before sending a message. Restoring brings back your message

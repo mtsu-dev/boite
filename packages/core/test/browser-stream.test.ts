@@ -95,6 +95,32 @@ real('a viewer is pushed the page then its pictures on a socket of its own, at t
   expect(viewer.closed).toBe(BrowserStreamClose.TabGone);
 }, 120_000);
 
+real('an active stream reconnects and a pending stream opens on the new profile', async () => {
+  const { harness, owner, agent, threadId } = browserFixture;
+  await owner.call('threads.subscribe', { threadId });
+  const { tabId } = await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });
+  await evaluate("document.title = 'Before switching'", tabId);
+  const offer = async () => {
+    const answer = await owner.call('browser.remoteStream', { threadId, tabId, maxWidth: 400 });
+    if (!('path' in answer)) throw new Error('a tab of the core\'s own Chromium is streamed');
+    return harness.url + answer.path;
+  };
+  const viewer = watch(await offer());
+  try {
+    await waitFor(() => viewer.pictures.length > 0, 20_000);
+    expect(viewer.pages[0]).toMatchObject({ tabId, title: 'Before switching' });
+    const pending = await offer();
+    await owner.call('browser.command', { threadId, tabId, action: { kind: 'profile-switch', profile: 'private' } });
+    await waitFor(() => viewer.closed !== undefined, 10_000);
+    expect(viewer.closed).toBe(BrowserStreamClose.Reconnect);
+    const replacement = watch(pending);
+    try {
+      await waitFor(() => replacement.pictures.length > 0 || replacement.closed !== undefined, 20_000);
+      expect(replacement.pictures[0]?.page).toMatchObject({ tabId, title: 'Fixture' });
+    } finally { replacement.socket.close(); }
+  } finally { viewer.socket.close(); }
+}, 90_000);
+
 real('a moving page comes at the pace of the acknowledgements, a viewer that holds one back is sent nothing more, and the stream ends with its connection', async () => {
   const { harness, agent, threadId } = browserFixture;
   const { tabId } = await agent.call('browser.command', { threadId, action: { kind: 'open', url: url('/moving') } });

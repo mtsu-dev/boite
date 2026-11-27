@@ -3,7 +3,7 @@ mod paths;
 mod local_paths;
 #[cfg(unix)]
 pub(crate) mod file_identity;
-pub(crate) use local_paths::require_local_path;
+pub(crate) use local_paths::require_client_path;
 pub(crate) use paths::default_data_dir;
 
 #[cfg(target_os = "macos")]

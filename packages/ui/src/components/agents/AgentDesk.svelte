@@ -20,6 +20,7 @@
   import ProviderLogo from '../ProviderLogo.svelte';
   import AgentBrainEditor from './AgentBrainEditor.svelte';
   import AgentRoutines from './AgentRoutines.svelte';
+  import AgentTriggers from './AgentTriggers.svelte';
   import BotWorkList from './BotWorkList.svelte';
   import SurfaceHead from '../SurfaceHead.svelte';
   import './agents.css';
@@ -64,7 +65,16 @@
   const busy = $derived(noConversationBeside && standing !== 'idle' && standing !== 'archived');
 
   // The snapshot carries the open agent's desk only; the Agents page asks for it too, this asks wherever the desk is drawn.
-  $effect(() => { const id = agent?.id; if (id) untrack(() => view.showDesk(id)); });
+  let activeAgentId = '';
+  $effect(() => {
+    const id = agent?.id;
+    if (!id) return;
+    untrack(() => {
+      if (activeAgentId && activeAgentId !== id) view.error = '';
+      activeAgentId = id;
+      view.showDesk(id);
+    });
+  });
 
   /** Its brain files, kept beside the snapshot and read again when the agent changes. */
   let brain = $state<AgentBrain | null>(null);
@@ -140,10 +150,13 @@
           </section>
         {/if}
 
-        {#if view.error}<div class="desk-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} /></div>{/if}
+        {#if view.error}<div class="desk-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} ondismiss={() => { view.error = ''; }} /></div>{/if}
 
         <section class="desk-card desk-schedule" data-testid="desk-schedule">
-          <AgentRoutines {view} agentId={agent.id} compact />
+          {#key agent.id}
+            <AgentRoutines {view} agentId={agent.id} compact />
+            <AgentTriggers {view} agentId={agent.id} compact />
+          {/key}
         </section>
       </div>
 
