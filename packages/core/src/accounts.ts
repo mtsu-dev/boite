@@ -328,9 +328,18 @@ export class AccountStore {
    * agent's own and lands in the account's directory, whatever the proxy is.
    */
   accountEnv(account: Account, provider: ProviderDescriptor, thread: Pick<ThreadSummary, 'parentThreadId' | 'agentSessionId'> = {}, { gateway = true }: { gateway?: boolean } = {}): Record<string, string> {
+    if (profileFor(provider) === undefined) return {};
+    this.prepare(account, provider);
+    const env = this.profileEnv(account, provider);
+    if (provider.quirks?.includes('antigravity') === true) Object.assign(env, antigravityCertificates(currentOs(), process.env, existsSync));
+    // OpenCode 2's own background compaction follows the thread type, off included; the driver adds the limit once it knows the window.
+    return openCodeBackgroundCompaction(provider.id, effectiveCompaction(this.#core.settings.get(), thread).backgroundCompaction, { ...env, ...(gateway ? subscriptionProxyEnv(this.#core, provider) : {}) });
+  }
+
+  /** The profile's own variables for this account, `{isolationDir}` filled in; reads and writes nothing. */
+  profileEnv(account: Account, provider: ProviderDescriptor): Record<string, string> {
     const profile = profileFor(provider);
     if (profile === undefined) return {};
-    this.prepare(account, provider);
     const isolationDir = account.isolationDir;
     const env: Record<string, string> = { ...profile.env };
     if (isolationDir !== null) {
@@ -341,9 +350,7 @@ export class AccountStore {
     for (const [key, value] of Object.entries(env)) {
       env[key] = isolationDir === null ? value : value.split('{isolationDir}').join(isolationDir);
     }
-    if (provider.quirks?.includes('antigravity') === true) Object.assign(env, antigravityCertificates(currentOs(), process.env, existsSync));
-    // OpenCode 2's own background compaction follows the thread type, off included; the driver adds the limit once it knows the window.
-    return openCodeBackgroundCompaction(provider.id, effectiveCompaction(this.#core.settings.get(), thread).backgroundCompaction, { ...env, ...(gateway ? subscriptionProxyEnv(this.#core, provider) : {}) });
+    return env;
   }
 
   /**

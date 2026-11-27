@@ -122,6 +122,53 @@ test('pi default refuses images while pi itself runs a text-only model', async (
   expect(await images()).toBe(true);
 });
 
+test('pi default reads the folder as the launch decides: its approval flags, its scope and its configuration folder', async () => {
+  process.env['PI_FAKE_CURRENT'] = 'plain';
+  process.env['PI_FAKE_LITERAL'] = '1';
+  const { client, threadId } = await startThread();
+  const { accountId, cwd, projectId } = harness!.core.threads.require(threadId);
+  // The profile, not the core's own environment, names where this pi keeps its settings.
+  process.env['PI_CODING_AGENT_DIR'] = join(harness!.dataDir, 'not-this-pi');
+  const agentDir = join(harness!.dataDir, 'profile-pi');
+  mkdirSync(agentDir, { recursive: true });
+  mkdirSync(join(cwd, '.pi'), { recursive: true });
+  writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(cwd)]: true }));
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-a', defaultModel: 'smart' }));
+  const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+  const original = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { env?: Record<string, string>; launch: { args: string[] } }> };
+  const launch = async (args: string[]) => {
+    const descriptor = structuredClone(original);
+    for (const profile of Object.values(descriptor.profiles)) {
+      profile.env = { ...profile.env, PI_CODING_AGENT_DIR: agentDir };
+      profile.launch.args.push(...args);
+    }
+    writeFileSync(descriptorFile, JSON.stringify(descriptor));
+    expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    return (await client.call('threads.capabilities', { threadId })).images.supported;
+  };
+  expect(await launch([])).toBe(true);
+  // `--no-approve` keeps the folder's settings out whatever `trust.json` says; the last flag wins.
+  expect(await launch(['--no-approve'])).toBe(false);
+  expect(await launch(['-na', '--approve'])).toBe(true);
+  // A `--models` with no pattern left (descriptors refuse an empty argument) clears the saved scope rather than falling back to it.
+  writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ enabledModels: ['fake-b/plain'] }));
+  expect(await launch(['--models', ' , '])).toBe(true);
+  expect(await launch([])).toBe(false);
+  rmSync(join(agentDir, 'settings.json'));
+  // A literal id that ends like a thinking level is that model, and Boite's `default` entry is none of pi's.
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['fake-a/smart:high'] }));
+  expect(await launch([])).toBe(false);
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['default'] }));
+  expect(await launch([])).toBe(true);
+  // A draft names an account of the provider it drafts on.
+  writeFileSync(join(harness!.dataDir, 'providers', 'pi-other.json'), JSON.stringify({ ...original, id: 'pi-other', name: 'Other pi', shortName: 'PiOther' }));
+  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+  const other = await client.call('accounts.add', { providerId: 'pi-other', label: 'Other', useDefaultLocation: true });
+  expect((await rejection(client.call('drafts.images', { projectId: projectId!, providerId: 'pi-fake', accountId: other.id, model: null }))).reason)
+    .toMatchObject({ rpc: { message: `drafts.images.accountId: ${other.id} is an account of pi-other, not pi-fake` } });
+});
+
 test('pi default follows the model a resumed session restores, not the one pi starts on', async () => {
   const { client, threadId } = await startThread(undefined, 'fake-b/plain');
   expect((await (await startTurn(client, threadId, 'Remember this')).finished).status).toBe('done');
@@ -247,6 +294,7 @@ afterEach(async () => {
   delete process.env['PI_FAKE_CURRENT'];
   delete process.env['PI_CODING_AGENT_DIR'];
   delete process.env['PI_FAKE_VIRTUAL'];
+  delete process.env['PI_FAKE_LITERAL'];
   if (open !== null) await open.stop();
 });
 

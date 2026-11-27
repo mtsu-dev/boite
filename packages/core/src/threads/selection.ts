@@ -6,10 +6,10 @@ import { isAntigravity } from '../drivers/antigravity.ts';
 import { sessionDirOf } from '../drivers/pi/mapping.ts';
 import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
 import { sessionModelOf } from '../drivers/pi/session-model.ts';
-import { folderStartModel, piAgentDir } from '../drivers/pi/start-model.ts';
+import { folderStartModel, piAgentDir, piLaunchChoices } from '../drivers/pi/start-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
-import { profileFor } from '../providers/resolve.ts';
+import { agentEnv, profileFor } from '../providers/resolve.ts';
 import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 
 /** The protocols whose models come from the agent, not from the descriptor. */
@@ -72,8 +72,10 @@ export function imageInputModel(
     if (found) return found;
     // A new session starts where the folder's own pi settings say, which the account's probe, run elsewhere, cannot
     // see. When only pi can name that model, it handles the images itself.
-    const scope = args.includes('--models') ? args[args.indexOf('--models') + 1]?.split(',').map(pattern => pattern.trim()).filter(Boolean) ?? null : null;
-    const start = account ? folderStartModel(piAgentDir(account.isolationDir), cwd, (probed ?? saved?.models ?? null)?.map(entry => entry.id) ?? null, scope) : 'account';
+    // pi reads its settings where the environment it starts with says; Boite's own `default` entry names no model.
+    const catalog = (probed ?? saved?.models ?? null)?.filter(entry => entry.id !== AGENT_OWN_MODEL).map(entry => entry.id) ?? null;
+    const agentDir = account ? piAgentDir(agentEnv(provider, core.accounts.profileEnv(account, provider)), cwd) : null;
+    const start = account && agentDir ? folderStartModel(agentDir, cwd, catalog, piLaunchChoices(args)) : 'account';
     if (start === null) return undefined;
     if (start !== 'account') return listed(start);
   }

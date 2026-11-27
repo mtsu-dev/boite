@@ -1,6 +1,6 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { isRecord } from '../stdio.ts';
 import { piProcessCwd } from './session-model.ts';
 
@@ -9,17 +9,38 @@ const CHOOSING = ['enabledModels', 'defaultProvider', 'defaultModel'] as const;
 /** pi 1.6.1's thinking levels, which a scoped pattern may end with (`provider/id:high`). */
 const LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 
-/** Where pi keeps an account's settings and trust decisions: its isolation directory, or pi's own. */
-export function piAgentDir(isolationDir: string | null): string {
-  return isolationDir ?? (process.env['PI_CODING_AGENT_DIR'] || join(homedir(), '.pi', 'agent'));
+/** What the profile's own arguments decide for pi 1.6.1 (cli/args.js): the last flag of each kind wins. */
+export interface PiLaunchChoices {
+  /** `--models`, split on commas without empty patterns: an empty list clears the scope. Null when absent. */
+  scope: string[] | null;
+  /** `--approve`/`-a` trusts the folder, `--no-approve`/`-na` does not, before `trust.json`. */
+  trust: boolean | null;
+}
+
+export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
+  const choices: PiLaunchChoices = { scope: null, trust: null };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--models' && i + 1 < args.length) choices.scope = args[++i]!.split(',').map(pattern => pattern.trim()).filter(pattern => pattern.length > 0);
+    else if (arg === '--approve' || arg === '-a') choices.trust = true;
+    else if (arg === '--no-approve' || arg === '-na') choices.trust = false;
+  }
+  return choices;
+}
+
+/** Where pi keeps an account's settings and trust decisions, from the environment it starts with. */
+export function piAgentDir(env: Record<string, string | undefined>, cwd: string): string {
+  const home = env['HOME'] || homedir();
+  const configured = env['PI_CODING_AGENT_DIR'] || join(home, '.pi', 'agent');
+  return resolve(cwd, configured === '~' ? home : configured.startsWith('~/') ? join(home, configured.slice(2)) : configured);
 }
 
 /**
  * The model pi 1.6.1 starts a new session on in `cwd`, without `--model`, as far
  * as the folder changes it. pi reads `<cwd>/.pi/settings.json` over the account's
- * `settings.json` only for a trusted folder: a decision in the account's
- * `trust.json` for it or a parent, else `defaultProjectTrust: "always"` (in RPC
- * mode, "ask" means no). With a scope (`--models`, else `enabledModels`), the
+ * `settings.json` only for a trusted folder: the profile's `--approve` or
+ * `--no-approve`, else a decision in the account's `trust.json` for it or a
+ * parent, else `defaultProjectTrust: "always"` (in RPC mode, "ask" means no). With a scope (`--models`, else `enabledModels`), the
  * saved `defaultProvider`/`defaultModel` wins when the scope holds it, else the
  * first scoped model (main.js `buildSessionOptions`); without one,
  * `findInitialModel` takes the saved default when available.
@@ -30,19 +51,19 @@ export function piAgentDir(isolationDir: string | null): string {
  * only pi can: a glob or fuzzy pattern, a model missing from the catalog, or no
  * catalog yet.
  */
-export function folderStartModel(agentDir: string, cwd: string, catalog: readonly string[] | null, cliScope: readonly string[] | null = null): string | 'account' | null {
+export function folderStartModel(agentDir: string, cwd: string, catalog: readonly string[] | null, launch: PiLaunchChoices = { scope: null, trust: null }): string | 'account' | null {
   const global = settingsAt(join(agentDir, 'settings.json')) ?? {};
   const folder = piProcessCwd(cwd);
-  const project = trusted(agentDir, folder, global) ? settingsAt(join(folder, '.pi', 'settings.json')) : null;
+  const project = (launch.trust ?? trusted(agentDir, folder, global)) ? settingsAt(join(folder, '.pi', 'settings.json')) : null;
   if (!project) return 'account';
   const value = (key: typeof CHOOSING[number]) => project[key] !== undefined ? project[key] : global[key];
   const same = (key: typeof CHOOSING[number]) => JSON.stringify(value(key)) === JSON.stringify(global[key]);
-  if (CHOOSING.every(same) || (cliScope?.length && same('defaultProvider') && same('defaultModel'))) return 'account';
+  if (CHOOSING.every(same) || (launch.scope !== null && same('defaultProvider') && same('defaultModel'))) return 'account';
   if (!catalog) return null;
   const provider = value('defaultProvider');
   const model = value('defaultModel');
   const named = typeof provider === 'string' && typeof model === 'string' ? `${provider}/${model}` : null;
-  const patterns = cliScope?.length ? cliScope : value('enabledModels');
+  const patterns = launch.scope ?? value('enabledModels');
   if (Array.isArray(patterns) && patterns.length > 0) {
     const scope = patterns.map(pattern => typeof pattern === 'string' ? exactModel(pattern, catalog) : null);
     if (scope.includes(null)) return null;
@@ -57,6 +78,7 @@ export function folderStartModel(agentDir: string, cwd: string, catalog: readonl
  * model the catalog lacks, which pi would skip.
  */
 function exactModel(pattern: string, catalog: readonly string[]): string | null {
+  if (catalog.includes(pattern)) return pattern;
   if (/[*?[]/.test(pattern)) return null;
   const colon = pattern.lastIndexOf(':');
   const base = colon > 0 && LEVELS.has(pattern.slice(colon + 1)) ? pattern.slice(0, colon) : pattern;

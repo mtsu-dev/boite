@@ -412,12 +412,18 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   a session to resume, pi starts where the folder's own settings say, which the
   account's probe, run in a temporary folder, never sees
   (`drivers/pi/start-model.ts`). pi reads `<folder>/.pi/settings.json` over the
-  account's `settings.json` only for a trusted folder: a decision for it or a
+  account's `settings.json` only for a trusted folder: the profile's
+  `--approve` or `--no-approve` (the last one wins), else a decision for it or a
   parent in the account's `trust.json`, else `defaultProjectTrust: "always"`; in
-  RPC mode "ask" means no. Then the first available model `enabledModels` names
-  wins, else `defaultProvider` and `defaultModel` when available. Boite follows
-  that with the account's catalog, a leading BOM and an empty `enabledModels`
-  included. When the folder changes nothing, the probe's `default` answers; when
+  RPC mode "ask" means no. Both files sit in the configuration folder the
+  launch environment names (`PI_CODING_AGENT_DIR`, the profile's included, else
+  `~/.pi/agent`). With a scope (the profile's `--models`, else `enabledModels`),
+  the saved `defaultProvider`/`defaultModel` wins when the scope holds it, else
+  the first scoped model; without one, the saved default when available. A
+  `--models` left with no pattern clears the scope. Boite follows that with the
+  account's catalog (a literal id before a `:level` suffix, never its own
+  `default` entry), a leading BOM and an empty `enabledModels` included. When
+  the folder changes nothing, the probe's `default` answers; when
   only pi can name the model (a glob or fuzzy pattern, a model missing from the
   catalog), Boite lets the image through and pi replaces it if that model reads
   none. A goal or loop sent on another account starts in the same folder. On an
