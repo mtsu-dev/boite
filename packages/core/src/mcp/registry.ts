@@ -114,6 +114,10 @@ export class McpRegistry {
     return { removed: true };
   }
 
+  close(): void {
+    for (const probe of this.#probes) probe.abort();
+  }
+
   revokeManaged(): void {
     const reason = this.core.policy.refusal('mcp');
     for (const probe of this.#probes) probe.abort(reason);
@@ -158,7 +162,7 @@ export class McpRegistry {
     for (const [key, value] of Object.entries(server.transport === 'http' ? secretHeaders : secretEnv)) {
       // Fetch trims header values before sending them upstream.
       const sent = server.transport === 'http' ? value.trim() : value;
-      const credential = key.toLowerCase() === 'authorization' ? sent.replace(/^(?:bearer|basic)\s+/i, '') : sent;
+      const credential = key.toLowerCase() === 'authorization' ? sent.replace(/^[A-Za-z][A-Za-z0-9+.-]*\s+/, '') : sent;
       for (const text of new Set([value, sent, credential])) {
         if (text.length < 4) continue;
         parts.add(text);

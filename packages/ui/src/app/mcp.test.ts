@@ -61,6 +61,37 @@ test('MCP settings follow fake-core changes, render test tools and keep saved cr
   click(form + ' button[type=submit]');
   await waitFor(() => text(installed).includes('Linear'));
   expect(savedHeaders.at(-1)).toEqual({ Authorization: 'Bearer already-prefixed-token' });
+  // Editing an installed HTTP server still prefixes a bare token with its scheme.
+  [...document.querySelectorAll<HTMLButtonElement>(installed + ' .server-actions button')]
+    .find(button => button.textContent?.includes('Edit'))!.click();
+  await waitFor(() => text(form).includes('Saved'));
+  const editedSecret = document.querySelector<HTMLInputElement>(form + ' input[type=password]')!;
+  editedSecret.value = 'ghp_rotated_raw_token';
+  editedSecret.dispatchEvent(new Event('input', { bubbles: true }));
+  click(form + ' button[type=submit]');
+  await waitFor(() => !document.querySelector(form));
+  expect(savedHeaders.at(-1)).toEqual({ Authorization: 'Bearer ghp_rotated_raw_token' });
+  // Sentry uses the Sentry-Bearer scheme on both add and edit.
+  click('[aria-label="Add Sentry"]');
+  await waitFor(() => !!document.querySelector(form));
+  const sentrySecret = document.querySelector<HTMLInputElement>(form + ' input[type=password]')!;
+  expect(sentrySecret.placeholder).toContain('Sentry-Bearer');
+  sentrySecret.value = 'sntryu_raw_token';
+  sentrySecret.dispatchEvent(new Event('input', { bubbles: true }));
+  click(form + ' button[type=submit]');
+  await waitFor(() => text(installed).includes('Sentry'));
+  expect(savedHeaders.at(-1)).toEqual({ Authorization: 'Sentry-Bearer sntryu_raw_token' });
+  const sentryEdit = [...document.querySelectorAll<HTMLElement>(installed + ' .server')]
+    .find(row => row.textContent?.includes('Sentry'))!
+    .querySelectorAll<HTMLButtonElement>('.server-actions button')[1]!;
+  sentryEdit.click();
+  await waitFor(() => text(form).includes('Edit Sentry'));
+  const sentryEditSecret = document.querySelector<HTMLInputElement>(form + ' input[type=password]')!;
+  sentryEditSecret.value = 'sntryu_rotated_token';
+  sentryEditSecret.dispatchEvent(new Event('input', { bubbles: true }));
+  click(form + ' button[type=submit]');
+  await waitFor(() => !document.querySelector(form));
+  expect(savedHeaders.at(-1)).toEqual({ Authorization: 'Sentry-Bearer sntryu_rotated_token' });
   // A transient page-level error clears after the next successful action.
   failNextToggle = true;
   click(installed + ' [role=switch]');
@@ -73,7 +104,8 @@ test('MCP settings follow fake-core changes, render test tools and keep saved cr
   click('[data-testid=confirm-ok]');
   await waitFor(() => !text(installed).includes('GitHub'));
   await client.call('mcp.remove', { id: 'linear' });
-  await waitFor(() => !text(installed).includes('Linear'));
+  await client.call('mcp.remove', { id: 'sentry' });
+  await waitFor(() => !text(installed).includes('Sentry'));
   expect((await client.call('mcp.list', {})).servers).toEqual([]);
 });
 

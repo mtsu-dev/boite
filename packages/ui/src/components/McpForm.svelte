@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ExternalLink, Plus, TriangleAlert, X } from '@lucide/svelte';
   import { untrack } from 'svelte';
-  import { mcpEnvKey, mcpHttpOriginChanged, type McpPreset, type McpPresetField, type McpScope, type McpServer, type McpServerInput, type McpTransport, type Os, type Project } from '@boite/contracts';
+  import { MCP_PRESETS, mcpEnvKey, mcpHttpOriginChanged, type McpPreset, type McpPresetField, type McpScope, type McpServer, type McpServerInput, type McpTransport, type Os, type Project } from '@boite/contracts';
   import { errorText } from '../lib/errors';
   import { projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
@@ -23,6 +23,9 @@
   interface Entry { id: number; key: string; value: string; secret: boolean; savedKey?: string; prefix?: string }
   const t = strings.mcp;
   const start = untrack(() => ({ server, preset, defaultName }));
+  const matchedPreset = start.preset ?? (start.server
+    ? MCP_PRESETS.find(item => item.id === start.server!.id || item.id === start.server!.id.replace(/-\d+$/, ''))
+    : undefined);
   let sequence = 0;
   const fields = start.preset?.fields ?? [];
   const argumentsOf = start.server?.args ?? start.preset?.args ?? [];
@@ -58,16 +61,32 @@
     if (field.key === 'CONTEXT7_API_KEY') return t.apiKey;
     if (field.key.toLowerCase() === 'authorization') {
       if (preset?.id === 'github') return t.githubToken;
-      return preset?.id === 'notion' ? t.oauthAuthorization : t.authorization;
+      if (preset?.id === 'notion') return t.notionToken;
+      if (preset?.id === 'sentry') return t.sentryToken;
+      return t.authorization;
     }
     return field.label;
   }
 
+  function authPrefix(entry: Entry, key: string): string | undefined {
+    if (transport !== 'http' || key.toLowerCase() !== 'authorization') return undefined;
+    return entry.prefix
+      ?? matchedPreset?.fields.find(field => field.target === 'header' && field.key.toLowerCase() === 'authorization')?.prefix
+      ?? 'Bearer ';
+  }
+
+  function valuePlaceholder(entry: Entry): string {
+    if (entry.savedKey && entry.secret && !originChanged) return t.savedValue;
+    const prefix = authPrefix(entry, entry.key.trim());
+    return prefix ? fill(t.authValuePlaceholder, { scheme: prefix.trim() }) : t.value;
+  }
+
   function formatValue(entry: Entry, key: string): string {
-    if (!entry.prefix || key.toLowerCase() !== 'authorization') return entry.value;
+    const prefix = authPrefix(entry, key);
+    if (!prefix) return entry.value;
     const trimmed = entry.value.trim();
     if (!trimmed) return '';
-    return /^[A-Za-z][A-Za-z0-9+.-]*\s+\S/.test(trimmed) ? trimmed : entry.prefix + trimmed;
+    return /^[A-Za-z][A-Za-z0-9+.-]*\s+\S/.test(trimmed) ? trimmed : prefix + trimmed;
   }
 
   function setTransport(next: McpTransport): void {
@@ -154,7 +173,7 @@
             <input required={field.required} bind:value={presetArgs[field.key]} />
           {:else}
             {@const entry = (field.target === 'header' ? headers : env).find(item => item.key === field.key)}
-            {#if entry}<input type="password" autocomplete="off" placeholder={field.prefix ? t.bearerPlaceholder : undefined} required={field.required} bind:value={entry.value} />{/if}
+            {#if entry}<input type="password" autocomplete="off" placeholder={field.prefix ? fill(t.prefixPlaceholder, { scheme: field.prefix.trim() }) : undefined} required={field.required} bind:value={entry.value} />{/if}
           {/if}
         </label>
       {/each}
@@ -188,7 +207,7 @@
         {#each activeRows as entry (entry.id)}
           <div class="entry">
             <input aria-label={t.key} placeholder={t.key} required={entry.value !== ''} bind:value={entry.key} />
-            <input aria-label={t.value} placeholder={entry.savedKey && entry.secret && !originChanged ? t.savedValue : t.value}
+            <input aria-label={t.value} placeholder={valuePlaceholder(entry)}
               type={entry.secret ? 'password' : 'text'} autocomplete="off" bind:value={entry.value} />
             <label class="secret-toggle"><SettingSwitch checked={entry.secret} onchange={event => entry.secret = event.currentTarget.checked} />{t.secret}</label>
             {#if entry.savedKey && entry.secret && entry.value === '' && !originChanged}<span class="saved">{t.saved}</span>{/if}
@@ -238,7 +257,8 @@
   small { color: var(--color-subtle); font-weight: normal; }
   .launch-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--space-3); align-items: start; }
   .entry { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-  .entry > input { flex: 1 1 95px; }
+  .entry > input { flex: 1 1 106px; }
+  .entry > input:nth-child(2) { flex: 1.05 1 110px; }
   .secret-toggle, .choices label, .project-picker label { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
   .saved { color: var(--color-subtle); font-size: var(--text-xs); }
   .choices, .preset-options, .actions { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }

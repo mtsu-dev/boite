@@ -6,10 +6,12 @@ server once and Boite makes it available to supported agents on that machine.
 ## Add a server
 
 1. Choose **Add** next to a server in **Server catalog**.
-2. Enter any directory or credentials the form requests. For HTTP catalog
-   servers, paste the token directly: Boite adds the `Bearer ` prefix
-   automatically when no authorization scheme is present. Use **Documentation**
-   for the server's setup instructions.
+2. Enter any directory or credentials the form requests. For HTTP servers,
+   paste the token directly when adding or editing: the Settings form adds the
+   expected authorization scheme automatically (`Bearer ` by default, or
+   `Sentry-Bearer ` for Sentry) when none is present, and keeps any scheme you
+   include explicitly. Notion requires a workspace MCP token (Business or
+   Enterprise plans). Use **Documentation** for the server's setup instructions.
 3. Choose **All projects** or **Selected projects**, then **Save**.
 4. Click **Test** on the installed server. Expand the tool count to see the
    available tools, or use the error to diagnose the connection.

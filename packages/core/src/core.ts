@@ -678,6 +678,7 @@ export class Core {
     this.windows.stop();
     this.keepAwake.close();
     await this.desktops.stopAll();
+    this.mcp.close();
     this.lazyMcp.close();
     this.artifactPreviews.stop();
     this.threads.sideQuestions.close();

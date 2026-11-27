@@ -391,6 +391,12 @@ test('global stdio probe runs outside dataDir, surfaces redacted stderr, and ign
   const shortServer = await client.call('mcp.save', { ...stdio('Short secret'), secretEnv: { SHORT: 'id', LONG: 'long-secret-value' } });
   const redact = harness.core.mcp.resolve(null).get('boite-managed-' + shortServer.id)!.redact;
   expect(redact('{"id":1,"value":"long-secret-value"}')).toBe('{"id":1,"value":"[redacted]"}');
+  const sentry = await client.call('mcp.save', {
+    ...GLOBAL, projectIds: [], name: 'Sentry', transport: 'http', url: 'https://mcp.sentry.dev/mcp',
+    secretHeaders: { Authorization: 'Sentry-Bearer sntryu-custom-scheme-secret' },
+  });
+  const redactHttp = harness.core.mcp.resolve(null).get('boite-managed-' + sentry.id)!.redact;
+  expect(redactHttp('leaked sntryu-custom-scheme-secret here')).toBe('leaked [redacted] here');
   const failing = await client.call('mcp.save', {
     ...GLOBAL, projectIds: [], name: 'Failing probe', transport: 'stdio',
     command: process.execPath,

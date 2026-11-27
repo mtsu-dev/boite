@@ -46,12 +46,12 @@ export const MCP_PRESETS: McpPreset[] = [
     id: 'notion', name: 'Notion', description: 'Search and update pages in a Notion workspace.',
     docsUrl: 'https://developers.notion.com/docs/mcp',
     transport: 'http', url: 'https://mcp.notion.com/mcp',
-    fields: [{ target: 'header', key: 'Authorization', label: 'OAuth access token', required: true, prefix: 'Bearer ' }],
+    fields: [{ target: 'header', key: 'Authorization', label: 'MCP token (Business or Enterprise)', required: true, prefix: 'Bearer ' }],
   },
   {
     id: 'sentry', name: 'Sentry', description: 'Investigate errors and find related Sentry events.',
     docsUrl: 'https://docs.sentry.io/product/sentry-mcp/',
     transport: 'http', url: 'https://mcp.sentry.dev/mcp',
-    fields: [{ target: 'header', key: 'Authorization', label: 'Bearer token', required: true, prefix: 'Bearer ' }],
+    fields: [{ target: 'header', key: 'Authorization', label: 'Sentry access token', required: true, prefix: 'Sentry-Bearer ' }],
   },
 ];

@@ -31,13 +31,15 @@ can fix or remove it to reset stored credentials; server removal still succeeds
 without touching the unreadable file, and session startup logs a warning and
 skips managed servers instead of blocking threads or dropping user stdio
 servers. Only `secretEnv` and `secretHeaders` are stored in `mcp-secrets.json`
-and masked; tokens placed in `url` or `args` stay in `mcp:servers` unmasked.
-HTTP catalog presets (GitHub, Linear, Notion, Sentry) prefix bare tokens with
-`Bearer ` on save while preserving any explicit authorization scheme. Provider
-session keys include the revision for that project. Edits, disabling and
-removal revoke the affected server in warm sessions. New provider sessions load
-the current registry. A protected turn or a context mode with MCP disabled
-skips registration.
+and masked (stripping any leading HTTP authorization scheme so bare tokens are
+masked alongside full header values); tokens placed in `url` or `args` stay in
+`mcp:servers` unmasked. In the Settings UI form, HTTP `Authorization` fields
+prefix bare tokens on add and edit (`Sentry-Bearer ` for Sentry, `Bearer `
+otherwise) while preserving any explicit scheme; raw `mcp.save` RPC callers
+supply the exact header value. Provider session keys include the revision for
+that project. Edits, disabling and removal revoke the affected server in warm
+sessions. New provider sessions load the current registry. A protected turn or
+a context mode with MCP disabled skips registration.
 
 ## Proxy and tests
 
@@ -67,13 +69,13 @@ global servers, masks stderr before taking its tail if the server exits early,
 and waits for its child to stop. An HTTP test attempts to close its remote
 session. The PostgreSQL preset uses the restricted `postgres-mcp` command
 because it accepts the connection URI from its environment. HTTP presets
-(GitHub, Linear, Notion, Sentry) use credentials supplied by the owner,
-including a Notion OAuth access token. When a Muse binary lacks `.muse-version`
-and a `--version` check (bounded to 2 s) fails transiently, the session is not
-reused across turns so the next turn starts a fresh host and retries the check.
+(GitHub, Linear, Notion, Sentry) use credentials supplied by the owner
+(`Bearer ` tokens for GitHub, Linear and Notion Business/Enterprise MCP tokens;
+`Sentry-Bearer ` for Sentry).
 
 The `mcp: false` [machine policy](enterprise.md) blocks tests and new managed
-registrations, revokes active ones and aborts in-flight tests. See [network flows](network.md) for
+registrations, revokes active ones and aborts in-flight tests (core shutdown
+also aborts in-flight tests). See [network flows](network.md) for
 the traffic it controls.
 
 ## Provider support
@@ -83,5 +85,5 @@ the traffic it controls.
 | Claude | Streamable HTTP entries alongside user stdio entries proxied by the core. |
 | Codex | Streamable HTTP overrides on thread start and resume. Codex reads the thread token from its environment. |
 | ACP | HTTP entries in session new and load, when the agent advertises HTTP MCP. OpenCode 2 native receives remote MCP entries in its launch environment. |
-| Muse | Native `mcp_servers` overrides with `transport: streamable_http`, the loopback URL and an authorization header expanded from the environment. Requires Muse 1.4.13+ (verified with Muse 1.4.14). |
+| Muse | Native `mcp_servers` overrides with `transport: streamable_http`, the loopback URL and an authorization header expanded from the environment. Requires Muse 1.4.13+ (verified with Muse 1.4.14). If `.muse-version` is absent and `--version` (bounded to 2 s) fails transiently, the host is not reused across turns so the next turn retries the check. |
 | pi and echo | No Boite-managed MCP transport. |
