@@ -773,10 +773,10 @@ core it started and the frames stay on that machine, so there is no cover. A
 plain browser on the same machine is not told it is local and keeps the cover. Any other client first gets a card that names
 the machine, "This agent controls a browser on m2", with the page's title, and
 a **Show** button; nothing is captured or sent before that. Show starts the
-live view and, while a page shows, the eye in the tab strip covers it again. When the agent opens a
-tab in the conversation on screen, the panel opens on that surface on clients
-wider than 720 px. A phone stays in the chat or on the surface the user chose.
-Its **Browser** button opens the viewer, and **Chat** or Back returns to the
+live view and, while a page shows, the eye in the tab strip covers it again.
+When the agent opens a tab in the conversation on screen, the navigation shows
+**Boite browser in the background**. Selecting that row or an explicit `show`
+command reveals the live tab. On a phone, **Chat** or Back returns to the
 conversation without closing any agent tabs. The
 launcher's **B** opens it by hand, and `boite browse <url>` opens a page in a
 new tab of it. On a client with a cover, it holds for the
@@ -784,17 +784,22 @@ conversation while the app stays open, and a reload covers it again.
 
 The owner opens and closes tabs as in any browser. **+** adds a new tab page
 with an address field, and Enter opens the page in the conversation's browser
-(`browser.command` `open`, the machine's default profile), live at once when
+(`browser.command` `open` with `manual: true`, the machine's default profile), live at once when
 it opens since the owner asked for it; a refused address stays in the field
 with the reason. A tab's **×** closes it (`close`), the agent's tabs
 included. With no tab open the owner lands on that new tab page, which is where
 to sign in to a site the agent then uses. A paired phone watches and drives the pages
 but neither opens nor closes a tab: `browser.command` is not one of its methods.
+The cookies pill reads the profile on the machine that owns the conversation.
+From an owner client, `profile-switch` replaces a tab's renderer and loads its
+address in the chosen profile. The tab keeps its ID and place in the strip.
+The core invalidates old frame IDs during the switch. Document loading, main
+document HTTP errors and script failures are tracked by navigation separately
+from the stream.
 
-The page takes the size of the view showing it by default, as a page takes
-its window's: on Show, and again once the view stops changing size, the viewer
-sends that size (`viewport`). That size is the agent's too. **Display** picks
-another by hand, which holds until **Fit this screen**.
+Each viewer fits the picture to the space available. **Display** sends
+`viewport` when the user selects a size, including **Fit this screen**. That
+size is shared with the agent and every viewer.
 
 The core pushes the page to each viewer, the way T3 Code's server browser
 does ([pingdotgg/t3code](https://github.com/pingdotgg/t3code), MIT License;
@@ -998,11 +1003,10 @@ It also clicks into a frame nested in an offset frame and into a scaled one,
 and through the DOM when a button is drawn over the frame. The desktop app's
 relay of frames is not covered.
 `tests/e2e/agent-browser-core.test.ts` runs the whole path on a real core: the
-owner's desktop at 1280 × 900 and a paired phone at 390 × 844 see the cover,
-show the page and tap it, and the tap reaches the page; both views are pushed
-the page on the stream's socket, and the desktop's keeps it across the resize
-that fits the page to it. `browser-remote.test.ts` covers the same views on
-the fake client.
+owner's desktop at 1280 × 900 and a paired phone at 390 × 844 reveal a
+background page and tap it. Both views get pictures over the stream without
+changing the page size when their own view opens. `browser-remote.test.ts`
+covers the same views on the fake client.
 `browser-push-stream.test.ts` plays Chromium's screencast against the stream:
 the still that opens it, acknowledgements held to the pace, half-size pictures
 only while the viewer scrolls and the still that follows, the queue of 64 and

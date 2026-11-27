@@ -75,11 +75,14 @@ test('the app answers the core as a browser: a target is a webview, its session 
 
   // The webview's events and its address come back tagged with it.
   shell.listeners.get(targetId)!('Page.frameNavigated', { frame: { url: 'https://example.com/' } });
+  const loaded = { name: 'DOMContentLoaded', frameId: 'top', loaderId: 'document', timestamp: 1 };
+  shell.listeners.get(targetId)!('Page.lifecycleEvent', loaded);
   shell.emit({ type: 'url', id: targetId, url: 'https://example.com/' });
   shell.emit({ type: 'title', id: targetId, title: 'Example' });
   await settle(); await settle();
   expect(core.replies('work')).toEqual(expect.arrayContaining([
     { method: 'Page.frameNavigated', params: { frame: { url: 'https://example.com/' } }, sessionId: targetId },
+    { method: 'Page.lifecycleEvent', params: loaded, sessionId: targetId },
     { method: 'Target.targetInfoChanged', params: { targetInfo: expect.objectContaining({ targetId, url: 'https://example.com/', title: 'Example' }) } },
   ]));
 

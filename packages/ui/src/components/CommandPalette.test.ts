@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
+import { MESSAGE_SEARCH_QUERY_LIMIT, RpcErrorCode } from '@boite/contracts';
 import CommandPalette from './CommandPalette.svelte';
+import { RpcFailure } from '../lib/client';
 import { FakeClient } from '../lib/fake-client';
 import { Store, store as primaryStore } from '../lib/store.svelte';
 import * as palette from '../lib/palette';
@@ -28,6 +30,7 @@ afterEach(async () => {
   store.detach();
   client.close();
   followDesktopOf(primaryStore);
+  vi.useRealTimers();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
   window.localStorage.clear();
@@ -159,6 +162,104 @@ test('typing filters across threads and commands, the arrows move, Enter opens t
   expect(store.paletteOpen).toBe(false);
   await new Promise((resolve) => setTimeout(resolve, 5));
   expect(store.openThread?.id).toBe('t-trace');
+});
+
+test('metadata and message results coexist and Enter requests a page around the mention', async () => {
+  const call = vi.spyOn(client, 'call');
+  const turn = await client.call('turns.start', { threadId: 't-trace', prompt: 'Check the Echo trace collector.' });
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  await type('echo trace');
+  expect(rows()).toContain('thread:t-trace');
+  expect(document.querySelector('[data-palette-id="thread:t-trace"] [data-testid=palette-match-hint]')?.textContent).toContain('Echo');
+  await vi.waitFor(() => {
+    flushSync();
+    expect(document.querySelector('[data-section=mentions] mark')?.textContent).toBe('Echo');
+  });
+  const id = rows().find(row => row.startsWith('mention:'))!;
+  expect(rows().indexOf(id)).toBeGreaterThan(rows().indexOf('thread:t-trace'));
+  while (selectedId() !== id) key('ArrowDown');
+  key('Enter');
+  await vi.waitFor(() => expect(store.messageSearchJump).toMatchObject({ threadId: 't-trace', query: 'echo trace' }));
+  const target = store.messageSearchJump!.messageId;
+  expect(call.mock.calls).toContainEqual(['threads.get', expect.objectContaining({ threadId: 't-trace', around: target }), expect.any(Object)]);
+  expect(store.openThread?.messages.find(message => message.id === target)?.turnId).toBe(turn.id);
+});
+
+test('picking a mention calls onopen so phone navigation leaves the thread list', async () => {
+  unmount(running!);
+  const onopen = vi.fn();
+  running = mount(CommandPalette, { target: document.body, props: { store, onopen } });
+  await client.call('turns.start', { threadId: 't-trace', prompt: 'Inspect the cedar antenna.' });
+  store.paletteOpen = true;
+  flushSync();
+  await type('cedar');
+  const mention = await vi.waitFor(() => {
+    flushSync();
+    const row = document.querySelector<HTMLButtonElement>('[data-section=mentions] [data-testid=palette-row]');
+    expect(row).not.toBeNull();
+    return row!;
+  });
+  mention.click();
+  expect(onopen).toHaveBeenCalledTimes(1);
+});
+
+test('a mention uses the same bounded query when searching and jumping', async () => {
+  const call = vi.spyOn(client, 'call');
+  await client.call('turns.start', { threadId: 't-trace', prompt: 'The cedar marker is here.' });
+  store.paletteOpen = true;
+  flushSync();
+  const query = 'cedar'.padEnd(MESSAGE_SEARCH_QUERY_LIMIT);
+  await type(query + 'absent');
+  const mention = await vi.waitFor(() => {
+    flushSync();
+    const row = document.querySelector<HTMLButtonElement>('[data-section=mentions] [data-testid=palette-row]');
+    expect(row?.querySelector('mark')?.textContent).toBe('cedar');
+    return row!;
+  });
+  expect(call.mock.calls).toContainEqual(['threads.search', { query, replacePending: true }]);
+  mention.click();
+  await vi.waitFor(() => expect(store.messageSearchJump).toMatchObject({ threadId: 't-trace', query }));
+});
+
+test('message search debounces typing, sends a newer query while an older one waits, and reports only current failures', async () => {
+  vi.useFakeTimers();
+  let rejectFirst!: (error: Error) => void;
+  const first = new Promise<never>((_, reject) => { rejectFirst = reject; });
+  const queries: string[] = [];
+  const call = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
+    if (method !== 'threads.search') return call(method, params);
+    const { query } = params as { query: string };
+    queries.push(query);
+    if (query === 'first search') return first;
+    if (query === 'older core') throw new RpcFailure({ code: RpcErrorCode.MethodNotFound, message: 'missing' });
+    throw new Error('Search failed');
+  });
+  const hint = () => document.querySelector('[data-testid=palette-search-hint]');
+  store.paletteOpen = true;
+  flushSync();
+  await type('first search');
+  await vi.advanceTimersByTimeAsync(119);
+  expect(queries).toEqual([]);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(queries).toEqual(['first search']);
+  await type('superseded search');
+  await vi.advanceTimersByTimeAsync(119);
+  await type('older core');
+  await vi.advanceTimersByTimeAsync(120);
+  expect(queries).toEqual(['first search', 'older core']);
+  rejectFirst(new Error('Superseded failure'));
+  await vi.advanceTimersByTimeAsync(0);
+  flushSync();
+  expect(queries).toEqual(['first search', 'older core']);
+  expect(hint()).toBeNull();
+  await type('trace');
+  await vi.advanceTimersByTimeAsync(120);
+  flushSync();
+  expect(hint()?.getAttribute('role')).toBe('status');
+  expect(rows()).toContain('thread:t-trace');
 });
 
 test('a command runs: settings opens on the tab asked, and Escape closes without picking', async () => {
@@ -356,4 +457,33 @@ test('the keyboard ring leaves with a new query and with a reopen', async () => 
   flushSync();
   await tick();
   expect(ringed()).toBe(0);
+});
+
+test('a failed follow-up message search clears stale mentions above the error hint', async () => {
+  const originalCall = client.call.bind(client);
+  let fail = false;
+  vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
+    if (method !== 'threads.search') return originalCall(method as never, params as never);
+    if (fail) throw new Error('search timeout');
+    const { query } = params as { query: string };
+    return {
+      query,
+      matches: [{ threadId: 't-trace', messageId: 'm-stale', role: 'assistant', snippet: `${query} found`, messageCreatedAt: 1, score: 3 }],
+    };
+  });
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  await type('alpha');
+  await vi.waitFor(() => {
+    flushSync();
+    expect(document.querySelectorAll('[data-section=mentions] [data-testid=palette-row]').length).toBe(1);
+  });
+  fail = true;
+  await type('beta');
+  await vi.waitFor(() => {
+    flushSync();
+    expect(document.querySelector('[data-testid=palette-search-hint]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-section=mentions] [data-testid=palette-row]').length).toBe(0);
+  });
 });

@@ -199,6 +199,7 @@ export class BuiltinBots {
       });
     });
     for (const routine of this.#store.records.list('routine').filter(r => r.agentId === id)) this.#store.records.remove('routine', routine.id);
+    this.#store.triggers.removeForAgent(id);
     const brain = this.#store.resident.brain(id);
     const root = this.#store.resident.brainRoot().path;
     for (const [file, content] of Object.entries(BRAIN_FILES)) rewriteBrainFile(root, join(brain.path, file), content);

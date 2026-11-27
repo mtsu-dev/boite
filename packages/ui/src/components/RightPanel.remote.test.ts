@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { RemoteBrowserFrame } from '@boite/contracts';
 import { browserBridge } from '../lib/browser-bridge';
-import { watchAgentBrowser } from '../lib/agent-browser-watch';
+import { watchAgentBrowser } from '../lib/agent-browser-watch.svelte';
 import { FakeClient } from '../lib/fake-client';
 import { liveViews } from '../lib/live-view.svelte';
 import { rightPanel } from '../lib/right-panel.svelte';
@@ -13,7 +13,7 @@ import RightPanel from './RightPanel.svelte';
 let app: ReturnType<typeof mount> | undefined, store: Store;
 const clients: FakeClient[] = [];
 const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };
-const frame = (title: string): RemoteBrowserFrame => ({ id: title, tabId: 'browser:tab', title, width: 760, height: 900, at: Date.now(), base64: 'YQ==' });
+const frame = (title: string): RemoteBrowserFrame => ({ id: title, tabId: 'browser:tab', title, width: 760, height: 900, at: Date.now(), base64: '' });
 const button = (id: string) => document.querySelector<HTMLButtonElement>(`[data-testid=${id}]`)!;
 
 beforeEach(() => {
@@ -44,9 +44,13 @@ async function phone(open = true): Promise<FakeClient> {
  * both: an agent's socket never hears `browser.remoteChanged`, so the command
  * goes out as the owner, which the browser answers the same way.
  */
-async function agent(client: FakeClient, url: string): Promise<string> {
+async function agent(client: FakeClient, url: string, show = false): Promise<string> {
   client.becomes('owner');
-  try { return (await client.call('browser.command', { threadId: 't-trace', action: { kind: 'open', url } })).tabId!; }
+  try {
+    const { tabId } = await client.call('browser.command', { threadId: 't-trace', action: { kind: 'open', url } });
+    if (show) await client.call('browser.command', { threadId: 't-trace', tabId, action: { kind: 'show' } });
+    return tabId!;
+  }
   finally { client.becomes('session'); }
 }
 
@@ -55,7 +59,7 @@ async function showPanel(): Promise<void> {
   await settle();
 }
 
-test('a paired client at desktop width offers the agent browser, and a new tab brings it forward, covered', async () => {
+test('an open tab reports background activity until the agent shows it', async () => {
   const client = await phone();
   expect(store.owner).toBe(false);
   expect(browserBridge.paints).toBe(false);
@@ -70,19 +74,17 @@ test('a paired client at desktop width offers the agent browser, and a new tab b
 
   // A tab already open when the conversation opens does not pull the panel out.
   await agent(client, 'https://example.com/docs');
-  const stop = watchAgentBrowser(store, 't-trace'); await settle();
+  const active = vi.fn();
+  const stop = watchAgentBrowser(store, 't-trace', active); await settle();
   expect(store.panel.surfaces).toHaveLength(0);
-  // A new one does: the Agent browser tab, covered until the user shows it.
+  expect(active).toHaveBeenLastCalledWith(true);
   await agent(client, 'https://shop.example/cart'); await settle();
-  expect(store.panel.active?.kind).toBe('agent-browser');
-  expect(button('agent-browser-cover-text').textContent).toContain('This agent controls a browser on');
-  expect(document.querySelector('[data-testid=agent-browser-cover]')!.textContent).toContain('shop.example');
+  expect(store.panel.surfaces).toHaveLength(0);
   expect(calls.mock.calls.some(([method]) => method === 'browser.remoteFrame')).toBe(false);
-  // Closed by the user, it comes back as the same tab for the next page the agent opens.
-  store.panel.close(store.panel.active!.id); await settle();
-  await agent(client, 'https://example.com/third'); await settle();
+  await agent(client, 'https://example.com/third', true); await settle();
   expect(store.panel.surfaces.filter(surface => surface.kind === 'agent-browser')).toHaveLength(1);
   expect(store.panel.active?.kind).toBe('agent-browser');
+  expect(liveViews.shown('agent-browser', store.threadKey('t-trace'))).toBe(true);
   stop();
 });
 
@@ -107,9 +109,7 @@ test('new agent pages leave a phone in chat or on its chosen surface, and hiding
     expect(await client.call('browser.remoteStatus', { threadId: 't-trace' })).toMatchObject({ live: true, tabs: expect.arrayContaining([expect.objectContaining({ tabId: first })]) });
     expect((await client.call('browser.remoteStatus', { threadId: 't-trace' })).tabs).toHaveLength(3);
 
-    // The same watcher uses the current width after a rotation or resize.
-    vi.mocked(window.matchMedia).mockImplementation(matchMedia);
-    await agent(client, 'https://example.com/wide'); await settle();
+    await agent(client, 'https://example.com/request', true); await settle();
     expect(store.panel.isOpen).toBe(true);
     expect(store.panel.active?.kind).toBe('agent-browser');
   } finally { stop(); }

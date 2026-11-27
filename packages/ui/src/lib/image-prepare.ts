@@ -11,6 +11,7 @@
  * a test can drive the whole path without a browser.
  */
 import { ATTACHMENT_MAX_BYTES, IMAGE_MAX_EDGE, IMAGE_MIME_TYPES } from '@boite/contracts';
+import { workerIdle } from './worker-idle';
 
 /** The long edge an image is brought to: past it Claude refuses a request carrying many images. */
 export { IMAGE_MAX_EDGE };
@@ -141,7 +142,9 @@ export function prepareImageAway(file: File, codec?: ImageCodec): Promise<Prepar
   return new Promise((resolve) => {
     const id = ++lastJob;
     jobs.set(id, (prepared) => { resolve(prepared ?? prepareImage(file)); });
-    away.postMessage({ id, file });
+    idle.touch();
+    try { away.postMessage({ id, file }); }
+    catch { stopWorker(null); }
   });
 }
 
@@ -149,6 +152,16 @@ export function prepareImageAway(file: File, codec?: ImageCodec): Promise<Prepar
 let worker: Worker | null | undefined;
 let lastJob = 0;
 const jobs = new Map<number, (prepared: Prepared | null) => void>();
+const idle = workerIdle(() => stopWorker(undefined));
+
+function stopWorker(next: null | undefined): void {
+  idle.stop();
+  worker?.terminate();
+  worker = next;
+  const waiting = [...jobs.values()];
+  jobs.clear();
+  for (const done of waiting) done(null);
+}
 
 function prepareWorker(): Worker | null {
   if (worker !== undefined) return worker;
@@ -158,19 +171,19 @@ function prepareWorker(): Worker | null {
   } catch {
     return worker = null;
   }
-  worker.onmessage = ({ data }: MessageEvent<{ id: number; prepared: Prepared | null }>) => {
+  const active = worker;
+  active.onmessage = ({ data }: MessageEvent<{ id: number; prepared: Prepared | null }>) => {
+    if (worker !== active) return;
     const done = jobs.get(data.id);
+    if (!done) return;
     jobs.delete(data.id);
-    done?.(data.prepared);
+    idle.touch();
+    done(data.prepared);
   };
   // A worker that failed to load answers nothing: what it was given runs here.
-  worker.onerror = (event) => {
+  active.onerror = (event) => {
     event.preventDefault();
-    worker?.terminate();
-    worker = null;
-    const waiting = [...jobs.values()];
-    jobs.clear();
-    for (const done of waiting) done(null);
+    if (worker === active) stopWorker(null);
   };
   return worker;
 }

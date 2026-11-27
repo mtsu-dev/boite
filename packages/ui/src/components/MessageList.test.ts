@@ -2105,3 +2105,38 @@ test('a failed turn whose card holds Retry keeps its line\'s copy and fork, with
   expect(line.querySelector('.spinner')).toBeNull();
   expect(line.textContent).toContain(strings.chat.failedAt.split('{')[0]!.trim());
 });
+
+test('mounting a thread with a pending messageSearchJump lands on the target message and highlights it without snapping to bottom', async ({ ready }) => {
+  window.localStorage.clear();
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  const thread = live.openThread!;
+  const messages = thread.messages;
+  const target = messages[10]!;
+  const textPart = target.parts.find(part => part.type === 'text')!;
+  const word = (textPart.type === 'text' ? textPart.text : '').match(/[A-Za-z]{4,}/)?.[0] ?? 'scheduler';
+  const painted = new Map<string, { size: number }>();
+  const prevCss = (globalThis as { CSS?: unknown }).CSS;
+  const prevHighlight = (globalThis as { Highlight?: unknown }).Highlight;
+  (globalThis as { CSS?: unknown }).CSS = { ...(prevCss as object | undefined), highlights: painted };
+  (globalThis as { Highlight?: unknown }).Highlight = class FakeHighlight {
+    size: number;
+    constructor(...ranges: Range[]) { this.size = ranges.length; }
+  };
+  try {
+    live.messageSearchJump = { threadId: 't-long', messageId: target.id, query: word };
+    // t-long holds 400 messages in total; the tail page sits near the end.
+    stubLayout(400 * ESTIMATE);
+    running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
+    await settle();
+    const box = document.querySelector<HTMLDivElement>('[data-testid="timeline"]')!;
+    expect(live.messageSearchJump).toBeNull();
+    expect(box.classList.contains('below')).toBe(true);
+    expect(box.scrollTop).toBeLessThan(box.scrollHeight - box.clientHeight - 100);
+    expect(document.querySelector(`[data-mid="${target.id}"]`)).not.toBeNull();
+    expect(painted.get('boite-message-search')?.size).toBeGreaterThan(0);
+  } finally {
+    (globalThis as { CSS?: unknown }).CSS = prevCss;
+    (globalThis as { Highlight?: unknown }).Highlight = prevHighlight;
+  }
+});

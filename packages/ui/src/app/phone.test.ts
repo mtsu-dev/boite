@@ -83,7 +83,7 @@ test('a paired device is offered none of the affordances the core refuses it', a
   // A paired device's project menu: no Remove, and no transcript import behind it.
   query('[data-testid=project-row]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
-  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
+  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'manage']);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archive-project]') !== null);
   expect(menuValues()).toEqual(['back', 'secrets', 'archive-project']);
@@ -127,7 +127,7 @@ test('the desktop still has every one of them', async ({ viewport }) => {
 
   query('[data-testid=project-row]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
-  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
+  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'manage']);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archive-project]') !== null);
   // Importing sessions is an experiment, off here: `import.test.ts` turns it on.
@@ -175,7 +175,7 @@ test('the desktop still has every one of them', async ({ viewport }) => {
   expect(preference.getAttribute('aria-checked')).toBe('false');
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=back]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=new]') !== null);
-  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
+  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'manage']);
   press('Escape');
   await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
   // Mobile navigation loads only once the window is narrow.

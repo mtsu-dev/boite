@@ -13,7 +13,9 @@ import { errorText } from './errors';
 export interface FramePainter {
   /** The canvas frames are painted on; the last frame is drawn again on a new one. */
   attach(canvas: HTMLCanvasElement | undefined): void;
-  paint(jpeg: Blob): void;
+  paint(jpeg: Blob, painted: () => void): void;
+  /** Discards pending decodes while keeping the last picture on screen. */
+  cancel(): void;
   /** Forgets the frame shown: the next canvas starts empty. */
   clear(): void;
   close(): void;
@@ -39,7 +41,8 @@ const sizeOf = (drawn: Drawn): PictureSize => ({ width: 'naturalWidth' in drawn 
 
 /** `sized` hears the size of each picture painted, and null once none is: the view's box takes its proportions. */
 export function framePainter(sized?: (size: PictureSize | null) => void): FramePainter {
-  let canvas: HTMLCanvasElement | undefined, shown: Drawn | null = null, waiting: Blob | null = null, decoding = false, closed = false, epoch = 0;
+  let canvas: HTMLCanvasElement | undefined, shown: Drawn | null = null, decoding = false, closed = false, epoch = 0;
+  let waiting: { jpeg: Blob; painted: () => void } | null = null;
   const release = (drawn: Drawn | null) => { if (drawn && 'close' in drawn) drawn.close(); };
   const draw = () => {
     if (!canvas || !shown) return;
@@ -54,19 +57,21 @@ export function framePainter(sized?: (size: PictureSize | null) => void): FrameP
     while (waiting && !closed) {
       const next = waiting, from = epoch;
       waiting = null;
-      const drawn = await decode(next).catch(() => null);
+      const drawn = await decode(next.jpeg).catch(() => null);
       if (closed || from !== epoch) { release(drawn); continue; }
       if (!drawn) continue;
       release(shown);
       shown = drawn;
       draw();
       sized?.(sizeOf(drawn));
+      next.painted();
     }
     decoding = false;
   };
   return {
     attach(next) { canvas = next; draw(); },
-    paint(jpeg) { waiting = jpeg; if (!decoding && !closed) void run(); },
+    paint(jpeg, painted) { waiting = { jpeg, painted }; if (!decoding && !closed) void run(); },
+    cancel() { epoch++; waiting = null; },
     clear() { epoch++; waiting = null; release(shown); shown = null; sized?.(null); },
     close() { closed = true; waiting = null; release(shown); shown = null; canvas = undefined; },
   };

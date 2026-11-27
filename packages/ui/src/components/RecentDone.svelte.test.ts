@@ -98,12 +98,15 @@ test('a done row names its machine only while two machines are connected', async
   expect(document.querySelectorAll('[data-testid=done-thread] .machine')).toHaveLength(0);
 });
 
-test('a failed machine read keeps the other completed threads usable and can be retried', async () => {
+test.each([
+  ['done', 'Some completed threads could not be loaded.'],
+  ['archived', 'Some archived threads could not be loaded.'],
+] as const)('a failed %s read names the list and keeps the other machine usable', async (kind, message) => {
   const first = await ready('first'); await ready('second');
   vi.spyOn(first.client, 'call').mockRejectedValueOnce(new Error('offline'));
-  mounted = mount(RecentDone, { target: document.body, props: { entries: entries(), now: Date.now() } });
-  click('[data-testid=recent-done-toggle]'); await settle();
-  expect(document.querySelector('[data-testid=recent-done-retry]')).not.toBeNull();
+  mounted = mount(RecentDone, { target: document.body, props: { entries: entries(), now: Date.now(), kind } });
+  click(`[data-testid=recent-${kind}-toggle]`); await settle();
+  expect(document.querySelector('[role=status] .ui-label')?.textContent).toBe(message);
   expect(document.querySelectorAll('[data-testid=done-thread]')).toHaveLength(1);
   click('[data-testid=recent-done-retry]'); await settle();
   expect(document.querySelector('[data-testid=recent-done-retry]')).toBeNull();

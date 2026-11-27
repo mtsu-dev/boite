@@ -52,6 +52,7 @@ export const fr: Translation = {
     doneWhyMoving: 'En déplacement',
     doneToast: '« {title} » marqué comme terminé',
     doneLoadFailed: "Certains fils terminés n'ont pas pu être chargés.",
+    archivedLoadFailed: "Certains fils archivés n'ont pas pu être chargés.",
     prMerged: '#{number} fusionnée',
     prClosed: '#{number} fermée',
     prOpen: '#{number} ouverte',

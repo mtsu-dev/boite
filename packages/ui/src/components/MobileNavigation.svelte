@@ -26,6 +26,7 @@
   import { focusOnMount } from '../lib/actions';
   import { watchRowCut } from '../lib/row-cut';
   import MobileThreadRow from './MobileThreadRow.svelte';
+  import BackgroundBrowser from './BackgroundBrowser.svelte';
   import FoldMore from './FoldMore.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
   import ViewSwitch from './ViewSwitch.svelte';
@@ -67,9 +68,11 @@
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
 
-  let { store, recover = false, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
+  let { store, recover = false, browserBackground, onbrowser, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
     store: Store;
     recover?: boolean;
+    browserBackground?: boolean;
+    onbrowser?: () => void;
     onleavesettings?: () => void;
     screen: 'chat' | 'threads' | 'activity';
     tabbed?: boolean;
@@ -343,7 +346,10 @@
       aria-label={lent?.searchLabel ?? strings.mobile.search} placeholder={lent?.searchLabel ?? strings.mobile.search} data-testid="mobile-search" use:focusOnMount onkeydown={event => { if (event.key === 'Escape') closeSearch(); }} />
       {#if store.page === 'chat' && headerList === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
     </div>
-    <button class="ghost icon" data-testid="mobile-search-close" aria-label={strings.mobile.clearSearch} onclick={closeSearch}><X size={20} /></button>
+    <button type="button" class="ghost icon" data-testid="mobile-search-close" aria-label={strings.mobile.clearSearch} onclick={closeSearch}><X size={20} /></button>
+    {#if store.page === 'chat' && headerList === 'threads'}
+      <button type="button" class="ghost global-search" data-testid="mobile-global-search" onclick={() => { closeSearch(); store.paletteOpen = true; }}><Search size={15} aria-hidden="true" /><span>{strings.palette.searchAll}</span></button>
+    {/if}
   {:else}
   <!-- The page's name, then the machine, the display menu and the search on its row; the places themselves are the bottom bar's. -->
   <div class="identity brand">
@@ -358,7 +364,7 @@
   {#if searchable}<button class="ghost icon" data-testid={lent?.searchTestid ?? 'mobile-search-open'} aria-label={lent?.searchLabel ?? strings.mobile.search} title={lent?.searchLabel ?? strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
   <!-- The thread list's row is full with its views, three squares, "New" and the gear: the Whip waits on the other lists. -->
-  {#if !recover && !chatting && !newShown && featureOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<WhipButton mobile />{/if}
+  {#if !recover && !chatting && !newShown && !(searching && searchable) && featureOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<WhipButton mobile />{/if}
   {#if narrow.current && ContactRequestNotice && contactsShownAnywhere(store)}<ContactRequestNotice {store} />{/if}
   <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. Activity answers what is
        asked, so it creates nothing; the thread list's "+" is one tab away. -->
@@ -396,6 +402,7 @@
       <!-- Only on screen: kept under a page, its pairing would answer the page's own (Machines) and leave it. -->
       {#if listShown}<MobileConnect {store} onpaired={() => show('threads')} />{/if}
     {:else}
+    {#if browserBackground && listScreen === 'threads'}<BackgroundBrowser onclick={() => { show('chat'); onbrowser?.(); }} />{/if}
     <!-- Recent's filters are the display menu's, counted on its button: the list starts with its rows. -->
     {#snippet threadRow(row: typeof rows[number], grouped = false, helpers: typeof rows = [])}
       <!-- Activity: the row's verb is its own, else the first asking sub-agent's, which opens that sub-agent (ActivityRow.svelte). -->
@@ -411,6 +418,7 @@
         {@const groupRows = rowsByProject.get(group.machine.id)?.get(group.project.id) ?? []}
         {@const workingOpen = projectThreadView.isOpen(group, 'working')}
         {@const doneOpen = archiveCount(group.project, 'done') > 0 && (doneFilter.shown || projectThreadView.isOpen(group, 'done'))}
+        {@const archivedOpen = archiveCount(group.project, 'archived') > 0 && projectThreadView.isOpen(group, 'archived')}
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
         {@const needsHere = needsCount(group)}
         {@const waitingHere = needsHere.count}
@@ -422,7 +430,7 @@
         {@const drafts = group.machine.store.draftEntries.filter(entry => entry.projectId === group.project.id)}
         {@const folded = !query && group.machine.store.isCollapsed(group.project.id)}
         {@const rollup = folded && group.machine.store.connection === 'ready' ? projectRollup(group.machine.store.threadsOf(group.project.id), thread => rowAsks(group.machine.store, thread.id)) : null}
-        {#if !query || groupRows.length > 0 || doneOpen}
+        {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
         <section class="project-group" class:inactive={!activeProject(group)} class:folded data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading" data-row-edge>
             <!-- The tile and the name fold the project, as its header does on the desktop; the counters and menus beside them keep their own action.
@@ -440,7 +448,7 @@
             {/if}
             <!-- The desktop header's menu: a new thread here, the path, archived threads, managing the project. -->
             <button type="button" class="ghost icon project-actions" data-testid="mobile-project-menu" title={strings.sidebar.projectMenu} aria-label={strings.sidebar.projectMenu}
-              onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'), { count: archiveCount(group.project, 'archived') })}><Ellipsis size={18} /></button>
+              onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'), true)}><Ellipsis size={18} /></button>
           </div>
           <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
           {#if group.machine.store.connection === 'closed'}<div class="offline"><MachineOffline store={group.machine.store} label={group.machine.label} /></div>{/if}
@@ -463,6 +471,10 @@
           <div id="{controls}-done" hidden={!doneOpen} data-testid="project-done">
             {#if doneOpen}<GroupLabel kind="done" count={query ? undefined : archiveCount(group.project, 'done')} />{/if}
             <RecentDone entries={[group]} {scrollRoot} {now} {query} open={doneOpen && !folded} header={false} cap={10} onopen={() => show('chat')} />
+          </div>
+          <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
+            {#if archivedOpen}<GroupLabel kind="archived" count={query ? undefined : archiveCount(group.project, 'archived')} />{/if}
+            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && !folded} header={false} cap={10} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
           </div></div>
@@ -577,6 +589,7 @@
     .mobile-header > :global(.thread-list-notice) { flex-basis: 100%; }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
+    .global-search { flex: 1 0 100%; justify-content: flex-start; gap: 8px; min-height: var(--touch-target); padding: 0 10px; font-size: var(--text-sm); color: var(--color-muted-foreground); white-space: nowrap; }
     /* The display options close the field's row, after a hairline. */
     .display { display: flex; align-self: stretch; align-items: center; flex: none; border-left: 1px solid var(--color-border); }
     .display :global(.trigger) { width: var(--touch-target); height: var(--touch-target); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }

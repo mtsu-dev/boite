@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentProfile, CoordinationPeer } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { MEMORY_ARCHIVE } from '../src/agents/context.ts';
+import { TriggerSecrets } from '../src/agents/trigger-secrets.ts';
 import { makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
 import { quietAgent, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -573,3 +574,24 @@ test('a fact set to another text and back while the mochi travels ends there wit
   expect(pc.core.agentRuntime.facts(agent.id).map(f => [f.key, f.text])).toEqual([['door', 'The door is open.']]);
   expect(desk.core.workforce.records.find('profile', agent.id)).toBeNull();
 }, 60_000);
+
+test('a rolled-back move transaction keeps the source webhook trigger and its secret', async () => {
+  const { desk, owner, pcId } = await group();
+  const { agent } = await makeAgent(desk, owner);
+  const { trigger, secret } = await owner.call('agents.trigger.save', {
+    value: { agentId: agent.id, source: { kind: 'webhook' }, name: 'Hook', prompt: 'Check hook.', enabled: true, cooldownSeconds: 60 },
+  });
+  const realRemove = desk.core.workforce.records.remove.bind(desk.core.workforce.records);
+  const failProfile = spyOn(desk.core.workforce.records, 'remove').mockImplementation((kind, id) => {
+    if (kind === 'profile' && id === agent.id) throw new Error('simulated profile delete failure');
+    return realRemove(kind, id);
+  });
+  try {
+    expect(await thrown(owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'rollback-secret' }))).toThrow();
+  } finally {
+    failProfile.mockRestore();
+  }
+  expect(desk.core.workforce.records.find('trigger', trigger.id)).not.toBeNull();
+  expect(new TriggerSecrets(desk.dataDir).get(trigger.id)).toBe(secret!);
+}, 60_000);
+

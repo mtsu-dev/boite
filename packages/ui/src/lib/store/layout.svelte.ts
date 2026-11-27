@@ -61,6 +61,7 @@ export class Layout {
   /** The find bar over the open thread, and a count each ask bumps so a second Ctrl+F refocuses it. */
   findOpen = $state(false);
   findRequest = $state(0);
+  messageSearchJump = $state<{ threadId: string; messageId: string; query: string } | null>(null);
   /** Bumped to open the draft's project dropdown from the keyboard. */
   projectChoiceRequest = $state(0);
   page = $state<Page>('chat');

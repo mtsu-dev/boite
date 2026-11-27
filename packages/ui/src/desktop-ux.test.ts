@@ -405,7 +405,7 @@ test("the rail's Add rests out of sight beside the mochis and stays while its me
     const bot = query<HTMLButtonElement>('[data-testid=rail-bot]');
     bot.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 }));
     await waitFor(() => add.getAttribute('aria-expanded') === 'false');
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
     expect(add.getAttribute('aria-expanded')).toBe('false');
   } finally {
@@ -623,7 +623,7 @@ test('an archived thread comes back from Settings > General', async () => {
   await waitFor(() => store.page === 'chat' && store.openThread?.id === 't-trace');
 });
 
-test('the palette and the project menu reach the archive, its list already read', async () => {
+test('the palette reaches the archive in Settings; the archived count of a card opens its archived threads under it, as Done', async () => {
   // A jump to a card scrolls it into view, which jsdom does not draw.
   Element.prototype.scrollIntoView ??= vi.fn();
   await mountOnFake();
@@ -638,18 +638,29 @@ test('the palette and the project menu reach the archive, its list already read'
   expect(store.page === 'settings' && store.settingsTab === 'general').toBe(true);
   expect(document.querySelector('[data-testid=sidebar] [data-testid=archived-list]')).toBeNull();
 
+  // On the card, the archived threads are a count in its head, beside Done, and its menu no longer sends them to Settings.
   store.showChat();
-  await waitFor(() => document.querySelector('[data-testid=project-menu]') !== null);
-  query<HTMLButtonElement>('[data-testid=project-menu]').click();
-  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archived]') !== null);
-  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archived]').click();
-  // A card's menu opens the archive on its project; All projects widens it back to every one.
-  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-focus]') !== null);
-  query<HTMLButtonElement>('[data-testid=archived-all]').click();
-  await waitFor(() => document.querySelector('[data-testid=archived-focus]') === null && document.querySelector('[data-testid=archived-list]')?.textContent?.includes('Finish the trace tab') === true);
-  // Settings left, the focus goes with it: the next opening shows every project.
-  store.showChat();
-  await waitFor(() => document.querySelector('[data-testid=archived-threads]') === null);
+  const card = '[data-testid=sidebar] section[data-project-id="p-boite"]';
+  const toggle = `${card} .head [data-testid=project-archived-toggle]`;
+  await waitFor(() => document.querySelector(toggle) !== null);
+  expect(query(toggle).dataset.count).toBe('2');
+  query<HTMLButtonElement>(`${card} [data-testid=project-menu]`).click();
+  await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+  expect(document.querySelector('[data-testid=context-menu] [data-value=archived]')).toBeNull();
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
+
+  // Pressed, it opens the fold under the card, its rows in the list, where a row opens the conversation.
+  query<HTMLButtonElement>(toggle).click();
+  const row = `${card} [data-testid=project-archived] [data-testid=done-thread][data-thread-id=t-trace]`;
+  await waitFor(() => document.querySelector(row) !== null);
+  expect([query(toggle).getAttribute('aria-expanded'), query(`${card} [data-testid=group-label-archived]`).textContent]).toEqual(['true', expect.stringContaining('2')]);
+  expect(store.page).toBe('chat');
+  query<HTMLButtonElement>(`${row} [data-testid=done-thread-open]`).click();
+  await waitFor(() => store.page === 'chat' && store.openThread?.id === 't-trace');
+  // Pressed again, it folds.
+  query<HTMLButtonElement>(toggle).click();
+  await waitFor(() => document.querySelector(row) === null && query(toggle).getAttribute('aria-expanded') === 'false');
 });
 
 test('Ctrl+Shift+T brings back the thread archived last on the machine, from this window or another, and opens it', async () => {

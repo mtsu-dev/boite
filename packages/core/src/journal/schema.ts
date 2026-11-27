@@ -19,8 +19,9 @@ import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
 import { ARTIFACT_ROW } from './artifact-references.ts';
 import { STATED_TURN } from './turn-rows.ts';
+import { createMessageSearch, ensureMessageSearchTriggers } from './message-search.ts';
 
-export const SCHEMA_VERSION = 53;
+export const SCHEMA_VERSION = 54;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -273,6 +274,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     const replacement = definition.sql.replace(/CREATE TABLE (?:IF NOT EXISTS )?["`[]?threads["`\]]?/i, 'CREATE TABLE threads_next').replace(/project_id TEXT NOT NULL/i, 'project_id TEXT');
     db.exec(replacement);
     db.exec('INSERT INTO threads_next SELECT * FROM threads');
+    db.exec('DROP TRIGGER IF EXISTS message_search_insert; DROP TRIGGER IF EXISTS message_search_update; DROP TRIGGER IF EXISTS message_search_delete;');
     db.exec('DROP TABLE threads');
     db.exec('ALTER TABLE threads_next RENAME TO threads');
     db.exec('ALTER TABLE threads ADD COLUMN agent_session_id TEXT');
@@ -524,6 +526,8 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   // The usage page's sums per 15 minutes, kept by the turn and thread writers and built once from every finished turn (`usage-slots.ts`).
   // Some version 53 journals have interruption receipts but no usage slots.
   if (!objects.has('usage_slots')) createUsageSlots(db);
+  if (!objects.has('messages_fts')) createMessageSearch(db);
+  else ensureMessageSearchTriggers(db);
   createSharedProjects(db);
   createSharedBoard(db);
   createSharedCompute(db);

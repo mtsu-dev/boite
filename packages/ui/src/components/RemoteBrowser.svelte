@@ -1,7 +1,7 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import { onMount, untrack } from 'svelte';
-  import { Pause, Play, ArrowUp, ArrowDown, Copy, MonitorSmartphone, Send } from '@lucide/svelte';
+  import { Pause, Play, ArrowUp, ArrowDown, Copy, Keyboard, MonitorSmartphone, Send } from '@lucide/svelte';
   import { REMOTE_PRESS_MAX, REMOTE_TEXT_MAX, type RemoteBrowserFrame, type RemoteBrowserInput, type RemoteBrowserPicker } from '@boite/contracts';
   import { browserKey, hasKeyboard, liveInput, writeClipboardLater } from '../lib/live-input';
   import { keyCap } from '../lib/keybindings';
@@ -20,9 +20,10 @@
   let { store, threadId, tabId }: { store: Store; threadId: string; tabId?: string } = $props();
   let paused = $state(false), busy = $state(false), error = $state(''), text = $state('');
   let frame = $state.raw<RemoteBrowserFrame | null>(null), picture = $state<HTMLCanvasElement>();
-  // Core timestamps use another device's clock. Retain local age for each frame,
-  // including one held by an in-progress pointer gesture.
-  const receivedAt = new WeakMap<RemoteBrowserFrame, number>();
+  // Input must name a frame from the current stream. Use local time for its
+  // age, including when a pointer gesture still holds an earlier frame.
+  let streamGeneration = $state(0);
+  const received = new WeakMap<RemoteBrowserFrame, { at: number; generation: number }>();
   let alive = true, generation = 0, timer: ReturnType<typeof setTimeout> | undefined;
   /**
    * A core that announces `browserStream` pushes the tab's frames on a socket of
@@ -41,6 +42,7 @@
   let pointer: { x: number; y: number; lastX: number; lastY: number; moved: boolean; mouse: boolean; shift: boolean; from: { x: number; y: number } | null; frame: RemoteBrowserFrame; client: Store['client']; pressed?: { x: number; y: number } | null } | undefined;
   // A computer drives the page itself: keys, wheel, mouse selection and the clipboard, with no keys or text field below.
   const desk = hasKeyboard();
+  let keyboardOpen = $state(true);
   let area = $state<HTMLElement>(), screen = $state<HTMLButtonElement>(), note = $state(''), noteTimer: ReturnType<typeof setTimeout> | undefined;
   /**
    * The `<select>` a tap opened. Chrome draws its list in a window of its own on
@@ -69,29 +71,43 @@
   // The screen's density, which changes when the window moves to another screen or the page is zoomed.
   let pixelRatio = $state(window.devicePixelRatio || 1);
   const validSize = $derived([viewportWidth, viewportHeight].every(n => typeof n === 'number' && Number.isInteger(n) && n >= 240 && n <= 3840));
-  const usable = $derived(!!frame && frameClient === store.client && !paused && !busy && !error && store.connection === 'ready');
-  function stop() { generation++; clearTimeout(timer); stream?.stop(); stream = null; }
+  const fromCurrentStream = (target: RemoteBrowserFrame) => received.get(target)?.generation === streamGeneration;
+  const usable = $derived(!!frame && fromCurrentStream(frame) && frameClient === store.client && !paused && !busy && !error && store.connection === 'ready');
+  function stop() {
+    generation++; clearTimeout(timer);
+    if (stream) { stream.stop(); stream = null; streamGeneration++; fresh = false; }
+    painter.cancel();
+  }
   function blank() { frame = null; frameClient = null; painter.clear(); }
   /** Whether input may still name `target`: the page a live stream shows is the page; any other frame is good for five seconds. */
-  const aged = (target: RemoteBrowserFrame) => !(stream?.live && target === frame) && performance.now() - (receivedAt.get(target) ?? -Infinity) > 5000;
+  const aged = (target: RemoteBrowserFrame) => !fromCurrentStream(target) ||
+    (!(stream?.live && target === frame) && performance.now() - (received.get(target)?.at ?? -Infinity) > 5000);
   const widest = () => frameMaxWidth(requestWidth, pixelRatio);
+  function showFrame(next: RemoteBrowserFrame, client: NonNullable<Store['client']>) {
+    const receipt = { at: performance.now(), generation: streamGeneration };
+    if (frame && fromCurrentStream(frame)) received.set(frame, receipt);
+    received.set(next, receipt);
+    frameClient = client; frame = next; error = ''; fresh = true;
+    if (!editingAddress) address = next.url ?? '';
+  }
   function watch(run: number) {
     const client = store.client;
     if (!client || client.state !== 'ready') { error = strings.remoteBrowser.reconnecting; return; }
     const mine = () => alive && run === generation;
     const swapped = () => { if (client === store.client) return false; stop(); blank(); error = strings.remoteBrowser.reconnecting; return true; };
+    let next: RemoteBrowserFrame | null = null;
     stream = frameStream({
       client, threadId, ...(tabId ? { tabId } : {}), maxWidth: widest,
       page: (page) => {
         if (!mine() || swapped()) return;
-        // Input already aimed at the page before lands for as long as a frame's would.
-        if (frame) receivedAt.set(frame, performance.now());
-        const next: RemoteBrowserFrame = { ...page, base64: '' };
-        receivedAt.set(next, performance.now()); frameClient = client; frame = next; error = ''; fresh = true;
-        if (!editingAddress) address = next.url ?? '';
+        next = { ...page, base64: '' };
       },
-      frame: (jpeg) => { if (!mine() || swapped()) return; painter.paint(jpeg); error = ''; fresh = true; },
-      lost: () => { if (mine()) { if (frame) receivedAt.set(frame, performance.now()); fresh = false; } },
+      frame: (jpeg) => {
+        if (!mine() || swapped() || !next) return;
+        const page = next, from = streamGeneration;
+        painter.paint(jpeg, () => { if (mine() && from === streamGeneration && !swapped()) showFrame(page, client); });
+      },
+      lost: () => { next = null; if (mine()) { streamGeneration++; painter.cancel(); fresh = false; } },
       failed: (reason) => { if (mine() && !swapped()) error = reason; },
       pull: () => { if (mine()) { pullOnly = true; resume(); } },
     });
@@ -112,7 +128,7 @@
       if (!client || client.state !== 'ready') throw new Error(strings.remoteBrowser.reconnecting);
       const maxWidth = widest(), quality = frameQuality(roundTrip);
       // The frame shown: the core answers with a newer one, or that the page drew nothing new within a second.
-      const after = frame && frameClient === client ? frame.id : undefined;
+      const after = frame && fromCurrentStream(frame) && frameClient === client ? frame.id : undefined;
       const next = await client.call('browser.remoteFrame', { threadId, ...(tabId ? { tabId } : {}), ...(maxWidth ? { maxWidth } : {}), ...(quality !== 55 ? { quality } : {}), ...(after ? { after } : {}) });
       const changed = 'unchanged' in next ? null : next;
       if (!alive || run !== generation) return;
@@ -122,14 +138,14 @@
         roundTrip = Math.max(0, performance.now() - started - (next.waitedMs ?? 0)); failures = 0;
         if (!changed) {
           // The frame shown is still the page, and input aimed at it is still valid.
-          if (frame && next.id === frame.id) { unchanged++; receivedAt.set(frame, performance.now()); error = ''; fresh = true; }
+          if (frame && next.id === frame.id) { unchanged++; received.set(frame, { at: performance.now(), generation: streamGeneration }); error = ''; fresh = true; }
         } else {
           // A core from before `after` sends every frame again: identical ones count as unchanged.
           unchanged = frame && changed.base64 === frame.base64 && changed.width === frame.width && changed.height === frame.height ? unchanged + 1 : 0;
           // Decoded off the main thread, and drawn only once it is: a drag stays smooth and the frame before stays shown until then.
-          if (changed.base64 && changed.base64 !== frame?.base64) painter.paint(jpegBlob(changed.base64));
-          receivedAt.set(changed, performance.now()); frameClient = client; frame = changed; error = ''; fresh = true;
-          if (!editingAddress) address = changed.url ?? '';
+          if (changed.base64 && changed.base64 !== frame?.base64) {
+            painter.paint(jpegBlob(changed.base64), () => { if (alive && run === generation && client === store.client) showFrame(changed, client); });
+          } else showFrame(changed, client);
         }
       }
     } catch (cause) {
@@ -141,7 +157,7 @@
       }
     }
     finally { pending = false; }
-    if (alive && run === generation) timer = setTimeout(() => void poll(run), retry ? 250 : nextPollDelay({ roundTrip, unchanged, failures }));
+    if (alive && run === generation) timer = setTimeout(() => void poll(run), retry ? FRAME_INTERVAL : nextPollDelay({ roundTrip, unchanged, failures }));
   }
   function resume() {
     stop();
@@ -158,7 +174,7 @@
     if (stream || pending || paused || document.hidden) return;
     clearTimeout(timer);
     const run = generation;
-    timer = setTimeout(() => void poll(run), Math.max(60, FRAME_INTERVAL - (Date.now() - requestedAt)));
+    timer = setTimeout(() => void poll(run), Math.max(0, FRAME_INTERVAL - (Date.now() - requestedAt)));
   }
   onMount(() => {
     const visibility = () => { if (document.hidden) { stop(); fresh = false; } else resume(); };
@@ -323,32 +339,8 @@
     scrollX -= event.deltaX * unit; scrollY -= event.deltaY * unit;
     flushScroll();
   }
-  /**
-   * The page takes the size of this view by default, as a browser's page takes
-   * its window's: on Show and whenever the view changes size, once it settles.
-   * Once per size of this view: a preset the agent applies, or another
-   * viewer's fit, stands until this view itself changes size. A size picked by
-   * hand in Display stops that until Fit this screen.
-   */
-  let fitted = $state(true), fittedTo = '', fitTimer: ReturnType<typeof setTimeout> | undefined;
-  const ready = $derived(usable);
-  $effect(() => {
-    const width = Math.round(areaWidth), height = Math.round(areaHeight);
-    if (!fitted || !ready || zoom || width < 240 || height < 240) return;
-    const size = `${width}x${height}`;
-    if (size === fittedTo) return;
-    clearTimeout(fitTimer);
-    fitTimer = setTimeout(() => untrack(() => {
-      if (!fitted || !frame) return;
-      fittedTo = size;
-      if (Math.abs(frame.width - width) <= 2 && Math.abs(frame.height - height) <= 2) return;
-      void input({ kind: 'viewport', width: Math.min(3840, width), height: Math.min(3840, height) });
-    }), 350);
-    return () => clearTimeout(fitTimer);
-  });
-  function resize(width: number, height: number, fit = false) {
-    fitted = fit;
-    fittedTo = fit ? `${Math.round(width)}x${Math.round(height)}` : '';
+  const fitted = $derived(!!frame && Math.abs(frame.width - areaWidth) <= 2 && Math.abs(frame.height - areaHeight) <= 2);
+  function resize(width: number, height: number) {
     viewportWidth = Math.max(240, Math.min(3840, Math.round(width)));
     viewportHeight = Math.max(240, Math.min(3840, Math.round(height)));
     zoom = 0;
@@ -498,6 +490,7 @@
       {#if paused || error || !frame}<span class="state ui-label" data-testid="remote-browser-state">{paused ? strings.remoteBrowser.paused : error ? strings.remoteBrowser.reconnecting : strings.remoteBrowser.waiting}</span>{/if}
     {/snippet}
     {#snippet actions()}
+      {#if !desk}<button type="button" class="ghost small icon toggle" data-testid="remote-browser-keyboard" aria-expanded={keyboardOpen} title={strings.remoteBrowser.keyboard} aria-label={strings.remoteBrowser.keyboard} onclick={() => { keyboardOpen = !keyboardOpen; }}><Keyboard size={16} /></button>{/if}
       <button type="button" class="ghost small icon" data-testid="remote-browser-display" aria-expanded={displaySettings} title={strings.remoteBrowser.display} aria-label={strings.remoteBrowser.display} onclick={() => { displaySettings = !displaySettings; if (frame) { viewportWidth = frame.width; viewportHeight = frame.height; } }}><MonitorSmartphone size={15} strokeWidth={1.75} /></button>
       <button type="button" class="ghost small icon toggle" data-testid="remote-browser-pause" aria-pressed={paused} title={paused ? strings.remoteBrowser.resume : strings.remoteBrowser.pause} aria-label={paused ? strings.remoteBrowser.resume : strings.remoteBrowser.pause} onclick={() => { paused = !paused; }}>{#if paused}<Play size={14} strokeWidth={1.75} />{:else}<Pause size={14} strokeWidth={1.75} />{/if}</button>
     {/snippet}
@@ -508,7 +501,7 @@
     <section class="display-settings" aria-label={strings.remoteBrowser.display}>
       <strong>{strings.remoteBrowser.resolution} {frame ? `${frame.width} × ${frame.height}` : ''}</strong>
       <div class="options">
-        <button class="small" disabled={!usable} aria-pressed={fitted} onclick={() => resize(areaWidth, areaHeight, true)}><span class="ui-label">{strings.remoteBrowser.fitPhone}</span></button>
+        <button class="small" disabled={!usable} aria-pressed={fitted} onclick={() => resize(areaWidth, areaHeight)}><span class="ui-label">{strings.remoteBrowser.fitPhone}</span></button>
         <button class="small" disabled={!usable} onclick={() => resize(393, 700)}><span class="ui-label">{strings.remoteBrowser.phone}</span></button>
         <button class="small" disabled={!usable} onclick={() => resize(768, 1024)}><span class="ui-label">{strings.remoteBrowser.tablet}</span></button>
         <button class="small" disabled={!usable} onclick={() => resize(1366, 768)}><span class="ui-label">PC</span></button>
@@ -520,7 +513,7 @@
         <button class="small" type="submit" disabled={!usable || !validSize}><span class="ui-label">{strings.remoteBrowser.apply}</span></button>
       </form>
       <small>{strings.remoteBrowser.sharedSize}</small>
-      <button class="small ghost restore" disabled={!usable} onclick={() => { fitted = false; void input({ kind: 'reset-viewport' }); }}><span class="ui-label">{strings.remoteBrowser.restoreSize}</span></button>
+      <button class="small ghost restore" disabled={!usable} onclick={() => void input({ kind: 'reset-viewport' })}><span class="ui-label">{strings.remoteBrowser.restoreSize}</span></button>
       <strong>{strings.remoteBrowser.previewZoom}</strong>
       <div class="options">
         <button class="small" aria-pressed={zoom === 0} onclick={() => { zoom = 0; displaySettings = false; }}><span class="ui-label">{strings.remoteBrowser.fit}</span></button>
@@ -551,7 +544,7 @@
   </div>
   {#if desk && note}<small class="toast" role="status" data-testid="remote-browser-note">{note}</small>{/if}
   </div>
-  {#if !desk}
+  {#if !desk && keyboardOpen}
   <footer>
     <div class="keys"><button type="button" class="ghost small icon" disabled={!usable} onclick={() => void input({ kind: 'scroll', x: 0, y: -500 })} aria-label={strings.remoteBrowser.scrollUp}><ArrowUp size={16} /></button><button type="button" class="ghost small icon" disabled={!usable} onclick={() => void input({ kind: 'scroll', x: 0, y: 500 })} aria-label={strings.remoteBrowser.scrollDown}><ArrowDown size={16} /></button>
       {#each (['Tab', 'Enter', 'Escape', 'Backspace'] as const) as key}<button type="button" class="ghost small" disabled={!usable} onclick={() => void input({ kind: 'key', key })}><span class="ui-label">{key === 'Backspace' ? '⌫' : keyCap(key)}</span></button>{/each}

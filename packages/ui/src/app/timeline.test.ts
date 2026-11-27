@@ -204,7 +204,12 @@ test('a tool card shows the diff, the markdown and the image it produced', async
   await waitFor(() => !query<HTMLButtonElement>('[data-testid=composer-send]').disabled);
   query<HTMLButtonElement>('[data-testid=composer-send]').click();
 
-  // Changes and produced documents keep their previews behind a disclosure.
+  // The edit and the read fold into one run; the screenshot a tool made stands alone.
+  await waitFor(() => document.querySelector('[data-testid=tool-group]')?.getAttribute('data-count') === '2' && !!document.querySelector('[data-testid=tool-document-chip]'));
+  expect(document.querySelectorAll('[data-testid=tool-document-chip]')).toHaveLength(1);
+  query<HTMLButtonElement>('[data-testid=tool-group-toggle]').click();
+  flushSync();
+  // Changes and documents keep their previews behind a disclosure.
   await waitFor(() => document.querySelectorAll('[data-testid=tool-document-chip]').length === 2);
   expect(
     Array.from(document.querySelectorAll('[data-testid=tool-document-chip]')).map((el) => el.textContent)

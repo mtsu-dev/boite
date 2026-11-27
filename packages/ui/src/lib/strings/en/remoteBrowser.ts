@@ -1,5 +1,6 @@
 export const strings = {
   remoteBrowser: {
+    keyboard: 'Keyboard controls',
     display: 'Display', resolution: 'Page resolution', fitPhone: 'Fit this screen', phone: 'Phone', tablet: 'Tablet', rotate: 'Rotate', width: 'Width', height: 'Height', apply: 'Apply', sharedSize: 'Resolution also changes the page the agent sees.', restoreSize: 'Restore the default size', previewZoom: 'Preview zoom (this device only)', fit: 'Fit', panHint: 'Drag to pan the preview. Use the arrows to scroll the page.',
     address: 'Address', addressPlaceholder: 'Enter an address', back: 'Back', forward: 'Forward', reload: 'Reload', badAddress: 'Enter a web address (http or https).',
     title: 'Agent’s browser', waiting: 'Waiting for the page', paused: 'Paused', reconnecting: 'Reconnecting', pause: 'Pause', resume: 'Resume',

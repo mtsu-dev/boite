@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { FakeClient } from '../../lib/fake-client';
+import * as find from '../../lib/find';
 import { Store, store as primaryStore } from '../../lib/store.svelte';
 import { followDesktopOf, setExperiment, writeExperiments } from '../../lib/experiments';
 import { workspace } from '../../lib/workspace.svelte';
@@ -211,6 +212,34 @@ test('the team chat draws each post with its author, a private post with its rec
     ['Huginn (Réseaux)', huginn.id], ['Jeux (Producteur)', jeux.id],
   ]);
   expect(query('[data-testid=team-members]').textContent).toContain('Ship the site.');
+});
+
+test('opening a search mention in a team chat scrolls to its post and highlights the matching text', async () => {
+  const { client, store, team, huginn, say } = await skollheim();
+  await say(huginn.id, 'The launch checklist is ready.');
+  await say(huginn.id, 'The second post is unrelated.');
+  const { matches } = await client.call('threads.search', { query: 'checklist' });
+  const hit = matches.find(match => match.threadId === team.threadId)!;
+
+  const paint = vi.spyOn(find, 'paintMessageSearch');
+  const clear = vi.spyOn(find, 'clearMessageSearch');
+  const scrolled: Element[] = [];
+  Element.prototype.scrollIntoView ??= vi.fn();
+  vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) { scrolled.push(this); });
+  await store.open(team.threadId, true, { match: { messageId: hit.messageId, query: 'checklist' } });
+  mounted.push(mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } }));
+
+  await vi.waitFor(() => expect(store.messageSearchJump).toBeNull());
+  const [matched, unrelated] = all('[data-testid=team-post]');
+  expect(matched?.textContent).toContain('The launch checklist is ready.');
+  expect(scrolled).toContain(matched);
+  expect(scrolled).not.toContain(unrelated);
+  expect(paint).toHaveBeenCalledWith(matched, [{ words: ['checklist'], exact: false }], '.said .body');
+  expect(clear).not.toHaveBeenCalled();
+  query('[data-testid=team-posts]').dispatchEvent(new WheelEvent('wheel'));
+  expect(clear).toHaveBeenCalledTimes(1);
+  unrelated!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  expect(clear).toHaveBeenCalledTimes(2);
 });
 
 test('a member of another machine of the group carries that machine in the member row, on its posts and in the @ and audience menus; one of this machine says nothing', async () => {

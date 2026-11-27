@@ -150,20 +150,21 @@ test('a project\'s archive opens Settings on that project\'s machine, every proj
   await waitFor(() => document.querySelector('[data-testid=archived-focus]') === null);
   expect(list()).toContain('Bench against legacy');
   expect(list()).not.toContain('Finish the trace tab');
-  // The project menu targets Builder in Settings without moving the window to Builder's chat.
+  // A remote card's archived count opens that machine's archived threads under the card, never this machine's, and
+  // leaves the window where it is.
   store.showChat();
   const view = workspace.view;
   workspace.view = 'projects';
   machineFilter.set(remote.id);
-  const projectMenu = '[data-project-id=p-boite] [data-testid=project-menu]';
-  const projectArchive = '[data-testid=context-menu] [data-testid=project-archived-toggle]';
-  await waitFor(() => document.querySelector(projectMenu) !== null);
-  query<HTMLButtonElement>(projectMenu).click();
-  await waitFor(() => document.querySelector(projectArchive) !== null);
-  query<HTMLButtonElement>(projectArchive).click();
-  await waitFor(() => list().includes('Bench against legacy') && document.querySelector('[data-testid=archived-focus]') !== null);
-  expect(query('[data-testid=settings-machine]').textContent).toContain(remote.label);
-  expect(workspace.active).toBe(store);
+  const remoteCard = `[data-testid=sidebar] section[data-machine-id="${remote.id}"][data-project-id=p-boite]`;
+  const archivedCount = `${remoteCard} .head [data-testid=project-archived-toggle]`;
+  await waitFor(() => document.querySelector(archivedCount) !== null);
+  query<HTMLButtonElement>(archivedCount).click();
+  const folded = () => document.querySelector(`${remoteCard} [data-testid=project-archived]`)?.textContent ?? '';
+  await waitFor(() => folded().includes('Bench against legacy'));
+  expect(folded()).not.toContain('Finish the trace tab');
+  expect([store.page, workspace.active === store]).toEqual(['chat', true]);
+  query<HTMLButtonElement>(archivedCount).click();
   workspace.view = view;
   // Filter's archive follows the machine the thread list is narrowed to.
   store.showChat();

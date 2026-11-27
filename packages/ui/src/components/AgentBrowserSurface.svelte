@@ -1,8 +1,8 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import { untrack } from 'svelte';
-  import { AppWindow, EyeOff, Globe, Plus, X } from '@lucide/svelte';
-  import { REMOTE_WATCH_EVERY_MS, type AgentBrowserStatus, type AgentBrowserTab } from '@boite/contracts';
+  import { AppWindow, ChevronDown, Cookie, EyeOff, Globe, LoaderCircle, Plus, TriangleAlert, X } from '@lucide/svelte';
+  import { browserProfilesOf, DEFAULT_BROWSER_PROFILE, PRIVATE_BROWSER_PROFILE, REMOTE_WATCH_EVERY_MS, type AgentBrowserStatus, type AgentBrowserTab } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { liveViews, machineName } from '../lib/live-view.svelte';
@@ -12,6 +12,7 @@
   import RemoteBrowser from './RemoteBrowser.svelte';
   import AgentNativeView from './AgentNativeView.svelte';
   import { agentHost } from '../lib/agent-browser-host.svelte';
+  import Menu from './Menu.svelte';
 
   /**
    * The browser this conversation's agent drives on the machine that runs it
@@ -37,6 +38,25 @@
   // A tab this app hosts shows its own page here, never asking for frames.
   const native = $derived(here && agentHost.active && !!watched?.view);
   const nativeTab = $derived(native ? watched?.tabId ?? null : null);
+  const profiles = $derived(browserProfilesOf(store.settings).profiles);
+  let switching = $state(false);
+  function profileName(id: string, fallback = id) {
+    if (id === DEFAULT_BROWSER_PROFILE) return strings.browserProfiles.default;
+    if (id === PRIVATE_BROWSER_PROFILE) return strings.browserProfiles.private;
+    return profiles.find(profile => profile.id === id)?.name ?? fallback;
+  }
+  const profileMenu = $derived([DEFAULT_BROWSER_PROFILE, ...profiles.map(profile => profile.id), PRIVATE_BROWSER_PROFILE]
+    .map(id => ({ id, label: profileName(id), active: id === watched?.profile })));
+  const cookieLabel = $derived(watched ? fill(strings.agentBrowser.cookies, { name: profileName(watched.profile, watched.profileName) }) : '');
+
+  async function switchProfile(profile: string) {
+    const client = store.client, tab = watched;
+    if (!client || !tab || tab.profile === profile || switching) return;
+    switching = true; failure = '';
+    try { await client.call('browser.command', { threadId, tabId: tab.tabId, action: { kind: 'profile-switch', profile } }); }
+    catch (cause) { failure = errorText(cause); }
+    finally { switching = false; }
+  }
 
   // The core keeps a tab awake while a viewer watches it (docs/internals/browser.md):
   // shown natively, the page tells it so while the window is visible. A new
@@ -76,7 +96,7 @@
     // A tab picked while the page opens wins over the new one.
     const before = picked;
     try {
-      const reply = await client.call('browser.command', { threadId, action: { kind: 'open', url } });
+      const reply = await client.call('browser.command', { threadId, action: { kind: 'open', url, manual: true } });
       drafting = false; address = ''; failure = '';
       if (reply.tabId && picked === before) picked = reply.tabId;
       // The user opened it himself: no cover over his own page.
@@ -99,16 +119,18 @@
     const id = threadId;
     if (!client || !ready) return;
     return untrack(() => {
-      let stopped = false, retry: ReturnType<typeof setTimeout> | undefined;
+      let stopped = false, received = false, retry: ReturnType<typeof setTimeout> | undefined;
       const off = client.on('browser.remoteChanged', (event) => {
         if (stopped || event.threadId !== id) return;
+        received = true;
+        if (event.show && event.live) { picked = null; drafting = false; }
         status = { available: status?.available ?? true, ...(status?.reason ? { reason: status.reason } : {}), live: event.live, tabs: event.tabs };
         failure = '';
       });
       // The subscription to a conversation just opened may still be on its way.
       const ask = (attempt: number) => {
         void client.call('browser.remoteStatus', { threadId: id }).then((next) => {
-          if (!stopped) { status = next; failure = ''; }
+          if (!stopped && !received) { status = next; failure = ''; }
         }, (cause) => {
           if (stopped) return;
           if (attempt < 4) retry = setTimeout(() => ask(attempt + 1), 1000);
@@ -166,11 +188,32 @@
         <button type="button" class="ghost small icon" data-testid="agent-browser-new" title={strings.agentBrowser.newTab} aria-label={strings.agentBrowser.newTab} onclick={newTab}><Plus size={15} strokeWidth={1.75} /></button>
       {/if}
       <span class="spacer"></span>
+      {#if watched && !drafted}
+        <div class="cookies" data-testid="agent-browser-cookies" data-profile={watched.profile}>
+          {#if canManage}
+            <Menu items={profileMenu} onpick={switchProfile} disabled={switching} label={cookieLabel} heading={strings.agentBrowser.changeCookies} placement="bottom" align="end" testid="agent-browser-cookie-menu">
+              <Cookie size={14} strokeWidth={1.75} /><span>{profileName(watched.profile, watched.profileName)}</span><ChevronDown size={12} />
+            </Menu>
+          {:else}
+            <span class="cookie-label" title={cookieLabel}><Cookie size={14} strokeWidth={1.75} /><span>{profileName(watched.profile, watched.profileName)}</span></span>
+          {/if}
+        </div>
+      {/if}
       {#if shown && !here && !drafted}
         <button type="button" class="ghost small icon" title={strings.agentBrowser.hideHint} aria-label={strings.agentBrowser.hide} data-testid="agent-browser-hide" onclick={() => { liveViews.hide('agent-browser', key); picked = null; }}><EyeOff size={15} strokeWidth={1.75} /></button>
       {/if}
     </div>
     {#if failure && !drafted}<p class="failure banner" role="alert">{failure}</p>{/if}
+    {#if watched?.health && !drafted}
+      {@const health = watched.health}
+      {#if health.loading || health.httpError || health.failedScripts}
+        <div class="page-health" role="status">
+          {#if health.loading}<span><LoaderCircle size={13} />{strings.agentBrowser.pageLoading}</span>{/if}
+          {#if health.httpError}<span class="failure"><TriangleAlert size={13} />{fill(strings.agentBrowser.pageError, { status: String(health.httpError) })}</span>{/if}
+          {#if health.failedScripts}<span class="failure"><TriangleAlert size={13} />{fill(strings.agentBrowser.scriptsFailed, { count: String(health.failedScripts) })}</span>{/if}
+        </div>
+      {/if}
+    {/if}
     {#if drafted}
       <form class="start" data-testid="agent-browser-start" onsubmit={openTab}>
         <Globe size={22} strokeWidth={1.5} />
@@ -192,7 +235,7 @@
         </div>
       </div>
     {:else if watched}
-      {#key watched.tabId}
+      {#key `${watched.tabId}:${watched.profile}`}
         <!-- This app hosts the tab: its own webview shows here, nothing is streamed. -->
         {#if native && watched.view}<AgentNativeView view={watched.view} url={watched.url} search={policySearch(store.policy)} />
         {:else}<RemoteBrowser {store} {threadId} tabId={watched.tabId} />{/if}
@@ -216,6 +259,10 @@
   /* A browser's tab strip: the selected tab joins the toolbar under it. */
   .strip { display: flex; align-items: flex-end; gap: 2px; height: 36px; padding: 0 6px; flex: none; background: var(--color-background); }
   .strip > .ghost { align-self: center; flex: none; }
+  .cookies { align-self: center; max-width: 42%; min-width: 0; }
+  .cookies :global(.trigger), .cookie-label { display: flex; align-items: center; min-width: 0; max-width: 100%; gap: 4px; padding-inline: 7px; border-radius: var(--radius-full); font-size: var(--text-xs); }
+  .cookies :global(svg) { flex: none; }
+  .cookies span span, .cookies :global(.trigger > span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Only the tabs scroll: new tab and hide stay in reach however many are open. */
   .tabs { flex: 0 1 auto; display: flex; align-items: flex-end; gap: 2px; min-width: 0; height: 100%; overflow-x: auto; scrollbar-width: none; }
   .tabs::-webkit-scrollbar { display: none; }
@@ -238,6 +285,8 @@
   .start input { flex: 1; min-width: 0; height: var(--control-sm); padding: 0; border: 0; background: transparent; box-shadow: none; font-size: var(--text-sm); outline: none; }
   .failure { color: var(--color-danger); font-size: var(--text-sm); }
   .failure.banner { margin: 0; padding: 6px 12px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); }
+  .page-health { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 4px 10px; font-size: var(--text-sm); color: var(--color-muted-foreground); background: var(--color-surface); }
+  .page-health span { display: inline-flex; align-items: center; gap: 5px; }
   @media (hover: none), (pointer: coarse) { .close { opacity: 1; } }
   @media (max-width: 720px), (pointer: coarse) {
     .strip { height: auto; min-height: var(--touch-target); }

@@ -1,20 +1,24 @@
 use std::path::Path;
 
 fn refused(path: &Path) -> String {
-    format!("path {}: expected a local file or folder, not a network or device path", path.display())
+    format!("path {}: expected an absolute path on this computer, not a network share or a device", path.display())
 }
 
-pub(crate) fn require_local_path(path: &Path) -> Result<(), String> {
+/// A path a chat link names on this computer: absolute and on a drive. A drive
+/// the user mapped (a NAS as `N:`) counts, since its server is the one the user
+/// connected; a share named by its server (`\\server\share`) or a device path
+/// would let an agent's text make this computer reach a server of its choice.
+pub(crate) fn require_client_path(path: &Path) -> Result<(), String> {
     #[cfg(windows)]
-    return check_windows_path(path, |drive| {
-        let root = [u16::from(drive), b':' as u16, b'\\' as u16, 0];
-        // SAFETY: the NUL-terminated drive root outlives this synchronous call.
-        unsafe { windows_sys::Win32::Storage::FileSystem::GetDriveTypeW(root.as_ptr()) == 4 } // DRIVE_REMOTE
-    });
+    return check_windows_path(path);
     #[cfg(not(windows))]
-    reject_network_spelling(path)
+    {
+        reject_network_spelling(path)?;
+        if path.is_absolute() { Ok(()) } else { Err(refused(path)) }
+    }
 }
 
+#[cfg(not(windows))]
 fn reject_network_spelling(path: &Path) -> Result<(), String> {
     let text = path.as_os_str().to_string_lossy();
     let mut chars = text.chars();
@@ -25,35 +29,39 @@ fn reject_network_spelling(path: &Path) -> Result<(), String> {
 }
 
 #[cfg(windows)]
-fn check_windows_path(path: &Path, remote_drive: impl FnOnce(u8) -> bool) -> Result<(), String> {
+fn check_windows_path(path: &Path) -> Result<(), String> {
     use std::path::{Component, Prefix};
     match path.components().next() {
         Some(Component::Prefix(prefix)) => match prefix.kind() {
-            // canonicalize produces VerbatimDisk paths for ordinary local files.
-            Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) if path.is_absolute() => {
-                if remote_drive(drive) { Err(refused(path)) } else { Ok(()) }
-            }
+            Prefix::Disk(_) | Prefix::VerbatimDisk(_) if path.is_absolute() => Ok(()),
             _ => Err(refused(path)),
         },
-        _ => reject_network_spelling(path),
+        _ => Err(refused(path)),
     }
 }
 
-#[cfg(all(test, windows))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
     #[test]
-    fn rejects_unc_device_and_mapped_drives_including_resolved_paths() {
+    fn accepts_drives_mapped_ones_included_and_refuses_shares_devices_and_relative_paths() {
         for path in [r"\\server\share\file", "//server/share/file", r"\/server\share\file", r"/\server\share\file",
-            r"\\?\UNC\server\share\file", r"\\.\pipe\file", r"\\?\Volume{abc}\file", r"C:relative.txt"] {
-            assert!(check_windows_path(Path::new(path), |_| false).is_err(), "{path}");
+            r"\\?\UNC\server\share\file", r"\\.\pipe\file", r"\\?\Volume{abc}\file", r"C:relative.txt", "notes.txt", r"\rooted.txt"] {
+            assert!(require_client_path(Path::new(path)).is_err(), "{path}");
         }
-        for path in [r"Z:\share\file", r"\\?\Z:\share\file"] {
-            assert!(check_windows_path(Path::new(path), |drive| drive == b'Z').is_err(), "{path}");
+        for path in [r"C:\local\file", r"\\?\C:\local\file", r"N:\dev\orbitkit\orbitkit-setup.exe"] {
+            assert!(require_client_path(Path::new(path)).is_ok(), "{path}");
         }
-        for path in [r"C:\local\file", r"\\?\C:\local\file", "notes.txt"] {
-            assert!(check_windows_path(Path::new(path), |_| false).is_ok(), "{path}");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn accepts_absolute_paths_and_refuses_shares_and_relative_paths() {
+        for path in ["//server/share/file", r"\\server\share\file", "notes.txt", "docs/notes.txt", ""] {
+            assert!(require_client_path(Path::new(path)).is_err(), "{path}");
         }
+        assert!(require_client_path(Path::new("/home/user/notes.txt")).is_ok());
     }
 }

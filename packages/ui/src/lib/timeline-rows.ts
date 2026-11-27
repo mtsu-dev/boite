@@ -278,7 +278,7 @@ type Memo = <T>(read: () => T) => () => T;
 export class TimelineRows {
   readonly #scans = new WeakMap<MessagePart, TextCutScan>();
   readonly #failures = new WeakMap<Message, () => ReturnType<typeof failureKind>>();
-  readonly #shapes = new WeakMap<Message, { events: MemoryEvent[] | undefined; count: number; read: () => MessageShape }>();
+  readonly #shapes = new WeakMap<Message, { events: MemoryEvent[] | undefined; read: () => MessageShape }>();
   #known = new Map<string, TimelineRow>();
   #rows: TimelineRow[] = [];
   #order = '';
@@ -286,15 +286,15 @@ export class TimelineRows {
 
   constructor(private readonly memo: Memo = read => read) {}
 
-  #failure = (message: Message): ReturnType<typeof failureKind> => {
+  #ensureFailure(message: Message): () => ReturnType<typeof failureKind> {
     let read = this.#failures.get(message);
     if (!read) this.#failures.set(message, read = this.memo(() => failureKind(message)));
-    return read();
-  };
+    return read;
+  }
 
-  #shape(message: Message, count: number, events: MemoryEvent[] | undefined): MessageShape {
+  #ensureShape(message: Message, events: MemoryEvent[] | undefined): () => MessageShape {
     let shape = this.#shapes.get(message);
-    if (!shape || shape.count !== count || shape.events !== events) {
+    if (!shape || shape.events !== events) {
       let previous: MessageShape | undefined;
       const read = this.memo(() => {
         const anchored = anchoredParts(events);
@@ -304,9 +304,28 @@ export class TimelineRows {
           previous.pieces.length === pieces.length && pieces.every((piece, at) => previous!.pieces[at]?.part === piece.part && previous!.pieces[at]?.slices === piece.slices)) return previous;
         return previous = { cuts, pieces };
       });
-      this.#shapes.set(message, shape = { count, events, read });
+      this.#shapes.set(message, shape = { events, read });
     }
-    return shape.read();
+    return shape.read;
+  }
+
+  /**
+   * Prepare memoized readers for `timeline` without evaluating them. Reactive
+   * callers run this in a separate derived from `build()` so newly created
+   * deriveds are tracked and disconnected instead of orphaned on message state.
+   */
+  prepare(timeline: readonly Message[], memory?: ReadonlyMap<string, MemoryEvent[]>): void {
+    for (let index = 0; index < timeline.length; index += 1) {
+      const message = timeline[index]!;
+      this.#ensureFailure(message);
+      this.#ensureShape(message, memory?.get(message.id));
+    }
+  }
+
+  #failure = (message: Message): ReturnType<typeof failureKind> => this.#ensureFailure(message)();
+
+  #shape(message: Message, events: MemoryEvent[] | undefined): MessageShape {
+    return this.#ensureShape(message, events)();
   }
 
   /** The ids of the last rows built, in order and joined: what tells a reordered list from the same one. */
@@ -347,7 +366,7 @@ export class TimelineRows {
       }
       // A long turn that ends on a long answer takes both cuts: the answer is sliced inside its rows of parts.
       const count = message.parts.length;
-      const { cuts, pieces } = this.#shape(message, count, memory?.get(message.id));
+      const { cuts, pieces } = this.#shape(message, memory?.get(message.id));
       if (pieces.length) { sliceRows(message, count, pieces, cuts, add); continue; }
       if (cuts.length === 0) { add(message.id, message, 0, count, true, true); continue; }
       add(message.id, message, 0, cuts[0]!, true, false);

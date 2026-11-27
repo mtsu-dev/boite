@@ -32,6 +32,7 @@ Pages
                                   containers, -d depth, -s scope, -u link urls; repeated on the same
                                   page it prints the changes, --full the whole tree
   back | forward | reload | close
+  show                          display the current tab in this conversation's panel
   tab [list] | tab new <url> [--profile <name>] | tab <id> | tab close [<id>]
   profiles | profiles add <name>  profiles keep cookies and logins on this machine: sign a second
                                   account in a new one; private keeps nothing once its tabs close
@@ -133,7 +134,7 @@ interface BrowserParseContext {
 
 function parseNoInput(context: BrowserParseContext): BrowserAction {
   const { command, none } = context;
-  const kind = command as 'status' | 'profiles' | 'close' | 'reset-viewport' | 'recording-stop' | 'downloads';
+  const kind = command as 'status' | 'profiles' | 'show' | 'close' | 'reset-viewport' | 'recording-stop' | 'downloads';
   none(); const action: BrowserAction = { kind }; return action;
 }
 
@@ -299,6 +300,7 @@ function parseNetwork(context: BrowserParseContext): BrowserAction {
 const PARSERS: Record<string, (context: BrowserParseContext) => BrowserAction> = {
   'status': parseNoInput,
   'profiles': parseProfiles,
+  'show': parseNoInput,
   'close': parseNoInput,
   'reset-viewport': parseNoInput,
   'recording-stop': parseNoInput,
@@ -421,6 +423,7 @@ function profileLines(_action: BrowserAction, result: BrowserReply): string[] {
 const valueLines = (_action: BrowserAction, result: BrowserReply) => [raw(result.value ?? null)];
 const replyLines = (_action: BrowserAction, result: BrowserReply) => [raw(result)];
 const LINES: Partial<Record<BrowserAction['kind'], (action: BrowserAction, result: BrowserReply) => string[] | null>> = {
+  show: () => ['✓ Browser shown in the conversation panel'],
   snapshot: (_action, result) => [(result.value as { text?: string } | undefined)?.text ?? ''],
   evaluate: valueLines,
   get: valueLines,

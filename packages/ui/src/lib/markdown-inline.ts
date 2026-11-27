@@ -108,7 +108,8 @@ function parser(rich: boolean): MarkdownParser {
   md.renderer.rules.code_inline = (tokens, index, _options, env) => {
     const value = tokens[index]!.content;
     const link = env?.inLink ? null : rich ? codeLinkHtml(value) : threadAddress(value) ? threadLinkHtml(value, value) : null;
-    return `<code>${link ?? escapeHtml(value)}</code>`;
+    // A file is a chip of its own, not a link inside a code span.
+    return link?.startsWith('<a href="#file"') ? link : `<code>${link ?? escapeHtml(value)}</code>`;
   };
   md.renderer.rules.link_open = (tokens, index, _options, env = {}) => {
     env.inLink = true;
@@ -117,7 +118,9 @@ function parser(rich: boolean): MarkdownParser {
     const title = token.attrGet('title');
     // A function, not a string: a `$` pattern in the title stays text and never pastes the tag back into the attribute.
     const end = `${title === null ? '' : ` title="${escapeHtml(String(title))}"`}>`;
-    return link.slice(0, -4).replace(/>$/, () => end);
+    // The link's own title wins over the path a file chip shows on hover.
+    const open = title === null ? link.slice(0, -4) : link.slice(0, -4).replace(/ title="[^"]*"(?=[^<]*>$)/, '');
+    return open.replace(/>$/, () => end);
   };
   md.renderer.rules.link_close = (_tokens, _index, _options, env = {}) => {
     env.inLink = false;

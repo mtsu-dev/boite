@@ -1,6 +1,6 @@
-export function escapeHtml(text: string): string {
-  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
-}
+import { escapeHtml, fileChipHtml } from './file-links';
+
+export { escapeHtml };
 
 export type ChatLink = { kind: 'web' | 'file' | 'anchor' | 'email'; target: string; line?: number };
 
@@ -102,7 +102,7 @@ export function linkHtml(label: string, raw: string): string {
   const link = chatLink(raw);
   if (!link) return escapeHtml(label);
   const title = escapeHtml(label);
-  if (link.kind === 'file') return `<a href="#file" data-file-path="${escapeHtml(link.target)}"${link.line ? ` data-file-line="${link.line}"` : ''}>${title}</a>`;
+  if (link.kind === 'file') return fileChipHtml(label, raw, link.target, link.line);
   return `<a href="${escapeHtml(link.target)}"${link.kind === 'web' ? ' target="_blank" rel="noopener noreferrer"' : ''}>${title}</a>`;
 }
 
@@ -269,7 +269,11 @@ export function* linkTokens(text: string): Generator<LinkToken> {
         tokens.lastIndex = match.index + 1;
         continue;
       }
-      if (match[2] === undefined || match.index === 0 || !/[\w:]/.test(text[match.index - 1]!)) return { index: match.index, text: match[0], auto: match[1] };
+      const before = match.index === 0 ? '' : text[match.index - 1]!;
+      // An absolute path starts a word: `image/png`, `cwd/project` and `` `a`/`b` `` name no root.
+      const rooted = match[1] === undefined && match[2] === undefined && !/^https?:/i.test(match[0]);
+      if (rooted && /[\w`.)\]}-]/.test(before)) { tokens.lastIndex = match.index + 1; continue; }
+      if (match[2] === undefined || !before || !/[\w:]/.test(before)) return { index: match.index, text: match[0], auto: match[1] };
       absoluteAt.lastIndex = match.index;
       const absolute = absoluteAt.exec(text);
       if (absolute) return { index: absolute.index, text: absolute[0] };
