@@ -2037,10 +2037,10 @@ describe('pi driver', () => {
     try {
       const client = await startCore();
       const { projectId, accountId } = await piAccount(client);
-      // The profile's level, which `set_model` would replace with the model's own.
+      // The profile's level, which `set_model` would replace with the model's own; pi warns of the invalid one after it.
       const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
       const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
-      for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--thinking', 'high');
+      for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--thinking', 'high', '--thinking', 'typo');
       writeFileSync(descriptorFile, JSON.stringify(descriptor));
       expect((await client.call('providers.reload', {})).rejected).toEqual([]);
       await client.call('providers.probe', { providerId: 'pi-fake', accountId });
@@ -2105,6 +2105,23 @@ describe('pi driver', () => {
       expect(fakeLog()).not.toContain('prompt on fake-b/Plain');
     } finally {
       delete process.env['PI_FAKE_CASE'];
+    }
+  });
+
+  test('a launch on an id pi no longer lists, which pi runs as a custom model of that id, fails the turn', async () => {
+    const client = await startCore();
+    const { projectId, accountId } = await piAccount(client);
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'gone', model: 'fake-b/plain' });
+    await client.call('threads.subscribe', { threadId });
+    // A `models.json` edited since the probe: pi reports `fake-b/plain` as the model it runs, with other capabilities.
+    process.env['PI_FAKE_GONE'] = 'fake-b/plain';
+    try {
+      const { finished } = await startTurn(client, threadId, 'hello', 20000);
+      expect((await finished).error).toContain('pi does not list fake-b/plain: refresh the models list');
+      expect(fakeLog()).not.toContain('prompt on ');
+    } finally {
+      delete process.env['PI_FAKE_GONE'];
     }
   });
 

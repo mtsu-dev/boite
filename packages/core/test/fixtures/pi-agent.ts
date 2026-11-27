@@ -66,7 +66,16 @@ let noClear = false;
 let hangClear = false;
 let hangStats = false;
 /** Set by `--thinking` and `set_thinking_level`, reset by `set_model` as pi does, reported by `get_state`. */
-let thinkingLevel = flag('--thinking') || 'medium';
+let thinkingLevel = (() => {
+  // As pi's parser: the last valid `--thinking` value, a warning for any other.
+  let level = 'medium';
+  for (let i = 0; i < process.argv.length - 1; i++) {
+    if (process.argv[i] !== '--thinking') continue;
+    const value = process.argv[++i]!;
+    if (['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(value)) level = value;
+  }
+  return level;
+})();
 /** Resolves when an `abort` arrives, for the one directive that waits on it. */
 let waitingAbort: (() => void) | null = null;
 /**
@@ -276,6 +285,10 @@ if (caseless) {
   MODELS[at]!.reasoning = true;
   MODELS.splice(at, process.env['PI_FAKE_CASE'] === 'only' ? 1 : 0, { ...MODELS[0]!, provider: 'fake-b', id: 'Plain', name: 'Fake Plain Vision', reasoning: false });
 }
+// `PI_FAKE_GONE=<provider>/<id>`: that model is no longer listed, and pi runs `--model` naming it as a custom model of
+// that id with another model's capabilities, as pi 1.6.1 does for an id its provider does not list.
+const gone = process.env['PI_FAKE_GONE'] ?? '';
+if (gone) MODELS.splice(MODELS.findIndex(entry => `${entry.provider}/${entry.id}` === gone), 1);
 /** A level as pi bounds it to the model it runs. */
 const bounded = (level: string) => caseless && running.reasoning === false ? 'off' : level;
 /** The model the session is on, which is the one pi reports as current. */
@@ -285,6 +298,10 @@ let running = (() => {
   const text = model.replace(/:[a-z]+$/, ''), provider = flag('--provider');
   const same = (a: string, b: string) => caseless ? a.toLowerCase() === b.toLowerCase() : a === b;
   const spelled = MODELS.filter(entry => same(`${entry.provider}/${entry.id}`, text) && (provider === '' || entry.provider === provider));
+  if (gone && text === gone && spelled.length === 0) {
+    const [provider, id] = [gone.slice(0, gone.indexOf('/')), gone.slice(gone.indexOf('/') + 1)];
+    return { ...MODELS[0]!, provider, id, name: id };
+  }
   return spelled.sort((a, b) => b.provider.length - a.provider.length)[0] ?? CURRENT;
 })();
 thinkingLevel = bounded(thinkingLevel);
@@ -619,7 +636,7 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'prompt': {
-      if (caseless) log(`prompt on ${running.provider}/${running.id} ${thinkingLevel}${oneShot ? ' one-shot' : ''}`);
+      if (caseless || gone) log(`prompt on ${running.provider}/${running.id} ${thinkingLevel}${oneShot ? ' one-shot' : ''}`);
       const images = message['images'];
       if (Array.isArray(images)) {
         for (const image of images) {
