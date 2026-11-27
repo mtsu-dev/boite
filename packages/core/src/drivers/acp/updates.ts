@@ -54,6 +54,27 @@ function contentBlock(value: unknown): Fields | null {
   return block;
 }
 
+/** A summary can open a compaction, so require the payload for every accepted kind. */
+function compactionSummaryContent(value: unknown): boolean {
+  const block = contentBlock(value);
+  if (block === null) return false;
+  switch (block['type']) {
+    case 'text':
+    case 'image':
+      return true;
+    case 'audio':
+      return isString(block['data']) && isString(block['mimeType']);
+    case 'resource_link':
+      return isString(block['uri']) && isString(block['name']);
+    case 'resource': {
+      const resource = fields(block['resource']);
+      return resource !== null && isString(resource['uri']) && (isString(resource['text']) || isString(resource['blob']));
+    }
+    default:
+      return false;
+  }
+}
+
 function toolContent(entry: Fields): Fields | null {
   if (entry['type'] === 'diff') {
     if (!isString(entry['path']) || !isString(entry['newText'])) return null;
@@ -137,7 +158,7 @@ function checkedUpdate(update: Fields): Fields | null {
       if (!isString(update['compactionId']) || !isString(update['status'])) return null;
       return { ...update, error: optionalString(update['error']) };
     case 'compaction_summary_chunk':
-      return isString(update['compactionId']) && contentBlock(update['content']) !== null ? update : null;
+      return isString(update['compactionId']) && compactionSummaryContent(update['content']) ? update : null;
     default:
       return update;
   }

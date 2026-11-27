@@ -1439,6 +1439,17 @@ describe('acp driver', () => {
     expect(sessionNotificationOf(null)).toBeNull();
     expect(sessionNotificationOf({ update: { sessionUpdate: 'plan', entries: [] } })).toBeNull();
     expect(of({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 7 } })).toBeNull();
+    const summaryChunk = (content: unknown) => ({ sessionUpdate: 'compaction_summary_chunk', compactionId: 'c', content });
+    for (const content of [
+      { type: 'audio' }, { type: 'resource_link', uri: 'file:///summary' },
+      { type: 'resource', resource: { uri: 'file:///summary' } }, { type: 'unknown' },
+    ]) expect(of(summaryChunk(content))).toBeNull();
+    for (const content of [
+      { type: 'text', text: 'summary' }, { type: 'image', data: 'YQ==', mimeType: 'image/png' },
+      { type: 'audio', data: 'YQ==', mimeType: 'audio/wav' }, { type: 'resource_link', name: 'Summary', uri: 'file:///summary' },
+      { type: 'resource', resource: { uri: 'file:///summary', text: 'summary' } },
+      { type: 'resource', resource: { uri: 'file:///summary', blob: 'YQ==' } },
+    ]) expect(of(summaryChunk(content))).toEqual(summaryChunk(content));
     expect(of({ sessionUpdate: 'usage_update', used: '9', size: 10 })).toBeNull();
     expect(of({ sessionUpdate: 'tool_call', toolCallId: 't' })).toBeNull();
     expect(of({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } })).toEqual({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } });
