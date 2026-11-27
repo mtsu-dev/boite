@@ -11,6 +11,7 @@ import type { CoreClient } from '../src/client.ts';
 import { createAcpDriver } from '../src/drivers/acp.ts';
 import { runAcpLogin } from '../src/drivers/acp/login.ts';
 import type { AcpSdk } from '../src/drivers/acp/protocol.ts';
+import { AcpSession } from '../src/drivers/acp/session.ts';
 import { toolOutputText } from '../src/drivers/acp/turn.ts';
 import { sessionNotificationOf } from '../src/drivers/acp/updates.ts';
 import { stderrLines } from '../src/drivers/lines.ts';
@@ -515,6 +516,42 @@ test.each(['another tool finishes', 'the user sends now'])('ACP delivers queued 
     folder.resolve(true);
     nextFolder.resolve(true);
     check.mockRestore();
+  }
+}, 20_000);
+
+test('ACP waits for a fresh tool completion after permission is granted during the working-folder check', async () => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] [third-tool] [third-tool-permission]' });
+  const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'third-tool-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
+  expect(accepted).toBe(true);
+  const folder = Promise.withResolvers<boolean>();
+  const check = spyOn(threadCwd, 'folderPresent').mockImplementationOnce(() => folder.promise);
+  const cancel = spyOn(AcpSession.prototype, 'cancelForQueuedInput');
+  try {
+    const first = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+    writeFileSync(`${logFile}.first`, 'ready');
+    await first;
+    writeFileSync(`${logFile}.second`, 'ready');
+    await waitFor(() => check.mock.calls.length === 1);
+    const requested = client.next('permission.requested', request => request.threadId === threadId, 10_000);
+    writeFileSync(`${logFile}.permission`, 'ready');
+    await client.call('permissions.answer', { requestId: (await requested).id, decision: 'allow' });
+    await waitFor(() => fakeLog().includes('third tool allowed'));
+    folder.resolve(true);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(cancel).not.toHaveBeenCalled();
+
+    writeFileSync(`${logFile}.third`, 'ready');
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
+    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['stopped', 'done']);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
+  } finally {
+    folder.resolve(true);
+    check.mockRestore();
+    cancel.mockRestore();
   }
 }, 20_000);
 

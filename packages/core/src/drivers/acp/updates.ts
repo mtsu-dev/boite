@@ -230,7 +230,11 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId = turn.sessi
 export async function answerPermission(turn: AcpTurn | null, params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
   // `RequestPermissionResponse.outcome` is itself the tagged outcome object.
   if (turn === null || turn.isStopped) return { outcome: { outcome: 'cancelled' } };
-  if (params.sessionId === turn.sessionId) turn.flushExecutionError();
+  if (params.sessionId === turn.sessionId) {
+    // The agent can request permission for its next tool before announcing the tool call.
+    turn.outputRevision += 1;
+    turn.flushExecutionError();
+  }
   const call = params.toolCall;
   // Antigravity carries questions on this method, using its own option ids.
   const question = turn.antigravity && isAntigravityQuestion(params);

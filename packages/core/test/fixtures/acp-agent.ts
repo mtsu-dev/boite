@@ -491,6 +491,18 @@ const app = agent({ name: 'acp-fake' })
           }
         }
         if (instructions.includes('[third-tool]')) {
+          if (instructions.includes('[third-tool-permission]')) {
+            while (!existsSync(`${process.env['ACP_FAKE_LOG']}.permission`)) {
+              if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+            }
+            const answer = await client.request('session/request_permission', {
+              sessionId,
+              toolCall: { toolCallId: 'third', title: 'third' },
+              options: [{ optionId: 'yes', name: 'Allow once', kind: 'allow_once' }],
+            });
+            if (answer.outcome.outcome !== 'selected') return { stopReason: 'end_turn' };
+            log('third tool allowed');
+          }
           while (!existsSync(`${process.env['ACP_FAKE_LOG']}.third`)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
           }
