@@ -17,7 +17,7 @@ import * as selection from '../src/threads/selection.ts';
 import { USER_ORIGIN } from '../src/threads/turn-origin.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
-import { rejection } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
 
 /** The fake pi in RPC mode: a real JSON-lines process over stdio, run by bun. */
@@ -164,6 +164,43 @@ test('a worktree draft reads pi settings in the worktree its preparation reserve
   expect(await images(true)).toBe(false);
   await client.call('drafts.release', { preparationId: 'draft_pi_worktree' });
   expect(await images(true)).toBe(true);
+});
+
+test('a draft of the drafts reads pi settings in the folder its preparation made, ordinary or incognito, not the drafts root', async () => {
+  const client = await startCore();
+  const { dataDir, accountId } = await piAccount(client);
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+  const drafts = await client.call('projects.drafts', {});
+  // The drafts root's own settings start pi on a text-only model; a new folder under it starts on the account's.
+  const textOnly = JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' });
+  mkdirSync(join(drafts.path, '.pi'), { recursive: true });
+  writeFileSync(join(drafts.path, '.pi', 'settings.json'), textOnly);
+  const agentDir = join(dataDir, 'pi-agent');
+  process.env['PI_CODING_AGENT_DIR'] = agentDir;
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(drafts.path)]: true, [realpathSync(dataDir)]: true }));
+  const choice = { projectId: drafts.id, providerId: 'pi-fake', accountId };
+  const images = async (incognito?: boolean) => (await client.call('drafts.images', { ...choice, model: null, ...(incognito ? { incognito } : {}) })).supported;
+  expect(await images()).toBe(true);
+  const { threadId } = await client.call('drafts.prepare', { ...choice, preparationId: 'draft_pi_drafts' });
+  const reserved = harness!.core.drafts.threads().find(thread => thread.id === threadId)!.cwd;
+  expect(reserved).not.toBe(drafts.path);
+  mkdirSync(join(reserved, '.pi'), { recursive: true });
+  writeFileSync(join(reserved, '.pi', 'settings.json'), textOnly);
+  expect(await images()).toBe(false);
+  // An incognito draft starts in a folder of its own, which the ordinary reservation is not.
+  expect(await images(true)).toBe(true);
+  const private_ = await client.call('drafts.prepare', { ...choice, incognito: true, preparationId: 'draft_pi_incognito' });
+  const hidden = harness!.core.drafts.threads().find(thread => thread.id === private_.threadId)!.cwd;
+  mkdirSync(join(hidden, '.pi'), { recursive: true });
+  writeFileSync(join(hidden, '.pi', 'settings.json'), textOnly);
+  expect(await images(true)).toBe(false);
+  expect(await images()).toBe(true);
+  await client.call('drafts.release', { preparationId: 'draft_pi_incognito' });
+  expect(await images(true)).toBe(true);
+  // Incognito belongs to the drafts, as on creation.
+  const other = await client.call('projects.add', { path: dataDir, name: 'data' });
+  expect(await thrown(client.call('drafts.images', { ...choice, projectId: other.id, model: null, incognito: true }))).toThrow('drafts.images.incognito: ');
 });
 
 test('pi leaves the start model to pi where the folder\'s extensions or an extension\'s trust decide it, and images wherever an extension loads', () => {

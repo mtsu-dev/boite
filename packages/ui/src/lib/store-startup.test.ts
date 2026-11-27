@@ -43,11 +43,11 @@ test('a worktree reservation the core let expire is dropped here too, so the dra
     draft(store);
     store.setDraftWorktree(true);
     flushSync();
-    await vi.waitFor(() => expect(store.preparedWorktree).not.toBeNull());
-    const id = store.preparedWorktree;
+    await vi.waitFor(() => expect(store.preparedFolder(store.draft)).not.toBeNull());
+    const id = store.preparedFolder(store.draft);
     expect(callsOf(spy, 'drafts.prepare').at(-1)![1]).toMatchObject({ preparationId: id, worktree: {} });
     vi.advanceTimersByTime(DRAFT_PREPARATION_LIFETIME_MS);
-    expect(store.preparedWorktree).toBeNull();
+    expect(store.preparedFolder(store.draft)).toBeNull();
     expect(callsOf(spy, 'drafts.release').map(([, params]) => params)).toContainEqual({ preparationId: id });
   } finally { vi.useRealTimers(); }
 });

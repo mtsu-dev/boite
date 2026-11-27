@@ -110,11 +110,12 @@ export function sameSend(pressed: SendShape, now: SendShape): boolean {
 }
 
 /**
- * Where a waiting Send goes: another agent, account or model picked meanwhile cancels it, and so does a draft moved
- * to another project or worktree switch, whose folder the images were not checked in.
+ * Where a waiting Send goes: another agent, account or model picked meanwhile cancels it, and so does another draft,
+ * project, worktree switch or incognito switch, whose folder or conversation the images were not checked for.
  */
-export function sendTarget(choice: Choice | null, draft: Pick<Draft, 'projectId' | 'worktree'> | null): string {
-  return choice ? [choice.providerId, choice.accountId, choice.model ?? '', draft ? `${draft.projectId ?? ''}:${draft.worktree}` : ''].join('\n') : '';
+export function sendTarget(choice: Choice | null, draft: Pick<Draft, 'id' | 'projectId' | 'worktree' | 'incognito'> | null): string {
+  return choice ? JSON.stringify([choice.providerId, choice.accountId, choice.model ?? null,
+    draft ? [draft.id ?? null, draft.projectId, draft.worktree, draft.incognito === true] : null]) : '';
 }
 
 /** A box nobody types in: a step of the undo history, or a draft set aside. */

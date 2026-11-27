@@ -103,11 +103,16 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     if (account.providerId !== provider.id) throw invalidParams(`drafts.images.accountId: ${account.id} is an account of ${account.providerId}, not ${provider.id}`, { field: 'accountId', expected: provider.id });
     const thread = params.threadId === undefined ? null : core.threads.require(params.threadId);
     if (thread && thread.projectId !== project.id) throw invalidParams(`drafts.images.threadId: ${thread.id} is a thread of project ${thread.projectId}, not ${project.id}`, { field: 'threadId', expected: project.id });
-    if (thread && params.worktree) throw invalidParams(`drafts.images.worktree: ${thread.id} already runs in ${thread.cwd}`, { field: 'worktree', expected: 'absent with threadId' });
-    // A pick for a thread's next prompt goes to the thread's folder, which may be a worktree of the project. A new
-    // worktree holds none of the project folder's untracked pi settings: until this connection reserved it, only
-    // the first turn's admission there can tell.
-    const cwd = thread?.cwd ?? (params.worktree ? core.drafts.reservedWorktree(ctx.connection.id, project.id) : project.path);
+    for (const field of ['worktree', 'incognito'] as const) {
+      if (thread && params[field]) throw invalidParams(`drafts.images.${field}: ${thread.id} already runs in ${thread.cwd}`, { field, expected: 'absent with threadId' });
+    }
+    if (params.incognito && project.kind !== 'drafts') throw invalidParams(`drafts.images.incognito: ${project.id} is not the drafts project`, { field: 'incognito', expected: 'the drafts project' });
+    // A pick for a thread's next prompt goes to the thread's folder, which may be a worktree of the project. A draft
+    // of the drafts project starts in a new folder of its own and a worktree draft in a new worktree: neither holds
+    // the project folder's untracked pi settings. Until this connection's preparation made that folder, only the
+    // first turn's admission there can tell.
+    const fresh = params.worktree === true || project.kind === 'drafts';
+    const cwd = thread?.cwd ?? (fresh ? core.drafts.reservedFolder(ctx.connection.id, project.id, { worktree: params.worktree === true, incognito: params.incognito === true }) : project.path);
     if (cwd === undefined) return { supported: provider.capabilities.images };
     const model = imageInputModel(core, provider, { accountId: account.id, model: params.model, cwd });
     return { supported: provider.capabilities.images && model?.images !== false };

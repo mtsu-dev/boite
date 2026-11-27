@@ -464,16 +464,17 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   open thread the composer asks the core (`threads.capabilities`), again when
   the session, the folder, the selection, the account's catalog, the turn or the
   connection changes; a draft asks `drafts.images` with its project's folder.
-  A draft that starts in a new worktree asks with `worktree`: that worktree holds
-  none of the project's untracked files, its `.pi/settings.json` included, so
-  the core reads the worktree the draft's preparation reserved, asked again
-  once it exists, and before then lets the image through to the first turn's
-  admission, which reads the worktree. The client drops that reservation when
+  A draft that starts in a new folder, a new worktree (`worktree`) or a
+  folder of its own in the drafts (`incognito` for a private one), finds none
+  of the project's untracked files there, its `.pi/settings.json` included, so
+  the core reads the folder the draft's preparation made for a draft of that
+  kind, asked again once it exists, and before then lets the image through to
+  the first turn's admission, which reads that folder. The client drops that reservation when
   the core does, `DRAFT_PREPARATION_LIFETIME_MS` after asking for it, and asks
   again.
   Until that answer comes, a picture is held and Send waits for it, asked again
   after a reconnection; another agent, account or model picked meanwhile cancels
-  the waiting Send, as does a draft moved to another project or worktree switch, and an answer that never comes leaves the account's catalog
+  the waiting Send, as does another draft, a draft moved to another project, or a worktree or incognito switch, and an answer that never comes leaves the account's catalog
   to decide.
   Without the field, the model follows the agent's image capability.
   A native agent may declare an empty list and let the probe supply its catalog.

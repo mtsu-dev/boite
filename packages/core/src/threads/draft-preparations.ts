@@ -67,10 +67,11 @@ export class DraftPreparations {
   /** Startup and speculative admission share one reconciliation barrier. */
   recover(): Promise<void> { return this.#readiness ??= this.#ledger.recover(); }
 
-  /** The worktree this connection's draft of the project reserved, once created. */
-  reservedWorktree(connectionId: string, projectId: string): string | undefined {
+  /** The folder this connection's draft of the project reserved, once created, if the draft starts in one of that kind. */
+  reservedFolder(connectionId: string, projectId: string, kind: { worktree: boolean; incognito: boolean }): string | undefined {
     const entry = this.#entries.get(connectionId);
-    return entry && !entry.cancelled && entry.params.worktree && entry.project.id === projectId ? entry.thread?.cwd : undefined;
+    return entry && !entry.cancelled && entry.project.id === projectId && Boolean(entry.params.worktree) === kind.worktree &&
+      (entry.params.incognito === true) === kind.incognito ? entry.thread?.cwd : undefined;
   }
 
   catalogThread(providerId: string, accountId: string): ThreadSummary | undefined {

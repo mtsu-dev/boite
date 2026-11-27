@@ -140,7 +140,7 @@ export class Store {
   get shared() { return this.#ctx.shared; }
   get serverUpdater() { return this.#ctx.serverUpdater; }
   /** The draft preparation whose new worktree exists now, or null. */
-  get preparedWorktree(): string | null { return this.#ctx.draftStartup.preparedWorktree; }
+  preparedFolder(draft: Draft | null): string | null { return this.#ctx.draftStartup.preparedFolder(draft); }
 
   // -------------------------------------------------------------------------
   // Wiring

@@ -2245,7 +2245,8 @@ test('a pi draft on its own model asks the core, which reads the project folder'
   await store.probeModels('pi', account.id);
   // The account's probe saw pi start on a text-only model; the project's pi settings choose another one.
   const key = `pi::${account.id}`;
-  store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'default' ? { ...model, images: false as const } : model) };
+  // Its name carries a line break, which must not move into the request's fields.
+  store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'default' ? { ...model, name: 'pi own\nmodel', images: false as const } : model) };
   const asked = vi.spyOn(store, 'draftImages').mockResolvedValue({ supported: true });
   store.draftChoice = { ...store.defaultChoice()!, providerId: 'pi', accountId: account.id, model: 'default', effort: null };
   await waitFor(() => asked.mock.calls.length > 0);
@@ -2263,7 +2264,7 @@ test('a pi draft on its own model asks the core, which reads the project folder'
   // A new worktree holds none of the project's untracked pi settings: the request says so, and asks again once the
   // draft's preparation (started by the pasted picture) reserved that worktree, which the core then reads.
   const reserved: (string | null)[] = [];
-  asked.mockImplementation(async () => { reserved.push(store.preparedWorktree); return { supported: true }; });
+  asked.mockImplementation(async () => { reserved.push(store.preparedFolder(store.draft)); return { supported: true }; });
   const call = store.client!.call.bind(store.client!);
   let open = () => {};
   const gate = new Promise<void>(resolve => { open = resolve; });
@@ -2280,9 +2281,45 @@ test('a pi draft on its own model asks the core, which reads the project folder'
   expect(reserved.every(id => id === null)).toBe(true);
   const unreserved = asked.mock.calls.length;
   open();
-  await waitFor(() => store.preparedWorktree !== null && asked.mock.calls.length > unreserved);
-  expect(reserved.at(-1)).toBe(store.preparedWorktree);
+  await waitFor(() => store.preparedFolder(store.draft) !== null && asked.mock.calls.length > unreserved);
+  expect(reserved.at(-1)).toBe(store.preparedFolder(store.draft));
   expect(asked.mock.calls.at(-1)![0]).toMatchObject({ model: 'pi-demo', worktree: true });
+});
+
+test('a Send held in an incognito draft goes nowhere once the draft leaves incognito', async ({ app: _app }) => {
+  await openDraft();
+  const drafts = await store.client!.call('projects.drafts', {});
+  await store.refreshProjects();
+  store.startDraft(drafts.id);
+  await waitFor(() => store.draft?.projectId === drafts.id);
+  store.setDraftIncognito(true);
+  await waitFor(() => store.draft?.incognito === true);
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  const key = `pi::${account.id}`;
+  store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'default' ? { ...model, images: false as const } : model) };
+  let answer: (value: { supported: boolean }) => void = () => {};
+  const asked = vi.spyOn(store, 'draftImages').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
+  store.draftChoice = { ...store.defaultChoice()!, providerId: 'pi', accountId: account.id, model: 'default', effort: null };
+  await waitFor(() => asked.mock.calls.length > 0);
+  // A draft of the drafts starts in a new folder: the request says which kind, incognito here.
+  expect(asked.mock.calls.at(-1)![0]).toEqual({ projectId: drafts.id, providerId: 'pi', accountId: account.id, model: 'default', incognito: true });
+  paste(pngFile());
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
+  await type('Read the private picture');
+  const sent = vi.spyOn(store.client!, 'call');
+  const prompts = () => sent.mock.calls.filter(([method, params]) => method !== 'composer.put' && JSON.stringify(params ?? null).includes('Read the private picture'));
+  press('Enter');
+  flushSync();
+  const before = asked.mock.calls.length;
+  store.setDraftIncognito(false);
+  await waitFor(() => asked.mock.calls.length > before);
+  answer({ supported: true });
+  await waitFor(() => !query<HTMLButtonElement>('[data-testid=composer-send]').disabled);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  // The Send was pressed for a private conversation: it never starts an ordinary one.
+  expect(prompts()).toEqual([]);
+  expect(input().value).toBe('Read the private picture');
 });
 
 test('a picture pasted while the core reads pi\'s own model is held, and Send waits for that answer', async ({ app: _app }) => {

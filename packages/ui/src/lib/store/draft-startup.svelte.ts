@@ -18,10 +18,11 @@ export class DraftStartup {
   #prepared: Prepared | null = null;
   #sendingDraft: Draft | null = null;
   #hidden = $state(false);
-  /** The preparation whose new worktree exists now: a worktree draft's images are read there. */
-  #worktree = $state<string | null>(null);
-  get preparedWorktree(): string | null { return this.#worktree; }
-  /** The core drops a reservation once its lifetime ends: so does this client, and a worktree draft reads no folder. */
+  /** The preparation whose folder exists now: a draft that starts in a new folder has its images read there. */
+  #folder = $state<{ id: string; draft: Draft } | null>(null);
+  /** Only for the draft it was made for: a switch makes another draft, whose folder is not made yet. */
+  preparedFolder(draft: Draft | null): string | null { return draft && this.#folder?.draft === draft ? this.#folder.id : null; }
+  /** The core drops a reservation once its lifetime ends: so does this client, and a draft in a new folder reads none. */
   #expiry: ReturnType<typeof setTimeout> | null = null;
   constructor(private readonly ctx: StoreContext) { this.uploads = new AttachmentUploads(ctx); }
 
@@ -78,7 +79,7 @@ export class DraftStartup {
         return;
       }
       made.ready = true;
-      if (made.draft.worktree) this.#worktree = made.id;
+      this.#folder = { id: made.id, draft: made.draft };
       this.#expiry = setTimeout(() => { if (this.#prepared === made) this.release(); }, Math.max(0, asked + DRAFT_PREPARATION_LIFETIME_MS - Date.now()));
     } catch { /* Send validates and creates normally when speculation fails. */ }
   }
@@ -118,7 +119,7 @@ export class DraftStartup {
   release(): void {
     const held = this.#prepared;
     this.#prepared = null;
-    this.#worktree = null;
+    this.#folder = null;
     this.#clearExpiry();
     if (held && !held.claimed) void held.client.call('drafts.release', { preparationId: held.id }).catch(() => undefined);
   }
