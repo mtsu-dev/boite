@@ -44,6 +44,7 @@ export interface LinkContext {
 /** A missing file may be written next; a found one stays found for a while. */
 const MISSING_MS = 15_000;
 const FOUND_MS = 60_000;
+const MAX_CHECKS = 512;
 const checks = new WeakMap<Store, Map<string, { at: number; answer: Promise<Where> }>>();
 /** Each answer, told to the chips of that link: a click that finds a greyed file lights its chip again. */
 const located = new EventTarget();
@@ -59,6 +60,22 @@ function machineOf(store: Store): string {
   return machine ? machineName(machine) : store.core?.hostname ?? '';
 }
 
+function pruneChecks(byStore: Map<string, { at: number; answer: Promise<Where> }>, now: number): void {
+  if (byStore.size <= MAX_CHECKS) return;
+  for (const [key, entry] of byStore) {
+    if (entry.at <= now) byStore.delete(key);
+  }
+  if (byStore.size <= MAX_CHECKS) return;
+  let settled = 0;
+  for (const entry of byStore.values()) if (Number.isFinite(entry.at)) settled++;
+  for (const [key, entry] of byStore) {
+    if (settled <= MAX_CHECKS) break;
+    if (!Number.isFinite(entry.at)) continue;
+    byStore.delete(key);
+    settled--;
+  }
+}
+
 /**
  * Where a link's file is. A drive letter in a thread on Linux or macOS is
  * never the thread machine's, so only this computer is asked. Any other path
@@ -68,20 +85,31 @@ function machineOf(store: Store): string {
  */
 export function locate(store: Store, threadId: string, written: string, fresh = false): Promise<Where> {
   const key = `${threadId}\n${written}`;
+  const now = Date.now();
   let byStore = checks.get(store);
   if (!byStore) checks.set(store, byStore = new Map());
   const kept = byStore.get(key);
-  if (kept && !fresh && Date.now() < kept.at) return kept.answer;
+  if (kept && !fresh && now < kept.at) {
+    byStore.delete(key);
+    byStore.set(key, kept);
+    return kept.answer;
+  }
   const answer = find(store, threadId, written);
   const entry = { at: Number.POSITIVE_INFINITY, answer };
+  byStore.delete(key);
   byStore.set(key, entry);
+  pruneChecks(byStore, now);
   answer.then(where => {
-    entry.at = Date.now() + (where.at === 'missing' ? MISSING_MS : FOUND_MS);
+    const settledAt = Date.now();
+    entry.at = settledAt + (where.at === 'missing' ? MISSING_MS : FOUND_MS);
     // A later look (a click) replaced this one: its answer is the chip's, not this older one.
     if (byStore.get(key) !== entry) return;
+    byStore.delete(key);
+    byStore.set(key, entry);
+    pruneChecks(byStore, settledAt);
     located.dispatchEvent(new CustomEvent('located', { detail: { store, threadId, written, missing: where.at === 'missing' } }));
   // A failed look is asked again next time, yet stays the newest until then, so an older one cannot paint over it.
-  }, () => { entry.at = 0; });
+  }, () => { entry.at = 0; pruneChecks(byStore, Date.now()); });
   return answer;
 }
 
