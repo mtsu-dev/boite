@@ -10,10 +10,16 @@ export interface FileView {
   exists(path: string): boolean;
   /** Whether the directory at `path` holds any entry. */
   listsAny(path: string): boolean;
+  /**
+   * Whether the way to `path` crosses a symbolic link, a junction or another spelling of the folder that only the
+   * system resolves. A view that predicts files reads none of those: the caller leaves such a path to the program.
+   */
+  linked(path: string): boolean;
 }
 
 export const DISK_VIEW: FileView = {
   read: path => { try { return readFileSync(path, 'utf8'); } catch { return null; } },
   exists: path => existsSync(path),
   listsAny: path => { try { return readdirSync(path).length > 0; } catch { return false; } },
+  linked: () => false,
 };

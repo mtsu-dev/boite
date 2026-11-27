@@ -1024,7 +1024,7 @@ test('an edit with images is refused before the cut when the session it leaves r
   expect((await client.call('threads.rewind', { threadId, messageId: second!.id, images: true })).session).toBe('native');
 });
 
-test('an edit with images reads the folder settings its cut would restore, through links, and a refusal writes no file', async () => {
+test('an edit with images reads the folder settings its cut would restore, under another name of the folder, and a refusal writes no file', async () => {
   const client = await startCore();
   const { dataDir, accountId } = await piAccount(client);
   // A folder beside the core's data, which file checkpoints can snapshot, opened by another name: the checkpoints
@@ -1041,17 +1041,14 @@ test('an edit with images reads the folder settings its cut would restore, throu
   mkdirSync(join(cwd, '.pi'), { recursive: true });
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(join(cwd, '..'))]: true }));
-  // The folder's settings are a link no turn changes, to a file they do.
-  const settings = join(cwd, 'config', 'pi.json');
-  mkdirSync(join(cwd, 'config'));
+  const settings = join(cwd, '.pi', 'settings.json');
   writeFileSync(settings, JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
-  symlinkSync(join('..', 'config', 'pi.json'), join(cwd, '.pi', 'settings.json'), 'file');
   mkdirSync(join(cwd, 'notes'));
   writeFileSync(join(cwd, 'notes', 'draft.md'), 'draft');
   // The turns move the folder to a model that reads images, leave `notes` empty and add an extension; editing the
   // first restores the text-only model and the draft, and removes the extension.
   const reads = JSON.stringify({ defaultProvider: 'fake-a', defaultModel: 'smart' });
-  expect((await (await startTurn(client, threadId, `[write config/pi.json] ${reads}`)).finished).status).toBe('done');
+  expect((await (await startTurn(client, threadId, `[write .pi/settings.json] ${reads}`)).finished).status).toBe('done');
   expect((await (await startTurn(client, threadId, '[remove notes/draft.md]')).finished).status).toBe('done');
   // A folder extension leaves the model to pi on the disk now; the restore would remove it with its folder.
   expect((await (await startTurn(client, threadId, '[write .pi/extensions/tool.ts] export default () => {};')).finished).status).toBe('done');
@@ -1073,6 +1070,31 @@ test('an edit with images reads the folder settings its cut would restore, throu
   expect(JSON.parse(readFileSync(settings, 'utf8'))).toEqual({ defaultProvider: 'fake-b', defaultModel: 'plain' });
   expect(readFileSync(join(cwd, 'notes', 'draft.md'), 'utf8')).toBe('draft');
   expect(existsSync(join(cwd, '.pi', 'extensions'))).toBe(false);
+});
+
+test('a pi folder whose settings are a link leaves the model to pi, at a send and at an edit alike', async () => {
+  const { client, threadId } = await startThread();
+  const { cwd, accountId } = harness!.core.threads.require(threadId);
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+  const agentDir = join(harness!.dataDir, 'pi-agent');
+  process.env['PI_CODING_AGENT_DIR'] = agentDir;
+  mkdirSync(join(cwd, '.pi'), { recursive: true });
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(join(cwd, '..'))]: true }));
+  const plain = JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' });
+  // Written in place, the text-only model is Boite's to name before the first turn.
+  writeFileSync(join(cwd, '.pi', 'settings.json'), plain);
+  expect((await client.call('threads.capabilities', { threadId })).images.supported).toBe(false);
+  // Through a link, the same settings are pi's to read: the view Boite predicts an edit with follows no link.
+  rmSync(join(cwd, '.pi', 'settings.json'));
+  mkdirSync(join(cwd, 'config'));
+  writeFileSync(join(cwd, 'config', 'pi.json'), plain);
+  symlinkSync(join('..', 'config', 'pi.json'), join(cwd, '.pi', 'settings.json'), 'file');
+  expect((await client.call('threads.capabilities', { threadId })).images.supported).toBe(true);
+  expect((await (await startTurn(client, threadId, 'Keep the amber release')).finished).status).toBe('done');
+  const [first] = (await client.call('threads.get', { threadId })).messages.filter(message => message.role === 'user');
+  await client.call('threads.rewind', { threadId, messageId: first!.id, images: true });
+  expect((await client.call('threads.get', { threadId })).messages.some(message => message.id === first!.id)).toBe(false);
 });
 
 test('pi takes a thinking level while its turn runs', async () => {

@@ -133,8 +133,11 @@ function folderView(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices,
   const hooked = launch.trust === null && (extended || files.exists(join(own, 'settings.json'))) && extensions;
   const trust = launch.trust ?? trusted(files, agentDir, folder, global);
   const project = trust ? settingsAt(files, join(own, 'settings.json')) : null;
-  // A trusted folder's own extensions load only there (`DefaultPackageManager.resolve`).
-  const undecided = hooked || (trust && discovers && (extended || listed(project?.['extensions']) || listed(project?.['packages'])));
+  // A trusted folder's own extensions load only there (`DefaultPackageManager.resolve`). A file reached through a link
+  // is pi's to read: the view predicts only link-free paths.
+  const linked = [join(own, 'settings.json'), join(own, 'extensions'), join(agentDir, 'settings.json'), join(agentDir, 'trust.json'), join(agentDir, 'extensions')]
+    .some(path => files.linked(path));
+  const undecided = linked || hooked || (trust && discovers && (extended || listed(project?.['extensions']) || listed(project?.['packages'])));
   return { global, project, undecided, extensions };
 }
 

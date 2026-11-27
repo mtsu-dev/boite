@@ -12,6 +12,7 @@ import { folderExtends, folderStartModel, piLaunchChoices } from '../drivers/pi/
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
 import { DISK_VIEW, type FileView } from '../file-view.ts';
+import { diskView } from './checkpoint-files.ts';
 import { profileFor } from '../providers/resolve.ts';
 import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 
@@ -65,7 +66,7 @@ export function piCatalogOf(core: Core, provider: ProviderDescriptor, accountId:
  * Image admission also uses pi's saved list before the first probe after a restart.
  */
 export function imageInputModel(
-  core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId, cwd, runsIn = id, files = DISK_VIEW }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId' | 'cwd'>> & {
+  core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId, cwd, runsIn = id, files = cwd ? diskView(cwd) : DISK_VIEW }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId' | 'cwd'>> & {
     /** The thread the run belongs to, when `id` names no session to resume (another account's goal). */
     runsIn?: string;
     /** The folder's files as pi will find them: the disk, or the disk as an edit's restore leaves it. */

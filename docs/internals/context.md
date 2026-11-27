@@ -661,10 +661,12 @@ model the cut leaves the thread on, as the send would, and refuses
 that model can differ from the current session's: a native cut resumes on the
 model at that point, a new session starts on the folder's settings as the
 restored files will leave them. The check reads those files from the
-checkpoint (`restoredView` in `threads/checkpoint-files.ts`), following each
-symbolic link as the restore leaves it and the thread's own spelling of its
-folder, so a refusal leaves the folder as it was, its empty directories and
-hard links included.
+checkpoint (`restoredView` in `threads/checkpoint-files.ts`), under the
+thread's own spelling of its folder, so a refusal leaves the folder as it was,
+its empty directories and hard links included. The view follows no link: a
+pi settings or extensions path that crosses a symbolic link or a junction, on
+disk or restored, leaves the model to pi, and the image goes through, at an
+edit as at a send (`diskView`).
 While editing, the composer leaves that answer to the core instead of the
 current session's. The journal keeps a `thread.rewound`
 event naming every removed message and turn. The projection drops those

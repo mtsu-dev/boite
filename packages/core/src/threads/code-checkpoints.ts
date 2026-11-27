@@ -2,9 +2,9 @@ import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promise
 import { basename, dirname, join } from 'node:path';
 import type { ThreadRewind, ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { DISK_VIEW, type FileView } from '../file-view.ts';
+import type { FileView } from '../file-view.ts';
 import { messageOf, refused } from '../errors.ts';
-import { collectSharedBlobs, contains, overlap, restoredView, restoreFiles, same, snapshot, workspaceRoot, type FileChange, type FileSnapshot, type SnapshotCache } from './checkpoint-files.ts';
+import { collectSharedBlobs, contains, diskView, overlap, restoredView, restoreFiles, same, snapshot, workspaceRoot, type FileChange, type FileSnapshot, type SnapshotCache } from './checkpoint-files.ts';
 import { decodeManifest, encodeManifest, StoreMigration, trimFolder } from './checkpoint-store.ts';
 
 type FileResult = NonNullable<ThreadRewind['files']>;
@@ -195,7 +195,7 @@ export class CodeCheckpoints {
     let root: string;
     try { root = await workspaceRoot(thread.cwd); }
     catch (error) {
-      admit(DISK_VIEW);
+      admit(diskView(thread.cwd));
       return cut({ status: 'unavailable', count: 0, reason: `the working directory is unavailable: ${messageOf(error)}` });
     }
     this.assertAvailable(root);
@@ -209,12 +209,12 @@ export class CodeCheckpoints {
       for (const active of [...this.#active.values()]) {
         if (!saving(active)) continue;
         if (await overlap(this.#core, thread.id, root, active.checkpoint.root)) {
-          admit(DISK_VIEW);
+          admit(diskView(thread.cwd));
           return cut({ status: 'unavailable', count: 0, reason: 'another turn is working in this folder; files were left as they are', busy: true });
         }
       }
       const { files, changes } = await this.#plan(thread, root, turnIds, messageId);
-      admit(changes.length ? restoredView(root, this.#objects(thread.id), changes, thread.cwd) : DISK_VIEW);
+      admit(restoredView(root, this.#objects(thread.id), changes, thread.cwd));
       if (changes.length) await restoreFiles(root, this.#objects(thread.id), changes);
       try { return cut(files); }
       catch (error) {

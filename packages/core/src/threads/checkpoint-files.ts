@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants, lstatSync, readdirSync, readFileSync, readlinkSync, type BigIntStats } from 'node:fs';
+import { constants, lstatSync, readdirSync, readFileSync, realpathSync, type BigIntStats } from 'node:fs';
 import { chmod, copyFile, link, lstat, mkdir, open, readdir, readFile, readlink, realpath, rename, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { Core } from '../core.ts';
-import type { FileView } from '../file-view.ts';
+import { DISK_VIEW, type FileView } from '../file-view.ts';
 import type { SharedFilePermit } from '../contacts/access-policy.ts';
 import { refused, RpcFailure } from '../errors.ts';
 import { git } from '../git/read.ts';
@@ -378,115 +378,141 @@ async function writeEntry(root: string, objects: string, name: string, entry: Fi
   } finally { await rm(temporary, { force: true }); }
 }
 
+/** Whether this system's file names ignore case, so two spellings may name one entry. */
+const FOLDED = process.platform === 'win32' || process.platform === 'darwin';
+const LINKED = { state: 'linked' } as const;
+const MISSING = { state: 'missing' } as const;
+type Spot = typeof LINKED | typeof MISSING | { state: 'file' | 'dir'; at: string; restored: boolean };
+
+function within(dir: string, path: string): boolean {
+  const rest = relative(dir, path);
+  return rest === '' || (rest !== '..' && !rest.startsWith(`..${sep}`) && !isAbsolute(rest));
+}
+
+function real(path: string): string {
+  try { return realpathSync.native(path); } catch { return resolve(path); }
+}
+
 /**
  * The files under `root` as `restoreFiles(root, objects, changes)` will leave them, read without writing anything:
  * each change's `before`, a parent its deleted files leave empty gone, every other path as the disk holds it. A path
- * resolves as the system would after the restore: component by component, through each symbolic link as restored or
- * as on disk, `..` taken after the link before it, and under `cwd`, the spelling the thread keeps for `root` (a
- * Windows short name or `subst` drive `realpath` expands).
+ * spelled under `cwd`, the thread's spelling of `root` that `realpath` expands, reads under `root`.
+ *
+ * The view follows no link. A path whose way inside the workspace crosses a symbolic link or a junction, on disk or
+ * restored, or names an entry the restore writes under another case, is `linked` and reads as missing; so is one
+ * spelled outside `cwd` and `root` that lands in the workspace. Any other path outside reads from the disk, which the
+ * restore leaves alone.
  */
 export function restoredView(root: string, objects: string, changes: readonly FileChange[], cwd = root): FileView {
-  const key = (path: string) => process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path);
-  const planned = new Map(changes.map(change => [key(join(root, change.name)), change.before]));
+  const base = real(root);
+  const fold = (path: string) => FOLDED ? path.toLowerCase() : path;
+  const planned = new Map(changes.map(change => [join(base, change.name), change.before]));
+  /** Each spelling the restore writes, and every folder above one, under its folded name. */
+  const spellings = new Map<string, Set<string>>();
+  for (const path of planned.keys()) {
+    for (let at = path; at !== base && within(base, at); at = dirname(at)) {
+      const seen = spellings.get(fold(at)) ?? new Set<string>();
+      seen.add(at);
+      spellings.set(fold(at), seen);
+    }
+  }
+  const below = (dir: string) => dir.endsWith(sep) ? dir : dir + sep;
   /** Whether the restore puts any entry below `dir`, which then stands as a directory. */
-  const created = (dir: string) => {
-    const own = key(dir);
-    const prefix = own.endsWith(sep) ? own : own + sep;
-    return [...planned].some(([path, entry]) => entry !== undefined && path.startsWith(prefix));
-  };
-  const touched = (dir: string) => {
-    const own = key(dir);
-    const prefix = own.endsWith(sep) ? own : own + sep;
-    return [...planned.keys()].some(path => path.startsWith(prefix));
-  };
+  const created = (dir: string) => [...planned].some(([path, entry]) => entry !== undefined && path.startsWith(below(dir)));
+  const touched = (dir: string) => [...planned.keys()].some(path => path.startsWith(below(dir)));
   const names = (dir: string) => { try { return readdirSync(dir); } catch { return []; } };
   /** Whether an entry stands at `path` itself, a link not followed, every directory above it standing. */
   const present = (path: string): boolean => {
-    const own = key(path);
-    if (planned.has(own)) return planned.get(own) !== undefined || created(path);
+    if (planned.has(path)) return planned.get(path) !== undefined || created(path);
     let directory: boolean;
     try { directory = lstatSync(path).isDirectory(); } catch { return created(path); }
     if (!directory) return true;
     // `writeEntry` removes only the parents a deleted file leaves empty: a directory empty before stays.
     return created(path) || names(path).some(name => present(join(path, name))) || !touched(path);
   };
-  const aliased = (path: string) => {
-    const full = resolve(path);
-    const rest = relative(resolve(cwd), full);
-    if (rest === '') return root;
-    return rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest) ? full : join(root, rest);
-  };
-  const split = (path: string) => path.split(process.platform === 'win32' ? /[\\/]/ : sep).filter(Boolean);
-  /**
-   * Where `path` lands once every link it crosses is followed, and whether only the restore's entries stand there (a
-   * directory it creates in place of a deleted file, link or missing path). Null when nothing will stand there, or
-   * past 40 links.
-   */
-  const follow = (path: string): { at: string; restored: boolean } | null => {
-    const full = aliased(path);
-    let at = parse(full).root;
-    const queue = split(full.slice(at.length));
-    /** For each directory `at` went down, whether only the restore makes it. */
-    const depth: boolean[] = [];
-    let hops = 0;
-    while (queue.length) {
-      const part = queue.shift()!;
-      if (part === '.') continue;
-      if (part === '..') { at = dirname(at); depth.pop(); continue; }
-      const next = join(at, part);
-      const restored = depth.at(-1) === true;
-      let link: string | undefined;
-      if (planned.has(key(next))) {
-        const entry = planned.get(key(next));
-        if (!entry) {
-          if (!created(next)) return null;
-          at = next; depth.push(true); continue;
-        }
-        link = entry.link;
-        if (link === undefined) { if (queue.length) return null; at = next; continue; }
-      } else if (restored) {
-        if (!created(next)) return null;
-        at = next; depth.push(true); continue;
-      } else {
-        let info;
-        try { info = lstatSync(next); } catch {
-          if (!created(next)) return null;
-          at = next; depth.push(true); continue;
-        }
-        if (info.isSymbolicLink()) link = readlinkSync(next);
-        else if (info.isDirectory()) { at = next; depth.push(false); continue; }
-        else { if (queue.length) return null; at = next; continue; }
+  /** Where a path spelled outside the workspace lands: in it, `linked`; elsewhere, null, as the disk holds it. */
+  const outside = (full: string): Spot | null => {
+    let probe = full;
+    for (;;) {
+      try { lstatSync(probe); break; } catch {
+        const up = dirname(probe);
+        if (up === probe) return null;
+        probe = up;
       }
-      if (++hops > 40) return null;
-      if (isAbsolute(link)) {
-        const target = resolve(link);
-        at = parse(target).root;
-        depth.length = 0;
-        queue.unshift(...split(target.slice(at.length)));
-      } else queue.unshift(...split(link));
     }
-    return { at, restored: depth.at(-1) === true };
+    try { return within(fold(base), fold(realpathSync.native(probe))) ? LINKED : null; } catch { return LINKED; }
   };
-  /** Whether an entry stands where `follow` landed: below a directory only the restore makes, only its entries do. */
-  const stands = (spot: { at: string; restored: boolean } | null): spot is { at: string; restored: boolean } => spot !== null
-    && (spot.restored ? planned.get(key(spot.at)) !== undefined || created(spot.at) : present(spot.at));
+  const locate = (path: string): Spot | null => {
+    const full = resolve(path);
+    const spelled = resolve(cwd);
+    let at: string;
+    if (within(spelled, full)) {
+      // A spelling inside the workspace is a link the restore may change.
+      if (relative(base, spelled) !== '' && within(base, spelled)) return LINKED;
+      at = join(base, relative(spelled, full));
+    } else if (within(base, full)) at = full;
+    else if (within(resolve(root), full)) at = join(base, relative(resolve(root), full));
+    else return outside(full);
+    const parts = relative(base, at).split(sep).filter(Boolean);
+    let here = base;
+    let restored = false;
+    for (const [index, part] of parts.entries()) {
+      const next = join(here, part);
+      const last = index === parts.length - 1;
+      const written = spellings.get(fold(next));
+      if (written && (written.size > 1 || !written.has(next))) return LINKED;
+      if (planned.has(next)) {
+        const entry = planned.get(next);
+        if (entry === undefined) {
+          if (!created(next)) return MISSING;
+          here = next; restored = true; continue;
+        }
+        if (entry.link !== undefined) return LINKED;
+        return last ? { state: 'file', at: next, restored } : MISSING;
+      }
+      if (restored) {
+        if (!created(next)) return MISSING;
+        here = next; continue;
+      }
+      let info;
+      try { info = lstatSync(next); } catch {
+        if (!created(next)) return MISSING;
+        here = next; restored = true; continue;
+      }
+      if (info.isSymbolicLink()) return LINKED;
+      if (!info.isDirectory()) return last ? { state: 'file', at: next, restored } : MISSING;
+      here = next;
+    }
+    return restored || present(here) ? { state: 'dir', at: here, restored } : MISSING;
+  };
   return {
     read: path => {
-      const spot = follow(path);
-      if (!stands(spot)) return null;
-      const entry = planned.get(key(spot.at));
+      const spot = locate(path);
+      if (spot === null) return DISK_VIEW.read(path);
+      if (spot.state !== 'file') return null;
+      const entry = planned.get(spot.at);
       if (entry) return readBlobSync(join(objects, entry.hash), entry.hash)?.toString('utf8') ?? null;
-      if (spot.restored || planned.has(key(spot.at))) return null;
       try { return readFileSync(spot.at, 'utf8'); } catch { return null; }
     },
-    exists: path => stands(follow(path)),
-    listsAny: path => {
-      const spot = follow(path);
-      if (!stands(spot)) return false;
-      if (created(spot.at)) return true;
-      return !spot.restored && !planned.has(key(spot.at)) && names(spot.at).some(name => present(join(spot.at, name)));
+    exists: path => {
+      const spot = locate(path);
+      return spot === null ? DISK_VIEW.exists(path) : spot.state === 'file' || spot.state === 'dir';
     },
+    listsAny: path => {
+      const spot = locate(path);
+      if (spot === null) return DISK_VIEW.listsAny(path);
+      if (spot.state !== 'dir') return false;
+      return created(spot.at) || (!spot.restored && names(spot.at).some(name => present(join(spot.at, name))));
+    },
+    linked: path => locate(path)?.state === 'linked',
   };
+}
+
+/** The disk as `restoredView` reads it with nothing to restore, so a send and an edit read `cwd`'s folder alike. */
+export function diskView(cwd: string): FileView {
+  let root: string;
+  try { root = realpathSync.native(cwd); } catch { return DISK_VIEW; }
+  return restoredView(root, '', [], cwd);
 }
 
 /** Check all conflicts before writing; put the original files back if a write fails. */

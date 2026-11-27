@@ -1,12 +1,12 @@
-import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rename, stat, writeFile, rm, symlink, readlink, utimes } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rename, stat, writeFile, rm, symlink, readlink, realpath, utimes } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import type { CoreClient } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { CodeCheckpoints, IDLE_THREAD_MS, KEEP_TURNS } from '../src/threads/code-checkpoints.ts';
-import { overlap, restoredView, restoreFiles, sharedBlob, snapshot, type FileChange, type FileEntry } from '../src/threads/checkpoint-files.ts';
+import { diskView, overlap, restoredView, restoreFiles, sharedBlob, snapshot, type FileChange, type FileEntry } from '../src/threads/checkpoint-files.ts';
 import { DISK_VIEW } from '../src/file-view.ts';
 import { BLOB_BYTE_LIMIT, decodeBlob, decodeManifest } from '../src/threads/checkpoint-store.ts';
 import { git } from '../src/git/read.ts';
@@ -744,8 +744,9 @@ test(`checkpoints are kept for the newest ${KEEP_TURNS} turns, and none for a th
 // 51 real turns took 5.2 s on a loaded Windows machine, past Bun's default 5 s.
 }, 20000);
 
-test('the restored view reads every path as the restore leaves it, through links, before anything is written', async () => {
-  const base = await mkdtemp(join(tmpdir(), 'boite-restored-view-'));
+test('the restored view reads every link-free path as the restore leaves it, and names the rest linked, before anything is written', async () => {
+  // The workspace root is a real path (`workspaceRoot`): macOS spells the temporary folder through a link.
+  const base = await realpath(await mkdtemp(join(tmpdir(), 'boite-restored-view-')));
   try {
     const root = join(base, 'root');
     const objects = join(base, 'objects');
@@ -771,11 +772,9 @@ test('the restored view reads every path as the restore leaves it, through links
     await writeFile(join(root, '.pi', 'pi.json'), 'decoy');
     await writeFile(join(root, 'gone', 'f'), 'made by a turn');
     await writeFile(join(root, 'ext'), 'a file where a folder was');
-    // Links no turn changed: one to a restored file, one whose `..` comes after another link.
+    // Links no turn changed: to a restored file, and to a folder.
     await symlink(join('..', 'config', 'pi.json'), join(root, '.pi', 'settings.json'), 'file');
     await symlink(join('..', 'config', 'sub'), join(root, '.pi', 'knot'), dirLink);
-    // `join` would drop the `..` before the link is followed: the target is spelled as is.
-    await symlink(['knot', '..', 'pi.json'].join(sep), join(root, '.pi', 'deep.json'), 'file');
     // A link a turn made to a folder outside, which the restore deletes.
     await symlink(join(base, 'outside'), join(root, 'lnk'), dirLink);
     const after = async (name: string) => ({ name, after: await now(name) });
@@ -788,24 +787,32 @@ test('the restored view reads every path as the restore leaves it, through links
       // A folder a turn deleted with the link in it.
       { name: '.pj/settings.json', before: link(join('..', 'config', 'pi.json')), after: undefined },
     ];
-    // The thread's other spelling of the folder.
+    // The thread's other spelling of the folder, and a way into it from outside.
     const spelled = join(base, 'spelled');
     await symlink(root, spelled, dirLink);
-    const probes = ['.pi/settings.json', '.pi/deep.json', '.pi/pi.json', '.pi/knot', 'lnk', 'lnk/settings.json', '.pj/settings.json', '.pj',
+    await symlink(root, join(base, 'door'), dirLink);
+    const probes = ['.pi/settings.json', '.pi/knot', '.pi/knot/x', '.pi/pi.json', 'lnk', 'lnk/settings.json', '.pj/settings.json', '.pj',
       'ext', 'ext/a.ts', 'keep', 'gone', 'gone/f', 'config/pi.json', 'config/sub', 'missing', 'missing/deeper'];
     const look = (view: typeof DISK_VIEW, top: string) => probes.map(name => {
       const path = join(top, name);
-      return `${name}: ${view.exists(path)} ${view.listsAny(path)} ${view.read(path)}`;
+      return view.linked(path) ? `${name}: linked` : `${name}: ${view.exists(path)} ${view.listsAny(path)} ${view.read(path)}`;
     });
     const preview = restoredView(root, objects, changes, spelled);
     const predicted = look(preview, root);
     const predictedSpelled = look(preview, spelled);
-    expect(predicted).toContain('.pi/deep.json: true false plain');
-    expect(predicted).toContain('.pj/settings.json: true false plain');
+    expect(predicted).toEqual(expect.arrayContaining(['.pi/settings.json: linked', '.pi/knot/x: linked', '.pj/settings.json: linked',
+      '.pj: true true null', 'lnk: false false null', 'ext/a.ts: true false export {};', 'config/pi.json: true false plain', 'gone: false false null']));
+    expect(predictedSpelled).toEqual(predicted);
+    // Outside the workspace, the disk; a way into it from outside is a link.
+    expect(preview.read(join(base, 'outside', 'settings.json'))).toBe('outside');
+    expect(preview.linked(join(base, 'door', 'config', 'pi.json'))).toBe(true);
     // A cwd at a drive's root maps every path below it.
     expect(restoredView(root, objects, changes, resolve('/')).read(resolve('/config/pi.json'))).toBe('plain');
     await restoreFiles(root, objects, changes);
-    expect(predicted).toEqual(look(DISK_VIEW, root));
-    expect(predictedSpelled).toEqual(look(DISK_VIEW, spelled));
+    // What it predicted is the disk the restore left, read link-free the same way, and without links, plain reads.
+    expect(predicted).toEqual(look(diskView(root), root));
+    expect(predictedSpelled).toEqual(look(diskView(spelled), spelled));
+    const linkFree = (lines: string[]) => lines.filter(line => !line.endsWith(': linked'));
+    expect(linkFree(predicted)).toEqual(linkFree(look({ ...DISK_VIEW, linked: path => preview.linked(path) }, root)));
   } finally { await rm(base, { recursive: true, force: true }); }
 });
