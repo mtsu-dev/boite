@@ -230,7 +230,8 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId = turn.sessi
 export async function answerPermission(turn: AcpTurn | null, params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
   // `RequestPermissionResponse.outcome` is itself the tagged outcome object.
   if (turn === null || turn.isStopped) return { outcome: { outcome: 'cancelled' } };
-  if (params.sessionId === turn.sessionId) {
+  const ownSession = params.sessionId === turn.sessionId;
+  if (ownSession) {
     // The agent can request permission for its next tool before announcing the tool call.
     turn.outputRevision += 1;
     turn.flushExecutionError();
@@ -254,20 +255,23 @@ export async function answerPermission(turn: AcpTurn | null, params: RequestPerm
     if (!params.options.some((option) => option.optionId === optionId)) return { outcome: { outcome: 'cancelled' } };
     return { outcome: { outcome: 'selected', optionId: optionId! } };
   }
+  const respond = (decision: 'allow' | 'deny'): RequestPermissionResponse => {
+    const optionId = pickOption(params.options, decision);
+    if (optionId === null) return { outcome: { outcome: 'cancelled' } };
+    if (ownSession && decision === 'allow') turn.expectPermittedTool(call.toolCallId);
+    return { outcome: { outcome: 'selected', optionId } };
+  };
+  if (turn.ctx.thread.permissionMode === 'yolo') return respond('allow');
   const toolName = call.name ?? call.title ?? call.toolCallId;
-  if (turn.ctx.thread.permissionMode === 'yolo') {
-    const optionId = pickOption(params.options, 'allow');
-    return optionId === null ? { outcome: { outcome: 'cancelled' } } : { outcome: { outcome: 'selected', optionId } };
-  }
   const ticket = turn.ctx.requestPermission(toolName, call.rawInput ?? null, call.title ?? null);
   const index = turn.takeIndex();
   turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: null });
-  const answer = await turn.awaitUser(Promise.race([ticket, turn.stopped.then(() => 'cancelled' as const)]));
-  if (answer === 'cancelled') return { outcome: { outcome: 'cancelled' } };
-  turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: answer });
-  const optionId = pickOption(params.options, answer);
-  if (optionId === null) return { outcome: { outcome: 'cancelled' } };
-  return { outcome: { outcome: 'selected', optionId } };
+  // Keep the user wait active until the permitted tool is tracked.
+  return turn.awaitUser(Promise.race([ticket, turn.stopped.then(() => 'cancelled' as const)]).then(answer => {
+    if (answer === 'cancelled') return { outcome: { outcome: 'cancelled' } };
+    turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: answer });
+    return respond(answer);
+  }));
 }
 
 function pickOption(options: PermissionOption[], decision: 'allow' | 'deny'): string | null {

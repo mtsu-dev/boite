@@ -114,6 +114,7 @@ export function commandsOf(list: AvailableCommand[]): AgentCommand[] {
  */
 export class AcpTurn extends TurnParts {
   readonly #tools = new Map<string, ToolEntry>();
+  readonly #unannouncedTools = new Set<string>();
   #awaitingUser = 0;
 
   #status: TurnResult['status'] = 'done';
@@ -199,6 +200,15 @@ export class AcpTurn extends TurnParts {
       if (!before.has(id) && entry.status === 'running' && entry.launch !== 'subagent') return true;
     }
     return false;
+  }
+
+  /** A permission grant can precede the agent's first update for that tool. */
+  expectPermittedTool(toolCallId: string): void {
+    if (!this.#tools.has(toolCallId)) this.#unannouncedTools.add(toolCallId);
+  }
+
+  get hasUnannouncedTools(): boolean {
+    return this.#unannouncedTools.size > 0;
   }
 
   /** True while a permission request or a question of this turn waits for the user. */
@@ -359,6 +369,7 @@ export class AcpTurn extends TurnParts {
       } else entry.documents = documentsOf(content);
     }
     this.#tools.set(toolCallId, entry);
+    this.#unannouncedTools.delete(toolCallId);
     this.part(entry.index, {
       type: 'tool',
       toolId: toolCallId,

@@ -471,10 +471,24 @@ const app = agent({ name: 'acp-fake' })
           for (const id of ['first', 'second']) {
             await send({ sessionUpdate: 'tool_call', toolCallId: id, title: detached && id === 'second' ? 'delegate_task: Review the parser' : id, status: 'in_progress' });
           }
-          for (const id of ['first', 'second']) {
+          const gates = ['first', 'second'];
+          if (instructions.includes('[third-tool-permission]')) {
+            gates.splice(instructions.includes('[permission-before-second]') ? 1 : 2, 0, 'permission');
+          }
+          for (const id of gates) {
             const gate = `${process.env['ACP_FAKE_LOG']}.${id}`;
             while (!existsSync(gate)) {
               if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+            }
+            if (id === 'permission') {
+              const answer = await client.request('session/request_permission', {
+                sessionId,
+                toolCall: { toolCallId: 'third', title: 'third' },
+                options: [{ optionId: 'yes', name: 'Allow once', kind: 'allow_once' }],
+              });
+              if (answer.outcome.outcome !== 'selected') return { stopReason: 'end_turn' };
+              log('third tool allowed');
+              continue;
             }
             if (id === 'second' && compaction) {
               await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'in_progress' });
@@ -491,25 +505,15 @@ const app = agent({ name: 'acp-fake' })
           }
         }
         if (instructions.includes('[third-tool]')) {
-          if (instructions.includes('[third-tool-permission]')) {
-            while (!existsSync(`${process.env['ACP_FAKE_LOG']}.permission`)) {
-              if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
-            }
-            const answer = await client.request('session/request_permission', {
-              sessionId,
-              toolCall: { toolCallId: 'third', title: 'third' },
-              options: [{ optionId: 'yes', name: 'Allow once', kind: 'allow_once' }],
-            });
-            if (answer.outcome.outcome !== 'selected') return { stopReason: 'end_turn' };
-            log('third tool allowed');
-          }
           while (!existsSync(`${process.env['ACP_FAKE_LOG']}.third`)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
           }
           if (compaction) {
             await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'completed' });
           }
-          await send({ sessionUpdate: 'tool_call', toolCallId: 'third', title: 'third', status: 'in_progress' });
+          if (!instructions.includes('[permission-before-second]')) {
+            await send({ sessionUpdate: 'tool_call', toolCallId: 'third', title: 'third', status: 'in_progress' });
+          }
           await send({ sessionUpdate: 'tool_call_update', toolCallId: 'third', status: 'completed' });
         }
         if (instructions.includes('[answer-on-gate]')) {

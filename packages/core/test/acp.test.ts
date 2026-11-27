@@ -519,10 +519,15 @@ test.each(['another tool finishes', 'the user sends now'])('ACP delivers queued 
   }
 }, 20_000);
 
-test('ACP waits for a fresh tool completion after permission is granted during the working-folder check', async () => {
-  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+test.each([
+  ['a manual grant during the working-folder check', 'default', false],
+  ['a manual grant before the other tool finishes', 'default', true],
+  ['a YOLO grant before the other tool finishes', 'yolo', true],
+] as const)('ACP waits for the permitted tool after %s', async (_scenario, mode, beforeCompletion) => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 }, undefined, mode);
   const core = harness!.core;
-  const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] [third-tool] [third-tool-permission]' });
+  const prompt = '[parallel-tools] [third-tool] [third-tool-permission]' + (beforeCompletion ? ' [permission-before-second]' : '');
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt });
   const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
     value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'third-tool-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
   expect(accepted).toBe(true);
@@ -533,15 +538,20 @@ test('ACP waits for a fresh tool completion after permission is granted during t
     const first = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
     writeFileSync(`${logFile}.first`, 'ready');
     await first;
-    writeFileSync(`${logFile}.second`, 'ready');
-    await waitFor(() => check.mock.calls.length === 1);
-    const requested = client.next('permission.requested', request => request.threadId === threadId, 10_000);
+    const finishSecondTool = async () => {
+      writeFileSync(`${logFile}.second`, 'ready');
+      await waitFor(() => check.mock.calls.length === 1);
+    };
+    if (!beforeCompletion) await finishSecondTool();
+    const requested = mode === 'yolo' ? null : client.next('permission.requested', request => request.threadId === threadId, 10_000);
     writeFileSync(`${logFile}.permission`, 'ready');
-    await client.call('permissions.answer', { requestId: (await requested).id, decision: 'allow' });
+    if (requested !== null) await client.call('permissions.answer', { requestId: (await requested).id, decision: 'allow' });
     await waitFor(() => fakeLog().includes('third tool allowed'));
+    if (beforeCompletion) await finishSecondTool();
     folder.resolve(true);
     await new Promise<void>(resolve => setImmediate(resolve));
-    expect(cancel).not.toHaveBeenCalled();
+    if (beforeCompletion) expect(cancel).not.toHaveReturnedWith(true);
+    else expect(cancel).not.toHaveBeenCalled();
 
     writeFileSync(`${logFile}.third`, 'ready');
     await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
