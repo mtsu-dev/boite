@@ -333,7 +333,7 @@ const app = agent({ name: 'acp-fake' })
   })
   .onRequest('session/load', async ({ params, client }) => {
     if (process.env['ACP_FAKE_HTTP_MCP'] === '1') log(`mcp:load ${JSON.stringify(params.mcpServers)}`);
-    if (process.env['ACP_FAKE_FORGET'] === '1') {
+    if (process.env['ACP_FAKE_FORGET'] === '1' || existsSync(`${process.env['ACP_FAKE_LOG']}.forget-load`)) {
       log(`load-refused:${params.sessionId}`);
       // A plain throw, like OpenCode's: the SDK answers it with -32603.
       throw new Error(`Session not found: ${params.sessionId}`);

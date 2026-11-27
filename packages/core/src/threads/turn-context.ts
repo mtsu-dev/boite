@@ -53,6 +53,12 @@ export interface CarriedInput {
   letters?: string;
 }
 
+/** The text and journal boundary of an in-place continuation, including a retry on a fresh session. */
+export interface TurnContinuation {
+  prompt: string;
+  before?: number;
+}
+
 /**
  * What a driver gets to run one turn: the prompt as built from the journal,
  * the sinks its output goes through, and the spawns that carry the thread
@@ -187,7 +193,7 @@ export class TurnContexts {
     account: Account,
     turn: Turn,
     carried: CarriedInput = {},
-    resumePrompt?: string,
+    resume?: TurnContinuation,
     signal?: AbortSignal,
     { deferInterruptedInput = true, interrupted }: { deferInterruptedInput?: boolean; interrupted?: { received?: TurnId } } = {},
   ): TurnContext | Promise<TurnContext> {
@@ -392,12 +398,18 @@ export class TurnContexts {
     // prompt is the resume note, and a fresh session reads this turn's work too.
     // No closure of this context may reach `input` or `prepared`: they share one
     // scope, and a driver keeps the callbacks of its session between turns.
+    const resumePrompt = resume?.prompt;
     const input = resumePrompt !== undefined ? { prompt: resumePrompt, attachments: [] } : this.#lastUserInput(threadId, turn.id);
     const kind = turn.execution?.operation;
     // A resume's attachments were copied from the interrupted turn. A fresh
     // session gets them from that history, including after a failed native load.
     const carryInput = kind === 'resume' ? { ...input, attachments: [] } : input;
-    const carry = carrier(this.#core, this.#files, threadId, resumePrompt !== undefined ? null : turn.id, carryInput, provider, turn);
+    if (resume && resume.before === undefined) {
+      // Pin the history before the resume note lands, even if the native load fails.
+      const last = this.#core.journal.db.query('SELECT rowid FROM messages WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1').get(threadId) as { rowid: number } | null;
+      resume.before = (last?.rowid ?? 0) + 1;
+    }
+    const carry = carrier(this.#core, this.#files, threadId, resume?.before ?? turn.id, carryInput, provider, turn);
     const fresh = thread.sessionId === null && ((thread.sessionGeneration ?? 0) > 0 || kind === 'resume' || resumePrompt !== undefined);
     // A session resumed by a switch back to its account: what it missed goes with its first prompt (`threads/account-sessions.ts`).
     // A resume carries it too, since the cut turn may have stopped before the session saved its prompt, but not a restart inside the turn that carried it.
@@ -756,15 +768,7 @@ type TurnInput = Parameters<typeof continuationInput>[3];
  * `makeContext`, so that only the context's `continuation` holds the input,
  * not every callback of the context.
  */
-function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: TurnId | null, input: TurnInput, provider: ProviderDescriptor, turn: Turn): () => HistoryInput {
-  // Capture the boundary before a resume note lands. Read the full history
-  // only when a fresh session needs it, so loading a native session can use
-  // its own history and the bounded interrupted input.
-  let upTo: string | number;
-  if (turnId === null) {
-    const last = core.journal.db.query('SELECT rowid FROM messages WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1').get(threadId) as { rowid: number } | null;
-    upTo = (last?.rowid ?? 0) + 1;
-  } else upTo = turnId;
+function carrier(core: Core, files: FileReferences, threadId: ThreadId, upTo: TurnId | number, input: TurnInput, provider: ProviderDescriptor, turn: Turn): () => HistoryInput {
   return () => {
     const result = continuationInput(core.journal, threadId, upTo, input, provider, (part, place) => {
       core.sharedAccess.uploads(threadId, [part]);

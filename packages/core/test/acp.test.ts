@@ -16,7 +16,7 @@ import { sessionNotificationOf } from '../src/drivers/acp/updates.ts';
 import { stderrLines } from '../src/drivers/lines.ts';
 import { forgetProbes, getDriver, setDriver } from '../src/drivers/index.ts';
 import * as threadCwd from '../src/threads/cwd.ts';
-import { CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
+import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
@@ -238,7 +238,7 @@ test.each([
 
 test.each([
   ['permission', 'acknowledged'], ['permission', 'rejected'], ['permission', 'capacity'], ['update', 'capacity'],
-  ['core', 'acknowledged'],
+  ['core', 'acknowledged'], ['core', 'completed'], ['core', 'explicit stop'],
 ] as const)('an ACP %s restart leaves the queue paused after cancellation (%s)', async (restart, outcome) => {
   const started = await startThread({ warmProcessMinutes: 0 });
   const { threadId } = started;
@@ -246,8 +246,11 @@ test.each([
   const first = harness!;
   let { core } = first;
   const capacity = outcome === 'capacity';
+  const completed = outcome === 'completed';
+  const explicitStop = outcome === 'explicit stop';
   if (capacity) Object.assign(core.providers.require('acp-fake'), { quirks: ['antigravity'] });
-  const directive = capacity ? ' [capacity-on-cancel]' : outcome === 'rejected' ? ' [error-on-cancel]' : '';
+  const directive = capacity ? ' [capacity-on-cancel]' : outcome === 'rejected' ? ' [error-on-cancel]'
+    : completed || explicitStop ? ' [ignore-cancel] [finish-on-gate]' : '';
   const prompt = `[parallel-tools] [confirm-on-gate]${directive}`;
   const { id } = await client.call('turns.start', { threadId, prompt });
   await waitFor(() => core.threads.require(threadId).sessionId !== null);
@@ -278,6 +281,7 @@ test.each([
   } else {
     restartCore = closeForHandoff(first);
     await waitFor(() => stop.mock.calls.length > 0);
+    if (explicitStop) expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
   }
   writeFileSync(`${logFile}.end`, 'ready');
   let next: TestCore | undefined;
@@ -288,9 +292,10 @@ test.each([
       core = next.core;
       client = await next.connect();
     } else await waitFor(() => countLogLines(fakeLog(), 'session/prompt') > 1 || core.journal.getTurn(id)?.finishedAt != null);
-    expect(core.journal.getTurn(id)?.status).toBe(capacity ? 'error' : 'stopped');
-    expect(core.journal.getTurn(id)?.execution).toMatchObject(outcome === 'acknowledged'
-      ? { queuedInputSession: expect.any(String) } : { queuedInputInterrupted: true });
+    expect(core.journal.getTurn(id)?.status).toBe(completed ? 'done' : capacity ? 'error' : 'stopped');
+    const execution = core.journal.getTurn(id)?.execution;
+    expect(execution?.queuedInputSession).toEqual(outcome === 'acknowledged' ? expect.any(String) : undefined);
+    expect(execution?.queuedInputInterrupted).toBe(outcome === 'rejected' || capacity ? true : undefined);
     expect(core.journal.listTurns(threadId)).toHaveLength(1);
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(1);
     expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
@@ -300,7 +305,7 @@ test.each([
     await setPaused(false);
     await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(2);
-    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(completed ? 0 : 1);
     expect(setModeCount('plan')).toBe(restart === 'permission' ? 1 : 0);
   } finally { await next?.stop(); }
 }, 20_000);
@@ -370,7 +375,10 @@ test.each(['restart', 'agent update on the warm process', 'manual recovery', 'ma
   } finally { if (next !== first) await next.stop(); }
 }, 20_000);
 
-test.each(['capacity retry', 'agent update'] as const)('an ACP %s recovers interrupted input on a loaded session with images disabled', async method => {
+test.each([
+  ['capacity retry', 'loaded'], ['agent update', 'loaded'],
+  ['capacity retry', 'lost'], ['agent update', 'lost'],
+] as const)('an ACP %s recovers interrupted input when its native session is %s', async (method, session) => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const { core, dataDir } = harness!;
   const image: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'pixel.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
@@ -380,8 +388,10 @@ test.each(['capacity retry', 'agent update'] as const)('an ACP %s recovers inter
   const sessionId = core.threads.require(threadId).sessionId ?? '';
   expect(sessionId).not.toBe('');
 
-  writeDescriptor(dataDir, false);
-  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+  if (session === 'loaded') {
+    writeDescriptor(dataDir, false);
+    expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+  }
   Object.assign(core.providers.require('acp-fake'), { quirks: ['antigravity'] });
 
   const delays = CAPACITY_RETRY.delaysMs;
@@ -394,6 +404,10 @@ test.each(['capacity retry', 'agent update'] as const)('an ACP %s recovers inter
         { id: 'follow-up', text: method === 'capacity retry' ? '[capacity-after-text] Queued follow-up' : '[slow] Queued follow-up', attachments: [] },
       ] } } });
     expect(saved.accepted).toBe(true);
+    if (session === 'lost') {
+      await waitFor(() => fakeLog().includes(`loaded:${sessionId}`));
+      writeFileSync(`${logFile}.forget-load`, 'ready');
+    }
     writeFileSync(`${logFile}.first`, 'ready');
     writeFileSync(`${logFile}.second`, 'ready');
     if (method === 'agent update') {
@@ -401,12 +415,25 @@ test.each(['capacity retry', 'agent update'] as const)('an ACP %s recovers inter
       spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
       expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
     }
-    expect(await finished).toMatchObject({ status: 'done', error: null });
+    const continued = await finished;
+    expect(continued).toMatchObject({ status: 'done', error: null });
     expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBe(sessionId);
-    expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(2);
+    expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(session === 'loaded' ? 2 : 1);
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(4);
-    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
-    expect(countLogLines(fakeLog(), `image image/png ${image.data.length}`)).toBe(1);
+    expect(countLogLines(fakeLog(), `image image/png ${image.data.length}`)).toBe(session === 'loaded' ? 1 : 2);
+    if (session === 'loaded') expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+    else {
+      expect(countLogLines(fakeLog(), `load-refused:${sessionId}`)).toBe(1);
+      const messages = [...core.journal.walkTurnMessages(threadId, continued.id)];
+      const answer = messages.filter(message => message.role === 'assistant').at(-1)?.parts
+        .map(part => part.type === 'text' ? part.text : '').join('') ?? '';
+      const note = method === 'capacity retry' ? CAPACITY_CONTINUE_PROMPT : 'Boite paused this turn between two tool calls';
+      expect(answer.split(note)).toHaveLength(2);
+      const history = /<conversation-history>\n([\s\S]*?)\n<\/conversation-history>/.exec(answer)?.[1];
+      expect(history).toContain('Interrupted request');
+      expect(history).toMatch(/\[assistant, (?:complete|error)\]\n[^\n]*Queued follow-up/);
+      expect(answer.slice(answer.indexOf('</conversation-history>'))).not.toContain('Queued follow-up');
+    }
   } finally { CAPACITY_RETRY.delaysMs = delays; }
 }, 20_000);
 

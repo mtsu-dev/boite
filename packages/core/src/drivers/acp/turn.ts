@@ -247,7 +247,9 @@ export class AcpTurn extends TurnParts {
       promptCache: acpCacheLife(this.ctx.provider.id, this.ctx.thread.model),
       ...(this.sessionLost ? { sessionLost: true } : {}),
       ...(this.#queuedInputCancelled ? { queuedInputCancelled: true } : {}),
-      ...(this.#status !== 'done' && this.stoppedForQueuedInput && !this.#queuedInputCancelled ? { queuedInputInterrupted: true } : {}),
+      ...(this.stoppedForQueuedInput && !this.#queuedInputCancelled
+        ? this.#status === 'done' ? { queuedInputCompleted: true } : { queuedInputInterrupted: true }
+        : {}),
     }));
   }
 

@@ -12,7 +12,7 @@ import { markRunning } from './lifecycle.ts';
 import { RESUME_TEXT, modeRestartPrompt } from './resume-text.ts';
 import { forgetBrainContext } from './brain-context.ts';
 import { coordinationGuideUnsent } from './coordination-context.ts';
-import type { CarriedInput } from './turn-context.ts';
+import type { CarriedInput, TurnContinuation } from './turn-context.ts';
 import { TurnSteering } from './steering.ts';
 import { abortable } from '../abortable.ts';
 
@@ -21,6 +21,7 @@ export interface TurnAttemptState {
   readonly threadId: ThreadId;
   readonly turnId: TurnId;
   readonly stop: AbortController;
+  stopReason?: 'restart';
   finishing: boolean;
   thread: ThreadSummary;
   running: Turn;
@@ -217,6 +218,7 @@ export class TurnAttempts {
     let result: TurnResult;
     /** What the agent is told when its turn goes on after an agent update. */
     let afterUpdate: Resume | null = null;
+    let retryContinuation: TurnContinuation | undefined;
     let promptDispatched = false;
     let attempt = 0;
     /** What started the next attempt, set where the loop goes round again. */
@@ -242,12 +244,14 @@ export class TurnAttempts {
       // The resumed session already holds what the first attempt took from the thread.
       const continuing = afterCapacity && wroteBefore;
       const recoverAfterCapacity = continuing && interrupted.received !== undefined;
-      const resumePrompt = recoverAfterCapacity ? CAPACITY_CONTINUE_PROMPT : beforeDispatch ? undefined : note?.prompt;
+      const resume = retryContinuation ?? (continuing && provider.protocol === 'acp' ? { prompt: CAPACITY_CONTINUE_PROMPT }
+        : !beforeDispatch && note ? { prompt: note.prompt } : undefined);
+      retryContinuation = undefined;
       afterCapacity = false;
       const prepared = this.threads.contexts.makeContext(
         state.thread, provider, this.#core.accounts.require(accountId), state.running,
-        resumePrompt !== undefined || continuing ? { memory: '', deferred: '', letters: '' } : carried,
-        resumePrompt, signal, { deferInterruptedInput: !continuing && (!resumed || beforeDispatch), interrupted },
+        resume !== undefined || continuing ? { memory: '', deferred: '', letters: '' } : carried,
+        resume, signal, { deferInterruptedInput: !continuing && (!resumed || beforeDispatch), interrupted },
       );
       const context = prepared instanceof Promise ? await abortable(prepared, signal) : prepared;
       signal.throwIfAborted();
@@ -264,9 +268,11 @@ export class TurnAttempts {
       // after that belongs to no turn the journal still holds open, so it
       // reaches no message.
       let listening = true;
+      let attemptDispatched = false;
       const inputReady = context.inputReady;
       context.inputReady = () => {
         if (!listening) return;
+        attemptDispatched = true;
         promptDispatched = true;
         inputReady?.();
       };
@@ -322,7 +328,7 @@ export class TurnAttempts {
       }
       if (continuing) {
         // The native session already holds the request and what the agent did with it.
-        if (!recoverAfterCapacity) {
+        if (!recoverAfterCapacity && (resume === undefined || context.sessionId !== null)) {
           context.prompt = CAPACITY_CONTINUE_PROMPT;
           context.attachments = [];
         }
@@ -332,7 +338,7 @@ export class TurnAttempts {
       } else if (note) {
         // Shown once the context is built, so a fresh session's history does not carry it twice.
         this.threads.noteSystem(threadId, turnId, note.prompt, note.label, 'turn.resumedAfterUpdate');
-      } else if (resumed && !beforeDispatch && state.thread.sessionId !== null) {
+      } else if (!resume && resumed && !beforeDispatch && state.thread.sessionId !== null) {
         context.prompt = modeRestartPrompt(permissions.mode, context.prompt);
       }
       // A later attempt resumes a session that already holds the earlier ones, refused or not.
@@ -383,7 +389,6 @@ export class TurnAttempts {
       const fresh = !retriedLostSession && result.sessionLost === true ? this.#dropLostSession(state.thread, result) : null;
       // Cut by the restart: a stop the next core resumes, not a failure. A refusal stays one.
       const cut = result.status === 'error' && result.refusal === undefined && this.threads.handoff.active;
-      const stopped = cut || signal.aborted;
       // Only the death that cut the attempt is dropped; anything else held goes out as the agent wrote it.
       // Drained: a later attempt writes through this wrapper too, and must not release them again.
       for (const args of held.errors.splice(0)) if (!cut) sink.part(...args);
@@ -392,14 +397,20 @@ export class TurnAttempts {
       // stop completes nothing) ends with the attempt, the way the driver
       // itself would have ended it, before the turn settles.
       closeBegan(cut || result.status !== 'error' ? 'complete' : 'error');
-      if (stopped) {
-        result = { ...result, status: 'stopped', ...(fresh || cut ? { error: undefined } : {}) };
+      if (cut || signal.aborted) {
+        // An ACP agent may finish before it acts on a restart cancellation.
+        // The runner still applies an explicit Stop recorded during the handoff.
+        if (state.stopReason !== 'restart' || !result.queuedInputCompleted) {
+          result = { ...result, status: 'stopped', ...(fresh || cut ? { error: undefined } : {}) };
+        }
         break;
       }
       // The composer owns the follow-up. Settle the interrupted input before any retry can send it.
       if (result.queuedInputCancelled || result.queuedInputInterrupted) break;
       // A keepalive on a fresh session would write the whole history to warm nothing: it fails, and the wait ends.
       if (fresh !== null && result.status === 'error' && queued.execution?.operation !== 'keepalive') {
+        // A refused ACP load never sent this note. The new session also needs this turn's recorded work.
+        if (provider.protocol === 'acp' && !attemptDispatched) retryContinuation = resume;
         state.thread = fresh;
         retriedLostSession = true;
         totals = undefined;
@@ -685,6 +696,7 @@ export class TurnAttempts {
     const state = this.#turns.get(threadId);
     if (!state) return false;
     if (state.stop.signal.aborted) return true;
+    state.stopReason = reason;
     state.stop.abort(new Error('the turn was stopped'));
     void this.#core.sharedAccess.execution.revoke(threadId).catch(() => {});
     const waiting = this.#retryWaits.get(threadId);

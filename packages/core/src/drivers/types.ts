@@ -374,6 +374,8 @@ export interface TurnResult {
   queuedInputCancelled?: true;
   /** The prompt ended after advisory cancellation without a receipt, so its input is still needed. */
   queuedInputInterrupted?: true;
+  /** The prompt finished successfully after the composer asked to cancel it. */
+  queuedInputCompleted?: true;
   usage: Usage | null;
   error?: string;
   /** Safe technical failure for diagnostics when error includes raw provider output. */
