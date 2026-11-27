@@ -267,10 +267,17 @@ if (process.env['PI_FAKE_LITERAL']) {
 if (process.env['PI_FAKE_SHADOW']) MODELS.push({ ...MODELS[2]!, provider: 'fake-b', id: 'team/base', name: 'Fake Other Base' });
 // `fake-b/plain` gains images, as a `models.json` edited after a launch gives them.
 if (process.env['PI_FAKE_PLAIN_IMAGES']) MODELS[2]!.input = ['text', 'image'];
-// `PI_FAKE_CASE`: `fake-b/Plain` reads images and sits before `fake-b/plain`, and `--model` matches without regard to
-// case, as pi 1.6.1's resolver: `fake-b/plain` launches on `Plain`.
+// `PI_FAKE_CASE`: `fake-b/Plain` reads images but does not reason and sits before `fake-b/plain`, which reasons, and
+// `--model` matches without regard to case, as pi 1.6.1's resolver: `fake-b/plain` launches on `Plain`. Levels are
+// bounded to the model, as pi does. `PI_FAKE_CASE=only` lists `Plain` alone, as a `models.json` edited since a probe.
 const caseless = Boolean(process.env['PI_FAKE_CASE']);
-if (caseless) MODELS.splice(MODELS.findIndex(entry => entry.provider === 'fake-b' && entry.id === 'plain'), 0, { ...MODELS[0]!, provider: 'fake-b', id: 'Plain', name: 'Fake Plain Vision' });
+if (caseless) {
+  const at = MODELS.findIndex(entry => entry.provider === 'fake-b' && entry.id === 'plain');
+  MODELS[at]!.reasoning = true;
+  MODELS.splice(at, process.env['PI_FAKE_CASE'] === 'only' ? 1 : 0, { ...MODELS[0]!, provider: 'fake-b', id: 'Plain', name: 'Fake Plain Vision', reasoning: false });
+}
+/** A level as pi bounds it to the model it runs. */
+const bounded = (level: string) => caseless && running.reasoning === false ? 'off' : level;
 /** The model the session is on, which is the one pi reports as current. */
 const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0]!;
 /** What `get_state` reports: the pair `--provider`/`--model` named, else the longest provider spelling the text, as pi. */
@@ -280,6 +287,7 @@ let running = (() => {
   const spelled = MODELS.filter(entry => same(`${entry.provider}/${entry.id}`, text) && (provider === '' || entry.provider === provider));
   return spelled.sort((a, b) => b.provider.length - a.provider.length)[0] ?? CURRENT;
 })();
+thinkingLevel = bounded(thinkingLevel);
 /** `--model provider/id[:level]` without its level, or the current model. */
 const answering = model.length === 0 ? `${CURRENT.provider}/${CURRENT.id}` : model.replace(/:[a-z]+$/, '');
 const CURRENT_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
@@ -578,12 +586,12 @@ function handle(message: Record<string, unknown>): void {
         return;
       }
       running = found;
-      thinkingLevel = 'medium';
+      thinkingLevel = bounded('medium');
       send({ id, type: 'response', command: 'set_model', success: true, data: found });
       return;
     }
     case 'set_thinking_level': {
-      thinkingLevel = textOf(message['level']);
+      thinkingLevel = bounded(textOf(message['level']));
       log(`level ${thinkingLevel}`);
       send({ id, type: 'response', command: 'set_thinking_level', success: true });
       return;

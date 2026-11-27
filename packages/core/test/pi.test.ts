@@ -2082,6 +2082,32 @@ describe('pi driver', () => {
     }
   }, 20_000);
 
+  test('a launch on another case of an id pi no longer lists fails the turn and asks a side question on pi\'s own model', async () => {
+    const client = await startCore();
+    const { projectId, accountId } = await piAccount(client);
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'gone', model: 'fake-b/plain' });
+    await client.call('threads.subscribe', { threadId });
+    await runTurn(client, threadId, 'first');
+    // A `models.json` edited since the probe: pi lists `fake-b/Plain` alone, and `--model fake-b/plain` starts on it.
+    process.env['PI_FAKE_CASE'] = 'only';
+    try {
+      const shots = () => fakeLog().split('\n').filter(line => line.startsWith('one-shot [')).map(line => JSON.parse(line.slice('one-shot '.length)) as string[]);
+      const before = shots().length;
+      const answered = client.next('thread.btw', event => event.requestId === 'side_gone');
+      await client.call('threads.btw', { threadId, question: 'What did we add?', requestId: 'side_gone' });
+      expect((await answered).error).toBeNull();
+      // The side question goes again without the model, as for one pi refuses at startup.
+      expect(shots().slice(before).map(args => args.includes('--model'))).toEqual([true, false]);
+      expect(fakeLog()).not.toContain('prompt on fake-b/Plain');
+      const { finished } = await startTurn(client, threadId, 'second', 20000);
+      expect((await finished).error).toContain('pi started on fake-b/Plain and does not list fake-b/plain');
+      expect(fakeLog()).not.toContain('prompt on fake-b/Plain');
+    } finally {
+      delete process.env['PI_FAKE_CASE'];
+    }
+  });
+
   async function runTurn(client: CoreClient, threadId: string, prompt: string): Promise<void> {
     const { finished } = await startTurn(client, threadId, prompt, 20000);
     const done = await finished;

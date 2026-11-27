@@ -24,7 +24,7 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
-import { alignLaunchedPair } from './launch-pair.ts';
+import { alignLaunchedPair, launchLevel } from './launch-pair.ts';
 import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piPairOf, piProfileArgs, piReadsImages } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
@@ -653,7 +653,7 @@ export class PiSession {
     void this.#fetchCommands(ctx, peer);
     const state = dataOf(await peer.command('get_state', {}, { timeoutMs: 20_000 }));
     // Every start, a reopened process included, lands on the catalog's pair before a prompt can reach it.
-    if (launched !== undefined && !await alignLaunchedPair(peer, state, launched, { readMs: readDeadlineMs, writeMs: stopDeadlineMs })) this.#pair = null;
+    if (launched !== undefined) await alignLaunchedPair(peer, state, launched, launchLevel(args), { readMs: readDeadlineMs, writeMs: stopDeadlineMs });
     this.#protection?.assertReady();
   }
 
