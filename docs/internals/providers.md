@@ -457,8 +457,10 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   prompt, which runs in that thread's folder). So it does for a
   folder with settings or extensions of its own while the account or the profile
   loads extensions and no `--approve` or `--no-approve` decides: pi asks those
-  extensions' `project_trust` hook before `trust.json`. Boite lets the image through and pi replaces it if that model reads
-  none. A goal or loop sent on another account starts in the same folder. On an
+  extensions' `project_trust` hook before `trust.json`. And so it does wherever the account or the profile loads
+  extensions at all (`-e`, the account's `extensions/` folder, its settings' `extensions` or `packages`): such an
+  extension may register a pair by the folder it runs in, and the probe ran outside it. Boite lets the image through
+  and pi replaces it if that model reads none. A goal or loop sent on another account starts in the same folder. On an
   open thread the composer asks the core (`threads.capabilities`), again when
   the session, the folder, the selection, the account's catalog, the turn or the
   connection changes; a draft asks `drafts.images` with its project's folder.
@@ -1882,7 +1884,11 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   The profile's own tool and session flags, short aliases included, are
   dropped from these launches. Its `--model` and `--provider` are dropped when
   Boite names a model and kept when the thread leaves the model to pi, so a
-  profile `--api-key` still has the model it binds to. A model an extension
+  profile `--api-key` still has the model it binds to. pi binds that key to
+  the provider of the model it starts on, so a launch, a conversation's or a
+  one-shot's, on a provider other than the one the profile's `--provider` or
+  `--model` names leaves the key out; a key with no provider beside it stays.
+  A model an extension
   registers is unknown without extensions: when pi exits at startup on it
   (`Unknown provider "..."` or `Model "..." not found`, each followed by `Use
   --list-models`), the same request goes once to pi's own model, with the same

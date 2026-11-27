@@ -9,7 +9,7 @@ import type { CoreClient } from '../src/client.ts';
 import type { SharedAccess } from '../src/contacts/access-policy.ts';
 import { forgetProbes, getDriver, probedModelsOf } from '../src/drivers/index.ts';
 import { setPiReadDeadlineForTests, setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
-import { folderStartModel, piLaunchChoices } from '../src/drivers/pi/start-model.ts';
+import { folderExtends, folderStartModel, piLaunchChoices } from '../src/drivers/pi/start-model.ts';
 import { forgetSavedCatalog, readSavedCatalog } from '../src/providers/saved-catalogs.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
 import * as selection from '../src/threads/selection.ts';
@@ -132,7 +132,7 @@ test('pi default refuses images while pi itself runs a text-only model', async (
   expect(await images()).toBe(true);
 });
 
-test('pi default leaves the start model to pi where the folder\'s extensions or an extension\'s trust decide it', () => {
+test('pi leaves the start model to pi where the folder\'s extensions or an extension\'s trust decide it, and images wherever an extension loads', () => {
   const root = join(tmpdir(), `pi-folder-extensions-${process.pid}-${Date.now()}`);
   const agentDir = join(root, 'agent'), cwd = join(root, 'project');
   mkdirSync(agentDir, { recursive: true });
@@ -162,6 +162,16 @@ test('pi default leaves the start model to pi where the folder\'s extensions or 
     expect(folderStartModel(agentDir, cwd, catalog)).toBeNull();
     expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: false })).toBe('account');
     expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: true })).toBe('fake-b/plain');
+    // Images: an extension the account or the profile loads may register a pair by the folder it runs in, which the
+    // probe ran outside, so only pi tells, even for a folder with nothing of its own.
+    const bare = join(root, 'bare');
+    mkdirSync(bare);
+    expect(folderExtends(agentDir, bare)).toBe(true);
+    rmSync(join(agentDir, 'extensions'), { recursive: true });
+    expect(folderExtends(agentDir, bare)).toBe(false);
+    expect(folderExtends(agentDir, bare, piLaunchChoices(['-e', './vision.ts']))).toBe(true);
+    writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ packages: ['npm:pi-vision-provider'] }));
+    expect(folderExtends(agentDir, bare)).toBe(true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -750,7 +760,25 @@ test('pi one-shots on its own model keep the profile model its --api-key needs',
   const args = JSON.parse(invocation.slice('one-shot '.length)) as string[];
   expect(args.filter(arg => arg === '--model')).toHaveLength(1);
   expect(args[args.indexOf('--model') + 1]).toBe('fake-a/smart');
-});
+  // The key is the profile's for `fake-a`: a thread on another provider, its turn as its title, starts pi without it,
+  // which would bind it to that provider; one on `fake-a` keeps it.
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+  for (const model of ['fake-b/plain', 'fake-a/quick']) {
+    const before = fakeLog().split('\n').length;
+    const { id } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, model });
+    expect((await (await startTurn(client, id, 'Add a feature')).finished).status).toBe('done');
+    await settle(() => harness!.core.threads.require(id).titleSource === 'agent');
+    const lines = fakeLog().split('\n').slice(before);
+    const titled = JSON.parse(lines.find(line => line.startsWith('one-shot [') && line.includes('--no-session'))!.slice('one-shot '.length)) as string[];
+    if (model === 'fake-b/plain') {
+      expect(lines.filter(line => line.startsWith('api-key '))).toEqual([]);
+      expect(titled).not.toContain('--api-key');
+    } else {
+      expect(lines.filter(line => line.startsWith('api-key '))).toEqual(['api-key test-key for fake-a', 'api-key test-key for fake-a']);
+      expect(titled[titled.indexOf('--api-key') + 1]).toBe('test-key');
+    }
+  }
+}, 20_000);
 
 test('pi answers /btw from a disposable session copy and leaves the source intact', async () => {
   const { client, threadId } = await startThread();

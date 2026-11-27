@@ -125,6 +125,8 @@ const saved = sessionFile && existsSync(sessionFile)
 let leaf: string | null = saved.at(-1)?.id ?? null;
 let activePrompt = '';
 log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model} provider=${flag('--provider')} thinking=${flag('--thinking')}`);
+// pi binds an inline key to the provider of the model it starts on.
+if (process.argv.includes('--api-key')) log(`api-key ${flag('--api-key')} for ${flag('--provider') || model.slice(0, Math.max(model.indexOf('/'), 0))}`);
 if (oneShot) log(`one-shot ${JSON.stringify(process.argv.slice(2))}`);
 // `PI_FAKE_EXTENSION_PROVIDER` is a provider an extension registers: pi launched without extensions does not know it.
 const extensionProvider = process.env['PI_FAKE_EXTENSION_PROVIDER'];

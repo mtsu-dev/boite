@@ -24,7 +24,7 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
-import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piPairOf, piReadsImages } from './models.ts';
+import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piPairOf, piProfileArgs, piReadsImages } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
 import { answerDialog } from './dialogs.ts';
@@ -603,7 +603,7 @@ export class PiSession {
 
     const args = [
       ...launch.prefix,
-      ...(profile?.launch?.args ?? []),
+      ...piProfileArgs(profile?.launch?.args ?? [], ctx.thread.model, this.catalog(ctx)),
       '--session-id',
       sessionId,
       '--session-dir',

@@ -11,7 +11,7 @@ import { NativeForkUnsupported } from '../native-fork.ts';
 import { releaseChild } from '../session-close.ts';
 import type { SideQuestionContext, TitleContext } from '../types.ts';
 import { agentEnv, contextArgs, imagesOf, sessionDirOf, textOf } from './mapping.ts';
-import { piCatalogPair, piModelArgs } from './models.ts';
+import { piModelArgs, piProfileArgs, piProfilePins, piProviderOf } from './models.ts';
 import { AGENT_OWN_MODEL, STDERR_MAX } from './protocol.ts';
 import { PiPeer } from './rpc.ts';
 import { copySession } from './session-files.ts';
@@ -38,9 +38,9 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   const profile = profileFor(ctx.provider);
   const launch = resolveLaunch(profile);
   if (!launch) throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
-  const declared = profile?.launch?.args ?? [];
-  const args = [...launch.prefix];
   const own = model !== null && model !== AGENT_OWN_MODEL;
+  const declared = piProfileArgs(profile?.launch?.args ?? [], model, catalog);
+  const args = [...launch.prefix];
   for (let i = 0; i < declared.length; i++) {
     const arg = declared[i]!;
     // Left to pi, the model is the profile's, as in the conversation: its `--api-key` needs it.
@@ -123,10 +123,7 @@ async function askOn(ctx: TitleContext | SideQuestionContext, prompt: string, mo
     return await ask(ctx, prompt, model, catalog, signal, sessionFile);
   } catch (error) {
     if (!(error instanceof ModelRefused) || model === null || model === AGENT_OWN_MODEL || signal.aborted) throw error;
-    const provider = piCatalogPair(model, catalog)?.provider ?? model.slice(0, Math.max(model.indexOf('/'), 0));
-    const declared = profileFor(ctx.provider)?.launch?.args ?? [];
-    const pinned = declared.some((arg, i) => (arg === '--provider' && declared[i + 1] === provider) || (arg === '--model' && (declared[i + 1] === model || declared[i + 1]?.startsWith(`${provider}/`))));
-    if (provider === '' || pinned) throw error;
+    if (piProviderOf(model, catalog) === '' || piProfilePins(profileFor(ctx.provider)?.launch?.args ?? [], model, catalog)) throw error;
     ctx.log('info', `pi one-shot: ${model} is not known without extensions, pi's own model answers`);
     return await ask(ctx, prompt, null, catalog, signal, sessionFile);
   }

@@ -103,6 +103,31 @@ export function piModelArgs(model: string | null, effort: string | null, catalog
   return [...(pair ? ['--provider', pair.provider] : []), '--model', model, ...(effort === null ? [] : ['--thinking', effort])];
 }
 
+/** The pi provider a Boite model id goes to: the catalog's pair, else the text before its first `/`; '' when neither names one. */
+export function piProviderOf(model: string, catalog: readonly ModelInfo[] | null): string {
+  return piCatalogPair(model, catalog)?.provider ?? model.slice(0, Math.max(model.indexOf('/'), 0));
+}
+
+/** Whether a profile's launch arguments pin `model`'s provider, by its `--provider` or a `--model` of that provider. */
+export function piProfilePins(args: readonly string[], model: string, catalog: readonly ModelInfo[] | null): boolean {
+  const provider = piProviderOf(model, catalog);
+  return args.some((arg, i) => (arg === '--provider' && provider !== '' && args[i + 1] === provider)
+    || (arg === '--model' && (args[i + 1] === model || (provider !== '' && args[i + 1]?.startsWith(`${provider}/`) === true))));
+}
+
+/**
+ * A profile's launch arguments for a process Boite starts on `model`. pi 1.6.1 binds `--api-key` to the provider of
+ * the model it starts on (`setRuntimeApiKey` in main.js), so a key the profile declares beside another `--provider`
+ * or `--model` stays out of a process on another provider. A key with no provider beside it is the profile's choice.
+ */
+export function piProfileArgs(args: readonly string[], model: string | null, catalog: readonly ModelInfo[] | null): string[] {
+  const at = args.indexOf('--api-key');
+  if (model === null || model === AGENT_OWN_MODEL || at < 0) return [...args];
+  const names = args.some((arg, i) => i + 1 < args.length && (arg === '--provider' || arg === '--model'));
+  if (!names || piProfilePins(args, model, catalog)) return [...args];
+  return args.filter((arg, i) => !(arg === '--api-key' && i + 1 < args.length) && !(i > 0 && args[i - 1] === '--api-key'));
+}
+
 /** The pair `catalog` names behind a Boite model id, the one image admission checked; undefined when it lists none. */
 export function piCatalogPair(model: string, catalog: readonly ModelInfo[] | null): { provider: string; modelId: string } | undefined {
   const listed = catalog?.find(entry => entry.id === model);
