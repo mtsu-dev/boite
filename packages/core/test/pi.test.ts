@@ -761,6 +761,21 @@ async function startThread(
   return { client, threadId: await piThread(client, ...thread) };
 }
 
+test('a pi profile option whose value spells a model flag keeps it in a title, and the conversation runs', async () => {
+  const client = await startCore();
+  const { projectId, accountId } = await piAccount(client);
+  const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+  const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
+  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--name', '--model', '--offline');
+  writeFileSync(descriptorFile, JSON.stringify(descriptor));
+  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+  const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, model: 'anthropic/claude-sonnet-5' });
+  expect((await (await startTurn(client, threadId, 'Add a feature')).finished).status).toBe('done');
+  await settle(() => harness!.core.threads.require(threadId).titleSource === 'agent');
+  const title = JSON.parse(fakeLog().split('\n').find(line => line.startsWith('one-shot [') && line.includes('--no-tools'))!.slice('one-shot '.length)) as string[];
+  expect(title.slice(title.indexOf('--name'), title.indexOf('--name') + 3)).toEqual(['--name', '--model', '--offline']);
+});
+
 test('pi titles a new thread with a tool-free request on its chosen model', async () => {
   const client = await startCore();
   const { projectId, accountId } = await piAccount(client);
@@ -838,16 +853,23 @@ test('a pi one-shot on a model an extension registers falls back to pi\'s own mo
   }
 });
 
-test('a pi profile with --provider and no --model is refused, since pi exits on it', async () => {
+// Read as pi's parser walks them: a value that spells an option is the value, and an option left without its value
+// would take the first argument Boite adds.
+test.each([
+  { args: ['--provider', 'fake-b'], expected: '--provider with a --model, or neither' },
+  { args: ['--provider', 'fake-b', '--append-system-prompt', '--model'], expected: '--provider with a --model, or neither' },
+  { args: ['--model', 'fake-b/plain', '--append-system-prompt'], expected: 'a value after --append-system-prompt' },
+  { args: ['--append-system-prompt', '--provider'], expected: null },
+])('a pi profile $args is refused when pi would exit on it or read a Boite argument as its value', async ({ args, expected }) => {
   const client = await startCore();
   await piAccount(client);
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
   const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
-  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--provider', 'fake-b');
+  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push(...args);
   writeFileSync(descriptorFile, JSON.stringify(descriptor));
   const { rejected } = await client.call('providers.reload', {});
-  expect(rejected).toHaveLength(1);
-  expect(rejected[0]).toMatchObject({ field: expect.stringMatching(/^profiles\.\w+\.launch\.args\[\d+\]$/), expected: '--provider with a --model, or neither' });
+  if (expected === null) expect(rejected).toEqual([]);
+  else expect(rejected).toEqual([expect.objectContaining({ field: expect.stringMatching(/^profiles\.\w+\.launch\.args\[\d+\]$/), expected })]);
 });
 
 test('a pi profile with --api-key is refused with its field and what to use instead, its key never echoed', async () => {
@@ -870,11 +892,14 @@ test('Boite\'s own flags replace the profile\'s model flags; a title pins its pr
   expect(piProfileArgs(['--provider', 'openai', '--model', 'openai/chat', '--verbose'], 'anthropic/title')).toEqual(['--verbose']);
   // A launch left to pi keeps the profile whole.
   expect(piProfileArgs(['--model', 'chat'], 'default')).toEqual(['--model', 'chat']);
+  // A value that spells a model flag is another option's value, as pi reads it: it stays, and so does what follows.
+  expect(piProfileArgs(['--append-system-prompt', '--model', '--offline'], 'anthropic/title')).toEqual(['--append-system-prompt', '--model', '--offline']);
   // A title falls back to pi's own model unless the profile's last --provider, or a --model as listed, pins its provider.
   expect(piProfilePins(['--provider', 'anthropic', '--provider', 'openai', '--model', 'chat'], 'openai/quick', catalog)).toBe(true);
   expect(piProfilePins(['--model', 'openai/chat', '--model', 'anthropic/title'], 'openai/quick', catalog)).toBe(false);
   expect(piProfilePins(['--model', 'openai/remote'], 'openai/quick', catalog)).toBe(false);
   expect(piProfilePins([], 'openai/quick', catalog)).toBe(false);
+  expect(piProfilePins(['--append-system-prompt', '--provider', 'openai', '--model', 'anthropic/title'], 'openai/quick', catalog)).toBe(false);
 });
 
 test('pi answers /btw from a disposable session copy and leaves the source intact', async () => {

@@ -3,6 +3,7 @@ import { unavailable } from '../../errors.ts';
 import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import type { ProbeContext } from '../types.ts';
 import { probeModels } from '../model-probe.ts';
+import { piArgs, piArgValue } from './args.ts';
 import { agentEnv, piAgentDirFollowsCwd, textOf } from './mapping.ts';
 import { AGENT_OWN_MODEL, PROBE_TIMEOUT_MS, STDERR_MAX, THINKING_LEVELS, VIRTUAL_API } from './protocol.ts';
 import type { PiModel } from './protocol.ts';
@@ -108,13 +109,6 @@ export function piProviderOf(model: string, catalog: readonly ModelInfo[] | null
   return piCatalogPair(model, catalog)?.provider ?? model.slice(0, Math.max(model.indexOf('/'), 0));
 }
 
-/** The last value of `flag` in a profile's arguments, as pi's `parseArgs` keeps it, or null. */
-function lastFlag(args: readonly string[], flag: string): string | null {
-  let value: string | null = null;
-  for (let i = 0; i + 1 < args.length; i++) if (args[i] === flag) value = args[++i]!;
-  return value;
-}
-
 /** Whether a provider text names `provider`: pi matches `--provider` without regard to case (`resolveCliModel`). */
 function sameProvider(text: string, provider: string): boolean {
   return provider !== '' && text.toLowerCase() === provider.toLowerCase();
@@ -127,9 +121,9 @@ function sameProvider(text: string, provider: string): boolean {
  */
 export function piProfilePins(args: readonly string[], model: string, catalog: readonly ModelInfo[] | null): boolean {
   const provider = piProviderOf(model, catalog);
-  const pinned = lastFlag(args, '--provider');
+  const pinned = piArgValue(args, '--provider');
   if (pinned !== null) return sameProvider(pinned, provider);
-  const named = lastFlag(args, '--model');
+  const named = piArgValue(args, '--model');
   return named !== null && (named === model || piCatalogPair(named, catalog)?.provider === provider) && provider !== '';
 }
 
@@ -140,13 +134,7 @@ export function piProfilePins(args: readonly string[], model: string, catalog: r
  */
 export function piProfileArgs(args: readonly string[], model: string | null): string[] {
   if (model === null || model === AGENT_OWN_MODEL) return [...args];
-  const kept: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (i + 1 < args.length && (arg === '--provider' || arg === '--model')) i++;
-    else kept.push(arg);
-  }
-  return kept;
+  return piArgs(args).flatMap(({ words }) => words.length === 2 && (words[0] === '--provider' || words[0] === '--model') ? [] : words);
 }
 
 /** The pair `catalog` names behind a Boite model id, the one image admission checked; undefined when it lists none. */

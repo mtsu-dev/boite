@@ -1,5 +1,6 @@
 // OS profiles and protocol-specific executable checks.
 import type { OsProfile, Protocol, ProviderDescriptor } from '@boite/contracts';
+import { piArgs, PI_VALUED } from '../drivers/pi/args.ts';
 import { OS_KEYS } from './expand.ts';
 import { reject, asObject, asString, asArray, checkKeys, checkStringMap } from './validate-primitives.ts';
 import { checkCandidate, checkInstall, checkUpdate } from './validate-install.ts';
@@ -79,10 +80,16 @@ export function checkProfiles(value: unknown, file: string, protocol: Protocol):
       }
       // pi 1.6.1 exits on a `--provider` without a `--model` ("--provider requires --model"), so every launch Boite
       // leaves to the profile, a fallback title or side question included, would fail.
-      const args = profiles[os]!.launch?.args ?? [];
-      const provider = args.indexOf('--provider');
-      if (provider >= 0 && !args.includes('--model')) {
-        reject(file, `profiles.${os}.launch.args[${provider}]`, '--provider with a --model, or neither', 'pi 1.6.1 exits on --provider without --model');
+      // Read as pi does, each option with its value.
+      const read = piArgs(profiles[os]!.launch?.args ?? []);
+      const provider = read.find(({ words }) => words[0] === '--provider' && words.length === 2);
+      if (provider && !read.some(({ words }) => words[0] === '--model' && words.length === 2)) {
+        reject(file, `profiles.${os}.launch.args[${provider.at}]`, '--provider with a --model, or neither', 'pi 1.6.1 exits on --provider without --model');
+      }
+      // An option left without its value would take the first argument Boite adds after the profile's.
+      const last = read.at(-1);
+      if (last && last.words.length === 1 && PI_VALUED.has(last.words[0]!)) {
+        reject(file, `profiles.${os}.launch.args[${last.at}]`, `a value after ${last.words[0]}`, `pi would read the next argument Boite adds as the value of ${last.words[0]}`);
       }
     }
     // Only these drivers launch the program with the descriptor's arguments after

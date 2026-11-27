@@ -113,8 +113,9 @@ function loggedLines(): string[] {
 // What it was launched with
 // ---------------------------------------------------------------------------
 
+/** The last value of `name`, which pi keeps. */
 function flag(name: string): string {
-  const at = process.argv.indexOf(name);
+  const at = process.argv.lastIndexOf(name);
   return at < 0 ? '' : (process.argv[at + 1] ?? '');
 }
 

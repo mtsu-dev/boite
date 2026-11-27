@@ -10,6 +10,7 @@ import { titleRequest } from '../../titles.ts';
 import { NativeForkUnsupported } from '../native-fork.ts';
 import { releaseChild } from '../session-close.ts';
 import type { SideQuestionContext, TitleContext } from '../types.ts';
+import { piArgs } from './args.ts';
 import { agentEnv, contextArgs, imagesOf, sessionDirOf, textOf } from './mapping.ts';
 import { alignLaunchedPair, LaunchPairMissing, launchLevel } from './launch-pair.ts';
 import { piCatalogPair, piListsPair, piModelArgs, piProfilePins, piProviderOf } from './models.ts';
@@ -42,12 +43,12 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   const own = model !== null && model !== AGENT_OWN_MODEL;
   const declared = profile?.launch?.args ?? [];
   const args = [...launch.prefix];
-  for (let i = 0; i < declared.length; i++) {
-    const arg = declared[i]!;
+  // Read as pi does, each option with its value, so a value that spells an option stays the value.
+  for (const { words } of piArgs(declared)) {
+    const arg = words[0]!;
     // Left to pi, the model is the profile's, as in the conversation.
-    if (!own && (arg === '--model' || arg === '--provider') && i + 1 < declared.length) args.push(arg, declared[++i]!);
-    else if (VALUE_FLAGS.has(arg)) i++;
-    else if (!OWNED_SWITCHES.has(arg)) args.push(arg);
+    if (!own && (arg === '--model' || arg === '--provider') && words.length === 2) args.push(...words);
+    else if (!VALUE_FLAGS.has(arg) && !OWNED_SWITCHES.has(arg)) args.push(...words);
   }
   const context = contextArgs(TOOL_FREE_CONTEXT);
   args.push('--mode', 'rpc', ...(sessionFile ? context.flatMap(arg => arg === '--no-tools' ? ['--tools', READ_ONLY_TOOLS] : [arg]) : context), '--no-mcp');
@@ -148,7 +149,7 @@ async function askOn(ctx: TitleContext | SideQuestionContext, prompt: string, mo
   } catch (error) {
     if (!(error instanceof ModelRefused) || model === null || model === AGENT_OWN_MODEL || signal.aborted) throw error;
     if (!error.unlisted && (piProviderOf(model, catalog) === '' || piProfilePins(profileFor(ctx.provider)?.launch?.args ?? [], model, catalog))) throw error;
-    ctx.log('info', `pi one-shot: ${model} is not known without extensions, pi's own model answers`);
+    ctx.log('info', error.unlisted ? `pi one-shot: pi no longer lists ${model}, pi's own model answers` : `pi one-shot: ${model} is not known without extensions, pi's own model answers`);
     return await ask(ctx, prompt, null, catalog, signal, sessionFile, error);
   }
 }

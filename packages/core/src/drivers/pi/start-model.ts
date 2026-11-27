@@ -1,22 +1,12 @@
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isRecord } from '../stdio.ts';
+import { piArgs, PI_VALUED } from './args.ts';
 import { piModelOf } from './models.ts';
 import { piProcessCwd } from './session-model.ts';
 
 /** The keys pi 1.6.1 `findInitialModel` chooses a new session's model from, in its order. */
 const CHOOSING = ['enabledModels', 'defaultProvider', 'defaultModel'] as const;
-/** pi 1.6.1's options that take the next argument whatever it is (cli/args.js `parseArgs`). */
-const VALUED = new Set(['--provider', '--model', '--api-key', '--system-prompt', '--append-system-prompt', '--name', '-n', '--session',
-  '--session-id', '--fork', '--session-dir', '--models', '--tools', '-t', '--exclude-tools', '-xt', '--thinking', '--export',
-  '--extension', '-e', '--skill', '--prompt-template', '--theme']);
-/** Its options that take the next argument only when it does not start with `-`. */
-const OPTIONAL = new Set(['--mode', '--use-theme', '--tui-mode']);
-/** Its flags that take nothing; any other `--name` takes the next argument when it starts with neither `-` nor `@`. */
-const FLAGS = new Set(['--help', '-h', '--version', '-v', '--continue', '-c', '--resume', '-r', '--no-session', '--no-tools', '-nt',
-  '--no-builtin-tools', '-nbt', '--no-extensions', '-ne', '--no-mcp', '--no-skills', '-ns', '--no-prompt-templates', '-np', '--no-themes',
-  '--no-context-files', '-nc', '--verbose', '--approve', '-a', '--no-approve', '-na', '--offline']);
-
 /** What the profile's own arguments decide for pi 1.6.1, read as `parseArgs` walks them: the last of each kind wins. */
 export interface PiLaunchChoices {
   /** `--models`, split on commas without empty patterns: an empty list clears the scope. Null when absent. */
@@ -44,27 +34,17 @@ interface PiEntry { full: string; provider: string; id: string; name: string }
 
 export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
   const choices: PiLaunchChoices = { scope: null, trust: null, model: false };
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    const next = args[i + 1];
+  for (const { words: [arg, value] } of piArgs(args)) {
     if (arg === '--') break;
-    if (VALUED.has(arg)) {
-      if (next === undefined) continue;
-      i++;
-      if (arg === '--models') choices.scope = next.split(',').map(pattern => pattern.trim()).filter(pattern => pattern.length > 0);
+    if (PI_VALUED.has(arg!)) {
+      if (value === undefined) continue;
+      if (arg === '--models') choices.scope = value.split(',').map(pattern => pattern.trim()).filter(pattern => pattern.length > 0);
       else if (arg === '--model') choices.model = true;
       else if (arg === '--extension' || arg === '-e') choices.extensions = true;
-      else if (arg === '--thinking' && LEVELS.has(next)) choices.thinking = next;
+      else if (arg === '--thinking' && LEVELS.has(value)) choices.thinking = value;
     } else if (arg === '--no-extensions' || arg === '-ne') choices.noExtensions = true;
     else if (arg === '--approve' || arg === '-a') choices.trust = true;
     else if (arg === '--no-approve' || arg === '-na') choices.trust = false;
-    else if (OPTIONAL.has(arg) || arg === '--list-models') {
-      if (next !== undefined && !next.startsWith('-') && !(arg === '--list-models' && next.startsWith('@'))) i++;
-    } else if (arg === '--print' || arg === '-p') {
-      if (next !== undefined && !next.startsWith('@') && (!next.startsWith('-') || next.startsWith('---'))) i++;
-    } else if (arg.startsWith('--') && !FLAGS.has(arg) && !arg.includes('=')) {
-      if (next !== undefined && !next.startsWith('-') && !next.startsWith('@')) i++;
-    }
   }
   return choices;
 }

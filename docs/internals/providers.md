@@ -1922,7 +1922,12 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   provider.
 - A pi profile whose `launch.args` hold `--provider` without `--model` is
   rejected, with that argument's field: pi 1.6.1 exits on it ("--provider
-  requires --model"), so every launch left to the profile would fail.
+  requires --model"), so every launch left to the profile would fail. So is
+  one that ends on an option missing its value, which would take the first
+  argument Boite adds. Boite reads the profile as pi's parser walks it
+  (`drivers/pi/args.ts`), each option with the value it consumes, here and
+  wherever it replaces or drops the profile's model flags: in
+  `--append-system-prompt --model`, `--model` is the prompt's text.
 - Titles use a separate, tool-free RPC process with no session file, extensions,
   MCP, context files, skills or prompt templates. Boite uses the selected title
   model or the thread's own model at low effort and allows 30 seconds per call.
