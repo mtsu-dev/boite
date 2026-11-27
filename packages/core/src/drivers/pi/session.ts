@@ -480,7 +480,8 @@ export class PiSession {
         model = await running(peer);
         if (piReadsImages(model) !== false) return peer;
       }
-      throw new Error(`${listed?.name ?? (model?.name || turn.ctx.thread.model || 'pi\'s model')} takes no images: send the prompt without them`);
+      // The model that refused, the new process's after a reopen.
+      throw new Error(`${model?.name || listed?.name || turn.ctx.thread.model || 'pi\'s model'} takes no images: send the prompt without them`);
     } finally {
       this.#switching = false;
     }

@@ -1424,6 +1424,8 @@ describe('pi driver', () => {
     const threadId = created.id;
     await client.call('threads.subscribe', { threadId });
     await runTurn(client, threadId, 'first');
+    // The title's one-shot pi writes the same log: it ends first, so the warm process's commands read in order.
+    await waitFor(() => harness!.core.threads.require(threadId).titleSource === 'agent');
     await client.call('threads.update', { threadId, effort: 'high' });
     await runTurn(client, threadId, 'second');
     await client.call('threads.update', { threadId, model: 'fake-a/quick', effort: 'high' });
