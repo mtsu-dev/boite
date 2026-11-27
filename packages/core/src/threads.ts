@@ -1,7 +1,7 @@
 import { archiveState, archiveStateKey } from './merged-pr-archive-state.ts';
 import { assertIdleFamily } from './threads/completion.ts';
 import { AgentDoneRequests } from './threads/agent-done.ts';
-import { previewReferencesError, previewPrompt, threadActive, unreadInterruptionAt, type AgentProfile } from '@boite/contracts';
+import { previewPrompt, threadActive, unreadInterruptionAt, type AgentProfile } from '@boite/contracts';
 import type {
   Account, AccountId, Attachment,
   ImageMimeType,
@@ -38,13 +38,13 @@ import { CacheKeepalive } from './threads/cache-keepalive.ts';
 import { DeferredInput } from './threads/deferred.ts';
 import { MOVE_NOTE_PREFIX, pendingMove, ThreadMove } from './threads/move.ts';
 import { ThreadSpawns } from './threads/spawn.ts';
-import { checkAttachmentArray, checkAttachments, checkTurnRequest, titleOf } from './threads/inputs.ts';
+import { checkTurnRequest, titleOf } from './threads/inputs.ts';
 import { RestartHandoff } from './threads/handoff.ts';
 import { SYSTEM_LABEL, nativeCommandPrompt, systemOperation } from './threads/operations.ts';
 import { USER_ORIGIN, autonomousSource, originAgentWrites, originAutomatic, originOperation, type StartTurnOptions, type TurnInput, type TurnOrigin } from './threads/turn-origin.ts';
 import { saveThread, threadAtRest, withLoad } from './threads/records.ts';
 import { isBusy, markQueued } from './threads/lifecycle.ts';
-import { admissionRefusal } from './threads/admission.ts';
+import { admissionRefusal, checkTurnInput, prepareTurnExecution } from './threads/admission.ts';
 import { ThreadRecovery } from './threads/recovery.ts';
 import { LimitResumes } from './threads/limit-resume.ts';
 import { AutoContinues } from './threads/auto-continue.ts';
@@ -52,7 +52,7 @@ import { ResumePlanner } from './threads/resume.ts';
 import { ThreadTitles } from './threads/retitle.ts';
 import { SideQuestions } from './threads/side-questions.ts';
 import { messagePage, threadSnapshot, type MessagePage } from './threads/snapshot.ts';
-import { checkEffort, checkModel, checkSelection, checkSpeed, checkStoredEffort, checkStoredSpeed, defaultModel, selectionFor } from './threads/selection.ts';
+import { checkEffort, checkModel, checkSpeed, defaultModel, selectionFor } from './threads/selection.ts';
 import { TurnContexts } from './threads/turn-context.ts';
 import { TurnRunner } from './threads/turn-runner.ts';
 import { markQueuedStopped, userStopKey } from './threads/turn-settlement.ts';
@@ -595,12 +595,7 @@ export class ThreadStore {
     const startedBy = origin.kind === 'spawned' ? origin.startedBy : undefined;
     const sentFrom = origin.kind === 'user' ? origin.sentFrom : undefined;
     const byPlugin = 'plugin' in origin ? origin.plugin : undefined;
-    if (this.#core.stopping) throw refused('the core is stopping; reconnect before sending another prompt');
-    let thread = requireAgent(this, threadId);
-    this.codeCheckpoints.assertAvailable(thread.cwd);
-    checkAttachmentArray(attachments);
-    const referenceError = previewReferencesError(previewReferences, prompt);
-    if (referenceError) throw refused(referenceError);
+    let thread = checkTurnInput(this.#core, threadId, prompt, attachments, previewReferences);
     previewReferences = structuredClone(previewReferences);
     const { fingerprint, turn: accepted } = checkTurnRequest(this.#core.journal, threadId, prompt, attachments, previewReferences, clientRequestId);
     if (accepted) return accepted;
@@ -616,31 +611,8 @@ export class ThreadStore {
     if (autonomous !== null) this.#core.agentRuntime.admit(thread, autonomous);
     // A signed-out or removed account hands the thread to another of its agent (`threads/account-fallback.ts`).
     let accountLeft: ReturnType<typeof followedAgent>[1];
-    if (executionChoice) {
-      const provider = this.#core.providers.require(executionChoice.providerId);
-      const account = this.#core.accounts.require(executionChoice.accountId);
-      const selection = checkSelection(provider, account.id, executionChoice.model, executionChoice.effort, executionChoice.speed ?? null);
-      const sameAccount = thread.providerId === provider.id && thread.accountId === account.id;
-      thread = { ...thread, providerId: provider.id, accountId: account.id, ...selection,
-        ...(!sameAccount ? { sessionId: null, sessionResumeAt: null } : {}) };
-    } else [thread, accountLeft] = followedAgent(this.#core, thread);
-    this.#core.sharedCompute?.assertTurn(threadId);
-    this.#core.sharedAccess?.assertTurn(threadId);
-    const provider = this.#core.providers.require(thread.providerId);
-    const account = this.#core.accounts.require(thread.accountId);
-    if (account.providerId !== provider.id) throw refused(`accountId: account ${account.id} belongs to provider ${account.providerId}; expected provider ${provider.id}`, {
-      field: 'accountId', accountId: account.id, providerId: account.providerId, expected: provider.id,
-    });
-    assertDriverRunnable(
-      provider.protocol,
-      this.#core.providers.summary(thread.providerId),
-      account,
-      () => this.#core.providers.launcherScriptOnly(thread.providerId),
-    );
-    checkStoredEffort(provider, thread.accountId, thread.model, thread.effort);
-    checkStoredSpeed(provider, thread.accountId, thread.model, thread.speed ?? null);
-    checkAttachments(attachments, provider);
-    this.#core.sharedAccess.uploads(threadId, attachments);
+    if (!executionChoice) [thread, accountLeft] = followedAgent(this.#core, thread);
+    thread = prepareTurnExecution(this.#core, thread, attachments, executionChoice);
 
     if (!operation && !activity && !startedBy) {
       const expanded = expandSlashPrompt(this.#core, prompt, this.agentState.commands.get(threadId));

@@ -1,5 +1,5 @@
 import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcEvents, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
-import { composerInputThreadId, isComposerKey, previewReferencesError, privateTerminalComposerId } from '@boite/contracts';
+import { composerInputThreadId, isComposerKey, privateTerminalComposerId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
@@ -8,10 +8,10 @@ import { ComposerStorage, digest, recordKey } from './composer-storage.ts';
 import { steerUser, userSteeringUnavailable } from './threads/user-steering.ts';
 import { DraftReservationLedger, type DraftOwnership } from './threads/draft-reservation-ledger.ts';
 import { needsModelDiscovery } from './threads/selection.ts';
-import { admissionRefusal } from './threads/admission.ts';
+import { admissionRefusal, checkTurnInput, prepareTurnExecution } from './threads/admission.ts';
 import { composerActivity, isComposerActivity, startsAutoGoal } from './composer-activity.ts';
 import { composerBatch } from './composer-batch.ts';
-import { checkAttachments, checkTurnRequest } from './threads/inputs.ts';
+import { checkTurnRequest } from './threads/inputs.ts';
 import { ensureThreadCwd } from './threads/cwd.ts';
 
 const choiceOf = (thread: ThreadSummary): ComposerChoice => ({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, permissionMode: thread.permissionMode });
@@ -292,12 +292,12 @@ export class Composer {
         const batch = composerBatch(value.input.queued, this.storage);
         const attachments = batch.attachments;
         this.#captured.set(key, batch.entries);
-        if (turn && handle?.cancelForQueuedInput) {
-          // Validate before asking the agent to cancel. Turn completion wakes the durable queue.
-          checkAttachments(attachments, this.#core.providers.require(turn.execution?.providerId ?? thread.providerId));
-          const error = previewReferencesError(batch.previewReferences, batch.text);
-          if (error) throw refused(error);
-          this.#core.sharedAccess.uploads(id, attachments);
+        if (choice && handle?.cancelForQueuedInput) {
+          // Discovery can yield past this tool boundary. The idle pump can discover and start the turn.
+          if (this.#providerNeedingDiscovery(choice)) return;
+          // Share the synchronous admission checks. Settlement wakes the queue to recheck and admit the input.
+          const target = checkTurnInput(this.#core, id, batch.text, attachments, batch.previewReferences);
+          prepareTurnExecution(this.#core, target, attachments, choice);
           if (handle.cancelForQueuedInput(attachments)) this.#boundaries.delete(recordId);
           return;
         }
@@ -354,10 +354,15 @@ export class Composer {
     return goal?.status !== 'active' && loop?.status !== 'active' && !activity.ownsReviewer(threadId) && !activity.ownsTracker(threadId);
   }
 
+  #providerNeedingDiscovery(choice: ComposerChoice) {
+    const provider = this.#core.providers.require(choice.providerId);
+    return needsModelDiscovery(provider, choice.accountId, choice.model, choice.effort, choice.speed ?? null) ? provider : null;
+  }
+
   /** Reads the agent's models once when the queued selection names one Boite has not seen yet. */
   async #discover(choice: ComposerChoice): Promise<void> {
-    const provider = this.#core.providers.require(choice.providerId);
-    if (!needsModelDiscovery(provider, choice.accountId, choice.model, choice.effort, choice.speed ?? null)) return;
+    const provider = this.#providerNeedingDiscovery(choice);
+    if (!provider) return;
     await this.#core.router.dispatch('providers.probe', { providerId: choice.providerId, accountId: choice.accountId, ...(provider.protocol === 'acp' && choice.model !== null && choice.effort !== null ? { model: choice.model } : {}) }, { connection: this.#connection });
   }
 

@@ -790,9 +790,11 @@ process that loads the same session gets those messages again, since its
 saved history may predate the cancellation. A reported missing session uses
 the normal reload and history recovery path. A restart leaves a turn whose
 cancellation was acknowledged to the normal queued delivery path.
-If the agent ignores cancellation, the message waits for
-the prompt to end. Boite validates the queued images against the negotiated
-ACP capabilities before sending cancellation. Pending cards, selection
+If the agent ignores cancellation, the message waits for the prompt to end.
+Before cancellation, Boite runs the same synchronous input and execution
+checks as turn admission. A choice that needs model discovery waits for the
+active turn to end. The ACP process also checks its negotiated image support.
+The next turn checks the input again at admission. Pending cards, selection
 changes and active goals leave the message queued, as do prompts carrying
 history from an account switch or compaction and the first result owed to
 a thread's starter. A permission request arriving during cancellation can

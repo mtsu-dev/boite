@@ -14,7 +14,7 @@ import type { AcpSdk } from '../src/drivers/acp/protocol.ts';
 import { toolOutputText } from '../src/drivers/acp/turn.ts';
 import { sessionNotificationOf } from '../src/drivers/acp/updates.ts';
 import { stderrLines } from '../src/drivers/lines.ts';
-import { getDriver, setDriver } from '../src/drivers/index.ts';
+import { forgetProbes, getDriver, setDriver } from '../src/drivers/index.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
@@ -28,7 +28,8 @@ test.each([
   'hermes with split delegation output', 'antigravity with a paused queue', 'antigravity without image support', 'antigravity ignoring cancellation',
   'local ACP switching back to an account', 'local ACP reporting its first result', 'local ACP rejecting cancellation',
   'local ACP with an expired session', 'local ACP carrying a manually stopped prompt',
-  'local ACP reloading the same session after cancellation', 'local ACP with a blocked upload',
+  'local ACP reloading the same session after cancellation', 'local ACP with a blocked upload', 'local ACP with a disabled provider',
+  'local ACP rediscovering its model',
 ])('%s handles queued input when its parallel tools finish', async scenario => {
   const client = await startCore({ warmProcessMinutes: 0 });
   const core = harness!.core;
@@ -43,13 +44,15 @@ test.each([
   const reloads = scenario === 'local ACP reloading the same session after cancellation';
   const carriesStopped = reloads || scenario === 'local ACP carrying a manually stopped prompt';
   const blockedUpload = scenario === 'local ACP with a blocked upload';
-  const rejectsAttachment = noImages || blockedUpload;
-  const holds = detached || paused || rejectsAttachment || ignoresCancel || switchesBack || spawned;
+  const disableProvider = scenario === 'local ACP with a disabled provider';
+  const rediscoverModel = scenario === 'local ACP rediscovering its model';
+  const refusesInput = noImages || blockedUpload || disableProvider;
+  const holds = detached || paused || refusesInput || ignoresCancel || switchesBack || spawned || rediscoverModel;
   const provider = detached ? 'hermes' : scenario.startsWith('local ACP') ? 'local ACP' : holds ? 'antigravity' : scenario;
   if (noImages) process.env['ACP_FAKE_NO_IMAGES'] = '1';
   if (expires) process.env['ACP_FAKE_FORGET'] = '1';
   let threadId: string;
-  if (provider === 'local ACP') threadId = await acpThread(client);
+  if (provider === 'local ACP') threadId = await acpThread(client, rediscoverModel ? 'fake-fast' : undefined);
   else {
     if (provider === 'opencode-v2') restoreDriver = setDriver('acp', createAcpDriver({
       loadSdk: () => import('@agentclientprotocol/sdk/unstable'),
@@ -117,6 +120,8 @@ test.each([
   await firstTool;
   expect(core.journal.getTurn(turnId)?.status).toBe('running');
   expect(fakeLog()).not.toContain('session/cancel');
+  if (disableProvider) await client.call('providers.setEnabled', { providerId: 'acp-fake', enabled: false });
+  if (rediscoverModel) forgetProbes({ providerId: 'acp-fake', accountId: core.threads.require(threadId).accountId });
   const lastTool = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
   writeFileSync(`${logFile}.second`, 'ready');
   await lastTool;
@@ -140,11 +145,12 @@ test.each([
     await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision,
       value: { input: { text: '', attachments: [], paused: false, queued } } });
   }
-  if (rejectsAttachment) {
+  if (refusesInput) {
     await waitFor(() => fakeLog().includes('session/cancel') || core.composer.storage.get('inputs', threadId).value?.input.paused === true);
     expect(fakeLog()).not.toContain('session/cancel');
     expect(core.journal.getTurn(turnId)?.status).toBe('running');
-    expect(core.composer.storage.get('inputs', threadId).value?.input.queued[0]?.request?.failed).toContain(blockedUpload ? uploadRefusal : 'takes no images');
+    const reason = disableProvider ? 'Fake ACP agent is turned off on this machine' : blockedUpload ? uploadRefusal : 'takes no images';
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued[0]?.request?.failed).toContain(reason);
   }
   if (holds) {
     if (ignoresCancel) {
@@ -158,9 +164,9 @@ test.each([
     }
     writeFileSync(`${logFile}.end`, 'ready');
   }
-  await waitFor(() => core.journal.listTurns(threadId)[priorTurns + (rejectsAttachment ? 0 : 1)]?.finishedAt != null);
+  await waitFor(() => core.journal.listTurns(threadId)[priorTurns + (refusesInput ? 0 : 1)]?.finishedAt != null);
   const current = await client.call('threads.get', { threadId });
-  expect(current.turns.slice(priorTurns).map(at => at.status)).toEqual(rejectsAttachment ? ['done'] : [holds ? 'done' : rejectsCancel || expires ? 'error' : 'stopped', 'done']);
+  expect(current.turns.slice(priorTurns).map(at => at.status)).toEqual(refusesInput ? ['done'] : [holds ? 'done' : rejectsCancel || expires ? 'error' : 'stopped', 'done']);
   const finishedTools = current.messages.filter(message => message.turnId === turnId).flatMap(message => message.parts)
     .flatMap(part => part.type === 'tool' && ['first', 'second'].includes(part.toolId) ? [part.status] : []);
   expect(finishedTools).toEqual(['done', 'done']);
@@ -173,6 +179,7 @@ test.each([
     expect(answer).toMatchObject({ type: 'text', text: expect.stringContaining('[parallel-tools]') });
   } else expect(current.sessionId).toBe(originalSession);
   if (!holds) expect(countLogLines(fakeLog(), `loaded:${originalSession}`)).toBe(priorLoads + (reloads ? 1 : 0));
+  if (rediscoverModel) expect(current.turns.at(-1)?.execution?.model).toBe('fake-fast');
   if (switchesBack) expect(countLogLines(fakeLog(), 'account catch-up')).toBe(1);
   if (carriesStopped) expect(countLogLines(fakeLog(), 'manual request catch-up')).toBe(reloads ? 2 : 1);
   if (starterId) {
@@ -182,9 +189,9 @@ test.each([
   if (pause) expect(pause.mock.calls.some(([id, reason]) => id === threadId && (reason ?? 'stop') === 'stop')).toBe(false);
   expect(countLogLines(fakeLog(), 'session/cancel')).toBe(!holds || ignoresCancel ? 1 : 0);
   expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(reloads ? 1 : 0);
-  expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || rejectsAttachment ? 0 : 1);
-  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(priorTurns + (rejectsAttachment ? 1 : 2));
-  expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(rejectsAttachment ? ['parallel-tools-follow-up'] : []);
+  expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || refusesInput ? 0 : 1);
+  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(priorTurns + (refusesInput ? 1 : 2));
+  expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(refusesInput ? ['parallel-tools-follow-up'] : []);
 }, 20_000);
 
 test('ACP named task calls reach the native team without exposing the side conversation', async () => {
