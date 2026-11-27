@@ -16,6 +16,7 @@ import { sessionNotificationOf } from '../src/drivers/acp/updates.ts';
 import { stderrLines } from '../src/drivers/lines.ts';
 import { forgetProbes, getDriver, setDriver } from '../src/drivers/index.ts';
 import * as threadCwd from '../src/threads/cwd.ts';
+import { CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
@@ -369,6 +370,46 @@ test.each(['restart', 'agent update on the warm process', 'manual recovery', 'ma
   } finally { if (next !== first) await next.stop(); }
 }, 20_000);
 
+test.each(['capacity retry', 'agent update'] as const)('an ACP %s recovers interrupted input on a loaded session with images disabled', async method => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const { core, dataDir } = harness!;
+  const image: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'pixel.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+  const pictured = client.next('turn.finished', turn => turn.threadId === threadId);
+  await client.call('turns.start', { threadId, prompt: 'Earlier image', attachments: [image] });
+  expect((await pictured).status).toBe('done');
+  const sessionId = core.threads.require(threadId).sessionId ?? '';
+  expect(sessionId).not.toBe('');
+
+  writeDescriptor(dataDir, false);
+  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+  Object.assign(core.providers.require('acp-fake'), { quirks: ['antigravity'] });
+
+  const delays = CAPACITY_RETRY.delaysMs;
+  CAPACITY_RETRY.delaysMs = [30];
+  try {
+    const { id } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] Interrupted request' });
+    const finished = client.next('turn.finished', turn => turn.threadId === threadId && turn.id !== id);
+    const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+      value: { input: { text: '', attachments: [], paused: false, queued: [
+        { id: 'follow-up', text: method === 'capacity retry' ? '[capacity-after-text] Queued follow-up' : '[slow] Queued follow-up', attachments: [] },
+      ] } } });
+    expect(saved.accepted).toBe(true);
+    writeFileSync(`${logFile}.first`, 'ready');
+    writeFileSync(`${logFile}.second`, 'ready');
+    if (method === 'agent update') {
+      await waitFor(() => fakeLog().includes('waiting for cancel'));
+      spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
+      expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
+    }
+    expect(await finished).toMatchObject({ status: 'done', error: null });
+    expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBe(sessionId);
+    expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(2);
+    expect(countLogLines(fakeLog(), 'session/prompt')).toBe(4);
+    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+    expect(countLogLines(fakeLog(), `image image/png ${image.data.length}`)).toBe(1);
+  } finally { CAPACITY_RETRY.delaysMs = delays; }
+}, 20_000);
+
 test('two ACP restarts recover the source attachment after the first resume acquired a native session', async () => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const first = harness!;
@@ -710,7 +751,7 @@ function fakeLog(): string {
 }
 
 /** A user descriptor for the fake agent: `protocol: "acp"`, launched as `bun <fixture>`. */
-function writeDescriptor(dataDir: string): void {
+function writeDescriptor(dataDir: string, images = true): void {
   writeScriptedProvider(dataDir, FAKE_AGENT, {
     id: 'acp-fake',
     schemaVersion: 1,
@@ -726,7 +767,7 @@ function writeDescriptor(dataDir: string): void {
       approvals: true,
       hooks: false,
       checkpoint: false,
-      images: true,
+      images,
       planMode: false,
       resume: true,
     },

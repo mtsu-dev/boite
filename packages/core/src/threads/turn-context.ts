@@ -757,18 +757,21 @@ type TurnInput = Parameters<typeof continuationInput>[3];
  * not every callback of the context.
  */
 function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: TurnId | null, input: TurnInput, provider: ProviderDescriptor, turn: Turn): () => HistoryInput {
-  const history = (): HistoryInput => {
-    const result = continuationInput(core.journal, threadId, turnId, input, provider, (part, place) => {
+  // Capture the boundary before a resume note lands. Read the full history
+  // only when a fresh session needs it, so loading a native session can use
+  // its own history and the bounded interrupted input.
+  let upTo: string | number;
+  if (turnId === null) {
+    const last = core.journal.db.query('SELECT rowid FROM messages WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1').get(threadId) as { rowid: number } | null;
+    upTo = (last?.rowid ?? 0) + 1;
+  } else upTo = turnId;
+  return () => {
+    const result = continuationInput(core.journal, threadId, upTo, input, provider, (part, place) => {
       core.sharedAccess.uploads(threadId, [part]);
       return files.of(threadId, part, place);
     }, turn.id);
     core.sharedAccess.uploads(threadId, result.attachments);
-    return result;
-  };
-  // Read once for a resume, before its note lands: a later fresh start would otherwise carry the note twice.
-  const resumedHistory = turnId === null ? history() : null;
-  return () => {
-    const { carried, ...fresh } = resumedHistory ?? history();
+    const { carried, ...fresh } = result;
     // Said on the turn's divider when the session is new because the account changed (`threads/switch-notice.ts`).
     recordHandover(core, turn, 'fresh', carried ?? { full: 0, cut: 0, omitted: 0, chars: 0 });
     return fresh;

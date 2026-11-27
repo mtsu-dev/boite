@@ -567,6 +567,10 @@ const app = agent({ name: 'acp-fake' })
 
     const plain = plainOf(text);
     for (const chunk of chunksOf(plain)) await say(chunk);
+    if (instructions.includes('[capacity-after-text]')) {
+      await say('Agent execution error: Error 0, Message: the Antigravity account that signed this conversation is temporarily unavailable; retry after Retry-After, Status: ');
+      return { stopReason: 'end_turn' };
+    }
 
     let usage: Usage | null = null;
     for (const directive of directives) {
