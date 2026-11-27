@@ -446,17 +446,27 @@ const app = agent({ name: 'acp-fake' })
         if (!instructions.includes('[ignore-cancel]')) stopped.resolve();
       });
       try {
-        for (const id of ['first', 'second']) {
-          await send({ sessionUpdate: 'tool_call', toolCallId: id, title: detached && id === 'second' ? 'delegate_task: Review the parser' : id, status: 'in_progress' });
-        }
-        for (const id of ['first', 'second']) {
-          const gate = `${process.env['ACP_FAKE_LOG']}.${id}`;
-          while (!existsSync(gate)) {
+        if (instructions.includes('[batched-tool-ends]')) {
+          log('waiting for batched tools');
+          while (!existsSync(`${process.env['ACP_FAKE_LOG']}.batch`)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
           }
-          await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed',
-            ...(detached && id === 'second' ? { title: 'Parser review' } : {}),
-          });
+          const lines = ['first', 'second'].map(id => JSON.stringify({ jsonrpc: '2.0', method: 'session/update',
+            params: { sessionId, update: { sessionUpdate: 'tool_call', toolCallId: id, title: id, status: 'completed' } } }));
+          process.stdout.write(`${lines.join('\n')}\n`);
+        } else {
+          for (const id of ['first', 'second']) {
+            await send({ sessionUpdate: 'tool_call', toolCallId: id, title: detached && id === 'second' ? 'delegate_task: Review the parser' : id, status: 'in_progress' });
+          }
+          for (const id of ['first', 'second']) {
+            const gate = `${process.env['ACP_FAKE_LOG']}.${id}`;
+            while (!existsSync(gate)) {
+              if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+            }
+            await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed',
+              ...(detached && id === 'second' ? { title: 'Parser review' } : {}),
+            });
+          }
         }
         if (instructions.includes('[third-tool]')) {
           while (!existsSync(`${process.env['ACP_FAKE_LOG']}.third`)) {

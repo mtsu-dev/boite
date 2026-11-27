@@ -253,6 +253,23 @@ test.each(['another tool finishes', 'the user sends now'])('ACP delivers queued 
   }
 }, 20_000);
 
+test('ACP delivers queued input after two completed tools arrive in one write', async () => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] [batched-tool-ends]' });
+  await waitFor(() => fakeLog().includes('waiting for batched tools'));
+  const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'batched-tool-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
+  expect(accepted).toBe(true);
+  writeFileSync(`${logFile}.batch`, 'ready');
+  await waitFor(() => core.journal.listMessages(threadId).filter(message => message.turnId === turnId)
+    .flatMap(message => message.parts).filter(part => part.type === 'tool' && part.status === 'done').length === 2);
+  await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
+  expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['stopped', 'done']);
+  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+  expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
+}, 20_000);
+
 test('ACP named task calls reach the native team without exposing the side conversation', async () => {
   const { client, threadId } = await startThread();
   // The file's first turn starts the fake agent and the ACP driver cold: 1.3
