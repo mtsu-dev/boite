@@ -4,14 +4,17 @@ import { StringDecoder } from 'node:string_decoder';
 import { isRecord } from '../stdio.ts';
 import { VIRTUAL_API } from './protocol.ts';
 
+/** A model as pi names it: a provider id may hold a `/`, so `<provider>/<id>` alone is not enough. */
+export interface PiPair { provider: string; id: string }
+
 /**
- * What a session branch records about its model, as `<provider>/<id>`.
+ * What a session branch records about its model, pi's pair, which pi restores as such.
  * `model` is the newest `model_change`, or the model of the newest answer.
  * `router` is the `model_change` before that answer when it names another
  * model: pi resumes on it while it is a registered virtual model, which
  * answers through physical ones.
  */
-export interface SessionModel { model: string; router: string | null }
+export interface SessionModel { model: PiPair; router: PiPair | null }
 
 const READ_LIMIT = 256;
 const read = new Map<string, { stamp: string; model: SessionModel | null }>();
@@ -137,16 +140,16 @@ function branchModel(branch: Record<string, unknown>[]): SessionModel | null {
     const message = isRecord(entry['message']) ? entry['message'] : null;
     // A failed routing leaves the virtual model on its message; pi skips it.
     if (entry['type'] !== 'message' || message?.['role'] !== 'assistant' || message['api'] === VIRTUAL_API) continue;
-    const answered = typeof message['provider'] === 'string' && typeof message['model'] === 'string' ? `${message['provider']}/${message['model']}` : null;
+    const answered = typeof message['provider'] === 'string' && typeof message['model'] === 'string' ? { provider: message['provider'], id: message['model'] } : null;
     if (answered === null) return null;
-    let router: string | null = null;
+    let router: PiPair | null = null;
     for (let before = index - 1; before >= 0 && router === null; before--) router = changeOf(branch[before]!);
-    return { model: answered, router: router === answered ? null : router };
+    return { model: answered, router: router?.provider === answered.provider && router.id === answered.id ? null : router };
   }
   return null;
 }
 
-function changeOf(entry: Record<string, unknown>): string | null {
+function changeOf(entry: Record<string, unknown>): PiPair | null {
   return entry['type'] === 'model_change' && typeof entry['provider'] === 'string' && typeof entry['modelId'] === 'string'
-    ? `${entry['provider']}/${entry['modelId']}` : null;
+    ? { provider: entry['provider'], id: entry['modelId'] } : null;
 }

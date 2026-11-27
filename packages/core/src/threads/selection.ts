@@ -5,7 +5,9 @@ import { antigravityVariant } from '../drivers/acp/antigravity-catalog.ts';
 import { isAntigravity } from '../drivers/antigravity.ts';
 import { agentEnv as piLaunchEnv, sessionDirOf } from '../drivers/pi/mapping.ts';
 import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
+import { piModelOf } from '../drivers/pi/models.ts';
 import { sessionModelOf } from '../drivers/pi/session-model.ts';
+import type { PiPair } from '../drivers/pi/session-model.ts';
 import { folderStartModel, piAgentDir, piAgentDirFollowsCwd, piLaunchChoices } from '../drivers/pi/start-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
@@ -70,20 +72,26 @@ export function imageInputModel(
     // A protected run starts a new pi session with `--no-approve` and settings of its own: pi alone knows that model.
     if (runsIn && core.sharedAccess.bound(runsIn) !== null) return undefined;
     const account = core.accounts.list().find(entry => entry.id === accountId);
+    // pi reads its settings where the environment the driver starts it with says. A relative configuration folder is
+    // another one in each folder pi starts in: the probe, run elsewhere, read another one's settings and models, so
+    // neither its model nor its catalog tells this folder's, for a resumed session as for a new one.
+    const env = account ? piLaunchEnv(core.accounts.profileEnv(account, provider)) : null;
+    if (env && piAgentDirFollowsCwd(env)) return undefined;
     const resumed = account && id && sessionId ? sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId, cwd) : null;
     if (resumed) {
+      // pi restores the session's own pair; a catalog entry spelled the same for another pair says nothing of it.
+      const pair = (model: PiPair) => {
+        const entry = listed(`${model.provider}/${model.id}`);
+        const held = entry && piModelOf(entry);
+        return held && (held.provider !== model.provider || held.id !== model.id) ? undefined : entry;
+      };
       // A registered virtual model holds over the physical models it answered through. pi resumes a model gone
       // from the catalog on its saved default, outside any scope, which only it reads.
-      const router = resumed.router ? listed(resumed.router) : undefined;
-      return router?.virtual ? router : listed(resumed.model);
+      const router = resumed.router ? pair(resumed.router) : undefined;
+      return router?.virtual ? router : pair(resumed.model);
     }
     // A new session starts where the folder's own pi settings say, which the account's probe, run elsewhere, cannot
-    // see. When only pi can name that model, it handles the images itself.
-    // pi reads its settings where the environment the driver starts it with says; Boite's own `default` entry names no model.
-    const env = account ? piLaunchEnv(core.accounts.profileEnv(account, provider)) : null;
-    // A relative configuration folder is another one in each folder pi starts in: the probe, run elsewhere, read
-    // another one's settings and models, so neither its model nor its catalog tells this folder's.
-    if (env && piAgentDirFollowsCwd(env)) return undefined;
+    // see. When only pi can name that model, it handles the images itself. Boite's own `default` entry names no model.
     const catalog = (probed ?? saved?.models ?? null)?.filter(entry => entry.id !== AGENT_OWN_MODEL) ?? null;
     const start = env ? folderStartModel(piAgentDir(env, cwd), cwd, catalog, launch) : 'account';
     if (start === null) return undefined;

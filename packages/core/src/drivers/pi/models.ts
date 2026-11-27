@@ -71,6 +71,21 @@ function providerLabel(provider: string): string {
  * the name `modelsFrom` gives it: a provider id may hold a `/` itself, which the
  * `<provider>/<id>` text alone cannot tell. Undefined for an entry of another shape.
  */
+/**
+ * The pair pi reads a `<provider>/<id>` text as among `models` (its `get_available_models` answer): a provider id
+ * may hold a `/`, and pi takes the longest provider that spells the text, as the catalog keeps. Without one, the text
+ * splits at its first `/` and pi answers for that pair itself.
+ */
+export function piPairOf(models: unknown, text: string): { provider: string; modelId: string } | undefined {
+  let best: { provider: string; modelId: string } | undefined;
+  for (const model of Array.isArray(models) ? (models as PiModel[]) : []) {
+    if (typeof model?.provider !== 'string' || typeof model.id !== 'string' || `${model.provider}/${model.id}` !== text) continue;
+    if (best === undefined || model.provider.length > best.provider.length) best = { provider: model.provider, modelId: model.id };
+  }
+  const slash = text.indexOf('/');
+  return best ?? (slash > 0 && slash < text.length - 1 ? { provider: text.slice(0, slash), modelId: text.slice(slash + 1) } : undefined);
+}
+
 export function piModelOf(model: { id: string; name: string }): { provider: string; id: string; name: string } | undefined {
   for (let slash = model.id.indexOf('/'); slash > 0 && slash + 1 < model.id.length; slash = model.id.indexOf('/', slash + 1)) {
     const provider = model.id.slice(0, slash);

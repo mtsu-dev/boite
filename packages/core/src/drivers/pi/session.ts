@@ -24,6 +24,7 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX, UI_DIALOGS, UI_NOTICES } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiUsage } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
+import { piPairOf } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
 import { answerText } from '../../attachments.ts';
@@ -383,11 +384,10 @@ export class PiSession {
     if (model === null || model === AGENT_OWN_MODEL) return;
     let changed = false;
     if (model !== this.#model) {
-      const slash = model.indexOf('/');
-      if (slash <= 0 || slash === model.length - 1) {
-        throw new Error(`pi cannot switch to the model ${model}: its id is not <provider>/<id>`);
-      }
-      await peer.command('set_model', { provider: model.slice(0, slash), modelId: model.slice(slash + 1) });
+      // pi's own listing names the pair: a provider id may hold a `/`, so the first one is not the split.
+      const pair = piPairOf(dataOf(await peer.command('get_available_models'))['models'], model);
+      if (pair === undefined) throw new Error(`pi cannot switch to the model ${model}: its id is not <provider>/<id>`);
+      await peer.command('set_model', pair);
       this.#model = model;
       changed = true;
     }

@@ -222,15 +222,33 @@ test('pi default follows the model a resumed session restores, not the one pi st
   const bound = spyOn(harness!.core.sharedAccess, 'bound').mockImplementation(id => id === threadId ? {} as ReturnType<SharedAccess['bound']> : null);
   expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
   bound.mockRestore();
+  // A relative configuration folder: the catalog the probe read elsewhere says nothing of the model this folder resumes.
+  const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+  const descriptor = readFileSync(descriptorFile, 'utf8');
+  const relative = JSON.parse(descriptor) as { profiles: Record<string, { env?: Record<string, string> }> };
+  for (const profile of Object.values(relative.profiles)) profile.env = { ...profile.env, PI_CODING_AGENT_DIR: 'relative-pi' };
+  writeFileSync(descriptorFile, JSON.stringify(relative));
+  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+  expect((await client.call('providers.probe', { providerId: 'pi-fake', accountId: harness!.core.threads.require(threadId).accountId, refresh: true })).models.map(model => model.id)).toContain('fake-b/plain');
+  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
+  writeFileSync(descriptorFile, descriptor);
+  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
   // A model gone from the catalog resumes on pi's saved default, which only pi reads, even where pi starts on a text-only one.
   process.env['PI_FAKE_CURRENT'] = 'plain';
+  process.env['PI_FAKE_LITERAL'] = '1';
   await client.call('providers.probe', { providerId: 'pi-fake', accountId: harness!.core.threads.require(threadId).accountId, refresh: true });
   const file = piSessionFile(threadId);
   const session = readFileSync(file, 'utf8');
   writeFileSync(file, session.replaceAll('"plain"', '"gone"'));
   expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
+  // pi restores the session's own pair: `fake-a` + `team/base` reads images, while the catalog's `fake-a/team/base` is
+  // the text-only `fake-a/team` + `base`.
+  expect(session).toContain('"provider":"fake-b"');
+  writeFileSync(file, session.replaceAll('"fake-b"', '"fake-a"').replaceAll('"plain"', '"team/base"'));
+  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
   writeFileSync(file, session);
   delete process.env['PI_FAKE_CURRENT'];
+  delete process.env['PI_FAKE_LITERAL'];
   await client.call('providers.probe', { providerId: 'pi-fake', accountId: harness!.core.threads.require(threadId).accountId, refresh: true });
   // A copy of the session under another name: pi opens one of them and still restores Fake Plain.
   writeFileSync(join(file, '..', `2020-01-01T00-00-00-000Z_${harness!.core.threads.require(threadId).sessionId}.jsonl`), readFileSync(file, 'utf8'));
@@ -1312,6 +1330,7 @@ describe('pi driver', () => {
   });
 
   test('a warm process takes a new effort and a new model over RPC instead of restarting', async () => {
+    process.env['PI_FAKE_LITERAL'] = '1';
     const client = await startCore({ warmProcessMinutes: 5 });
     const { projectId, accountId } = await piAccount(client);
     await client.call('providers.probe', { providerId: 'pi-fake', accountId });
@@ -1334,7 +1353,12 @@ describe('pi driver', () => {
     expect(turnProcesses).toHaveLength(1);
     expect(turnProcesses[0]).toContain('model=fake-a/smart:low');
     expect(fakeLog()).toContain('level high\n');
-    expect(fakeLog()).toContain('model fake-a/quick\nset_thinking_level\nlevel high\n');
+    expect(fakeLog()).toContain('model fake-a quick\nset_thinking_level\nlevel high\n');
+    // pi's listing names the pair of a text two pairs spell: `base` on `fake-a/team`, as at a cold start.
+    await client.call('threads.update', { threadId, model: 'fake-a/team/base', effort: 'high' });
+    await runTurn(client, threadId, 'fourth');
+    expect(argvLines().filter((line) => !line.includes('sessionId= '))).toHaveLength(1);
+    expect(fakeLog()).toContain('model fake-a/team base\n');
   });
 
   test('core shutdown during a turn pi never settles ends it before the journal closes', async () => {

@@ -408,8 +408,10 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   as pi 1.6.1 does: the newest
   `model_change`, else the model of the newest answer, unless the change before
   that answer names a router pi still lists (`virtual: true`, from its
-  `pi-virtual` api); a session model gone from the catalog resumes on pi's saved
-  default, which only pi reads. A `--model` in the profile wins over the session. Without
+  `pi-virtual` api); pi restores that provider and id as a pair, so a catalog
+  entry spelling the same `provider/id` for another pair says nothing of it, and
+  a session model gone from the catalog resumes on pi's saved default, which
+  only pi reads. A `--model` in the profile wins over the session. Without
   a session to resume, pi starts where the folder's own settings say, which the
   account's probe, run in a temporary folder, never sees
   (`drivers/pi/start-model.ts`). pi reads `<folder>/.pi/settings.json` over the
@@ -420,7 +422,7 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   environment the driver starts pi with (`PI_CODING_AGENT_DIR` from the core's
   environment or the profile's, else `~/.pi/agent`); a relative folder is another
   one in each folder pi starts in, so neither the probe's model nor its catalog
-  says anything there and pi decides. With a scope (the
+  says anything there, for a resumed session as for a new one, and pi decides. With a scope (the
   profile's `--models`, else `enabledModels`), the saved
   `defaultProvider`/`defaultModel` wins when the scope holds it, else the first
   scoped model; without one, the saved default when available. A `--models`
@@ -1796,7 +1798,9 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   `setStatus`, `setWidget`, `setTitle` and `set_editor_text` get no answer and
   are not drawn.
 - A warm process follows a change of model or level with `set_model` and
-  `set_thinking_level`. There is no call that goes back to pi's own model or to
+  `set_thinking_level`. `set_model` takes the pair pi's own
+  `get_available_models` spells the thread's `provider/id` with, the longest
+  provider among them as at a cold start, since a provider id may hold a `/`. There is no call that goes back to pi's own model or to
   no level, so either change starts a new process.
 - Pi can refresh prompt caches during a turn. Refreshes between turns require
   an explicit `"cacheWarming": "idle"` in the selected Pi profile's

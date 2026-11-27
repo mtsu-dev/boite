@@ -256,7 +256,7 @@ if (process.env['PI_FAKE_LITERAL']) {
   MODELS.push({ ...MODELS[0]!, provider: 'fake-b', id: 'plain:low-plus', name: 'Fake Plain Low Plus' });
   // A provider id may hold a `/`: both spell `fake-a/team/base`, which pi reads as `base` on `fake-a/team`.
   MODELS.push({ ...MODELS[0]!, provider: 'fake-a', id: 'team/base', name: 'Fake Team Base' });
-  MODELS.push({ ...MODELS[2]!, provider: 'fake-a/team', id: 'base', name: 'Fake Base' });
+  MODELS.push({ ...MODELS[2]!, provider: 'fake-a/team', id: 'base', name: 'Fake Base', reasoning: true });
 }
 /** The model the session is on, which is the one pi reports as current. */
 const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0]!;
@@ -545,7 +545,7 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'set_model': {
-      log(`model ${textOf(message['provider'])}/${textOf(message['modelId'])}`);
+      log(`model ${textOf(message['provider'])} ${textOf(message['modelId'])}`);
       const found = MODELS.find((entry) => entry.provider === message['provider'] && entry.id === message['modelId']);
       if (found === undefined) {
         send({ id, type: 'response', command: 'set_model', success: false, error: `Model not found: ${textOf(message['provider'])}/${textOf(message['modelId'])}` });
