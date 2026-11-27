@@ -131,6 +131,11 @@ let leaf: string | null = saved.at(-1)?.id ?? null;
 let activePrompt = '';
 log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model} provider=${flag('--provider')} thinking=${flag('--thinking')}`);
 if (oneShot) log(`one-shot ${JSON.stringify(process.argv.slice(2))}`);
+// pi 1.6.1 refuses a `--provider` without a `--model` before it reads a request.
+if (flag('--provider') && !model) {
+  process.stderr.write(`Error: --provider requires --model (for example: --provider ${flag('--provider')} --model <pattern>)\n`);
+  process.exit(1);
+}
 // `PI_FAKE_EXTENSION_PROVIDER` is a provider an extension registers: pi launched without extensions does not know it.
 const extensionProvider = process.env['PI_FAKE_EXTENSION_PROVIDER'];
 if (extensionProvider && process.argv.includes('--no-extensions') && (flag('--provider') === extensionProvider || model.startsWith(`${extensionProvider}/`))) {
@@ -275,6 +280,8 @@ if (process.env['PI_FAKE_LITERAL']) {
 // The catalog keeps `base` on `fake-a/team` for the text `fake-a/team/base`: a scope's `team/base` is then on
 // `fake-a` or on `fake-b`, which only pi picks.
 if (process.env['PI_FAKE_SHADOW']) MODELS.push({ ...MODELS[2]!, provider: 'fake-b', id: 'team/base', name: 'Fake Other Base' });
+// `PI_FAKE_SPARE`: another model of `fake-b`, which a profile can pin beside the thread's.
+if (process.env['PI_FAKE_SPARE']) MODELS.push({ ...MODELS[2]!, id: 'spare', name: 'Fake Spare' });
 // `fake-b/plain` gains images, as a `models.json` edited after a launch gives them.
 if (process.env['PI_FAKE_PLAIN_IMAGES']) MODELS[2]!.input = ['text', 'image'];
 // `PI_FAKE_CASE`: `fake-b/Plain` reads images but does not reason and sits before `fake-b/plain`, which reasons, and

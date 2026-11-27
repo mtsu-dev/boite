@@ -77,6 +77,13 @@ export function checkProfiles(value: unknown, file: string, protocol: Protocol):
       if (at >= 0) {
         reject(file, `profiles.${os}.launch.args[${at}]`, "no --api-key: the provider's own variable in env (ANTHROPIC_API_KEY, OPENAI_API_KEY) or a pi /login", 'pi binds --api-key to whichever provider it starts on, so Boite cannot keep it on one provider');
       }
+      // pi 1.6.1 exits on a `--provider` without a `--model` ("--provider requires --model"), so every launch Boite
+      // leaves to the profile, a fallback title or side question included, would fail.
+      const args = profiles[os]!.launch?.args ?? [];
+      const provider = args.indexOf('--provider');
+      if (provider >= 0 && !args.includes('--model')) {
+        reject(file, `profiles.${os}.launch.args[${provider}]`, '--provider with a --model, or neither', 'pi 1.6.1 exits on --provider without --model');
+      }
     }
     // Only these drivers launch the program with the descriptor's arguments after
     // it, which is what `node <script>` needs; the SDK and app-server drivers do not.

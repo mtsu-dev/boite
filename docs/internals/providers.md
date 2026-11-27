@@ -1867,8 +1867,9 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   fails the turn and asks to refresh the models list (its models changed, or
   its provider is no longer signed in); a title or side question goes to pi's
   own model instead, even when the profile pins that provider, since pi holds
-  it, but only when pi lists that model: a profile whose `--model` names the
-  same id starts pi on the same custom model, and the request fails. pi reads its models once, at
+  it. Every such fallback, one after an extension's provider included, asks
+  only a model pi lists: a profile whose `--model` names an id pi no longer
+  lists starts pi on a custom model of it, and the request fails. pi reads its models once, at
   start: a pair the catalog found since (a `models.json` edited after the
   launch) is not in the running process's listing, so a new process opens the
   same session on it with `--provider` once the old one has exited (pi runs its
@@ -1919,6 +1920,9 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   another provider. The provider's own variable in `env`
   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) or a pi `/login` is bound to one
   provider.
+- A pi profile whose `launch.args` hold `--provider` without `--model` is
+  rejected, with that argument's field: pi 1.6.1 exits on it ("--provider
+  requires --model"), so every launch left to the profile would fail.
 - Titles use a separate, tool-free RPC process with no session file, extensions,
   MCP, context files, skills or prompt templates. Boite uses the selected title
   model or the thread's own model at low effort and allows 30 seconds per call.

@@ -91,11 +91,14 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
         await alignLaunchedPair(peer, dataOf(await peer.command('get_state', {}, { signal })), pair, launchLevel(args), { signal })
           .catch((missing: unknown) => { throw missing instanceof LaunchPairMissing ? new ModelRefused(missing.message, true) : missing; });
       } else if (refused !== undefined) {
-        // The fallback after a pair pi did not list: a profile's own `--model` may name that same id, which pi runs
-        // as a custom model again, so pi's own model answers only when pi lists it.
+        // A fallback: a profile's own `--model` may name an id pi no longer lists, the thread's own included, which pi
+        // runs as a custom model with another model's capabilities, so pi's own model answers only when pi lists it.
         const loaded = dataOf(await peer.command('get_state', {}, { signal }))['model'] as PiModel | null | undefined;
         const listed = dataOf(await peer.command('get_available_models', {}, { signal }))['models'];
-        if (loaded?.provider === undefined || loaded.id === undefined || !piListsPair(listed, { provider: loaded.provider, modelId: loaded.id })) throw refused;
+        if (loaded?.provider === undefined || loaded.id === undefined || !piListsPair(listed, { provider: loaded.provider, modelId: loaded.id })) {
+          const own = loaded?.provider === undefined || loaded.id === undefined ? 'no model' : `${loaded.provider}/${loaded.id}`;
+          throw refused.unlisted ? refused : new Error(`${refused.message}; pi's own model (${own}) is not one it lists either: refresh the models list`);
+        }
       }
       await peer.command('prompt', { message: prompt, ...(images.length ? { images } : {}) }, { signal });
     } catch (failure) {
@@ -146,7 +149,7 @@ async function askOn(ctx: TitleContext | SideQuestionContext, prompt: string, mo
     if (!(error instanceof ModelRefused) || model === null || model === AGENT_OWN_MODEL || signal.aborted) throw error;
     if (!error.unlisted && (piProviderOf(model, catalog) === '' || piProfilePins(profileFor(ctx.provider)?.launch?.args ?? [], model, catalog))) throw error;
     ctx.log('info', `pi one-shot: ${model} is not known without extensions, pi's own model answers`);
-    return await ask(ctx, prompt, null, catalog, signal, sessionFile, error.unlisted ? error : undefined);
+    return await ask(ctx, prompt, null, catalog, signal, sessionFile, error);
   }
 }
 

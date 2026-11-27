@@ -801,12 +801,26 @@ test('a pi one-shot on a model an extension registers falls back to pi\'s own mo
     const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
     const descriptor = readFileSync(descriptorFile, 'utf8');
     const pinned = JSON.parse(descriptor) as { profiles: Record<string, { launch: { args: string[] } }> };
-    for (const profile of Object.values(pinned.profiles)) profile.launch.args.push('--provider', 'fake-a');
+    for (const profile of Object.values(pinned.profiles)) profile.launch.args.push('--provider', 'fake-a', '--model', 'fake-a/smart');
     writeFileSync(descriptorFile, JSON.stringify(pinned));
     expect((await client.call('providers.reload', {})).rejected).toEqual([]);
     let before = shotCount();
     expect((await btw('side_pinned')).error).toContain('Unknown provider "fake-a"');
     expect(shotCount()).toBe(before + 1);
+    // A profile pinning another provider's id that pi no longer lists: pi runs a custom model of it, which never
+    // gets the question.
+    const gone = JSON.parse(descriptor) as { profiles: Record<string, { launch: { args: string[] } }> };
+    for (const profile of Object.values(gone.profiles)) profile.launch.args.push('--model', 'fake-b/plain');
+    writeFileSync(descriptorFile, JSON.stringify(gone));
+    expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+    process.env['PI_FAKE_GONE'] = 'fake-b/plain';
+    before = shotCount();
+    const custom = await btw('side_custom');
+    delete process.env['PI_FAKE_GONE'];
+    expect(custom.error).toContain('Unknown provider "fake-a"');
+    expect(custom.error).toContain("pi's own model (fake-b/plain) is not one it lists either");
+    expect(shotCount()).toBe(before + 2);
+    expect(fakeLog()).not.toContain('prompt on fake-b/plain');
     writeFileSync(descriptorFile, descriptor);
     expect((await client.call('providers.reload', {})).rejected).toEqual([]);
     // A live pi that refuses the prompt after warning of a custom model id says why itself, with no second start.
@@ -820,7 +834,20 @@ test('a pi one-shot on a model an extension registers falls back to pi\'s own mo
   } finally {
     delete process.env['PI_FAKE_EXTENSION_PROVIDER'];
     delete process.env['PI_FAKE_ONE_SHOT_REFUSAL'];
+    delete process.env['PI_FAKE_GONE'];
   }
+});
+
+test('a pi profile with --provider and no --model is refused, since pi exits on it', async () => {
+  const client = await startCore();
+  await piAccount(client);
+  const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+  const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
+  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--provider', 'fake-b');
+  writeFileSync(descriptorFile, JSON.stringify(descriptor));
+  const { rejected } = await client.call('providers.reload', {});
+  expect(rejected).toHaveLength(1);
+  expect(rejected[0]).toMatchObject({ field: expect.stringMatching(/^profiles\.\w+\.launch\.args\[\d+\]$/), expected: '--provider with a --model, or neither' });
 });
 
 test('a pi profile with --api-key is refused with its field and what to use instead, its key never echoed', async () => {
@@ -844,7 +871,7 @@ test('Boite\'s own flags replace the profile\'s model flags; a title pins its pr
   // A launch left to pi keeps the profile whole.
   expect(piProfileArgs(['--model', 'chat'], 'default')).toEqual(['--model', 'chat']);
   // A title falls back to pi's own model unless the profile's last --provider, or a --model as listed, pins its provider.
-  expect(piProfilePins(['--provider', 'anthropic', '--provider', 'openai'], 'openai/quick', catalog)).toBe(true);
+  expect(piProfilePins(['--provider', 'anthropic', '--provider', 'openai', '--model', 'chat'], 'openai/quick', catalog)).toBe(true);
   expect(piProfilePins(['--model', 'openai/chat', '--model', 'anthropic/title'], 'openai/quick', catalog)).toBe(false);
   expect(piProfilePins(['--model', 'openai/remote'], 'openai/quick', catalog)).toBe(false);
   expect(piProfilePins([], 'openai/quick', catalog)).toBe(false);
@@ -2109,12 +2136,14 @@ describe('pi driver', () => {
     }
   });
 
-  // A profile pinning the provider leaves pi's own model to another one of it, which answers a side question; one
-  // pinning the model itself starts pi on the same custom model again, which never gets the question.
+  // A profile pinning the provider with another of its models leaves pi's own model to that one, which answers a side
+  // question; one pinning the model itself starts pi on the same custom model again, which never gets the question.
   test.each([
-    { pin: ['--provider', 'fake-b'], side: null },
+    { pin: ['--provider', 'fake-b', '--model', 'fake-b/spare'], side: null },
     { pin: ['--model', 'fake-b/plain'], side: 'pi does not list fake-b/plain' },
   ])('a launch on an id pi no longer lists, which pi runs as a custom model of that id, fails the turn (profile $pin)', async ({ pin, side }) => {
+    process.env['PI_FAKE_SPARE'] = '1';
+    try {
     const client = await startCore();
     const { projectId, accountId } = await piAccount(client);
     const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
@@ -2128,7 +2157,6 @@ describe('pi driver', () => {
     await runTurn(client, threadId, 'first');
     // A `models.json` edited since the probe: pi reports `fake-b/plain` as the model it runs, with other capabilities.
     process.env['PI_FAKE_GONE'] = 'fake-b/plain';
-    try {
       const shots = () => fakeLog().split('\n').filter(line => line.startsWith('one-shot [')).map(line => JSON.parse(line.slice('one-shot '.length)) as string[]);
       const before = shots().length;
       const answered = client.next('thread.btw', event => event.requestId === 'side_custom');
@@ -2136,12 +2164,15 @@ describe('pi driver', () => {
       const error = (await answered).error;
       if (side === null) expect(error).toBeNull();
       else expect(error).toContain(side);
-      expect(shots().slice(before).map(args => args.includes('--model'))).toEqual([true, side !== null]);
+      // The fallback keeps the profile's own `--model`.
+      expect(shots().slice(before).map(args => args.includes('--model'))).toEqual([true, true]);
+      if (side === null) expect(fakeLog()).toContain('prompt on fake-b/spare medium one-shot');
       const { finished } = await startTurn(client, threadId, 'hello', 20000);
       expect((await finished).error).toContain('pi does not list fake-b/plain: its models changed or its provider is no longer signed in; refresh the models list');
       expect(fakeLog()).not.toContain('prompt on fake-b/plain');
     } finally {
       delete process.env['PI_FAKE_GONE'];
+      delete process.env['PI_FAKE_SPARE'];
     }
   });
 
