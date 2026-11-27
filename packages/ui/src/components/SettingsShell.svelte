@@ -17,7 +17,6 @@
   import PluginsPage from './PluginsPage.svelte';
   import { COMMAND_GROUPS } from '../lib/keybindings';
   import { experimentOn, experimentsListed, experimentsShown } from '../lib/experiments.svelte';
-  import { isSettingExperiment } from '@boite/contracts';
   import { experimentCopy } from '../lib/experiment-copy';
   import { fill, strings } from '../lib/strings';
   import type { SettingsTab, Store } from '../lib/store.svelte';
@@ -199,7 +198,7 @@
       ...(desktopSettings(narrow.current) ? [{ id: 'details', label: strings.settings.terminalAndScrollbars }] : []),
       { id: 'core', label: strings.settings.core }
     ],
-    experiments: experimentsListed().filter(id => !isSettingExperiment(id)).map((id) => ({ id, label: experimentCopy()[id]?.title ?? id })),
+    experiments: experimentsListed().map((id) => ({ id, label: experimentCopy()[id]?.title ?? id })),
     diagnostics: [
       { id: 'diagnostics-status', label: strings.diagnostics.status },
       { id: 'diagnostics-problems', label: strings.diagnostics.problems },
