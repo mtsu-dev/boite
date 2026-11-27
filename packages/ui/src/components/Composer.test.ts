@@ -2252,7 +2252,8 @@ test('a picture pasted while the core reads pi\'s own model is held, and Send wa
   await waitFor(() => asked.mock.calls.length > calls);
   await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') === null);
   const sent = vi.spyOn(store.client!, 'call');
-  const prompts = () => sent.mock.calls.filter(([, params]) => JSON.stringify(params ?? null).includes('Read the picture'));
+  // The draft's own saves (`composer.put`) carry the text too; only a request that sends it counts.
+  const prompts = () => sent.mock.calls.filter(([method, params]) => method !== 'composer.put' && JSON.stringify(params ?? null).includes('Read the picture'));
   // Another agent picked before the answer: the Send pressed for pi goes nowhere.
   press('Enter');
   flushSync();
