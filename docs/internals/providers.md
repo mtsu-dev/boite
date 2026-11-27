@@ -1878,25 +1878,27 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
 - After each turn `get_session_stats` feeds the context meter with a five-second
   control-read expiry. A timed-out response is removed and cannot update a later
   turn's context.
+- A conversation whose profile holds `--api-key` launches with the profile as
+  written, on the model the profile gives pi, and Boite moves it to the
+  thread's model over RPC (`set_model`) before the first prompt, after a
+  reopen too. pi binds the key at launch, to the provider its own resolution
+  of the profile picks (case, fuzzy matches, raw ids, the saved scope and
+  default), and a `set_model` leaves it there: Boite never predicts that
+  provider, so the key goes nowhere a plain `pi` with that profile would not
+  send it. A model on another provider runs on that provider's own login, or
+  pi refuses it with `No API key for <provider>/<id>`. pi requires a model for
+  the key: with only a `--models` scope, a session that already holds messages
+  ignores the scope and pi refuses to start, with its own sentence.
 - Titles use a separate, tool-free RPC process with no session file, extensions,
   MCP, context files, skills or prompt templates. Boite uses the selected title
   model or the thread's own model at low effort and allows 30 seconds per call.
   The profile's own tool and session flags, short aliases included, are
   dropped from these launches. Its `--model` and `--provider` are dropped when
-  Boite names a model and kept when the thread leaves the model to pi, so a
-  profile `--api-key` still has the model it binds to. pi binds that key to
-  the provider of the model it starts on, and resolves a `--model`, a
-  `--models` scope or the saved scope and default its own way (case, fuzzy
-  matches, a raw id such as `openai/remote` on another provider). So when
-  Boite names the model, a launch, a conversation's or a one-shot's, keeps the
-  key only when the catalog lists that model on the provider the profile's
-  last `--provider` names, compared without regard to case as pi does; a key
-  beside a `--model`, a scope or nothing stays out, and so does any key
-  without a catalog. A launch left to pi keeps the profile whole. pi binds the
-  key at launch only, so switching a warm conversation to a model the key now
-  goes with opens a new process. When Boite names the model, the profile's
-  `--provider` and `--model` are dropped too, or pi would look the model up
-  under the profile's provider.
+  Boite names a model and kept when the thread leaves the model to pi. Its
+  `--api-key` never goes to a one-shot, which uses pi's saved login or
+  environment keys: pi binds that key to the provider of the model it starts
+  on, and without extensions it may read the profile's model on another
+  provider than the conversation does.
   A model an extension
   registers is unknown without extensions: when pi exits at startup on it
   (`Unknown provider "..."` or `Model "..." not found`, each followed by `Use

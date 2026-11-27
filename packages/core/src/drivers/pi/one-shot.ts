@@ -18,8 +18,11 @@ import { copySession } from './session-files.ts';
 
 // Explicit resources still load with discovery disabled. Keep launcher arguments
 // (such as a script path), and own the one-shot model, session, tools and resources.
+// A profile's `--api-key` never goes: pi binds it to the model it starts on, and
+// without extensions it may read the profile's model on another provider than the
+// conversation does. A one-shot uses pi's saved login or environment keys.
 const VALUE_FLAGS = new Set([
-  '--extension', '-e', '--skill', '--prompt-template', '--mode', '--model', '--provider',
+  '--extension', '-e', '--skill', '--prompt-template', '--mode', '--model', '--provider', '--api-key',
   '--session', '--session-id', '--session-dir', '--fork', '--thinking',
   '--system-prompt', '--append-system-prompt', '--tools', '-t', '--exclude-tools', '-xt',
 ]);
@@ -39,11 +42,11 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   const launch = resolveLaunch(profile);
   if (!launch) throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
   const own = model !== null && model !== AGENT_OWN_MODEL;
-  const declared = piProfileArgs(profile?.launch?.args ?? [], model, catalog);
+  const declared = piProfileArgs(profile?.launch?.args ?? [], model);
   const args = [...launch.prefix];
   for (let i = 0; i < declared.length; i++) {
     const arg = declared[i]!;
-    // Left to pi, the model is the profile's, as in the conversation: its `--api-key` needs it.
+    // Left to pi, the model is the profile's, as in the conversation.
     if (!own && (arg === '--model' || arg === '--provider') && i + 1 < declared.length) args.push(arg, declared[++i]!);
     else if (VALUE_FLAGS.has(arg)) i++;
     else if (!OWNED_SWITCHES.has(arg)) args.push(arg);

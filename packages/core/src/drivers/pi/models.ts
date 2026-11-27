@@ -134,31 +134,29 @@ export function piProfilePins(args: readonly string[], model: string, catalog: r
 }
 
 /**
- * A profile's launch arguments for a process Boite starts on `model`. Boite's own `--provider` and `--model` name it,
- * so the profile's go, or pi would read a model the catalog does not list under the profile's provider. pi 1.6.1
- * binds `--api-key` to the provider of the model it starts on (`setRuntimeApiKey` in main.js), and nothing else in a
- * profile says which provider a key is for without guessing pi's own resolution (fuzzy ids, raw ids on another
- * provider, the saved scope and default): the key goes only to a model the catalog lists on the provider the
- * profile's last `--provider` names. A launch left to pi keeps the profile whole.
+ * Whether a profile passes pi an inline `--api-key`. pi 1.6.1 binds it to the provider of the model it starts on, at
+ * launch only (`setRuntimeApiKey` in main.js), and that provider is pi's own reading of the profile (case, fuzzy ids,
+ * a raw id on another provider, the saved scope and default). Boite does not predict it: such a profile launches as it
+ * is written and moves to the thread's model over RPC (`set_model`), which leaves the key where pi bound it.
  */
-export function piProfileArgs(args: readonly string[], model: string | null, catalog: readonly ModelInfo[] | null): string[] {
-  if (model === null || model === AGENT_OWN_MODEL) return [...args];
-  const selected = piCatalogPair(model, catalog)?.provider ?? '';
-  const pinned = lastFlag(args, '--provider');
-  const keyed = pinned !== null && sameProvider(pinned, selected);
+export function piProfileKeyed(args: readonly string[]): boolean {
+  return args.includes('--api-key');
+}
+
+/**
+ * A profile's launch arguments for a process Boite starts on `model`. Boite's own `--provider` and `--model` name it,
+ * so the profile's go, or pi would read a model the catalog does not list under the profile's provider. A launch left
+ * to pi, or a profile with a key (`piProfileKeyed`), keeps the profile whole.
+ */
+export function piProfileArgs(args: readonly string[], model: string | null): string[] {
+  if (model === null || model === AGENT_OWN_MODEL || piProfileKeyed(args)) return [...args];
   const kept: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
-    if (i + 1 < args.length && (arg === '--provider' || arg === '--model' || (arg === '--api-key' && !keyed))) i++;
+    if (i + 1 < args.length && (arg === '--provider' || arg === '--model')) i++;
     else kept.push(arg);
   }
   return kept;
-}
-
-/** The provider a launch on `model` binds the profile's `--api-key` to, or null when it passes none. */
-export function piKeyedProvider(args: readonly string[], model: string | null, catalog: readonly ModelInfo[] | null): string | null {
-  if (model === null || model === AGENT_OWN_MODEL || !piProfileArgs(args, model, catalog).includes('--api-key')) return null;
-  return piCatalogPair(model, catalog)?.provider ?? null;
 }
 
 /** The pair `catalog` names behind a Boite model id, the one image admission checked; undefined when it lists none. */

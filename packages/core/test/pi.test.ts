@@ -753,71 +753,71 @@ test('a pi one-shot on a model an extension registers falls back to pi\'s own mo
   }
 });
 
-test('pi one-shots on its own model keep the profile model its --api-key needs', async () => {
+test('a profile with --api-key starts pi as written and reaches the thread\'s model over RPC, its one-shots keyless', async () => {
   const client = await startCore({ warmProcessMinutes: 5 });
   const { projectId, accountId } = await piAccount(client);
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
   const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
-  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--provider', 'fake-a', '--model', 'fake-a/smart', '--api-key', 'test-key');
+  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--model', 'fake-a/smart', '--api-key', 'test-key');
   writeFileSync(descriptorFile, JSON.stringify(descriptor));
   expect((await client.call('providers.reload', {})).rejected).toEqual([]);
-  const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId });
-  expect(harness!.core.threads.require(threadId).model).toBe('default');
-  expect((await (await startTurn(client, threadId, 'Add a feature')).finished).status).toBe('done');
-  await settle(() => harness!.core.threads.require(threadId).titleSource === 'agent');
-  const invocation = fakeLog().split('\n').find(line => line.startsWith('one-shot [') && line.includes('--no-session'))!;
-  const args = JSON.parse(invocation.slice('one-shot '.length)) as string[];
-  expect(args.filter(arg => arg === '--model')).toHaveLength(1);
-  expect(args[args.indexOf('--model') + 1]).toBe('fake-a/smart');
-  // The key is the profile's for `fake-a`: a thread on another provider, its turn as its title, starts pi without it,
-  // which would bind it to that provider; one on `fake-a` keeps it.
+  // What the fake processes logged after `mark`, a length of the log.
+  const since = (mark: number) => fakeLog().slice(mark).split('\n');
+  // A conversation's process logs its session id; a one-shot's has none.
+  const launches = (lines: string[]) => lines.filter(line => line.startsWith('argv sessionId=') && !line.startsWith('argv sessionId= '));
+  const titleArgs = (lines: string[]) => JSON.parse(lines.find(line => line.startsWith('one-shot [') && line.includes('--no-session'))!.slice('one-shot '.length)) as string[];
+  const { id: own } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId });
+  expect(harness!.core.threads.require(own).model).toBe('default');
+  expect((await (await startTurn(client, own, 'Add a feature')).finished).status).toBe('done');
+  await settle(() => harness!.core.threads.require(own).titleSource === 'agent');
+  // The title runs on the profile's model, as the conversation, on pi's saved login: the key stays out of it.
+  const ownTitle = titleArgs(since(0));
+  expect(ownTitle[ownTitle.indexOf('--model') + 1]).toBe('fake-a/smart');
+  expect(ownTitle).not.toContain('--api-key');
   await client.call('providers.probe', { providerId: 'pi-fake', accountId });
-  for (const model of ['fake-b/plain', 'fake-a/quick']) {
-    const before = fakeLog().split('\n').length;
-    const { id } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, model });
-    expect((await (await startTurn(client, id, 'Add a feature')).finished).status).toBe('done');
-    await settle(() => harness!.core.threads.require(id).titleSource === 'agent');
-    const lines = fakeLog().split('\n').slice(before);
-    const titled = JSON.parse(lines.find(line => line.startsWith('one-shot [') && line.includes('--no-session'))!.slice('one-shot '.length)) as string[];
-    if (model === 'fake-b/plain') {
-      expect(lines.filter(line => line.startsWith('api-key '))).toEqual([]);
-      expect(titled).not.toContain('--api-key');
-    } else {
-      expect(lines.filter(line => line.startsWith('api-key '))).toEqual(['api-key test-key for fake-a', 'api-key test-key for fake-a']);
-      expect(titled[titled.indexOf('--api-key') + 1]).toBe('test-key');
-    }
-    if (model !== 'fake-b/plain') continue;
-    // pi binds the key at launch: the warm process on `fake-b` gives way to one that holds it for `fake-a`.
-    await client.call('threads.update', { threadId: id, model: 'fake-a/quick' });
-    const switched = fakeLog().split('\n').length;
-    expect((await (await startTurn(client, id, 'Again')).finished).status).toBe('done');
-    expect(fakeLog().split('\n').slice(switched).filter(line => line.startsWith('api-key '))).toEqual(['api-key test-key for fake-a']);
+  let last = '';
+  for (const [model, provider, id] of [['fake-a/smart', 'fake-a', 'smart'], ['fake-b/plain', 'fake-b', 'plain']] as const) {
+    const before = fakeLog().length;
+    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, model });
+    expect((await (await startTurn(client, threadId, 'Add a feature')).finished).status).toBe('done');
+    await settle(() => harness!.core.threads.require(threadId).titleSource === 'agent');
+    const lines = since(before);
+    // pi binds the key where the profile sends it, the profile's own model included, then moves to the thread's.
+    expect(launches(lines)).toHaveLength(1);
+    expect(launches(lines)[0]).toContain('model=fake-a/smart provider= ');
+    expect(lines.filter(line => line.startsWith('api-key '))).toEqual(['api-key test-key for fake-a']);
+    expect(lines).toContain(`model ${provider} ${id}`);
+    expect(titleArgs(lines)).not.toContain('--api-key');
+    last = threadId;
   }
-}, 20_000);
+  // A new process for a model that gained images starts as written too, and moves to the thread's model again.
+  process.env['PI_FAKE_PLAIN_IMAGES'] = '1';
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+  const reopened = fakeLog().length;
+  const image: ImageAttachment = { kind: 'image', name: 'dot.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+  const shown = client.next('turn.finished', turn => turn.threadId === last, 20_000);
+  await client.call('turns.start', { threadId: last, prompt: 'Read this', attachments: [image] });
+  expect(await shown).toMatchObject({ status: 'done', error: null });
+  const after = since(reopened);
+  expect(launches(after)).toHaveLength(1);
+  expect(after.slice(after.indexOf(launches(after)[0]!))).toContain('model fake-b plain');
+  // A warm switch keeps the process and the key where pi bound it.
+  await client.call('threads.update', { threadId: last, model: 'fake-a/quick' });
+  const switched = fakeLog().length;
+  expect((await (await startTurn(client, last, 'Again')).finished).status).toBe('done');
+  expect(launches(since(switched))).toEqual([]);
+  expect(since(switched)).toContain('model fake-a quick');
+}, 30_000);
 
-test('a profile --api-key goes only to a listed model on the provider the profile\'s --provider names', () => {
+test('a profile with --api-key keeps its launch whole; a title pins its provider only by the profile\'s own flags', () => {
   const entry = (provider: string, id: string): ModelInfo => ({ id: `${provider}/${id}`, name: `${provider.slice(0, 1).toUpperCase()}${provider.slice(1)} / ${id}` } as ModelInfo);
-  const catalog = [entry('openai', 'chat'), entry('openai', 'quick'), entry('anthropic', 'title'), entry('anthropic', 'openai/remote'), entry('gateway', 'other'), entry('gateway/team', 'base')];
-  const key = (args: string[], model: string, list: ModelInfo[] | null = catalog) => piProfileArgs([...args, '--api-key', 'k'], model, list).includes('k');
-  expect(key(['--provider', 'openai'], 'openai/quick')).toBe(true);
-  expect(key(['--provider', 'openai'], 'anthropic/title')).toBe(false);
-  // pi matches a provider without regard to case, and the last one wins.
-  expect(key(['--provider', 'OpenAI'], 'openai/quick')).toBe(true);
-  expect(key(['--provider', 'openai', '--provider', 'anthropic'], 'openai/quick')).toBe(false);
-  // A provider id may hold a `/`: `gateway/team` is not `gateway`.
-  expect(key(['--provider', 'gateway/team'], 'gateway/other')).toBe(false);
-  expect(key(['--provider', 'gateway/team'], 'gateway/team/base')).toBe(true);
-  // A `--model`, a scope or a bare key leave the provider to pi's own resolution: `openai/remote` is an Anthropic id
-  // here, and a saved `enabledModels` or default may pick any provider. The key stays out of a model Boite names.
-  expect(key(['--model', 'openai/remote'], 'openai/quick')).toBe(false);
-  expect(key(['--models', 'openai/*'], 'openai/quick')).toBe(false);
-  expect(key([], 'openai/quick')).toBe(false);
-  // No catalog lists the model: the key stays out.
-  expect(key(['--provider', 'openai'], 'openai/quick', null)).toBe(false);
+  const catalog = [entry('openai', 'chat'), entry('openai', 'quick'), entry('anthropic', 'title'), entry('anthropic', 'openai/remote')];
   // Boite's own flags name the model: the profile's go, or pi would read an unlisted model under its provider.
-  expect(piProfileArgs(['--provider', 'openai', '--model', 'openai/chat', '--verbose'], 'anthropic/title', null)).toEqual(['--verbose']);
-  // A launch left to pi keeps the profile whole, its key on whatever pi resolves.
-  expect(piProfileArgs(['--model', 'chat', '--api-key', 'k'], 'default', catalog)).toEqual(['--model', 'chat', '--api-key', 'k']);
+  expect(piProfileArgs(['--provider', 'openai', '--model', 'openai/chat', '--verbose'], 'anthropic/title')).toEqual(['--verbose']);
+  // A key: the profile as written, whatever the model, so pi binds it as the profile says.
+  expect(piProfileArgs(['--model', 'openai/chat', '--api-key', 'k'], 'anthropic/title')).toEqual(['--model', 'openai/chat', '--api-key', 'k']);
+  // A launch left to pi keeps the profile whole.
+  expect(piProfileArgs(['--model', 'chat'], 'default')).toEqual(['--model', 'chat']);
   // A title falls back to pi's own model unless the profile's last --provider, or a --model as listed, pins its provider.
   expect(piProfilePins(['--provider', 'anthropic', '--provider', 'openai'], 'openai/quick', catalog)).toBe(true);
   expect(piProfilePins(['--model', 'openai/chat', '--model', 'anthropic/title'], 'openai/quick', catalog)).toBe(false);
