@@ -76,16 +76,16 @@ export function imageInputModel(
   const saved = pi && probed === null ? readSavedCatalog(core, provider.id, accountId) : null;
   const listed = (choice: string) => (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
   const launch = piLaunchChoices(pi ? profileFor(provider)?.launch?.args ?? [] : []);
+  const account = pi ? core.accounts.list().find(entry => entry.id === accountId) : undefined;
+  // pi reads its settings and models where the environment the driver starts it with says. A relative configuration
+  // folder is another one in each folder pi starts in: the probe, run elsewhere, read another one's settings and
+  // models, so neither its model nor its catalog tells this folder's, for a named model, a resumed session or a new one.
+  const env = account ? piLaunchEnv(core.accounts.profileEnv(account, provider)) : null;
+  if (env && piAgentDirFollowsCwd(env)) return undefined;
   // A `--model` in the profile beats the session, as it does in pi.
   if (pi && wanted === AGENT_OWN_MODEL && cwd && !launch.model) {
     // A protected run starts a new pi session with `--no-approve` and settings of its own: pi alone knows that model.
     if (runsIn && core.sharedAccess.bound(runsIn) !== null) return undefined;
-    const account = core.accounts.list().find(entry => entry.id === accountId);
-    // pi reads its settings where the environment the driver starts it with says. A relative configuration folder is
-    // another one in each folder pi starts in: the probe, run elsewhere, read another one's settings and models, so
-    // neither its model nor its catalog tells this folder's, for a resumed session as for a new one.
-    const env = account ? piLaunchEnv(core.accounts.profileEnv(account, provider)) : null;
-    if (env && piAgentDirFollowsCwd(env)) return undefined;
     const resumed = account && id && sessionId ? sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId, cwd) : null;
     if (resumed) {
       // pi restores the session's own pair; a catalog entry spelled the same for another pair says nothing of it.

@@ -89,9 +89,15 @@ export function piPairOf(models: unknown, text: string): { provider: string; mod
  */
 export function piModelArgs(model: string | null, effort: string | null, catalog: readonly ModelInfo[] | null): string[] {
   if (model === null || model === AGENT_OWN_MODEL) return [];
+  const pair = piCatalogPair(model, catalog);
+  return [...(pair ? ['--provider', pair.provider] : []), '--model', model, ...(effort === null ? [] : ['--thinking', effort])];
+}
+
+/** The pair `catalog` names behind a Boite model id, the one image admission checked; undefined when it lists none. */
+export function piCatalogPair(model: string, catalog: readonly ModelInfo[] | null): { provider: string; modelId: string } | undefined {
   const listed = catalog?.find(entry => entry.id === model);
   const pair = listed && piModelOf(listed);
-  return [...(pair ? ['--provider', pair.provider] : []), '--model', model, ...(effort === null ? [] : ['--thinking', effort])];
+  return pair ? { provider: pair.provider, modelId: pair.id } : undefined;
 }
 
 /**

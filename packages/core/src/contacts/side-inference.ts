@@ -5,6 +5,7 @@ import { AGENT_ENV, TOOL_FREE_CONTEXT, type ThreadSummary } from '@boite/contrac
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, getDriver } from '../drivers/index.ts';
 import { newId } from '../ids.ts';
+import { piCatalogOf } from '../threads/selection.ts';
 
 export interface InferenceRoute {providerId: string; accountId: string; model: string | null; effort: string | null}
 function withoutBoiteCredentials(env: Record<string, string | undefined>): Record<string, string | undefined> {
@@ -41,6 +42,7 @@ export async function toolFreeInference(core: Core, route: InferenceRoute, promp
     const answer = await Promise.race([cancelled.promise, driver.sideQuestion({
       thread, provider, account, prompt, question: prompt, signal,
       accountEnv: withoutBoiteCredentials(core.accounts.accountEnv(account, provider, thread)) as Record<string, string>,
+      catalog: piCatalogOf(core, provider, account.id),
       spawnChild: (cmd, args, opts) => {
         signal.throwIfAborted();
         const child = core.procs.spawnChild(procId, cmd, args, {...opts, env: withoutBoiteCredentials(opts?.env ?? process.env)});

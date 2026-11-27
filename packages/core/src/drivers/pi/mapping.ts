@@ -136,7 +136,7 @@ export function sessionKey(ctx: SessionContext): string {
 }
 
 /** `PI_CODING_AGENT_DIR` with its `~` expanded, else pi's own folder in the home. */
-function configuredAgentDir(env: Record<string, string | undefined>): string {
+export function configuredAgentDir(env: Record<string, string | undefined>): string {
   const home = env['HOME'] || homedir();
   const configured = env['PI_CODING_AGENT_DIR'] || join(home, '.pi', 'agent');
   return configured === '~' ? home : configured.startsWith('~/') ? join(home, configured.slice(2)) : configured;

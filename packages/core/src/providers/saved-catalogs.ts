@@ -12,6 +12,7 @@ import { activeSubscriptionProxy, mergeProxyModels } from '../subscription-proxy
 
 import { antigravityCatalog } from '../drivers/acp/antigravity-catalog.ts';
 import { isAntigravity } from '../drivers/antigravity.ts';
+import { agentEnv as piLaunchEnv, configuredAgentDir } from '../drivers/pi/mapping.ts';
 
 const PREFIX = 'model-catalog:';
 
@@ -31,8 +32,10 @@ const keyOf = (providerId: ProviderId, accountId: AccountId): string => `${PREFI
 
 /**
  * What an agent's list depends on: its descriptor, the program that answers,
- * the gateway it goes through and the login. Hashed, since the gateway
- * settings name an address. Null when the provider or the account is gone.
+ * the gateway it goes through, the login and, for pi, the configuration folder
+ * the driver starts it on (the core's own environment may name it, so a restart
+ * can change it). Hashed, since the gateway settings name an address. Null when
+ * the provider or the account is gone.
  */
 function contextOf(core: Core, providerId: ProviderId, accountId: AccountId): string | null {
   const provider = core.providers.get(providerId);
@@ -40,8 +43,9 @@ function contextOf(core: Core, providerId: ProviderId, accountId: AccountId): st
   if (provider === undefined || account === null || account.providerId !== providerId) return null;
   const executable = core.providers.list().loaded.find(summary => summary.id === providerId)?.executable ?? null;
   const login = { status: account.status, identity: account.identity, isolationDir: account.isolationDir };
+  const piFolder = provider.protocol === 'pi' ? configuredAgentDir(piLaunchEnv(core.accounts.profileEnv(account, provider))) : null;
   return createHash('sha256')
-    .update(JSON.stringify([provider, executable, activeSubscriptionProxy(core, provider), login]))
+    .update(JSON.stringify([provider, executable, activeSubscriptionProxy(core, provider), login, piFolder]))
     .digest('base64url');
 }
 

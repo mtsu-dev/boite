@@ -436,9 +436,11 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   provider of the longest known `provider/` prefix (a provider id may hold a
   `/`; when two pairs spell one `provider/id`, the catalog keeps that longest
   provider's, the one pi reads the text as), else a bare id on one provider; a partial or ambiguous match is pi's pick, and a `:suffix` is
-  dropped only when the whole text matches nothing. A pattern that would name
-  another model if the dropped shorter pair were there (`team/base` beside
-  `gateway/team` + `base`) is pi's pick too. A leading BOM and an empty
+  dropped only when the whole text matches nothing. When the catalog dropped a
+  shorter pair (a `gateway` + `team/base` behind `gateway/team` + `base`), whose
+  name it no longer holds, a pattern resolves only when its whole text names
+  the same model with or without that pair; anything else is pi's pick. With a
+  relative configuration folder, a named model is left to pi as well. A leading BOM and an empty
   `enabledModels` count as pi counts them. A protected run starts a new pi
   session with `--no-approve` and settings of its own, so pi decides there,
   whatever the thread's last session was on. When
@@ -1223,7 +1225,10 @@ a turn's own session, answers instead and starts nothing. While nothing has
 been read yet, every such probe gets the saved list, a second one while the
 first refresh still reads and one after it failed included, held for model
 checks the same way. Any change to the account (`accounts.updated`, a sign-in under
-the same identity included) and its removal delete its saved list.
+the same identity included) and its removal delete its saved list. A pi list
+also holds only for the configuration folder the driver starts pi on, which the
+core's own environment may name: after a restart on another one it waits for a
+probe.
 A model picked from a list the core gave on this connection lands at once, and
 a draft created on it is not read again, except an ACP effort that list carries
 no scale for. A list restored from browser storage, or one the core has not
@@ -1809,12 +1814,14 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   as `--model` alone. The catalog is the one image admission reads: the probe,
   the list held while it refreshes, else the list saved before a restart. With a
   relative configuration folder the probe read another folder's providers, so
-  the model goes as `--model` alone there too. Titles and `/btw` launch the same
-  way.
+  the model goes as `--model` alone there too. Titles, `/btw` and a contact
+  review's inference launch the same way.
 - A warm process follows a change of model or level with `set_model` and
-  `set_thinking_level`. `set_model` takes the pair pi's own
-  `get_available_models` spells the thread's `provider/id` with, the longest
-  provider among them as at a cold start, since a provider id may hold a `/`. There is no call that goes back to pi's own model or to
+  `set_thinking_level`. `set_model` takes the pair the catalog names, the one
+  image admission checked, else the pair pi's own `get_available_models` spells
+  the thread's `provider/id` with, the longest provider among them as at a cold
+  start, since a provider id may hold a `/`. A refresh that puts another pair
+  behind the same id moves the warm process to it the same way. There is no call that goes back to pi's own model or to
   no level, so either change starts a new process.
 - Pi can refresh prompt caches during a turn. Refreshes between turns require
   an explicit `"cacheWarming": "idle"` in the selected Pi profile's

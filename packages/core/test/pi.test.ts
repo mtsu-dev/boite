@@ -8,6 +8,8 @@ import type { CoreClient } from '../src/client.ts';
 import type { SharedAccess } from '../src/contacts/access-policy.ts';
 import { forgetProbes, getDriver, probedModelsOf } from '../src/drivers/index.ts';
 import { setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
+import { folderStartModel } from '../src/drivers/pi/start-model.ts';
+import { readSavedCatalog } from '../src/providers/saved-catalogs.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
 import { USER_ORIGIN } from '../src/threads/turn-origin.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
@@ -197,6 +199,12 @@ test('pi default reads the folder as the launch decides: its approval flags, its
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['team/base'] }));
   expect(await launch([])).toBe(true);
   delete process.env['PI_FAKE_SHADOW'];
+  // Nor does the catalog hold that dropped pair's name, which pi may match in part before it drops a `:suffix`:
+  // `vision:high` is `other/vision` only if no name holds that text.
+  const named = [{ id: 'gateway/team/base', name: 'Gateway/team / Base' }, { id: 'other/vision', name: 'Other / Vision' }];
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['vision:high'] }));
+  expect(folderStartModel(agentDir, cwd, named, { scope: null, trust: true })).toBeNull();
+  expect(folderStartModel(agentDir, cwd, named.slice(1), { scope: null, trust: true })).toBe('other/vision');
   // A protected run starts pi on settings of its own, so pi decides there.
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
   expect(await launch([])).toBe(false);
@@ -378,6 +386,7 @@ afterEach(async () => {
   delete process.env['PI_FAKE_VIRTUAL'];
   delete process.env['PI_FAKE_LITERAL'];
   delete process.env['PI_FAKE_SHADOW'];
+  delete process.env['PI_FAKE_NO_TEAM'];
   if (open !== null) await open.stop();
 });
 
@@ -874,6 +883,12 @@ describe('pi driver', () => {
       return argvLines().find(entry => entry.startsWith(`argv sessionId=${harness!.core.threads.require(id).sessionId} `)) ?? '';
     };
     expect(await onAccount('fake-a/team/base', true)).toContain('model=fake-a/team/base provider=fake-a/team thinking=high');
+    // That list holds for the configuration folder pi read it in: another one, which the core's own environment may
+    // name after a restart, sets it aside until a probe reads that folder.
+    expect(readSavedCatalog(harness!.core, 'pi-fake', accountId)).not.toBeNull();
+    process.env['PI_CODING_AGENT_DIR'] = join(harness!.dataDir, 'another-pi');
+    expect(readSavedCatalog(harness!.core, 'pi-fake', accountId)).toBeNull();
+    delete process.env['PI_CODING_AGENT_DIR'];
     // A relative configuration folder: the probe read another folder's providers, so the model goes as its text.
     const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
     const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { env?: Record<string, string> }> };
@@ -1406,6 +1421,13 @@ describe('pi driver', () => {
     await runTurn(client, threadId, 'fourth');
     expect(argvLines().filter((line) => !line.includes('sessionId= '))).toHaveLength(1);
     expect(fakeLog()).toContain('model fake-a/team base\n');
+    // A refresh that puts another pair behind the same id (`fake-a/team` gone, so `team/base` on `fake-a`) moves the
+    // warm process to the pair image admission now checks.
+    process.env['PI_FAKE_NO_TEAM'] = '1';
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    await runTurn(client, threadId, 'fifth');
+    expect(argvLines().filter((line) => !line.includes('sessionId= '))).toHaveLength(1);
+    expect(fakeLog()).toContain('model fake-a team/base\n');
   });
 
   test('core shutdown during a turn pi never settles ends it before the journal closes', async () => {

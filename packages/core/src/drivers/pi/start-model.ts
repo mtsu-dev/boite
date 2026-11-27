@@ -95,14 +95,15 @@ export function folderStartModel(agentDir: string, cwd: string, catalog: readonl
   const patterns = launch.scope ?? value('enabledModels');
   if (Array.isArray(patterns) && patterns.length > 0) {
     // The catalog keeps one pair per spelled id, the longest provider's: behind `gateway/team` + `base` there may have
-    // been a `gateway` + `team/base` it dropped, which pi still matches a scope against. A pattern resolves here only
-    // when it names the same model with or without such a pair.
+    // been a `gateway` + `team/base` it dropped, which pi still matches a scope against, by its id or by a name the
+    // catalog no longer holds. A pattern resolves here only when its whole text names the same model with or without
+    // such a pair: a partial match, or a `:suffix` dropped after one, may land on that unknown name in pi.
     const shadowed = entries.flatMap(entry => [...entry.provider.matchAll(/\//g)].map(({ index }) => ({
       full: '', provider: entry.provider.slice(0, index), id: `${entry.provider.slice(index + 1)}/${entry.id}`, name: '',
     }))).filter(pair => !entries.some(entry => entry.provider === pair.provider && entry.id === pair.id));
     const resolve = (pattern: string) => {
       const kept = scopedModel(pattern, entries);
-      return shadowed.length === 0 || scopedModel(pattern, [...entries, ...shadowed]) === kept ? kept : null;
+      return shadowed.length === 0 || (kept !== null && reference(pattern.trim(), [...entries, ...shadowed]) === kept) ? kept : null;
     };
     const scope = patterns.map(pattern => typeof pattern === 'string' ? resolve(pattern) : null);
     if (scope.includes(null)) return null;

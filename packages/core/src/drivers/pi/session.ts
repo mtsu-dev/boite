@@ -24,7 +24,7 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX, UI_DIALOGS, UI_NOTICES } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiUsage } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
-import { piModelArgs, piPairOf } from './models.ts';
+import { piCatalogPair, piModelArgs, piPairOf } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
 import { answerText } from '../../attachments.ts';
@@ -109,6 +109,8 @@ export class PiSession {
   #killTree: (() => void) | null = null;
   /** The model and the thinking level the process is on, so a warm turn only sends a change. */
   #model: string | null = null;
+  /** The pair pi runs `#model` as when the catalog named it, as `provider` and `modelId` in JSON; null when pi resolved the text. */
+  #pair: string | null = null;
   #effort: string | null = null;
   #protection: ReturnType<typeof protectedPi> = null;
 
@@ -385,12 +387,16 @@ export class PiSession {
     const model = ctx.thread.model;
     if (model === null || model === AGENT_OWN_MODEL) return;
     let changed = false;
-    if (model !== this.#model) {
-      // pi's own listing names the pair: a provider id may hold a `/`, so the first one is not the split.
-      const pair = piPairOf(dataOf(await peer.command('get_available_models'))['models'], model);
+    // The catalog's pair is the one image admission checked. A refresh can put another pair behind the same id, so
+    // the process follows it even when the id did not change.
+    const named = piCatalogPair(model, this.catalog(ctx));
+    if (model !== this.#model || (named !== undefined && JSON.stringify(named) !== this.#pair)) {
+      // Else pi's own listing names the pair: a provider id may hold a `/`, so the first one is not the split.
+      const pair = named ?? piPairOf(dataOf(await peer.command('get_available_models'))['models'], model);
       if (pair === undefined) throw new Error(`pi cannot switch to the model ${model}: its id is not <provider>/<id>`);
       await peer.command('set_model', pair);
       this.#model = model;
+      this.#pair = named === undefined ? null : JSON.stringify(named);
       changed = true;
     }
     const effort = ctx.thread.effort;
@@ -529,6 +535,8 @@ export class PiSession {
     this.#child = child;
     this.#killTree = ctx.killTree ?? null;
     this.#model = ctx.thread.model;
+    const launched = ctx.thread.model === null ? undefined : piCatalogPair(ctx.thread.model, this.catalog(ctx));
+    this.#pair = launched === undefined ? null : JSON.stringify(launched);
     this.#effort = ctx.thread.effort;
     const peer = new PiPeer(child, {
       event: (message) => {
