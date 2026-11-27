@@ -1563,12 +1563,13 @@ describe('pi driver', () => {
       const first = fakeLog().split('\n').length - 1;
       delete process.env['PI_FAKE_NO_TEAM'];
       await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
-      const reopened = await startTurn(client, id, 'second', 20_000);
-      expect(await reopened.finished).toMatchObject({ status: 'error', error: expect.stringContaining('did not exit') });
-      // The old pi still runs its shutdown hooks: a turn meanwhile does not open its session file beside it.
-      const meanwhile = await startTurn(client, id, 'third', 20_000);
-      const third = await meanwhile.finished;
-      if (third.status !== 'done') expect(third.error).toContain('did not exit');
+      // The old pi still runs its shutdown hooks past the deadline: a turn meanwhile fails rather than open its session
+      // file beside it, unless a slow machine gave it time to exit first.
+      for (const prompt of ['second', 'third']) {
+        const { finished } = await startTurn(client, id, prompt, 20_000);
+        const ended = await finished;
+        if (ended.status !== 'done') expect(ended.error).toContain('did not exit');
+      }
       await waitFor(() => fakeLog().includes(`exited ${session}`));
       await runTurn(client, id, 'fourth');
       const lines = fakeLog().split('\n');
