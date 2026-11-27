@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { BookOpen, Check, Cloud, Database, ExternalLink, FileText, Folder, GitBranch, ListChecks, LoaderCircle, Pencil, Play, Plug, Plus, Telescope, Trash2, TriangleAlert } from '@lucide/svelte';
+  import { BookOpen, Bug, Check, Cloud, Database, ExternalLink, FileText, Folder, GitBranch, ListChecks, LoaderCircle, Pencil, Play, Plug, Plus, Telescope, Trash2, TriangleAlert } from '@lucide/svelte';
   import { SvelteMap } from 'svelte/reactivity';
-  import { RpcErrorCode, type McpPreset, type McpProbeResult, type McpServer, type McpServerInput, type RpcResult } from '@boite/contracts';
+  import { mcpServerSlug, RpcErrorCode, type McpPreset, type McpProbeResult, type McpServer, type McpServerInput, type RpcResult } from '@boite/contracts';
   import { RpcFailure } from '../lib/client';
   import { confirm } from '../lib/confirm.svelte';
   import { errorText } from '../lib/errors';
@@ -24,10 +24,10 @@
   const t = strings.mcp;
   let blocked = $derived(store.policy?.values.mcp === false);
   let encrypted = $derived(catalog?.encrypted === true);
-  const icons: Record<string, typeof Plug> = {
-    filesystem: Folder, github: GitBranch, context7: BookOpen, postgresql: Database,
-    playwright: Telescope, fetch: Cloud, linear: ListChecks, notion: FileText, sentry: Telescope,
-  };
+  const icons = new Map<string, typeof Plug>([
+    ['filesystem', Folder], ['github', GitBranch], ['context7', BookOpen], ['postgresql', Database],
+    ['playwright', Telescope], ['fetch', Cloud], ['linear', ListChecks], ['notion', FileText], ['sentry', Bug],
+  ]);
   let projects = $derived(store.projects.filter(project => project.kind !== 'drafts' && !project.archived));
 
   $effect(() => {
@@ -104,7 +104,7 @@
   function defaultPresetName(preset: McpPreset): string {
     const servers = catalog?.servers ?? [];
     const taken = (candidate: string): boolean => {
-      const slug = candidate.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const slug = mcpServerSlug(candidate);
       return servers.some(server => server.id === slug || server.name.toLowerCase() === candidate.toLowerCase());
     };
     if (!taken(preset.name)) return preset.name;
@@ -140,7 +140,7 @@
         {/if}
         {#each catalog.servers as server (server.id)}
           {@const result = tests.get(server.id)}
-          {@const ServerIcon = icons[server.id] ?? icons[server.id.replace(/-\d+$/, '')] ?? Plug}
+          {@const ServerIcon = icons.get(server.id) ?? icons.get(server.id.replace(/-\d+$/, '')) ?? Plug}
           <div class="server">
             <div class="server-head">
               <div class="server-icon"><ServerIcon size={17} strokeWidth={1.75} /></div>
@@ -188,7 +188,7 @@
     <SettingsSection title={t.catalog} testid="mcp-catalog">
       <div class="catalog">
         {#each catalog.presets as preset (preset.id)}
-          {@const Icon = icons[preset.id] ?? Plug}
+          {@const Icon = icons.get(preset.id) ?? Plug}
           {@const description = t.descriptions[preset.id as keyof typeof t.descriptions] ?? preset.description}
           <div class="preset">
             <Icon size={18} strokeWidth={1.75} />
@@ -209,6 +209,9 @@
 <style>
   .mcp-page { flex: 1 1 auto; overflow: auto; align-content: start; padding: var(--space-4); }
   .mcp-page.phone { overflow: visible; padding-top: var(--space-2); }
+  @media (min-width: 721px) {
+    .mcp-page:not(.phone) { padding: 20px max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) var(--space-8); }
+  }
   .mcp-page, .layout { display: grid; gap: var(--space-4); min-width: 0; }
   .layout:has(.editor) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
   .editor { min-width: 0; }
@@ -227,7 +230,7 @@
   .server-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .metadata { display: flex; gap: var(--space-2); align-items: center; color: var(--color-subtle); font-size: var(--text-xs); }
   .metadata > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .transport { padding: 1px var(--space-1); border-radius: var(--radius-sm); background: var(--color-surface-2); }
+  .transport { padding: 1px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-2); }
   .server-actions { display: flex; gap: var(--space-1); flex-wrap: wrap; }
   .remove { color: var(--color-subtle); }
   .remove:hover, .failure { color: var(--color-danger); }

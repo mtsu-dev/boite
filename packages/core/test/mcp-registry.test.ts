@@ -238,7 +238,7 @@ test('managed stdio probes and sessions redact reflected secrets and stop their 
   expect(JSON.stringify(harness.core.journal.getSetting(manifestKey))).not.toContain('fixture-value');
   const redact = harness.core.mcp.resolve(null).get('boite-managed-stdio-fixture')!.redact;
   const redactedMessage = redactMcpMessage({
-    jsonrpc: '2.0', id: 1,
+    jsonrpc: '2.0', id: 1, [MOCK_SECRET]: 'top-level-leak',
     result: { tools: [{ name: 'probe', inputSchema: { type: 'object', properties: { [MOCK_SECRET]: { type: 'string' } } } }], [MOCK_SECRET]: 'leaked' },
   }, redact);
   expect(JSON.stringify(redactedMessage)).toContain('"result":');
@@ -363,14 +363,14 @@ test('managed stdio reuses its cached manifest across working directories and sp
 test('corrupt mcp-secrets.json skips managed servers on session start without breaking user stdio servers', async () => {
   const client = await harness.connect();
   const { threadId } = await echoThread(harness, client);
-  await client.call('mcp.save', { ...stdio('Secret server'), secretEnv: { TOKEN: MOCK_SECRET } });
+  const secretServer = await client.call('mcp.save', { ...stdio('Secret server'), secretEnv: { TOKEN: MOCK_SECRET } });
   const secretsPath = join(harness.dataDir, 'mcp-secrets.json');
   const thread = harness.core.threads.require(threadId);
   const provider = harness.core.providers.get(thread.providerId)!;
   const account = harness.core.accounts.list().find(item => item.id === thread.accountId)!;
   for (const broken of ['null', '{not-json']) {
     writeFileSync(secretsPath, broken, { mode: 0o600 });
-    expect(() => harness.core.mcp.resolve(null)).toThrow('Cannot read the MCP credentials file');
+    expect(() => harness.core.mcp.resolve(null)).toThrow(`Cannot read MCP credentials file ${secretsPath}`);
     const ctx = harness.core.threads.contexts.makeSessionContext(thread, provider, account);
     const userStdio = new Map([['user-tool', { command: process.execPath, args: [FIXTURE], env: {} }]]);
     const active = ctx.lazyMcp!(process.env, userStdio);
@@ -378,6 +378,8 @@ test('corrupt mcp-secrets.json skips managed servers on session start without br
     expect(Object.keys(active!.entries)).toEqual(['user-tool']);
     active!.release();
   }
+  expect(await client.call('mcp.remove', { id: secretServer.id })).toEqual({ removed: true });
+  expect((await client.call('mcp.list', {})).servers).toEqual([]);
 });
 
 test('global stdio probe runs outside dataDir, surfaces redacted stderr, and ignores short secrets in redact', async () => {
@@ -387,12 +389,14 @@ test('global stdio probe runs outside dataDir, surfaces redacted stderr, and ign
   expect(redact('{"id":1,"value":"long-secret-value"}')).toBe('{"id":1,"value":"[redacted]"}');
   const failing = await client.call('mcp.save', {
     ...GLOBAL, projectIds: [], name: 'Failing probe', transport: 'stdio',
-    command: process.execPath, args: ['-e', 'console.error("stderr-diag " + process.env.SECRET_DIAG + " cwd=" + process.cwd()); process.exit(1)'],
+    command: process.execPath,
+    args: ['-e', 'const cwd = " cwd=" + process.cwd(); console.error("x".repeat(40) + " " + process.env.SECRET_DIAG + " " + "y".repeat(Math.max(10, 488 - cwd.length)) + cwd); process.exit(1)'],
     secretEnv: { SECRET_DIAG: 'secret-stderr-token' },
   });
   const result = await client.call('mcp.test', { id: failing.id });
   expect(result.ok).toBe(false);
-  expect(result.error).toContain('stderr-diag [redacted]');
+  expect(result.error).toContain('[redacted]');
   expect(result.error).not.toContain('secret-stderr-token');
+  expect(result.error).not.toContain('stderr-token');
   expect(result.error).not.toContain(harness.dataDir);
 });

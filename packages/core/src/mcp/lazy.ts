@@ -314,7 +314,7 @@ export class LazyMcp {
     return count;
   }
 
-  async http(request: Request, path: string): Promise<Response> {
+  async http(request: Request, path: string, onAuthenticated?: () => void): Promise<Response> {
     const token = bearer(request.headers.get('authorization'));
     const threadId = token === null ? null : this.#core.agents.authenticate(token);
     if (threadId === null) return new Response('a lazy MCP server answers only the agent token of its thread', { status: 401 });
@@ -324,10 +324,14 @@ export class LazyMcp {
     let name: string;
     try { name = decodeURIComponent(path.slice(slash + 1)); } catch { return new Response('the server name is not URL-encoded', { status: 400 }); }
     const proxy = registration.proxies.get(name);
-    if (proxy !== undefined) return proxy.handle(request);
+    if (proxy !== undefined) {
+      onAuthenticated?.();
+      return proxy.handle(request);
+    }
     const managed = registration.managed.get(name);
     const server = managed && 'command' in managed ? managed : registration.servers.get(name);
     if (server === undefined) return new Response(`no MCP server named ${name} in this session`, { status: 404 });
+    onAuthenticated?.();
     if (request.method === 'POST') return this.#post(request, registration, name, server, managed);
     const session = this.#session(request, registration, name);
     if (request.method === 'GET') {

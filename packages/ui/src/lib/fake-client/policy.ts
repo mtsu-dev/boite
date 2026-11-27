@@ -20,6 +20,7 @@ const MANAGED_POLICY: AdminPolicy = {
   gateway: false,
   quotaReads: false,
   plugins: { install: false, recommended: false },
+  mcp: false,
   issueReports: false,
   dictation: 'local',
   agentBrowser: { searchUrl: 'https://search.example.com/?q={query}' },

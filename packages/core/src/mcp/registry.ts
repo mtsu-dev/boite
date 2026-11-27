@@ -101,7 +101,13 @@ export class McpRegistry {
   remove(id: string): { removed: true } {
     const current = this.get(id);
     const hasSecrets = current.secretEnvKeys.length > 0 || current.secretHeaderKeys.length > 0;
-    const previous = hasSecrets ? this.#readSecrets() : undefined;
+    let previous: StoredSecrets | undefined;
+    if (hasSecrets) {
+      try { previous = this.#readSecrets(); }
+      catch (error) {
+        this.core.log('warn', `mcp: removing ${id} without updating unreadable credentials file: ${error instanceof Error ? error.message : String(error)}`, { source: 'mcp' });
+      }
+    }
     const updated = previous ? { ...previous } : undefined;
     if (updated) delete updated[id];
     this.#write(this.#servers().filter(server => server.id !== id), id, previous, updated);
@@ -242,7 +248,8 @@ export class McpRegistry {
       return parsed;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-      throw new Error('Cannot read the MCP credentials file');
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`Cannot read MCP credentials file ${path}: ${detail}. Expected a JSON object of server credentials; fix or remove the file to reset stored MCP credentials.`, { cause: error });
     }
   }
 

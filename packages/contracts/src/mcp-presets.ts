@@ -9,9 +9,9 @@ export const MCP_PRESETS: McpPreset[] = [
   },
   {
     id: 'github', name: 'GitHub', description: 'Work with issues, pull requests, and repositories.',
-    docsUrl: 'https://www.npmjs.com/package/@modelcontextprotocol/server-github',
-    transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'],
-    fields: [{ target: 'env', key: 'GITHUB_PERSONAL_ACCESS_TOKEN', label: 'Personal access token', required: true }],
+    docsUrl: 'https://github.com/github/github-mcp-server',
+    transport: 'http', url: 'https://api.githubcopilot.com/mcp/',
+    fields: [{ target: 'header', key: 'Authorization', label: 'Authorization header (Bearer token)', required: true }],
   },
   {
     id: 'context7', name: 'Context7', description: 'Look up current library documentation and examples.',

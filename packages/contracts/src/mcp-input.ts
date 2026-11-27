@@ -97,12 +97,16 @@ function httpUrl(value: unknown): string {
   return url.href;
 }
 
+export function mcpServerSlug(name: string): string {
+  return name.trim().normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
 export function normalizeMcpServer(raw: unknown, servers: readonly McpServer[], hasProject: (id: string) => boolean, envKey: (key: string) => string): McpServer {
   const p = record(raw, 'server');
   const previous = p.id === undefined ? undefined : servers.find(server => server.id === p.id);
   if (p.id !== undefined && previous === undefined) throw new McpInputError('id', 'an installed MCP server id');
   const name = valueText(p.name, 'name', 80).trim().normalize('NFC');
-  const slug = name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const slug = mcpServerSlug(name);
   if (!slug) throw new McpInputError('name', 'a name containing a Latin letter or digit');
   const id = previous?.id ?? slug;
   if (servers.some(server => server.id !== previous?.id && (server.id === id || server.name.toLowerCase() === name.toLowerCase()))) {

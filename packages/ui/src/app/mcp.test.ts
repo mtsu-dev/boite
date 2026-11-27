@@ -24,7 +24,7 @@ test('MCP settings follow fake-core changes, render test tools and keep saved cr
   await waitFor(() => text(installed).includes('GitHub'));
   expect(document.querySelector(form)).toBeNull();
   const { servers } = await store.client!.call('mcp.list', {});
-  expect(servers[0]).toMatchObject({ id: 'github', secretEnvKeys: ['GITHUB_PERSONAL_ACCESS_TOKEN'], env: {} });
+  expect(servers[0]).toMatchObject({ id: 'github', transport: 'http', secretHeaderKeys: ['Authorization'], headers: {} });
   expect(JSON.stringify(servers)).not.toContain(secret.value);
   click('[aria-label="Test GitHub"]');
   await waitFor(() => text('[data-testid=mcp-probe]').includes('example_tool'));
@@ -37,7 +37,7 @@ test('MCP settings follow fake-core changes, render test tools and keep saved cr
   await waitFor(() => document.querySelector<HTMLInputElement>(installed + ' [role=switch]')?.checked === false);
   click(form + ' button[type=submit]');
   await waitFor(() => !document.querySelector(form));
-  expect((await store.client!.call('mcp.list', {})).servers[0]).toMatchObject({ enabled: false, secretEnvKeys: ['GITHUB_PERSONAL_ACCESS_TOKEN'] });
+  expect((await store.client!.call('mcp.list', {})).servers[0]).toMatchObject({ enabled: false, secretHeaderKeys: ['Authorization'] });
   [...document.querySelectorAll<HTMLButtonElement>(installed + ' .server-actions button')]
     .find(button => button.textContent?.includes('Remove'))!.click();
   await waitFor(() => !!document.querySelector('[data-testid=confirm-dialog]'));
@@ -54,6 +54,7 @@ test('MCP settings warn when changing origin and handle a server named construct
     url: 'https://one.example.test/mcp', secretHeaders: { Authorization: 'fixture-http-credential' },
   });
   await waitFor(() => text(installed).includes('constructor'));
+  expect(document.querySelector(installed + ' .server-icon svg')).not.toBeNull();
   const testButton = document.querySelector<HTMLButtonElement>('[aria-label="Test constructor"]')!;
   expect(testButton.disabled).toBe(false);
   testButton.click();

@@ -646,14 +646,15 @@ export class TurnContexts {
       // The SDK drivers hand a whole environment here, so the agent's own
       // variables are merged onto theirs rather than added to `process.env`.
       const scope = execution ? this.#core.procs.protection.control(threadId) : threadId;
+      const trackedSession = session !== undefined && opts?.agentRoot !== false;
       const child = this.#core.procs.spawnChild(scope, cmd, args, {
         ...opts,
         env: agentEnvOf(this.#core, threadId, opts?.env ?? process.env),
-        // The session's own process, not a shared execution's: the keeper holds it when it is on.
-        ...(session !== undefined && !execution ? { keep: { turnId: session.turnId ?? null, driver: provider.protocol ?? provider.id } } : {}),
+        // The session's own process, not a shared execution's or a one-shot probe: the keeper holds it when it is on.
+        ...(trackedSession && !execution ? { keep: { turnId: session.turnId ?? null, driver: provider.protocol ?? provider.id } } : {}),
       });
       // A diagnostic storage failure must not break a spawn.
-      try { if (session !== undefined) watchProviderProcess(this.#core, child, cmd, { threadId, providerId: provider.id, ...session }); } catch { /* the child runs unwatched */ }
+      try { if (trackedSession) watchProviderProcess(this.#core, child, cmd, { threadId, providerId: provider.id, ...session }); } catch { /* the child runs unwatched */ }
       const installs = this.#core.providers.installs;
       installs.acquire(provider.id);
       let released = false;

@@ -51,7 +51,8 @@ export function redactMcpMessage<T>(message: T, redact: (text: string) => string
   if (Array.isArray(message)) return message.map(item => redactMcpMessage(item, redact)) as T;
   if (message === null || typeof message !== 'object') return redactMcp(message, redact);
   return Object.fromEntries(Object.entries(message).map(([key, value]) => [
-    key, key === 'jsonrpc' || key === 'id' || key === 'method' ? value : redactMcp(value, redact),
+    MCP_PROTOCOL_KEYS.has(key) ? key : redact(key),
+    key === 'jsonrpc' || key === 'id' || key === 'method' ? value : redactMcp(value, redact),
   ])) as T;
 }
 

@@ -14,7 +14,9 @@ server once and Boite makes it available to supported agents on that machine.
 
 Choose **Add custom server** to supply your own command and arguments
 (`stdio`) or an HTTP endpoint (`HTTP`). Enter one command argument per line.
-Turn on **Secret** for each credential. Boite keeps saved credentials out of
+Turn on **Secret** for each credential. Do not place tokens in the server URL
+or command arguments: only **Secret** environment variables and headers are
+kept out of server definitions and masked. Boite keeps saved credentials out of
 your conversations in a local owner-only file in its data folder on that
 machine (protected by your operating system account permissions, not a separate
 passphrase). When you edit a saved secret, leave the field blank to keep it.

@@ -49,7 +49,7 @@ async function handshake(send: Send): Promise<Probed> {
   };
 }
 
-async function probeStdio(core: Core, server: StdioServer, cwd: string, signal: AbortSignal): Promise<Probed> {
+async function probeStdio(core: Core, server: ManagedServer & StdioServer, cwd: string, signal: AbortSignal): Promise<Probed> {
   signal.throwIfAborted();
   const { command, args, env } = managedStdioLaunch(server);
   const child = core.procs.spawnChild('mcp-probe:' + crypto.randomUUID(), command, args, {
@@ -77,7 +77,7 @@ async function probeStdio(core: Core, server: StdioServer, cwd: string, signal: 
   child.stderr.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-STDERR_TAIL); });
   child.once('error', (error: Error) => fail(error));
   child.once('exit', () => {
-    const detail = stderr.trim().slice(-500);
+    const detail = server.redact(stderr).trim().slice(-500);
     fail(new Error(detail ? `The MCP server process exited before answering: ${detail}` : 'The MCP server process exited before answering'));
   });
   child.stdin.on('error', (error: Error) => fail(error));
@@ -164,6 +164,8 @@ export async function probeMcp(core: Core, definition: McpServer, revoked: Abort
       : deadline.aborted ? 'The MCP server did not answer before the test deadline' : messageOf(error);
     return { ok: false, error: (server?.redact(reason) ?? reason).slice(0, 700), tools: [], latencyMs: Math.round(performance.now() - started) };
   } finally {
-    if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
+    if (scratch !== undefined) {
+      try { rmSync(scratch, { recursive: true, force: true }); } catch { /* Best-effort cleanup on busy handles. */ }
+    }
   }
 }

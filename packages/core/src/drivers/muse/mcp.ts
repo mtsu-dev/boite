@@ -67,6 +67,7 @@ export function probeMuseVersion(ctx: SessionContext, executable: string): Promi
     const child = ctx.spawnChild(executable, ['--version'], {
       cwd: ctx.thread.cwd,
       env: agentEnv(ctx.provider, ctx.accountEnv),
+      agentRoot: false,
     });
     const timer = setTimeout(() => {
       if (ctx.stopChild) void ctx.stopChild(child);

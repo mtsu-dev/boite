@@ -128,7 +128,7 @@ export class MuseSession {
   ) { }
 
   usable(key: string, warmMs: number): boolean {
-    return !this.#ended && !this.#closing && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
+    return !this.#ended && !this.#closing && !this.#retryMcp && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
   }
 
   setViewed(viewed: boolean): void {
@@ -144,7 +144,8 @@ export class MuseSession {
     catch (error) { this.#drop(); throw error; }
     finally {
       ctx.finishStartup?.();
-      if (!this.#ended && !this.busy() && !this.#retention.viewed) this.#armIdle();
+      if (!forTurn && this.#retryMcp && !this.busy() && !this.#ended) this.#drop();
+      else if (!this.#ended && !this.busy() && !this.#retention.viewed) this.#armIdle();
     }
   }
 

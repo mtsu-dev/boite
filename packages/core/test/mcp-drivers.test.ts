@@ -2,8 +2,9 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { AGENT_ENV, TOOL_FREE_CONTEXT } from '@boite/contracts';
 import { sessionMcp } from '../src/drivers/mcp.ts';
+import { EventEmitter } from 'node:events';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { museMcpConfig, museMcpSupport } from '../src/drivers/muse/mcp.ts';
+import { museMcpConfig, museMcpSupport, probeMuseVersion } from '../src/drivers/muse/mcp.ts';
 import type { SessionContext } from '../src/drivers/types.ts';
 import { withOpenCodeMcp } from '../src/providers/opencode.ts';
 import { startTestCore, startTurn, testProject, type TestCore } from './harness.ts';
@@ -117,4 +118,21 @@ test('Muse detects MCP config support via --version when no .muse-version file e
   expect(calls).toBe(1);
   expect(await museMcpSupport(legacyBin, async () => 'muse 1.3.0')).toBe(false);
   expect(await museMcpSupport(legacyBin, async () => 'muse 1.4.14')).toBe(false);
+  let spawnOpts: Record<string, unknown> | undefined;
+  const version = await probeMuseVersion({
+    thread: { cwd: harness.dataDir },
+    provider: { id: 'muse', auth: { kind: 'none' }, env: {}, profiles: {} },
+    accountEnv: {},
+    spawnChild: (_cmd: string, _args: string[], opts: Record<string, unknown>) => {
+      spawnOpts = opts;
+      const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), kill() {} });
+      queueMicrotask(() => {
+        child.stdout.emit('data', Buffer.from('muse 1.4.14\n'));
+        child.emit('close', 0);
+      });
+      return child;
+    },
+  } as unknown as SessionContext, modernBin);
+  expect(version).toBe('muse 1.4.14');
+  expect(spawnOpts?.agentRoot).toBe(false);
 });

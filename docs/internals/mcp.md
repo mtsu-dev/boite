@@ -24,40 +24,48 @@ and stay bound to the saved URL origin. Changing scheme, host or port discards
 the previous headers unless the save supplies replacement values.
 
 The registry resolves enabled global definitions and definitions for the
-thread's project. If `mcp-secrets.json` is unreadable or malformed, session
-startup logs a warning and skips managed servers instead of blocking threads or
-dropping user stdio servers. Provider session keys include the revision for
-that project. Edits, disabling and removal revoke the affected server in warm
-sessions. New provider sessions load the current registry. A protected turn
-or a context mode with MCP disabled skips registration.
+thread's project. If `mcp-secrets.json` is unreadable or malformed, errors name
+the file path and expected JSON shape so the owner can fix or remove it to
+reset stored credentials; server removal still succeeds without touching the
+unreadable file, and session startup logs a warning and skips managed servers
+instead of blocking threads or dropping user stdio servers. Only `secretEnv`
+and `secretHeaders` are stored in `mcp-secrets.json` and masked; tokens placed
+in `url` or `args` stay in `mcp:servers` unmasked. Provider session keys
+include the revision for that project. Edits, disabling and removal revoke the
+affected server in warm sessions. New provider sessions load the current
+registry. A protected turn or a context mode with MCP disabled skips
+registration.
 
 ## Proxy and tests
 
 The loopback route `/mcp/lazy/<registration>/<name>` accepts the owning
-thread's agent token. For stdio, it starts a traced child in the agent's
-working directory and gives the child the configured environment plus platform
-paths, locale, certificate paths, and proxy/package-index variables
-(`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `ALL_PROXY`, `NPM_CONFIG_REGISTRY`,
-`UV_INDEX_URL`, `PIP_INDEX_URL`) from the core. Cached handshakes and lists for
-managed stdio servers key on the command, arguments, and environment key names
-so they can answer across working directories without spawning a new child. For
-Streamable HTTP, the proxy adds the configured headers, maps upstream MCP
-session IDs to local IDs, forwards JSON and event streams, and refuses
-redirects. The proxy masks reflected credential values (4 characters or longer)
-before returning results or caching manifests while keeping JSON-RPC fields
-intact. POST requests allow a 5-minute (`300 s`) upstream idle timeout (returning
-`504` on timeout) and keep event streams open while receiving data. An upstream
-404 expires the session locally. Release stops stdio children and closes
-upstream HTTP sessions with the negotiated protocol version.
+thread's agent token and disables the HTTP server idle timeout only after
+authenticating the token and resolving the server. For stdio, it starts a
+traced child in the agent's working directory and gives the child the
+configured environment plus platform paths, locale, certificate paths, and
+proxy/package-index variables (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`,
+`ALL_PROXY`, `NPM_CONFIG_REGISTRY`, `UV_INDEX_URL`, `PIP_INDEX_URL`) from the
+core. Cached handshakes and lists for managed stdio servers key on the command,
+arguments, and environment key names so they can answer across working
+directories without spawning a new child. For Streamable HTTP, the proxy adds
+the configured headers, maps upstream MCP session IDs to local IDs, forwards
+JSON and event streams, and refuses redirects. The proxy masks reflected
+credential values (4 characters or longer) before returning results or caching
+manifests while keeping JSON-RPC protocol keys intact. POST requests allow a
+5-minute (`300 s`) upstream idle timeout (returning `504` on timeout) and keep
+event streams open while receiving data. An upstream 404 expires the session
+locally. Release stops stdio children and closes upstream HTTP sessions with
+the negotiated protocol version.
 
 Tests perform `initialize`, `notifications/initialized` and `tools/list`
 against the actual server with a 12 second deadline. A stdio test uses the
 first available scoped project folder, or a fresh temporary directory for
-global servers, captures the redacted tail of stderr if the server exits early,
+global servers, masks stderr before taking its tail if the server exits early,
 and waits for its child to stop. An HTTP test attempts to close its remote
 session. The PostgreSQL preset uses the restricted `postgres-mcp` command
-because it accepts the connection URI from its environment. HTTP presets use
-credentials supplied by the owner, including a Notion OAuth access token.
+because it accepts the connection URI from its environment. HTTP presets
+(GitHub, Linear, Notion, Sentry) use credentials supplied by the owner,
+including a Notion OAuth access token.
 
 The `mcp: false` [machine policy](enterprise.md) blocks tests and new managed
 registrations, revokes active ones and aborts in-flight tests. See [network flows](network.md) for
