@@ -57,8 +57,9 @@ The page is for the owner, on the desktop and on a phone connected as owner
   short-lived file ticket. If the core cannot write the file, the ticket serves
   the anonymized report from memory and disables HTTP caching. The core retains
   at most 512 MiB across these reports and evicts the oldest when it needs room.
-  An older core sends the report as text. A phone offers the share sheet when
-  it can, and a browser downloads the report.
+  An older core sends the report as text. The desktop saves texts up to 5 MiB
+  and prompts for a core update on larger reports. A phone offers the share
+  sheet when it can, and a browser downloads the report.
 - Report a problem: a title, a description and the "include anonymized logs"
   switch. The preview is the body `diagnostics.issue` drafts with `submit:
   false`. When the core's machine has `gh` signed in, the issue is created on

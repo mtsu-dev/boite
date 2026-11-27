@@ -218,8 +218,9 @@
     exportNote = '';
     try {
       const endpoint = store.endpointUrl;
+      const desktop = desktopShell();
       let exported: DiagnosticsFileExport | undefined;
-      if (endpoint && desktopShell()) {
+      if (endpoint && desktop) {
         try { exported = await client.call('diagnostics.exportFile', {}); }
         catch (error) { if (!olderCore(error)) throw error; }
         if (store.client !== client) return;
@@ -233,10 +234,16 @@
       if (store.client !== client) return;
       const body = new TextEncoder().encode(result.text);
       const size = bytes(body.byteLength);
-      // A legacy core or a failed core-side write can still supply the report as text.
-      if (body.byteLength <= ATTACHMENT_MAX_BYTES) {
-        const saved = await saveAttachment(result.name, body, false);
-        if (saved) { exportNote = fill(s.exportDone, { name: result.name, size }); return; }
+      if (desktop) {
+        // Older cores send text through the desktop shell's capped save command.
+        if (body.byteLength > ATTACHMENT_MAX_BYTES) {
+          const machine = store.core?.hostname;
+          exportNote = machine ? fill(strings.errors.olderCore, { machine }) : strings.errors.olderCoreHere;
+          return;
+        }
+        await saveAttachment(result.name, body, false);
+        if (store.client === client) exportNote = fill(s.exportDone, { name: result.name, size });
+        return;
       }
       const file = new File([body], result.name, { type: 'text/plain' });
       // A phone hands the file to the share sheet when it can; anything else downloads it.

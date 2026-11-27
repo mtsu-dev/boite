@@ -39,9 +39,10 @@ report ([updates](updates.md)).
    and the timeline.
 
 The desktop app saves the full report in Downloads, including reports larger
-than 5 MiB. A phone offers its share sheet when it can, and a browser
-downloads the file. The machine that runs Boite also keeps its ten newest
-exports in `logs/exports`.
+than 5 MiB. If it prompts you to update Boite on the machine that produced the
+report, update it in Settings, Machines and updates, then retry. A phone offers
+its share sheet when it can, and a browser downloads the file. The machine
+that runs Boite also keeps its ten newest exports in `logs/exports`.
 
 An export is anonymized: project paths and names, your user and machine
 names, emails and private addresses become placeholders. Thread ids stay, so

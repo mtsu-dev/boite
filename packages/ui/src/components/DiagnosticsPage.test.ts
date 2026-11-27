@@ -118,10 +118,17 @@ test('the desktop saves an anonymized export over 5 MiB through its file ticket'
   expect(document.querySelector('[data-testid=diagnostics-export-note]')?.textContent).toContain(`Saved ${name}`);
 });
 
-test('a desktop connected to an older core still saves the text it receives', async () => {
+test.each([
+  { repeats: 1, note: 'Saved boite-diagnostics-test.txt' },
+  { repeats: 200_000, note: 'Update it in Settings, Machines and updates' },
+])('a desktop connected to an older core shows $note', async ({ repeats, note }) => {
   vi.stubGlobal('__TAURI_INTERNALS__', {});
+  vi.stubGlobal('matchMedia', () => ({ matches: false }));
+  vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: vi.fn(() => 'blob:diagnostics'), revokeObjectURL: vi.fn() }));
+  const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   const name = 'boite-diagnostics-test.txt';
-  const text = 'Synthetic report with accents é.\n';
+  const text = 'Synthetic report with accents é.\n'.repeat(repeats);
+  const body = new TextEncoder().encode(text);
   vi.mocked(invoke).mockResolvedValue({ path: `/Downloads/${name}`, opened: false });
   const call = vi.fn(async (method: string) => {
     if (method === 'diagnostics.exportFile') throw new RpcFailure({ code: RpcErrorCode.MethodNotFound, message: `unknown method ${method}` });
@@ -133,9 +140,15 @@ test('a desktop connected to an older core still saves the text it receives', as
   running = mount(DiagnosticsPage, { target: document.body, props: { store } });
   await settle();
   document.querySelector<HTMLButtonElement>('[data-testid=diagnostics-export]')!.click();
-  await vi.waitFor(() => expect(document.querySelector('[data-testid=diagnostics-export-note]')?.textContent).toContain(`Saved ${name}`));
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=diagnostics-export-note]')).not.toBeNull());
+  expect(document.querySelector('[data-testid=diagnostics-export-note]')?.textContent).toContain(note);
   expect(call.mock.calls.filter(([method]) => method.startsWith('diagnostics.export')).map(([method]) => method)).toEqual(['diagnostics.exportFile', 'diagnostics.export']);
-  expect(invoke).toHaveBeenCalledExactlyOnceWith('save_attachment', new TextEncoder().encode(text), expect.objectContaining({ headers: { 'x-boite-name': name, 'x-boite-open': '0' } }));
+  expect(download).not.toHaveBeenCalled();
+  if (body.byteLength <= ATTACHMENT_MAX_BYTES) {
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('save_attachment', body, expect.objectContaining({ headers: { 'x-boite-name': name, 'x-boite-open': '0' } }));
+  } else {
+    expect(invoke).not.toHaveBeenCalled();
+  }
 });
 
 test.each(['browser', 'phone'] as const)('the %s still receives the full text export', async platform => {
