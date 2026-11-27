@@ -208,6 +208,7 @@ export class TurnAttempts {
 
     // Keep consumed input so a retry on a fresh session sends it too.
     const carried: CarriedInput = {};
+    const interrupted: { received?: TurnId } = {};
     let retriedLostSession = false;
     let resumed = false;
     let usage: Usage | null = null;
@@ -238,14 +239,15 @@ export class TurnAttempts {
       afterUpdate = null;
       // A pause can end ACP startup before the agent receives the turn's request.
       const beforeDispatch = provider.protocol === 'acp' && !promptDispatched;
-      const resumePrompt = beforeDispatch ? undefined : note?.prompt;
       // The resumed session already holds what the first attempt took from the thread.
       const continuing = afterCapacity && wroteBefore;
+      const recoverAfterCapacity = continuing && interrupted.received !== undefined;
+      const resumePrompt = recoverAfterCapacity ? CAPACITY_CONTINUE_PROMPT : beforeDispatch ? undefined : note?.prompt;
       afterCapacity = false;
       const prepared = this.threads.contexts.makeContext(
         state.thread, provider, this.#core.accounts.require(accountId), state.running,
         resumePrompt !== undefined || continuing ? { memory: '', deferred: '', letters: '' } : carried,
-        resumePrompt, signal, !continuing && (!resumed || beforeDispatch),
+        resumePrompt, signal, { deferInterruptedInput: !continuing && (!resumed || beforeDispatch), interrupted },
       );
       const context = prepared instanceof Promise ? await abortable(prepared, signal) : prepared;
       signal.throwIfAborted();
@@ -264,7 +266,8 @@ export class TurnAttempts {
       let listening = true;
       const inputReady = context.inputReady;
       context.inputReady = () => {
-        if (listening) promptDispatched = true;
+        if (!listening) return;
+        promptDispatched = true;
         inputReady?.();
       };
       const generation = context.thread.sessionGeneration ?? 0;
@@ -319,8 +322,10 @@ export class TurnAttempts {
       }
       if (continuing) {
         // The native session already holds the request and what the agent did with it.
-        context.prompt = CAPACITY_CONTINUE_PROMPT;
-        context.attachments = [];
+        if (!recoverAfterCapacity) {
+          context.prompt = CAPACITY_CONTINUE_PROMPT;
+          context.attachments = [];
+        }
         // The brain this context may have taken stays out of the prompt: the next turn sends it whole.
         forgetBrainContext(this.#core, threadId);
         coordinationGuideUnsent(this.#core, threadId);
@@ -676,7 +681,7 @@ export class TurnAttempts {
     return { ...thread, sessionId: null, sessionResumeAt: null, sessionGeneration: generation, context: null, promptCache: null };
   }
 
-  stopRunning(threadId: ThreadId): boolean {
+  stopRunning(threadId: ThreadId, reason?: 'restart'): boolean {
     const state = this.#turns.get(threadId);
     if (!state) return false;
     if (state.stop.signal.aborted) return true;
@@ -709,7 +714,7 @@ export class TurnAttempts {
     this.steering.end(threadId);
     // A background copy still running stops with the turn, and a step parked on it goes on.
     this.threads.backgroundCompact.turnStopped(threadId);
-    handle.stop();
+    handle.stop(reason);
     this.#armStopDeadline(threadId, handle);
     return true;
   }

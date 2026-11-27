@@ -347,7 +347,7 @@ export class RestartHandoff {
     if (this.#asked.has(turnId)) return;
     this.#asked.add(turnId);
     // False when the turn ended in the same tick: its `turn.finished` clears it.
-    this.#threads.stopRunning(threadId);
+    this.#threads.stopRunning(threadId, 'restart');
   }
 
   #turnStarted(turn: Turn): void {

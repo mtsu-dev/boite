@@ -268,8 +268,8 @@ export class TurnRunner {
     }
   }
 
-  stopRunning(threadId: ThreadId): boolean {
-    return this.#attempts.stopRunning(threadId);
+  stopRunning(threadId: ThreadId, reason?: 'restart'): boolean {
+    return this.#attempts.stopRunning(threadId, reason);
   }
 
   async #finishCheckpoint(state: TurnAttemptState): Promise<void> {

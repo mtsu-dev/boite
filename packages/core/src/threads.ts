@@ -803,8 +803,8 @@ export class ThreadStore {
     this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
   }
 
-  stopRunning(threadId: ThreadId): boolean {
-    return this.runner.stopRunning(threadId);
+  stopRunning(threadId: ThreadId, reason?: 'restart'): boolean {
+    return this.runner.stopRunning(threadId, reason);
   }
 
   markQueuedStopped(turnId: TurnId): void {

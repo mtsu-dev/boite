@@ -237,9 +237,13 @@ test.each([
 
 test.each([
   ['permission', 'acknowledged'], ['permission', 'rejected'], ['permission', 'capacity'], ['update', 'capacity'],
+  ['core', 'acknowledged'],
 ] as const)('an ACP %s restart leaves the queue paused after cancellation (%s)', async (restart, outcome) => {
-  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
-  const { core } = harness!;
+  const started = await startThread({ warmProcessMinutes: 0 });
+  const { threadId } = started;
+  let { client } = started;
+  const first = harness!;
+  let { core } = first;
   const capacity = outcome === 'capacity';
   if (capacity) Object.assign(core.providers.require('acp-fake'), { quirks: ['antigravity'] });
   const directive = capacity ? ' [capacity-on-cancel]' : outcome === 'rejected' ? ' [error-on-cancel]' : '';
@@ -259,35 +263,48 @@ test.each([
   await waitFor(() => fakeLog().includes('session/cancel'));
   await setPaused(true);
   const stop = spyOn(core.threads.runner.handles.get(threadId)!, 'stop');
+  let restartCore: Promise<void> | undefined;
   if (restart === 'permission') {
     const refusal = `${logFile}.refuse-mode`;
     writeFileSync(refusal, 'ready');
     await client.call('threads.update', { threadId, permissionMode: 'plan' });
     await waitFor(() => stop.mock.calls.length > 0);
     rmSync(refusal);
-  } else {
+  } else if (restart === 'update') {
     spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
     expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
     await waitFor(() => stop.mock.calls.length > 0);
+  } else {
+    restartCore = closeForHandoff(first);
+    await waitFor(() => stop.mock.calls.length > 0);
   }
   writeFileSync(`${logFile}.end`, 'ready');
-  await waitFor(() => countLogLines(fakeLog(), 'session/prompt') > 1 || core.journal.getTurn(id)?.finishedAt != null);
-  expect(core.journal.getTurn(id)?.status).toBe(capacity ? 'error' : 'stopped');
-  expect(countLogLines(fakeLog(), 'session/prompt')).toBe(1);
-  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
-  expect(core.threads.runner.retryOf(threadId)).toBeNull();
-  expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
-  expect(core.journal.getTurn(id)?.execution).toMatchObject(outcome === 'acknowledged'
-    ? { queuedInputSession: expect.any(String) } : { queuedInputInterrupted: true });
+  let next: TestCore | undefined;
+  try {
+    if (restartCore !== undefined) {
+      await restartCore;
+      next = await startTestCore({ dataDir: first.dataDir });
+      core = next.core;
+      client = await next.connect();
+    } else await waitFor(() => countLogLines(fakeLog(), 'session/prompt') > 1 || core.journal.getTurn(id)?.finishedAt != null);
+    expect(core.journal.getTurn(id)?.status).toBe(capacity ? 'error' : 'stopped');
+    expect(core.journal.getTurn(id)?.execution).toMatchObject(outcome === 'acknowledged'
+      ? { queuedInputSession: expect.any(String) } : { queuedInputInterrupted: true });
+    expect(core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(countLogLines(fakeLog(), 'session/prompt')).toBe(1);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+    expect(core.threads.runner.retryOf(threadId)).toBeNull();
+    expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
 
-  await setPaused(false);
-  await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
-  expect(countLogLines(fakeLog(), 'session/prompt')).toBe(2);
-  expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
-  expect(setModeCount('plan')).toBe(restart === 'permission' ? 1 : 0);
+    await setPaused(false);
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
+    expect(countLogLines(fakeLog(), 'session/prompt')).toBe(2);
+    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+    expect(setModeCount('plan')).toBe(restart === 'permission' ? 1 : 0);
+  } finally { await next?.stop(); }
 }, 20_000);
 
-test.each(['restart', 'manual recovery', 'manual recovery with an agent update before dispatch', 'manual recovery with an agent update after dispatch'])('ACP %s during a queued follow-up recovers both requests on the loaded session', async method => {
+test.each(['restart', 'agent update on the warm process', 'manual recovery', 'manual recovery with an agent update before dispatch', 'manual recovery with an agent update after dispatch'])('ACP %s during a queued follow-up recovers both requests on the loaded session', async method => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const first = harness!;
   const earlierRequest = 'Earlier request from before the follow-up';
@@ -309,10 +326,14 @@ test.each(['restart', 'manual recovery', 'manual recovery with an agent update b
 
   const updateBeforePrompt = method === 'manual recovery with an agent update before dispatch';
   const updateDuringResume = updateBeforePrompt || method === 'manual recovery with an agent update after dispatch';
+  const updateInFollowUp = method === 'agent update on the warm process';
   let next = first;
   if (method === 'restart') {
     await closeForHandoff(first);
     next = await startTestCore({ dataDir: first.dataDir });
+  } else if (updateInFollowUp) {
+    spyOn(first.core.updates, 'wantsPause').mockReturnValueOnce(true);
+    expect(first.core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
   } else {
     await client.call('turns.stop', { threadId });
     await waitFor(() => !first.core.scheduler.state().running.some(item => item.turnId === followUp.id));
@@ -332,9 +353,10 @@ test.each(['restart', 'manual recovery', 'manual recovery with an agent update b
   }
   try {
     const { journal } = next.core;
-    await waitFor(() => journal.listTurns(threadId)[2]?.status === 'done');
-    const resumed = journal.listTurns(threadId)[2]!;
-    expect(resumed.execution?.operation).toBe('resume');
+    const index = updateInFollowUp ? 1 : 2;
+    await waitFor(() => journal.listTurns(threadId)[index]?.status === 'done');
+    const resumed = journal.listTurns(threadId)[index]!;
+    expect(resumed.execution?.operation).toBe(updateInFollowUp ? undefined : 'resume');
     expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(updateDuringResume ? 2 : 1);
     const response = [...journal.walkTurnMessages(threadId, resumed.id)].filter(message => message.role === 'assistant')
       .flatMap(message => message.parts).map(part => part.type === 'text' ? part.text : '').join('');

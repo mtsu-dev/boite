@@ -442,7 +442,7 @@ export interface LiveTurnSettings {
 
 export interface TurnHandle {
   done: Promise<TurnResult>;
-  /** The runner can stop a native attempt to restart it within the same turn. */
+  /** An internal restart can stop a native attempt while preserving a pending queued-input cancellation. */
   stop(reason?: 'restart'): void;
   /**
    * Change the effort or the speed of the active native turn, for the model
