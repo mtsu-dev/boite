@@ -1,24 +1,16 @@
 import { piListsPair } from './models.ts';
+import { piLaunchChoices } from './start-model.ts';
 import type { PiModel } from './protocol.ts';
 import { dataOf, type PiPeer } from './rpc.ts';
 
 type Options = { signal?: AbortSignal; readMs?: number; writeMs?: number };
 
-/** pi started on another pair than the catalog's and does not list the catalog's, so nothing can switch to it. */
+/** pi does not list the catalog's pair, whatever it started on, so nothing can switch to it. */
 export class LaunchPairMissing extends Error {}
 
-/** The levels pi 1.6.1 takes from `--thinking`; it warns of any other value and keeps the level it had. */
-const LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
-
-/** The level a launch asked for, as pi's parser reads its arguments: the last valid `--thinking` value, or none. */
+/** The level a launch asked for, as pi's parser walks its arguments (an option's value is never one), or none. */
 export function launchLevel(args: readonly string[]): string | null {
-  let level: string | null = null;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] !== '--thinking' || i + 1 >= args.length) continue;
-    const value = args[++i]!;
-    if (LEVELS.has(value)) level = value;
-  }
-  return level;
+  return piLaunchChoices(args).thinking ?? null;
 }
 
 /**
@@ -40,7 +32,7 @@ export async function alignLaunchedPair(peer: PiPeer, state: Record<string, unkn
     const named = `${pair.provider}/${pair.modelId}`;
     const same = loaded?.provider === pair.provider && loaded?.id === pair.modelId;
     const started = same ? '' : `started on ${loaded ? `${loaded.provider}/${loaded.id}` : 'no model'} and `;
-    throw new LaunchPairMissing(`pi ${started}does not list ${named}: refresh the models list`);
+    throw new LaunchPairMissing(`pi ${started}does not list ${named}: its models changed or its provider is no longer signed in; refresh the models list`);
   }
   if (loaded?.provider === pair.provider && loaded?.id === pair.modelId) return;
   await peer.command('set_model', pair, write);

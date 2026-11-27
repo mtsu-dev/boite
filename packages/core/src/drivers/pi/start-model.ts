@@ -29,7 +29,12 @@ export interface PiLaunchChoices {
   extensions?: boolean;
   /** `--no-extensions`/`-ne`: pi then loads only the `-e` ones, none it discovers (`loadCurrentExtensionSet`). */
   noExtensions?: boolean;
+  /** The last valid `--thinking` level; pi warns of any other value and keeps the level it had. */
+  thinking?: string;
 }
+
+/** The levels pi 1.6.1 takes from `--thinking` (cli/args.js `VALID_THINKING_LEVELS`). */
+const LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 
 /** A model of the account's catalog as Boite lists it (`drivers/pi/models.ts`): `provider/id`, and a name that starts with the provider. */
 export interface CatalogModel { id: string; name: string }
@@ -49,6 +54,7 @@ export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
       if (arg === '--models') choices.scope = next.split(',').map(pattern => pattern.trim()).filter(pattern => pattern.length > 0);
       else if (arg === '--model') choices.model = true;
       else if (arg === '--extension' || arg === '-e') choices.extensions = true;
+      else if (arg === '--thinking' && LEVELS.has(next)) choices.thinking = next;
     } else if (arg === '--no-extensions' || arg === '-ne') choices.noExtensions = true;
     else if (arg === '--approve' || arg === '-a') choices.trust = true;
     else if (arg === '--no-approve' || arg === '-na') choices.trust = false;

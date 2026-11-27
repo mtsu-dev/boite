@@ -89,7 +89,7 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
       const pair = own ? piCatalogPair(model, catalog) : undefined;
       if (pair !== undefined) {
         await alignLaunchedPair(peer, dataOf(await peer.command('get_state', {}, { signal })), pair, launchLevel(args), { signal })
-          .catch((missing: unknown) => { throw missing instanceof LaunchPairMissing ? new ModelRefused(missing.message) : missing; });
+          .catch((missing: unknown) => { throw missing instanceof LaunchPairMissing ? new ModelRefused(missing.message, true) : missing; });
       }
       await peer.command('prompt', { message: prompt, ...(images.length ? { images } : {}) }, { signal });
     } catch (failure) {
@@ -119,20 +119,26 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
  */
 const STARTUP_REFUSAL = /Unknown provider "[^"]*"\. Use --list-models|Model "[^"]*" not found\. Use --list-models/;
 
-/** pi exited before the prompt on the model it was launched with. */
-class ModelRefused extends Error {}
+/**
+ * pi exited before the prompt on the model it was launched with, or started without listing it (`unlisted`): then its
+ * provider is one pi holds, and pi's own model may be another of it.
+ */
+class ModelRefused extends Error {
+  constructor(message: string, readonly unlisted = false) { super(message); }
+}
 
 /**
  * A one-shot runs without extensions, so a provider one of them registers is unknown there: the request goes to pi's
  * own model instead, with the same restrictions, unless the profile's own `--model` or `--provider` started pi on that
- * provider (`piProfilePins`), where its own model is refused alike.
+ * provider (`piProfilePins`), where its own model is refused alike. A pair pi started without listing falls back even
+ * then: pi holds its provider, and pi's own model may be another one of it.
  */
 async function askOn(ctx: TitleContext | SideQuestionContext, prompt: string, model: string | null, catalog: readonly ModelInfo[] | null, signal: AbortSignal, sessionFile?: string): Promise<string> {
   try {
     return await ask(ctx, prompt, model, catalog, signal, sessionFile);
   } catch (error) {
     if (!(error instanceof ModelRefused) || model === null || model === AGENT_OWN_MODEL || signal.aborted) throw error;
-    if (piProviderOf(model, catalog) === '' || piProfilePins(profileFor(ctx.provider)?.launch?.args ?? [], model, catalog)) throw error;
+    if (!error.unlisted && (piProviderOf(model, catalog) === '' || piProfilePins(profileFor(ctx.provider)?.launch?.args ?? [], model, catalog))) throw error;
     ctx.log('info', `pi one-shot: ${model} is not known without extensions, pi's own model answers`);
     return await ask(ctx, prompt, null, catalog, signal, sessionFile);
   }

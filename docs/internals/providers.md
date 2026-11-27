@@ -1857,15 +1857,17 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   regard to case, so a launch where two ids differ only by it may start on the
   other one. Every process, a reopened one and a title or side question
   included, then switches to the catalog's pair before its first prompt, and
-  sends again the level its launch asked for (the last valid `--thinking`, the
-  thread's effort or the profile's): `set_model` replaces it with the model's
+  sends again the level its launch asked for (the last valid `--thinking` as
+  pi's parser walks the arguments, the thread's effort or the profile's): `set_model` replaces it with the model's
   own, and pi bounded the first one to the other model. A launch that asked for
   none keeps the level pi picks on a switch, as when its user switches models.
   Every start also checks that pi lists the catalog's pair, even when pi
   reports it: for an id its provider no longer lists, pi runs a custom model of
   that id with another model's capabilities. A process that does not list it
-  fails the turn and asks to refresh the models list; a title or side question
-  goes to pi's own model instead, as for a model pi refuses at startup. pi reads its models once, at
+  fails the turn and asks to refresh the models list (its models changed, or
+  its provider is no longer signed in); a title or side question goes to pi's
+  own model instead, even when the profile pins that provider, since pi holds
+  it. pi reads its models once, at
   start: a pair the catalog found since (a `models.json` edited after the
   launch) is not in the running process's listing, so a new process opens the
   same session on it with `--provider` once the old one has exited (pi runs its

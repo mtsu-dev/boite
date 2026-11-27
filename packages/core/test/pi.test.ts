@@ -2037,10 +2037,11 @@ describe('pi driver', () => {
     try {
       const client = await startCore();
       const { projectId, accountId } = await piAccount(client);
-      // The profile's level, which `set_model` would replace with the model's own; pi warns of the invalid one after it.
+      // The profile's level, which `set_model` would replace with the model's own: pi reads the first `--thinking` as
+      // the prompt's text and warns of the invalid one after `high`.
       const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
       const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
-      for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--thinking', 'high', '--thinking', 'typo');
+      for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--append-system-prompt', '--thinking', '--thinking', 'high', '--thinking', 'typo');
       writeFileSync(descriptorFile, JSON.stringify(descriptor));
       expect((await client.call('providers.reload', {})).rejected).toEqual([]);
       await client.call('providers.probe', { providerId: 'pi-fake', accountId });
@@ -2101,7 +2102,7 @@ describe('pi driver', () => {
       expect(shots().slice(before).map(args => args.includes('--model'))).toEqual([true, false]);
       expect(fakeLog()).not.toContain('prompt on fake-b/Plain');
       const { finished } = await startTurn(client, threadId, 'second', 20000);
-      expect((await finished).error).toContain('pi started on fake-b/Plain and does not list fake-b/plain');
+      expect((await finished).error).toContain('pi started on fake-b/Plain and does not list fake-b/plain: its models changed');
       expect(fakeLog()).not.toContain('prompt on fake-b/Plain');
     } finally {
       delete process.env['PI_FAKE_CASE'];
@@ -2111,15 +2112,28 @@ describe('pi driver', () => {
   test('a launch on an id pi no longer lists, which pi runs as a custom model of that id, fails the turn', async () => {
     const client = await startCore();
     const { projectId, accountId } = await piAccount(client);
+    // The profile pins the provider: pi's own model is another one of it, which still answers a side question.
+    const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+    const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
+    for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--provider', 'fake-b');
+    writeFileSync(descriptorFile, JSON.stringify(descriptor));
+    expect((await client.call('providers.reload', {})).rejected).toEqual([]);
     await client.call('providers.probe', { providerId: 'pi-fake', accountId });
     const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'gone', model: 'fake-b/plain' });
     await client.call('threads.subscribe', { threadId });
+    await runTurn(client, threadId, 'first');
     // A `models.json` edited since the probe: pi reports `fake-b/plain` as the model it runs, with other capabilities.
     process.env['PI_FAKE_GONE'] = 'fake-b/plain';
     try {
+      const shots = () => fakeLog().split('\n').filter(line => line.startsWith('one-shot [')).map(line => JSON.parse(line.slice('one-shot '.length)) as string[]);
+      const before = shots().length;
+      const answered = client.next('thread.btw', event => event.requestId === 'side_custom');
+      await client.call('threads.btw', { threadId, question: 'What did we add?', requestId: 'side_custom' });
+      expect((await answered).error).toBeNull();
+      expect(shots().slice(before).map(args => args.includes('--model'))).toEqual([true, false]);
       const { finished } = await startTurn(client, threadId, 'hello', 20000);
-      expect((await finished).error).toContain('pi does not list fake-b/plain: refresh the models list');
-      expect(fakeLog()).not.toContain('prompt on ');
+      expect((await finished).error).toContain('pi does not list fake-b/plain: its models changed or its provider is no longer signed in; refresh the models list');
+      expect(fakeLog()).not.toContain('prompt on fake-b/plain');
     } finally {
       delete process.env['PI_FAKE_GONE'];
     }
