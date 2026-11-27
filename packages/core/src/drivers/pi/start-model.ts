@@ -6,24 +6,50 @@ import { piProcessCwd } from './session-model.ts';
 
 /** The keys pi 1.6.1 `findInitialModel` chooses a new session's model from, in its order. */
 const CHOOSING = ['enabledModels', 'defaultProvider', 'defaultModel'] as const;
-/** pi 1.6.1's thinking levels, which a scoped pattern may end with (`provider/id:high`). */
-const LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+/** pi 1.6.1's options that take the next argument whatever it is (cli/args.js `parseArgs`). */
+const VALUED = new Set(['--provider', '--model', '--api-key', '--system-prompt', '--append-system-prompt', '--name', '-n', '--session',
+  '--session-id', '--fork', '--session-dir', '--models', '--tools', '-t', '--exclude-tools', '-xt', '--thinking', '--export',
+  '--extension', '-e', '--skill', '--prompt-template', '--theme']);
+/** Its options that take the next argument only when it does not start with `-`. */
+const OPTIONAL = new Set(['--mode', '--use-theme', '--tui-mode']);
+/** Its flags that take nothing; any other `--name` takes the next argument when it starts with neither `-` nor `@`. */
+const FLAGS = new Set(['--help', '-h', '--version', '-v', '--continue', '-c', '--resume', '-r', '--no-session', '--no-tools', '-nt',
+  '--no-builtin-tools', '-nbt', '--no-extensions', '-ne', '--no-mcp', '--no-skills', '-ns', '--no-prompt-templates', '-np', '--no-themes',
+  '--no-context-files', '-nc', '--verbose', '--approve', '-a', '--no-approve', '-na', '--offline']);
 
-/** What the profile's own arguments decide for pi 1.6.1 (cli/args.js): the last flag of each kind wins. */
+/** What the profile's own arguments decide for pi 1.6.1, read as `parseArgs` walks them: the last of each kind wins. */
 export interface PiLaunchChoices {
   /** `--models`, split on commas without empty patterns: an empty list clears the scope. Null when absent. */
   scope: string[] | null;
   /** `--approve`/`-a` trusts the folder, `--no-approve`/`-na` does not, before `trust.json`. */
   trust: boolean | null;
+  /** A `--model`, which beats any session or setting. */
+  model: boolean;
 }
 
+/** A model of the account's catalog as Boite lists it: `provider/id` and pi's name within its own. */
+export interface CatalogModel { id: string; name?: string }
+
 export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
-  const choices: PiLaunchChoices = { scope: null, trust: null };
+  const choices: PiLaunchChoices = { scope: null, trust: null, model: false };
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--models' && i + 1 < args.length) choices.scope = args[++i]!.split(',').map(pattern => pattern.trim()).filter(pattern => pattern.length > 0);
-    else if (arg === '--approve' || arg === '-a') choices.trust = true;
+    const arg = args[i]!;
+    const next = args[i + 1];
+    if (arg === '--') break;
+    if (VALUED.has(arg)) {
+      if (next === undefined) continue;
+      i++;
+      if (arg === '--models') choices.scope = next.split(',').map(pattern => pattern.trim()).filter(pattern => pattern.length > 0);
+      else if (arg === '--model') choices.model = true;
+    } else if (arg === '--approve' || arg === '-a') choices.trust = true;
     else if (arg === '--no-approve' || arg === '-na') choices.trust = false;
+    else if (OPTIONAL.has(arg) || arg === '--list-models') {
+      if (next !== undefined && !next.startsWith('-') && !(arg === '--list-models' && next.startsWith('@'))) i++;
+    } else if (arg === '--print' || arg === '-p') {
+      if (next !== undefined && !next.startsWith('@') && (!next.startsWith('-') || next.startsWith('---'))) i++;
+    } else if (arg.startsWith('--') && !FLAGS.has(arg) && !arg.includes('=')) {
+      if (next !== undefined && !next.startsWith('-') && !next.startsWith('@')) i++;
+    }
   }
   return choices;
 }
@@ -51,7 +77,7 @@ export function piAgentDir(env: Record<string, string | undefined>, cwd: string)
  * only pi can: a glob or fuzzy pattern, a model missing from the catalog, or no
  * catalog yet.
  */
-export function folderStartModel(agentDir: string, cwd: string, catalog: readonly string[] | null, launch: PiLaunchChoices = { scope: null, trust: null }): string | 'account' | null {
+export function folderStartModel(agentDir: string, cwd: string, catalog: readonly CatalogModel[] | null, launch: Omit<PiLaunchChoices, 'model'> = { scope: null, trust: null }): string | 'account' | null {
   const global = settingsAt(join(agentDir, 'settings.json')) ?? {};
   const folder = piProcessCwd(cwd);
   const project = (launch.trust ?? trusted(agentDir, folder, global)) ? settingsAt(join(folder, '.pi', 'settings.json')) : null;
@@ -67,26 +93,36 @@ export function folderStartModel(agentDir: string, cwd: string, catalog: readonl
   const named = typeof provider === 'string' && typeof model === 'string' ? `${provider}/${model}` : null;
   const patterns = launch.scope ?? value('enabledModels');
   if (Array.isArray(patterns) && patterns.length > 0) {
-    const scope = patterns.map(pattern => typeof pattern === 'string' ? exactModel(pattern, catalog) : null);
+    const scope = patterns.map(pattern => typeof pattern === 'string' ? scopedModel(pattern, catalog) : null);
     if (scope.includes(null)) return null;
     return named && scope.includes(named) ? named : scope[0]!;
   }
-  return named && catalog.includes(named) ? named : null;
+  return named && catalog.some(entry => entry.id === named) ? named : null;
 }
 
 /**
- * A pattern naming one catalog model exactly, as pi resolves it before any glob
- * or fuzzy match. Null otherwise: a glob, a partial id pi may still match, or a
- * model the catalog lacks, which pi would skip.
+ * The one catalog model pi 1.6.1 resolves a scope pattern to
+ * (`resolveModelScopeFromModels`), or null when only pi can tell. pi matches
+ * the whole text first, without case: a `provider/id`, else a bare id on one
+ * provider, else part of an id or a name, its pick among those being its own;
+ * only then does it drop a `:suffix` and try again. A glob, a partial or an
+ * ambiguous match are null.
  */
-function exactModel(pattern: string, catalog: readonly string[]): string | null {
-  if (catalog.includes(pattern)) return pattern;
+function scopedModel(pattern: string, catalog: readonly CatalogModel[]): string | null {
   if (/[*?[]/.test(pattern)) return null;
-  const colon = pattern.lastIndexOf(':');
-  const base = colon > 0 && LEVELS.has(pattern.slice(colon + 1)) ? pattern.slice(0, colon) : pattern;
-  if (catalog.includes(base)) return base;
-  const byId = catalog.filter(id => id.slice(id.indexOf('/') + 1) === base);
-  return !base.includes('/') && byId.length === 1 ? byId[0]! : null;
+  for (let text = pattern.trim().toLowerCase(); text.length > 0;) {
+    const full = catalog.filter(entry => entry.id.toLowerCase() === text);
+    if (full.length > 0) return full.length === 1 ? full[0]!.id : null;
+    const bare = text.includes('/') ? [] : catalog.filter(entry => entry.id.slice(entry.id.indexOf('/') + 1).toLowerCase() === text);
+    if (bare.length > 0) return bare.length === 1 ? bare[0]!.id : null;
+    // What follows any `/` may be the id part of a `provider/` hint, which pi matches in part within that provider.
+    const parts = [text, ...[...text].flatMap((char, at) => char === '/' && at + 1 < text.length ? [text.slice(at + 1)] : [])];
+    if (catalog.some(entry => parts.some(part => entry.id.toLowerCase().includes(part) || entry.name?.toLowerCase().includes(part)))) return null;
+    const colon = text.lastIndexOf(':');
+    if (colon < 0) return null;
+    text = text.slice(0, colon);
+  }
+  return null;
 }
 
 /** pi's trust for a folder: the nearest decision in `trust.json`, else its `defaultProjectTrust`. */

@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { TOOL_FREE_CONTEXT } from '@boite/contracts';
 import type { FileAttachment, ImageAttachment, MessagePart, RpcEvents, RpcParams, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
+import type { SharedAccess } from '../src/contacts/access-policy.ts';
 import { forgetProbes, getDriver } from '../src/drivers/index.ts';
 import { setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
@@ -140,11 +141,12 @@ test('pi default reads the folder as the launch decides: its approval flags, its
   writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(cwd)]: true }));
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-a', defaultModel: 'smart' }));
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
-  const original = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { env?: Record<string, string>; launch: { args: string[] } }> };
-  const launch = async (args: string[]) => {
+  type Profile = { env?: Record<string, string>; unsetEnv?: string[]; launch: { args: string[] } };
+  const original = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, Profile> };
+  const launch = async (args: string[], own: (profile: Profile) => void = profile => { profile.env = { ...profile.env, PI_CODING_AGENT_DIR: agentDir }; }) => {
     const descriptor = structuredClone(original);
     for (const profile of Object.values(descriptor.profiles)) {
-      profile.env = { ...profile.env, PI_CODING_AGENT_DIR: agentDir };
+      own(profile);
       profile.launch.args.push(...args);
     }
     writeFileSync(descriptorFile, JSON.stringify(descriptor));
@@ -156,6 +158,12 @@ test('pi default reads the folder as the launch decides: its approval flags, its
   // `--no-approve` keeps the folder's settings out whatever `trust.json` says; the last flag wins.
   expect(await launch(['--no-approve'])).toBe(false);
   expect(await launch(['-na', '--approve'])).toBe(true);
+  // pi reads a value after an option that takes one as that value, whatever it looks like.
+  expect(await launch(['--approve', '--name', '--no-approve'])).toBe(true);
+  // The driver starts pi from the core's environment and the profile's variables, `unsetEnv` aside.
+  process.env['PI_CODING_AGENT_DIR'] = agentDir;
+  expect(await launch([], profile => { profile.unsetEnv = ['PI_CODING_AGENT_DIR']; })).toBe(true);
+  process.env['PI_CODING_AGENT_DIR'] = join(harness!.dataDir, 'not-this-pi');
   // A `--models` with no pattern left (descriptors refuse an empty argument) clears the saved scope rather than falling back to it.
   writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ enabledModels: ['fake-b/plain'] }));
   expect(await launch(['--models', ' , '])).toBe(true);
@@ -166,6 +174,17 @@ test('pi default reads the folder as the launch decides: its approval flags, its
   expect(await launch([])).toBe(false);
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['default'] }));
   expect(await launch([])).toBe(true);
+  // A bare id is matched whole too, and a whole text that also matches part of another id is pi's pick.
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['SMART:high'] }));
+  expect(await launch([])).toBe(false);
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['fake-b/plain:low'] }));
+  expect(await launch([])).toBe(true);
+  // A protected run starts pi on settings of its own, so pi decides there.
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
+  expect(await launch([])).toBe(false);
+  const bound = spyOn(harness!.core.sharedAccess, 'bound').mockImplementation(id => id === threadId ? {} as ReturnType<SharedAccess['bound']> : null);
+  expect((await client.call('threads.capabilities', { threadId })).images.supported).toBe(true);
+  bound.mockRestore();
   // A draft names an account of the provider it drafts on.
   writeFileSync(join(harness!.dataDir, 'providers', 'pi-other.json'), JSON.stringify({ ...original, id: 'pi-other', name: 'Other pi', shortName: 'PiOther' }));
   expect((await client.call('providers.reload', {})).rejected).toEqual([]);

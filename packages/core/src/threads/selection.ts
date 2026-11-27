@@ -3,13 +3,13 @@ import type { AccountId, AgentProfile, AgentSelection, ModelInfo, Protocol, Prov
 import type { Core } from '../core.ts';
 import { antigravityVariant } from '../drivers/acp/antigravity-catalog.ts';
 import { isAntigravity } from '../drivers/antigravity.ts';
-import { sessionDirOf } from '../drivers/pi/mapping.ts';
+import { agentEnv as piLaunchEnv, sessionDirOf } from '../drivers/pi/mapping.ts';
 import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
 import { sessionModelOf } from '../drivers/pi/session-model.ts';
 import { folderStartModel, piAgentDir, piLaunchChoices } from '../drivers/pi/start-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
-import { agentEnv, profileFor } from '../providers/resolve.ts';
+import { profileFor } from '../providers/resolve.ts';
 import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 
 /** The protocols whose models come from the agent, not from the descriptor. */
@@ -53,7 +53,10 @@ export function selectionFor(provider: ProviderDescriptor, accountId: AccountId,
  * Image admission also uses pi's saved list before the first probe after a restart.
  */
 export function imageInputModel(
-  core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId, cwd }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId' | 'cwd'>>,
+  core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId, cwd, runsIn = id }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId' | 'cwd'>> & {
+    /** The thread the run belongs to, when `id` names no session to resume (another account's goal). */
+    runsIn?: string;
+  },
 ): ModelInfo | undefined {
   const pi = provider.protocol === 'pi';
   const wanted = model ?? (pi ? AGENT_OWN_MODEL : null);
@@ -61,9 +64,9 @@ export function imageInputModel(
   const probed = pi ? probedModelsOf(provider.protocol, provider.id, accountId) : null;
   const saved = pi && probed === null ? readSavedCatalog(core, provider.id, accountId) : null;
   const listed = (choice: string) => (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
-  const args = pi ? profileFor(provider)?.launch?.args ?? [] : [];
+  const launch = piLaunchChoices(pi ? profileFor(provider)?.launch?.args ?? [] : []);
   // A `--model` in the profile beats the session, as it does in pi.
-  if (pi && wanted === AGENT_OWN_MODEL && cwd && !args.includes('--model')) {
+  if (pi && wanted === AGENT_OWN_MODEL && cwd && !launch.model) {
     const account = core.accounts.list().find(entry => entry.id === accountId);
     const resumed = account && id && sessionId ? sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId, cwd) : null;
     // A registered virtual model holds over the physical models it answered through.
@@ -72,10 +75,11 @@ export function imageInputModel(
     if (found) return found;
     // A new session starts where the folder's own pi settings say, which the account's probe, run elsewhere, cannot
     // see. When only pi can name that model, it handles the images itself.
-    // pi reads its settings where the environment it starts with says; Boite's own `default` entry names no model.
-    const catalog = (probed ?? saved?.models ?? null)?.filter(entry => entry.id !== AGENT_OWN_MODEL).map(entry => entry.id) ?? null;
-    const agentDir = account ? piAgentDir(agentEnv(provider, core.accounts.profileEnv(account, provider)), cwd) : null;
-    const start = account && agentDir ? folderStartModel(agentDir, cwd, catalog, piLaunchChoices(args)) : 'account';
+    // A protected run starts pi with `--no-approve` and its own settings: pi alone knows that model.
+    if (runsIn && core.sharedAccess.bound(runsIn) !== null) return undefined;
+    // pi reads its settings where the environment the driver starts it with says; Boite's own `default` entry names no model.
+    const catalog = (probed ?? saved?.models ?? null)?.filter(entry => entry.id !== AGENT_OWN_MODEL) ?? null;
+    const start = account ? folderStartModel(piAgentDir(piLaunchEnv(core.accounts.profileEnv(account, provider)), cwd), cwd, catalog, launch) : 'account';
     if (start === null) return undefined;
     if (start !== 'account') return listed(start);
   }

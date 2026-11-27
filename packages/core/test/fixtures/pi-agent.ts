@@ -249,8 +249,12 @@ const MODELS = [
 
 // A virtual model as pi lists it: a router that answers through the others.
 if (process.env['PI_FAKE_VIRTUAL']) MODELS.push({ ...MODELS[0]!, id: 'router', name: 'Fake Router', api: 'pi-virtual' });
-// A text-only model whose id ends like a thinking level, which pi matches literally first.
-if (process.env['PI_FAKE_LITERAL']) MODELS.push({ ...MODELS[2]!, provider: 'fake-a', id: 'smart:high', name: 'Fake Smart High' });
+// Ids that end like a thinking level: a text-only one pi matches literally first, and one that reads images
+// which `fake-b/plain:low` matches in part before pi drops `:low`.
+if (process.env['PI_FAKE_LITERAL']) {
+  MODELS.push({ ...MODELS[2]!, provider: 'fake-a', id: 'smart:high', name: 'Fake Smart High' });
+  MODELS.push({ ...MODELS[0]!, provider: 'fake-b', id: 'plain:low-plus', name: 'Fake Plain Low Plus' });
+}
 /** The model the session is on, which is the one pi reports as current. */
 const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0]!;
 /** `--model provider/id[:level]` without its level, or the current model. */

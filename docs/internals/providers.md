@@ -415,14 +415,20 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   account's `settings.json` only for a trusted folder: the profile's
   `--approve` or `--no-approve` (the last one wins), else a decision for it or a
   parent in the account's `trust.json`, else `defaultProjectTrust: "always"`; in
-  RPC mode "ask" means no. Both files sit in the configuration folder the
-  launch environment names (`PI_CODING_AGENT_DIR`, the profile's included, else
-  `~/.pi/agent`). With a scope (the profile's `--models`, else `enabledModels`),
-  the saved `defaultProvider`/`defaultModel` wins when the scope holds it, else
-  the first scoped model; without one, the saved default when available. A
-  `--models` left with no pattern clears the scope. Boite follows that with the
-  account's catalog (a literal id before a `:level` suffix, never its own
-  `default` entry), a leading BOM and an empty `enabledModels` included. When
+  RPC mode "ask" means no. Both files sit in the configuration folder of the
+  environment the driver starts pi with (`PI_CODING_AGENT_DIR` from the core's
+  environment or the profile's, else `~/.pi/agent`). With a scope (the
+  profile's `--models`, else `enabledModels`), the saved
+  `defaultProvider`/`defaultModel` wins when the scope holds it, else the first
+  scoped model; without one, the saved default when available. A `--models`
+  left with no pattern clears the scope. The profile's arguments are walked as
+  pi parses them, so an option's value is never read as a flag. Boite follows
+  that with the account's catalog, never its own `default` entry: a pattern
+  names a model only when its whole text, without case, is one `provider/id` or
+  one bare id; a partial or ambiguous match is pi's pick, and a `:suffix` is
+  dropped only when the whole text matches nothing. A leading BOM and an empty
+  `enabledModels` count as pi counts them. A protected run starts pi with
+  `--no-approve` and settings of its own, so pi decides there. When
   the folder changes nothing, the probe's `default` answers; when
   only pi can name the model (a glob or fuzzy pattern, a model missing from the
   catalog), Boite lets the image through and pi replaces it if that model reads
