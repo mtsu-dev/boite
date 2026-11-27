@@ -214,7 +214,7 @@ export class CodeCheckpoints {
         }
       }
       const { files, changes } = await this.#plan(thread, root, turnIds, messageId);
-      admit(changes.length ? restoredView(root, this.#objects(thread.id), changes) : DISK_VIEW);
+      admit(changes.length ? restoredView(root, this.#objects(thread.id), changes, thread.cwd) : DISK_VIEW);
       if (changes.length) await restoreFiles(root, this.#objects(thread.id), changes);
       try { return cut(files); }
       catch (error) {

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants, lstatSync, readdirSync, readFileSync, type BigIntStats } from 'node:fs';
+import { constants, lstatSync, readdirSync, readFileSync, readlinkSync, type BigIntStats } from 'node:fs';
 import { chmod, copyFile, link, lstat, mkdir, open, readdir, readFile, readlink, realpath, rename, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import type { Core } from '../core.ts';
 import type { FileView } from '../file-view.ts';
 import type { SharedFilePermit } from '../contacts/access-policy.ts';
@@ -380,9 +380,11 @@ async function writeEntry(root: string, objects: string, name: string, entry: Fi
 
 /**
  * The files under `root` as `restoreFiles(root, objects, changes)` will leave them, read without writing anything:
- * each change's `before`, a parent its deleted files leave empty gone, every other path as the disk holds it.
+ * each change's `before`, a parent its deleted files leave empty gone, every other path as the disk holds it. A path
+ * reads as the system would after the restore: through each symbolic link it crosses, as restored or as on disk, and
+ * under `cwd`, the spelling the thread keeps for `root` (a Windows short name or `subst` drive `realpath` expands).
  */
-export function restoredView(root: string, objects: string, changes: readonly FileChange[]): FileView {
+export function restoredView(root: string, objects: string, changes: readonly FileChange[], cwd = root): FileView {
   const key = (path: string) => process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path);
   const planned = new Map(changes.map(change => [key(join(root, change.name)), change.before]));
   const inside = (dir: string) => {
@@ -390,6 +392,7 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
     return [...planned].filter(([path]) => path.startsWith(prefix)).map(([, entry]) => entry);
   };
   const names = (dir: string) => { try { return readdirSync(dir); } catch { return []; } };
+  /** Whether an entry stands at `path` itself, a link not followed. */
   const present = (path: string): boolean => {
     const own = key(path);
     if (planned.has(own)) return planned.get(own) !== undefined;
@@ -400,21 +403,52 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
     const below = inside(path);
     return below.some(Boolean) || names(path).some(name => present(join(path, name))) || below.length === 0;
   };
-  const read = (path: string, hops: number): string | null => {
-    const own = key(path);
-    if (!planned.has(own)) {
-      if (!present(path)) return null;
-      try { return readFileSync(path, 'utf8'); } catch { return null; }
+  const aliased = (path: string) => {
+    const full = resolve(path);
+    const spelled = resolve(cwd);
+    return key(full) === key(spelled) || key(full).startsWith(key(spelled) + sep) ? root + full.slice(spelled.length) : full;
+  };
+  /** `path` with every link it crosses followed, as the restore leaves each; null past 32 links. */
+  const follow = (path: string, hops = 0): string | null => {
+    const full = aliased(path);
+    const top = parse(full).root;
+    const parts = full.slice(top.length).split(sep).filter(Boolean);
+    let at = top;
+    for (const [index, part] of parts.entries()) {
+      const next = join(at, part);
+      let link: string | undefined;
+      if (planned.has(key(next))) {
+        const entry = planned.get(key(next));
+        if (!entry) return join(next, ...parts.slice(index + 1));
+        link = entry.link;
+      } else {
+        try { if (lstatSync(next).isSymbolicLink()) link = readlinkSync(next); }
+        catch { return join(next, ...parts.slice(index + 1)); }
+      }
+      if (link === undefined) { at = next; continue; }
+      if (hops >= 32) return null;
+      const target = follow(resolve(at, link), hops + 1);
+      if (target === null) return null;
+      at = target;
     }
-    const entry = planned.get(own);
-    if (!entry) return null;
-    if (entry.link !== undefined) return hops < 8 ? read(resolve(dirname(path), entry.link), hops + 1) : null;
-    return readBlobSync(join(objects, entry.hash), entry.hash)?.toString('utf8') ?? null;
+    return at;
   };
   return {
-    read: path => read(path, 0),
-    exists: present,
-    listsAny: dir => inside(dir).some(Boolean) || names(dir).some(name => present(join(dir, name))),
+    read: path => {
+      const target = follow(path);
+      if (target === null || !present(target)) return null;
+      const entry = planned.get(key(target));
+      if (entry) return readBlobSync(join(objects, entry.hash), entry.hash)?.toString('utf8') ?? null;
+      try { return readFileSync(target, 'utf8'); } catch { return null; }
+    },
+    exists: path => {
+      const target = follow(path);
+      return target !== null && present(target);
+    },
+    listsAny: path => {
+      const dir = follow(path);
+      return dir !== null && present(dir) && (inside(dir).some(Boolean) || names(dir).some(name => present(join(dir, name))));
+    },
   };
 }
 

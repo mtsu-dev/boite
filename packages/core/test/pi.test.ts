@@ -1024,12 +1024,14 @@ test('an edit with images is refused before the cut when the session it leaves r
   expect((await client.call('threads.rewind', { threadId, messageId: second!.id, images: true })).session).toBe('native');
 });
 
-test('an edit with images reads the folder settings its cut would restore, and a refusal writes no file', async () => {
+test('an edit with images reads the folder settings its cut would restore, through links, and a refusal writes no file', async () => {
   const client = await startCore();
   const { dataDir, accountId } = await piAccount(client);
-  // A folder beside the core's data, which file checkpoints can snapshot.
-  const cwd = join(dataDir, 'workspace');
-  mkdirSync(cwd);
+  // A folder beside the core's data, which file checkpoints can snapshot, opened by another name: the checkpoints
+  // hold it under its real path, the thread under this one.
+  mkdirSync(join(dataDir, 'workspace'));
+  const cwd = join(dataDir, 'workspace-link');
+  symlinkSync(join(dataDir, 'workspace'), cwd, process.platform === 'win32' ? 'junction' : 'dir');
   const project = await client.call('projects.add', { path: cwd, name: 'workspace' });
   const threadId = (await client.call('threads.create', { projectId: project.id, providerId: 'pi-fake', accountId })).id;
   await client.call('threads.subscribe', { threadId });
@@ -1039,14 +1041,17 @@ test('an edit with images reads the folder settings its cut would restore, and a
   mkdirSync(join(cwd, '.pi'), { recursive: true });
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(join(cwd, '..'))]: true }));
-  const settings = join(cwd, '.pi', 'settings.json');
+  // The folder's settings are a link no turn changes, to a file they do.
+  const settings = join(cwd, 'config', 'pi.json');
+  mkdirSync(join(cwd, 'config'));
   writeFileSync(settings, JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
+  symlinkSync(join('..', 'config', 'pi.json'), join(cwd, '.pi', 'settings.json'), 'file');
   mkdirSync(join(cwd, 'notes'));
   writeFileSync(join(cwd, 'notes', 'draft.md'), 'draft');
   // The turns move the folder to a model that reads images, leave `notes` empty and add an extension; editing the
   // first restores the text-only model and the draft, and removes the extension.
   const reads = JSON.stringify({ defaultProvider: 'fake-a', defaultModel: 'smart' });
-  expect((await (await startTurn(client, threadId, `[write .pi/settings.json] ${reads}`)).finished).status).toBe('done');
+  expect((await (await startTurn(client, threadId, `[write config/pi.json] ${reads}`)).finished).status).toBe('done');
   expect((await (await startTurn(client, threadId, '[remove notes/draft.md]')).finished).status).toBe('done');
   // A folder extension leaves the model to pi on the disk now; the restore would remove it with its folder.
   expect((await (await startTurn(client, threadId, '[write .pi/extensions/tool.ts] export default () => {};')).finished).status).toBe('done');
