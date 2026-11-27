@@ -1,4 +1,5 @@
-import type { ClientContext, LoadSessionResponse } from '@agentclientprotocol/sdk/unstable';
+import type { ClientContext, LoadSessionResponse, McpServer } from '@agentclientprotocol/sdk/unstable';
+import type { McpRegistration } from '../../mcp/lazy.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { errorCodeOf } from '../driver-log.ts';
 import type { SessionContext } from '../types.ts';
@@ -7,7 +8,7 @@ import { isHermes } from './protocol.ts';
 
 export async function loadConversation(
   ctx: SessionContext, sessionId: string, agent: ClientContext, child: SpawnedChild,
-  meta: { _meta?: Record<string, unknown> }, refusedLoads: Set<string>, ended: () => boolean,
+  meta: { _meta?: Record<string, unknown> }, refusedLoads: Set<string>, ended: () => boolean, mcpServers: Extract<McpServer, { type: 'http' }>[] = [],
 ): Promise<LoadSessionResponse> {
   // Every `session/update` of a load is history replay: `current` is null,
   // so the update handler drops them, all but a running cost.
@@ -17,7 +18,7 @@ export async function loadConversation(
     loaded = await agent.request('session/load', {
       sessionId,
       cwd: ctx.thread.cwd,
-      mcpServers: [],
+      mcpServers,
       ...meta,
     });
   } catch (error) {
@@ -59,4 +60,10 @@ export async function loadConversation(
   }
   refusedLoads.delete(refusedKey);
   return loaded;
+}
+
+export function acpMcpServers(registration: McpRegistration | null): Extract<McpServer, { type: 'http' }>[] {
+  return Object.entries(registration?.entries ?? {}).map(([name, entry]) => ({
+    type: 'http', name, url: entry.url, headers: [{ name: 'Authorization', value: registration!.authorization }],
+  }));
 }

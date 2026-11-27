@@ -3,6 +3,13 @@
 This page is the technical reference for contributors. To see which agents
 Boite runs and how to connect one, read [supported agents](../supported-agents.md).
 
+## MCP servers
+
+Boite's [MCP server manager](mcp.md) passes configured servers to Claude, Codex,
+Muse versions with host config overrides, and ACP agents that support HTTP MCP.
+OpenCode 2 receives them in its native remote MCP config. Pi and echo
+have no Boite-managed MCP transport.
+
 ## Subscription proxy
 
 Settings, Providers offers an optional subscription proxy for Claude, Codex and

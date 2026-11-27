@@ -53,6 +53,7 @@ import { VirtualDesktops } from './desktop/service.ts';
 import { DesktopWindows } from './windows/service.ts';
 import { KeepAwake, type KeepAwakeHold } from './keep-awake.ts';
 import { LazyMcp } from './mcp/lazy.ts';
+import { McpRegistry } from './mcp/registry.ts';
 import { QuotaStore } from './quotas.ts';
 import { dropRetiredAccounts } from './account-retirement.ts';
 import { PluginStore } from './plugins.ts';
@@ -260,6 +261,7 @@ export class Core {
   readonly desktops = new VirtualDesktops(this);
   /** The user's stdio MCP servers, started when a conversation first calls one (`mcp/lazy.ts`). */
   readonly lazyMcp = new LazyMcp(this);
+  readonly mcp = new McpRegistry(this);
 
   /**
    * The server tells the core what it alone can know. The default answers no
@@ -676,6 +678,7 @@ export class Core {
     this.windows.stop();
     this.keepAwake.close();
     await this.desktops.stopAll();
+    this.mcp.close();
     this.lazyMcp.close();
     this.artifactPreviews.stop();
     this.threads.sideQuestions.close();

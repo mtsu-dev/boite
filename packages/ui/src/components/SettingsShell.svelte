@@ -13,6 +13,7 @@
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
+  import McpPage from './McpPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
   import { COMMAND_GROUPS } from '../lib/keybindings';
   import { experimentOn, experimentsListed, experimentsShown } from '../lib/experiments.svelte';
@@ -129,6 +130,7 @@
     { id: 'voice', label: strings.speech.heading },
     { id: 'accounts', label: strings.settings.tabs.accounts },
     { id: 'plugins', label: strings.settings.tabs.plugins },
+    { id: 'mcp', label: strings.mcp.heading },
     { id: 'browser', label: strings.settings.tabs.browser },
     { id: 'brain', label: strings.brain.heading },
     { id: 'usage', label: strings.settings.tabs.usage },
@@ -562,6 +564,8 @@
         <TaskManagerLoader store={page === tab ? store : target} {onopenthread} section={page !== tab} />
       {:else if page === 'plugins'}
         <PluginsPage store={target} />
+      {:else if page === 'mcp'}
+        <McpPage store={target} />
       {:else if page === 'experiments'}
         <ExperimentsPage />
       {:else if page === 'diagnostics'}

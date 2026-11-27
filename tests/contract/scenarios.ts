@@ -13,6 +13,7 @@ import { CONTACTS_BOT_SCENARIOS } from './contacts-bot.ts';
 import { SHARED_SCENARIOS } from './shared-projects.ts';
 import { TEAM_SCENARIOS } from './teams.ts';
 import { COUNCIL_SCENARIOS } from './council.ts';
+import { MCP_SCENARIOS } from './mcp.ts';
 import { STATE_SCENARIOS } from './state.ts';
 import { PRESENCE_SCENARIOS } from './presence.ts';
 import { MESSAGE_SEARCH_SCENARIOS } from './message-search.ts';
@@ -255,6 +256,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     }
   },
   ...COUNCIL_SCENARIOS,
+  ...MCP_SCENARIOS,
   ...STATE_SCENARIOS,
   ...PRESENCE_SCENARIOS,
   ...MESSAGE_SEARCH_SCENARIOS,

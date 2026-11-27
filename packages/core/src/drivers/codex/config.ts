@@ -1,3 +1,5 @@
+import { AGENT_ENV } from '@boite/contracts';
+import type { McpRegistration } from '../../mcp/lazy.ts';
 import { messageOf } from '../../errors.ts';
 import { THREAD_CONFIG } from './protocol.ts';
 import type { CodexRpc } from './rpc.ts';
@@ -29,17 +31,18 @@ export async function readConfig(rpc: CodexRpc, cwd: string): Promise<CodexConfi
  * also turns off every MCP server, for a process that runs no turn (a fork's
  * setup); one that cannot list them starts them as configured.
  */
-export async function threadConfig(rpc: CodexRpc, cwd: string, log: (level: 'info' | 'warn' | 'error', message: string) => void, serversOff = false, mandatory = false): Promise<Record<string, unknown>> {
+export async function threadConfig(rpc: CodexRpc, cwd: string, log: (level: 'info' | 'warn' | 'error', message: string) => void, serversOff = false, mandatory = false, registration: McpRegistration | null = null): Promise<Record<string, unknown>> {
   try {
     const config = await readConfig(rpc, cwd);
-    const servers = serversOff ? mcpServersOff(config) : null;
+    const servers = serversOff ? mcpServersOff(config) : managedServers(registration, config);
     const { mcp_optional_startup_grace_ms: _ours, ...rest } = THREAD_CONFIG;
     const base = typeof config.mcp_optional_startup_grace_ms === 'number' ? rest : THREAD_CONFIG;
     return servers === null ? base : { ...base, mcp_servers: servers };
   } catch (error) {
     if (mandatory) throw new Error(`execution.codex.config: cannot enumerate and disable configured MCP servers (${messageOf(error)})`);
     log('info', `codex: config/read failed (${messageOf(error)}); the MCP startup grace is ${THREAD_CONFIG.mcp_optional_startup_grace_ms} ms`);
-    return THREAD_CONFIG;
+    const servers = serversOff ? null : managedServers(registration, {});
+    return servers === null ? THREAD_CONFIG : { ...THREAD_CONFIG, mcp_servers: servers };
   }
 }
 
@@ -53,4 +56,15 @@ export async function threadConfig(rpc: CodexRpc, cwd: string, log: (level: 'inf
 export function mcpServersOff(config: CodexConfig): Record<string, { enabled: false }> | null {
   const names = Object.entries(config.mcp_servers ?? {}).filter(([, server]) => server?.enabled !== false).map(([name]) => name);
   return names.length === 0 ? null : Object.fromEntries(names.map(name => [name, { enabled: false as const }]));
+}
+
+function managedServers(registration: McpRegistration | null, config: CodexConfig) {
+  if (registration === null) return null;
+  const taken = new Set(Object.keys(config.mcp_servers ?? {}));
+  return Object.fromEntries(Object.entries(registration.entries).map(([name, entry]) => {
+    let available = name;
+    for (let suffix = 2; taken.has(available); suffix += 1) available = `${name}-${suffix}`;
+    taken.add(available);
+    return [available, { url: entry.url, bearer_token_env_var: AGENT_ENV.token, enabled: true }];
+  }));
 }

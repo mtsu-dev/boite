@@ -156,6 +156,7 @@ export function parsePolicy(text: string | null, file: string): Parsed {
         if (plugins.recommended !== undefined) values.plugins.recommended = flag('plugins.recommended', plugins.recommended);
         break;
       }
+      case 'mcp': values.mcp = flag('mcp', value); break;
       case 'issueReports': values.issueReports = flag('issueReports', value); break;
       case 'dictation': values.dictation = oneOf('dictation', value, ['local', 'off'] as const, 'off'); break;
       case 'previews': {
@@ -183,7 +184,7 @@ export function parsePolicy(text: string | null, file: string): Parsed {
       }
       case 'pullRequests': values.pullRequests = flag('pullRequests', value); break;
       case 'modelPrices': values.modelPrices = flag('modelPrices', value); break;
-      default: problem(key, 'one of analytics, updates, providers, gateway, quotaReads, plugins, issueReports, dictation, previews, agentBrowser, agentDesktop, network, pullRequests, modelPrices', 'an unknown key');
+      default: problem(key, 'one of analytics, updates, providers, gateway, quotaReads, plugins, mcp, issueReports, dictation, previews, agentBrowser, agentDesktop, network, pullRequests, modelPrices', 'an unknown key');
     }
   }
   return { values, problems, failedClosed: false };
@@ -220,6 +221,7 @@ const FORBIDS: Record<PolicyKey, string> = {
   quotaReads: 'Quota reads',
   'plugins.install': 'Plugin installs',
   'plugins.recommended': 'Recommended plugin checks',
+  mcp: 'Boite-managed MCP servers',
   issueReports: 'Issue reports',
   dictation: 'Dictation',
   'previews.remoteResources': 'Remote resources in previews',

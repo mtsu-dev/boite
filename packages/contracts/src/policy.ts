@@ -33,6 +33,8 @@ export interface AdminPolicy {
     /** False stops reading the recommended plugins' repositories for new releases. */
     recommended?: boolean;
   };
+  /** False stops Boite-managed MCP servers and their connection tests. */
+  mcp?: boolean;
   /** False refuses the bug report to GitHub. */
   issueReports?: boolean;
   /** `local` forbids the cloud engines and their fallback; `off` forbids dictation, downloads included. */
@@ -70,7 +72,7 @@ export const POLICY_KEYS = [
   'providers.allow', 'providers.deny',
   'gateway', 'gateway.allowedBaseUrls',
   'quotaReads',
-  'plugins.install', 'plugins.recommended',
+  'plugins.install', 'plugins.recommended', 'mcp',
   'issueReports',
   'dictation',
   'previews.remoteResources',
@@ -90,6 +92,7 @@ export const STRICTEST_POLICY: AdminPolicy = Object.freeze({
   gateway: false,
   quotaReads: false,
   plugins: { install: false, recommended: false },
+  mcp: false,
   issueReports: false,
   dictation: 'off',
   previews: { remoteResources: false },

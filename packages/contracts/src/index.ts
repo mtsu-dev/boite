@@ -42,6 +42,7 @@ import type { MessagesRpcEvents, MessagesRpcMethods } from './messages';
 import type { PairingRpcMethods } from './pairing';
 import type { PanelRpcEvents, PanelRpcMethods } from './panel';
 import type { PermissionsRpcEvents, PermissionsRpcMethods } from './permissions';
+import type { McpRpcEvents, McpRpcMethods } from './mcp';
 import type { PluginsRpcEvents, PluginsRpcMethods } from './plugins';
 import type { ProjectsRpcEvents, ProjectsRpcMethods } from './projects';
 import type { ProvidersRpcEvents, ProvidersRpcMethods } from './providers';
@@ -68,6 +69,9 @@ export * from './providers';
 export * from './local-acp';
 export * from './accounts';
 export * from './plugins';
+export * from './mcp';
+export * from './mcp-presets';
+export * from './mcp-input';
 export * from './plugin-source';
 export * from './projects';
 export * from './threads';
@@ -153,6 +157,7 @@ export interface RpcMethods extends
   ProvidersRpcMethods,
   AccountsRpcMethods,
   PluginsRpcMethods,
+  McpRpcMethods,
   ProjectsRpcMethods,
   ThreadsRpcMethods,
   UsageRpcMethods,
@@ -204,6 +209,7 @@ export interface RpcEvents extends
   ProvidersRpcEvents,
   AccountsRpcEvents,
   PluginsRpcEvents,
+  McpRpcEvents,
   ProjectsRpcEvents,
   ThreadsRpcEvents,
   PromptSuggestionsRpcEvents,
