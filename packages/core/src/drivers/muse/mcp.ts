@@ -69,7 +69,8 @@ export function probeMuseVersion(ctx: SessionContext, executable: string): Promi
       env: agentEnv(ctx.provider, ctx.accountEnv),
     });
     const timer = setTimeout(() => {
-      try { child.kill(); } catch { /* exited */ }
+      if (ctx.stopChild) void ctx.stopChild(child);
+      else child.kill();
       done(null);
     }, PROBE_TIMEOUT_MS);
     timer.unref?.();

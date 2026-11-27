@@ -6,10 +6,11 @@ import type { StdioServer } from './lazy.ts';
 // Keep executable lookup and platform directories. Servers get authentication
 // and other overrides only from their own configuration.
 const INHERITED = new Set([
-  'PATH', 'PATHEXT', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'SYSTEMROOT', 'WINDIR', 'COMSPEC',
+  'PATH', 'PATHEXT', 'HOME', 'USER', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'SYSTEMDRIVE', 'SYSTEMROOT', 'WINDIR', 'COMSPEC',
   'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'PROGRAMFILES', 'PROGRAMFILES(X86)', 'COMMONPROGRAMFILES',
   'TMP', 'TEMP', 'TMPDIR', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME',
   'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'TZ', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'ALL_PROXY', 'NPM_CONFIG_REGISTRY', 'UV_INDEX_URL', 'PIP_INDEX_URL',
 ]);
 
 /** Start npm presets through Node on Windows, where npx.cmd needs a shell. */

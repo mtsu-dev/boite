@@ -618,7 +618,13 @@ export class TurnContexts {
   #lazyMcpFor(thread: ThreadSummary): NonNullable<SessionContext['lazyMcp']> {
     return (env, servers) => {
       if (thread.contextMode?.mcp === false) return null;
-      const managed = this.#core.mcp.resolve(thread.projectId);
+      let managed: ReturnType<Core['mcp']['resolve']>;
+      try { managed = this.#core.mcp.resolve(thread.projectId); }
+      catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.#core.log('warn', `mcp: skipping managed servers: ${reason}`, { source: 'mcp', threadId: thread.id });
+        managed = new Map();
+      }
       const legacy = LazyMcp.enabled() ? servers : new Map();
       if (legacy.size === 0 && managed.size === 0) return null;
       const { id, entries, authorization } = this.#core.lazyMcp.register(thread.id, thread.cwd, env, legacy, managed);

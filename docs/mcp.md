@@ -14,13 +14,15 @@ server once and Boite makes it available to supported agents on that machine.
 
 Choose **Add custom server** to supply your own command and arguments
 (`stdio`) or an HTTP endpoint (`HTTP`). Enter one command argument per line.
-Turn on **Secret** for each credential. When you edit a saved secret, leave
-the field blank to keep it. Remove its row to delete it. Use an encrypted
-connection to Boite to save credentials. HTTP servers with secret headers use
-HTTPS unless they run on this machine's loopback. If you change the server's
-scheme, host, or port, re-enter the credentials for the new address.
-Environment variable names are case-sensitive on Linux and macOS, and
-case-insensitive on Windows.
+Turn on **Secret** for each credential. Boite keeps saved credentials out of
+your conversations in a local owner-only file in its data folder on that
+machine (protected by your operating system account permissions, not a separate
+passphrase). When you edit a saved secret, leave the field blank to keep it.
+Remove its row to delete it. Use an encrypted connection to Boite to save
+credentials. HTTP servers with secret headers use HTTPS unless they run on this
+machine's loopback. If you change the server's scheme, host, or port, re-enter
+the credentials for the new address. Environment variable names are
+case-sensitive on Linux and macOS, and case-insensitive on Windows.
 
 ## Use a server
 

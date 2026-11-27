@@ -386,7 +386,9 @@ export class LazyMcp {
   }
 
   async #initialize(registration: Registration, name: string, server: StdioServer, message: Message, managed?: ManagedServer): Promise<Response> {
-    const fingerprint = managed ? createHash('sha256').update(registration.cwd).digest('hex') : fingerprintOf(server);
+    const fingerprint = managed
+      ? createHash('sha256').update(JSON.stringify([server.command, server.args, Object.keys(server.env).sort()])).digest('hex').slice(0, 32)
+      : fingerprintOf(server);
     const session: Session = {
       id: randomUUID(),
       registration,

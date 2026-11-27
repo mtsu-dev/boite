@@ -92,14 +92,41 @@ test('POST event streams can run past the idle limit with activity and end when 
   } finally { active.close(); silent.close(); await server.stop(true); }
 });
 
-test('managed stdio inherits platform paths but excludes arbitrary core credentials', () => {
+test('POST stalled before upstream headers returns 504 instead of 502', async () => {
+  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
+    return new Promise<Response>((_resolve, reject) => {
+      request.signal.addEventListener('abort', () => reject(new Error('aborted')));
+    });
+  } });
+  const proxy = new HttpMcpProxy(upstream(server.url.href), 120);
+  try {
+    const response = await proxy.handle(new Request('http://localhost/mcp', { method: 'POST', body: '{}' }));
+    expect(response.status).toBe(504);
+    expect(await response.text()).toContain('timed out');
+  } finally { proxy.close(); await server.stop(true); }
+});
+
+test('managed stdio inherits platform paths and proxy settings but excludes arbitrary core credentials', () => {
   const key = 'MCP_TEST_CORE_API_TOKEN';
+  const previous = { HTTPS_PROXY: process.env.HTTPS_PROXY, NO_PROXY: process.env.NO_PROXY, NPM_CONFIG_REGISTRY: process.env.NPM_CONFIG_REGISTRY };
   process.env[key] = 'test-only';
+  process.env.HTTPS_PROXY = 'http://proxy.internal:8080';
+  process.env.NO_PROXY = 'localhost,127.0.0.1';
+  process.env.NPM_CONFIG_REGISTRY = 'https://registry.internal';
   try {
     const { env } = managedStdioLaunch({ command: process.execPath, args: [], env: { SERVER_TOKEN: 'configured' } });
     expect(Object.keys(env).some(name => name.toUpperCase() === 'PATH')).toBe(true);
     expect(Object.keys(env).some(name => /^BOITE_/i.test(name))).toBe(false);
     expect(env[key]).toBeUndefined();
+    expect(env.HTTPS_PROXY).toBe('http://proxy.internal:8080');
+    expect(env.NO_PROXY).toBe('localhost,127.0.0.1');
+    expect(env.NPM_CONFIG_REGISTRY).toBe('https://registry.internal');
     expect(env.SERVER_TOKEN).toBe('configured');
-  } finally { delete process.env[key]; }
+  } finally {
+    delete process.env[key];
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
 });

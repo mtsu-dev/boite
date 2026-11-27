@@ -20,7 +20,8 @@ export function mcpMethods(ctx: FakeContext): Pick<FakeMethods, `mcp.${string}` 
   return {
     'mcp.list': async () => structuredClone({ servers, presets: MCP_PRESETS, encrypted: !ctx.plainLink }),
     'mcp.save': async input => {
-      if (ctx.plainLink && (Object.keys(input?.secretEnv ?? {}).length || Object.keys(input?.secretHeaders ?? {}).length)) {
+      const sendsSecret = (map: Record<string, string | null> | undefined) => Object.values(map ?? {}).some(value => value !== null && value !== undefined);
+      if (ctx.plainLink && (sendsSecret(input?.secretEnv) || sendsSecret(input?.secretHeaders))) {
         throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'mcp.save: credentials travel only over an encrypted link', data: { field: 'connection', expected: 'loopback, Tailscale or HTTPS' } });
       }
       let server: McpServer;

@@ -4,7 +4,7 @@ import { STDOUT_LINE_MAX } from '../drivers/lines.ts';
 
 type ManagedHttp = ManagedServer & HttpServer;
 const PROTOCOL_HEADERS = ['mcp-protocol-version', 'last-event-id'] as const;
-const IDLE_MS = 60_000;
+const IDLE_MS = 300_000;
 const SESSION_ID = 'mcp-session-id';
 const PROTOCOL_VERSION = 'mcp-protocol-version';
 
@@ -242,6 +242,7 @@ export class HttpMcpProxy {
       await response.body.cancel();
       return new Response('The upstream MCP server returned an unsupported content type', { status: 502 });
     } catch {
+      if (idle?.signal.aborted) return new Response('The upstream MCP server timed out', { status: 504 });
       return new Response('Could not reach the upstream MCP server', { status: 502 });
     } finally { if (!streaming) idle?.stop(); }
   }

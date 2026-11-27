@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { McpProbeResult, McpServer } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
@@ -9,6 +12,7 @@ import { managedStdioLaunch } from './stdio.ts';
 
 const PROBE_TIMEOUT_MS = 12_000;
 const PROTOCOL_VERSION = '2025-11-25';
+const STDERR_TAIL = 2_000;
 
 function object(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -52,6 +56,7 @@ async function probeStdio(core: Core, server: StdioServer, cwd: string, signal: 
     cwd, env, agentRoot: false,
   });
   let id = 0;
+  let stderr = '';
   let pending: { id: number; resolve: (data: Record<string, unknown>) => void; reject: (reason: unknown) => void } | undefined;
   let fault: Error | undefined;
   const fail = (error: Error): void => { fault ??= error; pending?.reject(error); };
@@ -68,9 +73,13 @@ async function probeStdio(core: Core, server: StdioServer, cwd: string, signal: 
   }, { maxLine: STDOUT_LINE_MAX, onOverflow: () => fail(new Error('The MCP server wrote an oversized response')) });
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => lines.feed(chunk));
-  child.stderr.resume();
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-STDERR_TAIL); });
   child.once('error', (error: Error) => fail(error));
-  child.once('exit', () => fail(new Error('The MCP server process exited before answering')));
+  child.once('exit', () => {
+    const detail = stderr.trim().slice(-500);
+    fail(new Error(detail ? `The MCP server process exited before answering: ${detail}` : 'The MCP server process exited before answering'));
+  });
   child.stdin.on('error', (error: Error) => fail(error));
   signal.addEventListener('abort', abort, { once: true });
 
@@ -141,10 +150,12 @@ export async function probeMcp(core: Core, definition: McpServer, revoked: Abort
   const deadline = AbortSignal.timeout(PROBE_TIMEOUT_MS);
   const signal = AbortSignal.any(caller ? [revoked, deadline, caller] : [revoked, deadline]);
   let server: ManagedServer | undefined;
+  let scratch: string | undefined;
   try {
     signal.throwIfAborted();
     server = core.mcp.runtime(definition);
-    const cwd = definition.projectIds.map(id => core.journal.getProject(id)?.path).find(path => path !== undefined) ?? core.dataDir;
+    const scoped = definition.projectIds.map(id => core.journal.getProject(id)?.path).find(path => path !== undefined);
+    const cwd = 'url' in server ? '' : scoped ?? (scratch = mkdtempSync(join(tmpdir(), 'boite-mcp-probe-')));
     const details = await ('url' in server ? probeHttp(server, signal, revoked) : probeStdio(core, server, cwd, signal));
     signal.throwIfAborted();
     return { ...redactMcp(details, server.redact), ok: true, latencyMs: Math.round(performance.now() - started) };
@@ -152,5 +163,7 @@ export async function probeMcp(core: Core, definition: McpServer, revoked: Abort
     const reason = revoked.aborted ? messageOf(revoked.reason)
       : deadline.aborted ? 'The MCP server did not answer before the test deadline' : messageOf(error);
     return { ok: false, error: (server?.redact(reason) ?? reason).slice(0, 700), tools: [], latencyMs: Math.round(performance.now() - started) };
+  } finally {
+    if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
   }
 }

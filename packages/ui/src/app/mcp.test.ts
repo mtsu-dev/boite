@@ -100,6 +100,11 @@ test('McpPage refuses to submit secrets over an unencrypted link and fake-client
     name: 'Direct', enabled: true, transport: 'stdio', command: 'npx', args: [], scope: 'global', projectIds: [],
     env: {}, secretEnv: { TOKEN: 'secret-value' }, headers: {}, secretHeaders: {},
   })).rejects.toThrow(/encrypted link/);
+  const plainSaved = await client.call('mcp.save', {
+    name: 'Plain Delete', enabled: true, transport: 'stdio', command: 'npx', args: [], scope: 'global', projectIds: [],
+    env: {}, secretEnv: { TOKEN: null }, headers: {}, secretHeaders: {},
+  });
+  expect(plainSaved.secretEnvKeys).toEqual([]);
   const saves: unknown[] = [];
   const call = client.call.bind(client);
   client.call = ((method: string, params: unknown) => {
@@ -120,4 +125,19 @@ test('McpPage refuses to submit secrets over an unencrypted link and fake-client
   await waitFor(() => !!document.querySelector(form + ' .error'));
   expect(text(form + ' .error')).toContain('encrypted connection');
   expect(saves).toEqual([]);
+});
+
+test('adding the same catalog preset a second time chooses a unique default name', async ({ app: _app }) => {
+  store.showSettings('mcp');
+  flushSync();
+  await waitFor(() => !!document.querySelector('[data-testid=mcp-catalog]'));
+  click('[aria-label="Add Fetch"]');
+  await waitFor(() => !!document.querySelector(form));
+  click(form + ' button[type=submit]');
+  await waitFor(() => !document.querySelector(form));
+  click('[aria-label="Add Fetch"]');
+  await waitFor(() => text(form).includes('Fetch 2'));
+  click(form + ' button[type=submit]');
+  await waitFor(() => !document.querySelector(form));
+  expect((await store.client!.call('mcp.list', {})).servers.map(server => server.id)).toEqual(['fetch', 'fetch-2']);
 });

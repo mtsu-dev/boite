@@ -20,6 +20,18 @@ const encoder = new TextEncoder();
 const os = currentOs();
 const envKey = (key: string) => mcpEnvKey(key, os);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every(item => typeof item === 'string');
+}
+
+function isStoredSecrets(value: unknown): value is StoredSecrets {
+  return isRecord(value) && Object.values(value).every(item => isRecord(item) && isStringRecord(item.env) && isStringRecord(item.headers));
+}
+
 function applyPatch(values: Record<string, string>, patch: Record<string, string | null>, normalize: (key: string) => string): Record<string, string> {
   const next = new Map(Object.entries(values));
   for (const [key, value] of Object.entries(patch)) {
@@ -87,10 +99,11 @@ export class McpRegistry {
   }
 
   remove(id: string): { removed: true } {
-    this.get(id);
-    const previous = this.#readSecrets();
-    const updated = { ...previous };
-    delete updated[id];
+    const current = this.get(id);
+    const hasSecrets = current.secretEnvKeys.length > 0 || current.secretHeaderKeys.length > 0;
+    const previous = hasSecrets ? this.#readSecrets() : undefined;
+    const updated = previous ? { ...previous } : undefined;
+    if (updated) delete updated[id];
     this.#write(this.#servers().filter(server => server.id !== id), id, previous, updated);
     return { removed: true };
   }
@@ -135,18 +148,19 @@ export class McpRegistry {
     const secretEnv = Object.fromEntries(server.secretEnvKeys.filter(key => Object.hasOwn(saved.env, key)).map(key => [key, saved.env[key]!]));
     const secretHeaders = Object.fromEntries(server.secretHeaderKeys.filter(key => Object.hasOwn(saved.headers, key)).map(key => [key, saved.headers[key]!]));
     const parts = new Set<string>();
+    const scope = `mcp:${server.id}`;
     for (const [key, value] of Object.entries(server.transport === 'http' ? secretHeaders : secretEnv)) {
       // Fetch trims header values before sending them upstream.
       const sent = server.transport === 'http' ? value.trim() : value;
       const credential = key.toLowerCase() === 'authorization' ? sent.replace(/^(?:bearer|basic)\s+/i, '') : sent;
       for (const text of new Set([value, sent, credential])) {
-        if (text.length === 0) continue;
+        if (text.length < 4) continue;
         parts.add(text);
         parts.add(encodeURIComponent(text));
         parts.add(JSON.stringify(text).slice(1, -1));
         const encoded = encoder.encode(text);
         const digest = createHash('sha256').update(encoded).digest('hex');
-        this.core.secrets.masks.add('mcp', digest, key, encoded);
+        this.core.secrets.masks.add(scope, digest, key, encoded);
         encoded.fill(0);
       }
     }
@@ -186,7 +200,9 @@ export class McpRegistry {
       try { this.#settleSecrets(); }
       catch { this.core.log('warn', 'The MCP credential update is committed but its file could not be finalized'); }
     }
-    if (servers.some(server => server.id === id)) this.#revisions.set(id, ++this.#revision);
+    const kept = servers.some(server => server.id === id);
+    if (changesSecrets || !kept) this.core.secrets.masks.removeScope(`mcp:${id}`);
+    if (kept) this.#revisions.set(id, ++this.#revision);
     else this.#revisions.delete(id);
     this.core.lazyMcp.revoke(id);
     this.core.bus.emit('mcp.changed', {});
@@ -221,7 +237,9 @@ export class McpRegistry {
       const stat = lstatSync(path);
       if (!stat.isFile()) throw new Error('mcp-secrets.json must be a regular file');
       if (process.platform !== 'win32' && (stat.mode & 0o777) !== 0o600) chmodSync(path, 0o600);
-      return JSON.parse(readFileSync(path, 'utf8')) as StoredSecrets;
+      const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+      if (!isStoredSecrets(parsed)) throw new Error('mcp-secrets.json has an invalid shape');
+      return parsed;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
       throw new Error('Cannot read the MCP credentials file');

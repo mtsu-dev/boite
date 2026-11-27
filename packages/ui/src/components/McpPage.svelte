@@ -101,10 +101,23 @@
     finally { busy.delete(server.id); }
   }
 
+  function defaultPresetName(preset: McpPreset): string {
+    const servers = catalog?.servers ?? [];
+    const taken = (candidate: string): boolean => {
+      const slug = candidate.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      return servers.some(server => server.id === slug || server.name.toLowerCase() === candidate.toLowerCase());
+    };
+    if (!taken(preset.name)) return preset.name;
+    let index = 2;
+    while (taken(`${preset.name} ${index}`)) index += 1;
+    return `${preset.name} ${index}`;
+  }
+
   async function save(input: McpServerInput): Promise<void> {
     const client = store.client;
     if (!client) throw new Error(t.missing);
-    if (!encrypted && (Object.keys(input.secretEnv ?? {}).length > 0 || Object.keys(input.secretHeaders ?? {}).length > 0)) {
+    const sendsSecret = (map?: Record<string, string | null>) => Object.values(map ?? {}).some(value => value !== null && value !== undefined);
+    if (!encrypted && (sendsSecret(input.secretEnv) || sendsSecret(input.secretHeaders))) {
       throw new Error(t.plainLinkSecrets);
     }
     const saved = await client.call('mcp.save', input);
@@ -127,9 +140,10 @@
         {/if}
         {#each catalog.servers as server (server.id)}
           {@const result = tests.get(server.id)}
+          {@const ServerIcon = icons[server.id] ?? icons[server.id.replace(/-\d+$/, '')] ?? Plug}
           <div class="server">
             <div class="server-head">
-              <div class="server-icon"><Plug size={17} strokeWidth={1.75} /></div>
+              <div class="server-icon"><ServerIcon size={17} strokeWidth={1.75} /></div>
               <div class="server-title">
                 <strong>{server.name}</strong>
                 <div class="metadata"><span class="transport">{t[server.transport]}</span><span title={scopeOf(server)}>{scopeOf(server)}</span></div>
@@ -165,7 +179,7 @@
       {#if edit}
         <div class="editor" bind:this={editor}>
           {#key edit}
-            <McpForm server={edit.server} preset={edit.preset} {projects} os={store.core?.os ?? 'windows'} {encrypted} onsave={save} oncancel={() => edit = null} />
+            <McpForm server={edit.server} preset={edit.preset} defaultName={edit.preset ? defaultPresetName(edit.preset) : undefined} {projects} os={store.core?.os ?? 'windows'} {encrypted} onsave={save} oncancel={() => edit = null} />
           {/key}
         </div>
       {/if}
@@ -226,7 +240,7 @@
   .probe li { display: grid; padding: var(--space-1); gap: var(--space-1); overflow-wrap: anywhere; }
   .probe li + li { border-top: 1px solid var(--color-border); }
   .probe code { color: var(--color-foreground); }
-  .catalog { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: var(--space-2); }
+  .catalog { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: var(--space-2); }
   .preset { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-2); min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
   .preset > :global(svg) { color: var(--color-subtle); flex: none; margin-top: var(--space-1); }
   .preset-copy { flex: 1; min-width: 0; }

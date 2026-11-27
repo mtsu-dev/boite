@@ -90,6 +90,7 @@ test('credential patches follow the stdio host environment case rules', async ()
 
 test('an owner can send credentials only over an encrypted connection', async () => {
   const client = await harness.connect();
+  const saved = await client.call('mcp.save', { ...stdio('Saved tools'), secretEnv: { TOKEN: MOCK_SECRET } });
   const plain = await connect(harness.url, harness.token, { headers: { host: 'owner.example' } });
   try {
     expect((await plain.call('mcp.list', {})).encrypted).toBe(false);
@@ -97,6 +98,7 @@ test('an owner can send credentials only over an encrypted connection', async ()
     expect(await thrown(plain.call('mcp.save', { ...stdio('Local tools'), secretEnv: { TOKEN: MOCK_SECRET } }))).toThrow('encrypted link');
     expect(await thrown(plain.call('mcp.save', { ...http('https://example.test/mcp'), secretHeaders: { Authorization: MOCK_SECRET } }))).toThrow('encrypted link');
     expect(await plain.call('mcp.save', stdio('Local tools'))).toMatchObject({ secretEnvKeys: [] });
+    expect(await plain.call('mcp.save', { ...saved, secretEnv: { TOKEN: null } })).toMatchObject({ secretEnvKeys: [] });
   } finally { plain.close(); }
 });
 
@@ -311,4 +313,86 @@ test('HTTP probe and proxy forward the negotiated session and static credentials
     expect(seen.every(item => item.authorization === 'Bearer ' + HTTP_CREDENTIAL && item.forwarded === null)).toBe(true);
     expect(seen.every(item => item.session === (item.method === 'initialize' ? null : UPSTREAM_SESSION))).toBe(true);
   } finally { await upstream.stop(true); }
+});
+
+test('managed stdio reuses its cached manifest across working directories and spawns only for tools/call', async () => {
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client);
+  const starts = join(harness.dataDir, 'cross-cwd-starts');
+  const dirA = join(harness.dataDir, 'worktree-a');
+  const dirB = join(harness.dataDir, 'worktree-b');
+  mkdirSync(dirA);
+  mkdirSync(dirB);
+  await client.call('mcp.save', { ...stdio('Cross cwd'), env: { LAZY_MCP_STARTS: starts } });
+  const callProxy = (url: string, authorization: string, message: unknown, session?: string) => fetch(url, {
+    method: 'POST',
+    headers: { authorization, 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(session ? { 'mcp-session-id': session } : {}) },
+    body: JSON.stringify(message),
+  });
+  const first = harness.core.lazyMcp.register(threadId, dirA, process.env, new Map(), harness.core.mcp.resolve(null));
+  const urlA = first.entries['boite-managed-cross-cwd']!.url;
+  const openA = await callProxy(urlA, first.authorization, req(1, 'initialize', INIT));
+  const sessionA = openA.headers.get('mcp-session-id')!;
+  await openA.text();
+  await callProxy(urlA, first.authorization, { jsonrpc: '2.0', method: 'notifications/initialized' }, sessionA);
+  expect(await (await callProxy(urlA, first.authorization, req(2, 'tools/list'), sessionA)).text()).toContain('echo');
+  await waitFor(() => harness.core.journal.getSetting('mcp-manifest:managed:cross-cwd') !== undefined);
+  harness.core.lazyMcp.release(first.id);
+  const pids = () => readFileSync(starts, 'utf8').trim().split('\n').map(Number);
+  await waitFor(() => pids().every(processExited));
+  expect(pids()).toHaveLength(1);
+
+  const second = harness.core.lazyMcp.register(threadId, dirB, process.env, new Map(), harness.core.mcp.resolve(null));
+  try {
+    const urlB = second.entries['boite-managed-cross-cwd']!.url;
+    const openB = await callProxy(urlB, second.authorization, req(1, 'initialize', INIT));
+    const sessionB = openB.headers.get('mcp-session-id')!;
+    await openB.text();
+    await callProxy(urlB, second.authorization, { jsonrpc: '2.0', method: 'notifications/initialized' }, sessionB);
+    expect(await (await callProxy(urlB, second.authorization, req(2, 'tools/list'), sessionB)).text()).toContain('echo');
+    expect(pids()).toHaveLength(1);
+    const echo = await (await callProxy(urlB, second.authorization, req(3, 'tools/call', { name: 'echo', arguments: {} }), sessionB)).text();
+    expect(echo).toContain('worktree-b');
+    expect(pids()).toHaveLength(2);
+  } finally {
+    harness.core.lazyMcp.release(second.id);
+    await waitFor(() => pids().every(processExited));
+  }
+});
+
+test('corrupt mcp-secrets.json skips managed servers on session start without breaking user stdio servers', async () => {
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client);
+  await client.call('mcp.save', { ...stdio('Secret server'), secretEnv: { TOKEN: MOCK_SECRET } });
+  const secretsPath = join(harness.dataDir, 'mcp-secrets.json');
+  const thread = harness.core.threads.require(threadId);
+  const provider = harness.core.providers.get(thread.providerId)!;
+  const account = harness.core.accounts.list().find(item => item.id === thread.accountId)!;
+  for (const broken of ['null', '{not-json']) {
+    writeFileSync(secretsPath, broken, { mode: 0o600 });
+    expect(() => harness.core.mcp.resolve(null)).toThrow('Cannot read the MCP credentials file');
+    const ctx = harness.core.threads.contexts.makeSessionContext(thread, provider, account);
+    const userStdio = new Map([['user-tool', { command: process.execPath, args: [FIXTURE], env: {} }]]);
+    const active = ctx.lazyMcp!(process.env, userStdio);
+    expect(active).not.toBeNull();
+    expect(Object.keys(active!.entries)).toEqual(['user-tool']);
+    active!.release();
+  }
+});
+
+test('global stdio probe runs outside dataDir, surfaces redacted stderr, and ignores short secrets in redact', async () => {
+  const client = await harness.connect();
+  const shortServer = await client.call('mcp.save', { ...stdio('Short secret'), secretEnv: { SHORT: 'id', LONG: 'long-secret-value' } });
+  const redact = harness.core.mcp.resolve(null).get('boite-managed-' + shortServer.id)!.redact;
+  expect(redact('{"id":1,"value":"long-secret-value"}')).toBe('{"id":1,"value":"[redacted]"}');
+  const failing = await client.call('mcp.save', {
+    ...GLOBAL, projectIds: [], name: 'Failing probe', transport: 'stdio',
+    command: process.execPath, args: ['-e', 'console.error("stderr-diag " + process.env.SECRET_DIAG + " cwd=" + process.cwd()); process.exit(1)'],
+    secretEnv: { SECRET_DIAG: 'secret-stderr-token' },
+  });
+  const result = await client.call('mcp.test', { id: failing.id });
+  expect(result.ok).toBe(false);
+  expect(result.error).toContain('stderr-diag [redacted]');
+  expect(result.error).not.toContain('secret-stderr-token');
+  expect(result.error).not.toContain(harness.dataDir);
 });

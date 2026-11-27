@@ -4,6 +4,8 @@ Secret Drop is a temporary tunnel from a masked card to one file operation or
 command. The core holds the value in process memory only. It never saves it in
 DPAPI, Keychain, Secret Service, the journal or logs, and never sends the value
 to the agent as a result. There is no project key store or keep option.
+Persistent credentials configured by the owner for managed MCP servers are
+stored separately; see [MCP servers](mcp.md).
 
 The implementation is `packages/core/src/secrets/`, `secret-cli.ts`, and the UI
 component `SecretCard.svelte`.

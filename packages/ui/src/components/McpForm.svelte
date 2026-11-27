@@ -9,9 +9,10 @@
   import SettingsSection from './SettingsSection.svelte';
   import SettingSwitch from './SettingSwitch.svelte';
 
-  let { server, preset, projects, os, encrypted = true, onsave, oncancel }: {
+  let { server, preset, defaultName, projects, os, encrypted = true, onsave, oncancel }: {
     server?: McpServer;
     preset?: McpPreset;
+    defaultName?: string;
     projects: Project[];
     os: Os;
     encrypted?: boolean;
@@ -21,11 +22,11 @@
 
   interface Entry { id: number; key: string; value: string; secret: boolean; savedKey?: string }
   const t = strings.mcp;
-  const start = untrack(() => ({ server, preset }));
+  const start = untrack(() => ({ server, preset, defaultName }));
   let sequence = 0;
   const fields = start.preset?.fields ?? [];
   const argumentsOf = start.server?.args ?? start.preset?.args ?? [];
-  let name = $state(start.server?.name ?? start.preset?.name ?? '');
+  let name = $state(start.server?.name ?? start.defaultName ?? start.preset?.name ?? '');
   let transport = $state<McpTransport>(start.server?.transport ?? start.preset?.transport ?? 'stdio');
   let command = $state(start.server?.command ?? start.preset?.command ?? '');
   let url = $state(start.server?.url ?? start.preset?.url ?? '');
@@ -133,7 +134,7 @@
   let hasSecretRows = $derived(activeRows.some(row => row.secret));
 </script>
 
-<SettingsSection title={server ? fill(t.editServer, { name: server.name }) : preset ? fill(t.addPreset, { name: preset.name }) : t.addCustom} testid="mcp-form">
+<SettingsSection title={server ? fill(t.editServer, { name: server.name }) : preset ? fill(t.addPreset, { name: defaultName ?? preset.name }) : t.addCustom} testid="mcp-form">
   <form onsubmit={save}>
     {#if preset && !customized}
       {#each fields as field (field.key)}
@@ -149,7 +150,7 @@
       {/each}
       <div class="preset-options">
         <a href={preset.docsUrl} target="_blank" rel="noreferrer">{t.docs}<ExternalLink size={13} /></a>
-        <button type="button" class="ghost" onclick={customize}>{t.customize}</button>
+        <button type="button" onclick={customize}>{t.customize}</button>
       </div>
     {:else}
       <label class="input-field">
@@ -221,7 +222,7 @@
   form { gap: var(--space-4); }
   fieldset { border: 0; margin: 0; padding: 0; }
   legend, .input-field span { color: var(--color-foreground); font-size: var(--text-sm); font-weight: 550; }
-  legend { margin-bottom: var(--space-2); }
+  legend { padding: 0; margin-bottom: var(--space-2); }
   .input-field input, textarea, .entry > input { width: 100%; min-width: 0; }
   textarea { resize: vertical; }
   small { color: var(--color-subtle); font-weight: normal; }
@@ -241,5 +242,6 @@
   @media (max-width: 560px) {
     .launch-fields { grid-template-columns: 1fr; }
     .entry > input { flex-basis: 40%; }
+    .entry .icon-button { min-width: var(--touch-target); min-height: var(--touch-target); }
   }
 </style>
