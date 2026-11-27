@@ -301,8 +301,10 @@ function chunksOf(text: string): string[] {
   return chunks;
 }
 
+let reportsCompaction = false;
 const app = agent({ name: 'acp-fake' })
-  .onRequest('initialize', async () => {
+  .onRequest('initialize', async ({ params }) => {
+    reportsCompaction = params.clientCapabilities?.session?.compaction != null;
     log('initialize');
     if (process.env['ACP_FAKE_ARGV'] === '1') log(`argv ${JSON.stringify(process.argv.slice(2))}`);
     if (process.env['ACP_FAKE_HANG_INIT'] === '1') await new Promise<void>(() => undefined);
@@ -440,6 +442,7 @@ const app = agent({ name: 'acp-fake' })
 
     if (instructions.includes('[parallel-tools]')) {
       const detached = instructions.includes('[detached-delegation]');
+      const compaction = reportsCompaction && (instructions.includes('[compacting]') || instructions.includes('[compaction-summary]'));
       const stopped = Promise.withResolvers<void>();
       cancels.set(sessionId, () => {
         log('session/cancel');
@@ -463,8 +466,10 @@ const app = agent({ name: 'acp-fake' })
             while (!existsSync(gate)) {
               if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
             }
-            if (id === 'second' && instructions.includes('[compacting]')) {
-              await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'in_progress' });
+            if (id === 'second' && compaction) {
+              await send(instructions.includes('[compaction-summary]')
+                ? { sessionUpdate: 'compaction_summary_chunk', compactionId: 'fixture-compaction', content: { type: 'text', text: 'Summarizing context' } }
+                : { sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'in_progress' });
             }
             await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed',
               ...(detached && id === 'second' ? { title: 'Parser review' } : {}),
@@ -474,6 +479,10 @@ const app = agent({ name: 'acp-fake' })
         if (instructions.includes('[third-tool]')) {
           while (!existsSync(`${process.env['ACP_FAKE_LOG']}.third`)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+          }
+          if (compaction) {
+            await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'completed' });
+            await send({ sessionUpdate: 'compaction_summary_chunk', compactionId: 'fixture-compaction', content: { type: 'text', text: 'Context summary' } });
           }
           await send({ sessionUpdate: 'tool_call', toolCallId: 'third', title: 'third', status: 'in_progress' });
           await send({ sessionUpdate: 'tool_call_update', toolCallId: 'third', status: 'completed' });
@@ -494,7 +503,7 @@ const app = agent({ name: 'acp-fake' })
           if (detached) await send({ sessionUpdate: 'tool_call_update', toolCallId: 'second',
             content: [{ type: 'content', content: { type: 'text', text: '{"mode": "background", "status": "dispatched", "delegation_id": "fixture-child"}' } }],
           });
-          if (instructions.includes('[compacting]')) {
+          if (compaction) {
             await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'completed' });
           }
           return { stopReason: 'end_turn' };

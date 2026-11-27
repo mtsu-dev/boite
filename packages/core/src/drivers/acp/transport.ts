@@ -92,7 +92,7 @@ export async function initializeTransport(ctx: SessionContext, sdk: Sdk, connect
   // method-not-found from the SDK, which is the loud refusal we want.
   const init = await connection.agent.request('initialize', {
     protocolVersion: sdk.PROTOCOL_VERSION,
-    clientCapabilities: {},
+    clientCapabilities: { session: { compaction: {} } },
     clientInfo: acpClientInfo(ctx.provider),
   });
   const canLoad = !protection && init.agentCapabilities?.loadSession === true;

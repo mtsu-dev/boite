@@ -270,10 +270,13 @@ test('ACP delivers queued input after two completed tools arrive in one write', 
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
 }, 20_000);
 
-test.each(['text', 'image', 'native compaction'])('ACP finishes %s before delivering queued input', async output => {
+test.each([
+  ['text', '[answer-on-gate]'], ['image', '[answer-on-gate] [image-answer]'],
+  ['native compaction', '[compacting]'], ['native compaction with a summary first', '[compaction-summary]'],
+  ['native compaction followed by another tool', '[compaction-summary] [third-tool]'],
+])('ACP finishes %s before delivering queued input', async (output, directives) => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const core = harness!.core;
-  const directives = output === 'native compaction' ? '[compacting]' : output === 'image' ? '[answer-on-gate] [image-answer]' : '[answer-on-gate]';
   const { id: turnId } = await client.call('turns.start', { threadId, prompt: `[parallel-tools] [finish-on-gate] ${directives}` });
   const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
     value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'answer-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
@@ -286,7 +289,7 @@ test.each(['text', 'image', 'native compaction'])('ACP finishes %s before delive
     await first;
     writeFileSync(`${logFile}.second`, 'ready');
     await waitFor(() => check.mock.calls.length === 1);
-    if (output !== 'native compaction') {
+    if (output === 'text' || output === 'image') {
       const answer = output === 'text'
         ? client.next('message.delta', event => event.threadId === threadId && event.text.includes('already streaming'), 10_000)
         : client.next('thread.activity', event => event.threadId === threadId && event.activity.tasks.some(task => task.text === 'Send image'), 10_000);
@@ -295,10 +298,15 @@ test.each(['text', 'image', 'native compaction'])('ACP finishes %s before delive
     }
     folder.resolve(true);
     await new Promise<void>(resolve => setImmediate(resolve));
-    writeFileSync(`${logFile}.end`, 'ready');
+    const anotherTool = directives.includes('[third-tool]');
+    if (anotherTool) {
+      const completed = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+      writeFileSync(`${logFile}.third`, 'ready');
+      await completed;
+    } else writeFileSync(`${logFile}.end`, 'ready');
     await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
-    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['done', 'done']);
-    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(0);
+    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual([anotherTool ? 'stopped' : 'done', 'done']);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(anotherTool ? 1 : 0);
   } finally {
     folder.resolve(true);
     check.mockRestore();

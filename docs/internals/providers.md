@@ -797,9 +797,11 @@ tool boundary and queue after reading the filesystem. The composer processes
 the latest completion even when several arrive together. New tool completions
 and Send now can proceed while the folder check is pending. If the agent resumes
 streaming its answer or reasoning, the queue waits for the next tool completion
-or the end of the turn. A reported native compaction also prevents cancellation
-while it runs. A missing folder or a choice that needs model discovery
-waits for the active turn to end. A pause accepted before admission keeps the
+or the end of the turn. Boite negotiates native compaction notifications. An
+in-progress report or the first summary chunk keeps the queue waiting until
+the compaction ends and another tool finishes, or the turn ends. A missing
+folder or a choice that needs model discovery waits for the active turn to end.
+A pause accepted before admission keeps the
 message queued. The ACP process also checks its negotiated image support.
 The next turn checks the input again at admission. Pending cards, selection
 changes and active goals leave the message queued, as do prompts carrying

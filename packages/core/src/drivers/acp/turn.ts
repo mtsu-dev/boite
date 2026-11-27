@@ -146,7 +146,6 @@ export class AcpTurn extends TurnParts {
   readonly antigravity: boolean;
   stoppedForQueuedInput = false;
   outputRevision = 0;
-  readonly activeCompactions = new Set<string>();
 
   constructor(ctx: TurnContext) {
     super(ctx);
