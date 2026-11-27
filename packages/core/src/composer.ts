@@ -297,6 +297,7 @@ export class Composer {
           checkAttachments(attachments, this.#core.providers.require(turn.execution?.providerId ?? thread.providerId));
           const error = previewReferencesError(batch.previewReferences, batch.text);
           if (error) throw refused(error);
+          this.#core.sharedAccess.uploads(id, attachments);
           if (handle.cancelForQueuedInput(attachments)) this.#boundaries.delete(recordId);
           return;
         }

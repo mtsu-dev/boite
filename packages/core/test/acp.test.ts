@@ -28,7 +28,7 @@ test.each([
   'hermes with split delegation output', 'antigravity with a paused queue', 'antigravity without image support', 'antigravity ignoring cancellation',
   'local ACP switching back to an account', 'local ACP reporting its first result', 'local ACP rejecting cancellation',
   'local ACP with an expired session', 'local ACP carrying a manually stopped prompt',
-  'local ACP reloading the same session after cancellation',
+  'local ACP reloading the same session after cancellation', 'local ACP with a blocked upload',
 ])('%s handles queued input when its parallel tools finish', async scenario => {
   const client = await startCore({ warmProcessMinutes: 0 });
   const core = harness!.core;
@@ -42,7 +42,9 @@ test.each([
   const expires = scenario === 'local ACP with an expired session';
   const reloads = scenario === 'local ACP reloading the same session after cancellation';
   const carriesStopped = reloads || scenario === 'local ACP carrying a manually stopped prompt';
-  const holds = detached || paused || noImages || ignoresCancel || switchesBack || spawned;
+  const blockedUpload = scenario === 'local ACP with a blocked upload';
+  const rejectsAttachment = noImages || blockedUpload;
+  const holds = detached || paused || rejectsAttachment || ignoresCancel || switchesBack || spawned;
   const provider = detached ? 'hermes' : scenario.startsWith('local ACP') ? 'local ACP' : holds ? 'antigravity' : scenario;
   if (noImages) process.env['ACP_FAKE_NO_IMAGES'] = '1';
   if (expires) process.env['ACP_FAKE_FORGET'] = '1';
@@ -98,6 +100,10 @@ test.each([
   expect(originalSession).toBeString();
   const priorLoads = countLogLines(fakeLog(), `loaded:${originalSession}`);
   const attachment: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'shot.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+  const uploadRefusal = 'shared file policy: secret uploads require publication from an exact authorized host source';
+  if (blockedUpload) spyOn(core.sharedAccess, 'uploads').mockImplementation((id, files) => {
+    if (id === threadId && files.some(file => file.name === attachment.name)) throw new Error(uploadRefusal);
+  });
   const { assetId } = await client.call('composer.asset.put', { attachment });
   const firstTool = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
   const queued = [{
@@ -134,10 +140,11 @@ test.each([
     await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision,
       value: { input: { text: '', attachments: [], paused: false, queued } } });
   }
-  if (noImages) {
-    await waitFor(() => core.composer.storage.get('inputs', threadId).value?.input.paused === true);
+  if (rejectsAttachment) {
+    await waitFor(() => fakeLog().includes('session/cancel') || core.composer.storage.get('inputs', threadId).value?.input.paused === true);
+    expect(fakeLog()).not.toContain('session/cancel');
     expect(core.journal.getTurn(turnId)?.status).toBe('running');
-    expect(core.composer.storage.get('inputs', threadId).value?.input.queued[0]?.request?.failed).toContain('takes no images');
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued[0]?.request?.failed).toContain(blockedUpload ? uploadRefusal : 'takes no images');
   }
   if (holds) {
     if (ignoresCancel) {
@@ -151,9 +158,9 @@ test.each([
     }
     writeFileSync(`${logFile}.end`, 'ready');
   }
-  await waitFor(() => core.journal.listTurns(threadId)[priorTurns + (noImages ? 0 : 1)]?.finishedAt != null);
+  await waitFor(() => core.journal.listTurns(threadId)[priorTurns + (rejectsAttachment ? 0 : 1)]?.finishedAt != null);
   const current = await client.call('threads.get', { threadId });
-  expect(current.turns.slice(priorTurns).map(at => at.status)).toEqual(noImages ? ['done'] : [holds ? 'done' : rejectsCancel || expires ? 'error' : 'stopped', 'done']);
+  expect(current.turns.slice(priorTurns).map(at => at.status)).toEqual(rejectsAttachment ? ['done'] : [holds ? 'done' : rejectsCancel || expires ? 'error' : 'stopped', 'done']);
   const finishedTools = current.messages.filter(message => message.turnId === turnId).flatMap(message => message.parts)
     .flatMap(part => part.type === 'tool' && ['first', 'second'].includes(part.toolId) ? [part.status] : []);
   expect(finishedTools).toEqual(['done', 'done']);
@@ -175,9 +182,9 @@ test.each([
   if (pause) expect(pause.mock.calls.some(([id, reason]) => id === threadId && (reason ?? 'stop') === 'stop')).toBe(false);
   expect(countLogLines(fakeLog(), 'session/cancel')).toBe(!holds || ignoresCancel ? 1 : 0);
   expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(reloads ? 1 : 0);
-  expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || noImages ? 0 : 1);
-  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(priorTurns + (noImages ? 1 : 2));
-  expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(noImages ? ['parallel-tools-follow-up'] : []);
+  expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || rejectsAttachment ? 0 : 1);
+  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(priorTurns + (rejectsAttachment ? 1 : 2));
+  expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(rejectsAttachment ? ['parallel-tools-follow-up'] : []);
 }, 20_000);
 
 test('ACP named task calls reach the native team without exposing the side conversation', async () => {
