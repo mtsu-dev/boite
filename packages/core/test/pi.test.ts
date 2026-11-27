@@ -77,6 +77,10 @@ test('pi default refuses images while pi itself runs a text-only model', async (
   const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
   expect((await rejection(client.call('turns.start', { threadId, prompt: 'Read this', attachments: [image] }))).reason)
     .toMatchObject({ rpc: { message: 'pi default takes no images: send the prompt without them' } });
+  // A folder whose pi settings choose the model starts elsewhere than the probe saw: pi handles the images.
+  mkdirSync(join(harness!.core.threads.require(threadId).cwd, '.pi'), { recursive: true });
+  writeFileSync(join(harness!.core.threads.require(threadId).cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-a', defaultModel: 'smart' }));
+  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
 });
 
 test('pi default follows the model a resumed session restores, not the one pi starts on', async () => {

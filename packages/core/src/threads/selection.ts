@@ -5,7 +5,7 @@ import { antigravityVariant } from '../drivers/acp/antigravity-catalog.ts';
 import { isAntigravity } from '../drivers/antigravity.ts';
 import { sessionDirOf } from '../drivers/pi/mapping.ts';
 import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
-import { sessionModelOf } from '../drivers/pi/session-model.ts';
+import { projectPicksModel, sessionModelOf } from '../drivers/pi/session-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
 import { profileFor } from '../providers/resolve.ts';
@@ -61,13 +61,15 @@ export function imageInputModel(
     return (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
   };
   // A `--model` in the profile beats the session, as it does in pi.
-  if (pi && wanted === AGENT_OWN_MODEL && id && sessionId && cwd && !profileFor(provider)?.launch?.args?.includes('--model')) {
-    const account = core.accounts.list().find(entry => entry.id === accountId);
-    const resumed = account && sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId, cwd);
+  if (pi && wanted === AGENT_OWN_MODEL && cwd && !profileFor(provider)?.launch?.args?.includes('--model')) {
+    const account = id && sessionId ? core.accounts.list().find(entry => entry.id === accountId) : undefined;
+    const resumed = account && sessionModelOf(sessionDirOf({ account, thread: { id: id! } }), sessionId!, cwd);
     // A registered virtual model holds over the physical models it answered through.
     const router = resumed?.router ? listed(resumed.router) : undefined;
     const found = router?.virtual ? router : resumed ? listed(resumed.model) : undefined;
     if (found) return found;
+    // A new session starts on what the folder's pi settings choose, which the probe cannot see: pi handles the images.
+    if (projectPicksModel(cwd)) return undefined;
   }
   return listed(wanted);
 }

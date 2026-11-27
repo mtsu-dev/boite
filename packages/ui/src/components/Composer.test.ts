@@ -2168,6 +2168,29 @@ test('pi default on an open thread follows the model its session resumes on', as
   expect(store.error).toBeNull();
 });
 
+test('pi default on an open thread before its first turn asks the core, which reads the folder', async () => {
+  await mountOnFake();
+  await openIdle('t-trace');
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  // The account's probe saw pi start on a text-only model; this folder's pi settings choose another one.
+  const key = `pi::${account.id}`;
+  store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'default' ? { ...model, images: false as const } : model) };
+  const capabilities = store.threadCapabilities.bind(store);
+  const asked = vi.spyOn(store, 'threadCapabilities').mockImplementation(async (threadId) => {
+    const value = await capabilities(threadId);
+    return value && { ...value, images: { supported: true, available: true, reason: null } };
+  });
+  expect(await store.update('t-trace', { accountId: account.id, model: 'default' })).toBe(true);
+  await waitFor(() => store.openThread?.providerId === 'pi' && store.openThread.model === 'default');
+  await waitFor(() => asked.mock.calls.length > 0);
+  await asked.mock.results.at(-1)!.value;
+  flushSync();
+  paste(pngFile());
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
+  expect(store.error).toBeNull();
+});
+
 test('switching a draft to a text-only pi model blocks its image but keeps file attachments', async ({ app: _app }) => {
   await openDraft();
   const account = store.accounts.find(entry => entry.providerId === 'pi')!;

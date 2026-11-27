@@ -408,9 +408,13 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   as pi 1.6.1 does: the newest
   `model_change`, else the model of the newest answer, unless the change before
   that answer names a router pi still lists (`virtual: true`, from its
-  `pi-virtual` api). A `--model` in the profile wins over the session. The
-  composer asks the core again when the session, the selection, the account's
-  catalog or the connection changes.
+  `pi-virtual` api). A `--model` in the profile wins over the session. Without
+  a session to resume, a folder whose `.pi/settings.json` sets `defaultModel`,
+  `defaultProvider` or `enabledModels` may start pi on a model the account's
+  probe never saw, so Boite lets the image through and pi replaces it if that
+  model reads none. On an open thread the composer asks the core, again when
+  the session, the selection, the account's catalog, the turn or the connection
+  changes; a draft reads the account's catalog.
   Without the field, the model follows the agent's image capability.
   A native agent may declare an empty list and let the probe supply its catalog.
   The unnamed `default` alias remains accepted for existing descriptors. Echo

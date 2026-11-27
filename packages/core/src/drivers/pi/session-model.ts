@@ -56,6 +56,22 @@ export function piProcessCwd(cwd: string): string {
 }
 
 /**
+ * Whether the folder's own pi settings (`.pi/settings.json`, read by pi when it
+ * trusts the project) may choose the model a new session starts on, which the
+ * account's probe, run elsewhere, cannot see: pi 1.6.1 `findInitialModel` takes
+ * `enabledModels` first, then `defaultProvider` and `defaultModel`.
+ */
+export function projectPicksModel(cwd: string): boolean {
+  try {
+    const settings: unknown = JSON.parse(readFileSync(join(piProcessCwd(cwd), '.pi', 'settings.json'), 'utf8'));
+    return isRecord(settings) && (settings['defaultModel'] !== undefined || settings['defaultProvider'] !== undefined
+      || (Array.isArray(settings['enabledModels']) && settings['enabledModels'].length > 0));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * pi 1.6.1 `SessionManager.findById` with a session directory of its own: the
  * first `.jsonl` file, in directory order, whose header has this id and pi's `cwd`.
  */

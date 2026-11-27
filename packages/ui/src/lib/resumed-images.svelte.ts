@@ -3,22 +3,23 @@ import { chipChoice } from './composer-choice';
 import type { Choice, Store } from './store.svelte';
 
 /**
- * pi's own model on an open thread is the one its session resumes on, which
- * only the core reads (`threads.capabilities`). The key changes when that can:
+ * pi's own model on an open thread is the one its session resumes on, or for a
+ * new session the one the folder's pi settings may choose, which only the core
+ * reads (`threads.capabilities`). The key changes when that can:
  * another session, selection or turn, a new catalog for the account (the core reads
  * the session's model in it), a reconnection.
  */
 function resumedImagesKey(store: Store, thread: Thread | null, choice: Choice | null): string | null {
-  if (!thread?.sessionId || !choice || store.providerOf(choice.providerId)?.protocol !== 'pi') return null;
+  if (!thread || !choice || store.providerOf(choice.providerId)?.protocol !== 'pi') return null;
   if ((thread.model !== null && thread.model !== 'default') || choice.providerId !== thread.providerId || choice.accountId !== thread.accountId) return null;
   // A model picked for the next prompt is not the one the session resumes on.
   if (choice.model !== null && choice.model !== 'default' && choice.model !== chipChoice(store, thread)?.model) return null;
   const catalog = store.modelsOf(thread.providerId, thread.accountId).map(model => `${model.id}${model.images === false ? '-' : '+'}${model.virtual ? 'v' : ''}`).join(',');
   // A finished turn may have left the session on another model: a queued prompt keeps its own.
-  return [thread.id, thread.sessionId, thread.selectionVersion ?? 0, thread.status, store.connection, catalog].join('\n');
+  return [thread.id, thread.sessionId ?? '', thread.selectionVersion ?? 0, thread.status, store.connection, catalog].join('\n');
 }
 
-/** Whether the open thread's resumed pi session reads images, once the core answered for the current key. */
+/** Whether pi's own model on the open thread reads images, once the core answered for the current key. */
 export class ResumedImages {
   #key = $derived.by(() => resumedImagesKey(this.store(), this.thread(), this.choice()));
   #read = $state<{ key: string; images: boolean } | null>(null);
