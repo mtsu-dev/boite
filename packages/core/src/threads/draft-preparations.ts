@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises';
-import type { Project, RpcParams, ThreadId, ThreadSummary } from '@boite/contracts';
+import { DRAFT_PREPARATION_LIFETIME_MS, type Project, type RpcParams, type ThreadId, type ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, getDriver, releaseThread, setThreadViewed } from '../drivers/index.ts';
 import type { SessionContext } from '../drivers/types.ts';
@@ -9,7 +9,7 @@ import { titleOf } from './inputs.ts';
 import { DraftReservationLedger, type DraftOwnership } from './draft-reservation-ledger.ts';
 
 type Params = RpcParams<'drafts.prepare'>;
-const LIFETIME_MS = 10 * 60_000;
+const LIFETIME_MS = DRAFT_PREPARATION_LIFETIME_MS;
 const CONNECTION_BACKLOG = 4;
 const GLOBAL_BACKLOG = 32;
 interface Reservation {

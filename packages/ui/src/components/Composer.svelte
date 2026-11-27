@@ -174,7 +174,7 @@
   let canSend = $derived(sendable && !loadingFiles);
   $effect(() => {
     const waiting = sendWhenLoaded;
-    if (waiting && !loadingFiles) untrack(() => { sendWhenLoaded = null; if (waiting.store === store && waiting.key === key && waiting.state === store.composerStates[key] && sameSend(waiting.shape, sendShape(text, attachments)) && waiting.to === sendTarget(choice)) void submit(waiting.nextDraft); });
+    if (waiting && !loadingFiles) untrack(() => { sendWhenLoaded = null; if (waiting.store === store && waiting.key === key && waiting.state === store.composerStates[key] && sameSend(waiting.shape, sendShape(text, attachments)) && waiting.to === sendTarget(choice, thread ? null : store.draft)) void submit(waiting.nextDraft); });
   });
   // Another conversation or machine on screen: the waiting send stays with the box it was pressed in, unsent.
   $effect(() => { void key; void store; untrack(() => { sendWhenLoaded = null; }); });
@@ -419,7 +419,7 @@
   async function submit(nextDraft = false) {
     if (stopped || imageWarning !== null) return;
     if (attachments.some(unresolvedAssetId)) { store.error = strings.errors.draftAttachment; return; }
-    if (loadingFiles) { if (sendable) sendWhenLoaded = { store, key, state: stateForInput(), shape: sendShape(text, attachments), nextDraft, to: sendTarget(choice) }; return; }
+    if (loadingFiles) { if (sendable) sendWhenLoaded = { store, key, state: stateForInput(), shape: sendShape(text, attachments), nextDraft, to: sendTarget(choice, thread ? null : store.draft) }; return; }
     if (reply) {
       const answeredKey = key;
       if (canSend && await sendAnswer(store, reply)) {

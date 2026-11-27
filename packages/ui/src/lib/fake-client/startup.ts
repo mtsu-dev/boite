@@ -1,5 +1,5 @@
 import { FakeAttachmentUploads } from './attachment-uploads';
-import { RpcErrorCode, type RpcParams, type Thread } from '@boite/contracts';
+import { DRAFT_PREPARATION_LIFETIME_MS, RpcErrorCode, type RpcParams, type Thread } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import type { FakeContext, FakeMethods } from './context';
 import { createFakeThread, publishFakeThread } from './create-thread';
@@ -9,7 +9,7 @@ import { pathKey } from './checks';
 type Reservation = { params: RpcParams<'drafts.prepare'>; thread: Thread; expires: number };
 type State = { reservations: Map<string, Reservation>; canceled: Set<string>; epoch: number; pending: Map<string, { key: string; promise: Promise<Reservation> }>; uploads: FakeAttachmentUploads; receipt?: { id: string; key: string; threadId: string; expires: number } };
 const states = new WeakMap<FakeContext, State>();
-const ttl = 10 * 60_000;
+const ttl = DRAFT_PREPARATION_LIFETIME_MS;
 const refusal = (reason: string) => new RpcFailure({ code: RpcErrorCode.Refused, message: reason, data: { reason } });
 const selection = (p: RpcParams<'threads.create'>) => JSON.stringify([p.projectId, p.providerId, p.accountId, p.model ?? null,
   p.effort ?? null, p.speed ?? null, p.permissionMode ?? 'default', p.cwd ?? null, p.worktree ?? null, p.incognito ?? false, p.context ?? null]);

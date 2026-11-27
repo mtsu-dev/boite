@@ -468,10 +468,12 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   none of the project's untracked files, its `.pi/settings.json` included, so
   the core reads the worktree the draft's preparation reserved, asked again
   once it exists, and before then lets the image through to the first turn's
-  admission, which reads the worktree.
+  admission, which reads the worktree. The client drops that reservation when
+  the core does, `DRAFT_PREPARATION_LIFETIME_MS` after asking for it, and asks
+  again.
   Until that answer comes, a picture is held and Send waits for it, asked again
   after a reconnection; another agent, account or model picked meanwhile cancels
-  the waiting Send, and an answer that never comes leaves the account's catalog
+  the waiting Send, as does a draft moved to another project or worktree switch, and an answer that never comes leaves the account's catalog
   to decide.
   Without the field, the model follows the agent's image capability.
   A native agent may declare an empty list and let the probe supply its catalog.

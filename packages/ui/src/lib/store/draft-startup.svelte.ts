@@ -1,5 +1,5 @@
 import { untrack } from 'svelte';
-import type { RpcParams } from '@boite/contracts';
+import { DRAFT_PREPARATION_LIFETIME_MS, type RpcParams } from '@boite/contracts';
 import type { Choice, Draft } from '../store.svelte';
 import type { Client } from '../client';
 import { DRAFT_STASH_KEY } from '../prefs';
@@ -21,6 +21,8 @@ export class DraftStartup {
   /** The preparation whose new worktree exists now: a worktree draft's images are read there. */
   #worktree = $state<string | null>(null);
   get preparedWorktree(): string | null { return this.#worktree; }
+  /** The core drops a reservation once its lifetime ends: so does this client, and a worktree draft reads no folder. */
+  #expiry: ReturnType<typeof setTimeout> | null = null;
   constructor(private readonly ctx: StoreContext) { this.uploads = new AttachmentUploads(ctx); }
 
   watch(): () => void {
@@ -68,6 +70,8 @@ export class DraftStartup {
         permissionMode: final.permissionMode, effort: final.effort, speed: final.speed ?? null,
         ...(final.model ? { model: final.model } : {}), ...(made.draft.worktree ? { worktree: {} } : {}),
         ...(made.draft.incognito && s.draftInDrafts ? { incognito: true } : {}) };
+      // The core's lifetime starts when it accepts the request, after this.
+      const asked = Date.now();
       await made.client.call('drafts.prepare', made.input);
       if (this.#prepared !== made || !this.ctx.currentClient(made.client, made.generation)) {
         await made.client.call('drafts.release', { preparationId: made.id }).catch(() => undefined);
@@ -75,6 +79,7 @@ export class DraftStartup {
       }
       made.ready = true;
       if (made.draft.worktree) this.#worktree = made.id;
+      this.#expiry = setTimeout(() => { if (this.#prepared === made) this.release(); }, Math.max(0, asked + DRAFT_PREPARATION_LIFETIME_MS - Date.now()));
     } catch { /* Send validates and creates normally when speculation fails. */ }
   }
 
@@ -92,6 +97,7 @@ export class DraftStartup {
     if (held.key !== this.#key(draft, held.source)) return null;
     held.claimed = true;
     this.#prepared = null;
+    this.#clearExpiry();
     return { preparationId: held.id, choice: held.choice, projectId: held.input.projectId };
   }
 
@@ -113,7 +119,9 @@ export class DraftStartup {
     const held = this.#prepared;
     this.#prepared = null;
     this.#worktree = null;
+    this.#clearExpiry();
     if (held && !held.claimed) void held.client.call('drafts.release', { preparationId: held.id }).catch(() => undefined);
   }
+  #clearExpiry(): void { if (this.#expiry !== null) clearTimeout(this.#expiry); this.#expiry = null; }
   reset(): void { this.#sendingDraft = null; this.release(); this.uploads.reset(); }
 }

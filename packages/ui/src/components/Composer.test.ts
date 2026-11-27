@@ -2322,6 +2322,19 @@ test('a picture pasted while the core reads pi\'s own model is held, and Send wa
   const sent = vi.spyOn(store.client!, 'call');
   // The draft's own saves (`composer.put`) carry the text too; only a request that sends it counts.
   const prompts = () => sent.mock.calls.filter(([method, params]) => method !== 'composer.put' && JSON.stringify(params ?? null).includes('Read the picture'));
+  // The draft moved to a new worktree before the answer: the Send pressed for the project folder goes nowhere.
+  press('Enter');
+  flushSync();
+  const toWorktree = asked.mock.calls.length;
+  store.setDraftWorktree(true);
+  await waitFor(() => asked.mock.calls.length > toWorktree);
+  answer({ supported: true });
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') === null && !query<HTMLButtonElement>('[data-testid=composer-send]').disabled);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(prompts()).toEqual([]);
+  const back = asked.mock.calls.length;
+  store.setDraftWorktree(false);
+  await waitFor(() => asked.mock.calls.length > back);
   // Another agent picked before the answer: the Send pressed for pi goes nowhere.
   press('Enter');
   flushSync();

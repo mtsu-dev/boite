@@ -1,5 +1,5 @@
 import { imageAttachmentBlocker, resolveModelSelection, type Attachment, type PreviewReference } from '@boite/contracts';
-import type { Choice, Store } from './store.svelte';
+import type { Choice, Draft, Store } from './store.svelte';
 import type { ComposerState } from './composer-queue';
 import { tileKey } from './draft-attachments';
 import { editPreviewMentions } from './preview-mentions';
@@ -109,9 +109,12 @@ export function sameSend(pressed: SendShape, now: SendShape): boolean {
   return pressed.words === now.words && pressed.tiles.length === now.tiles.length && pressed.tiles.every((tile, at) => tile === now.tiles[at]);
 }
 
-/** Where a waiting Send goes: another agent, account or model picked meanwhile cancels it. */
-export function sendTarget(choice: Choice | null): string {
-  return choice ? [choice.providerId, choice.accountId, choice.model ?? ''].join('\n') : '';
+/**
+ * Where a waiting Send goes: another agent, account or model picked meanwhile cancels it, and so does a draft moved
+ * to another project or worktree switch, whose folder the images were not checked in.
+ */
+export function sendTarget(choice: Choice | null, draft: Pick<Draft, 'projectId' | 'worktree'> | null): string {
+  return choice ? [choice.providerId, choice.accountId, choice.model ?? '', draft ? `${draft.projectId ?? ''}:${draft.worktree}` : ''].join('\n') : '';
 }
 
 /** A box nobody types in: a step of the undo history, or a draft set aside. */

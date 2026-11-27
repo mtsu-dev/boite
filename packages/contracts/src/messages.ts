@@ -307,6 +307,8 @@ export interface Message {
   createdAt: Timestamp;
 }
 
+/** How long a `drafts.prepare` reservation lives after the core accepts it, unless Send claims it first. */
+export const DRAFT_PREPARATION_LIFETIME_MS = 10 * 60_000;
 /** The default page size of `threads.get` and `messages.list` when no limit is supplied. */
 export const MESSAGE_PAGE = 120;
 /** The first paint needs a small tail; older history uses the ordinary page size. */

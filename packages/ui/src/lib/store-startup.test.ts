@@ -2,7 +2,7 @@ import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { test } from '../test/fake-client';
 import type { Attachment, RpcParams, RpcResult } from '@boite/contracts';
-import { ATTACHMENTS_PER_TURN, RpcErrorCode } from '@boite/contracts';
+import { ATTACHMENTS_PER_TURN, DRAFT_PREPARATION_LIFETIME_MS, RpcErrorCode } from '@boite/contracts';
 import { RpcFailure } from './client';
 import { DRAFT_STASH_KEY } from './prefs';
 
@@ -32,6 +32,24 @@ test('typing prepares without publishing or sending and Send claims the same wor
   expect(await store.submit('First prompt', choice)).toBe(true);
   expect(callsOf(spy, 'threads.create')[0]![1]).toMatchObject({ preparationId: params.preparationId, subscribe: true });
   expect(store.openThread?.id).toBe(prepared.threadId);
+});
+
+test('a worktree reservation the core let expire is dropped here too, so the draft reads no removed worktree', async ({ ready }) => {
+  visible();
+  const { store, client } = await ready();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const spy = vi.spyOn(client, 'call');
+    draft(store);
+    store.setDraftWorktree(true);
+    flushSync();
+    await vi.waitFor(() => expect(store.preparedWorktree).not.toBeNull());
+    const id = store.preparedWorktree;
+    expect(callsOf(spy, 'drafts.prepare').at(-1)![1]).toMatchObject({ preparationId: id, worktree: {} });
+    vi.advanceTimersByTime(DRAFT_PREPARATION_LIFETIME_MS);
+    expect(store.preparedWorktree).toBeNull();
+    expect(callsOf(spy, 'drafts.release').map(([, params]) => params)).toContainEqual({ preparationId: id });
+  } finally { vi.useRealTimers(); }
 });
 
 test('abandoning an in-flight preparation releases its exact id again after the late result', async ({ ready }) => {
