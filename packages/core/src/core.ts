@@ -53,6 +53,7 @@ import { VirtualDesktops } from './desktop/service.ts';
 import { DesktopWindows } from './windows/service.ts';
 import { KeepAwake, type KeepAwakeHold } from './keep-awake.ts';
 import { LazyMcp } from './mcp/lazy.ts';
+import { McpRegistry } from './mcp/registry.ts';
 import { QuotaStore } from './quotas.ts';
 import { dropRetiredAccounts } from './account-retirement.ts';
 import { PluginStore } from './plugins.ts';
@@ -260,6 +261,7 @@ export class Core {
   readonly desktops = new VirtualDesktops(this);
   /** The user's stdio MCP servers, started when a conversation first calls one (`mcp/lazy.ts`). */
   readonly lazyMcp = new LazyMcp(this);
+  readonly mcp = new McpRegistry(this);
 
   /**
    * The server tells the core what it alone can know. The default answers no
@@ -554,6 +556,7 @@ export class Core {
     this.worktreeCleanup = new WorktreeCleanup(this);
     this.worktreeCleanup.start();
     this.pullRequestWatches.start();
+    this.workforce.triggers.start();
     this.delegation.retirements.sweep();
     this.logs.record('info', `Core ${this.version} started in ${Date.now() - this.startedAt} ms, ${process.platform} ${process.arch}, Bun ${process.versions.bun ?? 'unknown'}`, {
       source: 'core', event: 'core.started', durationMs: Date.now() - this.startedAt,
@@ -599,7 +602,7 @@ export class Core {
       version: this.version,
       ...(this.bundleHash ? { bundleHash: this.bundleHash } : {}),
       protocolVersion: PROTOCOL_VERSION,
-      features: { threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, composerPages: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, threadListPages: true, streamChannels: true, browserStream: true, diffOnlyToolParts: true },
+      features: { threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, composerPages: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, threadListPages: true, messageSearch: true, streamChannels: true, browserStream: true, diffOnlyToolParts: true },
       coreId: this.coordination.card().coreId,
       hostname: machineName(),
       os: currentOs(),
@@ -636,6 +639,7 @@ export class Core {
     void this.mergedPrAsk.close();
     void this.worktreeCleanup.close();
     void this.pullRequestWatches.close();
+    this.workforce.triggers.close();
     this.group.beginClose();
     this.contacts.beginClose();
     this.sharedProjects.beginClose();
@@ -674,6 +678,7 @@ export class Core {
     this.windows.stop();
     this.keepAwake.close();
     await this.desktops.stopAll();
+    this.mcp.close();
     this.lazyMcp.close();
     this.artifactPreviews.stop();
     this.threads.sideQuestions.close();

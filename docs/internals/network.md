@@ -60,6 +60,7 @@ the OpenCode server, protected bridges, health checks).
 | 45 | agent-desktop download | `registry.npmjs.org`, the pinned `agent-desktop` release | A conversation's first virtual desktop or `boite desktop` command on a core without it | GET, IP | On; on Linux, with the desktop tools | None | `agentDesktop: false` |
 | 46 | Worktree default branch lookup | The selected Git remote of the project | Making a worktree that starts from the project's default branch | Git HEAD lookup and, if the commit is missing, a fetch using the repository's Git configuration | Only for repositories with a remote | Use a project without a remote to work locally | None: initiated by creating a worktree in a project with a configured remote |
 | 47 | Model prices | `models.dev/api.json` | The first price lookup when the cached rates are missing or a day old; a lookup of an unknown model, at most once an hour and once per model; an hour after a failure | GET with the user agent `boite` and the stored ETag, IP | On | None | `modelPrices: false` |
+| 48 | Boite-managed MCP servers | The configured HTTP endpoint or the destinations opened by a configured stdio server | A connection test or an enabled server's first handshake, then tool requests | MCP messages and configured credentials; stdio launchers such as `npx` can download packages | No, install a server first | Disable or remove it in MCP Servers | `mcp: false` |
 
 ## Flows with no user switch
 

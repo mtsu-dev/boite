@@ -3,6 +3,14 @@ import type { StoreContext } from './context';
 import type { SlotIndex } from '../message-window';
 import type { readingOrder } from '../message-order';
 import type { TimelineRow } from '../timeline-rows';
+import type { Store } from '../store.svelte';
+
+export type SearchJump = { messageId: MessageId; query: string };
+
+export function publishSearchJump(store: Store, thread: Thread, match: SearchJump): void {
+  store.readingPositions.delete(thread.id);
+  store.messageSearchJump = thread.messages.some(message => message.id === match.messageId) ? { threadId: thread.id, ...match } : null;
+}
 
 /**
  * Where a reader left a thread: the scroll, the measured heights, and the

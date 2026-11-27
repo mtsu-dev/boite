@@ -54,7 +54,12 @@ test('nothing streams before Show; Show watches the picked tab, Hide covers it a
   query('agent-browser-show')!.click(); await settle();
   await vi.advanceTimersByTimeAsync(300); await settle();
   expect(frames().at(-1)![1]).toMatchObject({ threadId: thread, tabId: shop.tabId });
-  expect(query('remote-browser-frame')).not.toBeNull();
+  // A status update for the same active tab must leave the painted frame interactive.
+  expect(query('remote-browser-frame')?.closest('button')?.disabled).toBe(false);
+  await client.call('browser.command', { threadId: thread, tabId: shop.tabId, action: { kind: 'activate' } });
+  await settle();
+  expect(query('remote-browser-frame')?.closest('button')?.disabled).toBe(false);
+  expect(frames()).toHaveLength(1);
   const tabs = document.querySelectorAll<HTMLButtonElement>('[data-testid=agent-browser-tab]');
   expect([...tabs].map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'true']);
   tabs[0]!.click(); await settle();

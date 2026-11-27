@@ -40,10 +40,28 @@ export class ReactiveTimelineRows {
 
   #prefix = $derived.by(() => this.#input().timeline.slice(0, this.#boundary));
   #suffix = $derived.by(() => this.#input().timeline.slice(this.#boundary));
-  #historyRows = $derived.by(() => this.#history.build(this.#prefix, this.#input().memory, this.#input().breaks));
+  // Svelte skips tracking derived values read in the reaction that creates
+  // them. Prepare per-message readers separately from reading them in `build()`.
+  #historyReady = $derived.by(() => {
+    const timeline = this.#prefix, memory = this.#input().memory;
+    this.#history.prepare(timeline, memory);
+    return { timeline, memory };
+  });
+  #liveReady = $derived.by(() => {
+    const timeline = this.#suffix, memory = this.#input().memory;
+    this.#live.prepare(timeline, memory);
+    return { timeline, memory };
+  });
+  #historyRows = $derived.by(() => {
+    const { timeline, memory } = this.#historyReady;
+    return this.#history.build(timeline, memory, this.#input().breaks);
+  });
   // Record a completed reactive evaluation even when the builder reuses its rows.
   // The next mount can reconnect the live projection without building it again.
-  #liveRows = $derived.by(() => ({ rows: this.#live.build(this.#suffix, this.#input().memory, this.#input().breaks) }));
+  #liveRows = $derived.by(() => {
+    const { timeline, memory } = this.#liveReady;
+    return { rows: this.#live.build(timeline, memory, this.#input().breaks) };
+  });
 
   constructor(input: () => Input) {
     const value = $derived.by(input);

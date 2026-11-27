@@ -313,11 +313,13 @@ const app = agent({ name: 'acp-fake' })
         loadSession: !noLoad,
         ...(noImages ? {} : { promptCapabilities: { image: true } }),
         ...(opencode2 ? { sessionCapabilities: { delete: {} } } : {}),
+        ...(process.env['ACP_FAKE_HTTP_MCP'] === '1' ? { mcpCapabilities: { http: true } } : {}),
       },
       agentInfo: { name: 'acp-fake', version: '1' },
     };
   })
-  .onRequest('session/new', async ({ client }) => {
+  .onRequest('session/new', async ({ client, params }) => {
+    if (process.env['ACP_FAKE_HTTP_MCP'] === '1') log(`mcp:new ${JSON.stringify(params.mcpServers)}`);
     // A replay keeps the recorded session, so the updates it sends need no rewrite.
     const sessionId = replay?.sessionId ?? `acp-fake-${crypto.randomUUID().slice(0, 8)}`;
     known.add(sessionId);
@@ -330,6 +332,7 @@ const app = agent({ name: 'acp-fake' })
     return { sessionId, configOptions, modes: modeState() };
   })
   .onRequest('session/load', async ({ params, client }) => {
+    if (process.env['ACP_FAKE_HTTP_MCP'] === '1') log(`mcp:load ${JSON.stringify(params.mcpServers)}`);
     if (process.env['ACP_FAKE_FORGET'] === '1') {
       log(`load-refused:${params.sessionId}`);
       // A plain throw, like OpenCode's: the SDK answers it with -32603.

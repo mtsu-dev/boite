@@ -304,7 +304,7 @@ test('a mochi reads its memory, notes facts, keeps its routines and its desk fro
   const elsewhere = await client.call('projects.add', { path: join(harness.dataDir, 'elsewhere'), name: 'Elsewhere' });
   const outside = await client.call('threads.create', { projectId: elsewhere.id, providerId: 'echo', accountId: harness.core.threads.require(worker).accountId, title: 'Outside' });
   expect((await boite(['bot', 'watch', outside.id])).err).toContain('is not in a project entrusted to Ada');
-  expect((await boite(['bot', 'inbox'])).err).toContain('mochi expects memory, remember, routines, schedule, unschedule, watch, unwatch or new-session');
+  expect((await boite(['bot', 'inbox'])).err).toContain('mochi expects memory, remember, routines, triggers, schedule, unschedule, watch, unwatch or new-session');
   // An ordinary thread is no agent's.
   threadId = worker;
   expect((await boite(['bot', 'routines'])).err).toContain("no mochi's thread");

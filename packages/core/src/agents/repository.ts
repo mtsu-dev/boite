@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { AgentDraft, AgentProfile, AgentRoutine, AgentSession } from '@boite/contracts';
+import type { AgentDraft, AgentProfile, AgentRoutine, AgentSession, AgentTrigger } from '@boite/contracts';
 import { invalidParams, notFound, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
 import type { Journal } from '../journal.ts';
@@ -13,12 +13,13 @@ type Row = { data: string };
  */
 export interface AgentEntities {
   routine: AgentRoutine;
+  trigger: AgentTrigger;
   profile: AgentProfile;
   session: AgentSession;
 }
 export type AgentEntityKind = keyof AgentEntities;
 
-const KINDS: ReadonlySet<string> = new Set<AgentEntityKind>(['routine', 'profile', 'session']);
+const KINDS: ReadonlySet<string> = new Set<AgentEntityKind>(['routine', 'trigger', 'profile', 'session']);
 function checkKind(kind: string): void {
   if (!KINDS.has(kind)) throw new Error(`unknown agent record kind ${kind}`);
 }

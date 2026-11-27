@@ -251,6 +251,7 @@ export async function showMobileThreads(): Promise<void> {
 export const OWNER_ONLY_IN_SETTINGS = [
   '[data-testid=settings-tab-accounts]',
   '[data-testid=settings-tab-plugins]',
+  '[data-testid=settings-tab-mcp]',
   '[data-testid=settings-tab-brain]',
   '[data-testid=group-add-device]'
 ];

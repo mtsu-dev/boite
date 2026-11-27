@@ -76,6 +76,7 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
   'plugins.add': pluginsOff,
   'plugins.inspect': pluginsOff,
   'plugins.dev': pluginsOff,
+  'mcp.test': when('mcp', core => core.policy.values.mcp === false),
 
   'diagnostics.issue': when('issueReports', core => core.policy.issueReportsOff()),
 
@@ -141,6 +142,7 @@ export function registerPolicy(core: Core): void {
   core.policy.onChange((_state, before) => {
     core.settings.policyChanged(before.values);
     core.telemetry.policyChanged();
+    if (before.values.mcp !== false && core.policy.values.mcp === false) core.mcp.revokeManaged();
     // A provider the file allows or denies now is listed with its new state.
     core.bus.emit('providers.updated', core.providers.list());
   });

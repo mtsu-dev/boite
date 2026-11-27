@@ -1,3 +1,4 @@
+import type { McpRegistration } from '../mcp/lazy.ts';
 /**
  * What the core knows about OpenCode beyond its two descriptors. OpenCode 1
  * (`opencode`) and OpenCode 2 (`opencode-v2`) are two programs with one
@@ -56,6 +57,15 @@ function editInlineConfig(env: Record<string, string>, edit: (config: Record<str
 function section(config: Record<string, unknown>, key: string): Record<string, unknown> {
   const declared = config[key];
   return declared !== null && typeof declared === 'object' && !Array.isArray(declared) ? declared as Record<string, unknown> : {};
+}
+
+/** OpenCode's native bridge uses the same registration via its inline configuration. */
+export function withOpenCodeMcp(env: Record<string, string>, mcp: McpRegistration | null): Record<string, string> {
+  if (mcp === null) return env;
+  const entries = Object.fromEntries(Object.entries(mcp.entries).map(([name, entry]) => [name, {
+    type: 'remote', url: entry.url, headers: { Authorization: mcp.authorization }, oauth: false, enabled: true,
+  }]));
+  return editInlineConfig(env, config => ({ ...config, mcp: { ...section(config, 'mcp'), ...entries } }));
 }
 
 /**

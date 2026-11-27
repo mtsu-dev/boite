@@ -187,6 +187,7 @@ export class Store {
   detach(): void {
     const ctx = this.#ctx;
     ctx.threads.releaseCaches(this.machineId);
+    ctx.displayImages.clear();
     ctx.shared.reset();
     ctx.requests.resetSecrets();
     ctx.clientGeneration++;
@@ -319,6 +320,8 @@ export class Store {
   set findOpen(value) { this.#ctx.layout.findOpen = value; }
   get findRequest() { return this.#ctx.layout.findRequest; }
   set findRequest(value) { this.#ctx.layout.findRequest = value; }
+  get messageSearchJump() { return this.#ctx.layout.messageSearchJump; }
+  set messageSearchJump(value) { this.#ctx.layout.messageSearchJump = value; }
   get projectChoiceRequest() { return this.#ctx.layout.projectChoiceRequest; }
   set projectChoiceRequest(value) { this.#ctx.layout.projectChoiceRequest = value; }
   get page() { return this.#ctx.layout.page; }

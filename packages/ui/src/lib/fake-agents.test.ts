@@ -7,6 +7,37 @@ import { FakeAgents } from './fake-agents';
 const selection = { providerId: 'echo', accountId: 'a-echo', model: null, effort: null, permissionMode: 'default' as const };
 const promptOf = (messages: Message[], turnId: string) => messages.find(m => m.turnId === turnId && m.role !== 'assistant')?.parts.find(p => p.type === 'text');
 
+test('webhook triggers return fresh secrets once and replay a test request without another wake', async ({ ready }) => {
+  const { client } = await ready({ delayMs: 0 });
+  const agent = await client.call('agents.profile.save', { value: { name: 'Scout', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
+  const { threadId } = await client.call('agents.open', { agentId: agent.id });
+  await vi.waitFor(async () => expect((await client.call('threads.get', { threadId })).status).toBe('idle'));
+
+  const { trigger, secret } = await client.call('agents.trigger.save', { value: {
+    agentId: agent.id, name: 'Builds', prompt: 'Review the build.', enabled: true, cooldownSeconds: 60, source: { kind: 'webhook' },
+  } });
+  expect(secret).toMatch(/^[a-f0-9]{64}$/);
+  expect(trigger).toMatchObject({ hasSecret: true, webhookPath: `/hooks/mochi/${trigger.id}` });
+  const rotated = await client.call('agents.trigger.rotateSecret', { triggerId: trigger.id });
+  expect(rotated.secret).toMatch(/^[a-f0-9]{64}$/);
+  expect(rotated.secret).not.toBe(secret);
+  const snapshot = await client.call('agents.snapshot', {});
+  expect(snapshot.triggers).toEqual([rotated.trigger]);
+  expect(JSON.stringify(snapshot)).not.toContain(secret!);
+  expect(JSON.stringify(snapshot)).not.toContain(rotated.secret);
+
+  const params = { triggerId: trigger.id, requestId: 'test-builds-1' };
+  const fired = await client.call('agents.trigger.test', params);
+  expect(fired).toMatchObject({ outcome: 'fired', turnId: expect.any(String) });
+  await vi.waitFor(async () => expect((await client.call('threads.get', { threadId })).status).toBe('idle'));
+  expect(await client.call('agents.trigger.test', params)).toEqual(fired);
+  const thread = await client.call('threads.get', { threadId });
+  expect(thread.turns.map(turn => promptOf(thread.messages, turn.id)?.displayText)).toEqual(['Just created', 'Trigger · Builds']);
+  expect((await client.call('agents.snapshot', {})).triggers).toEqual([expect.objectContaining({ lastOutcome: 'fired', lastFiredAt: expect.any(Number) })]);
+  await expect(client.call('agents.trigger.remove', { triggerId: trigger.id })).resolves.toEqual({ removed: true });
+  expect((await client.call('agents.snapshot', {})).triggers).toEqual([]);
+});
+
 test('the fake saves calendar reminders with the same next date as the core', async ({ ready }) => {
   const { client } = await ready({ delayMs: 0 });
   const agent = await client.call('agents.profile.save', { value: { name: 'Scout', domain: '', instructions: '', avatar: '', selection, status: 'active' } });

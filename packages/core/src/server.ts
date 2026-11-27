@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun';
 import type { Channel, RpcEventName, RpcEvents, ThreadId } from '@boite/contracts';
-import { FILE_ROUTE, RPC_MAX_FRAME_BYTES, RPC_PATH, RpcCloseCode, VIEW_ROUTE, SUBSCRIBED_EVENTS, agentHearsEvent } from '@boite/contracts';
+import { AGENT_TRIGGER_WEBHOOK_ROUTE, FILE_ROUTE, RPC_MAX_FRAME_BYTES, RPC_PATH, RpcCloseCode, VIEW_ROUTE, SUBSCRIBED_EVENTS, agentHearsEvent } from '@boite/contracts';
 import { timingSafeEqual } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, normalize, resolve, sep } from 'node:path';
@@ -469,6 +469,25 @@ export function startServer(options: ServerOptions): RunningServer {
     fetch(request, self) {
       if (stopping) return new Response('core stopping', { status: 503 });
       const url = new URL(request.url);
+      if (url.pathname.startsWith(AGENT_TRIGGER_WEBHOOK_ROUTE)) {
+        if (core.stopping) return new Response('core stopping', { status: 503 });
+        const peer = self.requestIP(request)?.address ?? null;
+        const stranger = strangerAddress(peer, request.headers);
+        const answered = stranger === null ? () => undefined : refusals.begin(stranger);
+        if (answered === null) return new Response('too many refused requests from this address', { status: 429 });
+        const response = core.workforce.triggers.http(request, url.pathname.slice(AGENT_TRIGGER_WEBHOOK_ROUTE.length), stranger ?? peer ?? 'unknown').then((answer) => {
+          answered(answer.status === 400 || answer.status === 401 || answer.status === 404 || answer.status === 405 || answer.status === 408 || answer.status === 413
+            ? 403
+            : answer.status === 429 && answer.headers.has('retry-after') ? 200 : answer.status);
+          return answer;
+        }, (error: unknown) => {
+          answered(403);
+          throw error;
+        });
+        peerRequests.add(response);
+        void response.finally(() => peerRequests.delete(response)).catch(() => undefined);
+        return response;
+      }
 
       if (url.pathname === '/agent-messages' || url.pathname === JOIN_ROUTE || url.pathname === CONTACT_JOIN_ROUTE) {
         if (core.stopping) return new Response('core stopping', { status: 503 });
@@ -522,7 +541,7 @@ export function startServer(options: ServerOptions): RunningServer {
       // An agent session's MCP servers, behind its thread's token (mcp/lazy.ts).
       if (url.pathname.startsWith(LAZY_MCP_ROUTE)) {
         if (core.stopping) return new Response('core stopping', { status: 503 });
-        return core.lazyMcp.http(request, url.pathname.slice(LAZY_MCP_ROUTE.length));
+        return core.lazyMcp.http(request, url.pathname.slice(LAZY_MCP_ROUTE.length), () => self.timeout(request, 0));
       }
 
       if (url.pathname.startsWith(`${FILE_ROUTE}/`)) {

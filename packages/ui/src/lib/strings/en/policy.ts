@@ -50,6 +50,7 @@ export const strings = {
       'network.contacts': 'Contacts',
       'network.push': 'Push notifications',
       pullRequests: 'Pull requests',
+      mcp: 'Boite-managed MCP servers',
       modelPrices: 'Model price updates'
     },
     values: {

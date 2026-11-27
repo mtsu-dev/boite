@@ -1,4 +1,4 @@
-import { Activity, Archive, Brain, ChartColumn, Cpu, FlaskConical, Gauge, GitBranch, Globe, House, KeyRound, Keyboard, MessagesSquare, Mic, Monitor, Palette, Puzzle, SlidersHorizontal, Smartphone, Stethoscope, Wrench } from '@lucide/svelte';
+import { Activity, Archive, Brain, ChartColumn, Cpu, FlaskConical, Gauge, GitBranch, Globe, House, KeyRound, Keyboard, MessagesSquare, Mic, Monitor, Palette, Plug, Puzzle, SlidersHorizontal, Smartphone, Stethoscope, Wrench } from '@lucide/svelte';
 import type { SettingsTab } from './settings-tabs';
 
 /**
@@ -14,6 +14,7 @@ export const SETTINGS_ICONS: Record<SettingsTab | 'conversations' | 'phone' | 'a
   voice: Mic,
   accounts: KeyRound,
   plugins: Puzzle,
+  mcp: Plug,
   browser: Globe,
   brain: Brain,
   limits: Gauge,
