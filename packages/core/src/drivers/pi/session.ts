@@ -250,13 +250,14 @@ export class PiSession {
 
   /** Submit input at pi's next tool boundary. */
   async steer(turn: PiTurn, message: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
-    if (this.#current !== turn || turn.settled || turn.isStopped || !this.#peer || this.#switching) return false;
+    if (this.#current !== turn || turn.decided || turn.isStopped || !this.#peer || this.#switching) return false;
     // A run cannot change its process: images a text-only model would drop wait for the next turn, which reopens it.
     // Nothing is written yet, so a state pi does not give refuses the steer rather than leave its delivery unconfirmed.
     const peer = this.#peer;
     if (imagesOf(attachments).length > 0 && await peer.command('get_state', {}, { signal, timeoutMs: readDeadlineMs })
       .then(state => piReadsImages(dataOf(state)['model'] as PiModel | null) === false, () => true)) return false;
-    if (this.#current !== turn || turn.settled || turn.isStopped || this.#peer !== peer || this.#switching) return false;
+    // A run that pi ended meanwhile takes no more input: a steer now would open a run of its own.
+    if (this.#current !== turn || turn.decided || turn.isStopped || this.#peer !== peer || this.#switching) return false;
     this.#steered = true;
     await peer.command('steer', { message, ...(attachments.length ? { images: imagesOf(attachments) } : {}) }, { onAccepted, signal, writeKind: 'steer' });
     return true;
@@ -420,7 +421,8 @@ export class PiSession {
       // would only reset a level pi keeps itself.
       const running = model === this.#model ? dataOf(await peer.command('get_state', {}, { timeoutMs: readDeadlineMs }))['model'] as { provider?: unknown; id?: unknown } | null | undefined : undefined;
       if (running?.provider !== pair.provider || running?.id !== pair.modelId) {
-        await peer.command('set_model', pair);
+        // pi answers once its `model_select` hooks ran: one that never ends fails the turn and drops the process.
+        await peer.command('set_model', pair, { timeoutMs: stopDeadlineMs });
         changed = true;
       }
       this.#model = model;
@@ -428,7 +430,7 @@ export class PiSession {
     }
     const effort = ctx.thread.effort;
     if (effort !== null && (changed || effort !== this.#effort)) {
-      await peer.command('set_thinking_level', { level: effort });
+      await peer.command('set_thinking_level', { level: effort }, { timeoutMs: stopDeadlineMs });
       this.#effort = effort;
     }
     return peer;
@@ -452,7 +454,8 @@ export class PiSession {
       if (exited !== null) this.#before = Promise.all([this.#before, exited]);
       const code = await new Promise<number | null | undefined | 'dropped'>((resolve) => {
         this.#draining = { child, exited, wake: () => resolve('dropped') };
-        void exitWithin(exited, stopDeadlineMs, closed).then(resolve);
+        // Its exit, not its pipes' close: what its tools left running may hold them.
+        void exitWithin(exited, stopDeadlineMs).then(resolve);
       }).finally(() => { this.#draining = null; });
       if (code === undefined && exited !== null) {
         releaseChild(child, this.#killTree);

@@ -132,6 +132,31 @@ test('pi default refuses images while pi itself runs a text-only model', async (
   expect(await images()).toBe(true);
 });
 
+test('pi default leaves the start model to pi in a trusted folder whose own extensions may register it', () => {
+  const root = join(tmpdir(), `pi-folder-extensions-${process.pid}-${Date.now()}`);
+  const agentDir = join(root, 'agent'), cwd = join(root, 'project');
+  mkdirSync(agentDir, { recursive: true });
+  mkdirSync(join(cwd, '.pi', 'extensions'), { recursive: true });
+  try {
+    const catalog = [{ id: 'fake-b/plain', name: 'Fake B / Plain' }];
+    // No settings of its own and an empty extensions folder: the account's probe saw the same start.
+    expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: true })).toBe('account');
+    // A local extension may register the model the account's settings name, which the probe, run elsewhere, lacked.
+    writeFileSync(join(cwd, '.pi', 'extensions', 'vision.ts'), 'export default () => {};');
+    expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: true })).toBeNull();
+    // An untrusted folder loads none of them.
+    expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: false })).toBe('account');
+    // Nor do packages or extensions its settings list leave the start to the probe.
+    rmSync(join(cwd, '.pi', 'extensions'), { recursive: true });
+    writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ packages: ['npm:pi-vision-provider'] }));
+    expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: true })).toBeNull();
+    writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ packages: [] }));
+    expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: true })).toBe('account');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('pi default reads the folder as the launch decides: its approval flags, its scope and its configuration folder', async () => {
   process.env['PI_FAKE_CURRENT'] = 'plain';
   process.env['PI_FAKE_LITERAL'] = '1';
@@ -405,7 +430,8 @@ afterEach(async () => {
   delete process.env['PI_FAKE_PLAIN_IMAGES'];
   delete process.env['PI_FAKE_SLOW_EXIT'];
   delete process.env['PI_FAKE_SLOW_STATE'];
-  delete process.env['PI_FAKE_SILENT_MODELS'];
+  delete process.env['PI_FAKE_SILENT'];
+  delete process.env['PI_FAKE_END_ON_STATE'];
   if (open !== null) await open.stop();
 });
 
@@ -1612,6 +1638,28 @@ describe('pi driver', () => {
     expect(fakeLog()).not.toContain('steering Use this');
   }, 20_000);
 
+  test('an image steer whose run pi ends while it reads the model is not sent', async () => {
+    const ended = join(tmpdir(), `pi-end-on-state-${process.pid}-${Date.now()}`);
+    process.env['PI_FAKE_SLOW_STATE'] = '200';
+    process.env['PI_FAKE_END_ON_STATE'] = ended;
+    try {
+      const { client, threadId } = await startThread(undefined, 'fake-a/smart');
+      // pi's stats hang after the run, so the turn is over in pi but not yet settled in Boite when the state comes.
+      const finished = client.next('turn.finished', done => done.threadId === threadId, 20_000);
+      const started = await client.call('turns.start', { threadId, prompt: '[hang-stats] [slow] Deploy' });
+      await waitFor(() => fakeLog().includes('waiting for abort'));
+      writeFileSync(ended, '');
+      const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+      const steered = await client.call('turns.steer', { threadId, turnId: started.id, prompt: 'Use this', attachments: [image], clientRequestId: 'pi_ended_run' });
+      expect(steered).toEqual({ accepted: false });
+      expect(fakeLog()).not.toContain('steer without a run');
+      expect(harness!.core.journal.db.query('SELECT 1 FROM turn_requests WHERE request_id = ?').all('pi_ended_run')).toEqual([]);
+      await finished;
+    } finally {
+      rmSync(ended, { force: true });
+    }
+  }, 20_000);
+
   test('an image steer refused because pi gave no state in time leaves no unconfirmed delivery behind', async () => {
     process.env['PI_FAKE_SLOW_STATE'] = '600';
     setPiReadDeadlineForTests(100);
@@ -1682,11 +1730,16 @@ describe('pi driver', () => {
     expect(fakeLog()).not.toContain('image image/png');
   });
 
-  test('a warm switch that pi never answers fails the turn at the read deadline', async () => {
+  test.each([
+    ['get_available_models', 'fake-a/quick'],
+    // pi answers `set_model` once its `model_select` hooks ran.
+    ['set_model', 'fake-a/quick'],
+  ])('a warm switch whose %s pi never answers fails the turn and drops the process', async (command, model) => {
     process.env['PI_FAKE_LITERAL'] = '1';
-    const silent = join(tmpdir(), `pi-silent-models-${process.pid}-${Date.now()}`);
-    process.env['PI_FAKE_SILENT_MODELS'] = silent;
+    const silent = join(tmpdir(), `pi-silent-${process.pid}-${Date.now()}`);
+    process.env['PI_FAKE_SILENT'] = silent;
     setPiReadDeadlineForTests(300);
+    setPiStopDeadlineForTests(300);
     try {
       const client = await startCore({ warmProcessMinutes: 5 });
       const { projectId, accountId } = await piAccount(client);
@@ -1694,13 +1747,19 @@ describe('pi driver', () => {
       const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'silent', model: 'fake-a/smart' });
       await client.call('threads.subscribe', { threadId });
       await runTurn(client, threadId, 'first');
-      writeFileSync(silent, '');
-      await client.call('threads.update', { threadId, model: 'fake-a/quick' });
+      writeFileSync(silent, command);
+      await client.call('threads.update', { threadId, model });
       const { finished } = await startTurn(client, threadId, 'second', 20_000);
       expect(await finished).toMatchObject({ status: 'error', error: expect.stringContaining('timed out') });
-      expect(fakeLog()).toContain('models asked');
+      expect(fakeLog()).toContain(`${command} unanswered`);
+      // The process went with the turn: the next one starts a new pi.
+      rmSync(silent, { force: true });
+      const launched = argvLines().filter(line => !line.includes('sessionId= ')).length;
+      await runTurn(client, threadId, 'third');
+      expect(argvLines().filter(line => !line.includes('sessionId= '))).toHaveLength(launched + 1);
     } finally {
       setPiReadDeadlineForTests(null);
+      setPiStopDeadlineForTests(null);
       rmSync(silent, { force: true });
     }
   }, 20_000);

@@ -529,6 +529,12 @@ function handle(message: Record<string, unknown>): void {
   }
 
   log(type);
+  // A pi that keeps its pipes open without answering a command, once the file `PI_FAKE_SILENT` names holds its name.
+  const silent = process.env['PI_FAKE_SILENT'];
+  if (silent && existsSync(silent) && readFileSync(silent, 'utf8').trim() === type) { log(`${type} unanswered`); return; }
+  // `PI_FAKE_END_ON_STATE` names a file: once it exists, a `get_state` asked while the run waits ends that run first.
+  const endOnState = process.env['PI_FAKE_END_ON_STATE'];
+  if (type === 'get_state' && endOnState && existsSync(endOnState) && waitingAbort) { const end = waitingAbort; waitingAbort = null; end(); }
   switch (type) {
     case 'compact': {
       // pi's own refusal when no entry is old enough to summarize: a test marks such a session with a `[small]` prompt.
@@ -584,7 +590,7 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'steer': {
-      if (!waitingAbort) { send({ id, type: 'response', command: 'steer', success: false, error: 'no active turn' }); return; }
+      if (!waitingAbort) { log('steer without a run'); send({ id, type: 'response', command: 'steer', success: false, error: 'no active turn' }); return; }
       log(`steering ${textOf(message['message'])}`);
       if (Array.isArray(message['images'])) for (const image of message['images']) log(`steer-image ${image.mimeType} ${image.data.length}`);
       const response = { id, type: 'response', command: 'steer', success: true };
@@ -657,9 +663,6 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'get_available_models': {
-      // A pi that keeps its pipes open without answering, once the file `PI_FAKE_SILENT_MODELS` names exists.
-      const silent = process.env['PI_FAKE_SILENT_MODELS'];
-      if (silent && existsSync(silent)) { log('models asked'); return; }
       send({ id, type: 'response', command: 'get_available_models', success: true, data: { models: MODELS } });
       return;
     }

@@ -446,7 +446,9 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   whatever the thread's last session was on. When
   the folder changes nothing, the probe's `default` answers; when
   only pi can name the model (a glob or fuzzy pattern, a model missing from the
-  catalog), Boite lets the image through and pi replaces it if that model reads
+  catalog, a trusted folder with extensions in `.pi/extensions/` or listed by its
+  `extensions` or `packages`, which load only there and may register the model
+  the settings name), Boite lets the image through and pi replaces it if that model reads
   none. A goal or loop sent on another account starts in the same folder. On an
   open thread the composer asks the core (`threads.capabilities`), again when
   the session, the folder, the selection, the account's catalog, the turn or the
@@ -1829,7 +1831,9 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   same session on it with `--provider` once the old one has exited (pi runs its
   shutdown hooks first, and they may still write the session file), and only
   pi itself stops, not what its tools left running. The listing is a control
-  read, bounded like `get_state`. A stop or a close meanwhile
+  read, bounded like `get_state`; `set_model` and `set_thinking_level`, which pi
+  answers after its `model_select` hooks, are bounded by the stop deadline, and
+  one unanswered fails the turn and drops the process. A stop or a close meanwhile
   drops the session as during a cold start, without waiting for that exit: the
   old process goes down with the thread's processes. The thread's next pi
   process, whatever closed the last one, a session closed before it launched
@@ -1849,7 +1853,8 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   a resume) are pi's to replace, as for any model that reads none. Input
   steered during that check waits for the next turn. Images steered into a run
   on a text-only model wait for the next turn too, and so do they when pi does
-  not give its state within the read deadline or the turn ends meanwhile, so
+  not give its state within the read deadline or the turn ends meanwhile, in
+  Boite or in pi, so
   the steer is refused before anything is written rather than left
   unconfirmed. Any driver may answer a steer the end of its attempt cut short:
   `false` within 250 ms says nothing was written.

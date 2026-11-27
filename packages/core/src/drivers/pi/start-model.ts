@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isRecord } from '../stdio.ts';
 import { piModelOf } from './models.ts';
@@ -76,7 +76,11 @@ export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
 export function folderStartModel(agentDir: string, cwd: string, catalog: readonly CatalogModel[] | null, launch: Omit<PiLaunchChoices, 'model'> = { scope: null, trust: null }): string | 'account' | null {
   const global = settingsAt(join(agentDir, 'settings.json')) ?? {};
   const folder = piProcessCwd(cwd);
-  const project = (launch.trust ?? trusted(agentDir, folder, global)) ? settingsAt(join(folder, '.pi', 'settings.json')) : null;
+  const trust = launch.trust ?? trusted(agentDir, folder, global);
+  const project = trust ? settingsAt(join(folder, '.pi', 'settings.json')) : null;
+  // A trusted folder's own extensions load only there, and may register the model the settings name, which the
+  // probe, run elsewhere, did not have: pi decides (`DefaultPackageManager.resolve`, 1.6.1).
+  if (trust && (entriesIn(join(folder, '.pi', 'extensions')) || listed(project?.['extensions']) || listed(project?.['packages']))) return null;
   if (!project) return 'account';
   const value = (key: typeof CHOOSING[number]) => project[key] !== undefined ? project[key] : global[key];
   // An empty scope is no scope, as pi reads it: `enabledModels: []` changes nothing over a missing key.
@@ -200,4 +204,12 @@ function settingsAt(path: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function entriesIn(dir: string): boolean {
+  try { return readdirSync(dir).length > 0; } catch { return false; }
+}
+
+function listed(setting: unknown): boolean {
+  return Array.isArray(setting) && setting.length > 0;
 }
