@@ -26,7 +26,8 @@ const FINISHED = EXPERIMENT_IDS.filter((id) => EXPERIMENT_STAGES[id] === 'releas
 
 test('desktop and phone hide experimental settings in Release and offer them on the Nightly Experiments page', async () => {
   const ids = ['contacts', 'auto-goal', 'background-compaction', 'device-stream'];
-  const oldRows = ['setting-contacts', 'setting-auto-goals', 'auto-goal-min-chars', 'background-compaction-on', 'device-stream-on'];
+  // The per-type background switch stays in Advanced (checked below); the rows here left General and Advanced.
+  const oldRows = ['setting-contacts', 'setting-auto-goals', 'auto-goal-min-chars', 'device-stream-on'];
   const get = <T extends Element = HTMLElement>(id: string) => document.querySelector<T>(`[data-testid="${id}"]`);
   const settle = async () => { for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); } };
   onTestFinished(() => { vi.unstubAllGlobals(); });
@@ -69,6 +70,10 @@ test('desktop and phone hide experimental settings in Release and offer them on 
             contacts.click();
             await vi.waitFor(() => expect(store.settings?.contacts).toBe(on));
           }
+          // With automatic goals on, their threshold shows on Experiments and still not in General.
+          store.showSettings('general', 'agent-replies');
+          await settle();
+          for (const id of ['setting-auto-goals', 'auto-goal-min-chars']) expect(get(id), `${phone ? 'phone' : 'desktop'} ${id} on`).toBeNull();
         }
       } finally {
         if (running) await unmount(running, { outro: false });
@@ -129,12 +134,13 @@ test('a finished feature is on in every build and experiments have their switche
   await tick();
   const switches = () => [...document.querySelectorAll<HTMLInputElement>('input[data-testid^=experiment-]')];
   expect(switches().map((node) => node.dataset['testid']).sort()).toEqual(listedExperiments(NIGHTLY).map(id => `experiment-${id}`).sort());
-  expect(switches()[0]!.checked).toBe(true);
-  expect(switches()[0]!.closest('label')?.textContent).toContain(strings.experiments['draft-backdrop'].title);
-  switches()[0]!.click();
+  const backdrop = () => document.querySelector<HTMLInputElement>('input[data-testid=experiment-draft-backdrop]')!;
+  expect(backdrop().checked).toBe(true);
+  expect(backdrop().closest('label')?.textContent).toContain(strings.experiments['draft-backdrop'].title);
+  backdrop().click();
   flushSync();
   await tick();
-  expect(switches()[0]!.checked).toBe(false);
+  expect(backdrop().checked).toBe(false);
   expect(readExperiments()).toEqual(FINISHED);
 });
 

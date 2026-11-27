@@ -165,7 +165,8 @@ An agent may ask for one below the threshold: `boite goal track`
 the user's last prompt, a steer included. Called during the turn, it makes that
 turn the goal's first, and its output tells the agent the claim marker. The
 core refuses it while automatic goals are off on the machine
-(reason `auto-goals-off`), when a goal or a loop is under way, and when that prompt already started a goal
+(reason `auto-goals-off`; a Release, which does not run them, refuses with
+`experiment-off`), when a goal or a loop is under way, and when that prompt already started a goal
 (`auto-goal:<thread>` keeps its message).
 While they are on, the agent guide of a top-level thread says to run it when
 the user's prompt lists several distinct requests.

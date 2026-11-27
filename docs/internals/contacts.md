@@ -15,7 +15,9 @@ current, read once the group is restored. An install that linked someone
 before the setting existed keeps its links; a stored choice never moves. Off, contacts stop where the policy's `network.contacts:
 false` stops them (`contacts/switch.ts`): no invitation, join, grant, trust given, accepted
 request, human reply or `collaboration.ask`, refused with the reason
-`contacts-off` and the `boite settings request contacts true` way to ask;
+`contacts-off` and the `boite settings request contacts true` way to ask. A
+Release reads the setting as off and refuses that request too, since its core
+does not run the experiment ([experiments](experiments.md));
 kept links close and are not dialed, the agents' guide leaves the contacts
 section out, and `collaboration.contacts` answers an empty list. It also holds
 creation and reset of the Operator. The owner's RPCs can still read, revoke

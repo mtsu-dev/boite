@@ -40,10 +40,12 @@ Dev only.
   every window connected to it sees the same state.
 - The other switches belong to the device you flip them on. They start off
   and do not change another computer or phone.
-- A phone or a browser starts with the switches of the desktop app on its
-  computer, and follows it when they change. Settings on a phone has its own
-  Experiments row. Flipping a switch there keeps the phone's own set; Same as
-  the computer, at the top, follows the desktop app again.
+- For the switches of the device, a phone or a browser starts with those of
+  the desktop app on its computer, and follows it when they change. Settings
+  on a phone has its own Experiments row. Flipping one of them there keeps the
+  phone's own set; Same as the computer, at the top, follows the desktop app
+  again. A machine's switch flipped on a phone changes that machine for every
+  window, as it does from the computer.
 
 ## New thread background
 

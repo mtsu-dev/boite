@@ -16,7 +16,8 @@ test('the project menu hides session import until the experiment is enabled', as
   head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=manage]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
-  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=manage]') === null);
+  // The submenu is open once its Secrets entry, always there, shows.
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=secrets]') !== null);
   expect(document.querySelector('[data-testid=context-menu] [data-value=import]')).toBeNull();
 });
 
@@ -137,6 +138,7 @@ test('the desktop turning session import off closes its dialog, which then holds
   await waitFor(() => store.imports?.running !== null && answer !== undefined);
   client.reportDesktopExperiments([]);
   await waitFor(() => document.querySelector('[data-testid=import-dialog]') === null);
+  expect(store.imports?.running).toBeTruthy();
   palette();
   expect(store.paletteOpen).toBe(true);
   store.paletteOpen = false;
