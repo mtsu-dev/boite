@@ -66,6 +66,11 @@ function providerLabel(provider: string): string {
   return `${provider.slice(0, 1).toUpperCase()}${provider.slice(1)}`;
 }
 
+/** Whether the model pi reports reads images: undefined when pi named no inputs. */
+export function piReadsImages(model: PiModel | null | undefined): boolean | undefined {
+  return Array.isArray(model?.input) ? model.input.includes('image') : undefined;
+}
+
 /** Whether pi's own listing (`get_available_models`) holds this exact pair, which `set_model` requires. */
 export function piListsPair(models: unknown, pair: { provider: string; modelId: string }): boolean {
   return Array.isArray(models) && (models as PiModel[]).some(model => model?.provider === pair.provider && model.id === pair.modelId);

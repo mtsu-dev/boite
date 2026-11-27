@@ -1826,10 +1826,19 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   where a switch would only reset pi's own level. pi reads its models once, at
   start: a pair the catalog found since (a `models.json` edited after the
   launch) is not in the running process's listing, so a new process opens the
-  same session on it with `--provider`, and only pi itself stops, not what its
-  tools left running. Input steered while that switch may happen waits for the
-  next turn. Images steered into a running turn are checked against the list
-  that turn was given, the one its process runs, not a list refreshed since.
+  same session on it with `--provider` once the old one has exited (pi runs its
+  shutdown hooks first, and they may still write the session file), and only
+  pi itself stops, not what its tools left running. A stop meanwhile drops the
+  session as during a cold start. Input steered while that switch may happen
+  waits for the next turn. Images steered into a running turn are checked
+  against the list that turn was given, the one its process runs, not a list
+  refreshed since.
+- Before a prompt with images, the driver asks pi (`get_state`) whether the
+  model it runs reads them: admission checked the list the turn was sent
+  under, and a later attempt may run another pair. A pair that gained images
+  after the launch (pi reads `models.json` once) gets a new process; any other
+  text-only model fails the turn with admission's sentence. Images steered into
+  a run on a text-only model wait for the next turn.
   There is no call that goes back to pi's own model or to no level, so either
   change starts a new process.
 - Pi can refresh prompt caches during a turn. Refreshes between turns require

@@ -261,8 +261,16 @@ if (process.env['PI_FAKE_LITERAL']) {
 // The catalog keeps `base` on `fake-a/team` for the text `fake-a/team/base`: a scope's `team/base` is then on
 // `fake-a` or on `fake-b`, which only pi picks.
 if (process.env['PI_FAKE_SHADOW']) MODELS.push({ ...MODELS[2]!, provider: 'fake-b', id: 'team/base', name: 'Fake Other Base' });
+// `fake-b/plain` gains images, as a `models.json` edited after a launch gives them.
+if (process.env['PI_FAKE_PLAIN_IMAGES']) MODELS[2]!.input = ['text', 'image'];
 /** The model the session is on, which is the one pi reports as current. */
 const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0]!;
+/** What `get_state` reports: the pair `--provider`/`--model` named, else the longest provider spelling the text, as pi. */
+let running = (() => {
+  const text = model.replace(/:[a-z]+$/, ''), provider = flag('--provider');
+  const spelled = MODELS.filter(entry => `${entry.provider}/${entry.id}` === text && (provider === '' || entry.provider === provider));
+  return spelled.sort((a, b) => b.provider.length - a.provider.length)[0] ?? CURRENT;
+})();
 /** `--model provider/id[:level]` without its level, or the current model. */
 const answering = model.length === 0 ? `${CURRENT.provider}/${CURRENT.id}` : model.replace(/:[a-z]+$/, '');
 const CURRENT_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
@@ -554,6 +562,7 @@ function handle(message: Record<string, unknown>): void {
         send({ id, type: 'response', command: 'set_model', success: false, error: `Model not found: ${textOf(message['provider'])}/${textOf(message['modelId'])}` });
         return;
       }
+      running = found;
       send({ id, type: 'response', command: 'set_model', success: true, data: found });
       return;
     }
@@ -631,7 +640,7 @@ function handle(message: Record<string, unknown>): void {
         command: 'get_state',
         success: true,
         data: {
-          model: CURRENT,
+          model: running,
           thinkingLevel,
           isStreaming: streaming,
           isCompacting: false,
@@ -688,6 +697,13 @@ function handle(message: Record<string, unknown>): void {
       send({ id, type: 'response', command: type, success: false, error: `the fake pi does not implement ${type}` });
   }
 }
+
+// pi runs its `session_shutdown` hooks before it exits, and they may still write the session file.
+const slowExit = Number(process.env['PI_FAKE_SLOW_EXIT'] ?? 0);
+if (slowExit > 0 && !oneShot && sessionId) process.on('SIGTERM', () => {
+  log(`shutting down ${sessionId}`);
+  setTimeout(() => { log(`exited ${sessionId}`); process.exit(0); }, slowExit);
+});
 
 let buffer = '';
 process.stdin.setEncoding('utf8');

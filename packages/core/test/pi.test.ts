@@ -11,6 +11,7 @@ import { setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
 import { folderStartModel } from '../src/drivers/pi/start-model.ts';
 import { forgetSavedCatalog, readSavedCatalog } from '../src/providers/saved-catalogs.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
+import * as selection from '../src/threads/selection.ts';
 import { USER_ORIGIN } from '../src/threads/turn-origin.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
@@ -400,6 +401,8 @@ afterEach(async () => {
   delete process.env['PI_FAKE_LITERAL'];
   delete process.env['PI_FAKE_SHADOW'];
   delete process.env['PI_FAKE_NO_TEAM'];
+  delete process.env['PI_FAKE_PLAIN_IMAGES'];
+  delete process.env['PI_FAKE_SLOW_EXIT'];
   if (open !== null) await open.stop();
 });
 
@@ -1463,6 +1466,91 @@ describe('pi driver', () => {
     expect(launched[1]).toContain('model=fake-a/team/base provider=fake-a/team thinking=high');
     expect(launched[1]!.split(' ')[1]).toBe(launched[0]!.split(' ')[1]!);
     expect(fakeLog()).not.toContain('model fake-a/team base\n');
+  });
+
+  test('a reopen waits for the old pi to exit, and a stop meanwhile opens no new one', async () => {
+    process.env['PI_FAKE_LITERAL'] = '1';
+    process.env['PI_FAKE_NO_TEAM'] = '1';
+    process.env['PI_FAKE_SLOW_EXIT'] = '1500';
+    const client = await startCore({ warmProcessMinutes: 5 });
+    const { projectId, accountId } = await piAccount(client);
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+    const thread = async (title: string): Promise<string> => {
+      const { id } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title, model: 'fake-a/team/base' });
+      await client.call('threads.subscribe', { threadId: id });
+      await runTurn(client, id, 'first');
+      return id;
+    };
+    const waited = await thread('waited'), stopped = await thread('stopped');
+    delete process.env['PI_FAKE_NO_TEAM'];
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    // pi's shutdown hooks may still write the session file: the new process opens it once the old one has exited.
+    await runTurn(client, waited, 'second');
+    const session = harness!.core.threads.require(waited).sessionId;
+    const lines = fakeLog().split('\n');
+    expect(lines.indexOf(`exited ${session}`)).toBeGreaterThan(-1);
+    expect(lines.indexOf(`exited ${session}`)).toBeLessThan(lines.findLastIndex(line => line.startsWith(`argv sessionId=${session} `)));
+    const launched = argvLines().length;
+    const { finished } = await startTurn(client, stopped, 'second', 20_000);
+    const other = harness!.core.threads.require(stopped).sessionId;
+    await waitFor(() => fakeLog().includes(`shutting down ${other}`));
+    await client.call('turns.stop', { threadId: stopped });
+    expect((await finished).status).toBe('stopped');
+    await waitFor(() => fakeLog().includes(`exited ${other}`));
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(argvLines()).toHaveLength(launched);
+  }, 20_000);
+
+  test('images reach a pair that gained them after the warm process started through a new process, and wait while a run holds the old one', async () => {
+    const client = await startCore({ warmProcessMinutes: 5 });
+    const { projectId, accountId } = await piAccount(client);
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'gained', model: 'fake-b/plain' });
+    await client.call('threads.subscribe', { threadId });
+    await runTurn(client, threadId, 'first');
+    process.env['PI_FAKE_PLAIN_IMAGES'] = '1';
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+    // A run cannot change its process: the image waits for the next turn.
+    const held = await client.call('turns.start', { threadId, prompt: '[slow] Read this' });
+    await waitFor(() => fakeLog().includes('waiting for abort'));
+    expect(await client.call('turns.steer', { threadId, turnId: held.id, prompt: 'Use this', attachments: [image], clientRequestId: 'pi_gained_steer' })).toEqual({ accepted: false });
+    const ended = client.next('turn.finished', turn => turn.id === held.id, 20_000);
+    await client.call('turns.stop', { threadId });
+    await ended;
+    const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+    await client.call('turns.start', { threadId, prompt: 'Read this', attachments: [image] });
+    expect(await finished).toMatchObject({ status: 'done', error: null });
+    const launched = argvLines().filter((line) => !line.includes('sessionId= '));
+    expect(launched).toHaveLength(2);
+    expect(launched[1]).toContain('model=fake-b/plain provider=fake-b');
+    expect(fakeLog()).toContain('image image/png');
+  });
+
+  test('an image admitted on a list a later attempt no longer runs fails that attempt instead of reaching a text-only pi', async () => {
+    process.env['PI_FAKE_LITERAL'] = '1';
+    const client = await startCore({ warmProcessMinutes: 5 });
+    const { projectId, accountId } = await piAccount(client);
+    // The list an attempt is given (a retry's, after a refresh) keeps `base` on `fake-a/team`, which reads no images,
+    // while admission read the one where `fake-a/team/base` is `team/base` on `fake-a`, which does.
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+    const given = probedModelsOf('pi', 'pi-fake', accountId);
+    process.env['PI_FAKE_NO_TEAM'] = '1';
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    delete process.env['PI_FAKE_NO_TEAM'];
+    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'attempt', model: 'fake-a/team/base' });
+    await client.call('threads.subscribe', { threadId });
+    const catalog = spyOn(selection, 'piCatalogOf').mockImplementation(() => given);
+    try {
+      const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+      const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+      await client.call('turns.start', { threadId, prompt: 'Read this', attachments: [image] });
+      expect(await finished).toMatchObject({ status: 'error', error: expect.stringContaining('Fake Base takes no images') });
+    } finally {
+      catalog.mockRestore();
+    }
+    expect(argvLines().find(line => line.includes('provider=fake-a/team '))).toBeDefined();
+    expect(fakeLog()).not.toContain('image image/png');
   });
 
   test('a warm process pi launched on the text keeps its level when a probe names the pair it already runs', async () => {
