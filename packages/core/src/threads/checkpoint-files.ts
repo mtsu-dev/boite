@@ -381,73 +381,110 @@ async function writeEntry(root: string, objects: string, name: string, entry: Fi
 /**
  * The files under `root` as `restoreFiles(root, objects, changes)` will leave them, read without writing anything:
  * each change's `before`, a parent its deleted files leave empty gone, every other path as the disk holds it. A path
- * reads as the system would after the restore: through each symbolic link it crosses, as restored or as on disk, and
- * under `cwd`, the spelling the thread keeps for `root` (a Windows short name or `subst` drive `realpath` expands).
+ * resolves as the system would after the restore: component by component, through each symbolic link as restored or
+ * as on disk, `..` taken after the link before it, and under `cwd`, the spelling the thread keeps for `root` (a
+ * Windows short name or `subst` drive `realpath` expands).
  */
 export function restoredView(root: string, objects: string, changes: readonly FileChange[], cwd = root): FileView {
   const key = (path: string) => process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path);
   const planned = new Map(changes.map(change => [key(join(root, change.name)), change.before]));
-  const inside = (dir: string) => {
-    const prefix = key(dir) + sep;
-    return [...planned].filter(([path]) => path.startsWith(prefix)).map(([, entry]) => entry);
+  /** Whether the restore puts any entry below `dir`, which then stands as a directory. */
+  const created = (dir: string) => {
+    const own = key(dir);
+    const prefix = own.endsWith(sep) ? own : own + sep;
+    return [...planned].some(([path, entry]) => entry !== undefined && path.startsWith(prefix));
+  };
+  const touched = (dir: string) => {
+    const own = key(dir);
+    const prefix = own.endsWith(sep) ? own : own + sep;
+    return [...planned.keys()].some(path => path.startsWith(prefix));
   };
   const names = (dir: string) => { try { return readdirSync(dir); } catch { return []; } };
-  /** Whether an entry stands at `path` itself, a link not followed. */
+  /** Whether an entry stands at `path` itself, a link not followed, every directory above it standing. */
   const present = (path: string): boolean => {
     const own = key(path);
-    if (planned.has(own)) return planned.get(own) !== undefined;
+    if (planned.has(own)) return planned.get(own) !== undefined || created(path);
     let directory: boolean;
-    try { directory = lstatSync(path).isDirectory(); } catch { return inside(path).some(Boolean); }
+    try { directory = lstatSync(path).isDirectory(); } catch { return created(path); }
     if (!directory) return true;
     // `writeEntry` removes only the parents a deleted file leaves empty: a directory empty before stays.
-    const below = inside(path);
-    return below.some(Boolean) || names(path).some(name => present(join(path, name))) || below.length === 0;
+    return created(path) || names(path).some(name => present(join(path, name))) || !touched(path);
   };
   const aliased = (path: string) => {
     const full = resolve(path);
-    const spelled = resolve(cwd);
-    return key(full) === key(spelled) || key(full).startsWith(key(spelled) + sep) ? root + full.slice(spelled.length) : full;
+    const rest = relative(resolve(cwd), full);
+    if (rest === '') return root;
+    return rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest) ? full : join(root, rest);
   };
-  /** `path` with every link it crosses followed, as the restore leaves each; null past 32 links. */
-  const follow = (path: string, hops = 0): string | null => {
+  const split = (path: string) => path.split(process.platform === 'win32' ? /[\\/]/ : sep).filter(Boolean);
+  /**
+   * Where `path` lands once every link it crosses is followed, and whether only the restore's entries stand there (a
+   * directory it creates in place of a deleted file, link or missing path). Null when nothing will stand there, or
+   * past 40 links.
+   */
+  const follow = (path: string): { at: string; restored: boolean } | null => {
     const full = aliased(path);
-    const top = parse(full).root;
-    const parts = full.slice(top.length).split(sep).filter(Boolean);
-    let at = top;
-    for (const [index, part] of parts.entries()) {
+    let at = parse(full).root;
+    const queue = split(full.slice(at.length));
+    /** For each directory `at` went down, whether only the restore makes it. */
+    const depth: boolean[] = [];
+    let hops = 0;
+    while (queue.length) {
+      const part = queue.shift()!;
+      if (part === '.') continue;
+      if (part === '..') { at = dirname(at); depth.pop(); continue; }
       const next = join(at, part);
+      const restored = depth.at(-1) === true;
       let link: string | undefined;
       if (planned.has(key(next))) {
         const entry = planned.get(key(next));
-        if (!entry) return join(next, ...parts.slice(index + 1));
+        if (!entry) {
+          if (!created(next)) return null;
+          at = next; depth.push(true); continue;
+        }
         link = entry.link;
+        if (link === undefined) { if (queue.length) return null; at = next; continue; }
+      } else if (restored) {
+        if (!created(next)) return null;
+        at = next; depth.push(true); continue;
       } else {
-        try { if (lstatSync(next).isSymbolicLink()) link = readlinkSync(next); }
-        catch { return join(next, ...parts.slice(index + 1)); }
+        let info;
+        try { info = lstatSync(next); } catch {
+          if (!created(next)) return null;
+          at = next; depth.push(true); continue;
+        }
+        if (info.isSymbolicLink()) link = readlinkSync(next);
+        else if (info.isDirectory()) { at = next; depth.push(false); continue; }
+        else { if (queue.length) return null; at = next; continue; }
       }
-      if (link === undefined) { at = next; continue; }
-      if (hops >= 32) return null;
-      const target = follow(resolve(at, link), hops + 1);
-      if (target === null) return null;
-      at = target;
+      if (++hops > 40) return null;
+      if (isAbsolute(link)) {
+        const target = resolve(link);
+        at = parse(target).root;
+        depth.length = 0;
+        queue.unshift(...split(target.slice(at.length)));
+      } else queue.unshift(...split(link));
     }
-    return at;
+    return { at, restored: depth.at(-1) === true };
   };
+  /** Whether an entry stands where `follow` landed: below a directory only the restore makes, only its entries do. */
+  const stands = (spot: { at: string; restored: boolean } | null): spot is { at: string; restored: boolean } => spot !== null
+    && (spot.restored ? planned.get(key(spot.at)) !== undefined || created(spot.at) : present(spot.at));
   return {
     read: path => {
-      const target = follow(path);
-      if (target === null || !present(target)) return null;
-      const entry = planned.get(key(target));
+      const spot = follow(path);
+      if (!stands(spot)) return null;
+      const entry = planned.get(key(spot.at));
       if (entry) return readBlobSync(join(objects, entry.hash), entry.hash)?.toString('utf8') ?? null;
-      try { return readFileSync(target, 'utf8'); } catch { return null; }
+      if (spot.restored || planned.has(key(spot.at))) return null;
+      try { return readFileSync(spot.at, 'utf8'); } catch { return null; }
     },
-    exists: path => {
-      const target = follow(path);
-      return target !== null && present(target);
-    },
+    exists: path => stands(follow(path)),
     listsAny: path => {
-      const dir = follow(path);
-      return dir !== null && present(dir) && (inside(dir).some(Boolean) || names(dir).some(name => present(join(dir, name))));
+      const spot = follow(path);
+      if (!stands(spot)) return false;
+      if (created(spot.at)) return true;
+      return !spot.restored && !planned.has(key(spot.at)) && names(spot.at).some(name => present(join(spot.at, name)));
     },
   };
 }

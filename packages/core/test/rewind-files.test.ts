@@ -1,12 +1,13 @@
 import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rename, stat, writeFile, rm, symlink, readlink, utimes } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import type { CoreClient } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { CodeCheckpoints, IDLE_THREAD_MS, KEEP_TURNS } from '../src/threads/code-checkpoints.ts';
-import { overlap, restoreFiles, sharedBlob, snapshot } from '../src/threads/checkpoint-files.ts';
+import { overlap, restoredView, restoreFiles, sharedBlob, snapshot, type FileChange, type FileEntry } from '../src/threads/checkpoint-files.ts';
+import { DISK_VIEW } from '../src/file-view.ts';
 import { BLOB_BYTE_LIMIT, decodeBlob, decodeManifest } from '../src/threads/checkpoint-store.ts';
 import { git } from '../src/git/read.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -742,3 +743,69 @@ test(`checkpoints are kept for the newest ${KEEP_TURNS} turns, and none for a th
   expect((await rejection(stat(folder))).reason).toMatchObject({ code: 'ENOENT' });
 // 51 real turns took 5.2 s on a loaded Windows machine, past Bun's default 5 s.
 }, 20000);
+
+test('the restored view reads every path as the restore leaves it, through links, before anything is written', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'boite-restored-view-'));
+  try {
+    const root = join(base, 'root');
+    const objects = join(base, 'objects');
+    await mkdir(objects);
+    const sha = (text: string) => createHash('sha256').update(text).digest('hex');
+    // The state the restore puts back: file contents saved as blobs, links as their targets.
+    const file = async (text: string): Promise<FileEntry> => { await writeFile(join(objects, sha(text)), text); return { hash: sha(text), mode: 0o644 }; };
+    const link = (target: string): FileEntry => ({ hash: sha(target), mode: 0o777, link: target });
+    const now = async (name: string): Promise<FileEntry> => {
+      const path = join(root, name);
+      const target = await readlink(path).catch(() => null);
+      return target === null ? { hash: sha(await readFile(path, 'utf8')), mode: (await stat(path)).mode & 0o777 } : link(target);
+    };
+    const dirLink = process.platform === 'win32' ? 'junction' : 'dir';
+    // The disk the removed turns left.
+    await mkdir(join(root, 'config', 'sub'), { recursive: true });
+    await mkdir(join(root, '.pi'));
+    await mkdir(join(root, 'keep'));
+    await mkdir(join(root, 'gone'));
+    await mkdir(join(base, 'outside'));
+    await writeFile(join(base, 'outside', 'settings.json'), 'outside');
+    await writeFile(join(root, 'config', 'pi.json'), 'smart');
+    await writeFile(join(root, '.pi', 'pi.json'), 'decoy');
+    await writeFile(join(root, 'gone', 'f'), 'made by a turn');
+    await writeFile(join(root, 'ext'), 'a file where a folder was');
+    // Links no turn changed: one to a restored file, one whose `..` comes after another link.
+    await symlink(join('..', 'config', 'pi.json'), join(root, '.pi', 'settings.json'), 'file');
+    await symlink(join('..', 'config', 'sub'), join(root, '.pi', 'knot'), dirLink);
+    // `join` would drop the `..` before the link is followed: the target is spelled as is.
+    await symlink(['knot', '..', 'pi.json'].join(sep), join(root, '.pi', 'deep.json'), 'file');
+    // A link a turn made to a folder outside, which the restore deletes.
+    await symlink(join(base, 'outside'), join(root, 'lnk'), dirLink);
+    const after = async (name: string) => ({ name, after: await now(name) });
+    const changes: FileChange[] = [
+      { ...await after('config/pi.json'), before: await file('plain') },
+      { ...await after('gone/f'), before: undefined },
+      { ...await after('lnk'), before: undefined },
+      { ...await after('ext'), before: undefined },
+      { name: 'ext/a.ts', before: await file('export {};'), after: undefined },
+      // A folder a turn deleted with the link in it.
+      { name: '.pj/settings.json', before: link(join('..', 'config', 'pi.json')), after: undefined },
+    ];
+    // The thread's other spelling of the folder.
+    const spelled = join(base, 'spelled');
+    await symlink(root, spelled, dirLink);
+    const probes = ['.pi/settings.json', '.pi/deep.json', '.pi/pi.json', '.pi/knot', 'lnk', 'lnk/settings.json', '.pj/settings.json', '.pj',
+      'ext', 'ext/a.ts', 'keep', 'gone', 'gone/f', 'config/pi.json', 'config/sub', 'missing', 'missing/deeper'];
+    const look = (view: typeof DISK_VIEW, top: string) => probes.map(name => {
+      const path = join(top, name);
+      return `${name}: ${view.exists(path)} ${view.listsAny(path)} ${view.read(path)}`;
+    });
+    const preview = restoredView(root, objects, changes, spelled);
+    const predicted = look(preview, root);
+    const predictedSpelled = look(preview, spelled);
+    expect(predicted).toContain('.pi/deep.json: true false plain');
+    expect(predicted).toContain('.pj/settings.json: true false plain');
+    // A cwd at a drive's root maps every path below it.
+    expect(restoredView(root, objects, changes, resolve('/')).read(resolve('/config/pi.json'))).toBe('plain');
+    await restoreFiles(root, objects, changes);
+    expect(predicted).toEqual(look(DISK_VIEW, root));
+    expect(predictedSpelled).toEqual(look(DISK_VIEW, spelled));
+  } finally { await rm(base, { recursive: true, force: true }); }
+});
