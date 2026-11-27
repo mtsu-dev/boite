@@ -16,6 +16,8 @@ const MINUTE_MS = 60_000;
 /** One `pi --mode rpc` process per thread, kept between turns like the Codex one. */
 export function createPiDriver(): Driver {
   const sessions = new ThreadSessions<PiSession>();
+  /** Each thread's last ended session's `gone`, until it settles. */
+  const exits = new Map<string, Promise<void>>();
   const probes = new ModelProbes(readModels);
   // The core's catalog, the one image admission reads, names a launch's pair only where pi reads the same configuration
   // folder: a relative one is another one in each folder pi starts in, so there the model goes as its text and pi resolves it.
@@ -38,7 +40,12 @@ export function createPiDriver(): Driver {
       session = null;
     }
     if (session === null) {
-      session = new PiSession(key, warmMs, ended => sessions.ended(threadId, ended), compaction, catalog);
+      // A session that just went may leave a pi still exiting on the same session file: the next one waits for it.
+      session = new PiSession(key, warmMs, (ended) => {
+        sessions.ended(threadId, ended);
+        exits.set(threadId, ended.gone);
+        void ended.gone.then(() => { if (exits.get(threadId) === ended.gone) exits.delete(threadId); });
+      }, compaction, catalog, exits.get(threadId));
       sessions.current.set(threadId, session);
     }
     const running = session;

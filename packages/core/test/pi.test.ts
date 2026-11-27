@@ -1499,8 +1499,13 @@ describe('pi driver', () => {
     // The stop does not wait for the old pi's shutdown: it ends the turn and takes that process down at once.
     expect((await finished).status).toBe('stopped');
     expect(fakeLog()).not.toContain(`exited ${other}`);
-    await new Promise(resolve => setTimeout(resolve, 1_800));
+    await new Promise(resolve => setTimeout(resolve, 300));
     expect(argvLines()).toHaveLength(launched);
+    // The next turn still opens that session only once the old pi has exited.
+    await runTurn(client, stopped, 'third');
+    const after = fakeLog().split('\n');
+    expect(after.indexOf(`exited ${other}`)).toBeGreaterThan(-1);
+    expect(after.indexOf(`exited ${other}`)).toBeLessThan(after.findLastIndex(line => line.startsWith(`argv sessionId=${other} `)));
   }, 20_000);
 
   test('a plain prompt reaches a text-only pi model when the conversation it carries holds images', async () => {
@@ -1542,6 +1547,23 @@ describe('pi driver', () => {
     expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'Also this', clientRequestId: 'pi_checking_steer' })).toEqual({ accepted: false });
     expect(await finished).toMatchObject({ status: 'done', error: null });
     expect(fakeLog()).not.toContain('steering Also this');
+  }, 20_000);
+
+  test('an image steer whose turn ends while pi reads the model leaves no unconfirmed delivery behind', async () => {
+    process.env['PI_FAKE_SLOW_STATE'] = '2000';
+    const { client, threadId } = await startThread(undefined, 'fake-a/smart');
+    const turn = await client.call('turns.start', { threadId, prompt: '[slow] Deploy' });
+    await waitFor(() => fakeLog().includes('waiting for abort'));
+    const asked = fakeLog().split('\n').filter(line => line === 'state asked').length;
+    const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+    const steered = client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'Use this', attachments: [image], clientRequestId: 'pi_cut_state' });
+    await waitFor(() => fakeLog().split('\n').filter(line => line === 'state asked').length > asked);
+    const ended = client.next('turn.finished', done => done.id === turn.id, 20_000);
+    await client.call('turns.stop', { threadId });
+    await ended;
+    expect(await steered).toEqual({ accepted: false });
+    expect(harness!.core.journal.db.query('SELECT 1 FROM turn_requests WHERE request_id = ?').all('pi_cut_state')).toEqual([]);
+    expect(fakeLog()).not.toContain('steering Use this');
   }, 20_000);
 
   test('an image steer refused because pi gave no state in time leaves no unconfirmed delivery behind', async () => {

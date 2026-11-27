@@ -1830,8 +1830,10 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   shutdown hooks first, and they may still write the session file), and only
   pi itself stops, not what its tools left running. A stop or a close meanwhile
   drops the session as during a cold start, without waiting for that exit: the
-  old process goes down with the thread's processes. Input steered while that
-  switch may happen waits for the next turn. Images steered into a running turn are checked
+  old process goes down with the thread's processes, and the thread's next pi
+  process, whatever closed the last one, starts once it has exited or the stop
+  deadline passed. Input steered while that switch may happen waits for the
+  next turn. Images steered into a running turn are checked
   against the list that turn was given, the one its process runs, not a list
   refreshed since.
 - Before a prompt with images of its own, the driver asks pi (`get_state`)
@@ -1844,8 +1846,10 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   a resume) are pi's to replace, as for any model that reads none. Input
   steered during that check waits for the next turn. Images steered into a run
   on a text-only model wait for the next turn too, and so do they when pi does
-  not give its state within the read deadline, so the steer is refused before
-  anything is written rather than left unconfirmed.
+  not give its state within the read deadline or the turn ends meanwhile, so
+  the steer is refused before anything is written rather than left
+  unconfirmed. Any driver may answer a steer the end of its attempt cut short:
+  `false` within 250 ms says nothing was written.
   There is no call that goes back to pi's own model or to no level, so either
   change starts a new process.
 - Pi can refresh prompt caches during a turn. Refreshes between turns require

@@ -313,6 +313,7 @@ export class TurnAttempts {
         // The native session already holds the request and what the agent did with it.
         context.prompt = CAPACITY_CONTINUE_PROMPT;
         context.attachments = [];
+        context.ownImages = 0;
         // The brain this context may have taken stays out of the prompt: the next turn sends it whole.
         forgetBrainContext(this.#core, threadId);
         coordinationGuideUnsent(this.#core, threadId);

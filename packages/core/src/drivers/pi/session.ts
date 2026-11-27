@@ -21,13 +21,13 @@ import {
   sessionDirOf,
   textOf,
 } from './mapping.ts';
-import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX, UI_DIALOGS, UI_NOTICES } from './protocol.ts';
+import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
 import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piPairOf, piReadsImages } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
-import { drawDialog } from './dialogs.ts';
+import { answerDialog } from './dialogs.ts';
 import { drawCompaction, drawEntry } from './compaction-events.ts';
 import { noteReady } from '../driver-log.ts';
 import { SessionRetention } from '../session-retention.ts';
@@ -69,7 +69,10 @@ export function setPiReadDeadlineForTests(ms: number | null): void {
 export class PiSession {
   #child: SpawnedChild | null = null;
   /** The old process `#reopen` waits on, which a stop or a close kills, and the wake that ends that wait. */
-  #draining: { child: SpawnedChild | null; wake: () => void } | null = null;
+  #draining: { child: SpawnedChild | null; exited: Promise<number | null> | null; wake: () => void } | null = null;
+  #markGone: () => void = () => {};
+  /** Settles once this session's last pi process has exited, or the stop deadline after its close passed. */
+  readonly gone = new Promise<void>((resolve) => { this.#markGone = resolve; });
   #peer: PiPeer | null = null;
   #starting: Promise<void> | null = null;
 
@@ -111,6 +114,8 @@ export class PiSession {
     readonly compaction: string | null = null,
     /** The account's probed catalog, which names the pi pair behind a model at launch. */
     private readonly catalog: (ctx: SessionContext) => readonly ModelInfo[] | null = () => null,
+    /** The thread's previous session's `gone`: its pi may still write the session file this one opens. */
+    private readonly previousGone: Promise<void> = Promise.resolve(),
   ) {}
 
   /**
@@ -404,7 +409,7 @@ export class PiSession {
       if (pair === undefined) throw new Error(`pi cannot switch to the model ${model}: its id is not <provider>/<id>`);
       // The same id on a process that pi launched on its text: when pi already runs the catalog's pair, a switch
       // would only reset a level pi keeps itself.
-      const running = model === this.#model ? dataOf(await peer.command('get_state'))['model'] as { provider?: unknown; id?: unknown } | null | undefined : undefined;
+      const running = model === this.#model ? dataOf(await peer.command('get_state', {}, { timeoutMs: readDeadlineMs }))['model'] as { provider?: unknown; id?: unknown } | null | undefined : undefined;
       if (running?.provider !== pair.provider || running?.id !== pair.modelId) {
         await peer.command('set_model', pair);
         changed = true;
@@ -436,7 +441,7 @@ export class PiSession {
       this.#exited = null; this.#processClosed = Promise.resolve(); this.#exitCode = null; this.#lastStderr = '';
       releaseChild(child);
       const code = await new Promise<number | null | undefined | 'dropped'>((resolve) => {
-        this.#draining = { child, wake: () => resolve('dropped') };
+        this.#draining = { child, exited, wake: () => resolve('dropped') };
         void exitWithin(exited, stopDeadlineMs, closed).then(resolve);
       }).finally(() => { this.#draining = null; });
       if (code === undefined && exited !== null) {
@@ -463,13 +468,13 @@ export class PiSession {
    * sentence. A model without its inputs is pi's. Steered input waits meanwhile.
    */
   async #imagesReach(turn: PiTurn, peer: PiPeer): Promise<PiPeer> {
-    const running = async (to: PiPeer) => dataOf(await to.command('get_state'))['model'] as PiModel | null | undefined;
+    const running = async (to: PiPeer) => dataOf(await to.command('get_state', {}, { timeoutMs: readDeadlineMs }))['model'] as PiModel | null | undefined;
     this.#switching = true;
     try {
       let model = await running(peer);
       if (piReadsImages(model) !== false) return peer;
       const ran = model;
-      const listed = this.catalog(turn.ctx)?.find(entry => { const pair = piModelOf(entry); return pair?.provider === ran?.provider && pair?.id === ran?.id; });
+      const listed = this.catalog(turn.ctx)?.find(entry => { const pair = piModelOf(entry); return pair !== undefined && pair.provider === ran?.provider && pair.id === ran?.id; });
       if (listed !== undefined && listed.images !== false && !turn.isStopped) {
         peer = await this.#reopen(turn);
         model = await running(peer);
@@ -563,6 +568,7 @@ export class PiSession {
   }
 
   async #open(ctx: SessionContext): Promise<void> {
+    await this.previousGone;
     if (this.#ended) throw new Error('the pi session was closed before it started');
     const profile = profileFor(ctx.provider);
     const launch = resolveLaunch(profile);
@@ -727,6 +733,9 @@ export class PiSession {
     this.#peer = null;
     const child = this.#child ?? this.#draining?.child ?? null;
     this.#child = null;
+    // The thread's next session opens once this process has exited (`previousGone`): its shutdown hooks may still
+    // write the session file. Its exit, not its pipes' close, which a stuck grandchild may hold.
+    void exitWithin(this.#draining ? this.#draining.exited : this.#exited, stopDeadlineMs).then(() => this.#markGone());
     this.#draining?.wake();
     this.#draining = null;
     // The bash tool's children (a dev server started with `&`) are not pi's to
@@ -745,7 +754,7 @@ export class PiSession {
   #onEvent(ctx: SessionContext, message: Record<string, unknown>): void {
     const type = message['type'];
     if (type === 'extension_ui_request') {
-      void this.#answerDialog(ctx, message).catch((error) => ctx.log('warn', `pi question: ${messageOf(error)}`));
+      void answerDialog(ctx, this.#current, this.#peer, message).catch((error) => ctx.log('warn', `pi question: ${messageOf(error)}`));
       return;
     }
     if (type === 'extension_error') {
@@ -838,62 +847,5 @@ export class PiSession {
         // the contract has no part for them, so they are dropped.
         break;
     }
-  }
-
-  /**
-   * pi's only request back to the client. `select`, `confirm`, `input` and
-   * `editor` block the agent until an answer with the same id arrives.
-   */
-  async #answerDialog(ctx: SessionContext, message: Record<string, unknown>): Promise<void> {
-    const method = textOf(message['method']);
-    if (UI_NOTICES.has(method)) {
-      this.#onNotice(ctx, method, message);
-      return;
-    }
-    const id = message['id'];
-    const peer = this.#peer;
-    // Nothing can be answered without the id the agent waits on, and nothing is
-    // waiting once the process is gone.
-    if (typeof id !== 'string') {
-      ctx.log('warn', `pi: an ${method || 'unnamed'} dialog arrived with no id, nothing can answer it`);
-      return;
-    }
-    if (peer === null) return;
-    // The turn running now, not the one that opened the process: a warm session
-    // outlives its first turn, and both the card and the journal row belong to
-    // whoever is running when the dialog arrives.
-    const turn = this.#current;
-    if (turn === null || !UI_DIALOGS.has(method)) {
-      // A refusal is the answer pi defines for a dialog the client will not
-      // draw. Dropping it silently leaves the extension blocked inside a
-      // process that stays warm, on an id nobody will ever answer.
-      const why = turn === null ? 'no turn is running' : 'boite draws no card for that method';
-      ctx.log('warn', `pi: the ${method} dialog ${id} is refused, ${why}`);
-      peer.answer({ type: 'extension_ui_response', id, cancelled: true });
-      return;
-    }
-    await drawDialog(turn, peer, id, method, message);
-  }
-
-  /**
-   * The UI methods pi expects no answer to. A `notify` is what an extension
-   * command often says instead of running the model, so it is drawn in the
-   * turn; an error notice is an error card, but it does not fail the turn.
-   * Status lines, widgets, window titles and editor text have no place in a
-   * chat and are dropped.
-   */
-  #onNotice(ctx: SessionContext, method: string, message: Record<string, unknown>): void {
-    if (method !== 'notify') return;
-    const text = textOf(message['message']);
-    if (text.length === 0) return;
-    const turn = this.#current;
-    if (turn === null) {
-      ctx.log('info', `pi extension: ${text}`, { kind: 'provider-output', event: 'provider.output' });
-      return;
-    }
-    turn.part(
-      turn.takeIndex(),
-      textOf(message['notifyType']) === 'error' ? { type: 'error', message: text } : { type: 'text', text: `pi: ${text}` },
-    );
   }
 }
