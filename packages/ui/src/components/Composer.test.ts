@@ -2286,6 +2286,25 @@ test('a pi draft on its own model asks the core, which reads the project folder'
   expect(asked.mock.calls.at(-1)![0]).toMatchObject({ model: 'pi-demo', worktree: true });
 });
 
+test('a draft started before the drafts exist asks about the folder its preparation made there', async ({ app: _app }) => {
+  await openDraft();
+  expect(store.draftsProject).toBeNull();
+  store.startDraft(null);
+  await waitFor(() => store.draft?.projectId === null);
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  const key = `pi::${account.id}`;
+  store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'default' ? { ...model, images: false as const } : model) };
+  const asked = vi.spyOn(store, 'draftImages').mockResolvedValue({ supported: true });
+  store.draftChoice = { ...store.defaultChoice()!, providerId: 'pi', accountId: account.id, model: 'default', effort: null };
+  // The words start the preparation, which makes the drafts and a folder of this draft's own in them.
+  await type('Read the picture');
+  await waitFor(() => store.draftsProject !== null && store.preparedFolder(store.draft) !== null);
+  expect(store.draft!.projectId).toBeNull();
+  await waitFor(() => asked.mock.calls.length > 0);
+  expect(asked.mock.calls.at(-1)![0]).toEqual({ projectId: store.draftsProject!.id, providerId: 'pi', accountId: account.id, model: 'default' });
+});
+
 test('a Send held in an incognito draft goes nowhere once the draft leaves incognito', async ({ app: _app }) => {
   await openDraft();
   const drafts = await store.client!.call('projects.drafts', {});

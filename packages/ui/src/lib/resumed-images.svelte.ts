@@ -25,7 +25,8 @@ function resumedImagesRequest(store: Store, thread: Thread | null, choice: Choic
   const draft = (projectId: string, model: string | null, extra: Partial<RpcParams<'drafts.images'>>) =>
     ({ projectId, providerId: choice.providerId, accountId: choice.accountId, model, ...extra });
   if (!thread) {
-    const projectId = store.draft?.projectId;
+    // A draft with no project goes to the drafts, which its preparation may have made meanwhile.
+    const projectId = store.draft?.projectId ?? (store.draftInDrafts ? store.draftsProject?.id : null);
     if (!projectId || !asks(choice.model)) return null;
     const worktree = store.draft?.worktree === true;
     const incognito = store.draft?.incognito === true && store.draftInDrafts;

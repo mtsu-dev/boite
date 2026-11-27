@@ -469,7 +469,8 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   of the project's untracked files there, its `.pi/settings.json` included, so
   the core reads the folder the draft's preparation made for a draft of that
   kind, asked again once it exists, and before then lets the image through to
-  the first turn's admission, which reads that folder. The client drops that reservation when
+  the first turn's admission, which reads that folder. A draft with no project
+  asks for the drafts once its preparation made them. The client drops that reservation when
   the core does, `DRAFT_PREPARATION_LIFETIME_MS` after asking for it, and asks
   again.
   Until that answer comes, a picture is held and Send waits for it, asked again
