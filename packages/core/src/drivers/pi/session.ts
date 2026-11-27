@@ -24,7 +24,7 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
-import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piPairOf, piProfileArgs, piProfileKeyed, piReadsImages } from './models.ts';
+import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piPairOf, piProfileArgs, piReadsImages } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
 import { answerDialog } from './dialogs.ts';
@@ -109,7 +109,7 @@ export class PiSession {
   #ended = false;
   /** Ends every process of the thread: the agent and whatever its tools left running. */
   #killTree: (() => void) | null = null;
-  /** The model and the thinking level the process is on, so a warm turn only sends a change; null on pi's own. */
+  /** The model and the thinking level the process is on, so a warm turn only sends a change. */
   #model: string | null = null;
   /** The pair pi runs `#model` as when the catalog named it, as `provider` and `modelId` in JSON; null when pi resolved the text. */
   #pair: string | null = null;
@@ -399,11 +399,10 @@ export class PiSession {
    * takes both over RPC (`set_model`, `set_thinking_level`), so the process
    * stays. `set_model` clamps the level to the new model, so the level is sent
    * again after it. A pair the catalog found after pi read its models (at
-   * start) opens a new process on it, once (`reopened`). A refusal fails the
-   * turn with pi's own sentence and drops the process. Returns the peer the
-   * turn talks to.
+   * start) opens a new process on it. A refusal fails the turn with pi's own
+   * sentence and drops the process. Returns the peer the turn talks to.
    */
-  async #align(turn: PiTurn, peer: PiPeer, reopened = false): Promise<PiPeer> {
+  async #align(turn: PiTurn, peer: PiPeer): Promise<PiPeer> {
     const ctx = turn.ctx;
     const model = ctx.thread.model;
     if (model === null || model === AGENT_OWN_MODEL) return peer;
@@ -413,7 +412,7 @@ export class PiSession {
     const named = piCatalogPair(model, this.catalog(ctx));
     if (model !== this.#model || (named !== undefined && JSON.stringify(named) !== this.#pair)) {
       const listed: unknown = dataOf(await peer.command('get_available_models', {}, { timeoutMs: readDeadlineMs }))['models'];
-      if (named !== undefined && !reopened && !piListsPair(listed, named)) return turn.isStopped ? peer : await this.#reopen(turn);
+      if (named !== undefined && !piListsPair(listed, named)) return turn.isStopped ? peer : await this.#reopen(turn);
       // Else pi's own listing names the pair: a provider id may hold a `/`, so the first one is not the split.
       const pair = named ?? piPairOf(listed, model);
       if (pair === undefined) throw new Error(`pi cannot switch to the model ${model}: its id is not <provider>/<id>`);
@@ -470,8 +469,7 @@ export class PiSession {
     const peer = this.#peer, sessionId = this.#sessionId;
     if (peer === null || sessionId === null) throw new Error('the pi session went away before the turn');
     turn.noteSession(sessionId);
-    // A profile with a key starts on its own model (`#open`): the new process moves to the thread's over RPC too.
-    return this.#model === turn.ctx.thread.model ? peer : await this.#align(turn, peer, true);
+    return peer;
   }
 
   /**
@@ -603,9 +601,6 @@ export class PiSession {
       });
     }
 
-    // pi binds a profile's key to the model it starts on: a profile with one starts as it is written, on its own model,
-    // and `#align` moves it to the thread's over RPC, which leaves the key where pi bound it (`piProfileKeyed`).
-    const whole = piProfileKeyed(profile?.launch?.args ?? []);
     const args = [
       ...launch.prefix,
       ...piProfileArgs(profile?.launch?.args ?? [], ctx.thread.model),
@@ -613,7 +608,7 @@ export class PiSession {
       sessionId,
       '--session-dir',
       sessionDir,
-      ...(whole ? [] : piModelArgs(ctx.thread.model, ctx.thread.effort, this.catalog(ctx))),
+      ...piModelArgs(ctx.thread.model, ctx.thread.effort, this.catalog(ctx)),
       // Protected launch already removes every native/discovered resource.
       // --no-tools would also suppress its mandatory registered tools; the
       // captured toolsAllowed field still enforces a host tool-free context.
@@ -630,11 +625,10 @@ export class PiSession {
     });
     this.#child = child;
     this.#killTree = ctx.killTree ?? null;
-    const named = whole && ctx.thread.model !== null && ctx.thread.model !== AGENT_OWN_MODEL;
-    this.#model = named ? null : ctx.thread.model;
-    const launched = ctx.thread.model === null || named ? undefined : piCatalogPair(ctx.thread.model, this.catalog(ctx));
+    this.#model = ctx.thread.model;
+    const launched = ctx.thread.model === null ? undefined : piCatalogPair(ctx.thread.model, this.catalog(ctx));
     this.#pair = launched === undefined ? null : JSON.stringify(launched);
-    this.#effort = named ? null : ctx.thread.effort;
+    this.#effort = ctx.thread.effort;
     const peer = new PiPeer(child, {
       event: (message) => {
         if (this.#child !== child) return;

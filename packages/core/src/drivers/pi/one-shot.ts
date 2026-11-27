@@ -11,18 +11,15 @@ import { NativeForkUnsupported } from '../native-fork.ts';
 import { releaseChild } from '../session-close.ts';
 import type { SideQuestionContext, TitleContext } from '../types.ts';
 import { agentEnv, contextArgs, imagesOf, sessionDirOf, textOf } from './mapping.ts';
-import { piModelArgs, piProfileArgs, piProfilePins, piProviderOf } from './models.ts';
+import { piModelArgs, piProfilePins, piProviderOf } from './models.ts';
 import { AGENT_OWN_MODEL, STDERR_MAX } from './protocol.ts';
 import { PiPeer } from './rpc.ts';
 import { copySession } from './session-files.ts';
 
 // Explicit resources still load with discovery disabled. Keep launcher arguments
 // (such as a script path), and own the one-shot model, session, tools and resources.
-// A profile's `--api-key` never goes: pi binds it to the model it starts on, and
-// without extensions it may read the profile's model on another provider than the
-// conversation does. A one-shot uses pi's saved login or environment keys.
 const VALUE_FLAGS = new Set([
-  '--extension', '-e', '--skill', '--prompt-template', '--mode', '--model', '--provider', '--api-key',
+  '--extension', '-e', '--skill', '--prompt-template', '--mode', '--model', '--provider',
   '--session', '--session-id', '--session-dir', '--fork', '--thinking',
   '--system-prompt', '--append-system-prompt', '--tools', '-t', '--exclude-tools', '-xt',
 ]);
@@ -42,7 +39,7 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   const launch = resolveLaunch(profile);
   if (!launch) throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
   const own = model !== null && model !== AGENT_OWN_MODEL;
-  const declared = piProfileArgs(profile?.launch?.args ?? [], model);
+  const declared = profile?.launch?.args ?? [];
   const args = [...launch.prefix];
   for (let i = 0; i < declared.length; i++) {
     const arg = declared[i]!;

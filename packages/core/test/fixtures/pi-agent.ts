@@ -113,11 +113,6 @@ const sessionDir = flag('--session-dir');
 const model = flag('--model');
 const sideCopy = flag('--session');
 const oneShot = process.argv.includes('--no-session') || Boolean(sideCopy);
-// As pi 1.6.1 main.js: an inline key needs a model to bind to.
-if (process.argv.includes('--api-key') && !process.argv.includes('--model')) {
-  process.stderr.write('Error: --api-key requires a model to be specified via --model, --provider/--model, or --models\n');
-  process.exit(1);
-}
 const sessionFile = sideCopy || (sessionId && join(sessionDir,
   readdirSync(sessionDir).find(name => name.endsWith(`_${sessionId}.jsonl`)) ?? `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`));
 const saved = sessionFile && existsSync(sessionFile)
@@ -125,8 +120,6 @@ const saved = sessionFile && existsSync(sessionFile)
 let leaf: string | null = saved.at(-1)?.id ?? null;
 let activePrompt = '';
 log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model} provider=${flag('--provider')} thinking=${flag('--thinking')}`);
-// pi binds an inline key to the provider of the model it starts on.
-if (process.argv.includes('--api-key')) log(`api-key ${flag('--api-key')} for ${flag('--provider') || model.slice(0, Math.max(model.indexOf('/'), 0))}`);
 if (oneShot) log(`one-shot ${JSON.stringify(process.argv.slice(2))}`);
 // `PI_FAKE_EXTENSION_PROVIDER` is a provider an extension registers: pi launched without extensions does not know it.
 const extensionProvider = process.env['PI_FAKE_EXTENSION_PROVIDER'];

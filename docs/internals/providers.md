@@ -1878,27 +1878,21 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
 - After each turn `get_session_stats` feeds the context meter with a five-second
   control-read expiry. A timed-out response is removed and cannot update a later
   turn's context.
-- A conversation whose profile holds `--api-key` launches with the profile as
-  written, on the model the profile gives pi, and Boite moves it to the
-  thread's model over RPC (`set_model`) before the first prompt, after a
-  reopen too. pi binds the key at launch, to the provider its own resolution
-  of the profile picks (case, fuzzy matches, raw ids, the saved scope and
-  default), and a `set_model` leaves it there: Boite never predicts that
-  provider, so the key goes nowhere a plain `pi` with that profile would not
-  send it. A model on another provider runs on that provider's own login, or
-  pi refuses it with `No API key for <provider>/<id>`. pi requires a model for
-  the key: with only a `--models` scope, a session that already holds messages
-  ignores the scope and pi refuses to start, with its own sentence.
+- A pi profile whose `launch.args` hold `--api-key` is rejected, with that
+  argument's field. pi binds an inline key to whichever provider its own
+  reading of the other flags starts on (case, fuzzy matches, raw ids, the
+  saved scope and default), and Boite changes those flags: a named model, a
+  light context's `--no-extensions`, a resumed session that makes pi ignore a
+  `--models` scope, a one-shot without extensions. The key could then reach
+  another provider. The provider's own variable in `env`
+  (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) or a pi `/login` is bound to one
+  provider.
 - Titles use a separate, tool-free RPC process with no session file, extensions,
   MCP, context files, skills or prompt templates. Boite uses the selected title
   model or the thread's own model at low effort and allows 30 seconds per call.
   The profile's own tool and session flags, short aliases included, are
   dropped from these launches. Its `--model` and `--provider` are dropped when
-  Boite names a model and kept when the thread leaves the model to pi. Its
-  `--api-key` never goes to a one-shot, which uses pi's saved login or
-  environment keys: pi binds that key to the provider of the model it starts
-  on, and without extensions it may read the profile's model on another
-  provider than the conversation does.
+  Boite names a model and kept when the thread leaves the model to pi.
   A model an extension
   registers is unknown without extensions: when pi exits at startup on it
   (`Unknown provider "..."` or `Model "..." not found`, each followed by `Use

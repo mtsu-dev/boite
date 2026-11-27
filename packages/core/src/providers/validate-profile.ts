@@ -69,6 +69,15 @@ export function checkProfiles(value: unknown, file: string, protocol: Protocol):
   for (const os of OS_KEYS) {
     if (profilesRaw[os] === undefined) continue;
     profiles[os] = checkProfile(profilesRaw[os], file, `profiles.${os}`);
+    // pi binds an inline key to whichever provider its own reading of the other flags starts on, and Boite changes
+    // those (a named model, a light context, a one-shot without extensions): a key there could reach another
+    // provider. A provider's environment variable or pi's own login is bound to one provider.
+    if (protocol === 'pi') {
+      const at = (profiles[os]!.launch?.args ?? []).indexOf('--api-key');
+      if (at >= 0) {
+        reject(file, `profiles.${os}.launch.args[${at}]`, "no --api-key: the provider's own variable in env (ANTHROPIC_API_KEY, OPENAI_API_KEY) or a pi /login", 'pi binds --api-key to whichever provider it starts on, so Boite cannot keep it on one provider');
+      }
+    }
     // Only these drivers launch the program with the descriptor's arguments after
     // it, which is what `node <script>` needs; the SDK and app-server drivers do not.
     if (protocol !== 'pi' && protocol !== 'acp') {

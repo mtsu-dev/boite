@@ -753,69 +753,24 @@ test('a pi one-shot on a model an extension registers falls back to pi\'s own mo
   }
 });
 
-test('a profile with --api-key starts pi as written and reaches the thread\'s model over RPC, its one-shots keyless', async () => {
-  const client = await startCore({ warmProcessMinutes: 5 });
-  const { projectId, accountId } = await piAccount(client);
+test('a pi profile with --api-key is refused with its field and what to use instead, its key never echoed', async () => {
+  const client = await startCore();
+  await piAccount(client);
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
   const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
   for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--model', 'fake-a/smart', '--api-key', 'test-key');
   writeFileSync(descriptorFile, JSON.stringify(descriptor));
-  expect((await client.call('providers.reload', {})).rejected).toEqual([]);
-  // What the fake processes logged after `mark`, a length of the log.
-  const since = (mark: number) => fakeLog().slice(mark).split('\n');
-  // A conversation's process logs its session id; a one-shot's has none.
-  const launches = (lines: string[]) => lines.filter(line => line.startsWith('argv sessionId=') && !line.startsWith('argv sessionId= '));
-  const titleArgs = (lines: string[]) => JSON.parse(lines.find(line => line.startsWith('one-shot [') && line.includes('--no-session'))!.slice('one-shot '.length)) as string[];
-  const { id: own } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId });
-  expect(harness!.core.threads.require(own).model).toBe('default');
-  expect((await (await startTurn(client, own, 'Add a feature')).finished).status).toBe('done');
-  await settle(() => harness!.core.threads.require(own).titleSource === 'agent');
-  // The title runs on the profile's model, as the conversation, on pi's saved login: the key stays out of it.
-  const ownTitle = titleArgs(since(0));
-  expect(ownTitle[ownTitle.indexOf('--model') + 1]).toBe('fake-a/smart');
-  expect(ownTitle).not.toContain('--api-key');
-  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
-  let last = '';
-  for (const [model, provider, id] of [['fake-a/smart', 'fake-a', 'smart'], ['fake-b/plain', 'fake-b', 'plain']] as const) {
-    const before = fakeLog().length;
-    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, model });
-    expect((await (await startTurn(client, threadId, 'Add a feature')).finished).status).toBe('done');
-    await settle(() => harness!.core.threads.require(threadId).titleSource === 'agent');
-    const lines = since(before);
-    // pi binds the key where the profile sends it, the profile's own model included, then moves to the thread's.
-    expect(launches(lines)).toHaveLength(1);
-    expect(launches(lines)[0]).toContain('model=fake-a/smart provider= ');
-    expect(lines.filter(line => line.startsWith('api-key '))).toEqual(['api-key test-key for fake-a']);
-    expect(lines).toContain(`model ${provider} ${id}`);
-    expect(titleArgs(lines)).not.toContain('--api-key');
-    last = threadId;
-  }
-  // A new process for a model that gained images starts as written too, and moves to the thread's model again.
-  process.env['PI_FAKE_PLAIN_IMAGES'] = '1';
-  await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
-  const reopened = fakeLog().length;
-  const image: ImageAttachment = { kind: 'image', name: 'dot.png', mimeType: 'image/png', data: 'aGVsbG8=' };
-  const shown = client.next('turn.finished', turn => turn.threadId === last, 20_000);
-  await client.call('turns.start', { threadId: last, prompt: 'Read this', attachments: [image] });
-  expect(await shown).toMatchObject({ status: 'done', error: null });
-  const after = since(reopened);
-  expect(launches(after)).toHaveLength(1);
-  expect(after.slice(after.indexOf(launches(after)[0]!))).toContain('model fake-b plain');
-  // A warm switch keeps the process and the key where pi bound it.
-  await client.call('threads.update', { threadId: last, model: 'fake-a/quick' });
-  const switched = fakeLog().length;
-  expect((await (await startTurn(client, last, 'Again')).finished).status).toBe('done');
-  expect(launches(since(switched))).toEqual([]);
-  expect(since(switched)).toContain('model fake-a quick');
-}, 30_000);
+  const { rejected } = await client.call('providers.reload', {});
+  expect(rejected).toHaveLength(1);
+  expect(rejected[0]).toMatchObject({ field: expect.stringMatching(/^profiles\.\w+\.launch\.args\[\d+\]$/), expected: expect.stringContaining('ANTHROPIC_API_KEY') });
+  expect(JSON.stringify(rejected)).not.toContain('test-key');
+});
 
-test('a profile with --api-key keeps its launch whole; a title pins its provider only by the profile\'s own flags', () => {
+test('Boite\'s own flags replace the profile\'s model flags; a title pins its provider only by the profile\'s own flags', () => {
   const entry = (provider: string, id: string): ModelInfo => ({ id: `${provider}/${id}`, name: `${provider.slice(0, 1).toUpperCase()}${provider.slice(1)} / ${id}` } as ModelInfo);
   const catalog = [entry('openai', 'chat'), entry('openai', 'quick'), entry('anthropic', 'title'), entry('anthropic', 'openai/remote')];
   // Boite's own flags name the model: the profile's go, or pi would read an unlisted model under its provider.
   expect(piProfileArgs(['--provider', 'openai', '--model', 'openai/chat', '--verbose'], 'anthropic/title')).toEqual(['--verbose']);
-  // A key: the profile as written, whatever the model, so pi binds it as the profile says.
-  expect(piProfileArgs(['--model', 'openai/chat', '--api-key', 'k'], 'anthropic/title')).toEqual(['--model', 'openai/chat', '--api-key', 'k']);
   // A launch left to pi keeps the profile whole.
   expect(piProfileArgs(['--model', 'chat'], 'default')).toEqual(['--model', 'chat']);
   // A title falls back to pi's own model unless the profile's last --provider, or a --model as listed, pins its provider.
