@@ -5,6 +5,7 @@ import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
 import { invalidParams, messageOf, notFound, refused } from './errors.ts';
 import { ComposerStorage, digest, recordKey } from './composer-storage.ts';
+import type { TurnHandle } from './drivers/types.ts';
 import { steerUser, userSteeringUnavailable } from './threads/user-steering.ts';
 import { DraftReservationLedger, type DraftOwnership } from './threads/draft-reservation-ledger.ts';
 import { needsModelDiscovery } from './threads/selection.ts';
@@ -12,7 +13,7 @@ import { admissionRefusal, checkTurnInput, prepareTurnExecution } from './thread
 import { composerActivity, isComposerActivity, startsAutoGoal } from './composer-activity.ts';
 import { composerBatch } from './composer-batch.ts';
 import { checkTurnRequest } from './threads/inputs.ts';
-import { ensureThreadCwd } from './threads/cwd.ts';
+import { ensureThreadCwd, folderPresent } from './threads/cwd.ts';
 
 const choiceOf = (thread: ThreadSummary): ComposerChoice => ({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, permissionMode: thread.permissionMode });
 const sameChoice = (a: ComposerChoice, b: ComposerChoice): boolean => a.providerId === b.providerId && a.accountId === b.accountId && a.model === b.model && a.effort === b.effort && (a.speed ?? null) === (b.speed ?? null);
@@ -242,6 +243,7 @@ export class Composer {
   async #pump(section: ComposerRecord['section'], recordId: string): Promise<void> {
     const key = recordKey(section, recordId);
     const id = section === 'inputs' ? composerInputThreadId(recordId) : recordId;
+    let checkedFolder: { boundary: RpcEvents['turn.toolCompleted']; handle: TurnHandle; cwd: string; revision: number } | undefined;
     while (!this.#closed && !this.#core.stopping) {
       const record = this.storage.get(section, recordId), value = record.value;
       if (!value || !value.input.queued.length) { this.storage.queued.delete(key); if (section === 'inputs') { this.#boundaries.delete(recordId); this.#forced.delete(recordId); } return; }
@@ -286,9 +288,19 @@ export class Composer {
         if (active && (!turn || boundary?.turnId !== turn.id || boundary.boundary === item.afterBoundary || item.request || isComposerActivity(item.text)
           || !choice || !sameChoice(choice, choiceOf({ ...thread, ...turn.execution })))) return;
         const steeringReason = turn ? userSteeringUnavailable(this.#core, this.#core.threads, id, turn) : null;
-        const handle = turn && boundary?.fresh === true && steeringReason === 'unsupported' && this.#canCancelForQueuedInput(turn)
+        const handle = turn && boundary && (boundary.fresh || checkedFolder?.boundary === boundary)
+          && steeringReason === 'unsupported' && this.#canCancelForQueuedInput(turn)
           ? runner.handles.get(id) : undefined;
         if (steeringReason !== null && !handle?.cancelForQueuedInput) return;
+        if (boundary && handle?.cancelForQueuedInput && !(checkedFolder?.boundary === boundary && checkedFolder.handle === handle
+          && checkedFolder.cwd === thread.cwd && checkedFolder.revision === record.revision)) {
+          if (!boundary.fresh) return;
+          // Check shares asynchronously. The next pass rechecks the turn and queue before cancelling.
+          this.#captured.delete(key);
+          if (!(await Promise.race([this.#stopped, folderPresent(thread.cwd)]))) return;
+          checkedFolder = { boundary, handle, cwd: thread.cwd, revision: record.revision };
+          continue;
+        }
         const batch = composerBatch(value.input.queued, this.storage);
         const attachments = batch.attachments;
         this.#captured.set(key, batch.entries);

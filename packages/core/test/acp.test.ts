@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -30,6 +30,8 @@ test.each([
   'local ACP with an expired session', 'local ACP carrying a manually stopped prompt',
   'local ACP reloading the same session after cancellation', 'local ACP with a blocked upload', 'local ACP with a disabled provider',
   'local ACP rediscovering its model',
+  // Windows can lock a running process's working directory against renames.
+  ...(process.platform === 'win32' ? [] : ['local ACP whose working directory moved']),
 ])('%s handles queued input when its parallel tools finish', async scenario => {
   const client = await startCore({ warmProcessMinutes: 0 });
   const core = harness!.core;
@@ -46,13 +48,19 @@ test.each([
   const blockedUpload = scenario === 'local ACP with a blocked upload';
   const disableProvider = scenario === 'local ACP with a disabled provider';
   const rediscoverModel = scenario === 'local ACP rediscovering its model';
-  const refusesInput = noImages || blockedUpload || disableProvider;
+  const movedFolder = scenario === 'local ACP whose working directory moved';
+  const refusesAtBoundary = noImages || blockedUpload || disableProvider;
+  const refusesInput = refusesAtBoundary || movedFolder;
   const holds = detached || paused || refusesInput || ignoresCancel || switchesBack || spawned || rediscoverModel;
   const provider = detached ? 'hermes' : scenario.startsWith('local ACP') ? 'local ACP' : holds ? 'antigravity' : scenario;
   if (noImages) process.env['ACP_FAKE_NO_IMAGES'] = '1';
   if (expires) process.env['ACP_FAKE_FORGET'] = '1';
   let threadId: string;
-  if (provider === 'local ACP') threadId = await acpThread(client, rediscoverModel ? 'fake-fast' : undefined);
+  if (provider === 'local ACP') {
+    const projectPath = movedFolder ? join(harness!.dataDir, 'project') : undefined;
+    if (projectPath) mkdirSync(projectPath);
+    threadId = await acpThread(client, rediscoverModel ? 'fake-fast' : undefined, undefined, projectPath);
+  }
   else {
     if (provider === 'opencode-v2') restoreDriver = setDriver('acp', createAcpDriver({
       loadSdk: () => import('@agentclientprotocol/sdk/unstable'),
@@ -122,6 +130,10 @@ test.each([
   expect(fakeLog()).not.toContain('session/cancel');
   if (disableProvider) await client.call('providers.setEnabled', { providerId: 'acp-fake', enabled: false });
   if (rediscoverModel) forgetProbes({ providerId: 'acp-fake', accountId: core.threads.require(threadId).accountId });
+  if (movedFolder) {
+    const { cwd } = core.threads.require(threadId);
+    renameSync(cwd, `${cwd}-moved`);
+  }
   const lastTool = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
   writeFileSync(`${logFile}.second`, 'ready');
   await lastTool;
@@ -145,7 +157,7 @@ test.each([
     await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision,
       value: { input: { text: '', attachments: [], paused: false, queued } } });
   }
-  if (refusesInput) {
+  if (refusesAtBoundary) {
     await waitFor(() => fakeLog().includes('session/cancel') || core.composer.storage.get('inputs', threadId).value?.input.paused === true);
     expect(fakeLog()).not.toContain('session/cancel');
     expect(core.journal.getTurn(turnId)?.status).toBe('running');
@@ -165,6 +177,10 @@ test.each([
     writeFileSync(`${logFile}.end`, 'ready');
   }
   await waitFor(() => core.journal.listTurns(threadId)[priorTurns + (refusesInput ? 0 : 1)]?.finishedAt != null);
+  if (movedFolder) {
+    await waitFor(() => core.composer.storage.get('inputs', threadId).value?.input.paused === true);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued[0]?.request?.failed).toContain('does not exist any more');
+  }
   const current = await client.call('threads.get', { threadId });
   expect(current.turns.slice(priorTurns).map(at => at.status)).toEqual(refusesInput ? ['done'] : [holds ? 'done' : rejectsCancel || expires ? 'error' : 'stopped', 'done']);
   const finishedTools = current.messages.filter(message => message.turnId === turnId).flatMap(message => message.parts)
@@ -345,14 +361,14 @@ function writeDescriptor(dataDir: string): void {
   });
 }
 
-async function acpAccount(client: CoreClient): Promise<{ dataDir: string; projectId: string; accountId: string }> {
+async function acpAccount(client: CoreClient, projectPath?: string): Promise<{ dataDir: string; projectId: string; accountId: string }> {
   const dataDir = harness?.dataDir ?? '';
   writeDescriptor(dataDir);
   const loaded = await client.call('providers.reload', {});
   expect(loaded.rejected).toEqual([]);
   expect(loaded.loaded.some((provider) => provider.id === 'acp-fake' && provider.available)).toBe(true);
 
-  const project = await client.call('projects.add', { path: dataDir, name: 'acp' });
+  const project = await client.call('projects.add', { path: projectPath ?? dataDir, name: 'acp' });
   const account = await client.call('accounts.add', {
     providerId: 'acp-fake',
     label: 'Fake',
@@ -361,8 +377,8 @@ async function acpAccount(client: CoreClient): Promise<{ dataDir: string; projec
   return { dataDir, projectId: project.id, accountId: account.id };
 }
 
-async function acpThread(client: CoreClient, model?: string, permissionMode?: PermissionMode): Promise<string> {
-  const { projectId, accountId } = await acpAccount(client);
+async function acpThread(client: CoreClient, model?: string, permissionMode?: PermissionMode, projectPath?: string): Promise<string> {
+  const { projectId, accountId } = await acpAccount(client, projectPath);
   // A model the descriptor does not carry is only accepted once the agent has
   // listed it, which is what the picker does before it offers it.
   if (model !== undefined && model !== 'default') {
