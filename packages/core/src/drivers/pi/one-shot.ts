@@ -116,7 +116,8 @@ class ModelRefused extends Error {}
 
 /**
  * A one-shot runs without extensions, so a provider one of them registers is unknown there: the request goes to pi's
- * own model instead, with the same restrictions, unless the profile's own `--model` or `--provider` is that provider.
+ * own model instead, with the same restrictions, unless the profile's own `--model` or `--provider` started pi on that
+ * provider (`piProfilePins`), where its own model is refused alike.
  */
 async function askOn(ctx: TitleContext | SideQuestionContext, prompt: string, model: string | null, catalog: readonly ModelInfo[] | null, signal: AbortSignal, sessionFile?: string): Promise<string> {
   try {

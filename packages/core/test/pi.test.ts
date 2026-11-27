@@ -9,7 +9,7 @@ import type { CoreClient } from '../src/client.ts';
 import type { SharedAccess } from '../src/contacts/access-policy.ts';
 import { forgetProbes, getDriver, probedModelsOf } from '../src/drivers/index.ts';
 import { setPiReadDeadlineForTests, setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
-import { piProfileArgs } from '../src/drivers/pi/models.ts';
+import { piProfileArgs, piProfilePins } from '../src/drivers/pi/models.ts';
 import { folderExtends, folderStartModel, piLaunchChoices } from '../src/drivers/pi/start-model.ts';
 import { forgetSavedCatalog, readSavedCatalog } from '../src/providers/saved-catalogs.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
@@ -758,7 +758,7 @@ test('pi one-shots on its own model keep the profile model its --api-key needs',
   const { projectId, accountId } = await piAccount(client);
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
   const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
-  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--model', 'fake-a/smart', '--api-key', 'test-key');
+  for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--provider', 'fake-a', '--model', 'fake-a/smart', '--api-key', 'test-key');
   writeFileSync(descriptorFile, JSON.stringify(descriptor));
   expect((await client.call('providers.reload', {})).rejected).toEqual([]);
   const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId });
@@ -795,28 +795,34 @@ test('pi one-shots on its own model keep the profile model its --api-key needs',
   }
 }, 20_000);
 
-test('a profile --api-key goes only to a launch on the provider the catalog shows the profile starts on', () => {
+test('a profile --api-key goes only to a listed model on the provider the profile\'s --provider names', () => {
   const entry = (provider: string, id: string): ModelInfo => ({ id: `${provider}/${id}`, name: `${provider.slice(0, 1).toUpperCase()}${provider.slice(1)} / ${id}` } as ModelInfo);
-  const catalog = [entry('openai', 'chat'), entry('openai', 'quick'), entry('anthropic', 'title'), entry('gateway', 'other'), entry('gateway/team', 'base')];
+  const catalog = [entry('openai', 'chat'), entry('openai', 'quick'), entry('anthropic', 'title'), entry('anthropic', 'openai/remote'), entry('gateway', 'other'), entry('gateway/team', 'base')];
   const key = (args: string[], model: string, list: ModelInfo[] | null = catalog) => piProfileArgs([...args, '--api-key', 'k'], model, list).includes('k');
   expect(key(['--provider', 'openai'], 'openai/quick')).toBe(true);
   expect(key(['--provider', 'openai'], 'anthropic/title')).toBe(false);
+  // pi matches a provider without regard to case, and the last one wins.
+  expect(key(['--provider', 'OpenAI'], 'openai/quick')).toBe(true);
+  expect(key(['--provider', 'openai', '--provider', 'anthropic'], 'openai/quick')).toBe(false);
   // A provider id may hold a `/`: `gateway/team` is not `gateway`.
-  expect(key(['--model', 'gateway/team/base'], 'gateway/other')).toBe(false);
-  expect(key(['--model', 'gateway/team/base'], 'gateway/team/base')).toBe(true);
-  // A scope names the provider when all its patterns do; a bare id when one provider holds it.
-  expect(key(['--models', 'openai/*'], 'anthropic/title')).toBe(false);
-  expect(key(['--models', 'openai/*'], 'openai/quick')).toBe(true);
-  expect(key(['--models', 'openai/*,anthropic/*'], 'openai/quick')).toBe(false);
-  expect(key(['--model', 'chat'], 'openai/quick')).toBe(true);
-  // The last of each flag wins, as pi reads them; a key nothing names a provider for follows the model, as in pi;
-  // a provider the catalog cannot confirm keeps it out.
-  expect(key(['--provider', 'anthropic', '--provider', 'openai'], 'openai/quick')).toBe(true);
-  expect(key([], 'anthropic/title')).toBe(true);
+  expect(key(['--provider', 'gateway/team'], 'gateway/other')).toBe(false);
+  expect(key(['--provider', 'gateway/team'], 'gateway/team/base')).toBe(true);
+  // A `--model`, a scope or a bare key leave the provider to pi's own resolution: `openai/remote` is an Anthropic id
+  // here, and a saved `enabledModels` or default may pick any provider. The key stays out of a model Boite names.
+  expect(key(['--model', 'openai/remote'], 'openai/quick')).toBe(false);
+  expect(key(['--models', 'openai/*'], 'openai/quick')).toBe(false);
+  expect(key([], 'openai/quick')).toBe(false);
+  // No catalog lists the model: the key stays out.
   expect(key(['--provider', 'openai'], 'openai/quick', null)).toBe(false);
   // Boite's own flags name the model: the profile's go, or pi would read an unlisted model under its provider.
   expect(piProfileArgs(['--provider', 'openai', '--model', 'openai/chat', '--verbose'], 'anthropic/title', null)).toEqual(['--verbose']);
-  expect(piProfileArgs(['--provider', 'openai', '--api-key', 'k'], 'default', null)).toEqual(['--provider', 'openai', '--api-key', 'k']);
+  // A launch left to pi keeps the profile whole, its key on whatever pi resolves.
+  expect(piProfileArgs(['--model', 'chat', '--api-key', 'k'], 'default', catalog)).toEqual(['--model', 'chat', '--api-key', 'k']);
+  // A title falls back to pi's own model unless the profile's last --provider, or a --model as listed, pins its provider.
+  expect(piProfilePins(['--provider', 'anthropic', '--provider', 'openai'], 'openai/quick', catalog)).toBe(true);
+  expect(piProfilePins(['--model', 'openai/chat', '--model', 'anthropic/title'], 'openai/quick', catalog)).toBe(false);
+  expect(piProfilePins(['--model', 'openai/remote'], 'openai/quick', catalog)).toBe(false);
+  expect(piProfilePins([], 'openai/quick', catalog)).toBe(false);
 });
 
 test('pi answers /btw from a disposable session copy and leaves the source intact', async () => {

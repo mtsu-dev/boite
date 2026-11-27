@@ -108,57 +108,44 @@ export function piProviderOf(model: string, catalog: readonly ModelInfo[] | null
   return piCatalogPair(model, catalog)?.provider ?? model.slice(0, Math.max(model.indexOf('/'), 0));
 }
 
+/** The last value of `flag` in a profile's arguments, as pi's `parseArgs` keeps it, or null. */
+function lastFlag(args: readonly string[], flag: string): string | null {
+  let value: string | null = null;
+  for (let i = 0; i + 1 < args.length; i++) if (args[i] === flag) value = args[++i]!;
+  return value;
+}
+
+/** Whether a provider text names `provider`: pi matches `--provider` without regard to case (`resolveCliModel`). */
+function sameProvider(text: string, provider: string): boolean {
+  return provider !== '' && text.toLowerCase() === provider.toLowerCase();
+}
+
 /**
- * The provider pi 1.6.1 starts a profile on, from its own `--provider`, else its `--model`, else a `--models` scope
- * whose patterns all name one provider, the last of each kind winning as `parseArgs` reads them. A text resolves only
- * through the catalog: the pair it lists, else the longest provider whose `<provider>/` starts it (a provider id may
- * hold a `/`), else the one provider holding that bare id. Null when only pi can tell.
+ * Whether the profile's own `--provider` or `--model` starts pi on `model`'s provider: a launch left to pi keeps them,
+ * so it lands there too. A `--model` counts only spelled as the catalog lists it, since pi may read another text on
+ * another provider (a raw id, a fuzzy match).
  */
-export function piProfileProvider(args: readonly string[], catalog: readonly ModelInfo[] | null): string | null {
-  let provider: string | null = null, model: string | null = null, scope: string[] | null = null;
-  for (let i = 0; i + 1 < args.length; i++) {
-    const arg = args[i]!, next = args[i + 1]!;
-    if (arg === '--provider') provider = next;
-    else if (arg === '--model') model = next;
-    else if (arg === '--models') scope = next.split(',').map(pattern => pattern.trim()).filter(pattern => pattern.length > 0);
-    else continue;
-    i++;
-  }
-  if (provider !== null) return provider;
-  if (model !== null) return catalogProvider(model, catalog);
-  const named = new Set((scope ?? []).map(pattern => catalogProvider(pattern, catalog)));
-  return named.size === 1 && !named.has(null) ? [...named][0]! : null;
-}
-
-function catalogProvider(text: string, catalog: readonly ModelInfo[] | null): string | null {
-  if (catalog === null) return null;
-  const listed = piCatalogPair(text, catalog);
-  if (listed) return listed.provider;
-  const pairs = catalog.flatMap(entry => piModelOf(entry) ?? []);
-  const prefixed = pairs.filter(pair => text.startsWith(`${pair.provider}/`)).map(pair => pair.provider).sort((a, b) => b.length - a.length);
-  if (prefixed.length > 0) return prefixed[0]!;
-  const holders = new Set(pairs.filter(pair => pair.id === text).map(pair => pair.provider));
-  return holders.size === 1 ? [...holders][0]! : null;
-}
-
-/** Whether the profile starts pi on `model`'s provider, or on `model` itself. */
 export function piProfilePins(args: readonly string[], model: string, catalog: readonly ModelInfo[] | null): boolean {
   const provider = piProviderOf(model, catalog);
-  return args.some((arg, i) => arg === '--model' && args[i + 1] === model) || (provider !== '' && piProfileProvider(args, catalog) === provider);
+  const pinned = lastFlag(args, '--provider');
+  if (pinned !== null) return sameProvider(pinned, provider);
+  const named = lastFlag(args, '--model');
+  return named !== null && (named === model || piCatalogPair(named, catalog)?.provider === provider) && provider !== '';
 }
 
 /**
  * A profile's launch arguments for a process Boite starts on `model`. Boite's own `--provider` and `--model` name it,
  * so the profile's go, or pi would read a model the catalog does not list under the profile's provider. pi 1.6.1
- * binds `--api-key` to the provider of the model it starts on (`setRuntimeApiKey` in main.js), so the profile's key
- * goes only where the catalog shows that provider is the one the profile starts on. A key no `--provider`, `--model`
- * or `--models` names a provider for follows the model, as pi itself would.
+ * binds `--api-key` to the provider of the model it starts on (`setRuntimeApiKey` in main.js), and nothing else in a
+ * profile says which provider a key is for without guessing pi's own resolution (fuzzy ids, raw ids on another
+ * provider, the saved scope and default): the key goes only to a model the catalog lists on the provider the
+ * profile's last `--provider` names. A launch left to pi keeps the profile whole.
  */
 export function piProfileArgs(args: readonly string[], model: string | null, catalog: readonly ModelInfo[] | null): string[] {
   if (model === null || model === AGENT_OWN_MODEL) return [...args];
-  const selected = piCatalogPair(model, catalog)?.provider ?? null;
-  const names = args.some((arg, i) => i + 1 < args.length && (arg === '--provider' || arg === '--model' || arg === '--models'));
-  const keyed = !names || (selected !== null && piProfileProvider(args, catalog) === selected);
+  const selected = piCatalogPair(model, catalog)?.provider ?? '';
+  const pinned = lastFlag(args, '--provider');
+  const keyed = pinned !== null && sameProvider(pinned, selected);
   const kept: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;

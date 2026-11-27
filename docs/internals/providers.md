@@ -1885,23 +1885,24 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   dropped from these launches. Its `--model` and `--provider` are dropped when
   Boite names a model and kept when the thread leaves the model to pi, so a
   profile `--api-key` still has the model it binds to. pi binds that key to
-  the provider of the model it starts on, so a launch, a conversation's or a
-  one-shot's, keeps the key only when the catalog shows the model's provider is
-  the one the profile starts on: its last `--provider`, else its `--model`
-  (a provider id may hold a `/`, and a bare id counts when one provider lists
-  it), else a `--models` scope whose patterns all name one provider. Without a
-  catalog the key stays out. A key nothing names a provider for follows the
-  model, as pi itself does. pi binds the key at launch only, so switching a
-  warm conversation to a model the key now goes with opens a new process.
-  When Boite names the model, the profile's `--provider` and `--model` are
-  dropped from the conversation too, or pi would look the model up under the
-  profile's provider.
+  the provider of the model it starts on, and resolves a `--model`, a
+  `--models` scope or the saved scope and default its own way (case, fuzzy
+  matches, a raw id such as `openai/remote` on another provider). So when
+  Boite names the model, a launch, a conversation's or a one-shot's, keeps the
+  key only when the catalog lists that model on the provider the profile's
+  last `--provider` names, compared without regard to case as pi does; a key
+  beside a `--model`, a scope or nothing stays out, and so does any key
+  without a catalog. A launch left to pi keeps the profile whole. pi binds the
+  key at launch only, so switching a warm conversation to a model the key now
+  goes with opens a new process. When Boite names the model, the profile's
+  `--provider` and `--model` are dropped too, or pi would look the model up
+  under the profile's provider.
   A model an extension
   registers is unknown without extensions: when pi exits at startup on it
   (`Unknown provider "..."` or `Model "..." not found`, each followed by `Use
   --list-models`), the same request goes once to pi's own model, with the same
-  restrictions, unless the profile's `--model` or `--provider` names that
-  provider. A prompt a running pi refuses keeps pi's own error, whatever pi
+  restrictions, unless the profile's last `--provider`, or its last `--model`
+  spelled as the catalog lists it, names that provider. A prompt a running pi refuses keeps pi's own error, whatever pi
   warned on stderr before.
 - `/btw` reuses that isolated launch, with a session and tools as below. At a
   settled checkpoint, it opens a temporary copy of the session cut at that
