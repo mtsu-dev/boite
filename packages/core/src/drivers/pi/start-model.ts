@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { DISK_VIEW, type FileView } from '../../file-view.ts';
 import { isRecord } from '../stdio.ts';
 import { piArgs, PI_VALUED } from './args.ts';
 import { piModelOf } from './models.ts';
@@ -65,8 +66,10 @@ export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
  * only pi can: a glob or fuzzy pattern, a model missing from the catalog, or no
  * catalog yet.
  */
-export function folderStartModel(agentDir: string, cwd: string, catalog: readonly CatalogModel[] | null, launch: Omit<PiLaunchChoices, 'model'> = { scope: null, trust: null }): string | 'account' | null {
-  const { global, project, undecided } = folderView(agentDir, cwd, launch);
+export function folderStartModel(
+  agentDir: string, cwd: string, catalog: readonly CatalogModel[] | null, launch: Omit<PiLaunchChoices, 'model'> = { scope: null, trust: null }, files: FileView = DISK_VIEW,
+): string | 'account' | null {
+  const { global, project, undecided } = folderView(agentDir, cwd, launch, files);
   if (undecided) return null;
   if (!project) return 'account';
   const value = (key: typeof CHOOSING[number]) => project[key] !== undefined ? project[key] : global[key];
@@ -108,8 +111,8 @@ export function folderStartModel(agentDir: string, cwd: string, catalog: readonl
  * register a pair over the catalog's that depends on the folder, the folder's own ones, which the probe, run elsewhere,
  * did not load, and the account's or the profile's, which the probe ran outside that folder.
  */
-export function folderExtends(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices, 'model'> = { scope: null, trust: null }): boolean {
-  const view = folderView(agentDir, cwd, launch);
+export function folderExtends(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices, 'model'> = { scope: null, trust: null }, files: FileView = DISK_VIEW): boolean {
+  const view = folderView(agentDir, cwd, launch, files);
   return view.undecided || view.extensions;
 }
 
@@ -117,19 +120,19 @@ export function folderExtends(agentDir: string, cwd: string, launch: Omit<PiLaun
  * What pi 1.6.1 reads of the account's and the folder's settings in `cwd`, whether only it can tell the start model,
  * and whether the account or the profile loads extensions (`--no-extensions` leaves only the `-e` ones).
  */
-function folderView(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices, 'model'>): { global: Record<string, unknown>; project: Record<string, unknown> | null; undecided: boolean; extensions: boolean } {
-  const global = settingsAt(join(agentDir, 'settings.json')) ?? {};
+function folderView(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices, 'model'>, files: FileView): { global: Record<string, unknown>; project: Record<string, unknown> | null; undecided: boolean; extensions: boolean } {
+  const global = settingsAt(files, join(agentDir, 'settings.json')) ?? {};
   const folder = piProcessCwd(cwd);
   const own = join(folder, '.pi');
-  const extended = entriesIn(join(own, 'extensions'));
+  const extended = files.listsAny(join(own, 'extensions'));
   const discovers = launch.noExtensions !== true;
   const extensions = launch.extensions === true
-    || (discovers && (entriesIn(join(agentDir, 'extensions')) || listed(global['extensions']) || listed(global['packages'])));
+    || (discovers && (files.listsAny(join(agentDir, 'extensions')) || listed(global['extensions']) || listed(global['packages'])));
   // For a folder with settings or extensions of its own, pi first asks the extensions it loads before trusting any
   // folder (the account's and the profile's): a `project_trust` hook decides over `trust.json` (`resolveProjectTrusted`).
-  const hooked = launch.trust === null && (extended || existsSync(join(own, 'settings.json'))) && extensions;
-  const trust = launch.trust ?? trusted(agentDir, folder, global);
-  const project = trust ? settingsAt(join(own, 'settings.json')) : null;
+  const hooked = launch.trust === null && (extended || files.exists(join(own, 'settings.json'))) && extensions;
+  const trust = launch.trust ?? trusted(files, agentDir, folder, global);
+  const project = trust ? settingsAt(files, join(own, 'settings.json')) : null;
   // A trusted folder's own extensions load only there (`DefaultPackageManager.resolve`).
   const undecided = hooked || (trust && discovers && (extended || listed(project?.['extensions']) || listed(project?.['packages'])));
   return { global, project, undecided, extensions };
@@ -193,8 +196,8 @@ function providerPrefix(text: string, pool: readonly PiEntry[]): { provider: str
 }
 
 /** pi's trust for a folder: the nearest decision in `trust.json`, else its `defaultProjectTrust`. */
-function trusted(agentDir: string, folder: string, global: Record<string, unknown>): boolean {
-  const decisions = settingsAt(join(agentDir, 'trust.json')) ?? {};
+function trusted(files: FileView, agentDir: string, folder: string, global: Record<string, unknown>): boolean {
+  const decisions = settingsAt(files, join(agentDir, 'trust.json')) ?? {};
   const key = (path: string) => process.platform === 'win32' ? path.toLowerCase() : path;
   const keys = new Map(Object.entries(decisions).map(([path, decision]) => [key(path), decision]));
   let dir = canonical(folder);
@@ -216,17 +219,15 @@ function canonical(path: string): string {
 }
 
 /** A JSON object as pi reads it (a leading BOM allowed), or null when missing or unreadable. */
-function settingsAt(path: string): Record<string, unknown> | null {
+function settingsAt(files: FileView, path: string): Record<string, unknown> | null {
+  const text = files.read(path);
+  if (text === null) return null;
   try {
-    const value: unknown = JSON.parse(readFileSync(path, 'utf8').replace(/^﻿/, ''));
+    const value: unknown = JSON.parse(text.replace(/^\uFEFF/, ''));
     return isRecord(value) ? value : null;
   } catch {
     return null;
   }
-}
-
-function entriesIn(dir: string): boolean {
-  try { return readdirSync(dir).length > 0; } catch { return false; }
 }
 
 function listed(setting: unknown): boolean {

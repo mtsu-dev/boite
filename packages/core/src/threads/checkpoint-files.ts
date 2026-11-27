@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants, type BigIntStats } from 'node:fs';
+import { constants, lstatSync, readdirSync, readFileSync, type BigIntStats } from 'node:fs';
 import { chmod, copyFile, link, lstat, mkdir, open, readdir, readFile, readlink, realpath, rename, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { Core } from '../core.ts';
+import type { FileView } from '../file-view.ts';
 import type { SharedFilePermit } from '../contacts/access-policy.ts';
 import { refused, RpcFailure } from '../errors.ts';
 import { git } from '../git/read.ts';
-import { BLOB_BYTE_LIMIT, decodeBlob, encodeBlob, errno, NO_LINK, readBlob, sharedBlob } from './checkpoint-store.ts';
+import { BLOB_BYTE_LIMIT, decodeBlob, encodeBlob, errno, NO_LINK, readBlob, readBlobSync, sharedBlob } from './checkpoint-store.ts';
 
 export { sharedBlob };
 
@@ -375,6 +376,46 @@ async function writeEntry(root: string, objects: string, name: string, entry: Fi
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     await rename(temporary, path);
   } finally { await rm(temporary, { force: true }); }
+}
+
+/**
+ * The files under `root` as `restoreFiles(root, objects, changes)` will leave them, read without writing anything:
+ * each change's `before`, a parent its deleted files leave empty gone, every other path as the disk holds it.
+ */
+export function restoredView(root: string, objects: string, changes: readonly FileChange[]): FileView {
+  const key = (path: string) => process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path);
+  const planned = new Map(changes.map(change => [key(join(root, change.name)), change.before]));
+  const inside = (dir: string) => {
+    const prefix = key(dir) + sep;
+    return [...planned].filter(([path]) => path.startsWith(prefix)).map(([, entry]) => entry);
+  };
+  const names = (dir: string) => { try { return readdirSync(dir); } catch { return []; } };
+  const present = (path: string): boolean => {
+    const own = key(path);
+    if (planned.has(own)) return planned.get(own) !== undefined;
+    let directory: boolean;
+    try { directory = lstatSync(path).isDirectory(); } catch { return inside(path).some(Boolean); }
+    if (!directory) return true;
+    // `writeEntry` removes only the parents a deleted file leaves empty: a directory empty before stays.
+    const below = inside(path);
+    return below.some(Boolean) || names(path).some(name => present(join(path, name))) || below.length === 0;
+  };
+  const read = (path: string, hops: number): string | null => {
+    const own = key(path);
+    if (!planned.has(own)) {
+      if (!present(path)) return null;
+      try { return readFileSync(path, 'utf8'); } catch { return null; }
+    }
+    const entry = planned.get(own);
+    if (!entry) return null;
+    if (entry.link !== undefined) return hops < 8 ? read(resolve(dirname(path), entry.link), hops + 1) : null;
+    return readBlobSync(join(objects, entry.hash), entry.hash)?.toString('utf8') ?? null;
+  };
+  return {
+    read: path => read(path, 0),
+    exists: present,
+    listsAny: dir => inside(dir).some(Boolean) || names(dir).some(name => present(join(dir, name))),
+  };
 }
 
 /** Check all conflicts before writing; put the original files back if a write fails. */

@@ -657,11 +657,14 @@ queued (`reason: 'turn-in-flight'`) and any message that is not a user message
 of that thread (`field: 'messageId'`). The composer sends `images: true` when
 the prompt that replaces the message carries images: the core then checks the
 model the cut leaves the thread on, as the send would, and refuses
-(`field: 'images'`) before it cuts the conversation, putting back any file
-it restored. For pi that model can differ from the current session's: a
-native cut resumes on the model at that point, a new session starts on the
-folder's settings as the restored files leave them. While editing, the
-composer leaves that answer to the core instead of the current session's. The journal keeps a `thread.rewound`
+(`field: 'images'`) before it writes a file or cuts the conversation. For pi
+that model can differ from the current session's: a native cut resumes on the
+model at that point, a new session starts on the folder's settings as the
+restored files will leave them. The check reads those files from the
+checkpoint (`restoredView` in `threads/checkpoint-files.ts`), so a refusal
+leaves the folder as it was, its empty directories and hard links included.
+While editing, the composer leaves that answer to the core instead of the
+current session's. The journal keeps a `thread.rewound`
 event naming every removed message and turn. The projection drops those
 messages, so `threads.get` and `messages.list` no longer return them. The turn
 rows stay, so the usage history still counts what they spent. Every subscribed

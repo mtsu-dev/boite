@@ -2,8 +2,9 @@ import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promise
 import { basename, dirname, join } from 'node:path';
 import type { ThreadRewind, ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
+import { DISK_VIEW, type FileView } from '../file-view.ts';
 import { messageOf, refused } from '../errors.ts';
-import { collectSharedBlobs, contains, overlap, restoreFiles, same, snapshot, workspaceRoot, type FileChange, type FileSnapshot, type SnapshotCache } from './checkpoint-files.ts';
+import { collectSharedBlobs, contains, overlap, restoredView, restoreFiles, same, snapshot, workspaceRoot, type FileChange, type FileSnapshot, type SnapshotCache } from './checkpoint-files.ts';
 import { decodeManifest, encodeManifest, StoreMigration, trimFolder } from './checkpoint-store.ts';
 
 type FileResult = NonNullable<ThreadRewind['files']>;
@@ -177,20 +178,26 @@ export class CodeCheckpoints {
     void this.#trimFull(active.threadId);
   }
 
-  /** Hold the workspace through both the file restoration and the journal cut. */
-  async rewind<T>(thread: ThreadSummary, turnIds: string[], messageId: string, cut: (files: FileResult) => T): Promise<T> {
+  /**
+   * Hold the workspace through both the file restoration and the journal cut. `admit` first reads the files as the
+   * restoration will leave them, before anything is written: a throw there leaves the disk and the journal untouched.
+   */
+  async rewind<T>(thread: ThreadSummary, turnIds: string[], messageId: string, cut: (files: FileResult) => T, admit: (files: FileView) => void = () => {}): Promise<T> {
     this.#core.sharedAccess.denyTool(thread.id);
     this.#rewinding.add(thread.id);
     try {
       await this.#trims.get(thread.id);
-      return await this.#rewindHeld(thread, turnIds, messageId, cut);
+      return await this.#rewindHeld(thread, turnIds, messageId, cut, admit);
     } finally { this.#rewinding.delete(thread.id); }
   }
 
-  async #rewindHeld<T>(thread: ThreadSummary, turnIds: string[], messageId: string, cut: (files: FileResult) => T): Promise<T> {
+  async #rewindHeld<T>(thread: ThreadSummary, turnIds: string[], messageId: string, cut: (files: FileResult) => T, admit: (files: FileView) => void): Promise<T> {
     let root: string;
     try { root = await workspaceRoot(thread.cwd); }
-    catch (error) { return cut({ status: 'unavailable', count: 0, reason: `the working directory is unavailable: ${messageOf(error)}` }); }
+    catch (error) {
+      admit(DISK_VIEW);
+      return cut({ status: 'unavailable', count: 0, reason: `the working directory is unavailable: ${messageOf(error)}` });
+    }
     this.assertAvailable(root);
     // Held before comparing, so no turn starts here while the files are restored.
     this.#restoring.add(root);
@@ -202,10 +209,13 @@ export class CodeCheckpoints {
       for (const active of [...this.#active.values()]) {
         if (!saving(active)) continue;
         if (await overlap(this.#core, thread.id, root, active.checkpoint.root)) {
+          admit(DISK_VIEW);
           return cut({ status: 'unavailable', count: 0, reason: 'another turn is working in this folder; files were left as they are', busy: true });
         }
       }
-      const { files, changes } = await this.#restore(thread, root, turnIds, messageId);
+      const { files, changes } = await this.#plan(thread, root, turnIds, messageId);
+      admit(changes.length ? restoredView(root, this.#objects(thread.id), changes) : DISK_VIEW);
+      if (changes.length) await restoreFiles(root, this.#objects(thread.id), changes);
       try { return cut(files); }
       catch (error) {
         await restoreFiles(root, this.#objects(thread.id), changes.map(change => ({ name: change.name, before: change.after, after: change.before })));
@@ -215,7 +225,8 @@ export class CodeCheckpoints {
     finally { this.#restoring.delete(root); }
   }
 
-  async #restore(thread: ThreadSummary, root: string, turnIds: string[], messageId: string): Promise<{ files: FileResult; changes: FileChange[] }> {
+  /** The changes that put the files back as they were before `turnIds`, and what the edit reports of them. */
+  async #plan(thread: ThreadSummary, root: string, turnIds: string[], messageId: string): Promise<{ files: FileResult; changes: FileChange[] }> {
     const unavailable = (reason: string) => ({ files: { status: 'unavailable' as const, count: 0, reason }, changes: [] });
     const changes = new Map<string, FileChange>();
     for (const turnId of turnIds) {
@@ -242,7 +253,6 @@ export class CodeCheckpoints {
     const modified = [...changes.values()].filter(change => !same(change.before, change.after));
     const unbacked = modified.find(change => change.before?.unbacked || change.after?.unbacked);
     if (unbacked) return unavailable(`${unbacked.name} had a version over the 16 MiB checkpoint limit, which has no backup`);
-    await restoreFiles(root, this.#objects(thread.id), modified);
     return { files: { status: modified.length ? 'restored' : 'unchanged', count: modified.length }, changes: modified };
   }
 

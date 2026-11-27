@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1024,7 +1024,7 @@ test('an edit with images is refused before the cut when the session it leaves r
   expect((await client.call('threads.rewind', { threadId, messageId: second!.id, images: true })).session).toBe('native');
 });
 
-test('an edit with images reads the folder settings its cut restores, and puts them back when it refuses', async () => {
+test('an edit with images reads the folder settings its cut would restore, and a refusal writes no file', async () => {
   const client = await startCore();
   const { dataDir, accountId } = await piAccount(client);
   // A folder beside the core's data, which file checkpoints can snapshot.
@@ -1041,15 +1041,33 @@ test('an edit with images reads the folder settings its cut restores, and puts t
   writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(join(cwd, '..'))]: true }));
   const settings = join(cwd, '.pi', 'settings.json');
   writeFileSync(settings, JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
-  // The turn moves the folder to a model that reads images; editing it restores the text-only one.
+  mkdirSync(join(cwd, 'notes'));
+  writeFileSync(join(cwd, 'notes', 'draft.md'), 'draft');
+  // The turns move the folder to a model that reads images, leave `notes` empty and add an extension; editing the
+  // first restores the text-only model and the draft, and removes the extension.
   const reads = JSON.stringify({ defaultProvider: 'fake-a', defaultModel: 'smart' });
   expect((await (await startTurn(client, threadId, `[write .pi/settings.json] ${reads}`)).finished).status).toBe('done');
+  expect((await (await startTurn(client, threadId, '[remove notes/draft.md]')).finished).status).toBe('done');
+  // A folder extension leaves the model to pi on the disk now; the restore would remove it with its folder.
+  expect((await (await startTurn(client, threadId, '[write .pi/extensions/tool.ts] export default () => {};')).finished).status).toBe('done');
   expect(readFileSync(settings, 'utf8')).toBe(reads);
+  expect(readdirSync(join(cwd, 'notes'))).toEqual([]);
+  // A second name for the settings: a restore that wrote them, then put them back, would leave two files.
+  linkSync(settings, join(cwd, 'settings-link.json'));
+  const inode = statSync(settings).ino;
   const [first] = (await client.call('threads.get', { threadId })).messages.filter(message => message.role === 'user');
   expect((await rejection(client.call('threads.rewind', { threadId, messageId: first!.id, images: true }))).reason)
     .toMatchObject({ rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } });
   expect(readFileSync(settings, 'utf8')).toBe(reads);
+  expect(statSync(settings).ino).toBe(inode);
+  expect(statSync(join(cwd, 'settings-link.json')).ino).toBe(inode);
+  expect(readdirSync(join(cwd, 'notes'))).toEqual([]);
   expect((await client.call('threads.get', { threadId })).messages.some(message => message.id === first!.id)).toBe(true);
+  // Without images, the same edit restores both.
+  await client.call('threads.rewind', { threadId, messageId: first!.id });
+  expect(JSON.parse(readFileSync(settings, 'utf8'))).toEqual({ defaultProvider: 'fake-b', defaultModel: 'plain' });
+  expect(readFileSync(join(cwd, 'notes', 'draft.md'), 'utf8')).toBe('draft');
+  expect(existsSync(join(cwd, '.pi', 'extensions'))).toBe(false);
 });
 
 test('pi takes a thinking level while its turn runs', async () => {

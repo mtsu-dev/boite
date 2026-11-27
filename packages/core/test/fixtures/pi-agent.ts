@@ -16,8 +16,8 @@
  *
  * The framing is copied from the real mode on purpose: strict JSONL, LF only.
  */
-import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { piArgs, piArgValue } from '../../src/drivers/pi/args.ts';
 import { instructionsOf } from './history.ts';
 
@@ -419,9 +419,15 @@ async function runPrompt(text: string): Promise<void> {
     });
   }
 
-  // `[write <path>] <text>`: the turn writes that file under its folder, as an agent's edit would.
+  // `[write <path>] <text>` and `[remove <path>]`: the turn writes or deletes that file under its folder, as an agent's
+  // edit would.
   const write = /^\[write ([^\]]+)\] ([\s\S]*)$/.exec(text);
-  if (write) writeFileSync(join(process.cwd(), write[1]!), write[2]!);
+  if (write) {
+    mkdirSync(dirname(join(process.cwd(), write[1]!)), { recursive: true });
+    writeFileSync(join(process.cwd(), write[1]!), write[2]!);
+  }
+  const remove = /^\[remove ([^\]]+)\]$/.exec(text);
+  if (remove) rmSync(join(process.cwd(), remove[1]!));
   const history = saved.flatMap(entry => entry.message?.role === 'user' ? [entry.message.content] : []).join(', ');
   if (sideCopy) log(`side prompt ${JSON.stringify(text)}`);
   const answer = sideCopy || text === '[read-session]' ? `Native context: ${history}`
