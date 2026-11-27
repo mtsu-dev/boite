@@ -266,7 +266,8 @@ export class AcpTurn extends TurnParts {
       case 'end_turn': {
         const text = this.#executionError;
         this.#executionError = null;
-        if (text !== null && !this.isStopped) this.fail(text.trim(), undefined, { kind: 'capacity' });
+        // A concurrent permission or update stop must keep the refusal so the queue can recover the input.
+        if (text !== null && (!this.isStopped || this.stoppedForQueuedInput)) this.fail(text.trim(), undefined, { kind: 'capacity' });
         break;
       }
       case 'cancelled':
