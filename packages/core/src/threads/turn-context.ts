@@ -415,8 +415,8 @@ export class TurnContexts {
     const tail = !fresh && resumePrompt === undefined && thread.sessionId !== null && kind !== 'compact' && kind !== 'keepalive'
       && kind !== 'background' && kind !== 'resume' && !nativeCommandPrompt(input.prompt) ? compactionTail(this.#core, thread) : null;
     const resumeSource = provider.protocol === 'acp' ? turn.execution?.resumeSourceTurnId : undefined;
-    const carryStopped = resumeSource !== undefined
-      || (resumePrompt === undefined && !kind && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt));
+    const carryStopped = resumePrompt === undefined && (resumeSource !== undefined
+      || (!kind && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt)));
     // ACP chooses the stopped-input cutoff once it has the receiving process.
     const livePrompt = deferInterruptedInput && provider.protocol === 'acp' && carryStopped && thread.sessionId !== null
       && thread.sessionResumeAt == null && missed === null && tail === null;

@@ -525,6 +525,10 @@ const app = agent({ name: 'acp-fake' })
           known.delete(sessionId);
           throw RequestError.resourceNotFound(sessionId);
         }
+        if (instructions.includes('[capacity-on-cancel]')) {
+          await say('Agent execution error: Error 0, Message: the Antigravity account that signed this conversation is temporarily unavailable; retry after Retry-After, Status: ');
+          return { stopReason: 'end_turn' };
+        }
         if (instructions.includes('[error-on-cancel]')) throw RequestError.internalError({ details: 'Prompt aborted' });
         return { stopReason: 'cancelled' };
       } finally { cancels.delete(sessionId); }

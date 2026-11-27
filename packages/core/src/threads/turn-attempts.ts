@@ -381,6 +381,8 @@ export class TurnAttempts {
         result = { ...result, status: 'stopped', ...(fresh || cut ? { error: undefined } : {}) };
         break;
       }
+      // The composer owns the follow-up. Settle the interrupted input before any retry can send it.
+      if (result.queuedInputInterrupted) break;
       // A keepalive on a fresh session would write the whole history to warm nothing: it fails, and the wait ends.
       if (fresh !== null && result.status === 'error' && queued.execution?.operation !== 'keepalive') {
         state.thread = fresh;

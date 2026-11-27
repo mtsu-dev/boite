@@ -28,7 +28,7 @@ test.each([
   'antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local ACP',
   'hermes with split delegation output', 'antigravity with a paused queue', 'antigravity without image support', 'antigravity ignoring cancellation',
   'local ACP switching back to an account', 'local ACP reporting its first result', 'local ACP rejecting cancellation',
-  'local ACP rejecting cancellation with a paused follow-up',
+  'local ACP rejecting cancellation with a paused follow-up', 'antigravity at capacity after cancellation with a paused follow-up',
   'local ACP with an expired session', 'local ACP carrying a manually stopped prompt',
   'local ACP receiving tool updates for a different session',
   'local ACP reloading the same session after cancellation', 'local ACP with a blocked upload', 'local ACP with a disabled provider',
@@ -44,7 +44,8 @@ test.each([
   const ignoresCancel = scenario === 'antigravity ignoring cancellation';
   const switchesBack = scenario === 'local ACP switching back to an account';
   const spawned = scenario === 'local ACP reporting its first result';
-  const pausesOnCancel = scenario === 'local ACP rejecting cancellation with a paused follow-up';
+  const capacityAfterCancel = scenario === 'antigravity at capacity after cancellation with a paused follow-up';
+  const pausesOnCancel = capacityAfterCancel || scenario === 'local ACP rejecting cancellation with a paused follow-up';
   const rejectsCancel = scenario === 'local ACP rejecting cancellation' || pausesOnCancel;
   const expires = scenario === 'local ACP with an expired session';
   const reloads = scenario === 'local ACP reloading the same session after cancellation';
@@ -57,7 +58,7 @@ test.each([
   const refusesAtBoundary = noImages || blockedUpload || disableProvider;
   const refusesInput = refusesAtBoundary || movedFolder;
   const holds = detached || paused || refusesInput || ignoresCancel || switchesBack || spawned || rediscoverModel;
-  const provider = detached ? 'hermes' : scenario.startsWith('local ACP') ? 'local ACP' : holds ? 'antigravity' : scenario;
+  const provider = detached ? 'hermes' : scenario.startsWith('local ACP') ? 'local ACP' : holds || capacityAfterCancel ? 'antigravity' : scenario;
   if (noImages) process.env['ACP_FAKE_NO_IMAGES'] = '1';
   if (expires) process.env['ACP_FAKE_FORGET'] = '1';
   let threadId: string;
@@ -100,7 +101,8 @@ test.each([
   const pause = scenario === 'local ACP' ? spyOn(core.coordination, 'pause') : null;
   const directives = [
     detached && '[detached-delegation]', holds && '[finish-on-gate]', ignoresCancel && '[ignore-cancel]',
-    rejectsCancel && '[error-on-cancel]', expires && '[expire-on-cancel]', (reloads || pausesOnCancel) && '[confirm-on-gate]',
+    rejectsCancel && (capacityAfterCancel ? '[capacity-on-cancel]' : '[error-on-cancel]'),
+    expires && '[expire-on-cancel]', (reloads || pausesOnCancel) && '[confirm-on-gate]',
     foreignTools && '[foreign-tools]',
   ].filter(Boolean);
   const prompt = ['[parallel-tools]', ...directives].join(' ');
@@ -161,9 +163,11 @@ test.each([
     };
     await setPaused(true);
     writeFileSync(`${logFile}.end`, 'ready');
-    await waitFor(() => !core.scheduler.state().running.some(item => item.turnId === turnId));
+    await waitFor(() => core.threads.runner.retryOf(threadId) !== null || !core.scheduler.state().running.some(item => item.turnId === turnId));
     if (pausesOnCancel) {
+      expect(core.threads.runner.retryOf(threadId)).toBeNull();
       expect(core.journal.getTurn(turnId)?.status).toBe('error');
+      expect(core.journal.getTurn(turnId)?.execution?.queuedInputInterrupted).toBe(true);
       expect(core.threads.resumes.planned(threadId)).toBe(false);
       expect(core.journal.listTurns(threadId)).toHaveLength(1);
     } else {
@@ -215,7 +219,7 @@ test.each([
     const answer = current.messages.at(-1)?.parts[0];
     expect(answer).toMatchObject({ type: 'text', text: expect.stringContaining('[parallel-tools]') });
   } else expect(current.sessionId).toBe(originalSession);
-  if (!holds) expect(countLogLines(fakeLog(), `loaded:${originalSession}`)).toBe(priorLoads + (reloads ? 1 : 0));
+  if (!holds) expect(countLogLines(fakeLog(), `loaded:${originalSession}`)).toBe(priorLoads + (reloads || capacityAfterCancel ? 1 : 0));
   if (rediscoverModel) expect(current.turns.at(-1)?.execution?.model).toBe('fake-fast');
   if (switchesBack) expect(countLogLines(fakeLog(), 'account catch-up')).toBe(1);
   if (carriesStopped) expect(countLogLines(fakeLog(), 'manual request catch-up')).toBe(reloads ? 2 : 1);
@@ -231,7 +235,7 @@ test.each([
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(refusesInput ? ['parallel-tools-follow-up'] : []);
 }, 20_000);
 
-test.each(['restart', 'manual recovery'])('ACP %s during a queued follow-up recovers both requests on the loaded session', async method => {
+test.each(['restart', 'manual recovery', 'manual recovery with an agent update'])('ACP %s during a queued follow-up recovers both requests on the loaded session', async method => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const first = harness!;
   const earlierRequest = 'Earlier request from before the follow-up';
@@ -251,6 +255,7 @@ test.each(['restart', 'manual recovery'])('ACP %s during a queued follow-up reco
   expect(countLogLines(fakeLog(), 'initialize')).toBe(1);
   expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(0);
 
+  const updateDuringResume = method === 'manual recovery with an agent update';
   let next = first;
   if (method === 'restart') {
     await closeForHandoff(first);
@@ -261,14 +266,23 @@ test.each(['restart', 'manual recovery'])('ACP %s during a queued follow-up reco
     const stopped = first.core.journal.getTurn(followUp.id)!;
     expect(stopped.status).toBe('stopped');
     first.core.threads.resumes.offer(stopped, { kind: 'interrupted' });
+    const hold = `${logFile}.hold-prompt`;
+    if (updateDuringResume) writeFileSync(hold, 'ready');
     await client.call('turns.resume', { threadId, turnId: stopped.id });
+    if (updateDuringResume) {
+      await waitFor(() => countLogLines(fakeLog(), 'waiting for cancel') === 2);
+      rmSync(hold);
+      const { core } = first;
+      spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
+      expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
+    }
   }
   try {
     const { journal } = next.core;
     await waitFor(() => journal.listTurns(threadId)[2]?.status === 'done');
     const resumed = journal.listTurns(threadId)[2]!;
     expect(resumed.execution?.operation).toBe('resume');
-    expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(1);
+    expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(updateDuringResume ? 2 : 1);
     const response = [...journal.walkTurnMessages(threadId, resumed.id)].filter(message => message.role === 'assistant')
       .flatMap(message => message.parts).map(part => part.type === 'text' ? part.text : '').join('');
     expect(response.split(earlierRequest)).toHaveLength(2);
