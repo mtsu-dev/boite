@@ -130,13 +130,20 @@ function folderView(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices,
     || (discovers && (files.listsAny(join(agentDir, 'extensions')) || listed(global['extensions']) || listed(global['packages'])));
   // For a folder with settings or extensions of its own, pi first asks the extensions it loads before trusting any
   // folder (the account's and the profile's): a `project_trust` hook decides over `trust.json` (`resolveProjectTrusted`).
-  const hooked = launch.trust === null && (extended || files.exists(join(own, 'settings.json'))) && extensions;
+  const asks = launch.trust === null && extensions;
+  const hooked = asks && (extended || files.exists(join(own, 'settings.json')));
   const trust = launch.trust ?? trusted(files, agentDir, folder, global);
   const project = trust ? settingsAt(files, join(own, 'settings.json')) : null;
-  // A trusted folder's own extensions load only there (`DefaultPackageManager.resolve`). A file reached through a link
-  // is pi's to read: the view predicts only link-free paths.
-  const linked = [join(own, 'settings.json'), join(own, 'extensions'), join(agentDir, 'settings.json'), join(agentDir, 'trust.json'), join(agentDir, 'extensions')]
-    .some(path => files.linked(path));
+  // A file reached through a link is pi's to read, since the view predicts only link-free paths: each counts where
+  // this launch lets pi read it, and the account's settings always.
+  const linked = [
+    join(agentDir, 'settings.json'),
+    ...launch.trust === null ? [join(agentDir, 'trust.json')] : [],
+    ...discovers && launch.extensions !== true ? [join(agentDir, 'extensions')] : [],
+    ...asks || trust ? [join(own, 'settings.json')] : [],
+    ...asks || (trust && discovers) ? [join(own, 'extensions')] : [],
+  ].some(path => files.linked(path));
+  // A trusted folder's own extensions load only there (`DefaultPackageManager.resolve`).
   const undecided = linked || hooked || (trust && discovers && (extended || listed(project?.['extensions']) || listed(project?.['packages'])));
   return { global, project, undecided, extensions };
 }

@@ -453,9 +453,9 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   whatever the thread's last session was on. When
   the folder changes nothing, the probe's `default` answers; when
   only pi can name the model (a glob or fuzzy pattern, a model missing from the
-  catalog, a settings, `trust.json` or extensions path reached through a
-  symbolic link or a junction inside the project, which Boite does not
-  resolve, a trusted folder with extensions in `.pi/extensions/` or listed by its
+  catalog, a settings, `trust.json` or extensions path the launch lets pi read
+  whose way crosses a symbolic link or a junction inside the project, which
+  Boite does not resolve, a trusted folder with extensions in `.pi/extensions/` or listed by its
   `extensions` or `packages`, which load only there and may register the model
   the settings name or a resumed session's pair over the catalog's), Boite lets
   the image through, for a resumed session as for a new one, and for a named

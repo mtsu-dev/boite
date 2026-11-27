@@ -772,9 +772,12 @@ test('the restored view reads every link-free path as the restore leaves it, and
     await writeFile(join(root, '.pi', 'pi.json'), 'decoy');
     await writeFile(join(root, 'gone', 'f'), 'made by a turn');
     await writeFile(join(root, 'ext'), 'a file where a folder was');
-    // Links no turn changed: to a restored file, and to a folder.
-    await symlink(join('..', 'config', 'pi.json'), join(root, '.pi', 'settings.json'), 'file');
-    await symlink(join('..', 'config', 'sub'), join(root, '.pi', 'knot'), dirLink);
+    // Links no turn changed: to a restored file, and to a folder. A file link needs privileges on Windows, which
+    // makes only junctions without them.
+    const fileLinks = process.platform !== 'win32';
+    if (fileLinks) await symlink(join('..', 'config', 'pi.json'), join(root, '.pi', 'settings.json'), 'file');
+    // A junction takes an absolute target.
+    await symlink(join(root, 'config', 'sub'), join(root, '.pi', 'knot'), dirLink);
     // A link a turn made to a folder outside, which the restore deletes.
     await symlink(join(base, 'outside'), join(root, 'lnk'), dirLink);
     const after = async (name: string) => ({ name, after: await now(name) });
@@ -785,12 +788,14 @@ test('the restored view reads every link-free path as the restore leaves it, and
       { ...await after('ext'), before: undefined },
       { name: 'ext/a.ts', before: await file('export {};'), after: undefined },
       // A folder a turn deleted with the link in it.
-      { name: '.pj/settings.json', before: link(join('..', 'config', 'pi.json')), after: undefined },
+      ...fileLinks ? [{ name: '.pj/settings.json', before: link(join('..', 'config', 'pi.json')), after: undefined }] : [],
     ];
     // The thread's other spelling of the folder, and a way into it from outside.
     const spelled = join(base, 'spelled');
     await symlink(root, spelled, dirLink);
     await symlink(root, join(base, 'door'), dirLink);
+    // A way from outside through a link the restore deletes, to a folder outside.
+    await symlink(join(root, 'lnk'), join(base, 'far'), dirLink);
     const probes = ['.pi/settings.json', '.pi/knot', '.pi/knot/x', '.pi/pi.json', 'lnk', 'lnk/settings.json', '.pj/settings.json', '.pj',
       'ext', 'ext/a.ts', 'keep', 'gone', 'gone/f', 'config/pi.json', 'config/sub', 'missing', 'missing/deeper'];
     const look = (view: typeof DISK_VIEW, top: string) => probes.map(name => {
@@ -800,12 +805,23 @@ test('the restored view reads every link-free path as the restore leaves it, and
     const preview = restoredView(root, objects, changes, spelled);
     const predicted = look(preview, root);
     const predictedSpelled = look(preview, spelled);
-    expect(predicted).toEqual(expect.arrayContaining(['.pi/settings.json: linked', '.pi/knot/x: linked', '.pj/settings.json: linked',
-      '.pj: true true null', 'lnk: false false null', 'ext/a.ts: true false export {};', 'config/pi.json: true false plain', 'gone: false false null']));
+    expect(predicted).toEqual(expect.arrayContaining(['.pi/knot/x: linked', 'lnk: false false null', 'ext/a.ts: true false export {};',
+      'config/pi.json: true false plain', 'gone: false false null',
+      ...fileLinks ? ['.pi/settings.json: linked', '.pj/settings.json: linked', '.pj: true true null'] : []]));
     expect(predictedSpelled).toEqual(predicted);
     // Outside the workspace, the disk; a way into it from outside is a link.
     expect(preview.read(join(base, 'outside', 'settings.json'))).toBe('outside');
     expect(preview.linked(join(base, 'door', 'config', 'pi.json'))).toBe(true);
+    expect(preview.linked(join(base, 'far', 'settings.json'))).toBe(true);
+    // On a volume that ignores case, another case of a name reads what the restore writes there.
+    const caseless = root.toUpperCase() !== root && await stat(root.toUpperCase()).then(() => true, () => false);
+    if (caseless) expect(preview.read(join(root, 'CONFIG', 'PI.JSON'))).toBe('plain');
+    // The restore never removes the root, even when it empties it.
+    const lone = join(base, 'lone');
+    await mkdir(lone);
+    await writeFile(join(lone, 'only'), 'made by a turn');
+    const emptied = restoredView(lone, objects, [{ name: 'only', before: undefined, after: { hash: sha('made by a turn'), mode: 0o644 } }]);
+    expect([emptied.exists(lone), emptied.listsAny(lone), emptied.exists(join(lone, 'only'))]).toEqual([true, false, false]);
     // A cwd at a drive's root maps every path below it.
     expect(restoredView(root, objects, changes, resolve('/')).read(resolve('/config/pi.json'))).toBe('plain');
     await restoreFiles(root, objects, changes);

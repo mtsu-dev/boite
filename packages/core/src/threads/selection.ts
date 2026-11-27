@@ -66,7 +66,7 @@ export function piCatalogOf(core: Core, provider: ProviderDescriptor, accountId:
  * Image admission also uses pi's saved list before the first probe after a restart.
  */
 export function imageInputModel(
-  core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId, cwd, runsIn = id, files = cwd ? diskView(cwd) : DISK_VIEW }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId' | 'cwd'>> & {
+  core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId, cwd, runsIn = id, files }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId' | 'cwd'>> & {
     /** The thread the run belongs to, when `id` names no session to resume (another account's goal). */
     runsIn?: string;
     /** The folder's files as pi will find them: the disk, or the disk as an edit's restore leaves it. */
@@ -94,9 +94,11 @@ export function imageInputModel(
   // models, so neither its model nor its catalog tells this folder's, for a named model, a resumed session or a new one.
   const env = account ? piLaunchEnv(core.accounts.profileEnv(account, provider)) : null;
   if (env && piAgentDirFollowsCwd(env)) return undefined;
+  // The folder's files, read for pi only: the disk as an edit or a send finds it, links left to pi.
+  const view = env && cwd ? files ?? diskView(cwd) : DISK_VIEW;
   // The folder's own extensions may register any pair over the catalog's, a named one or the profile's included, for
   // a resumed session as for a new one.
-  if (env && cwd && folderExtends(piAgentDir(env, cwd), cwd, launch, files)) return undefined;
+  if (env && cwd && folderExtends(piAgentDir(env, cwd), cwd, launch, view)) return undefined;
   // A `--model` in the profile beats the session, as it does in pi.
   if (pi && wanted === AGENT_OWN_MODEL && cwd && !launch.model) {
     // A protected run starts a new pi session with `--no-approve` and settings of its own: pi alone knows that model.
@@ -119,7 +121,7 @@ export function imageInputModel(
     // A new session starts where the folder's own pi settings say, which the account's probe, run elsewhere, cannot
     // see. When only pi can name that model, it handles the images itself. Boite's own `default` entry names no model.
     const catalog = (probed ?? saved?.models ?? null)?.filter(entry => entry.id !== AGENT_OWN_MODEL) ?? null;
-    const start = env ? folderStartModel(piAgentDir(env, cwd), cwd, catalog, launch, files) : 'account';
+    const start = env ? folderStartModel(piAgentDir(env, cwd), cwd, catalog, launch, view) : 'account';
     if (start === null) return undefined;
     if (start !== 'account') return listed(start);
   }

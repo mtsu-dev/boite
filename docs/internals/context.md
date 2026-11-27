@@ -664,9 +664,14 @@ restored files will leave them. The check reads those files from the
 checkpoint (`restoredView` in `threads/checkpoint-files.ts`), under the
 thread's own spelling of its folder, so a refusal leaves the folder as it was,
 its empty directories and hard links included. The view follows no link: a
-pi settings or extensions path that crosses a symbolic link or a junction, on
-disk or restored, leaves the model to pi, and the image goes through, at an
-edit as at a send (`diskView`).
+pi settings, trust or extensions path the launch lets pi read that crosses a
+symbolic link or a junction in the folder, on disk or restored, or enters the
+folder from outside through one, leaves the model to pi, at an edit as at a
+send (`diskView`). On a volume that ignores case, any case of a name reads the
+file the restore writes. Wherever only pi can tell the model, the edit goes
+through; if pi then runs a text-only model, the driver fails the turn before
+the prompt with the same sentence, and the edited prompt stays in the
+conversation to send again without its images.
 While editing, the composer leaves that answer to the core instead of the
 current session's. The journal keeps a `thread.rewound`
 event naming every removed message and turn. The projection drops those

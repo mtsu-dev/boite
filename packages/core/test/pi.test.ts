@@ -12,6 +12,7 @@ import { setPiReadDeadlineForTests, setPiStopDeadlineForTests } from '../src/dri
 import { piArgs } from '../src/drivers/pi/args.ts';
 import { piProfileArgs, piProfilePins } from '../src/drivers/pi/models.ts';
 import { folderExtends, folderStartModel, piLaunchChoices } from '../src/drivers/pi/start-model.ts';
+import { diskView } from '../src/threads/checkpoint-files.ts';
 import { forgetSavedCatalog, readSavedCatalog } from '../src/providers/saved-catalogs.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
 import * as selection from '../src/threads/selection.ts';
@@ -250,6 +251,14 @@ test('pi leaves the start model to pi where the folder\'s extensions or an exten
     mkdirSync(join(cwd, '.pi', 'extensions'), { recursive: true });
     writeFileSync(join(cwd, '.pi', 'extensions', 'vision.ts'), 'export default () => {};');
     expect(folderExtends(agentDir, cwd, { ...piLaunchChoices(['-ne']), trust: true })).toBe(false);
+    // Through a link, the folder's extensions are pi's to read only where the launch lets pi load them.
+    rmSync(join(cwd, '.pi', 'extensions'), { recursive: true });
+    mkdirSync(join(root, 'shared-extensions'));
+    writeFileSync(join(root, 'shared-extensions', 'vision.ts'), 'export default () => {};');
+    symlinkSync(join(root, 'shared-extensions'), join(cwd, '.pi', 'extensions'), process.platform === 'win32' ? 'junction' : 'dir');
+    expect(folderExtends(agentDir, cwd, { ...piLaunchChoices(['-ne']), trust: false }, diskView(cwd))).toBe(false);
+    expect(folderExtends(agentDir, cwd, { ...piLaunchChoices(['-ne']), trust: true }, diskView(cwd))).toBe(false);
+    expect(folderExtends(agentDir, cwd, { scope: null, trust: true }, diskView(cwd))).toBe(true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1072,7 +1081,7 @@ test('an edit with images reads the folder settings its cut would restore, under
   expect(existsSync(join(cwd, '.pi', 'extensions'))).toBe(false);
 });
 
-test('a pi folder whose settings are a link leaves the model to pi, at a send and at an edit alike', async () => {
+test('a pi folder reached through a link leaves the model to pi, at a send and at an edit alike, and pi refuses the image', async () => {
   const { client, threadId } = await startThread();
   const { cwd, accountId } = harness!.core.threads.require(threadId);
   await client.call('providers.probe', { providerId: 'pi-fake', accountId });
@@ -1085,16 +1094,28 @@ test('a pi folder whose settings are a link leaves the model to pi, at a send an
   // Written in place, the text-only model is Boite's to name before the first turn.
   writeFileSync(join(cwd, '.pi', 'settings.json'), plain);
   expect((await client.call('threads.capabilities', { threadId })).images.supported).toBe(false);
-  // Through a link, the same settings are pi's to read: the view Boite predicts an edit with follows no link.
-  rmSync(join(cwd, '.pi', 'settings.json'));
+  // Through a link, the same settings are pi's to read: the view Boite predicts an edit with follows no link. A
+  // directory link, which Windows makes as a junction without privileges.
+  rmSync(join(cwd, '.pi'), { recursive: true });
   mkdirSync(join(cwd, 'config'));
-  writeFileSync(join(cwd, 'config', 'pi.json'), plain);
-  symlinkSync(join('..', 'config', 'pi.json'), join(cwd, '.pi', 'settings.json'), 'file');
+  writeFileSync(join(cwd, 'config', 'settings.json'), plain);
+  symlinkSync(join(cwd, 'config'), join(cwd, '.pi'), process.platform === 'win32' ? 'junction' : 'dir');
   expect((await client.call('threads.capabilities', { threadId })).images.supported).toBe(true);
   expect((await (await startTurn(client, threadId, 'Keep the amber release')).finished).status).toBe('done');
   const [first] = (await client.call('threads.get', { threadId })).messages.filter(message => message.role === 'user');
   await client.call('threads.rewind', { threadId, messageId: first!.id, images: true });
   expect((await client.call('threads.get', { threadId })).messages.some(message => message.id === first!.id)).toBe(false);
+  // pi starts on the text-only model and the driver fails the turn before the prompt with admission's sentence; the
+  // edited prompt stays in the conversation, to send again without its image.
+  process.env['PI_FAKE_CURRENT'] = 'plain';
+  const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20000);
+  const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+  await client.call('turns.start', { threadId, prompt: 'Read this instead', attachments: [image] });
+  expect((await finished).error).toContain('Fake Plain takes no images: send the prompt without them');
+  expect(fakeLog()).not.toContain('image image/png');
+  const prompts = (await client.call('threads.get', { threadId })).messages.filter(message => message.role === 'user');
+  expect(JSON.stringify(prompts.map(message => message.parts))).toContain('Read this instead');
+  expect((await (await startTurn(client, threadId, 'Read this instead')).finished).status).toBe('done');
 });
 
 test('pi takes a thinking level while its turn runs', async () => {
