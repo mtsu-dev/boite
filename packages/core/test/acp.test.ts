@@ -15,6 +15,7 @@ import { toolOutputText } from '../src/drivers/acp/turn.ts';
 import { sessionNotificationOf } from '../src/drivers/acp/updates.ts';
 import { stderrLines } from '../src/drivers/lines.ts';
 import { forgetProbes, getDriver, setDriver } from '../src/drivers/index.ts';
+import * as threadCwd from '../src/threads/cwd.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
@@ -208,6 +209,48 @@ test.each([
   expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || refusesInput ? 0 : 1);
   expect(current.messages.filter(message => message.role === 'user')).toHaveLength(priorTurns + (refusesInput ? 1 : 2));
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(refusesInput ? ['parallel-tools-follow-up'] : []);
+}, 20_000);
+
+test.each(['another tool finishes', 'the user sends now'])('ACP delivers queued input when %s during a working-folder check', async action => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const sendNow = action === 'the user sends now';
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: sendNow ? '[parallel-tools]' : '[parallel-tools] [third-tool]' });
+  const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'third-tool-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
+  expect(accepted).toBe(true);
+  const folder = Promise.withResolvers<boolean>();
+  const nextFolder = Promise.withResolvers<boolean>();
+  const check = spyOn(threadCwd, 'folderPresent').mockImplementationOnce(() => folder.promise);
+  if (!sendNow) check.mockImplementationOnce(() => nextFolder.promise);
+  try {
+    const first = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+    writeFileSync(`${logFile}.first`, 'ready');
+    await first;
+    writeFileSync(`${logFile}.second`, 'ready');
+    await waitFor(() => check.mock.calls.length === 1);
+    if (sendNow) {
+      const record = core.composer.storage.get('inputs', threadId);
+      const forced = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision, value: record.value, sendNow: true });
+      expect(forced.accepted).toBe(true);
+    } else {
+      const completed = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+      writeFileSync(`${logFile}.third`, 'ready');
+      await completed;
+      await waitFor(() => check.mock.calls.length === 2);
+      expect(fakeLog()).not.toContain('session/cancel');
+      nextFolder.resolve(true);
+    }
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
+    folder.resolve(true);
+    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['stopped', 'done']);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
+  } finally {
+    folder.resolve(true);
+    nextFolder.resolve(true);
+    check.mockRestore();
+  }
 }, 20_000);
 
 test('ACP named task calls reach the native team without exposing the side conversation', async () => {

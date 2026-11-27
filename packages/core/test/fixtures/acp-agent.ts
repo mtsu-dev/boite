@@ -458,6 +458,13 @@ const app = agent({ name: 'acp-fake' })
             ...(detached && id === 'second' ? { title: 'Parser review' } : {}),
           });
         }
+        if (instructions.includes('[third-tool]')) {
+          while (!existsSync(`${process.env['ACP_FAKE_LOG']}.third`)) {
+            if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+          }
+          await send({ sessionUpdate: 'tool_call', toolCallId: 'third', title: 'third', status: 'in_progress' });
+          await send({ sessionUpdate: 'tool_call_update', toolCallId: 'third', status: 'completed' });
+        }
         if (detached || instructions.includes('[finish-on-gate]')) {
           while (!existsSync(`${process.env['ACP_FAKE_LOG']}.end`)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };

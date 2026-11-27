@@ -17,6 +17,10 @@ import { ensureThreadCwd, folderPresent } from './threads/cwd.ts';
 
 const choiceOf = (thread: ThreadSummary): ComposerChoice => ({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, permissionMode: thread.permissionMode });
 const sameChoice = (a: ComposerChoice, b: ComposerChoice): boolean => a.providerId === b.providerId && a.accountId === b.accountId && a.model === b.model && a.effort === b.effort && (a.speed ?? null) === (b.speed ?? null);
+type ToolBoundary = RpcEvents['turn.toolCompleted'] & {
+  fresh: boolean;
+  checkedFolder?: { handle: TurnHandle; cwd: string; revision: number };
+};
 
 /** Durable owner outbox. No browser or subscription participates in execution. */
 export class Composer {
@@ -27,7 +31,7 @@ export class Composer {
   readonly #pending = new Map<string, Pick<ComposerRecord, 'section' | 'id'>>();
   readonly #dirty = new Set<string>();
   readonly #captured = new Map<string, ComposerQueuedPrompt[]>();
-  readonly #boundaries = new Map<string, RpcEvents['turn.toolCompleted'] & { fresh: boolean }>();
+  readonly #boundaries = new Map<string, ToolBoundary>();
   readonly #forced = new Map<string, string>();
   #stopWaiting!: () => void;
   readonly #stopped = new Promise<null>(resolve => { this.#stopWaiting = () => resolve(null); });
@@ -44,7 +48,7 @@ export class Composer {
         if (!this.storage.queued.has(recordKey('inputs', boundary.threadId))) return;
         this.#boundaries.set(boundary.threadId, boundary);
         this.#schedule([{ section: 'inputs', id: boundary.threadId }]);
-        // A later wake may still steer natively, but only this completion can stop a prompt.
+        // A later wake can steer natively. Only this completion can initiate the folder check for cancellation.
         queueMicrotask(() => { boundary.fresh = false; });
       } else if (['turn.finished', 'thread.updated', 'permission.resolved', 'question.answered'].includes(name)) {
         const thread = payload as { threadId?: string; id?: string };
@@ -243,8 +247,10 @@ export class Composer {
   async #pump(section: ComposerRecord['section'], recordId: string): Promise<void> {
     const key = recordKey(section, recordId);
     const id = section === 'inputs' ? composerInputThreadId(recordId) : recordId;
-    let checkedFolder: { boundary: RpcEvents['turn.toolCompleted']; handle: TurnHandle; cwd: string; revision: number } | undefined;
     while (!this.#closed && !this.#core.stopping) {
+      const boundary = section === 'inputs' ? this.#boundaries.get(recordId) : undefined;
+      const checkedFolder = boundary?.checkedFolder;
+      if (boundary && checkedFolder) delete boundary.checkedFolder;
       const record = this.storage.get(section, recordId), value = record.value;
       if (!value || !value.input.queued.length) { this.storage.queued.delete(key); if (section === 'inputs') { this.#boundaries.delete(recordId); this.#forced.delete(recordId); } return; }
       if (value.input.paused) return;
@@ -266,7 +272,6 @@ export class Composer {
         const thread = this.#core.journal.getThread(id);
         if (!thread || thread.archived || (thread.projectId && this.#core.projects.require(thread.projectId).archived)) return;
         if (this.#core.threads.listPermissions(id).length || this.#core.threads.listQuestions(id).some(question => !question.async)) return;
-        const boundary = this.#boundaries.get(recordId);
         const followsThread = item.id.startsWith('cli_');
         const choice = followsThread ? undefined : item.choice;
         if (!followsThread && !choice) throw refused('No agent selection was saved for this queued prompt. Choose an agent and enqueue it again.');
@@ -288,18 +293,22 @@ export class Composer {
         if (active && (!turn || boundary?.turnId !== turn.id || boundary.boundary === item.afterBoundary || item.request || isComposerActivity(item.text)
           || !choice || !sameChoice(choice, choiceOf({ ...thread, ...turn.execution })))) return;
         const steeringReason = turn ? userSteeringUnavailable(this.#core, this.#core.threads, id, turn) : null;
-        const handle = turn && boundary && (boundary.fresh || checkedFolder?.boundary === boundary)
+        const handle = turn && boundary && (boundary.fresh || checkedFolder)
           && steeringReason === 'unsupported' && this.#canCancelForQueuedInput(turn)
           ? runner.handles.get(id) : undefined;
         if (steeringReason !== null && !handle?.cancelForQueuedInput) return;
-        if (boundary && handle?.cancelForQueuedInput && !(checkedFolder?.boundary === boundary && checkedFolder.handle === handle
-          && checkedFolder.cwd === thread.cwd && checkedFolder.revision === record.revision)) {
-          if (!boundary.fresh) return;
-          // Check shares asynchronously. The next pass rechecks the turn and queue before cancelling.
-          this.#captured.delete(key);
-          if (!(await Promise.race([this.#stopped, folderPresent(thread.cwd)]))) return;
-          checkedFolder = { boundary, handle, cwd: thread.cwd, revision: record.revision };
-          continue;
+        if (boundary && handle?.cancelForQueuedInput) {
+          if (checkedFolder === undefined) {
+            const check = { handle, cwd: thread.cwd, revision: record.revision };
+            // A slow share must leave the pump free to handle newer tools and Send now.
+            void folderPresent(check.cwd).then(present => {
+              if (!present || this.#boundaries.get(recordId) !== boundary) return;
+              boundary.checkedFolder = check;
+              this.#schedule([{ section, id: recordId }]);
+            });
+            return;
+          }
+          if (checkedFolder.handle !== handle || checkedFolder.cwd !== thread.cwd || checkedFolder.revision !== record.revision) return;
         }
         const batch = composerBatch(value.input.queued, this.storage);
         const attachments = batch.attachments;
