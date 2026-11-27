@@ -1867,7 +1867,8 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   fails the turn and asks to refresh the models list (its models changed, or
   its provider is no longer signed in); a title or side question goes to pi's
   own model instead, even when the profile pins that provider, since pi holds
-  it. pi reads its models once, at
+  it, but only when pi lists that model: a profile whose `--model` names the
+  same id starts pi on the same custom model, and the request fails. pi reads its models once, at
   start: a pair the catalog found since (a `models.json` edited after the
   launch) is not in the running process's listing, so a new process opens the
   same session on it with `--provider` once the old one has exited (pi runs its

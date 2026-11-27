@@ -70,7 +70,7 @@ let thinkingLevel = (() => {
   // As pi's parser: the last valid `--thinking` value, a warning for any other.
   let level = 'medium';
   for (let i = 0; i < process.argv.length - 1; i++) {
-    if (process.argv[i] === '--append-system-prompt') i++;
+    if (process.argv[i] === '--append-system-prompt') { i++; continue; }
     if (process.argv[i] !== '--thinking') continue;
     const value = process.argv[++i]!;
     if (['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(value)) level = value;

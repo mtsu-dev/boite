@@ -2109,13 +2109,17 @@ describe('pi driver', () => {
     }
   });
 
-  test('a launch on an id pi no longer lists, which pi runs as a custom model of that id, fails the turn', async () => {
+  // A profile pinning the provider leaves pi's own model to another one of it, which answers a side question; one
+  // pinning the model itself starts pi on the same custom model again, which never gets the question.
+  test.each([
+    { pin: ['--provider', 'fake-b'], side: null },
+    { pin: ['--model', 'fake-b/plain'], side: 'pi does not list fake-b/plain' },
+  ])('a launch on an id pi no longer lists, which pi runs as a custom model of that id, fails the turn (profile $pin)', async ({ pin, side }) => {
     const client = await startCore();
     const { projectId, accountId } = await piAccount(client);
-    // The profile pins the provider: pi's own model is another one of it, which still answers a side question.
     const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
     const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
-    for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--provider', 'fake-b');
+    for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push(...pin);
     writeFileSync(descriptorFile, JSON.stringify(descriptor));
     expect((await client.call('providers.reload', {})).rejected).toEqual([]);
     await client.call('providers.probe', { providerId: 'pi-fake', accountId });
@@ -2129,8 +2133,10 @@ describe('pi driver', () => {
       const before = shots().length;
       const answered = client.next('thread.btw', event => event.requestId === 'side_custom');
       await client.call('threads.btw', { threadId, question: 'What did we add?', requestId: 'side_custom' });
-      expect((await answered).error).toBeNull();
-      expect(shots().slice(before).map(args => args.includes('--model'))).toEqual([true, false]);
+      const error = (await answered).error;
+      if (side === null) expect(error).toBeNull();
+      else expect(error).toContain(side);
+      expect(shots().slice(before).map(args => args.includes('--model'))).toEqual([true, side !== null]);
       const { finished } = await startTurn(client, threadId, 'hello', 20000);
       expect((await finished).error).toContain('pi does not list fake-b/plain: its models changed or its provider is no longer signed in; refresh the models list');
       expect(fakeLog()).not.toContain('prompt on fake-b/plain');

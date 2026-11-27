@@ -12,8 +12,8 @@ import { releaseChild } from '../session-close.ts';
 import type { SideQuestionContext, TitleContext } from '../types.ts';
 import { agentEnv, contextArgs, imagesOf, sessionDirOf, textOf } from './mapping.ts';
 import { alignLaunchedPair, LaunchPairMissing, launchLevel } from './launch-pair.ts';
-import { piCatalogPair, piModelArgs, piProfilePins, piProviderOf } from './models.ts';
-import { AGENT_OWN_MODEL, STDERR_MAX } from './protocol.ts';
+import { piCatalogPair, piListsPair, piModelArgs, piProfilePins, piProviderOf } from './models.ts';
+import { AGENT_OWN_MODEL, STDERR_MAX, type PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
 import { copySession } from './session-files.ts';
 
@@ -34,7 +34,7 @@ const OWNED_SWITCHES = new Set([
  */
 const READ_ONLY_TOOLS = 'read,grep,find,ls';
 
-async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, model: string | null, catalog: readonly ModelInfo[] | null, signal: AbortSignal, sessionFile?: string): Promise<string> {
+async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, model: string | null, catalog: readonly ModelInfo[] | null, signal: AbortSignal, sessionFile?: string, refused?: ModelRefused): Promise<string> {
   signal.throwIfAborted();
   const profile = profileFor(ctx.provider);
   const launch = resolveLaunch(profile);
@@ -90,6 +90,12 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
       if (pair !== undefined) {
         await alignLaunchedPair(peer, dataOf(await peer.command('get_state', {}, { signal })), pair, launchLevel(args), { signal })
           .catch((missing: unknown) => { throw missing instanceof LaunchPairMissing ? new ModelRefused(missing.message, true) : missing; });
+      } else if (refused !== undefined) {
+        // The fallback after a pair pi did not list: a profile's own `--model` may name that same id, which pi runs
+        // as a custom model again, so pi's own model answers only when pi lists it.
+        const loaded = dataOf(await peer.command('get_state', {}, { signal }))['model'] as PiModel | null | undefined;
+        const listed = dataOf(await peer.command('get_available_models', {}, { signal }))['models'];
+        if (loaded?.provider === undefined || loaded.id === undefined || !piListsPair(listed, { provider: loaded.provider, modelId: loaded.id })) throw refused;
       }
       await peer.command('prompt', { message: prompt, ...(images.length ? { images } : {}) }, { signal });
     } catch (failure) {
@@ -131,7 +137,7 @@ class ModelRefused extends Error {
  * A one-shot runs without extensions, so a provider one of them registers is unknown there: the request goes to pi's
  * own model instead, with the same restrictions, unless the profile's own `--model` or `--provider` started pi on that
  * provider (`piProfilePins`), where its own model is refused alike. A pair pi started without listing falls back even
- * then: pi holds its provider, and pi's own model may be another one of it.
+ * then: pi holds its provider, and pi's own model may be another one of it, which must be one pi lists.
  */
 async function askOn(ctx: TitleContext | SideQuestionContext, prompt: string, model: string | null, catalog: readonly ModelInfo[] | null, signal: AbortSignal, sessionFile?: string): Promise<string> {
   try {
@@ -140,7 +146,7 @@ async function askOn(ctx: TitleContext | SideQuestionContext, prompt: string, mo
     if (!(error instanceof ModelRefused) || model === null || model === AGENT_OWN_MODEL || signal.aborted) throw error;
     if (!error.unlisted && (piProviderOf(model, catalog) === '' || piProfilePins(profileFor(ctx.provider)?.launch?.args ?? [], model, catalog))) throw error;
     ctx.log('info', `pi one-shot: ${model} is not known without extensions, pi's own model answers`);
-    return await ask(ctx, prompt, null, catalog, signal, sessionFile);
+    return await ask(ctx, prompt, null, catalog, signal, sessionFile, error.unlisted ? error : undefined);
   }
 }
 
