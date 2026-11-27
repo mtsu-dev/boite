@@ -56,14 +56,19 @@ function askCore(store: Store, { ask }: ImagesRequest): Promise<boolean | null> 
 /**
  * Whether pi's own model on the open thread or draft reads images: what the core
  * answered for the current key, null while that answer is on its way, undefined
- * when no answer applies (another protocol or model, offline, or the core could not tell).
+ * when no answer applies (another protocol or model, offline, or the core could not tell),
+ * true for an edit, whose images the core checks before it cuts.
  */
 export class ResumedImages {
   #request = $derived.by(() => resumedImagesRequest(this.store(), this.thread(), this.choice()));
   #key = $derived(this.#request && this.#request !== 'first-turn' ? JSON.stringify(this.#request) : null);
   #read = $state<{ key: string; images: boolean | undefined } | null>(null);
 
-  constructor(private readonly store: () => Store, private readonly thread: () => Thread | null, private readonly choice: () => Choice | null) {
+  constructor(
+    private readonly store: () => Store, private readonly thread: () => Thread | null, private readonly choice: () => Choice | null,
+    /** Whether the box edits a sent message, which lands on the session its cut leaves, not the current one. */
+    private readonly editing: () => boolean = () => false,
+  ) {
     $effect(() => {
       const key = this.#key;
       if (key === null || this.store().connection !== 'ready') return;
@@ -77,6 +82,9 @@ export class ResumedImages {
   }
 
   get images(): boolean | null | undefined {
+    // The core checks the model an edit's cut leaves before it cuts (`threads.rewind` with `images`): the current
+    // session's answer neither blocks nor delays the edit.
+    if (this.editing() && this.#request !== null && this.store().connection === 'ready') return true;
     if (this.#request === 'first-turn') return this.store().connection === 'ready' ? true : undefined;
     const key = this.#key;
     if (key === null) return undefined;

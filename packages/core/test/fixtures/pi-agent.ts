@@ -419,6 +419,9 @@ async function runPrompt(text: string): Promise<void> {
     });
   }
 
+  // `[write <path>] <text>`: the turn writes that file under its folder, as an agent's edit would.
+  const write = /^\[write ([^\]]+)\] ([\s\S]*)$/.exec(text);
+  if (write) writeFileSync(join(process.cwd(), write[1]!), write[2]!);
   const history = saved.flatMap(entry => entry.message?.role === 'user' ? [entry.message.content] : []).join(', ');
   if (sideCopy) log(`side prompt ${JSON.stringify(text)}`);
   const answer = sideCopy || text === '[read-session]' ? `Native context: ${history}`

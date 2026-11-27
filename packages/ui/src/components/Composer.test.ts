@@ -2239,6 +2239,44 @@ test('a named pi model the catalog lists text-only asks the core, which reads th
   expect(asked.mock.calls.length).toBe(calls);
 });
 
+test('an edit on pi leaves a picture to the core, which reads the session its cut leaves', async () => {
+  await mountOnFake();
+  await openIdle('t-trace');
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  // The current session runs a text-only model; the one an edit leaves may read images.
+  const capabilities = store.threadCapabilities.bind(store);
+  vi.spyOn(store, 'threadCapabilities').mockImplementation(async (threadId) => {
+    const value = await capabilities(threadId);
+    return value && { ...value, images: { supported: false, available: false, reason: 'unsupported' } };
+  });
+  expect(await store.update('t-trace', { accountId: account.id, model: 'default' })).toBe(true);
+  await waitFor(() => store.openThread?.providerId === 'pi' && store.openThread.model === 'default');
+  await send('original request');
+  paste(pngFile());
+  await waitFor(() => store.error !== null);
+  expect(document.querySelector('[data-testid=composer-attachment]')).toBeNull();
+  store.error = null;
+
+  const client = store.client!;
+  const call = client.call.bind(client);
+  const rewinds: unknown[] = [];
+  vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
+    if (method === 'threads.rewind') rewinds.push(params);
+    return call(method, params);
+  });
+  const row = Array.from(document.querySelectorAll('[data-testid=message][data-role=user]')).find(row => row.querySelector('[data-testid=text-part]')?.textContent === 'original request')!;
+  row.querySelector<HTMLButtonElement>('[data-testid=message-edit]')!.click();
+  await waitFor(() => input().value === 'original request');
+  paste(pngFile());
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
+  expect(store.error).toBeNull();
+  expect(document.querySelector('[data-testid=composer-image-warning]')).toBeNull();
+  input().focus(); press('Enter');
+  await waitFor(() => rewinds.length === 1);
+  expect(rewinds[0]).toMatchObject({ threadId: 't-trace', images: true });
+});
+
 test('a pi draft on its own model asks the core, which reads the project folder', async ({ app: _app }) => {
   await openDraft();
   const account = store.accounts.find(entry => entry.providerId === 'pi')!;

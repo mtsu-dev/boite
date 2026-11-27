@@ -152,7 +152,7 @@
    * (`lib/question-reply.svelte.ts`). Editing a sent message takes precedence.
    */
   let reply = $derived(replyTarget(store));
-  const resumed = new ResumedImages(() => store, () => thread, () => choice);
+  const resumed = new ResumedImages(() => store, () => thread, () => choice, () => Boolean(composer?.editing));
   /** Files still being read into this prompt, or a picture pi's own model may refuse while the core reads it (`ResumedImages`): Send waits. */
   let loadingFiles = $derived(attachments.some(isLoading) || (resumed.images === null && attachments.some(item => item.kind === 'image')));
   let imageRefusal = $derived(imageRefusalOf(store, choice, reply !== null, resumed.images));

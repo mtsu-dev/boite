@@ -1024,6 +1024,34 @@ test('an edit with images is refused before the cut when the session it leaves r
   expect((await client.call('threads.rewind', { threadId, messageId: second!.id, images: true })).session).toBe('native');
 });
 
+test('an edit with images reads the folder settings its cut restores, and puts them back when it refuses', async () => {
+  const client = await startCore();
+  const { dataDir, accountId } = await piAccount(client);
+  // A folder beside the core's data, which file checkpoints can snapshot.
+  const cwd = join(dataDir, 'workspace');
+  mkdirSync(cwd);
+  const project = await client.call('projects.add', { path: cwd, name: 'workspace' });
+  const threadId = (await client.call('threads.create', { projectId: project.id, providerId: 'pi-fake', accountId })).id;
+  await client.call('threads.subscribe', { threadId });
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+  const agentDir = join(harness!.dataDir, 'pi-agent');
+  process.env['PI_CODING_AGENT_DIR'] = agentDir;
+  mkdirSync(join(cwd, '.pi'), { recursive: true });
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(join(cwd, '..'))]: true }));
+  const settings = join(cwd, '.pi', 'settings.json');
+  writeFileSync(settings, JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
+  // The turn moves the folder to a model that reads images; editing it restores the text-only one.
+  const reads = JSON.stringify({ defaultProvider: 'fake-a', defaultModel: 'smart' });
+  expect((await (await startTurn(client, threadId, `[write .pi/settings.json] ${reads}`)).finished).status).toBe('done');
+  expect(readFileSync(settings, 'utf8')).toBe(reads);
+  const [first] = (await client.call('threads.get', { threadId })).messages.filter(message => message.role === 'user');
+  expect((await rejection(client.call('threads.rewind', { threadId, messageId: first!.id, images: true }))).reason)
+    .toMatchObject({ rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } });
+  expect(readFileSync(settings, 'utf8')).toBe(reads);
+  expect((await client.call('threads.get', { threadId })).messages.some(message => message.id === first!.id)).toBe(true);
+});
+
 test('pi takes a thinking level while its turn runs', async () => {
   const client = await startCore({ warmProcessMinutes: 5 });
   const { projectId, accountId } = await piAccount(client);

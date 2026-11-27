@@ -2,8 +2,11 @@
 export const PI_VALUED = new Set(['--provider', '--model', '--api-key', '--system-prompt', '--append-system-prompt', '--name', '-n', '--session',
   '--session-id', '--fork', '--session-dir', '--models', '--tools', '-t', '--exclude-tools', '-xt', '--thinking', '--export',
   '--extension', '-e', '--skill', '--prompt-template', '--theme']);
-/** Its options that pick, place or drop the session, which Boite gives every launch itself. */
-export const PI_SESSION_OPTIONS = new Set(['--continue', '-c', '--resume', '-r', '--session', '--session-id', '--session-dir', '--fork', '--no-session']);
+/**
+ * Its options that pick or drop the session, which Boite gives every launch itself. `--session-dir` is not one: pi
+ * keeps its last value, and Boite's comes after the profile's.
+ */
+export const PI_SESSION_OPTIONS = new Set(['--continue', '-c', '--resume', '-r', '--session', '--session-id', '--fork', '--no-session']);
 /** Its options that take the next argument only when it does not start with `-`. */
 const OPTIONAL = new Set(['--mode', '--use-theme', '--tui-mode']);
 /** Its flags that take nothing; any other `--name` takes the next argument when it starts with neither `-` nor `@`. */

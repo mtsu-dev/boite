@@ -101,20 +101,6 @@ export class ThreadBranching {
           throw refused('the source thread changed while preparing its rewind; retry the edit', { threadId, expected: 'the unchanged source boundary' });
         }
       }
-      // The prompt that replaces the message carries images: the session the cut leaves reads them, as its send would
-      // check, or nothing is cut and no file restored. A pi session resumes on its model at the cut, a new one on the
-      // folder's, either of which can differ from the model the current session runs.
-      if (images) {
-        const provider = this.#core.providers.require(thread.providerId);
-        const sessionId = native ? native.sessionId
-          : kept === null || movedBeforeSetup !== null ? null : this.#resumable(thread, kept.turnId, thread.cwd)?.sessionId ?? null;
-        const blocker = imageAttachmentBlocker(provider, imageInputModel(this.#core, provider, { ...thread, sessionId }));
-        if (blocker) {
-          throw refused(`${blocker.name} takes no images: send the prompt without them`, {
-            threadId, field: 'images', providerId: provider.id, ...(blocker.modelId === undefined ? {} : { model: blocker.modelId }), expected: 'a prompt without images',
-          });
-        }
-      }
       const result = await this.#threads.codeCheckpoints.rewind(thread, removed.turnIds, messageId, files => {
       const current = this.#threads.require(threadId);
       if (current.archived || current.cwd !== thread.cwd || threadActive(current.status) || current.updatedAt !== thread.updatedAt
@@ -126,6 +112,20 @@ export class ThreadBranching {
         || JSON.stringify(this.#core.journal.getMessage(messageId)) !== JSON.stringify(message)
         || this.#core.journal.messageRowid(threadId, messageId) !== rowid) {
         throw refused('this thread changed while restoring files; retry the edit', { field: 'threadId', threadId, expected: 'the unchanged idle thread' });
+      }
+      // The prompt that replaces the message carries images: the session the cut leaves reads them, as its send would
+      // check, or nothing is cut and the restored files go back. A pi session resumes on its model at the cut, a new one
+      // on the folder's settings as the restored files leave them; either can differ from the current session's model.
+      if (images) {
+        const provider = this.#core.providers.require(thread.providerId);
+        const sessionId = native ? native.sessionId
+          : kept === null || movedBeforeSetup !== null ? null : this.#resumable(thread, kept.turnId, thread.cwd)?.sessionId ?? null;
+        const blocker = imageAttachmentBlocker(provider, imageInputModel(this.#core, provider, { ...thread, sessionId }));
+        if (blocker) {
+          throw refused(`${blocker.name} takes no images: send the prompt without them`, {
+            threadId, field: 'images', providerId: provider.id, ...(blocker.modelId === undefined ? {} : { model: blocker.modelId }), expected: 'a prompt without images',
+          });
+        }
       }
       // The thread moved after the kept turn: its checkpoint belongs to the old
       // folder, and the notes that told the agent go with the removed messages.
