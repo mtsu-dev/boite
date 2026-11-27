@@ -2032,6 +2032,22 @@ describe('pi driver', () => {
     expect(statuses).toEqual(['stopped']);
   }, 20000);
 
+  test('a launch pi resolved to another case of the id switches to the catalog\'s pair before the first prompt', async () => {
+    process.env['PI_FAKE_CASE'] = '1';
+    try {
+      const client = await startCore();
+      const { projectId, accountId } = await piAccount(client);
+      await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+      const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'case', model: 'fake-b/plain' });
+      await client.call('threads.subscribe', { threadId });
+      await runTurn(client, threadId, 'hello');
+      // pi started on `fake-b/Plain`, which reads images; the thread and image admission are on `fake-b/plain`.
+      expect(fakeLog()).toContain('model fake-b plain');
+    } finally {
+      delete process.env['PI_FAKE_CASE'];
+    }
+  });
+
   async function runTurn(client: CoreClient, threadId: string, prompt: string): Promise<void> {
     const { finished } = await startTurn(client, threadId, prompt, 20000);
     const done = await finished;

@@ -470,7 +470,8 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   the core reads the folder the draft's preparation made for a draft of that
   kind, asked again once it exists, and before then lets the image through to
   the first turn's admission, which reads that folder. A draft with no project
-  asks for the drafts once its preparation made them. The client drops that reservation when
+  asks for the drafts once its preparation made them, and before they exist
+  leaves the image to the first turn. The client drops that reservation when
   the core does, `DRAFT_PREPARATION_LIFETIME_MS` after asking for it, and asks
   again.
   Until that answer comes, a picture is held and Send waits for it, asked again
@@ -1845,7 +1846,10 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   start, since a provider id may hold a `/`. A refresh that puts another pair
   behind the same id moves the warm process to it the same way, unless pi
   already runs that pair (a process launched on the text before any probe),
-  where a switch would only reset pi's own level. pi reads its models once, at
+  where a switch would only reset pi's own level. pi matches `--model` without
+  regard to case, so a launch where two ids differ only by it may start on the
+  other one: its first turn then switches to the catalog's pair before the
+  prompt. pi reads its models once, at
   start: a pair the catalog found since (a `models.json` edited after the
   launch) is not in the running process's listing, so a new process opens the
   same session on it with `--provider` once the old one has exited (pi runs its

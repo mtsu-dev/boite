@@ -267,12 +267,17 @@ if (process.env['PI_FAKE_LITERAL']) {
 if (process.env['PI_FAKE_SHADOW']) MODELS.push({ ...MODELS[2]!, provider: 'fake-b', id: 'team/base', name: 'Fake Other Base' });
 // `fake-b/plain` gains images, as a `models.json` edited after a launch gives them.
 if (process.env['PI_FAKE_PLAIN_IMAGES']) MODELS[2]!.input = ['text', 'image'];
+// `PI_FAKE_CASE`: `fake-b/Plain` reads images and sits before `fake-b/plain`, and `--model` matches without regard to
+// case, as pi 1.6.1's resolver: `fake-b/plain` launches on `Plain`.
+const caseless = Boolean(process.env['PI_FAKE_CASE']);
+if (caseless) MODELS.splice(MODELS.findIndex(entry => entry.provider === 'fake-b' && entry.id === 'plain'), 0, { ...MODELS[0]!, provider: 'fake-b', id: 'Plain', name: 'Fake Plain Vision' });
 /** The model the session is on, which is the one pi reports as current. */
 const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0]!;
 /** What `get_state` reports: the pair `--provider`/`--model` named, else the longest provider spelling the text, as pi. */
 let running = (() => {
   const text = model.replace(/:[a-z]+$/, ''), provider = flag('--provider');
-  const spelled = MODELS.filter(entry => `${entry.provider}/${entry.id}` === text && (provider === '' || entry.provider === provider));
+  const same = (a: string, b: string) => caseless ? a.toLowerCase() === b.toLowerCase() : a === b;
+  const spelled = MODELS.filter(entry => same(`${entry.provider}/${entry.id}`, text) && (provider === '' || entry.provider === provider));
   return spelled.sort((a, b) => b.provider.length - a.provider.length)[0] ?? CURRENT;
 })();
 /** `--model provider/id[:level]` without its level, or the current model. */

@@ -16,7 +16,7 @@ type ImagesRequest = { ask: { thread: ThreadId } | { draft: RpcParams<'drafts.im
  * made, a new catalog for the account (the core reads the session's model in it,
  * and a name change can put another pi pair behind an id), a reconnection.
  */
-function resumedImagesRequest(store: Store, thread: Thread | null, choice: Choice | null): ImagesRequest | null {
+function resumedImagesRequest(store: Store, thread: Thread | null, choice: Choice | null): ImagesRequest | 'first-turn' | null {
   if (!choice || store.providerOf(choice.providerId)?.protocol !== 'pi') return null;
   const catalog = (providerId: string, accountId: string) => store.modelsOf(providerId, accountId).map(model => [model.id, model.name, model.images !== false, model.virtual === true]);
   const own = (model: string | null) => model === null || model === 'default';
@@ -27,7 +27,9 @@ function resumedImagesRequest(store: Store, thread: Thread | null, choice: Choic
   if (!thread) {
     // A draft with no project goes to the drafts, which its preparation may have made meanwhile.
     const projectId = store.draft?.projectId ?? (store.draftInDrafts ? store.draftsProject?.id : null);
-    if (!projectId || !asks(choice.model)) return null;
+    if (!asks(choice.model)) return null;
+    // Before the drafts exist no folder of theirs does: as the core does for one not made yet, the first turn decides.
+    if (!projectId) return store.draftInDrafts ? 'first-turn' : null;
     const worktree = store.draft?.worktree === true;
     const incognito = store.draft?.incognito === true && store.draftInDrafts;
     // A new worktree or drafts folder lacks the project's untracked files: the core reads it once this draft's preparation made it.
@@ -58,7 +60,7 @@ function askCore(store: Store, { ask }: ImagesRequest): Promise<boolean | null> 
  */
 export class ResumedImages {
   #request = $derived.by(() => resumedImagesRequest(this.store(), this.thread(), this.choice()));
-  #key = $derived(this.#request ? JSON.stringify(this.#request) : null);
+  #key = $derived(this.#request && this.#request !== 'first-turn' ? JSON.stringify(this.#request) : null);
   #read = $state<{ key: string; images: boolean | undefined } | null>(null);
 
   constructor(private readonly store: () => Store, private readonly thread: () => Thread | null, private readonly choice: () => Choice | null) {
@@ -75,6 +77,7 @@ export class ResumedImages {
   }
 
   get images(): boolean | null | undefined {
+    if (this.#request === 'first-turn') return this.store().connection === 'ready' ? true : undefined;
     const key = this.#key;
     if (key === null) return undefined;
     if (this.#read !== null && this.#read.key === key) return this.#read.images;

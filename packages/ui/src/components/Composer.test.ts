@@ -2297,8 +2297,19 @@ test('a draft started before the drafts exist asks about the folder its preparat
   store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'default' ? { ...model, images: false as const } : model) };
   const asked = vi.spyOn(store, 'draftImages').mockResolvedValue({ supported: true });
   store.draftChoice = { ...store.defaultChoice()!, providerId: 'pi', accountId: account.id, model: 'default', effort: null };
-  // The words start the preparation, which makes the drafts and a folder of this draft's own in them.
+  // No folder exists yet, so the first turn decides, as the core does: the picture is taken even by a core that
+  // prepares no draft, where nothing makes the drafts before Send.
+  const features = store.core!.features;
+  store.core = { ...store.core!, features: { ...features, draftPreparation: false } };
+  paste(pngFile());
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
   await type('Read the picture');
+  expect(store.error).toBeNull();
+  expect(document.querySelector('[data-testid=composer-image-warning]')).toBeNull();
+  expect(store.draftsProject).toBeNull();
+  expect(asked).not.toHaveBeenCalled();
+  // A preparation makes the drafts and a folder of this draft's own in them, which the core then reads.
+  store.core = { ...store.core!, features };
   await waitFor(() => store.draftsProject !== null && store.preparedFolder(store.draft) !== null);
   expect(store.draft!.projectId).toBeNull();
   await waitFor(() => asked.mock.calls.length > 0);
