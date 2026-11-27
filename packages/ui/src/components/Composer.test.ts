@@ -2170,6 +2170,18 @@ test('pi default on an open thread follows the model its session resumes on', as
   paste(pngFile());
   await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
   expect(store.error).toBeNull();
+  // A refresh that puts another pi pair behind the same id changes only its name: the core may read another model there.
+  sessionImages = false;
+  query<HTMLButtonElement>('[data-testid=composer-attachment-remove]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') === null);
+  const renamed = asked.mock.calls.length;
+  store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'pi-new' ? { ...model, name: 'Other / pi new model' } : model) };
+  await waitFor(() => asked.mock.calls.length > renamed);
+  await asked.mock.results.at(-1)!.value;
+  flushSync();
+  paste(pngFile());
+  await waitFor(() => store.error !== null);
+  expect(document.querySelector('[data-testid=composer-attachment]')).toBeNull();
 });
 
 test('pi default on an open thread before its first turn asks the core, which reads the folder', async () => {

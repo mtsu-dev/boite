@@ -71,8 +71,15 @@ export class PiSession {
   /** The old process `#reopen` waits on, which a stop or a close kills, and the wake that ends that wait. */
   #draining: { child: SpawnedChild | null; exited: Promise<number | null> | null; wake: () => void } | null = null;
   #markGone: () => void = () => {};
-  /** Settles once this session's last pi process has exited, or the stop deadline after its close passed. */
+  /** Settles once this session has closed and its pi processes and every one before them have exited. */
   readonly gone = new Promise<void>((resolve) => { this.#markGone = resolve; });
+  /**
+   * The exits this session's processes wait for: the thread's previous session's, then each process a reopen
+   * replaced. Unbounded: a process that outlives its stop still holds the session file.
+   */
+  #before: Promise<unknown>;
+  #wakeOpen: () => void = () => {};
+  readonly #dropped = new Promise<undefined>((resolve) => { this.#wakeOpen = () => resolve(undefined); });
   #peer: PiPeer | null = null;
   #starting: Promise<void> | null = null;
 
@@ -115,8 +122,10 @@ export class PiSession {
     /** The account's probed catalog, which names the pi pair behind a model at launch. */
     private readonly catalog: (ctx: SessionContext) => readonly ModelInfo[] | null = () => null,
     /** The thread's previous session's `gone`: its pi may still write the session file this one opens. */
-    private readonly previousGone: Promise<void> = Promise.resolve(),
-  ) {}
+    previousGone: Promise<void> = Promise.resolve(),
+  ) {
+    this.#before = previousGone;
+  }
 
   /**
    * Reusable only while the process is up and the turn asks for the very same
@@ -399,7 +408,7 @@ export class PiSession {
       this.#switching = true;
       let listed: unknown;
       try {
-        listed = dataOf(await peer.command('get_available_models'))['models'];
+        listed = dataOf(await peer.command('get_available_models', {}, { timeoutMs: readDeadlineMs }))['models'];
         if (named !== undefined && !piListsPair(listed, named)) return turn.isStopped ? peer : await this.#reopen(turn);
       } finally {
         this.#switching = false;
@@ -440,6 +449,7 @@ export class PiSession {
       // What a failure from here reports is the new process's exit, not the old one's, a stuck old one included.
       this.#exited = null; this.#processClosed = Promise.resolve(); this.#exitCode = null; this.#lastStderr = '';
       releaseChild(child);
+      if (exited !== null) this.#before = Promise.all([this.#before, exited]);
       const code = await new Promise<number | null | undefined | 'dropped'>((resolve) => {
         this.#draining = { child, exited, wake: () => resolve('dropped') };
         void exitWithin(exited, stopDeadlineMs, closed).then(resolve);
@@ -569,8 +579,10 @@ export class PiSession {
   }
 
   async #open(ctx: SessionContext): Promise<void> {
-    await this.previousGone;
+    // A stop meanwhile ends the wait at once; what it waited for still holds the next session (`#drop`).
+    const exited = await Promise.race([exitWithin(this.#before.then(() => 0), stopDeadlineMs), this.#dropped]);
     if (this.#ended) throw new Error('the pi session was closed before it started');
+    if (exited === undefined) throw new Error(`the thread's previous pi process did not exit within ${stopDeadlineMs / 1000} s: its session opens once it has`);
     const profile = profileFor(ctx.provider);
     const launch = resolveLaunch(profile);
     if (launch === null) {
@@ -734,9 +746,10 @@ export class PiSession {
     this.#peer = null;
     const child = this.#child ?? this.#draining?.child ?? null;
     this.#child = null;
-    // The thread's next session opens once this process has exited (`previousGone`): its shutdown hooks may still
-    // write the session file. Its exit, not its pipes' close, which a stuck grandchild may hold.
-    void exitWithin(this.#draining ? this.#draining.exited : this.#exited, stopDeadlineMs).then(() => this.#markGone());
+    // The thread's next session opens once this process and those it waited for have exited: their shutdown hooks may
+    // still write the session file. Their exit, not their pipes' close, which a stuck grandchild may hold.
+    void Promise.all([this.#before, this.#exited]).then(() => this.#markGone());
+    this.#wakeOpen();
     this.#draining?.wake();
     this.#draining = null;
     // The bash tool's children (a dev server started with `&`) are not pi's to

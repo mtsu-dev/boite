@@ -1828,11 +1828,14 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   launch) is not in the running process's listing, so a new process opens the
   same session on it with `--provider` once the old one has exited (pi runs its
   shutdown hooks first, and they may still write the session file), and only
-  pi itself stops, not what its tools left running. A stop or a close meanwhile
+  pi itself stops, not what its tools left running. The listing is a control
+  read, bounded like `get_state`. A stop or a close meanwhile
   drops the session as during a cold start, without waiting for that exit: the
-  old process goes down with the thread's processes, and the thread's next pi
-  process, whatever closed the last one, starts once it has exited or the stop
-  deadline passed. Input steered while that switch may happen waits for the
+  old process goes down with the thread's processes. The thread's next pi
+  process, whatever closed the last one, a session closed before it launched
+  pi included, starts only once every earlier process has exited; one still
+  running at the stop deadline fails the turn that would open it, and a stop
+  ends that wait at once. Input steered while that switch may happen waits for the
   next turn. Images steered into a running turn are checked
   against the list that turn was given, the one its process runs, not a list
   refreshed since.

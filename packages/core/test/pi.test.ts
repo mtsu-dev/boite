@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
@@ -404,6 +405,7 @@ afterEach(async () => {
   delete process.env['PI_FAKE_PLAIN_IMAGES'];
   delete process.env['PI_FAKE_SLOW_EXIT'];
   delete process.env['PI_FAKE_SLOW_STATE'];
+  delete process.env['PI_FAKE_SILENT_MODELS'];
   if (open !== null) await open.stop();
 });
 
@@ -1503,11 +1505,53 @@ describe('pi driver', () => {
     expect(fakeLog()).not.toContain(`exited ${other}`);
     await new Promise(resolve => setTimeout(resolve, 300));
     expect(argvLines()).toHaveLength(launched);
-    // The next turn still opens that session only once the old pi has exited.
-    await runTurn(client, stopped, 'third');
+    // A turn that waits for that exit stops at once too, and its session, closed before it launched pi, still holds
+    // the next one behind the old pi's exit.
+    const waiting = await startTurn(client, stopped, 'third', 20_000);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const stoppedAt = Date.now();
+    await client.call('turns.stop', { threadId: stopped });
+    expect((await waiting.finished).status).toBe('stopped');
+    expect(Date.now() - stoppedAt).toBeLessThan(500);
+    expect(fakeLog()).not.toContain(`exited ${other}`);
+    expect(argvLines()).toHaveLength(launched);
+    await runTurn(client, stopped, 'fourth');
     const after = fakeLog().split('\n');
     expect(after.indexOf(`exited ${other}`)).toBeGreaterThan(-1);
     expect(after.indexOf(`exited ${other}`)).toBeLessThan(after.findLastIndex(line => line.startsWith(`argv sessionId=${other} `)));
+  }, 20_000);
+
+  test('a reopen whose old pi outlives the deadline opens that session only once it has exited', async () => {
+    process.env['PI_FAKE_LITERAL'] = '1';
+    process.env['PI_FAKE_NO_TEAM'] = '1';
+    process.env['PI_FAKE_SLOW_EXIT'] = '2000';
+    setPiStopDeadlineForTests(400);
+    try {
+      const client = await startCore({ warmProcessMinutes: 5 });
+      const { projectId, accountId } = await piAccount(client);
+      await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+      const { id } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'stuck', model: 'fake-a/team/base' });
+      await client.call('threads.subscribe', { threadId: id });
+      await runTurn(client, id, 'first');
+      const session = harness!.core.threads.require(id).sessionId;
+      const first = fakeLog().split('\n').length - 1;
+      delete process.env['PI_FAKE_NO_TEAM'];
+      await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+      const reopened = await startTurn(client, id, 'second', 20_000);
+      expect(await reopened.finished).toMatchObject({ status: 'error', error: expect.stringContaining('did not exit') });
+      // The old pi still runs its shutdown hooks: a turn meanwhile does not open its session file beside it.
+      const meanwhile = await startTurn(client, id, 'third', 20_000);
+      const third = await meanwhile.finished;
+      if (third.status !== 'done') expect(third.error).toContain('did not exit');
+      await waitFor(() => fakeLog().includes(`exited ${session}`));
+      await runTurn(client, id, 'fourth');
+      const lines = fakeLog().split('\n');
+      const opened = lines.flatMap((line, index) => index >= first && line.startsWith(`argv sessionId=${session} `) ? [index] : []);
+      expect(opened.length).toBeGreaterThan(0);
+      expect(Math.min(...opened)).toBeGreaterThan(lines.indexOf(`exited ${session}`));
+    } finally {
+      setPiStopDeadlineForTests(null);
+    }
   }, 20_000);
 
   test('a plain prompt reaches a text-only pi model when the conversation it carries holds images', async () => {
@@ -1637,6 +1681,29 @@ describe('pi driver', () => {
     expect(argvLines().find(line => line.includes('provider=fake-a/team '))).toBeDefined();
     expect(fakeLog()).not.toContain('image image/png');
   });
+
+  test('a warm switch that pi never answers fails the turn at the read deadline', async () => {
+    process.env['PI_FAKE_LITERAL'] = '1';
+    const silent = join(tmpdir(), `pi-silent-models-${process.pid}-${Date.now()}`);
+    process.env['PI_FAKE_SILENT_MODELS'] = silent;
+    setPiReadDeadlineForTests(300);
+    try {
+      const client = await startCore({ warmProcessMinutes: 5 });
+      const { projectId, accountId } = await piAccount(client);
+      await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+      const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'silent', model: 'fake-a/smart' });
+      await client.call('threads.subscribe', { threadId });
+      await runTurn(client, threadId, 'first');
+      writeFileSync(silent, '');
+      await client.call('threads.update', { threadId, model: 'fake-a/quick' });
+      const { finished } = await startTurn(client, threadId, 'second', 20_000);
+      expect(await finished).toMatchObject({ status: 'error', error: expect.stringContaining('timed out') });
+      expect(fakeLog()).toContain('models asked');
+    } finally {
+      setPiReadDeadlineForTests(null);
+      rmSync(silent, { force: true });
+    }
+  }, 20_000);
 
   test('a warm process pi launched on the text keeps its level when a probe names the pair it already runs', async () => {
     process.env['PI_FAKE_CURRENT'] = 'smart';

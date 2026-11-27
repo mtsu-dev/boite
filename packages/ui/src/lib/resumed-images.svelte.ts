@@ -8,11 +8,11 @@ import type { Choice, Store } from './store.svelte';
  * new session the one the folder's pi settings may choose, which only the core
  * reads (`threads.capabilities`, `drafts.images` for a draft). The key changes when that can:
  * another session, folder, selection or turn, a new catalog for the account (the core reads
- * the session's model in it), a reconnection.
+ * the session's model in it, and a name change can put another pi pair behind an id), a reconnection.
  */
 function resumedImagesKey(store: Store, thread: Thread | null, choice: Choice | null): string | null {
   if (!choice || store.providerOf(choice.providerId)?.protocol !== 'pi') return null;
-  const catalog = (providerId: string, accountId: string) => store.modelsOf(providerId, accountId).map(model => `${model.id}${model.images === false ? '-' : '+'}${model.virtual ? 'v' : ''}`).join(',');
+  const catalog = (providerId: string, accountId: string) => store.modelsOf(providerId, accountId).map(model => `${model.id}\t${model.name}${model.images === false ? '-' : '+'}${model.virtual ? 'v' : ''}`).join(',');
   if (!thread) {
     const projectId = store.draft?.projectId;
     if (!projectId || (choice.model !== null && choice.model !== 'default')) return null;

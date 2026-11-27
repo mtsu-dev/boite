@@ -657,6 +657,9 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'get_available_models': {
+      // A pi that keeps its pipes open without answering, once the file `PI_FAKE_SILENT_MODELS` names exists.
+      const silent = process.env['PI_FAKE_SILENT_MODELS'];
+      if (silent && existsSync(silent)) { log('models asked'); return; }
       send({ id, type: 'response', command: 'get_available_models', success: true, data: { models: MODELS } });
       return;
     }
