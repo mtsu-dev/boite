@@ -1821,8 +1821,17 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   image admission checked, else the pair pi's own `get_available_models` spells
   the thread's `provider/id` with, the longest provider among them as at a cold
   start, since a provider id may hold a `/`. A refresh that puts another pair
-  behind the same id moves the warm process to it the same way. There is no call that goes back to pi's own model or to
-  no level, so either change starts a new process.
+  behind the same id moves the warm process to it the same way, unless pi
+  already runs that pair (a process launched on the text before any probe),
+  where a switch would only reset pi's own level. pi reads its models once, at
+  start: a pair the catalog found since (a `models.json` edited after the
+  launch) is not in the running process's listing, so a new process opens the
+  same session on it with `--provider`, and only pi itself stops, not what its
+  tools left running. Input steered while that switch may happen waits for the
+  next turn. Images steered into a running turn are checked against the list
+  that turn was given, the one its process runs, not a list refreshed since.
+  There is no call that goes back to pi's own model or to no level, so either
+  change starts a new process.
 - Pi can refresh prompt caches during a turn. Refreshes between turns require
   an explicit `"cacheWarming": "idle"` in the selected Pi profile's
   `settings.json`.

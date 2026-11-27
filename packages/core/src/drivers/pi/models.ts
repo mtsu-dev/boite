@@ -66,6 +66,11 @@ function providerLabel(provider: string): string {
   return `${provider.slice(0, 1).toUpperCase()}${provider.slice(1)}`;
 }
 
+/** Whether pi's own listing (`get_available_models`) holds this exact pair, which `set_model` requires. */
+export function piListsPair(models: unknown, pair: { provider: string; modelId: string }): boolean {
+  return Array.isArray(models) && (models as PiModel[]).some(model => model?.provider === pair.provider && model.id === pair.modelId);
+}
+
 /**
  * The pair pi reads a `<provider>/<id>` text as among `models` (its `get_available_models` answer): a provider id
  * may hold a `/`, and pi takes the longest provider that spells the text, as the catalog keeps. Without one, the text

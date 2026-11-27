@@ -24,10 +24,10 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX, UI_DIALOGS, UI_NOTICES } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiUsage } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
-import { piCatalogPair, piModelArgs, piPairOf } from './models.ts';
+import { piCatalogPair, piListsPair, piModelArgs, piPairOf } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
-import { answerText } from '../../attachments.ts';
+import { drawDialog } from './dialogs.ts';
 import { noteReady } from '../driver-log.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { endOnClose, releaseChild } from '../session-close.ts';
@@ -99,6 +99,8 @@ export class PiSession {
   #current: PiTurn | null = null;
   #opening: PiTurn | null = null;
   #steered = false;
+  /** While `#align` may replace the process: input steered then would be lost with it. */
+  #switching = false;
   readonly #turns = new SessionTurns<PiTurn>(turn => this.#runTurn(turn), (turn, error) => {
     turn.fail(messageOf(error));
     this.#endTurn(turn, true);
@@ -247,7 +249,7 @@ export class PiSession {
 
   /** Submit input at pi's next tool boundary. */
   async steer(turn: PiTurn, message: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
-    if (this.#current !== turn || turn.settled || turn.isStopped || !this.#peer) return false;
+    if (this.#current !== turn || turn.settled || turn.isStopped || !this.#peer || this.#switching) return false;
     this.#steered = true;
     await this.#peer.command('steer', { message, ...(attachments.length ? { images: imagesOf(attachments) } : {}) }, { onAccepted, signal, writeKind: 'steer' });
     return true;
@@ -302,7 +304,7 @@ export class PiSession {
       this.#opening = null;
     }
 
-    const peer = this.#peer;
+    let peer = this.#peer;
     const sessionId = this.#sessionId;
     if (peer === null || sessionId === null) {
       turn.fail('the pi session went away before the turn');
@@ -320,7 +322,8 @@ export class PiSession {
     this.#steered = false;
     turn.awaitingPi = true;
     try {
-      await this.#align(turn.ctx, peer);
+      // A model pi registered after this process started takes a new one, which may hold another session id.
+      peer = await this.#align(turn, peer);
       if (turn.isStopped) {
         turn.settleRun();
       } else if (turn.ctx.turn.execution?.operation === 'compact') {
@@ -380,30 +383,67 @@ export class PiSession {
    * A warm process on another model or level than the thread now wants. pi
    * takes both over RPC (`set_model`, `set_thinking_level`), so the process
    * stays. `set_model` clamps the level to the new model, so the level is sent
-   * again after it. A refusal fails the turn with pi's own sentence and drops
-   * the process, and the next turn launches with `--model`.
+   * again after it. A pair the catalog found after pi read its models (at
+   * start) opens a new process on it. A refusal fails the turn with pi's own
+   * sentence and drops the process. Returns the peer the turn talks to.
    */
-  async #align(ctx: SessionContext, peer: PiPeer): Promise<void> {
+  async #align(turn: PiTurn, peer: PiPeer): Promise<PiPeer> {
+    const ctx = turn.ctx;
     const model = ctx.thread.model;
-    if (model === null || model === AGENT_OWN_MODEL) return;
+    if (model === null || model === AGENT_OWN_MODEL) return peer;
     let changed = false;
     // The catalog's pair is the one image admission checked. A refresh can put another pair behind the same id, so
     // the process follows it even when the id did not change.
     const named = piCatalogPair(model, this.catalog(ctx));
     if (model !== this.#model || (named !== undefined && JSON.stringify(named) !== this.#pair)) {
+      // Input steered meanwhile would reach a process that may be replaced: it waits for the next turn instead.
+      this.#switching = true;
+      let listed: unknown;
+      try {
+        listed = dataOf(await peer.command('get_available_models'))['models'];
+        if (named !== undefined && !piListsPair(listed, named)) return await this.#reopen(turn);
+      } finally {
+        this.#switching = false;
+      }
       // Else pi's own listing names the pair: a provider id may hold a `/`, so the first one is not the split.
-      const pair = named ?? piPairOf(dataOf(await peer.command('get_available_models'))['models'], model);
+      const pair = named ?? piPairOf(listed, model);
       if (pair === undefined) throw new Error(`pi cannot switch to the model ${model}: its id is not <provider>/<id>`);
-      await peer.command('set_model', pair);
+      // The same id on a process that pi launched on its text: when pi already runs the catalog's pair, a switch
+      // would only reset a level pi keeps itself.
+      const running = model === this.#model ? dataOf(await peer.command('get_state'))['model'] as { provider?: unknown; id?: unknown } | null | undefined : undefined;
+      if (running?.provider !== pair.provider || running?.id !== pair.modelId) {
+        await peer.command('set_model', pair);
+        changed = true;
+      }
       this.#model = model;
       this.#pair = named === undefined ? null : JSON.stringify(named);
-      changed = true;
     }
     const effort = ctx.thread.effort;
     if (effort !== null && (changed || effort !== this.#effort)) {
       await peer.command('set_thinking_level', { level: effort });
       this.#effort = effort;
     }
+    return peer;
+  }
+
+  /**
+   * The process goes, the session stays: a new process opens this turn's
+   * session with the thread's model and level, as a cold turn does. Only pi
+   * itself is stopped; what its tools left running stays with the thread.
+   */
+  async #reopen(turn: PiTurn): Promise<PiPeer> {
+    const child = this.#child, exited = this.#exited, closed = this.#processClosed;
+    this.#protection?.close(exited ?? closed);
+    this.#peer?.fail('the pi process was replaced');
+    this.#protection = null; this.#peer = null; this.#child = null; this.#starting = null;
+    releaseChild(child);
+    await exitWithin(exited, EXIT_GRACE_MS, closed);
+    turn.ctx.log('info', `pi session: ${turn.ctx.thread.model} was not in the running process's models, a new process opens on it`);
+    await this.#start(turn.ctx);
+    const peer = this.#peer, sessionId = this.#sessionId;
+    if (peer === null || sessionId === null) throw new Error('the pi session went away before the turn');
+    turn.noteSession(sessionId);
+    return peer;
   }
 
   /**
@@ -831,42 +871,7 @@ export class PiSession {
       peer.answer({ type: 'extension_ui_response', id, cancelled: true });
       return;
     }
-    const live = turn.ctx;
-    const choices = Array.isArray(message['options']) ? message['options'].filter((option): option is string => typeof option === 'string') : [];
-    const options = method === 'confirm'
-      ? [{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }]
-      : choices.map((label, index) => ({ id: String(index), label }));
-    const ask = {
-      text: [textOf(message['title']) || 'pi asks', textOf(message['message']), textOf(message['prefill'])].filter(Boolean).join('\n\n'),
-      options, allowText: method === 'input' || method === 'editor', multiple: false,
-    };
-    const ticket = live.askQuestion(ask);
-    const index = turn.takeIndex();
-    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer: null });
-    // A dialog with a `timeout` resolves itself on pi's side with its default
-    // once the time is up, and the agent goes on: the card goes with it.
-    const timeout = typeof message['timeout'] === 'number' && message['timeout'] > 0 ? message['timeout'] : null;
-    let timer: Timer | undefined;
-    const expired = new Promise<'expired'>((resolve) => {
-      if (timeout === null) return;
-      timer = setTimeout(() => {
-        resolve('expired');
-      }, timeout);
-      timer.unref?.();
-    });
-    const answer = await Promise.race([ticket, turn.stopped.then(() => null), expired]);
-    clearTimeout(timer);
-    if (answer === 'expired') {
-      live.withdrawQuestion?.(ticket.questionId);
-      turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer: null });
-      return;
-    }
-    if (answer === null) { peer.answer({ type: 'extension_ui_response', id, cancelled: true }); return; }
-    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer });
-    const value = method === 'select' ? options.find((option) => option.id === answer.optionIds[0])?.label : answerText(answer);
-    peer.answer(method === 'confirm'
-      ? { type: 'extension_ui_response', id, confirmed: answer.optionIds[0] === 'yes' }
-      : { type: 'extension_ui_response', id, value });
+    await drawDialog(turn, peer, id, method, message);
   }
 
   /**

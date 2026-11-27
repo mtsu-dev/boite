@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +9,7 @@ import { removeDir } from '../src/fs-retry.ts';
 import { RETRY_CATALOG_MS, STALE_CATALOG_MS } from '../src/providers/probe.ts';
 import { readSavedCatalog, saveCatalog } from '../src/providers/saved-catalogs.ts';
 import type { CoreClient } from '../src/client.ts';
+import { activeSubscriptionProxy } from '../src/subscription-proxy.ts';
 import { startTestCore } from './harness.ts';
 
 const before: ModelInfo[] = [{ id: 'saved', name: 'Saved', default: true }];
@@ -26,6 +28,22 @@ test.each(['claude/claude-fable-5-2', 'claude-fable-5-2'])('a saved Claude catal
       { id: 'claude-fable-5-2', name: 'Fable', aliases: [{ id: 'claude/claude-fable-5-2' }] },
       { id: 'openrouter/claude-fable-5-2', name: 'OpenRouter Fable' },
     ]);
+  } finally {
+    await core.stop();
+  }
+});
+
+test('another protocol\'s saved list keeps the key it was saved under before pi\'s folder joined it', async () => {
+  const core = await startTestCore();
+  try {
+    const account = await (await core.connect()).call('accounts.add', { providerId: 'claude', label: 'Saved before the folder' });
+    const provider = core.core.providers.require('claude');
+    const stored = core.core.journal.getAccount(account.id)!;
+    const executable = core.core.providers.list().loaded.find(summary => summary.id === 'claude')?.executable ?? null;
+    const login = { status: stored.status, identity: stored.identity, isolationDir: stored.isolationDir };
+    const context = createHash('sha256').update(JSON.stringify([provider, executable, activeSubscriptionProxy(core.core, provider), login])).digest('base64url');
+    core.core.journal.setSetting(`model-catalog:${JSON.stringify(['claude', account.id])}`, { context, models: before, probedAt: 1 });
+    expect(readSavedCatalog(core.core, 'claude', account.id)?.models).toEqual(before);
   } finally {
     await core.stop();
   }

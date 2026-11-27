@@ -9,7 +9,7 @@ import type { SharedAccess } from '../src/contacts/access-policy.ts';
 import { forgetProbes, getDriver, probedModelsOf } from '../src/drivers/index.ts';
 import { setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
 import { folderStartModel } from '../src/drivers/pi/start-model.ts';
-import { readSavedCatalog } from '../src/providers/saved-catalogs.ts';
+import { forgetSavedCatalog, readSavedCatalog } from '../src/providers/saved-catalogs.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
 import { USER_ORIGIN } from '../src/threads/turn-origin.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
@@ -359,6 +359,7 @@ test('a text-only pi model refuses images on start and steer and still accepts f
 });
 
 test('input steered into a turn is checked against the model that turn runs on', async () => {
+  process.env['PI_FAKE_LITERAL'] = '1';
   const { client, threadId } = await startThread(undefined, 'fake-a/smart');
   const accountId = harness!.core.threads.require(threadId).accountId;
   // A queued prompt keeps the model it was sent with while the thread shows another.
@@ -371,6 +372,18 @@ test('input steered into a turn is checked against the model that turn runs on',
   const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
   expect((await rejection(client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'Use this', attachments: [image], clientRequestId: 'pi_steer_queued' }))).reason)
     .toMatchObject({ rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } });
+  const stopped = client.next('turn.finished', finished => finished.id === turn.id, 20_000);
+  await client.call('turns.stop', { threadId });
+  await stopped;
+  // A refresh during a turn can name another pair for the text it runs. Its pi keeps the text-only `base` on
+  // `fake-a/team` it started on, whatever the list now names: `team/base` on `fake-a`, which reads images.
+  await client.call('threads.update', { threadId, model: 'fake-a/team/base' });
+  const second = await client.call('turns.start', { threadId, prompt: '[slow] Read this' });
+  await waitFor(() => fakeLog().split('waiting for abort').length > 2);
+  process.env['PI_FAKE_NO_TEAM'] = '1';
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+  expect((await rejection(client.call('turns.steer', { threadId, turnId: second.id, prompt: 'Use this', attachments: [image], clientRequestId: 'pi_steer_refreshed' }))).reason)
+    .toMatchObject({ rpc: { message: expect.stringContaining('Fake Base takes no images') } });
   await client.call('turns.stop', { threadId });
 });
 
@@ -1428,6 +1441,45 @@ describe('pi driver', () => {
     await runTurn(client, threadId, 'fifth');
     expect(argvLines().filter((line) => !line.includes('sessionId= '))).toHaveLength(1);
     expect(fakeLog()).toContain('model fake-a team/base\n');
+  });
+
+  test('a pair pi listed only after the warm process started opens a new process on it, in the same session', async () => {
+    process.env['PI_FAKE_LITERAL'] = '1';
+    process.env['PI_FAKE_NO_TEAM'] = '1';
+    const client = await startCore({ warmProcessMinutes: 5 });
+    const { projectId, accountId } = await piAccount(client);
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'refreshed', model: 'fake-a/team/base', effort: 'high' });
+    await client.call('threads.subscribe', { threadId });
+    await runTurn(client, threadId, 'first');
+    // pi's models gain `base` on `fake-a/team`, which the catalog then keeps for that text: the running pi read its
+    // models at start and would refuse it.
+    delete process.env['PI_FAKE_NO_TEAM'];
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    await runTurn(client, threadId, 'second');
+    const launched = argvLines().filter((line) => !line.includes('sessionId= '));
+    expect(launched).toHaveLength(2);
+    expect(launched[0]).toContain('model=fake-a/team/base provider=fake-a thinking=high');
+    expect(launched[1]).toContain('model=fake-a/team/base provider=fake-a/team thinking=high');
+    expect(launched[1]!.split(' ')[1]).toBe(launched[0]!.split(' ')[1]!);
+    expect(fakeLog()).not.toContain('model fake-a/team base\n');
+  });
+
+  test('a warm process pi launched on the text keeps its level when a probe names the pair it already runs', async () => {
+    process.env['PI_FAKE_CURRENT'] = 'smart';
+    const client = await startCore({ warmProcessMinutes: 5 });
+    const { projectId, accountId } = await piAccount(client);
+    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'unprobed', model: 'fake-a/smart' });
+    await client.call('threads.subscribe', { threadId });
+    forgetProbes({ providerId: 'pi-fake', accountId });
+    forgetSavedCatalog(harness!.core, accountId);
+    const turnProcesses = () => argvLines().filter((line) => !line.includes('sessionId= '));
+    await runTurn(client, threadId, 'first');
+    expect(turnProcesses()[0]).toContain('model=fake-a/smart provider= thinking=');
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    await runTurn(client, threadId, 'second');
+    expect(turnProcesses()).toHaveLength(1);
+    expect(fakeLog()).not.toContain('model fake-a smart\n');
   });
 
   test('core shutdown during a turn pi never settles ends it before the journal closes', async () => {

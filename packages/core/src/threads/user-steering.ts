@@ -52,7 +52,10 @@ export async function steerUser(core: Core, threads: ThreadStore, params: RpcPar
   const active = core.journal.getTurn(turnId);
   const runs = active?.threadId === threadId && active.execution ? { ...active.execution, id: threadId, cwd: thread.cwd } : thread;
   const provider = core.providers.require(runs.providerId);
-  checkAttachments(attachments, provider, () => imageInputModel(core, provider, runs));
+  // Its pi process runs the pair the list it was given named: a refresh since may name another one.
+  const running = threads.runner.handles.get(threadId);
+  const launched = running === undefined ? undefined : threads.runner.catalogs.get(running);
+  checkAttachments(attachments, provider, () => imageInputModel(core, provider, runs, launched));
   if (expectedSelectionVersion !== undefined && expectedSelectionVersion !== (thread.selectionVersion ?? 0)) throw refused('the model selection changed; review the selected model and send again');
   const turn = core.journal.getTurn(turnId);
   const runner = threads.runner;

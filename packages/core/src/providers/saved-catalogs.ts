@@ -43,9 +43,10 @@ function contextOf(core: Core, providerId: ProviderId, accountId: AccountId): st
   if (provider === undefined || account === null || account.providerId !== providerId) return null;
   const executable = core.providers.list().loaded.find(summary => summary.id === providerId)?.executable ?? null;
   const login = { status: account.status, identity: account.identity, isolationDir: account.isolationDir };
-  const piFolder = provider.protocol === 'pi' ? configuredAgentDir(piLaunchEnv(core.accounts.profileEnv(account, provider))) : null;
+  // Only pi's rows carry the folder: another protocol's saved list keeps the key it was saved under.
+  const piFolder = provider.protocol === 'pi' ? [configuredAgentDir(piLaunchEnv(core.accounts.profileEnv(account, provider)))] : [];
   return createHash('sha256')
-    .update(JSON.stringify([provider, executable, activeSubscriptionProxy(core, provider), login, piFolder]))
+    .update(JSON.stringify([provider, executable, activeSubscriptionProxy(core, provider), login, ...piFolder]))
     .digest('base64url');
 }
 

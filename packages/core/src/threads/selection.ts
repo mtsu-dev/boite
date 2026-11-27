@@ -68,13 +68,21 @@ export function imageInputModel(
     /** The thread the run belongs to, when `id` names no session to resume (another account's goal). */
     runsIn?: string;
   },
+  /**
+   * For pi, the list a running turn was given (`piCatalogOf` then): its process runs the pair that list named, which
+   * a refresh since does not move. Undefined reads the account's list now.
+   */
+  launched?: readonly ModelInfo[] | null,
 ): ModelInfo | undefined {
   const pi = provider.protocol === 'pi';
   const wanted = model ?? (pi ? AGENT_OWN_MODEL : null);
   if (!wanted || !provider.capabilities.images) return undefined;
-  const probed = pi ? probedModelsOf(provider.protocol, provider.id, accountId) : null;
-  const saved = pi && probed === null ? readSavedCatalog(core, provider.id, accountId) : null;
-  const listed = (choice: string) => (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
+  const held = pi && launched !== undefined;
+  const probed = !pi ? null : held ? launched : probedModelsOf(provider.protocol, provider.id, accountId);
+  const saved = pi && !held && probed === null ? readSavedCatalog(core, provider.id, accountId) : null;
+  const listed = (choice: string) => held
+    ? resolveModelSelection(probed === null ? provider.models : [...probed, ...provider.models.filter(entry => !probed.some(known => known.id === entry.id))], choice)?.model
+    : (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
   const launch = piLaunchChoices(pi ? profileFor(provider)?.launch?.args ?? [] : []);
   const account = pi ? core.accounts.list().find(entry => entry.id === accountId) : undefined;
   // pi reads its settings and models where the environment the driver starts it with says. A relative configuration
