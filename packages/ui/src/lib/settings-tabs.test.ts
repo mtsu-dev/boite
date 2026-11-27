@@ -98,7 +98,7 @@ describe('the settings families', () => {
 
   test('the nav lists each family\'s pages as peers, in the phone\'s order, and leaves out one merged into another', () => {
     expect(navOf('app', true)).toEqual(['general', 'keyboard', 'voice', 'appearance']);
-    expect(navOf('agents', true)).toEqual(['accounts', 'plugins', 'brain', 'limits', 'usage']);
+    expect(navOf('agents', true)).toEqual(['accounts', 'plugins', 'mcp', 'brain', 'limits', 'usage']);
     expect(navOf('connections', true)).toEqual(['browser', 'machines']);
     expect(navOf('advanced', true)).toEqual(['advanced', 'experiments', 'diagnostics']);
     // A paired device: no Diagnostics, so the task manager is its own page; Providers, Plugins and Instructions are the owner's.

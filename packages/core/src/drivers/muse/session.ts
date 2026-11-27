@@ -54,6 +54,8 @@ import { SessionRetention } from '../session-retention.ts';
 import { endOnClose, releaseChild } from '../session-close.ts';
 import { protectedMuse } from './protected.ts';
 import { MuseControls } from './controls.ts';
+import { sessionMcp } from '../mcp.ts';
+import { museMcpConfig, museMcpSupport, probeMuseVersion } from './mcp.ts';
 
 /** One question set still open, settled by an answer, a stop or the host itself. */
 interface OpenQuestion {
@@ -93,6 +95,8 @@ export class MuseSession {
   #exitCode: number | null = null;
   #exited: Promise<number | null> | null = null;
   #processClosed: Promise<void> = Promise.resolve();
+  #mcp: ReturnType<typeof sessionMcp> = null;
+  #retryMcp = false;
   readonly #idle = new IdleTimer(() => this.#drop());
   readonly #retention = new SessionRetention();
   /** The turn waiting on the host's startup, which a stop ends by closing the host. */
@@ -124,7 +128,7 @@ export class MuseSession {
   ) { }
 
   usable(key: string, warmMs: number): boolean {
-    return !this.#ended && !this.#closing && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
+    return !this.#ended && !this.#closing && !this.#retryMcp && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
   }
 
   setViewed(viewed: boolean): void {
@@ -140,7 +144,8 @@ export class MuseSession {
     catch (error) { this.#drop(); throw error; }
     finally {
       ctx.finishStartup?.();
-      if (!this.#ended && !this.busy() && !this.#retention.viewed) this.#armIdle();
+      if (!forTurn && this.#retryMcp && !this.busy() && !this.#ended) this.#drop();
+      else if (!this.#ended && !this.busy() && !this.#retention.viewed) this.#armIdle();
     }
   }
 
@@ -332,7 +337,7 @@ export class MuseSession {
     // Turns run one at a time: what the map holds was this turn's.
     this.#items.clear();
     this.#turns.end();
-    if (drop || this.#closing || this.#retention.idleMs(this.warmMs) <= 0) {
+    if (drop || this.#closing || (this.#retryMcp && !this.busy()) || this.#retention.idleMs(this.warmMs) <= 0) {
       this.#drop();
       return;
     }
@@ -356,10 +361,23 @@ export class MuseSession {
     const posture = MODE_POSTURE[ctx.thread.permissionMode];
     const declared = profileFor(ctx.provider)?.launch?.args ?? [];
     this.#protection = protectedMuse(ctx, () => this.#current ? {ctx: this.#current.ctx, stopped: this.#current.stopped} : null, declared);
-    const args = this.#protection?.args ?? [...declared, ...museHostArgs(executable), ...posture.flags];
+    const hostArgs = museHostArgs(executable);
+    this.#mcp = sessionMcp(ctx);
+    if (this.#mcp !== null) {
+      const support = await museMcpSupport(executable, () => probeMuseVersion(ctx, executable));
+      if (this.#ended) throw new Error('the muse session was closed before it started');
+      if (support !== true) {
+        this.#mcp.release();
+        this.#mcp = null;
+        // MCP config is fixed at launch. Let this turn finish and probe on the next host.
+        this.#retryMcp = support === null;
+      }
+    }
+    const mcpConfig = museMcpConfig(this.#mcp);
+    const args = this.#protection?.args ?? [...declared, ...hostArgs, ...posture.flags, ...mcpConfig.args];
     const child = ctx.spawnChild(executable, args, {
       cwd: this.#protection?.cwd ?? ctx.thread.cwd,
-      env: this.#protection?.env ?? agentEnv(ctx.provider, ctx.accountEnv),
+      env: this.#protection?.env ?? { ...agentEnv(ctx.provider, ctx.accountEnv), ...mcpConfig.env },
     });
     this.#child = child;
     this.#killTree = ctx.killTree ?? null;
@@ -493,6 +511,7 @@ export class MuseSession {
     this.#ended = true;
     this.#closing = true;
     this.#idle.clear();
+    this.#mcp?.release();
     try { this.#protection?.close(this.#processClosed); }
     catch (error) { this.#logSink?.('error', `muse: protected cleanup failed: ${logMessageOf(error)}`); }
     this.#protection = null;

@@ -145,14 +145,14 @@ test('locked keys keep false switches, enum values and empty lists distinct from
   const policy: AdminPolicy = {
     analytics: 'basic', updates: { app: 'off', server: 'check', agents: 'auto' },
     providers: { allow: [], deny: [] }, gateway: { allowedBaseUrls: [] },
-    quotaReads: false, plugins: { install: false, recommended: false }, issueReports: false,
+    quotaReads: false, plugins: { install: false, recommended: false }, mcp: false, issueReports: false,
     dictation: 'local', previews: { remoteResources: false }, agentBrowser: { searchUrl: 'https://search.example/?q={query}' }, agentDesktop: false,
     network: { lan: false, tailscaleServe: false, groups: false, contacts: false, push: false }, pullRequests: false, modelPrices: false,
   };
   expect(lockedKeys(policy)).toEqual(POLICY_KEYS.filter(key => key !== 'gateway' && key !== 'agentBrowser'));
   expect(lockedKeys({ gateway: false, agentBrowser: false })).toEqual(['gateway', 'agentBrowser']);
   expect(lockedKeys({
-    updates: {}, providers: {}, plugins: { install: true, recommended: true }, previews: { remoteResources: true },
+    updates: {}, providers: {}, plugins: { install: true, recommended: true }, mcp: true, previews: { remoteResources: true },
     gateway: true, agentBrowser: true, agentDesktop: true, quotaReads: true, issueReports: true, pullRequests: true, modelPrices: true,
     network: { lan: true, tailscaleServe: true, groups: true, contacts: true, push: true },
   })).toEqual([]);

@@ -27,7 +27,7 @@ import type {
   Usage,
 } from '@boite/contracts';
 import type { SpawnedChild, SpawnedProcess, SpawnOptions } from '../procs.ts';
-import type { LazyServerEntry, StdioServer } from '../mcp/lazy.ts';
+import type { McpRegistration, StdioServer } from '../mcp/lazy.ts';
 
 /**
  * The only way a driver writes anything. It journals and emits in one call, so
@@ -352,7 +352,9 @@ export interface TurnContext {
    * `env` is the CLI's own environment. Null when the core gives sessions the
    * servers as configured.
    */
-  lazyMcp?(env: Record<string, string | undefined>, servers: Map<string, StdioServer>): { entries: Record<string, LazyServerEntry>; release(): void } | null;
+  lazyMcp?(env: Record<string, string | undefined>, servers: Map<string, StdioServer>): McpRegistration | null;
+  /** Changes when a provider session must pick up new MCP connections. */
+  mcpRevision?: string | null;
   /**
    * Terminates every process this thread launched, grandchildren included,
    * through the registry that traced them. For a driver whose only stop is the
@@ -365,7 +367,7 @@ export interface TurnContext {
 export type SessionContext = Pick<TurnContext,
   'thread' | 'account' | 'provider' | 'sessionId' | 'resumeAt' | 'sessionBefore' |
   'accountEnv' | 'catalog' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'promptSuggestions' | 'suggestion' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
-  'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'stopChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
+  'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'stopChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'mcpRevision' | 'protectedExecution' | 'modeRequired'>;
 
 type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
 /** Scalars only: never a prompt, a tool input or output, a command line or a token. */

@@ -541,7 +541,7 @@ export function startServer(options: ServerOptions): RunningServer {
       // An agent session's MCP servers, behind its thread's token (mcp/lazy.ts).
       if (url.pathname.startsWith(LAZY_MCP_ROUTE)) {
         if (core.stopping) return new Response('core stopping', { status: 503 });
-        return core.lazyMcp.http(request, url.pathname.slice(LAZY_MCP_ROUTE.length));
+        return core.lazyMcp.http(request, url.pathname.slice(LAZY_MCP_ROUTE.length), () => self.timeout(request, 0));
       }
 
       if (url.pathname.startsWith(`${FILE_ROUTE}/`)) {

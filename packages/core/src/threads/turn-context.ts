@@ -179,6 +179,7 @@ export class TurnContexts {
       stopChild: child => this.#core.procs.stopChild(child),
       finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
       lazyMcp: this.#lazyMcpFor(thread),
+      mcpRevision: this.#core.mcp.revision(thread.projectId),
     };
   }
 
@@ -607,6 +608,7 @@ export class TurnContexts {
         stopChild: child => this.#core.procs.stopChild(child),
         finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
         lazyMcp: this.#lazyMcpFor(thread),
+        mcpRevision: this.#core.mcp.revision(thread.projectId),
         killTree: () => {
           this.#core.procs.killTree(threadId);
         },
@@ -620,9 +622,18 @@ export class TurnContexts {
   /** The thread's MCP servers through the core, unless `BOITE_LAZY_MCP=0` turned that off. */
   #lazyMcpFor(thread: ThreadSummary): NonNullable<SessionContext['lazyMcp']> {
     return (env, servers) => {
-      if (!LazyMcp.enabled() || servers.size === 0) return null;
-      const { id, entries } = this.#core.lazyMcp.register(thread.id, thread.cwd, env, servers);
-      return { entries, release: () => this.#core.lazyMcp.release(id) };
+      if (thread.contextMode?.mcp === false) return null;
+      let managed: ReturnType<Core['mcp']['resolve']>;
+      try { managed = this.#core.mcp.resolve(thread.projectId); }
+      catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.#core.log('warn', `mcp: skipping managed servers: ${reason}`, { source: 'mcp', threadId: thread.id });
+        managed = new Map();
+      }
+      const legacy = LazyMcp.enabled() ? servers : new Map();
+      if (legacy.size === 0 && managed.size === 0) return null;
+      const { id, entries, authorization } = this.#core.lazyMcp.register(thread.id, thread.cwd, env, legacy, managed);
+      return { entries, authorization, release: () => this.#core.lazyMcp.release(id) };
     };
   }
 
@@ -640,14 +651,15 @@ export class TurnContexts {
       // The SDK drivers hand a whole environment here, so the agent's own
       // variables are merged onto theirs rather than added to `process.env`.
       const scope = execution ? this.#core.procs.protection.control(threadId) : threadId;
+      const trackedSession = session !== undefined && opts?.agentRoot !== false;
       const child = this.#core.procs.spawnChild(scope, cmd, args, {
         ...opts,
         env: agentEnvOf(this.#core, threadId, opts?.env ?? process.env),
-        // The session's own process, not a shared execution's: the keeper holds it when it is on.
-        ...(session !== undefined && !execution ? { keep: { turnId: session.turnId ?? null, driver: provider.protocol ?? provider.id } } : {}),
+        // The session's own process, not a shared execution's or a one-shot probe: the keeper holds it when it is on.
+        ...(trackedSession && !execution ? { keep: { turnId: session.turnId ?? null, driver: provider.protocol ?? provider.id } } : {}),
       });
       // A diagnostic storage failure must not break a spawn.
-      try { if (session !== undefined) watchProviderProcess(this.#core, child, cmd, { threadId, providerId: provider.id, ...session }); } catch { /* the child runs unwatched */ }
+      try { if (trackedSession) watchProviderProcess(this.#core, child, cmd, { threadId, providerId: provider.id, ...session }); } catch { /* the child runs unwatched */ }
       const installs = this.#core.providers.installs;
       installs.acquire(provider.id);
       let released = false;

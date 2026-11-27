@@ -232,7 +232,7 @@ test('the gear opens Settings on its home: a tile per page under its family, the
   // One tile per page under the nav's four families; a page merged into Diagnostics keeps a tile under its own name.
   const tiles = (family: string) => [...document.querySelectorAll<HTMLElement>(`[data-testid=settings-home-family][data-family=${family}] .tile`)].map((tile) => tile.dataset.testid?.replace('settings-home-', ''));
   expect(tiles('app')).toEqual(['general', 'keyboard', 'voice', 'appearance']);
-  expect(tiles('agents')).toEqual(['accounts', 'plugins', 'brain', 'limits', 'usage']);
+  expect(tiles('agents')).toEqual(['accounts', 'plugins', 'mcp', 'brain', 'limits', 'usage']);
   expect(tiles('connections')).toEqual(['browser', 'machines']);
   expect(tiles('advanced')).toEqual(['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']);
   // A tile says its page's state where there is one to read.
