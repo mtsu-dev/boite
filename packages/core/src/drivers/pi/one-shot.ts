@@ -11,9 +11,10 @@ import { NativeForkUnsupported } from '../native-fork.ts';
 import { releaseChild } from '../session-close.ts';
 import type { SideQuestionContext, TitleContext } from '../types.ts';
 import { agentEnv, contextArgs, imagesOf, sessionDirOf, textOf } from './mapping.ts';
-import { piModelArgs, piProfilePins, piProviderOf } from './models.ts';
+import { alignLaunchedPair } from './launch-pair.ts';
+import { piCatalogPair, piModelArgs, piProfilePins, piProviderOf } from './models.ts';
 import { AGENT_OWN_MODEL, STDERR_MAX } from './protocol.ts';
-import { PiPeer } from './rpc.ts';
+import { dataOf, PiPeer } from './rpc.ts';
 import { copySession } from './session-files.ts';
 
 // Explicit resources still load with discovery disabled. Keep launcher arguments
@@ -83,6 +84,9 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   try {
     const images = 'attachments' in ctx ? imagesOf(ctx.attachments ?? []) : [];
     try {
+      // As a conversation's start: pi may have matched another case of the id, and the prompt goes to the catalog's pair.
+      const pair = own ? piCatalogPair(model, catalog) : undefined;
+      if (pair !== undefined) await alignLaunchedPair(peer, dataOf(await peer.command('get_state', {}, { signal })), pair, { signal });
       await peer.command('prompt', { message: prompt, ...(images.length ? { images } : {}) }, { signal });
     } catch (failure) {
       // pi refuses a model it does not hold on stderr and exits before it reads a request: say why, once it has. A

@@ -24,6 +24,7 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
+import { alignLaunchedPair } from './launch-pair.ts';
 import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piPairOf, piProfileArgs, piReadsImages } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
@@ -650,10 +651,9 @@ export class PiSession {
     // session, memoized behind `start`. Not awaited, so a slow or unknown
     // command never holds up the turn that started this process.
     void this.#fetchCommands(ctx, peer);
-    const loaded = dataOf(await peer.command('get_state', {}, { timeoutMs: 20_000 }))['model'] as PiModel | null | undefined;
-    // pi matches `--model` without regard to case, so ids that differ only by it can start pi on another pair than
-    // the catalog's, which image admission read: the first turn's alignment then switches to it before its prompt.
-    if (launched !== undefined && (loaded?.provider !== launched.provider || loaded?.id !== launched.modelId)) this.#pair = null;
+    const state = dataOf(await peer.command('get_state', {}, { timeoutMs: 20_000 }));
+    // Every start, a reopened process included, lands on the catalog's pair before a prompt can reach it.
+    if (launched !== undefined && !await alignLaunchedPair(peer, state, launched, { readMs: readDeadlineMs, writeMs: stopDeadlineMs })) this.#pair = null;
     this.#protection?.assertReady();
   }
 

@@ -2037,16 +2037,50 @@ describe('pi driver', () => {
     try {
       const client = await startCore();
       const { projectId, accountId } = await piAccount(client);
+      // The profile's level, which `set_model` would replace with the model's own.
+      const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+      const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
+      for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push('--thinking', 'high');
+      writeFileSync(descriptorFile, JSON.stringify(descriptor));
+      expect((await client.call('providers.reload', {})).rejected).toEqual([]);
       await client.call('providers.probe', { providerId: 'pi-fake', accountId });
-      const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'case', model: 'fake-b/plain' });
+      const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, model: 'fake-b/plain' });
+      expect((await client.call('threads.get', { threadId })).effort).toBeNull();
       await client.call('threads.subscribe', { threadId });
       await runTurn(client, threadId, 'hello');
-      // pi started on `fake-b/Plain`, which reads images; the thread and image admission are on `fake-b/plain`.
-      expect(fakeLog()).toContain('model fake-b plain');
+      await settle(() => harness!.core.threads.require(threadId).titleSource === 'agent');
+      // pi started on `fake-b/Plain`, which reads images; the thread and image admission are on `fake-b/plain`. The
+      // conversation keeps the profile's level, and the title, a process of its own, goes to the same pair.
+      const prompts = fakeLog().split('\n').filter(line => line.startsWith('prompt on '));
+      expect(prompts).toEqual(['prompt on fake-b/plain high', 'prompt on fake-b/plain low one-shot']);
     } finally {
       delete process.env['PI_FAKE_CASE'];
     }
   });
+
+  test('a process reopened for a pair that gained images lands on the catalog\'s case of the id', async () => {
+    process.env['PI_FAKE_CASE'] = '1';
+    try {
+      const client = await startCore({ warmProcessMinutes: 5 });
+      const { projectId, accountId } = await piAccount(client);
+      await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+      const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, title: 'case', model: 'fake-b/plain' });
+      await client.call('threads.subscribe', { threadId });
+      await runTurn(client, threadId, 'first');
+      process.env['PI_FAKE_PLAIN_IMAGES'] = '1';
+      await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+      const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+      const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+      await client.call('turns.start', { threadId, prompt: 'Read this', attachments: [image] });
+      expect(await finished).toMatchObject({ status: 'done', error: null });
+      // The new process also started on `fake-b/Plain`, which reads images too: the picture goes to `fake-b/plain`.
+      expect(argvLines().filter(line => !line.includes('sessionId= '))).toHaveLength(2);
+      expect(fakeLog().split('\n').filter(line => line.startsWith('prompt on ') && !line.endsWith(' one-shot'))).toEqual(['prompt on fake-b/plain medium', 'prompt on fake-b/plain medium']);
+    } finally {
+      delete process.env['PI_FAKE_CASE'];
+      delete process.env['PI_FAKE_PLAIN_IMAGES'];
+    }
+  }, 20_000);
 
   async function runTurn(client: CoreClient, threadId: string, prompt: string): Promise<void> {
     const { finished } = await startTurn(client, threadId, prompt, 20000);

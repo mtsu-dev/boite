@@ -65,8 +65,8 @@ let deaf = false;
 let noClear = false;
 let hangClear = false;
 let hangStats = false;
-/** Set by `set_thinking_level`, reported by `get_state`. */
-let thinkingLevel = 'medium';
+/** Set by `--thinking` and `set_thinking_level`, reset by `set_model` as pi does, reported by `get_state`. */
+let thinkingLevel = flag('--thinking') || 'medium';
 /** Resolves when an `abort` arrives, for the one directive that waits on it. */
 let waitingAbort: (() => void) | null = null;
 /**
@@ -578,6 +578,7 @@ function handle(message: Record<string, unknown>): void {
         return;
       }
       running = found;
+      thinkingLevel = 'medium';
       send({ id, type: 'response', command: 'set_model', success: true, data: found });
       return;
     }
@@ -610,6 +611,7 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'prompt': {
+      if (caseless) log(`prompt on ${running.provider}/${running.id} ${thinkingLevel}${oneShot ? ' one-shot' : ''}`);
       const images = message['images'];
       if (Array.isArray(images)) {
         for (const image of images) {
