@@ -346,10 +346,10 @@
       aria-label={lent?.searchLabel ?? strings.mobile.search} placeholder={lent?.searchLabel ?? strings.mobile.search} data-testid="mobile-search" use:focusOnMount onkeydown={event => { if (event.key === 'Escape') closeSearch(); }} />
       {#if store.page === 'chat' && headerList === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
     </div>
+    <button type="button" class="ghost icon" data-testid="mobile-search-close" aria-label={strings.mobile.clearSearch} onclick={closeSearch}><X size={20} /></button>
     {#if store.page === 'chat' && headerList === 'threads'}
-      <button class="ghost global-search" data-testid="mobile-global-search" onclick={() => store.paletteOpen = true}>{strings.palette.searchAll}</button>
+      <button type="button" class="ghost global-search" data-testid="mobile-global-search" onclick={() => { closeSearch(); store.paletteOpen = true; }}><Search size={15} aria-hidden="true" /><span>{strings.palette.searchAll}</span></button>
     {/if}
-    <button class="ghost icon" data-testid="mobile-search-close" aria-label={strings.mobile.clearSearch} onclick={closeSearch}><X size={20} /></button>
   {:else}
   <!-- The page's name, then the machine, the display menu and the search on its row; the places themselves are the bottom bar's. -->
   <div class="identity brand">
@@ -364,7 +364,7 @@
   {#if searchable}<button class="ghost icon" data-testid={lent?.searchTestid ?? 'mobile-search-open'} aria-label={lent?.searchLabel ?? strings.mobile.search} title={lent?.searchLabel ?? strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
   <!-- The thread list's row is full with its views, three squares, "New" and the gear: the Whip waits on the other lists. -->
-  {#if !recover && !chatting && !newShown && featureOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<WhipButton mobile />{/if}
+  {#if !recover && !chatting && !newShown && !(searching && searchable) && featureOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<WhipButton mobile />{/if}
   {#if narrow.current && ContactRequestNotice && contactsShownAnywhere(store)}<ContactRequestNotice {store} />{/if}
   <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. Activity answers what is
        asked, so it creates nothing; the thread list's "+" is one tab away. -->
@@ -589,7 +589,7 @@
     .mobile-header > :global(.thread-list-notice) { flex-basis: 100%; }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
-    .global-search { flex: none; min-height: 44px; white-space: nowrap; }
+    .global-search { flex: 1 0 100%; justify-content: flex-start; gap: 8px; min-height: 36px; padding: 0 10px; font-size: var(--text-sm); color: var(--color-muted-foreground); white-space: nowrap; }
     /* The display options close the field's row, after a hairline. */
     .display { display: flex; align-self: stretch; align-items: center; flex: none; border-left: 1px solid var(--color-border); }
     .display :global(.trigger) { width: var(--touch-target); height: var(--touch-target); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }

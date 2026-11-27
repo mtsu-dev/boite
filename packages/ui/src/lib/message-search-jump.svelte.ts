@@ -24,10 +24,13 @@ export function useMessageSearchJump(
       store.messageSearchJump = null;
       const row = targetRow();
       if (!row) return;
-      void tick().then(() => {
+      const paint = (retry: boolean): void => {
+        if (targetRow() !== row) return;
         const node = nodeOf(row);
-        if (targetRow() === row && node?.isConnected) paintMessageSearch(node, terms);
-      });
+        if (node?.isConnected) paintMessageSearch(node, terms);
+        else if (retry && typeof requestAnimationFrame === 'function') requestAnimationFrame(() => paint(false));
+      };
+      void tick().then(() => paint(true));
     });
   });
   $effect(() => clearMessageSearch);

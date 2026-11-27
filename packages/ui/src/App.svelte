@@ -743,7 +743,7 @@
   <div class="cold-overlay">{@render loadingFrame()}</div>
 {/if}
 {#if appViews.ConnectFlow.current}{@const ConnectFlow = appViews.ConnectFlow.current}<ConnectFlow {store} />{:else if store.connectDialog}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
-{#if appViews.CommandPalette.current}{@const CommandPalette = appViews.CommandPalette.current}<CommandPalette {store} />{:else if store.paletteOpen}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
+{#if appViews.CommandPalette.current}{@const CommandPalette = appViews.CommandPalette.current}<CommandPalette {store} onopen={() => { mobileScreen = 'chat'; }} />{:else if store.paletteOpen}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
 
 <style>
   .app {

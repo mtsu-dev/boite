@@ -4,29 +4,33 @@ import { REMOVED_PROJECTS } from './thread-rows.ts';
 
 /** Text parts stay inline. Only tool, file and image fields use part_blobs. */
 const TEXT = "(SELECT group_concat(coalesce(value->>'displayText', value->>'text'), char(10)) FROM json_each(CASE WHEN json_valid(@.parts) AND json_type(@.parts) = 'array' THEN @.parts ELSE '[]' END) WHERE value->>'type' = 'text')";
+const STREAM_TEXT = "(SELECT group_concat(coalesce(sp.json->>'displayText', sp.json->>'text'), char(10)) FROM (SELECT json FROM streaming_parts WHERE message_id = @.id ORDER BY part_index) sp WHERE sp.json->>'type' = 'text')";
 const VISIBLE = "@.role IN ('user', 'assistant') AND EXISTS (SELECT 1 FROM threads WHERE id = @.thread_id AND incognito = 0)";
+
+const INFIX = "SELECT 1 FROM sqlite_schema WHERE name = 'messages_fts_infix'";
 
 export function ensureMessageSearchTriggers(db: Database): void {
   const infix = db.query(INFIX).get() !== null;
   const key = (row: string) => `(SELECT id FROM message_search_keys WHERE message_id = ${row}.id)`;
   const remove = (row: string) => `
-    ${infix ? `INSERT INTO messages_fts_infix(messages_fts_infix, rowid, body)
-      SELECT 'delete', rowid, body FROM messages_fts WHERE rowid = ${key(row)};` : ''}
-    DELETE FROM messages_fts WHERE rowid = ${key(row)};`;
+    DELETE FROM messages_fts WHERE rowid = ${key(row)};
+    ${infix ? `DELETE FROM messages_fts_infix WHERE rowid = ${key(row)};` : ''}`;
   const add = (row: string) => `
-    INSERT INTO message_search_keys(message_id)
-      SELECT ${row}.id WHERE ${VISIBLE.replaceAll('@', row)}
-      ON CONFLICT(message_id) DO NOTHING;
-    INSERT INTO messages_fts(rowid, message_id, thread_id, role, created_at, body)
-      SELECT ${key(row)}, ${row}.id, ${row}.thread_id, ${row}.role, ${row}.created_at, ${TEXT.replaceAll('@', row)}
+    INSERT INTO message_search_keys(message_id, thread_id, role, created_at)
+      SELECT ${row}.id, ${row}.thread_id, ${row}.role, ${row}.created_at WHERE ${VISIBLE.replaceAll('@', row)}
+      ON CONFLICT(message_id) DO UPDATE SET thread_id = excluded.thread_id, role = excluded.role, created_at = excluded.created_at;
+    INSERT INTO messages_fts(rowid, body)
+      SELECT ${key(row)}, ${TEXT.replaceAll('@', row)}
       WHERE ${VISIBLE.replaceAll('@', row)};
     ${infix ? `INSERT INTO messages_fts_infix(rowid, body)
-      SELECT rowid, body FROM messages_fts WHERE rowid = ${key(row)};` : ''}`;
+      SELECT ${key(row)}, ${TEXT.replaceAll('@', row)}
+      WHERE ${VISIBLE.replaceAll('@', row)};` : ''}`;
   db.exec(`
     CREATE TRIGGER IF NOT EXISTS message_search_insert AFTER INSERT ON messages
       WHEN new.role IN ('user', 'assistant') OR ${key('new')} IS NOT NULL BEGIN
       ${remove('new')}
       ${add('new')}
+      DELETE FROM message_search_keys WHERE message_id = new.id AND NOT (${VISIBLE.replaceAll('@', 'new')});
     END;
     CREATE TRIGGER IF NOT EXISTS message_search_update AFTER UPDATE OF parts ON messages
       WHEN new.role IN ('user', 'assistant') AND (old.parts IS NOT new.parts
@@ -42,70 +46,85 @@ export function ensureMessageSearchTriggers(db: Database): void {
 }
 
 export function createMessageSearch(db: Database): void {
-  // A VACUUM can change messages.rowid. Keep a permanent integer key for FTS.
+  // A VACUUM can change messages.rowid. Keep permanent integer keys and contentless
+  // FTS5 tables (`content='', contentless_delete=1`) so message bodies are not duplicated.
   db.exec(`
-    CREATE TABLE message_search_keys (id INTEGER PRIMARY KEY, message_id TEXT NOT NULL UNIQUE);
+    CREATE TABLE message_search_keys (
+      id INTEGER PRIMARY KEY,
+      message_id TEXT NOT NULL UNIQUE,
+      thread_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
     CREATE VIRTUAL TABLE messages_fts USING fts5(
-      message_id UNINDEXED, thread_id UNINDEXED, role UNINDEXED, created_at UNINDEXED, body,
+      body, content='', contentless_delete=1,
       tokenize='unicode61 remove_diacritics 2'
     )`);
-  // The trigram postings share the main index's stored text. Some system
-  // SQLite versions support trigram but lack its diacritic option.
+  // Some system SQLite versions support trigram but lack its diacritic option.
   let infix = true;
   try {
-    db.exec(`CREATE VIRTUAL TABLE messages_fts_infix USING fts5(body, content='', tokenize='trigram remove_diacritics 1')`);
+    db.exec(`CREATE VIRTUAL TABLE messages_fts_infix USING fts5(body, content='', contentless_delete=1, tokenize='trigram remove_diacritics 1')`);
   } catch (error) {
     if (!(error instanceof Error) || !error.message.includes('tokenizer')) throw error;
     infix = false;
   }
   db.exec(`
-    INSERT INTO message_search_keys(message_id)
-      SELECT m.id FROM messages m WHERE ${VISIBLE.replaceAll('@', 'm')};
-    INSERT INTO messages_fts(rowid, message_id, thread_id, role, created_at, body)
-      SELECT k.id, m.id, m.thread_id, m.role, m.created_at, ${TEXT.replaceAll('@', 'm')}
+    INSERT INTO message_search_keys(message_id, thread_id, role, created_at)
+      SELECT m.id, m.thread_id, m.role, m.created_at FROM messages m WHERE ${VISIBLE.replaceAll('@', 'm')};
+    INSERT INTO messages_fts(rowid, body)
+      SELECT k.id, ${TEXT.replaceAll('@', 'm')}
       FROM message_search_keys k JOIN messages m ON m.id = k.message_id;
-    ${infix ? 'INSERT INTO messages_fts_infix(rowid, body) SELECT rowid, body FROM messages_fts;' : ''}
+    ${infix ? `INSERT INTO messages_fts_infix(rowid, body)
+      SELECT k.id, ${TEXT.replaceAll('@', 'm')}
+      FROM message_search_keys k JOIN messages m ON m.id = k.message_id;` : ''}
   `);
   ensureMessageSearchTriggers(db);
 }
 
-const INFIX = "SELECT 1 FROM sqlite_schema WHERE name = 'messages_fts_infix'";
-const SELECT_INDEXED = `SELECT f.rowid, f.body FROM message_search_keys k
-  JOIN messages_fts f ON f.rowid = k.id WHERE k.message_id = ?`;
-
 /** The caller commits this with the side rows, or both roll back together. */
 export function refreshStreamMessageSearch(db: Database, id: string, body: string): void {
-  const held = db.query<{ rowid: number; body: string | null }, [string]>(SELECT_INDEXED).get(id);
-  if (held === null || (held.body ?? '') === body) return;
-  const infix = db.query(INFIX).get() !== null;
-  if (infix) db.query("INSERT INTO messages_fts_infix(messages_fts_infix, rowid, body) VALUES ('delete', ?, ?)").run(held.rowid, held.body);
-  db.query('UPDATE messages_fts SET body = ? WHERE rowid = ?').run(body, held.rowid);
-  if (infix) db.query('INSERT INTO messages_fts_infix(rowid, body) VALUES (?, ?)').run(held.rowid, body);
+  const held = db.query<{ id: number }, [string]>('SELECT id FROM message_search_keys WHERE message_id = ?').get(id);
+  if (held === null) return;
+  db.query('DELETE FROM messages_fts WHERE rowid = ?').run(held.id);
+  db.query('INSERT INTO messages_fts(rowid, body) VALUES (?, ?)').run(held.id, body);
+  if (db.query(INFIX).get() !== null) {
+    db.query('DELETE FROM messages_fts_infix WHERE rowid = ?').run(held.id);
+    db.query('INSERT INTO messages_fts_infix(rowid, body) VALUES (?, ?)').run(held.id, body);
+  }
 }
 
 export function copyStreamMessageSearch(db: Database, from: string, to: string): void {
-  const source = db.query<{ body: string | null }, [string]>(SELECT_INDEXED).get(from);
+  const source = db.query<{ body: string | null }, [string]>(`
+    SELECT COALESCE(${STREAM_TEXT.replaceAll('@', 'm')}, ${TEXT.replaceAll('@', 'm')}) AS body
+    FROM messages m WHERE m.id = ?
+  `).get(from);
   if (source) refreshStreamMessageSearch(db, to, source.body ?? '');
 }
 
 type Candidate = Omit<ThreadMessageMatch, 'snippet' | 'score'> & { body: string; rowid: number };
 
-function candidatePage(db: Database, index: 'messages_fts' | 'messages_fts_infix', source: string, queries: string[], cap: number, offset = 0): Candidate[] {
-  // Give each matching thread a first candidate before considering its next.
-  // Only carry row IDs and ordering fields through the sort.
-  return db.query<Candidate, [...string[], number, number]>(`
+function candidateRows(db: Database, index: 'messages_fts' | 'messages_fts_infix', visible: string, ftsQuery: string, cap: number): Candidate[] {
+  // Give each matching thread its top candidates in a single pass without OFFSET rescans
+  // or nested FTS5 MATCH joins, reading message text only for the bounded winning page.
+  return db.query<Candidate, [string, number]>(`
     WITH ranked AS (
-      SELECT messages_fts.rowid AS id, ${index}.rank AS relevance, messages_fts.created_at AS at,
-        row_number() OVER (PARTITION BY messages_fts.thread_id
-          ORDER BY ${index}.rank, messages_fts.created_at DESC, messages_fts.message_id) AS position
-      ${source}
+      SELECT k.id, ${index}.rank AS relevance, k.created_at AS at,
+        row_number() OVER (PARTITION BY k.thread_id
+          ORDER BY ${index}.rank, k.created_at DESC, k.message_id) AS position
+      FROM ${index}
+      JOIN message_search_keys k ON k.id = ${index}.rowid
+      JOIN threads t ON t.id = k.thread_id
+      WHERE ${visible} AND ${index} MATCH ?
     ), page AS (
-      SELECT id FROM ranked ORDER BY position, relevance, at DESC, id DESC LIMIT ? OFFSET ?
+      SELECT id FROM ranked WHERE position <= 4 ORDER BY position, relevance, at DESC, id DESC LIMIT ?
     )
-    SELECT f.rowid, f.message_id AS messageId, f.thread_id AS threadId,
-      f.role, f.created_at AS messageCreatedAt, f.body
-    FROM page CROSS JOIN messages_fts f ON f.rowid = page.id
-  `).all(...queries, cap, offset);
+    SELECT k.id AS rowid, k.message_id AS messageId, k.thread_id AS threadId,
+      k.role, k.created_at AS messageCreatedAt,
+      COALESCE(${STREAM_TEXT.replaceAll('@', 'm')}, ${TEXT.replaceAll('@', 'm')}, '') AS body
+    FROM page
+    JOIN message_search_keys k ON k.id = page.id
+    JOIN messages m ON m.id = k.message_id
+  `).all(ftsQuery, cap);
 }
 
 export function searchThreadMessages(db: Database, query: string, { limit = 20, includeArchived = true }: Pick<RpcParams<'threads.search'>, 'limit' | 'includeArchived'> = {}): ThreadMessageMatch[] {
@@ -124,49 +143,50 @@ export function searchThreadMessages(db: Database, query: string, { limit = 20, 
     else { wordsWithInfix.push(word); infixOnly.push(pattern); }
   }
   const visible = `
-    JOIN threads t ON t.id = messages_fts.thread_id
-    WHERE t.incognito = 0
-      AND NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = t.id)
-      AND (t.project_id IS NULL OR t.project_id NOT IN (${REMOVED_PROJECTS}))
-      ${includeArchived ? '' : 'AND t.archived = 0'}
+    t.incognito = 0
+    AND NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = t.id)
+    AND (t.project_id IS NULL OR t.project_id NOT IN (${REMOVED_PROJECTS}))
+    ${includeArchived ? '' : 'AND t.archived = 0'}
   `;
   const maxResults = Math.min(limit, 50);
-  const batch = Math.max(80, maxResults * 4);
-  const maxScan = 1600;
+  const maxScan = Math.min(1600, Math.max(400, maxResults * 16));
   const matches = new Map<string, ThreadMessageMatch>();
   const seen = new Set<number>();
-  const collect = (index: 'messages_fts' | 'messages_fts_infix', source: string, queries: string[], targetThreads: number): void => {
+  const cutoff = (): number => {
+    if (matches.size < maxResults) return -Infinity;
+    return [...matches.values()].map(hit => hit.score).sort((a, b) => b - a)[maxResults - 1]!;
+  };
+  const collect = (index: 'messages_fts' | 'messages_fts_infix', ftsQuery: string, targetThreads: number): void => {
     const accepted = new Set<string>();
-    for (let offset = 0; offset < maxScan; offset += batch) {
-      const rows = candidatePage(db, index, source, queries, batch, offset);
-      for (const { rowid, body, ...row } of rows) {
-        if (seen.has(rowid)) continue;
-        seen.add(rowid);
-        const grade = gradeMessage(body, terms);
-        if (!grade) continue;
-        const hit = { ...row, ...grade };
-        accepted.add(hit.threadId);
-        const previous = matches.get(hit.threadId);
-        if (!previous || orderMessageMatches(hit, previous) < 0) matches.set(hit.threadId, hit);
-      }
-      if (rows.length < batch || accepted.size >= targetThreads) break;
+    for (const { rowid, body, ...row } of candidateRows(db, index, visible, ftsQuery, maxScan)) {
+      if (seen.has(rowid)) continue;
+      seen.add(rowid);
+      const grade = gradeMessage(body, terms);
+      if (!grade) continue;
+      const hit = { ...row, ...grade };
+      accepted.add(hit.threadId);
+      const previous = matches.get(hit.threadId);
+      if (!previous || orderMessageMatches(hit, previous) < 0) matches.set(hit.threadId, hit);
+      if (accepted.size >= targetThreads && matches.size >= targetThreads) break;
     }
   };
   const exactQuery = exactWords.join(' AND ');
   const wordQuery = [...wordsOnly, ...wordsWithInfix].join(' AND ');
+  const targetThreads = Math.max(40, maxResults * 2);
   // Query exact whole-word matches before prefix matches so many prefix hits cannot evict exact words.
   if (exactQuery !== wordQuery) {
-    collect('messages_fts', `FROM messages_fts ${visible} AND messages_fts MATCH ?`, [exactQuery], maxResults);
+    collect('messages_fts', exactQuery, targetThreads);
   }
-  collect('messages_fts', `FROM messages_fts ${visible} AND messages_fts MATCH ?`, [wordQuery], maxResults * 2);
-  // Evaluate internal substrings only on indexed candidates. A SQLite build
-  // without the accent-folding trigram tokenizer still has the word index.
-  if (infixOnly.length > 0 && db.query(INFIX).get() !== null) {
-    collect('messages_fts_infix', `FROM messages_fts_infix
-      CROSS JOIN messages_fts ON messages_fts.rowid = messages_fts_infix.rowid
-      ${visible} AND messages_fts_infix MATCH ?
-      ${wordsOnly.length ? 'AND messages_fts MATCH ?' : ''}`,
-      [infixOnly.join(' AND '), ...(wordsOnly.length ? [wordsOnly.join(' AND ')] : [])], maxResults * 2);
+  // A prefix-only hit scores at most 2 for a single term or 100 + (3*(n-1)+2)/n for multiple terms; skip if already beaten.
+  const maxPrefixScore = terms.length === 1 ? 2 : 100 + (3 * (terms.length - 1) + 2) / terms.length;
+  if (exactQuery === wordQuery || cutoff() <= maxPrefixScore) {
+    collect('messages_fts', wordQuery, targetThreads);
+  }
+  // Evaluate internal substrings on indexed candidates without joining a second FTS5 MATCH;
+  // gradeMessage verifies any short or exact terms on the bounded page.
+  const maxInfixScore = terms.length === 1 ? 1 : 100 + (3 * (terms.length - 1) + 1) / terms.length;
+  if (infixOnly.length > 0 && cutoff() <= maxInfixScore && db.query(INFIX).get() !== null) {
+    collect('messages_fts_infix', infixOnly.join(' AND '), targetThreads);
   }
   return [...matches.values()].sort(orderMessageMatches).slice(0, maxResults);
 }

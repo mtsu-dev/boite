@@ -229,8 +229,7 @@
     untrack(releaseNavigation);
     failureTarget = { id };
     navigationTarget = rows[index]!.id; navigationAnchor = anchor ?? null;
-    pinned = false;
-    behind = true;
+    pinned = false; behind = true;
     box.scrollTop = totals(rows)[index] ?? 0;
     scrollTop = box.scrollTop; return true;
   }
@@ -460,7 +459,7 @@
     if (!box) return;
     if (!restoredReading) {
       restoredReading = true;
-      if (savedReading && !savedReading.pinned) {
+      if (savedReading && !savedReading.pinned && !navigationTarget) {
         box.scrollTop = savedTop;
         // What is loaded now is the baseline: the button counts what arrives after.
         untrack(markSeen);
@@ -642,8 +641,8 @@
     if (!box) return;
     const opened = shown !== threadId;
     shown = threadId;
-    if (promptTarget && !pinned) {
-      behind = false;
+    if ((navigationTarget || promptTarget) && !pinned) {
+      if (!navigationTarget) behind = false;
       untrack(markSeen);
     } else if (opened || pinned) {
       if (opened || untrack(following)) {

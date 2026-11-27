@@ -66,9 +66,10 @@ function rangesOf(text: string, terms: readonly MessageSearchTerm[]): Match[] {
         matches.push({ start: word.start, end: words[index + needle.length - 1]!.end, quality: 3, term });
         continue;
       }
-      if (exact || first.length < 3) continue;
+      const codePoints = Array.from(first).length;
+      if (exact || codePoints < 3) continue;
       const at = word.value.indexOf(first);
-      if (at < 0 || (at > 0 && (first.length < 4 || /^[a-f0-9]{8,}$/u.test(word.value)))) continue;
+      if (at < 0 || (at > 0 && (codePoints < 4 || /^[a-f0-9]{8,}$/u.test(word.value)))) continue;
       const range = originalSearchRange(word.raw, word.value, at, at + first.length);
       matches.push({ start: word.start + range.start, end: word.start + range.end, quality: at === 0 ? 2 : 1, term });
     }

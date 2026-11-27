@@ -164,12 +164,14 @@ export class StreamBuffer {
         }
         const json = [...entry.json];
         const { id, threadId } = entry.message;
+        let textChanged = false;
         entry.message.parts.forEach((part, index) => {
           if (json[index] !== undefined) return;
+          if (part.type === 'text') textChanged = true;
           json[index] = storePart(this.#db, entry.message, index, part);
           runWrite(this.#db, UPSERT_SIDE, id, index, threadId, json[index]);
         });
-        refreshStreamMessageSearch(this.#db, id, searchableMessageText(entry.message));
+        if (textChanged) refreshStreamMessageSearch(this.#db, id, searchableMessageText(entry.message));
         written.push([entry, json, false]);
       }
       if (hook !== null) committed = hook.write();

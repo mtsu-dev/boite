@@ -157,6 +157,7 @@ export class Threads {
     this.newer.reset();
     this.loadingThreadId = null;
     this.loadingBytes = null;
+    this.ctx.store.messageSearchJump = null;
     return ++this.openGeneration;
   }
 
@@ -346,8 +347,11 @@ export class Threads {
    */
   async open(threadId: ThreadId, navigate = true, options: { requests?: boolean; liveCreation?: boolean; listed?: boolean; match?: { messageId: MessageId; query: string } } = {}): Promise<void> {
     const s = this.ctx.store;
-    const { delegation } = this.ctx;
-    const client = this.ctx.client;
+    if (options.match && this.openThread?.id === threadId && this.openThread.messages.some(message => message.id === options.match!.messageId)) {
+      if (navigate) s.page = this.pageOf(this.openThread);
+      publishSearchJump(s, this.openThread, options.match); return;
+    }
+    const { delegation, client } = this.ctx;
     if (!client) return;
     const preview = this.#preview && this.#preview.generation === this.openGeneration && this.openThread?.id === this.#preview.threadId ? this.#preview : null;
     const generation = this.invalidateNavigation(navigate);

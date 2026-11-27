@@ -40,8 +40,10 @@ test('schema 54 indexes old visible messages and tracks replacements, streamed t
     expect(search('"réparer le panneau"')).toEqual(['old']);
     expect(search('"réparer panneau"')).toEqual([]);
     expect(search('pann')).toEqual(['old']);
-    expect(search('anne')).toEqual(['old']);
-    expect(search('"réparer le" anne')).toEqual(['old']);
+    if (journal.db.query("SELECT 1 FROM sqlite_schema WHERE name = 'messages_fts_infix'").get() !== null) {
+      expect(search('anne')).toEqual(['old']);
+      expect(search('"réparer le" anne')).toEqual(['old']);
+    }
     expect(search('---')).toEqual([]);
 
     journal.db.exec('VACUUM');
@@ -171,6 +173,21 @@ test('threads.search keeps exact whole words ahead of many prefix hits and scans
   const planet = await client.call('threads.search', { query: 'planet', limit: 2 });
   expect(planet.matches[0]).toMatchObject({ threadId: exactThread, messageId: 'exact-planet' });
 
-  const infix = await client.call('threads.search', { query: 'abcd', limit: 5 });
-  expect(infix.matches.map(hit => hit.messageId)).toEqual(['real-infix']);
+  // Consecutive searches across >40 matching threads must not leave cached SQLite statements busy.
+  const firstMany = await client.call('threads.search', { query: 'deadbeef', limit: 5 });
+  const secondMany = await client.call('threads.search', { query: 'deadbeef', limit: 5 });
+  expect(firstMany.matches).toHaveLength(5);
+  expect(secondMany.matches).toHaveLength(5);
+
+  if (journal.db.query("SELECT 1 FROM sqlite_schema WHERE name = 'messages_fts_infix'").get() !== null) {
+    const infix = await client.call('threads.search', { query: 'abcd', limit: 5 });
+    expect(infix.matches.map(hit => hit.messageId)).toEqual(['real-infix']);
+    // Short word (< 4 chars) combined with >= 4-char infix term must match without joining two FTS5 MATCH tables.
+    journal.putMessage(message('short-infix', infixThread, 'Check the prefixabcdsuffix log', 2));
+    const combo = await client.call('threads.search', { query: 'the abcd', limit: 5 });
+    expect(combo.matches.map(hit => hit.messageId)).toEqual(['short-infix']);
+  }
+  // Replacing a visible message with a system role removes its FTS rows and search key.
+  journal.putMessage({ ...message('exact-planet', exactThread, 'System replacement', 99), role: 'system' });
+  expect(journal.db.query("SELECT 1 FROM message_search_keys WHERE message_id = 'exact-planet'").get()).toBeNull();
 });

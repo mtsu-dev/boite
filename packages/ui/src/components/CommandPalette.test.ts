@@ -169,6 +169,24 @@ test('metadata and message results coexist and Enter requests a page around the 
   expect(store.openThread?.messages.find(message => message.id === target)?.turnId).toBe(turn.id);
 });
 
+test('picking a mention calls onopen so phone navigation leaves the thread list', async () => {
+  unmount(running!);
+  const onopen = vi.fn();
+  running = mount(CommandPalette, { target: document.body, props: { store, onopen } });
+  await client.call('turns.start', { threadId: 't-trace', prompt: 'Inspect the cedar antenna.' });
+  store.paletteOpen = true;
+  flushSync();
+  await type('cedar');
+  const mention = await vi.waitFor(() => {
+    flushSync();
+    const row = document.querySelector<HTMLButtonElement>('[data-section=mentions] [data-testid=palette-row]');
+    expect(row).not.toBeNull();
+    return row!;
+  });
+  mention.click();
+  expect(onopen).toHaveBeenCalledTimes(1);
+});
+
 test('a mention uses the same bounded query when searching and jumping', async () => {
   const call = vi.spyOn(client, 'call');
   await client.call('turns.start', { threadId: 't-trace', prompt: 'The cedar marker is here.' });

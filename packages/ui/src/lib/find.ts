@@ -109,7 +109,8 @@ export function paintMessageSearch(root: HTMLElement, terms: MessageSearchTerm[]
       ranges.push(range);
     }
   }
-  CSS.highlights.set(MESSAGE_SEARCH, new Highlight(...ranges));
+  if (ranges.length) CSS.highlights.set(MESSAGE_SEARCH, new Highlight(...ranges));
+  else CSS.highlights.delete(MESSAGE_SEARCH);
 }
 
 export function clearMessageSearch(): void {

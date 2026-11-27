@@ -30,7 +30,7 @@
   import { inbox } from '../lib/inbox.svelte';
   import { hostMark, hostName } from '../lib/machine-host';
 
-  let { store }: { store: Store } = $props();
+  let { store, onopen }: { store: Store; onopen?: () => void } = $props();
 
   const overlay = new Closing();
   let query = $state('');
@@ -76,6 +76,8 @@
     query = '';
     selection = null;
     keyed = false;
+    mentions = [];
+    searchFailed = false;
     overlay.show();
     readShelved();
     void tick().then(() => input?.focus({ preventScroll: true }));
@@ -102,19 +104,23 @@
     const asked = mentionQuery;
     const owners = machines.filter(machine => machine.store.connection === 'ready' && machine.store.core?.features?.messageSearch);
     const enough = searchTerms.some(term => term.words.some(word => word.length >= 2));
-    mentions = [];
     searchFailed = false;
-    if (!enough || owners.length === 0) return;
+    if (!enough || owners.length === 0) {
+      mentions = [];
+      return;
+    }
     let current = true;
     const timer = setTimeout(() => {
+      const byMachine = new Map<string, { machine: Machine; hit: ThreadMessageMatch }[]>();
       for (const machine of owners) {
         const client = machine.store.client;
         if (!client) continue;
         const wanted = () => current && machine.store.client === client;
         void client.call('threads.search', { query: asked, replacePending: true }).then(({ matches }) => {
           if (!wanted()) return;
-          mentions = [...mentions, ...matches.map(hit => ({ machine, hit }))].sort((a, b) =>
-            orderMessageMatches(a.hit, b.hit) || a.machine.id.localeCompare(b.machine.id));
+          byMachine.set(machine.id, matches.map(hit => ({ machine, hit })));
+          mentions = [...byMachine.values()].flat().sort((a, b) =>
+            orderMessageMatches(a.hit, b.hit) || a.machine.id.localeCompare(b.machine.id)).slice(0, 20);
         }).catch((error: unknown) => {
           if (wanted() && !(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) searchFailed = true;
         });
@@ -174,8 +180,9 @@
     for (const { machine, hit } of mentions) {
       const place = threadData.places.get(`thread:${machine.store.threadKey(hit.threadId)}`);
       if (!place?.thread) continue;
+      const label = place.bot && place.thread.agentSessionId ? place.bot.name : place.thread.title;
       const id = `mention:${JSON.stringify([machine.id, hit.messageId])}`;
-      rows.set(id, { item: { id, kind: 'mention', label: place.thread.title }, place, hit });
+      rows.set(id, { item: { id, kind: 'mention', label }, place, hit });
     }
     return rows;
   });
@@ -242,8 +249,11 @@
 
   function pick(item: PaletteItem) {
     close();
-    // A thread or a new one takes the main card back from desktop Activity.
-    if (item.kind !== 'command' || item.id === 'new-thread') inbox.open = false;
+    // A thread or a new one takes the main card back from desktop Activity and switches a phone to chat.
+    if (item.kind !== 'command' || item.id === 'new-thread') {
+      inbox.open = false;
+      onopen?.();
+    }
     if (item.kind === 'mention') {
       const mention = mentionRows.get(item.id);
       if (!mention) return;
@@ -580,6 +590,7 @@
     flex: 1;
     min-width: 0;
     display: grid;
+    gap: 2px;
   }
 
   .title-line {
@@ -599,6 +610,7 @@
     flex: 1;
     min-width: 0;
     font-weight: 400;
+    line-height: 1.3;
   }
 
   .row.two-lines {
@@ -610,12 +622,14 @@
   .detail, time, .mention-place {
     color: var(--color-muted-foreground);
     font-size: var(--text-xs);
+    line-height: 1.3;
   }
 
   .mention-place { max-width: 30%; }
   time { flex: none; }
   .speaker { color: var(--color-subtle); }
   mark { color: var(--color-foreground); background: var(--color-accent-soft); border-radius: var(--radius-sm); }
+  .row.selected mark { background: color-mix(in oklch, var(--color-accent) 28%, transparent); }
 
   /* A subagent's title gives its room to the parent's name only past its own width. */
   .copy.sub { flex: 0 1 auto; }
