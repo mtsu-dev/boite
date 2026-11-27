@@ -3,7 +3,7 @@ import { isSettingExperiment } from '@boite/contracts';
 import { desktopShell } from './shell-platform';
 
 /** Every Settings page, so a value read from a link can be checked before it opens one. */
-export const SETTINGS_TABS = ['home', 'advanced', 'brain', 'voice', 'general', 'machines', 'appearance', 'keyboard', 'accounts', 'plugins', 'browser', 'usage', 'limits', 'resources', 'task-manager', 'experiments', 'diagnostics'] as const;
+export const SETTINGS_TABS = ['home', 'advanced', 'brain', 'voice', 'general', 'machines', 'appearance', 'keyboard', 'accounts', 'plugins', 'mcp', 'browser', 'usage', 'limits', 'resources', 'task-manager', 'experiments', 'diagnostics'] as const;
 export type SettingsTab = typeof SETTINGS_TABS[number];
 
 interface SettingsPage {
@@ -35,6 +35,7 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   // Plugins run beside the core, so a phone turns them on and off, sets them
   // and installs them as well as the desktop; nothing there needs a right-click.
   plugins: { owner: true, machine: true, phone: 'page' },
+  mcp: { owner: true, machine: true, phone: 'page' },
   // The built-in browser of this device: its profiles and the sign-ins it hands to a machine's agent browser.
   browser: { owner: true, device: true, phone: 'page' },
   brain: { owner: true, machine: true, phone: 'page' },
@@ -80,7 +81,7 @@ const OWNER_CARDS = new Set(['privacy', 'execution', 'origins', 'auto-compact', 
  */
 export const SETTINGS_FAMILIES = [
   { id: 'app', pages: ['general', 'keyboard', 'voice', 'appearance'] },
-  { id: 'agents', pages: ['accounts', 'plugins', 'brain', 'limits', 'usage'] },
+  { id: 'agents', pages: ['accounts', 'plugins', 'mcp', 'brain', 'limits', 'usage'] },
   { id: 'connections', pages: ['browser', 'machines'] },
   { id: 'advanced', pages: ['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager'] }
 ] as const satisfies readonly { id: string; pages: readonly SettingsTab[] }[];

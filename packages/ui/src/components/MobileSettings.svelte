@@ -26,6 +26,7 @@
   import UsagePage from './UsagePage.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import BrainPage from './BrainPage.svelte';
+  import McpPage from './McpPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
   import ArchivedThreads from './ArchivedThreads.svelte';
   import DeletedThreads from './DeletedThreads.svelte';
@@ -94,12 +95,13 @@
     : page === 'voice' ? strings.speech.heading : page === 'appearance' ? strings.settings.tabs.appearance
     : page === 'usage' ? strings.usage.heading : page === 'limits' ? strings.usage.limits
     : page === 'plugins' ? strings.settings.tabs.plugins
+    : page === 'mcp' ? strings.mcp.heading
     : page === 'task-manager' ? strings.taskManager.title
     : page === 'diagnostics' ? strings.diagnostics.heading
     : page === 'experiments' ? strings.settings.tabs.experiments : strings.settings.tabs.machines;
   let detail = $derived(page !== 'home');
   /** The pages that change one machine whole, its bar under their header. */
-  const MACHINE_PAGES = ['accounts', 'plugins', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'archived', 'experiments'];
+  const MACHINE_PAGES = ['accounts', 'plugins', 'mcp', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'archived', 'experiments'];
   /**
    * A page of one machine's agent settings says so under its header, the machine's name the picker
    * where there are several; other pages show their title alone. Limits names its machine in its title already.
@@ -232,6 +234,7 @@
         <div class="rows">
           {#if target.owner}{@render row('settings-tab-accounts', strings.settings.tabs.accounts, () => store.showSettings('accounts'), 'accounts')}{/if}
           {#if target.owner}{@render row('settings-tab-plugins', strings.settings.tabs.plugins, () => store.showSettings('plugins'), 'plugins')}{/if}
+          {#if target.owner}{@render row('settings-tab-mcp', strings.mcp.heading, () => store.showSettings('mcp'), 'mcp')}{/if}
           {#if target.owner}{@render row('settings-tab-brain', strings.brain.heading, () => store.showSettings('brain'), 'brain')}{/if}
           <!-- Limits and Usage are peers, as on the desktop; their screen keeps both as two tabs. -->
           {@render row('settings-tab-limits', strings.usage.limits, () => store.showSettings('limits'), 'limits')}
@@ -344,6 +347,8 @@
         <TaskManagerLoader {store} {onopenthread} />
       {:else if shown === 'plugins' && target.owner}
         <PluginsPage store={target} />
+      {:else if shown === 'mcp' && target.owner}
+        <McpPage store={target} phone />
       {:else if shown === 'experiments'}
         <ExperimentsPage store={target} />
       {:else if shown === 'diagnostics' && target.owner}

@@ -4,6 +4,7 @@ import { userStdioServers, type LazyServerEntry } from '../../mcp/lazy.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { SessionContext } from '../types.ts';
+import { sessionMcp } from '../mcp.ts';
 import type { ToolGate } from './permissions.ts';
 import { liveSetup } from './config.ts';
 import { cliEnv, ONE_SHOT_TITLE, THINKING_DISPLAY_FLAG } from './query.ts';
@@ -118,7 +119,7 @@ export function lazyServers(ctx: SessionContext): ReturnType<NonNullable<Session
   if (ctx.lazyMcp === undefined || (mode !== null && !mode.mcp)) return null;
   try {
     const servers = userStdioServers(ctx.accountEnv.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR, ctx.thread.cwd);
-    return ctx.lazyMcp(cliEnv(ctx), servers);
+    return sessionMcp(ctx, cliEnv(ctx), servers);
   } catch (error) {
     ctx.log('warn', `claude: MCP servers start with the CLI: ${messageOf(error)}`);
     return null;

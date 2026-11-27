@@ -5,6 +5,7 @@ import { registerPersistentAgents } from './agents/store.ts';
 import { approveAgent, createAgent } from './agents/create.ts';
 import { registerAccountMethods } from './accounts.ts';
 import { registerHookMethods } from './hooks.ts';
+import { registerMcpMethods } from './mcp/rpc.ts';
 import { registerSecretMethods } from './secrets/rpc.ts';
 import { registerAgentMethods } from './agent.ts';
 import { registerImportMethods } from './imports.ts';
@@ -73,6 +74,7 @@ export function registerModules(core: Core): void {
   core.router.register('brain.sync', () => core.brain.sync());
   registerHookMethods(core);
   registerSecretMethods(core);
+  registerMcpMethods(core);
   registerTelemetry(core);
   registerCoordination(core);
   registerContactMethods(core);

@@ -183,6 +183,7 @@ export function settingsPageLabel(page: SettingsTab): string {
     accounts: tabs.accounts,
     browser: tabs.browser,
     plugins: tabs.plugins,
+    mcp: strings.mcp.heading,
     brain: strings.brain.heading,
     usage: tabs.usage,
     limits: strings.usage.limits,

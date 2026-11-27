@@ -1,4 +1,4 @@
-import type { ClientContext } from '@agentclientprotocol/sdk/unstable';
+import type { ClientContext, McpServer } from '@agentclientprotocol/sdk/unstable';
 import { agentModelsOf } from './models.ts';
 import { discardSession } from './protocol.ts';
 
@@ -12,8 +12,8 @@ export async function probeControls<T>(
   finally { await discardSession(agent, canDelete, created.sessionId); }
 }
 
-export function newConversation(agent: ClientContext, cwd: string, meta: { _meta?: Record<string, unknown> }) {
-  return agent.request('session/new', { cwd, mcpServers: [], ...meta });
+export function newConversation(agent: ClientContext, cwd: string, meta: { _meta?: Record<string, unknown> }, mcpServers: Extract<McpServer, { type: 'http' }>[] = []) {
+  return agent.request('session/new', { cwd, mcpServers, ...meta });
 }
 
 export function discoveredControls(created: Awaited<ReturnType<typeof newConversation>>) {

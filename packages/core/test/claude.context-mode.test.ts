@@ -34,7 +34,12 @@ async function team() {
 
 test('a light child starts with its brief, its hooks and a few tools; a plain one keeps the whole setup', async () => {
   accountFlags(false);
+  const owner = await harness.connect();
+  await owner.call('mcp.save', { name: 'Managed fixture', transport: 'http', enabled: true, scope: 'global', projectIds: [], url: 'http://127.0.0.1:1/mcp' });
   const { threadId, spawn } = await team();
+  expect(calls[0]!.options.mcpServers?.['boite-managed-managed-fixture']).toMatchObject({
+    type: 'http', url: expect.stringContaining('/mcp/lazy/'), headers: { Authorization: 'Bearer ${BOITE_AGENT_TOKEN}' },
+  });
 
   const { child, call } = await spawn('light', 'light');
   expect(child.contextMode).toMatchObject({ label: 'light', instructions: false, guides: false, mcp: false, hooks: true });
@@ -54,6 +59,7 @@ test('a light child starts with its brief, its hooks and a few tools; a plain on
   expect(plain.child.contextMode).toBeUndefined();
   expect(plain.call.options.tools).toBeUndefined();
   expect(plain.call.options.strictMcpConfig).toBeUndefined();
+  expect(plain.call.options.mcpServers).toHaveProperty('boite-managed-managed-fixture');
   expect(plain.call.options.env).toMatchObject({ CLAUDE_CODE_DISABLE_CLAUDE_MDS: '0', BOITE_GUIDES: '1', BOITE_CONTEXT: 'profile-context', BOITE_TEST_CONTEXT_KEEP: 'kept' });
   expect(plain.call.prompts[0]).toContain('You are a Boite subagent of');
 

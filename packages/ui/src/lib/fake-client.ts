@@ -45,6 +45,7 @@ import { RpcFailure, type CallOptions, type ClientState, type EventHandler, type
 import { closedFailure } from './rpc-error';
 import { accountMethods } from './fake-client/accounts';
 import { activityMethods, pauseActivity } from './fake-client/activity';
+import { mcpMethods } from './fake-client/mcp';
 import { brainMethods } from './fake-client/brain';
 import { FakeContext, type FakeClientOptions, type FakeMethods } from './fake-client/context';
 import { hookMethods, recordHookRun } from './fake-client/hooks';
@@ -665,6 +666,7 @@ export class FakeClient implements ObservableClient {
         return { core: ctx.core, principal: ctx.bus.principal };
       },
       ...brainMethods(ctx),
+      ...mcpMethods(ctx),
       ...composerMethods(ctx, () => methods),
       ...logMethods(ctx),
       ...serverUpdateMethods(ctx),
