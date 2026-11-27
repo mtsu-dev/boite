@@ -259,6 +259,16 @@ test('pi leaves the start model to pi where the folder\'s extensions or an exten
     expect(folderExtends(agentDir, cwd, { ...piLaunchChoices(['-ne']), trust: false }, diskView(cwd))).toBe(false);
     expect(folderExtends(agentDir, cwd, { ...piLaunchChoices(['-ne']), trust: true }, diskView(cwd))).toBe(false);
     expect(folderExtends(agentDir, cwd, { scope: null, trust: true }, diskView(cwd))).toBe(true);
+    // Linked settings leave the start model to pi, but not whether extensions load where pi discovers none: a model
+    // the launch names stays Boite's to check.
+    const linkedFolder = join(root, 'linked');
+    mkdirSync(join(root, 'shared-pi'));
+    mkdirSync(linkedFolder);
+    writeFileSync(join(root, 'shared-pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
+    symlinkSync(join(root, 'shared-pi'), join(linkedFolder, '.pi'), process.platform === 'win32' ? 'junction' : 'dir');
+    const approved = { ...piLaunchChoices(['-ne']), trust: true };
+    expect(folderExtends(agentDir, linkedFolder, approved, diskView(linkedFolder))).toBe(false);
+    expect(folderStartModel(agentDir, linkedFolder, catalog, approved, diskView(linkedFolder))).toBeNull();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

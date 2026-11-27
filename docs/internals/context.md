@@ -667,8 +667,10 @@ its empty directories and hard links included. The view follows no link: a
 pi settings, trust or extensions path the launch lets pi read that crosses a
 symbolic link or a junction in the folder, on disk or restored, or enters the
 folder from outside through one, leaves the model to pi, at an edit as at a
-send (`diskView`). On a volume that ignores case, any case of a name reads the
-file the restore writes. Wherever only pi can tell the model, the edit goes
+send (`diskView`). Where the folder's names ignore case, any case of a name
+reads the file the restore writes; where Boite cannot tell, another case is
+left to pi. A restored file the core would own without its read bit reads as
+unreadable, as pi will find it. Wherever only pi can tell the model, the edit goes
 through; if pi then runs a text-only model, the driver fails the turn before
 the prompt with the same sentence, and the edited prompt stays in the
 conversation to send again without its images.

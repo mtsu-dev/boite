@@ -816,6 +816,18 @@ test('the restored view reads every link-free path as the restore leaves it, and
     // On a volume that ignores case, another case of a name reads what the restore writes there.
     const caseless = root.toUpperCase() !== root && await stat(root.toUpperCase()).then(() => true, () => false);
     if (caseless) expect(preview.read(join(root, 'CONFIG', 'PI.JSON'))).toBe('plain');
+    // A file the restore writes is this process's, with the saved mode: without its owner's read bit, unreadable,
+    // whoever could read it before.
+    if (process.platform !== 'win32' && process.getuid?.() !== 0) {
+      const shut = join(base, 'shut');
+      await mkdir(shut);
+      await writeFile(join(shut, 'pi.json'), 'smart');
+      const locked: FileChange[] = [{ name: 'pi.json', after: { hash: sha('smart'), mode: (await stat(join(shut, 'pi.json'))).mode & 0o777 }, before: { ...await file('plain'), mode: 0o040 } }];
+      const sealed = restoredView(shut, objects, locked);
+      expect([sealed.exists(join(shut, 'pi.json')), sealed.read(join(shut, 'pi.json'))]).toEqual([true, null]);
+      await restoreFiles(shut, objects, locked);
+      expect([DISK_VIEW.exists(join(shut, 'pi.json')), DISK_VIEW.read(join(shut, 'pi.json'))]).toEqual([true, null]);
+    }
     // The restore never removes the root, even when it empties it.
     const lone = join(base, 'lone');
     await mkdir(lone);

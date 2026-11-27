@@ -69,8 +69,8 @@ export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
 export function folderStartModel(
   agentDir: string, cwd: string, catalog: readonly CatalogModel[] | null, launch: Omit<PiLaunchChoices, 'model'> = { scope: null, trust: null }, files: FileView = DISK_VIEW,
 ): string | 'account' | null {
-  const { global, project, undecided } = folderView(agentDir, cwd, launch, files);
-  if (undecided) return null;
+  const { global, project, undecided, linkedStart } = folderView(agentDir, cwd, launch, files);
+  if (undecided || linkedStart) return null;
   if (!project) return 'account';
   const value = (key: typeof CHOOSING[number]) => project[key] !== undefined ? project[key] : global[key];
   // An empty scope is no scope, as pi reads it: `enabledModels: []` changes nothing over a missing key.
@@ -113,14 +113,16 @@ export function folderStartModel(
  */
 export function folderExtends(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices, 'model'> = { scope: null, trust: null }, files: FileView = DISK_VIEW): boolean {
   const view = folderView(agentDir, cwd, launch, files);
-  return view.undecided || view.extensions;
+  return view.undecided || view.extensions || view.linkedExtensions;
 }
 
 /**
  * What pi 1.6.1 reads of the account's and the folder's settings in `cwd`, whether only it can tell the start model,
  * and whether the account or the profile loads extensions (`--no-extensions` leaves only the `-e` ones).
  */
-function folderView(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices, 'model'>, files: FileView): { global: Record<string, unknown>; project: Record<string, unknown> | null; undecided: boolean; extensions: boolean } {
+function folderView(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices, 'model'>, files: FileView): {
+  global: Record<string, unknown>; project: Record<string, unknown> | null; undecided: boolean; extensions: boolean; linkedStart: boolean; linkedExtensions: boolean;
+} {
   const global = settingsAt(files, join(agentDir, 'settings.json')) ?? {};
   const folder = piProcessCwd(cwd);
   const own = join(folder, '.pi');
@@ -134,18 +136,19 @@ function folderView(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices,
   const hooked = asks && (extended || files.exists(join(own, 'settings.json')));
   const trust = launch.trust ?? trusted(files, agentDir, folder, global);
   const project = trust ? settingsAt(files, join(own, 'settings.json')) : null;
-  // A file reached through a link is pi's to read, since the view predicts only link-free paths: each counts where
-  // this launch lets pi read it, and the account's settings always.
-  const linked = [
-    join(agentDir, 'settings.json'),
-    ...launch.trust === null ? [join(agentDir, 'trust.json')] : [],
-    ...discovers && launch.extensions !== true ? [join(agentDir, 'extensions')] : [],
-    ...asks || trust ? [join(own, 'settings.json')] : [],
-    ...asks || (trust && discovers) ? [join(own, 'extensions')] : [],
-  ].some(path => files.linked(path));
   // A trusted folder's own extensions load only there (`DefaultPackageManager.resolve`).
-  const undecided = linked || hooked || (trust && discovers && (extended || listed(project?.['extensions']) || listed(project?.['packages'])));
-  return { global, project, undecided, extensions };
+  const undecided = hooked || (trust && discovers && (extended || listed(project?.['extensions']) || listed(project?.['packages'])));
+  // A file reached through a link is pi's to read, since the view predicts only link-free paths. Each counts where
+  // the answer reads it: the start model reads the account's settings, the trust that admits the folder's and the
+  // extensions that may decide that trust or load there; whether extensions load reads them only where pi discovers
+  // any, which `-e` already settles.
+  const linked = (paths: string[]) => paths.some(path => files.linked(path));
+  const decides = launch.trust === null ? [join(agentDir, 'trust.json')] : [];
+  const folderOwn = [...trust || asks ? [join(own, 'settings.json')] : [], ...asks || (trust && discovers) ? [join(own, 'extensions')] : []];
+  const loads = discovers && launch.extensions !== true ? [join(agentDir, 'extensions')] : [];
+  const linkedStart = linked([join(agentDir, 'settings.json'), ...decides, ...launch.trust === null ? loads : [], ...folderOwn]);
+  const linkedExtensions = discovers && launch.extensions !== true && linked([join(agentDir, 'settings.json'), ...decides, ...loads, ...folderOwn]);
+  return { global, project, undecided, extensions, linkedStart, linkedExtensions };
 }
 
 /**

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync, type BigIntStats } from 'node:fs';
+import { constants, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, type BigIntStats } from 'node:fs';
 import { chmod, copyFile, link, lstat, mkdir, open, readdir, readFile, readlink, realpath, rename, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import type { Core } from '../core.ts';
@@ -393,42 +393,60 @@ function real(path: string): string {
   try { return realpathSync.native(path); } catch { return resolve(path); }
 }
 
-/** Whether the volume holding `dir` ignores case: its other spelling names the same directory. */
-function caseless(dir: string): boolean {
+const flip = (name: string) => name === name.toLowerCase() ? name.toUpperCase() : name.toLowerCase();
+
+/**
+ * Whether the names in `dir` ignore case: an entry there and its other case are one file. False where two entries
+ * differ only by case, null when no entry has a letter to try.
+ */
+function caseless(dir: string): boolean | null {
   if (!FOLDED) return false;
-  const other = dir === dir.toLowerCase() ? dir.toUpperCase() : dir.toLowerCase();
-  if (other === dir) return true;
+  let names: string[];
+  try { names = readdirSync(dir); } catch { return null; }
+  const seen = new Set<string>();
+  for (const name of names) {
+    if (seen.has(name.toLowerCase())) return false;
+    seen.add(name.toLowerCase());
+  }
+  const probe = names.find(name => flip(name) !== name);
+  if (probe === undefined) return null;
   try {
-    const [own, flipped] = [statSync(dir, { bigint: true }), statSync(other, { bigint: true })];
-    return own.ino === flipped.ino && own.dev === flipped.dev;
+    const [own, other] = [lstatSync(join(dir, probe), { bigint: true }), lstatSync(join(dir, flip(probe)), { bigint: true })];
+    return own.ino === other.ino && own.dev === other.dev;
   } catch { return false; }
 }
+
+/** Whether a file the restore writes with `mode` is readable to this process, which then owns it. */
+const ownReadable = (mode: number) => process.platform === 'win32' || process.getuid?.() === 0 || (mode & 0o400) !== 0;
 
 const split = (path: string) => path.split(process.platform === 'win32' ? /[\\/]/ : sep).filter(Boolean);
 
 /**
  * The files under `root` as `restoreFiles(root, objects, changes)` will leave them, read without writing anything:
  * each change's `before`, a parent its deleted files leave empty gone, every other path as the disk holds it. A path
- * spelled under `cwd`, the thread's spelling of `root` that `realpath` expands, reads under `root`; on a volume that
- * ignores case, any case of a name reads the entry the restore writes.
+ * spelled under `cwd`, the thread's spelling of `root` that `realpath` expands, reads under `root`. Where the root's
+ * names ignore case, any case of a name reads the entry the restore writes; a restored file this process would own
+ * without its read bit reads as unreadable.
  *
  * The view follows no link inside the workspace. A path whose way there crosses a symbolic link or a junction, on
- * disk or restored, or names an entry the restore writes under two spellings, is `linked` and reads as missing; so is
+ * disk or restored, or names an entry the restore writes under two spellings (or under another case, where the case
+ * rule is unknown), is `linked` and reads as missing; so is
  * one spelled outside `cwd` and `root` whose way enters the workspace. Any other path outside reads from the disk,
  * which the restore leaves alone.
  */
 export function restoredView(root: string, objects: string, changes: readonly FileChange[], cwd = root): FileView {
   const base = real(root);
   const folds = caseless(base);
-  const fold = (path: string) => folds ? path.toLowerCase() : path;
+  const fold = (path: string) => folds === true ? path.toLowerCase() : path;
+  const lower = (path: string) => FOLDED ? path.toLowerCase() : path;
   const planned = new Map(changes.map(change => [fold(join(base, change.name)), change.before]));
-  /** Each spelling the restore writes, and every folder above one, under its folded name. */
+  /** Each spelling the restore writes, and every folder above one, by its name without case. */
   const spellings = new Map<string, Set<string>>();
   for (const change of changes) {
     for (let at = join(base, change.name); at !== base && within(base, at); at = dirname(at)) {
-      const seen = spellings.get(fold(at)) ?? new Set<string>();
+      const seen = spellings.get(lower(at)) ?? new Set<string>();
       seen.add(at);
-      spellings.set(fold(at), seen);
+      spellings.set(lower(at), seen);
     }
   }
   const below = (dir: string) => { const own = fold(dir); return own.endsWith(sep) ? own : own + sep; };
@@ -445,7 +463,7 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
     // `writeEntry` removes only the parents a deleted file leaves empty: a directory empty before stays.
     return created(path) || names(path).some(name => present(join(path, name))) || !touched(path);
   };
-  const inWorkspace = (path: string) => within(fold(base), fold(path));
+  const inWorkspace = (path: string) => within(lower(base), lower(path));
   /**
    * A path spelled outside the workspace: `linked` when its way, each link followed as the disk holds it, enters the
    * workspace, where the restore may change a link it crosses; else null, as the disk holds it.
@@ -461,11 +479,12 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
       const next = join(at, part);
       if (inWorkspace(next)) return LINKED;
       let info;
-      try { info = lstatSync(next); } catch { return null; }
+      try { info = lstatSync(next); } catch { break; }
       if (!info.isSymbolicLink()) { at = next; continue; }
       if (++hops > 40) return LINKED;
       let target: string;
-      try { target = readlinkSync(next).replace(/^\\\\\?\\|^\\\?\?\\/, ''); } catch { return LINKED; }
+      // A Windows target may carry the `\\?\` or `\??\` prefix, `UNC\` for a share.
+      try { target = readlinkSync(next).replace(/^(\\\\\?\\|\\\?\?\\)UNC\\/i, '\\\\').replace(/^\\\\\?\\|^\\\?\?\\/, ''); } catch { return LINKED; }
       if (isAbsolute(target)) {
         at = parse(target).root;
         if (!at) return LINKED;
@@ -491,7 +510,9 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
     for (const [index, part] of parts.entries()) {
       const next = join(here, part);
       const last = index === parts.length - 1;
-      if ((spellings.get(fold(next))?.size ?? 0) > 1) return LINKED;
+      // Two spellings of one entry, or, where the case rule is unknown, another case of one the restore writes.
+      const written = spellings.get(lower(next));
+      if (written && (written.size > 1 && folds !== false || folds === null && !written.has(next))) return LINKED;
       if (planned.has(fold(next))) {
         const entry = planned.get(fold(next));
         if (entry === undefined) {
@@ -523,7 +544,7 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
       if (spot === null) return DISK_VIEW.read(path);
       if (spot.state !== 'file') return null;
       const entry = planned.get(fold(spot.at));
-      if (entry) return readBlobSync(join(objects, entry.hash), entry.hash)?.toString('utf8') ?? null;
+      if (entry) return ownReadable(entry.mode) ? readBlobSync(join(objects, entry.hash), entry.hash)?.toString('utf8') ?? null : null;
       try { return readFileSync(spot.at, 'utf8'); } catch { return null; }
     },
     exists: path => {
