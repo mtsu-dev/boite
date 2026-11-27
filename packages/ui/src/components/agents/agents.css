@@ -110,6 +110,7 @@
 .agent-sheet.closing { animation: fade-out var(--dur-2) var(--ease-out-quint) forwards; }
 .agent-sheet-head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 60px; padding: 8px clamp(12px, 3vw, 24px); border-bottom: 1px solid var(--color-border); }
 .agent-sheet-head h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--text-md); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-sheet-error { flex: none; padding: 12px clamp(20px, 4vw, 48px) 0; }
 .agent-sheet-body { flex: 1; min-height: 0; overflow-y: auto; padding: 24px clamp(20px, 4vw, 48px) 40px; }
 .agent-sheet-body > .agents-form, .agent-sheet-body > .agent-routines { margin-bottom: 24px; }
 

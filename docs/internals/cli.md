@@ -551,6 +551,7 @@ boite contacts [view]|forward|connect|start|share|ask-owner|refuse|cut|deliver|b
 boite mochi memory
 boite mochi remember [--section <title>] [--replace <start>] <fact>
 boite mochi routines
+boite mochi triggers
 boite mochi schedule <json>
 boite mochi unschedule <routine-id>
 boite mochi watch|unwatch <thread-id>

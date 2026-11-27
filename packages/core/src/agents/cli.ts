@@ -3,7 +3,7 @@ import { memoryHeading, spentAgentRoutine } from '@boite/contracts';
 import type { CoreClient } from '../client.ts';
 import { targetOf } from '../control-cli.ts';
 
-const BOT_ACTIONS = 'memory, remember, routines, schedule, unschedule, watch, unwatch or new-session';
+const BOT_ACTIONS = 'memory, remember, routines, triggers, schedule, unschedule, watch, unwatch or new-session';
 
 
 /** `boite mochi ...` (`boite agent` before) from a bot's own thread. Authentication stays in the existing boite CLI. */
@@ -47,6 +47,7 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
       return { noted: text, ...(placement.replace === undefined ? {} : { replaced: placement.replace }), ...section, memory: `${brain.path}/MEMORY.md`, characters: brain.memory.length };
     }
     case 'routines': return snapshot.routines;
+    case 'triggers': return snapshot.triggers ?? [];
     case 'schedule': {
       const value = json<{ name?: string; prompt?: string; schedule?: AgentSchedule; id?: string; expectedRevision?: number; enabled?: boolean; check?: string | null }>();
       const previous = value.id ? snapshot.routines.find(r => r.id === value.id) : undefined;

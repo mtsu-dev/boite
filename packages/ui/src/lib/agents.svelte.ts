@@ -342,7 +342,13 @@ export class AgentsView {
       const result = await this.store.client.call(method, $state.snapshot(params) as RpcParams<M>);
       await this.refresh();
       return result;
-    } catch (error) { this.error = errorText(error); return null; }
+    } catch (error) {
+      const details = error instanceof RpcFailure && error.data && typeof error.data === 'object' ? error.data as Record<string, unknown> : null;
+      this.error = details?.kind === 'trigger' && typeof details.expectedRevision === 'number'
+        ? strings.agents.triggers.conflict
+        : errorText(error);
+      return null;
+    }
     finally { this.pending = false; }
   }
   private saves: Promise<unknown> = Promise.resolve();
