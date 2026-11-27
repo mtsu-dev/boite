@@ -158,25 +158,21 @@ export function sessionNotificationOf(params: unknown): SessionNotification | nu
 export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): void {
   const ownSession = sessionId === turn.sessionId;
   switch (update.sessionUpdate) {
-    case 'agent_message_chunk': {
-      if (update.content.type !== 'text') break;
-      const { text } = update.content;
-      if (text.length === 0) break;
+    case 'agent_message_chunk':
+    case 'agent_thought_chunk': {
+      const { content } = update;
+      if (content.type === 'text' && content.text.length === 0) break;
+      // An output block can invalidate the tool boundary even when Boite has no renderer for it.
       turn.outputRevision += 1;
+      if (content.type !== 'text') break;
       if (ownSession) turn.flushExecutionError();
-      // Antigravity sends this execution failure as a text update, then returns end_turn.
-      if (turn.antigravity && ownSession && isAntigravityAccountUnavailable(text)) {
-        turn.noteExecutionError(text);
-      } else turn.writeText(text);
+      if (update.sessionUpdate === 'agent_thought_chunk') turn.writeThinking(content.text);
+      else if (turn.antigravity && ownSession && isAntigravityAccountUnavailable(content.text)) {
+        // Antigravity sends this execution failure as a text update, then returns end_turn.
+        turn.noteExecutionError(content.text);
+      } else turn.writeText(content.text);
       break;
     }
-    case 'agent_thought_chunk':
-      if (update.content.type === 'text' && update.content.text.length > 0) {
-        turn.outputRevision += 1;
-        if (ownSession) turn.flushExecutionError();
-        turn.writeThinking(update.content.text);
-      }
-      break;
     case 'tool_call':
       if (ownSession) turn.flushExecutionError();
       turn.upsertTool(
@@ -211,12 +207,20 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): v
       turn.ctx.tasks?.(update.entries.map((entry, index) => ({ id: String(index), text: entry.content, status: entry.status })));
       break;
     case 'compaction_update':
+      if (ownSession) {
+        if (update.status === 'in_progress') {
+          turn.activeCompactions.add(update.compactionId);
+          turn.outputRevision += 1;
+        } else if (update.status === 'completed' || update.status === 'failed' || update.status === 'cancelled') {
+          turn.activeCompactions.delete(update.compactionId);
+        }
+      }
       turn.ctx.reportProgress?.(update.status === 'in_progress' ? 'compacting' : 'working', update.error ?? null);
       break;
     default:
-      // user_message_chunk, plan, plan_update, plan_removed,
-      // config_option_update, session_info_update and the compaction
-      // updates have no MessagePart in the contract, so they are dropped.
+      // user_message_chunk, plan_update, plan_removed,
+      // config_option_update and session_info_update have no MessagePart in
+      // the contract, so they are dropped here.
       break;
   }
 }

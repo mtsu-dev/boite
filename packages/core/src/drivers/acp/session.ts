@@ -311,7 +311,7 @@ export class AcpSession {
   }
 
   cancelForQueuedInput(turn: AcpTurn, attachments: Attachment[]): boolean {
-    if (this.#current !== turn || turn.isStopped || turn.stoppedForQueuedInput || turn.awaitingUser || turn.hasExecutionError
+    if (this.#current !== turn || turn.isStopped || turn.stoppedForQueuedInput || turn.awaitingUser || turn.hasExecutionError || turn.activeCompactions.size > 0
       || this.#holding === turn || this.#commands.outlived() || this.#hasDetachedWork || turn.mayHaveDetachedChildren()) return false;
     if (!this.#imagesSupported && attachments.some(attachment => nativeImage(turn.ctx.provider, attachment))) {
       throw refused(`${turn.ctx.provider.name} takes no images`);

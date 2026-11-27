@@ -463,6 +463,9 @@ const app = agent({ name: 'acp-fake' })
             while (!existsSync(gate)) {
               if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
             }
+            if (id === 'second' && instructions.includes('[compacting]')) {
+              await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'in_progress' });
+            }
             await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed',
               ...(detached && id === 'second' ? { title: 'Parser review' } : {}),
             });
@@ -479,7 +482,10 @@ const app = agent({ name: 'acp-fake' })
           while (!existsSync(`${process.env['ACP_FAKE_LOG']}.answer`)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
           }
-          await say('The answer is already streaming');
+          if (instructions.includes('[image-answer]')) {
+            await send({ sessionUpdate: 'agent_message_chunk', content: { type: 'image', data: TINY_PNG, mimeType: 'image/png' } });
+            await send({ sessionUpdate: 'plan', entries: [{ content: 'Send image', priority: 'medium', status: 'completed' }] });
+          } else await say('The answer is already streaming');
         }
         if (detached || instructions.includes('[finish-on-gate]')) {
           while (!existsSync(`${process.env['ACP_FAKE_LOG']}.end`)) {
@@ -488,6 +494,9 @@ const app = agent({ name: 'acp-fake' })
           if (detached) await send({ sessionUpdate: 'tool_call_update', toolCallId: 'second',
             content: [{ type: 'content', content: { type: 'text', text: '{"mode": "background", "status": "dispatched", "delegation_id": "fixture-child"}' } }],
           });
+          if (instructions.includes('[compacting]')) {
+            await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'completed' });
+          }
           return { stopReason: 'end_turn' };
         }
         await stopped.promise;

@@ -270,10 +270,11 @@ test('ACP delivers queued input after two completed tools arrive in one write', 
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
 }, 20_000);
 
-test('ACP finishes the answer it started during the working-folder check', async () => {
+test.each(['text', 'image', 'native compaction'])('ACP finishes %s before delivering queued input', async output => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const core = harness!.core;
-  const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] [answer-on-gate] [finish-on-gate]' });
+  const directives = output === 'native compaction' ? '[compacting]' : output === 'image' ? '[answer-on-gate] [image-answer]' : '[answer-on-gate]';
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: `[parallel-tools] [finish-on-gate] ${directives}` });
   const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
     value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'answer-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
   expect(accepted).toBe(true);
@@ -285,9 +286,13 @@ test('ACP finishes the answer it started during the working-folder check', async
     await first;
     writeFileSync(`${logFile}.second`, 'ready');
     await waitFor(() => check.mock.calls.length === 1);
-    const answer = client.next('message.delta', event => event.threadId === threadId && event.text.includes('already streaming'), 10_000);
-    writeFileSync(`${logFile}.answer`, 'ready');
-    await answer;
+    if (output !== 'native compaction') {
+      const answer = output === 'text'
+        ? client.next('message.delta', event => event.threadId === threadId && event.text.includes('already streaming'), 10_000)
+        : client.next('thread.activity', event => event.threadId === threadId && event.activity.tasks.some(task => task.text === 'Send image'), 10_000);
+      writeFileSync(`${logFile}.answer`, 'ready');
+      await answer;
+    }
     folder.resolve(true);
     await new Promise<void>(resolve => setImmediate(resolve));
     writeFileSync(`${logFile}.end`, 'ready');
@@ -300,11 +305,12 @@ test('ACP finishes the answer it started during the working-folder check', async
   }
 }, 20_000);
 
-test('ACP honors a pause accepted during the queued turn working-folder check', async () => {
+test.each(['succeeds after a pause', 'fails after a pause', 'fails after a move'])('ACP rechecks queued delivery when the working-folder check %s', async change => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const core = harness!.core;
   const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools]' });
   const queued = [{ id: 'paused-after-cancel', text: 'Use the new instructions', attachments: [] }];
+  const originalFolder = core.journal.getThread(threadId)!.cwd;
   const setPaused = async (paused: boolean) => {
     const { revision, value } = core.composer.storage.get('inputs', threadId);
     const input = value?.input ?? { text: '', attachments: [], queued, paused: false };
@@ -313,27 +319,38 @@ test('ACP honors a pause accepted during the queued turn working-folder check', 
     expect(result.accepted).toBe(true);
   };
   await setPaused(false);
-  const folder = Promise.withResolvers<boolean>();
-  const check = spyOn(threadCwd, 'folderPresent').mockResolvedValueOnce(true).mockImplementationOnce(() => folder.promise);
+  const folder = Promise.withResolvers<void>();
+  const check = spyOn(threadCwd, 'ensureThreadCwd').mockImplementationOnce(() => folder.promise);
   try {
     const first = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
     writeFileSync(`${logFile}.first`, 'ready');
     await first;
     writeFileSync(`${logFile}.second`, 'ready');
-    await waitFor(() => check.mock.calls.length === 2);
+    await waitFor(() => check.mock.calls.length === 1);
     expect(core.journal.getTurn(turnId)?.status).toBe('stopped');
-    await setPaused(true);
-    folder.resolve(true);
-    await new Promise<void>(resolve => setImmediate(resolve));
-    expect(core.journal.listTurns(threadId)).toHaveLength(1);
-    expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
-    expect(core.composer.storage.delivery(queued[0]!.id)).toBeNull();
-    await setPaused(false);
-    await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
+    if (change === 'fails after a move') {
+      const path = join(harness!.dataDir, 'elsewhere');
+      mkdirSync(path);
+      const project = await client.call('projects.add', { path });
+      expect(await client.call('threads.move', { threadId, projectId: project.id })).toMatchObject({ cwd: path });
+    } else await setPaused(true);
+    if (change === 'succeeds after a pause') folder.resolve();
+    else folder.reject(new threadCwd.ThreadCwdGone(threadId, originalFolder));
+    if (change !== 'fails after a move') {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(core.journal.listTurns(threadId)).toHaveLength(1);
+      const input = core.composer.storage.get('inputs', threadId).value?.input;
+      expect(input).toMatchObject({ paused: true, queued });
+      expect(input?.queued[0]?.request?.failed).toBeUndefined();
+      expect(core.composer.storage.delivery(queued[0]!.id)).toBeNull();
+      await setPaused(false);
+    }
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null || core.composer.storage.get('inputs', threadId).value?.input.paused === true);
     expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['stopped', 'done']);
     expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
   } finally {
-    folder.resolve(true);
+    folder.resolve();
     check.mockRestore();
   }
 }, 20_000);
