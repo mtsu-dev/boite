@@ -707,7 +707,9 @@ test('pi titles a new thread with a tool-free request on its chosen model', asyn
 test('a pi one-shot on a model an extension registers falls back to pi\'s own model', async () => {
   process.env['PI_FAKE_EXTENSION_PROVIDER'] = 'fake-a';
   try {
-    const client = await startCore();
+    // Warm, so the conversation's process outlives the turn: a cold one is stopped with the thread's whole tree at
+    // the turn's end, and a fallback launched just before that would go with it and be asked again.
+    const client = await startCore({ warmProcessMinutes: 5 });
     const { projectId, accountId } = await piAccount(client);
     await client.call('providers.probe', { providerId: 'pi-fake', accountId });
     const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, model: 'fake-a/smart' });
