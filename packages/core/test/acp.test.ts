@@ -27,6 +27,7 @@ test.each([
   'antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local ACP',
   'hermes with split delegation output', 'antigravity with a paused queue', 'antigravity without image support', 'antigravity ignoring cancellation',
   'local ACP switching back to an account', 'local ACP reporting its first result', 'local ACP rejecting cancellation',
+  'local ACP with an expired session', 'local ACP carrying a manually stopped prompt',
 ])('%s handles queued input when its parallel tools finish', async scenario => {
   const client = await startCore({ warmProcessMinutes: 0 });
   const core = harness!.core;
@@ -37,9 +38,12 @@ test.each([
   const switchesBack = scenario === 'local ACP switching back to an account';
   const spawned = scenario === 'local ACP reporting its first result';
   const rejectsCancel = scenario === 'local ACP rejecting cancellation';
+  const expires = scenario === 'local ACP with an expired session';
+  const carriesStopped = scenario === 'local ACP carrying a manually stopped prompt';
   const holds = detached || paused || noImages || ignoresCancel || switchesBack || spawned;
   const provider = detached ? 'hermes' : scenario.startsWith('local ACP') ? 'local ACP' : holds ? 'antigravity' : scenario;
   if (noImages) process.env['ACP_FAKE_NO_IMAGES'] = '1';
+  if (expires) process.env['ACP_FAKE_FORGET'] = '1';
   let threadId: string;
   if (provider === 'local ACP') threadId = await acpThread(client);
   else {
@@ -64,9 +68,20 @@ test.each([
     await (await startTurn(client, threadId, 'While the original account was away')).finished;
     await client.call('threads.update', { threadId, accountId });
   }
+  if (carriesStopped) {
+    await (await startTurn(client, threadId, 'Establish the session')).finished;
+    const manual = await startTurn(client, threadId, 'Previously stopped manual request [slow]');
+    await waitFor(() => fakeLog().includes('waiting for cancel'));
+    await client.call('turns.stop', { threadId });
+    expect((await manual.finished).status).toBe('stopped');
+  }
+  const priorTurns = switchesBack || carriesStopped ? 2 : 0;
   if (spawned || scenario === 'local ACP') core.coordination.configure(threadId, { mode: 'brief', resources: '', remote: false, paused: false });
   const pause = scenario === 'local ACP' ? spyOn(core.coordination, 'pause') : null;
-  const directives = [detached && '[detached-delegation]', holds && '[finish-on-gate]', ignoresCancel && '[ignore-cancel]', rejectsCancel && '[error-on-cancel]'].filter(Boolean);
+  const directives = [
+    detached && '[detached-delegation]', holds && '[finish-on-gate]', ignoresCancel && '[ignore-cancel]',
+    rejectsCancel && '[error-on-cancel]', expires && '[expire-on-cancel]',
+  ].filter(Boolean);
   const prompt = ['[parallel-tools]', ...directives].join(' ');
   const starterId = spawned ? threadId : null;
   let turnId: string;
@@ -79,6 +94,7 @@ test.each([
   await waitFor(() => core.journal.listMessages(threadId).some(message => message.turnId === turnId && message.parts.some(part => part.type === 'tool' && part.toolId === 'second')));
   const originalSession = core.threads.require(threadId).sessionId;
   expect(originalSession).toBeString();
+  const priorLoads = countLogLines(fakeLog(), `loaded:${originalSession}`);
   const attachment: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'shot.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
   const { assetId } = await client.call('composer.asset.put', { attachment });
   const firstTool = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
@@ -118,16 +134,23 @@ test.each([
     }
     writeFileSync(`${logFile}.end`, 'ready');
   }
-  await waitFor(() => core.journal.listTurns(threadId).at(-1)?.status === 'done');
-  if (!noImages) await waitFor(() => core.journal.listTurns(threadId).at(switchesBack ? 3 : 1)?.status === 'done');
+  await waitFor(() => core.journal.listTurns(threadId)[priorTurns + (noImages ? 0 : 1)]?.finishedAt != null);
   const current = await client.call('threads.get', { threadId });
-  expect(current.turns.slice(switchesBack ? 2 : 0).map(at => at.status)).toEqual(noImages ? ['done'] : [holds ? 'done' : rejectsCancel ? 'error' : 'stopped', 'done']);
+  expect(current.turns.slice(priorTurns).map(at => at.status)).toEqual(noImages ? ['done'] : [holds ? 'done' : rejectsCancel || expires ? 'error' : 'stopped', 'done']);
   const finishedTools = current.messages.filter(message => message.turnId === turnId).flatMap(message => message.parts)
     .flatMap(part => part.type === 'tool' && ['first', 'second'].includes(part.toolId) ? [part.status] : []);
   expect(finishedTools).toEqual(['done', 'done']);
-  expect(current.sessionId).toBe(originalSession);
-  if (!holds) expect(fakeLog()).not.toContain(`loaded:${originalSession}`);
+  if (expires) {
+    expect(current.sessionId).toBeString();
+    expect(current.sessionId).not.toBe(originalSession);
+    expect(fakeLog()).toContain(`load-refused:${originalSession}`);
+    expect(fakeLog()).not.toContain(`prompt-refused:${originalSession}`);
+    const answer = current.messages.at(-1)?.parts[0];
+    expect(answer).toMatchObject({ type: 'text', text: expect.stringContaining('[parallel-tools]') });
+  } else expect(current.sessionId).toBe(originalSession);
+  if (!holds) expect(countLogLines(fakeLog(), `loaded:${originalSession}`)).toBe(priorLoads);
   if (switchesBack) expect(countLogLines(fakeLog(), 'account catch-up')).toBe(1);
+  if (carriesStopped) expect(countLogLines(fakeLog(), 'manual request catch-up')).toBe(1);
   if (starterId) {
     await waitFor(() => core.coordination.get(starterId).messages.some(letter => letter.from.threadId === threadId));
     expect(core.coordination.get(starterId).messages.find(letter => letter.from.threadId === threadId)?.text).toContain(': done');
@@ -136,7 +159,7 @@ test.each([
   expect(countLogLines(fakeLog(), 'session/cancel')).toBe(!holds || ignoresCancel ? 1 : 0);
   expect(fakeLog()).not.toContain('replayed interrupted prompt');
   expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || noImages ? 0 : 1);
-  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(noImages ? 1 : switchesBack ? 4 : 2);
+  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(priorTurns + (noImages ? 1 : 2));
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(noImages ? ['parallel-tools-follow-up'] : []);
 }, 20_000);
 

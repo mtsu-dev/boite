@@ -415,8 +415,14 @@ const app = agent({ name: 'acp-fake' })
   .onRequest('session/prompt', async ({ params, client }) => {
     log('session/prompt');
     const sessionId = params.sessionId;
+    if (!known.has(sessionId)) {
+      log(`prompt-refused:${sessionId}`);
+      throw RequestError.resourceNotFound(sessionId);
+    }
     const text = promptText(params.prompt);
-    if (text.includes('<interrupted-user-messages>') && text.includes('[parallel-tools]')) log('replayed interrupted prompt');
+    const interrupted = /<interrupted-user-messages>\n([\s\S]*?)\n<\/interrupted-user-messages>/.exec(text)?.[1];
+    if (interrupted?.includes('[parallel-tools]')) log('replayed interrupted prompt');
+    if (interrupted?.includes('Previously stopped manual request')) log('manual request catch-up');
     if (text.includes('It then went on with another agent')) log('account catch-up');
     // Historical test directives are context, never another request to execute.
     const instructions = instructionsOf(text);
@@ -462,6 +468,10 @@ const app = agent({ name: 'acp-fake' })
           return { stopReason: 'end_turn' };
         }
         await stopped.promise;
+        if (instructions.includes('[expire-on-cancel]')) {
+          known.delete(sessionId);
+          throw RequestError.resourceNotFound(sessionId);
+        }
         if (instructions.includes('[error-on-cancel]')) throw RequestError.internalError({ details: 'Prompt aborted' });
         return { stopReason: 'cancelled' };
       } finally { cancels.delete(sessionId); }

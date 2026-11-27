@@ -19,7 +19,7 @@ import type { LiveTurnSettings, ProbeContext, ProbeFilter, SessionContext } from
 import { OpenCommands } from './commands.ts';
 import { readDetachedWork, readPendingReply } from './detached.ts';
 import { ModelRefused, SessionControls } from './controls.ts';
-import { failureText, LoadRefused, rpcReason, rpcRefusal } from './load.ts';
+import { failureText, loadRefusal, LoadRefused, rpcReason, rpcRefusal } from './load.ts';
 import { AGENT_OWN_MODEL, agentModelsOf } from './models.ts';
 import { EXIT_GRACE_MS, isGrok, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
 import { commandsOf, imageBlocksOf, usdCostOf, type AcpTurn } from './turn.ts';
@@ -464,9 +464,10 @@ export class AcpSession {
       } else {
         await this.#fail(turn, error);
       }
-      // A live agent may answer an advisory cancellation with an RPC error.
-      // Report the failure while keeping the process and any background work.
-      const retain = !turn.isStopped && !this.#closing && turn.stoppedForQueuedInput && rpcRefusal(error);
+      // A live agent may answer cancellation with an error. Keep its process
+      // unless the session went away, so the next prompt can recover on load.
+      const retain = !turn.isStopped && !this.#closing && turn.stoppedForQueuedInput
+        && rpcRefusal(error) && loadRefusal(error, rpcReason(error)) !== 'gone';
       if (retain) this.#retention.prepare(true);
       this.#endTurn(turn, !retain);
       return;

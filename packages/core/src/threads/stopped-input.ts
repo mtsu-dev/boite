@@ -7,7 +7,8 @@ type FilePart = Extract<MessagePart, { type: 'file' }>;
 
 /**
  * Stop can win before a provider saves the prompt, even when an older native
- * session exists. Carry interrupted user input until a later user turn succeeds.
+ * session exists. Carry interrupted user input until a later user turn succeeds
+ * or its receipt confirms a queued cancellation on the same session.
  * Read the journal rather than consuming a queue, so another stop or restart
  * cannot lose it. Native commands and automatic turns do not consume it.
  * With `through`, the walk starts after `turnId` instead of before it: a
@@ -39,7 +40,8 @@ export function stoppedInput(
       if (nativeCommandPrompt(parts.filter(part => part.type === 'text').map(part => part.text).join(''))) continue;
       if (turn.status === 'done') break;
       if (turn.status === 'stopped') {
-        if (turn.execution?.queuedInputSession === sessionId) continue;
+        // The acknowledged prompt already carried the older stopped input.
+        if (turn.execution?.queuedInputSession === sessionId) break;
         const message = journal.getMessage(row.id);
         if (message) messages.push(message);
       }

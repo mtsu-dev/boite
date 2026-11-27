@@ -785,7 +785,9 @@ Grok and OpenCode 2's native server steer the running prompt. On other ACP
 transports, Boite can ask the agent to cancel its prompt when the last active
 tool finishes. The queued message starts through the normal turn queue. After
 an acknowledged cancellation, it reuses the running session without replaying
-the original input. If the agent ignores cancellation, the message waits for
+the original input or the older stopped messages that prompt carried. A
+reported missing session uses the normal reload and history recovery path.
+If the agent ignores cancellation, the message waits for
 the prompt to end. Boite validates the queued images against the negotiated
 ACP capabilities before sending cancellation. Pending cards, selection
 changes and active goals leave the message queued, as do prompts carrying
