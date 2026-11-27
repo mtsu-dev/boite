@@ -99,6 +99,7 @@ export function sessionKey(ctx: SessionContext): string {
     cwd: ctx.thread.cwd,
     generation: ctx.thread.sessionGeneration ?? 0,
     resumeAt: ctx.resumeAt ?? null,
+    mcp: ctx.thread.contextMode?.mcp === false ? false : ctx.mcpRevision,
     accountId: ctx.account.id,
     env: ctx.accountEnv,
     protection: ctx.protectedExecution?.fingerprint ?? null,

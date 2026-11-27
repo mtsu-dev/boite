@@ -2,6 +2,8 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "resources": {
+      "binaries/jobs-worker.js": "jobs-worker.js",
+      "binaries/guard-worker.js": "guard-worker.js",
       "binaries/core": "core",
       "binaries/boite.exe": "boite.exe"
     },

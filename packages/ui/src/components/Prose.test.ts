@@ -5,9 +5,11 @@ import type { Store } from '../lib/store.svelte';
 import { resetFeatures, setFeature } from '../lib/features';
 import { installExternalLinks } from '../lib/links';
 import { contextMenu } from '../lib/context-menu.svelte';
+import { confirm } from '../lib/confirm.svelte';
+import { fileNotice } from '../lib/file-open.svelte';
 
 /** `files.locate` for a file that is there as written. */
-const asWritten = async (_threadId: string, path: string) => ({ ok: true, value: [path] });
+const asWritten = async (_threadId: string, path: string) => ({ ok: true as const, value: [path] });
 
 let running: Record<string, unknown> | null = null;
 
@@ -17,101 +19,8 @@ afterEach(() => {
   document.body.innerHTML = '';
   resetFeatures();
   delete window.__TAURI_INTERNALS__;
-});
-
-/** `files.read` of an inert program fixture: its bytes are never run, only described. */
-const programFile = vi.fn(async (_threadId: string, path: string) => ({
-  ok: true, value: { kind: 'binary', path, bytes: 18, modifiedAt: 0, mime: 'application/octet-stream', url: 'http://127.0.0.1:9/file/fixture' },
-}));
-
-test.each([false, true])('a click on a program link shows its preview, and only the preview\'s Open launches it (open-chat-links: %s)', async (direct) => {
-  setFeature('chat-artifacts', true);
-  setFeature('open-chat-links', direct);
-  // A simulated shell: nothing is launched, the opener's calls are only recorded.
-  const invoke = vi.fn(async () => {});
-  window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'game', cwd: 'C:/project' }], readFile: programFile } as unknown as Store;
-  running = mount(Prose, { target: document.body, props: { text: '[Launch game](target/release/game.exe)', store, threadId: 'game' } });
-  flushSync();
-  query<HTMLAnchorElement>('a[data-file-path]').click();
-  await vi.waitFor(() => expect(document.querySelector('[data-testid=artifact-open]')).not.toBeNull());
-  expect(store.readFile).toHaveBeenCalledWith('game', 'target/release/game.exe');
-  expect(invoke).not.toHaveBeenCalled();
-  // The program's name beside Open launches nothing; only the visible Open button does.
-  query<HTMLButtonElement>('[data-testid=artifact-launch]').click();
-  await new Promise(resolve => setTimeout(resolve, 50));
-  expect(invoke).not.toHaveBeenCalled();
-  query<HTMLButtonElement>('[data-testid=artifact-open]').click();
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_local_file', { directory: 'C:/project', path: 'target/release/game.exe' }, undefined));
-  expect(invoke).toHaveBeenCalledTimes(1);
-});
-
-test('the preview\'s name opens only what the shell opens directly, and Open stays the explicit launch', async () => {
-  setFeature('chat-artifacts', true);
-  // A simulated shell: open_chat_file refuses a script as the real one does, and nothing is launched.
-  const invoke = vi.fn(async (command: string, args?: { path?: string }) => {
-    if (command === 'open_chat_file' && args?.path?.endsWith('.sh')) throw 'path tools/run.sh: expected a document (txt, md) that is not executable';
-  });
-  window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const readFile = vi.fn(async (_threadId: string, path: string) => ({ ok: true, value: { kind: 'text', path, bytes: 6, modifiedAt: 0, text: 'inert\n', truncated: false, language: null } }));
-  const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'local', cwd: 'C:/project' }], readFile } as unknown as Store;
-  running = mount(Prose, { target: document.body, props: { text: '[Run](tools/run.sh) [Notes](notes.txt)', store, threadId: 'local' } });
-  flushSync();
-  const calls = (command: string) => invoke.mock.calls.filter(([name]) => name === command);
-  const [script, notes] = document.querySelectorAll<HTMLAnchorElement>('a[data-file-path]');
-  script!.click();
-  await vi.waitFor(() => expect(document.querySelector('[data-testid=artifact-open]')).not.toBeNull());
-  query<HTMLButtonElement>('[data-testid=artifact-launch]').click();
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_chat_file', { directory: 'C:/project', path: 'tools/run.sh' }, undefined));
-  await vi.waitFor(() => expect(document.querySelector('[role=alert] p')?.textContent).toContain('expected a document'));
-  expect(calls('open_local_file')).toHaveLength(0);
-  query<HTMLButtonElement>('[data-testid=artifact-open]').click();
-  await vi.waitFor(() => expect(calls('open_local_file')).toEqual([['open_local_file', { directory: 'C:/project', path: 'tools/run.sh' }, undefined]]));
-  // A document the shell opens directly keeps its name as an Open.
-  notes!.click();
-  await vi.waitFor(() => expect(readFile).toHaveBeenCalledWith('local', 'notes.txt'));
-  await vi.waitFor(() => expect(query('[data-testid=artifact-launch]').textContent).toContain('notes.txt'));
-  query<HTMLButtonElement>('[data-testid=artifact-launch]').click();
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_chat_file', { directory: 'C:/project', path: 'notes.txt' }, undefined));
-  expect(calls('open_local_file')).toHaveLength(1);
-});
-
-test('a native open failure is shown in the preview and never falls back to downloading', async () => {
-  setFeature('chat-artifacts', true);
-  const invoke = vi.fn(async () => { throw 'game.exe: file does not exist'; });
-  window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const store = {
-    owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'game', cwd: 'C:/project' }],
-    readFile: vi.fn(async () => ({ ok: false, error: 'game.exe: file does not exist' })),
-  } as unknown as Store;
-  running = mount(Prose, { target: document.body, props: { text: '[Launch game](game.exe)', store, threadId: 'game' } });
-  flushSync();
-  query<HTMLAnchorElement>('a[data-file-path]').click();
-  await vi.waitFor(() => expect(document.querySelector('[data-testid=artifact-open]')).not.toBeNull());
-  query<HTMLButtonElement>('[data-testid=artifact-open]').click();
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_local_file', { directory: 'C:/project', path: 'game.exe' }, undefined));
-  await vi.waitFor(() => expect(document.querySelector('[role=alert] p')?.textContent).toBe('game.exe: file does not exist'));
-  expect(document.querySelector('[data-testid=artifact-download]')).toBeNull();
-});
-
-test('a local file can still open when its preview cannot be read', async () => {
-  setFeature('chat-artifacts', true);
-  const invoke = vi.fn(async () => {});
-  window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const store = {
-    owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'game', cwd: 'C:/project' }],
-    readFile: vi.fn(async () => ({ ok: false, error: 'Preview could not be read' })),
-  } as unknown as Store;
-  running = mount(Prose, { target: document.body, props: { text: '[Manual](manual.pdf)', store, threadId: 'game' } });
-  flushSync();
-  query<HTMLAnchorElement>('a[data-file-path]').click();
-  await vi.waitFor(() => expect(document.querySelector('[role=alert] p')?.textContent).toBe('Preview could not be read'));
-  query<HTMLButtonElement>('[role=alert] button').click();
-  await vi.waitFor(() => expect(store.readFile).toHaveBeenCalledTimes(2));
-  expect(invoke).not.toHaveBeenCalled();
-  expect(document.querySelector('[data-testid=artifact-download]')).toBeNull();
-  query<HTMLButtonElement>('[data-testid=artifact-open]').click();
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_local_file', { directory: 'C:/project', path: 'manual.pdf' }, undefined));
+  if (confirm.current) confirm.answer('cancel');
+  fileNotice.dismiss();
 });
 
 function query<T extends Element>(selector: string): T {
@@ -120,30 +29,253 @@ function query<T extends Element>(selector: string): T {
   return node;
 }
 
-test('dragging across a game path never previews it, the next click does, and no click launches it', async () => {
-  setFeature('chat-artifacts', true);
-  const invoke = vi.fn(async () => {});
+/**
+ * A simulated shell: `client_path_info` answers from `files`, a path it does
+ * not list is missing, and the opener's calls are only recorded, never run.
+ */
+function shell(files: Record<string, 'document' | 'folder' | 'program'> = {}) {
+  const invoke = vi.fn(async (command: string, args?: { path?: string }) => {
+    if (command === 'client_path_info') return files[args?.path ?? ''] ?? 'missing';
+    return undefined;
+  });
   window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'game', cwd: 'C:/project' }], readFile: programFile } as unknown as Store;
-  running = mount(Prose, { target: document.body, props: { text: '[Launch game](build/game.exe)', store, threadId: 'game' } });
+  const calls = (command: string) => invoke.mock.calls.filter(([name]) => name === command).map(([, args]) => args);
+  return { invoke, calls };
+}
+
+/** A Store with the parts a file link reaches: its machine, the thread's folder, the core's lookups and the panel. */
+function storeOf(options: { os?: string; localCore?: boolean; owner?: boolean; cwd?: string; locateFile?: Store['locateFile']; listFiles?: Store['listFiles'] } = {}) {
+  const panel = { openFile: vi.fn(), openFiles: vi.fn() };
+  const store = {
+    owner: options.owner ?? true, localCore: options.localCore ?? false,
+    core: { os: options.os ?? 'linux', hostname: 'atelier' },
+    threads: [{ id: 'thread', cwd: options.cwd ?? '/srv/project' }],
+    openThread: { id: 'thread' },
+    locateFile: vi.fn(options.locateFile ?? asWritten), listFiles: vi.fn(options.listFiles ?? (async () => ({ ok: true as const, value: [] }))),
+    readFile: vi.fn(), reportError: vi.fn(), panel
+  } as unknown as Store;
+  return { store, panel };
+}
+
+function show(text: string, store: Store): void {
+  running = mount(Prose, { target: document.body, props: { text, store, threadId: 'thread' } });
   flushSync();
+}
+
+test('a PC drive path in a thread on a Linux machine opens on this computer, and a program asks before it runs', async () => {
+  const { calls } = shell({ 'N:\\dev\\orbitkit\\orbitkit-setup.exe': 'program' });
+  const { store } = storeOf({ os: 'linux' });
+  show('The installer: **`N:\\dev\\orbitkit\\orbitkit-setup.exe`**', store);
+  const chip = query<HTMLAnchorElement>('a.file-chip');
+  expect(chip.querySelector('.file-chip-name')?.textContent).toBe('orbitkit-setup.exe');
+  expect(chip.title).toBe('N:\\dev\\orbitkit\\orbitkit-setup.exe');
+  expect(chip.dataset.kind).toBe('program');
+
+  chip.click();
+  await vi.waitFor(() => expect(confirm.current?.title).toBe('Launch orbitkit-setup.exe?'));
+  // The Linux machine is never asked for a drive it cannot have, and no card or launch comes before the answer.
+  expect(store.locateFile).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-testid=chat-file]')).toBeNull();
+  expect(calls('open_client_path')).toEqual([]);
+  expect(confirm.current?.altLabel).toBe('Show in folder');
+  confirm.answer('confirm');
+  await vi.waitFor(() => expect(calls('open_client_path')).toEqual([{ path: 'N:\\dev\\orbitkit\\orbitkit-setup.exe', confirmed: true }]));
+
+  await tick(); chip.click();
+  await vi.waitFor(() => expect(confirm.current).not.toBeNull());
+  confirm.answer('alt');
+  await vi.waitFor(() => expect(calls('reveal_client_path')).toEqual([{ path: 'N:\\dev\\orbitkit\\orbitkit-setup.exe' }]));
+
+  await tick(); chip.click();
+  await vi.waitFor(() => expect(confirm.current).not.toBeNull());
+  confirm.answer('cancel');
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(calls('open_client_path')).toHaveLength(1);
+});
+
+test('a file found nowhere greys its chip and says where it was looked for, with the path to copy', async () => {
+  const { calls } = shell({ 'N:\\dev\\notes.md': 'document' });
+  const { store } = storeOf({ os: 'linux', locateFile: async (_thread, path) => ({ ok: true, value: path === 'here.txt' ? [path] : [] }) });
+  show('`N:\\dev\\gone.exe`, `gone.txt`, `here.txt` and `N:\\dev\\notes.md`', store);
+  const [foreign, gone, here, notes] = document.querySelectorAll<HTMLAnchorElement>('a.file-chip');
+  await vi.waitFor(() => expect(foreign!.hasAttribute('data-missing')).toBe(true));
+  await vi.waitFor(() => expect(gone!.hasAttribute('data-missing')).toBe(true));
+  expect(here!.hasAttribute('data-missing')).toBe(false);
+  expect(notes!.hasAttribute('data-missing')).toBe(false);
+
+  foreign!.click();
+  await vi.waitFor(() => expect(fileNotice.current).toMatchObject({ title: 'Not found on this computer', path: 'N:\\dev\\gone.exe' }));
+  await tick(); gone!.click();
+  await vi.waitFor(() => expect(fileNotice.current).toMatchObject({ title: 'Not found on atelier', path: '/srv/project/gone.txt' }));
+  expect(document.querySelector('[data-testid=chat-file]')).toBeNull();
+  // A document on this computer opens in its app at once.
+  await tick(); notes!.click();
+  await vi.waitFor(() => expect(calls('open_client_path')).toEqual([{ path: 'N:\\dev\\notes.md', confirmed: false }]));
+  expect(confirm.current).toBeNull();
+});
+
+test('a project file of a thread on another machine opens in the panel at its line, a folder in the file tree', async () => {
+  const { invoke } = shell();
+  const { store, panel } = storeOf({ os: 'linux', locateFile: async (_thread, path) => ({ ok: true, value: path === 'core.md' ? ['.local/core.md'] : [path] }) });
+  setFeature('open-chat-links', true);
+  show('See `src/app.ts:12`, `core.md`, `/srv/project/docs/` and `/etc/hosts`.', store);
+  const [code, tail, folder, outside] = document.querySelectorAll<HTMLAnchorElement>('a.file-chip');
+  code!.click();
+  await vi.waitFor(() => expect(panel.openFile).toHaveBeenCalledWith('src/app.ts', 12));
+  await tick(); tail!.click();
+  await vi.waitFor(() => expect(panel.openFile).toHaveBeenLastCalledWith('.local/core.md', undefined));
+  await tick(); folder!.click();
+  await vi.waitFor(() => expect(panel.openFiles).toHaveBeenCalledWith('docs'));
+  await tick(); outside!.click();
+  await vi.waitFor(() => expect(fileNotice.current).toMatchObject({ title: 'Outside the project on atelier', path: '/etc/hosts' }));
+  // Another machine's files never reach this computer's opener, the switch on or not.
+  expect(invoke.mock.calls.filter(([name]) => name !== 'client_path_info')).toEqual([]);
+});
+
+test('a dotless file opens as a file, a greyed chip lights up once a click finds it, and a click whose thread was left opens nothing', async () => {
+  let written = false;
+  const locateFile = async (_thread: string, path: string) => ({ ok: true as const, value: path === 'notes.md' && !written ? [] : [path] });
+  const listFiles = async () => ({ ok: true as const, value: [
+    { name: 'glossary', path: 'refs/glossary', kind: 'file' as const, bytes: 4, modifiedAt: 0 },
+    { name: 'docs', path: 'refs/docs', kind: 'dir' as const, bytes: null, modifiedAt: 0 },
+    { name: 'v1.2', path: 'refs/v1.2', kind: 'dir' as const, bytes: null, modifiedAt: 0 },
+    { name: 'takes.mp4', path: 'refs/takes.mp4', kind: 'dir' as const, bytes: null, modifiedAt: 0 }
+  ] });
+  const { store, panel } = storeOf({ locateFile, listFiles });
+  show('`refs/glossary`, `refs/docs`, `refs/v1.2`, `refs/takes.mp4`, `notes.md` and `src/app.ts`', store);
+  const [glossary, docs, dotted, takes, notes, app] = document.querySelectorAll<HTMLAnchorElement>('a.file-chip');
+  glossary!.click();
+  await vi.waitFor(() => expect(panel.openFile).toHaveBeenCalledWith('refs/glossary', undefined));
+  expect(panel.openFiles).not.toHaveBeenCalled();
+  await tick(); docs!.click();
+  await vi.waitFor(() => expect(panel.openFiles).toHaveBeenCalledWith('refs/docs'));
+  expect(store.listFiles).toHaveBeenCalledWith('thread', 'refs');
+  // A dot in a folder's name does not make it a file.
+  await tick(); dotted!.click();
+  await vi.waitFor(() => expect(panel.openFiles).toHaveBeenLastCalledWith('refs/v1.2'));
+  // Nor does a video's name: a folder of takes opens in the tree, not the viewer.
+  await tick(); takes!.click();
+  await vi.waitFor(() => expect(panel.openFiles).toHaveBeenLastCalledWith('refs/takes.mp4'));
+
+  await vi.waitFor(() => expect(notes!.hasAttribute('data-missing')).toBe(true));
+  written = true;
+  await tick(); notes!.click();
+  await vi.waitFor(() => expect(panel.openFile).toHaveBeenLastCalledWith('notes.md', undefined));
+  expect(notes!.hasAttribute('data-missing')).toBe(false);
+
+  // The user moves to another thread while the core looks: the panel there stays as it was.
+  let answer!: (value: { ok: true; value: string[] }) => void;
+  vi.mocked(store.locateFile).mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+  const opened = panel.openFile.mock.calls.length;
+  await tick(); app!.click();
+  await vi.waitFor(() => expect(answer).toBeTypeOf('function'));
+  (store as unknown as { openThread: { id: string } }).openThread = { id: 'another' };
+  answer({ ok: true, value: ['src/app.ts'] });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(panel.openFile.mock.calls.length).toBe(opened);
+});
+
+test('a slow look started as the chip came in cannot grey it again after a click found the file', async () => {
+  let late!: (value: { ok: true; value: string[] }) => void;
+  const locateFile = vi.fn<Store['locateFile']>()
+    .mockImplementationOnce(() => new Promise(resolve => { late = resolve; }))
+    .mockImplementation(async (_thread, path) => ({ ok: true, value: [path] }));
+  const { store, panel } = storeOf({ locateFile });
+  show('`notes.md`', store);
+  const chip = query<HTMLAnchorElement>('a.file-chip');
+  await vi.waitFor(() => expect(late).toBeTypeOf('function'));
+  chip.click();
+  await vi.waitFor(() => expect(panel.openFile).toHaveBeenCalledWith('notes.md', undefined));
+  late({ ok: true, value: [] });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(chip.hasAttribute('data-missing')).toBe(false);
+});
+
+test('a slow look that fails cannot clear the grey a newer click put on a missing chip', async () => {
+  let late!: (value: { ok: true; value: string[] }) => void;
+  const locateFile = vi.fn<Store['locateFile']>()
+    .mockImplementationOnce(() => new Promise(resolve => { late = resolve; }))
+    .mockImplementation(async () => ({ ok: true, value: [] }));
+  const { store } = storeOf({ locateFile });
+  show('`notes.md`', store);
+  const chip = query<HTMLAnchorElement>('a.file-chip');
+  await vi.waitFor(() => expect(late).toBeTypeOf('function'));
+  chip.click();
+  await vi.waitFor(() => expect(chip.hasAttribute('data-missing')).toBe(true));
+  // Two candidates make the old look fail.
+  late({ ok: true, value: ['a/notes.md', 'b/notes.md'] });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(chip.hasAttribute('data-missing')).toBe(true);
+});
+
+test.each([false, true])('a thread on this computer opens a program only once confirmed, and documents per the switch (open-chat-links: %s)', async (direct) => {
+  const { calls } = shell({ 'C:\\project\\build\\game.exe': 'program', 'C:\\project\\notes.txt': 'document' });
+  const { store, panel } = storeOf({ os: 'windows', localCore: true, cwd: 'C:/project' });
+  setFeature('open-chat-links', direct);
+  show('[Launch game](build/game.exe) and [Notes](notes.txt)', store);
+  const [game, notes] = document.querySelectorAll<HTMLAnchorElement>('a.file-chip');
+  expect(game!.textContent).toBe('Launch game');
+  game!.click();
+  await vi.waitFor(() => expect(confirm.current?.confirmLabel).toBe('Launch'));
+  expect(calls('open_client_path')).toEqual([]);
+  confirm.answer('confirm');
+  await vi.waitFor(() => expect(calls('open_client_path')).toEqual([{ path: 'C:\\project\\build\\game.exe', confirmed: true }]));
+  await tick(); notes!.click();
+  if (direct) await vi.waitFor(() => expect(calls('open_client_path')).toContainEqual({ path: 'C:\\project\\notes.txt', confirmed: false }));
+  else await vi.waitFor(() => expect(panel.openFile).toHaveBeenCalledWith('notes.txt', undefined));
+});
+
+test('a shell refusal for a file of the local thread shows the notice with its path', async () => {
+  const { invoke, calls } = shell();
+  invoke.mockRejectedValue(new Error('shell refused path'));
+  const { store } = storeOf({ os: 'windows', localCore: true, cwd: 'C:/project' });
+  setFeature('open-chat-links', true);
+  show('`notes.txt`', store);
+  query<HTMLAnchorElement>('a.file-chip').click();
+  await vi.waitFor(() => expect(fileNotice.current).toMatchObject({ title: 'Not found on this computer', path: 'C:\\project\\notes.txt' }));
+  expect(store.reportError).not.toHaveBeenCalled();
+  expect(calls('open_client_path')).toEqual([]);
+});
+
+test('dragging across a program link opens nothing, the next click asks first', async () => {
+  const { calls } = shell({ 'C:\\project\\build\\game.exe': 'program' });
+  const { store } = storeOf({ os: 'windows', localCore: true, cwd: 'C:/project' });
+  show('[Launch game](build/game.exe)', store);
   const link = query<HTMLAnchorElement>('a[data-file-path]');
   link.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
   link.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, buttons: 1, clientX: 60, clientY: 10 }));
   link.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, button: 0, clientX: 60, clientY: 10 }));
   link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
   await vi.dynamicImportSettled();
-  expect(store.readFile).not.toHaveBeenCalled();
+  expect(confirm.current).toBeNull();
   link.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
   link.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
   link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
-  await vi.waitFor(() => expect(document.querySelector('[data-testid=chat-file]')).not.toBeNull());
-  await vi.dynamicImportSettled();
-  // A second click on the same link keeps the one preview and still launches nothing.
-  link.click();
-  await new Promise(resolve => setTimeout(resolve, 50));
-  expect(document.querySelectorAll('[data-testid=chat-file]')).toHaveLength(1);
-  expect(invoke).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(confirm.current).not.toBeNull());
+  expect(calls('open_client_path')).toEqual([]);
+});
+
+test('a phone opens a project file in the panel without searching, and says a PC path is not its to open', async () => {
+  const { store, panel } = storeOf({ owner: false });
+  show('`src/app.ts` and `N:\\dev\\notes.md`', store);
+  const [code, foreign] = document.querySelectorAll<HTMLAnchorElement>('a.file-chip');
+  code!.click();
+  await vi.waitFor(() => expect(panel.openFile).toHaveBeenCalledWith('src/app.ts', undefined));
+  await tick(); foreign!.click();
+  await vi.waitFor(() => expect(fileNotice.current).toMatchObject({ title: 'Only the computer that holds this file can open it', path: 'N:\\dev\\notes.md' }));
+  expect(store.locateFile).not.toHaveBeenCalled();
+  expect(code!.hasAttribute('data-missing')).toBe(false);
+});
+
+test('two files of one name show their folders, and two candidates for a tail are reported', async () => {
+  const locateFile = async (_thread: string, path: string) => ({ ok: true as const, value: path === 'index.ts' ? ['a/index.ts', 'b/index.ts'] : [path] });
+  const { store, panel } = storeOf({ locateFile });
+  show('`src/index.ts`, `test/index.ts`, `app.ts` and `index.ts`', store);
+  const chips = [...document.querySelectorAll<HTMLAnchorElement>('a.file-chip')];
+  await vi.waitFor(() => expect(chips.map(chip => chip.classList.contains('collide'))).toEqual([true, true, false, true]));
+  chips[3]!.click();
+  await vi.waitFor(() => expect(store.reportError).toHaveBeenCalledWith(new Error('index.ts names several files: a/index.ts, b/index.ts'), 'minor'));
+  expect(panel.openFile).not.toHaveBeenCalled();
 });
 
 test.each([false, true])('selecting external link text skips navigation, then a click still opens it (shell: %s)', async (shell) => {
@@ -170,43 +302,6 @@ test.each([false, true])('selecting external link text skips navigation, then a 
   } finally { stopLinks(); opened.mockRestore(); }
 });
 
-test('the open-chat-links switch asks the shell on a click, and previews what the shell refuses to open', async () => {
-  setFeature('chat-artifacts', false);
-  // Both links point outside the thread's folder, so the shell refuses them.
-  const invoke = vi.fn(async (command: string) => {
-    if (command === 'open_chat_file') throw new Error('path: expected a file or folder inside E:/project');
-  });
-  window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const store = { owner: true, locateFile: asWritten, localCore: true, threads: [{ id: 'local', cwd: 'E:/project' }], readFile: vi.fn() } as unknown as Store;
-  running = mount(Prose, { target: document.body, props: {
-    text: '[Test](</C:/Users/Chris/Desktop/Boite - Test medias.lnk>) [Notes](file:///E:/reports/test%20result.txt)', store, threadId: 'local',
-  } });
-  flushSync();
-  expect(document.querySelector('a[data-file-path]')).toBeNull();
-  setFeature('open-chat-links', true); flushSync();
-  expect(invoke).not.toHaveBeenCalled();
-  const links = document.querySelectorAll<HTMLAnchorElement>('a[data-file-path]');
-  links[0]!.click();
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_chat_file', { directory: 'E:/project', path: 'C:/Users/Chris/Desktop/Boite - Test medias.lnk' }, undefined));
-  await vi.waitFor(() => expect(store.readFile).toHaveBeenCalledTimes(1));
-  await tick(); links[1]!.click();
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_chat_file', { directory: 'E:/project', path: 'E:/reports/test result.txt' }, undefined));
-  await vi.waitFor(() => expect(store.readFile).toHaveBeenNthCalledWith(2, 'local', 'E:/reports/test result.txt'));
-  setFeature('open-chat-links', false); flushSync();
-  expect(document.querySelector('a[data-file-path]')).toBeNull();
-});
-
-test('a remote machine file is never opened by the open-chat-links switch', async () => {
-  setFeature('open-chat-links', true);
-  const invoke = vi.fn(async () => {});
-  window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const readFile = vi.fn(async () => ({ ok: false, error: 'Remote file unavailable' }));
-  const store = { owner: true, locateFile: asWritten, localCore: false, threads: [{ id: 'remote', cwd: 'C:/project' }], readFile } as unknown as Store;
-  running = mount(Prose, { target: document.body, props: { text: '[Notes](report.txt)', store, threadId: 'remote' } });
-  flushSync(); query<HTMLAnchorElement>('a[data-file-path]').click();
-  await vi.waitFor(() => expect(readFile).toHaveBeenCalledWith('remote', 'report.txt'));
-  expect(invoke).not.toHaveBeenCalled();
-});
 
 test('a fenced block carries a copy button that writes the code to the clipboard', async () => {
   const writeText = vi.fn(async (_text: string) => {});
@@ -297,40 +392,26 @@ test('plain text preserves its rendered content and gets no copy button', async 
   expect(document.querySelector('[data-testid=code-copy]')).toBeNull();
 });
 
-test('a file named by its tail opens where the core finds it, and two candidates are reported', async () => {
-  setFeature('open-chat-links', true);
-  const invoke = vi.fn(async () => {});
-  window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const reportError = vi.fn();
-  const locateFile = vi.fn(async (_threadId: string, path: string) => ({ ok: true, value: path === 'core.md' ? ['.local/core.md'] : ['a/index.ts', 'b/index.ts'] }));
-  const store = { owner: true, locateFile, localCore: true, threads: [{ id: 'brain', cwd: 'D:/brain' }], reportError } as unknown as Store;
-  running = mount(Prose, { target: document.body, props: { text: 'Trim `core.md` and `index.ts`.', store, threadId: 'brain' } });
-  flushSync();
-  const links = document.querySelectorAll<HTMLAnchorElement>('a[data-file-path]');
-  links[0]!.click();
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_chat_file', { directory: 'D:/brain', path: '.local/core.md' }, undefined));
-  await tick(); links[1]!.click();
-  await vi.waitFor(() => expect(reportError).toHaveBeenCalledWith(new Error('index.ts names several files: a/index.ts, b/index.ts'), 'minor'));
-  expect(invoke).toHaveBeenCalledTimes(1);
-});
-
-test('a file link\'s menu copies the whole path, not the #file placeholder, and still opens it', async () => {
-  setFeature('chat-artifacts', true);
+test('a file link\'s menu copies the whole or the relative path, shows it in its folder and still opens it', async () => {
   const writeText = vi.fn(async (_text: string) => {});
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-  const invoke = vi.fn(async () => {});
-  window.__TAURI_INTERNALS__ = { invoke } as unknown as typeof window.__TAURI_INTERNALS__;
-  const store = { owner: true, localCore: true, locateFile: asWritten, threads: [{ id: 'hex', cwd: 'E:\\Hexalife' }], reportError: vi.fn() } as unknown as Store;
-  running = mount(Prose, { target: document.body, props: { text: 'See `addons/printer.qc:12`, `E:\\Hexalife\\models\\` and `thr_abcdefabcdef12`.', store, threadId: 'hex' } });
-  flushSync();
+  const { calls } = shell({ 'E:\\Hexalife\\addons\\printer.qc': 'document' });
+  const { store, panel } = storeOf({ os: 'windows', localCore: true, cwd: 'E:\\Hexalife' });
+  show('See `addons/printer.qc:12`, `E:\\Hexalife\\models\\` and `thr_abcdefabcdef12`.', store);
   const [file, folder] = document.querySelectorAll<HTMLAnchorElement>('a[data-file-path]');
 
   const menu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
   file!.dispatchEvent(menu);
   expect(menu.defaultPrevented).toBe(true);
-  expect(contextMenu.current?.items.map(item => item.id)).toEqual(['open', 'copy']);
+  expect(contextMenu.current?.items.map(item => item.id)).toEqual(['open', 'reveal', 'copy', 'copy-relative']);
   contextMenu.current!.onpick('copy');
   await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('E:\\Hexalife\\addons\\printer.qc'));
+  file!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  contextMenu.current!.onpick('copy-relative');
+  await vi.waitFor(() => expect(writeText).toHaveBeenLastCalledWith('addons\\printer.qc'));
+  file!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  contextMenu.current!.onpick('reveal');
+  await vi.waitFor(() => expect(calls('reveal_client_path')).toEqual([{ path: 'E:\\Hexalife\\addons\\printer.qc' }]));
 
   folder!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   contextMenu.current!.onpick('copy');
@@ -338,10 +419,108 @@ test('a file link\'s menu copies the whole path, not the #file placeholder, and 
 
   file!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   contextMenu.current!.onpick('open');
-  await vi.waitFor(() => expect(document.querySelector('[data-testid=chat-file]')).not.toBeNull());
+  await vi.waitFor(() => expect(panel.openFile).toHaveBeenCalledWith('addons/printer.qc', 12));
 
   query<HTMLAnchorElement>('a[data-thread-address]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   contextMenu.current!.onpick('copy');
   await vi.waitFor(() => expect(writeText).toHaveBeenLastCalledWith('thr_abcdefabcdef12'));
   contextMenu.close();
+});
+
+test('show in folder for a file found on another computer names the found path', async () => {
+  const { calls } = shell();
+  const { store } = storeOf({ locateFile: async () => ({ ok: true, value: ['docs/notes.txt'] }) });
+  show('`/srv/project/notes.txt`', store);
+  query<HTMLAnchorElement>('a.file-chip').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  expect(contextMenu.current?.items.some(item => item.id === 'reveal')).toBe(true);
+  contextMenu.current!.onpick('reveal');
+  contextMenu.close();
+  await vi.waitFor(() => expect(fileNotice.current).toMatchObject({ title: 'Only the computer that holds this file can open it', path: '/srv/project/docs/notes.txt' }));
+  expect(calls('reveal_client_path')).toEqual([]);
+});
+
+test('a phone\'s menu has no folder to show, and a copied selection carries a chip\'s whole path', async () => {
+  const { store } = storeOf({ owner: false });
+  show('Edit `src/lib/app.ts:12` now.', store);
+  const chip = query<HTMLAnchorElement>('a.file-chip');
+  chip.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  expect(contextMenu.current?.items.map(item => item.id)).toEqual(['open', 'copy', 'copy-relative']);
+  contextMenu.close();
+  const paragraph = query('[data-testid=paragraph] p');
+  const range = document.createRange();
+  range.selectNodeContents(paragraph);
+  getSelection()!.removeAllRanges();
+  getSelection()!.addRange(range);
+  // jsdom has no DataTransfer: the copy event carries a stand-in for the clipboard.
+  const copied = new Map<string, string>();
+  const event = Object.assign(new Event('copy', { bubbles: true, cancelable: true }), { clipboardData: { setData: (type: string, text: string) => copied.set(type, text) } });
+  paragraph.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  expect(copied.get('text/plain')).toBe('Edit src/lib/app.ts:12 now.');
+});
+
+test('unmount releases the standalone diagram URL while its viewer chunk is still pending', async () => {
+  const { parts } = await import('../lib/deferred-parts');
+  const load = vi.spyOn(parts.ImageViewer, 'load').mockImplementation(() => new Promise(() => {}));
+  const original = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
+  const revoke = vi.fn();
+  Object.assign(URL, { createObjectURL: () => 'blob:diagram-unmount', revokeObjectURL: revoke });
+  try {
+    running = mount(Prose, { target: document.body, props: { text: ['```mermaid', 'flowchart LR', '  A --> B', '```'].join('\n') } });
+    await vi.waitFor(() => expect(document.querySelector('[data-testid=diagram-enlarge]')).not.toBeNull(), { timeout: 10_000 });
+    query<HTMLButtonElement>('[data-testid=diagram-enlarge]').click();
+    flushSync();
+    expect(load).toHaveBeenCalledOnce();
+    expect(revoke).not.toHaveBeenCalled();
+    await unmount(running);
+    running = null;
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:diagram-unmount');
+  } finally {
+    load.mockRestore();
+    Object.assign(URL, original);
+  }
+});
+
+test('a media chip replacing a standalone diagram releases the diagram URL', async () => {
+  const original = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
+  const revoke = vi.fn();
+  Object.assign(URL, { createObjectURL: () => 'blob:diagram-replacement', revokeObjectURL: revoke });
+  try {
+    const { store } = storeOf();
+    vi.mocked(store.readFile).mockResolvedValue({ ok: true, value: { kind: 'image', path: 'notes.png', bytes: 4, modifiedAt: 0, mime: 'image/png', url: '/file/test' } });
+    show('```mermaid\nflowchart LR\n  A --> B\n```\n\n`notes.png`', store);
+    await vi.waitFor(() => expect(document.querySelector('[data-testid=diagram-enlarge]')).not.toBeNull(), { timeout: 10_000 });
+    query<HTMLButtonElement>('[data-testid=diagram-enlarge]').click();
+    await vi.waitFor(() => expect(query('[data-testid=image-viewer]').getAttribute('aria-label')).toBe('Diagram.svg'));
+    expect(revoke).not.toHaveBeenCalled();
+    query<HTMLAnchorElement>('a.file-chip').click();
+    await vi.waitFor(() => expect(query('[data-testid=image-viewer]').getAttribute('aria-label')).toBe('notes.png'));
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:diagram-replacement');
+  } finally {
+    Object.assign(URL, original);
+  }
+});
+
+test('file link lookups keep the newest entries within the per-store cache bound without evicting in-flight checks', async () => {
+  const { locate } = await import('../lib/file-open.svelte');
+  let finishSlow!: (value: { ok: true; value: string[] }) => void;
+  const { store } = storeOf({
+    locateFile: async (_thread, path) => path === 'slow-missing.ts'
+      ? new Promise(resolve => { finishSlow = resolve; })
+      : { ok: true, value: [path] },
+  });
+  show('Check `slow-missing.ts` while browsing.', store);
+  await vi.waitFor(() => expect(finishSlow).toBeTypeOf('function'));
+  for (let index = 0; index < 520; index++) {
+    await locate(store, 'thread-1', `src/file-${index}.ts`);
+  }
+  expect(store.locateFile).toHaveBeenCalledTimes(521);
+  // The newest settled lookup stays cached; the earliest settled one was evicted past the 512 cap.
+  await locate(store, 'thread-1', 'src/file-519.ts');
+  expect(store.locateFile).toHaveBeenCalledTimes(521);
+  await locate(store, 'thread-1', 'src/file-0.ts');
+  expect(store.locateFile).toHaveBeenCalledTimes(522);
+  // The slow in-flight lookup was not evicted and still greys its chip when it settles.
+  finishSlow({ ok: true, value: [] });
+  await vi.waitFor(() => expect(query<HTMLAnchorElement>('a.file-chip').hasAttribute('data-missing')).toBe(true));
 });

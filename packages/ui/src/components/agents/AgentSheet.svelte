@@ -1,14 +1,16 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { X } from '@lucide/svelte';
+  import { CircleAlert, X } from '@lucide/svelte';
   import type { AgentProfile } from '@boite/contracts';
   import type { AgentsView } from '../../lib/agents.svelte';
   import { Closing } from '../../lib/closing.svelte';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import { fill, strings } from '../../lib/strings';
+  import Notice from '../Notice.svelte';
   import AgentEditor from './AgentEditor.svelte';
   import AgentRuntimeSettings from './AgentRuntimeSettings.svelte';
   import AgentRoutines from './AgentRoutines.svelte';
+  import AgentTriggers from './AgentTriggers.svelte';
   import AgentBrainEditor from './AgentBrainEditor.svelte';
 
   /**
@@ -24,9 +26,21 @@
   const sheet = new Closing();
   /** What the sheet shows while it plays its exit: the pane it had. */
   let shown = $state<AgentPane>('settings');
+  let activeAgentId = '';
+  let wasOpen = false;
   $effect(() => {
     const next = pane;
-    untrack(() => { if (next) { shown = next; sheet.show(); } else sheet.hide(); });
+    const id = agent.id;
+    untrack(() => {
+      if (activeAgentId && activeAgentId !== id) view.error = '';
+      activeAgentId = id;
+      if (next) { shown = next; sheet.show(); }
+      else {
+        if (wasOpen) view.error = '';
+        sheet.hide();
+      }
+      wasOpen = next !== null;
+    });
   });
   let body = $state<HTMLElement>();
   $effect(() => { if (sheet.open) body?.focus({ preventScroll: true }); });
@@ -43,6 +57,9 @@
       <h2>{fill(shown === 'brain' ? labels.brainOf : labels.settingsOf, { name: agent.name })}</h2>
       <button type="button" class="ghost icon" aria-label={strings.common.close} title={strings.common.close} onclick={onclose} data-testid="agent-sheet-close"><X size={16} strokeWidth={1.75} /></button>
     </header>
+    {#if view.error}
+      <div class="agent-sheet-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} ondismiss={() => { view.error = ''; }} /></div>
+    {/if}
     <div class="agent-sheet-body">
       {#key `${agent.id}:${shown}:${session}`}
         {#if shown === 'brain'}
@@ -50,6 +67,7 @@
         {:else}
           <AgentEditor {view} record={agent} embedded ondone={() => {}} oncancel={() => {}} />
           <AgentRoutines {view} agentId={agent.id} />
+          <AgentTriggers {view} agentId={agent.id} />
           <AgentRuntimeSettings {view} {agent} />
         {/if}
       {/key}

@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { FakeClient } from '../../lib/fake-client';
+import * as find from '../../lib/find';
 import { Store } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
 import { mochiLayout } from '../../lib/mochi-layout.svelte';
@@ -209,6 +210,34 @@ test('the team chat draws each post with its author, a private post with its rec
   expect(query('[data-testid=team-members]').textContent).toContain('Ship the site.');
 });
 
+test('opening a search mention in a team chat scrolls to its post and highlights the matching text', async () => {
+  const { client, store, team, huginn, say } = await skollheim();
+  await say(huginn.id, 'The launch checklist is ready.');
+  await say(huginn.id, 'The second post is unrelated.');
+  const { matches } = await client.call('threads.search', { query: 'checklist' });
+  const hit = matches.find(match => match.threadId === team.threadId)!;
+
+  const paint = vi.spyOn(find, 'paintMessageSearch');
+  const clear = vi.spyOn(find, 'clearMessageSearch');
+  const scrolled: Element[] = [];
+  Element.prototype.scrollIntoView ??= vi.fn();
+  vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) { scrolled.push(this); });
+  await store.open(team.threadId, true, { match: { messageId: hit.messageId, query: 'checklist' } });
+  mounted.push(mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } }));
+
+  await vi.waitFor(() => expect(store.messageSearchJump).toBeNull());
+  const [matched, unrelated] = all('[data-testid=team-post]');
+  expect(matched?.textContent).toContain('The launch checklist is ready.');
+  expect(scrolled).toContain(matched);
+  expect(scrolled).not.toContain(unrelated);
+  expect(paint).toHaveBeenCalledWith(matched, [{ words: ['checklist'], exact: false }], '.said .body');
+  expect(clear).not.toHaveBeenCalled();
+  query('[data-testid=team-posts]').dispatchEvent(new WheelEvent('wheel'));
+  expect(clear).toHaveBeenCalledTimes(1);
+  unrelated!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  expect(clear).toHaveBeenCalledTimes(2);
+});
+
 test('a member of another machine of the group carries that machine in the member row, on its posts and in the @ and audience menus; one of this machine says nothing', async () => {
   const { client, store, huginn } = await skollheim();
   const firebat = new FakeClient({ delayMs: 0, coreId: 'firebat', coreName: 'Firebat', publicUrl: 'https://firebat.test' });
@@ -250,7 +279,7 @@ test('a member of another machine of the group carries that machine in the membe
 });
 
 test("the owner's composer says who a post wakes before it goes, and posts a mention, a reply and a private post", async () => {
-  const { store, team, huginn, jeux, say, key } = await skollheim();
+  const { client, store, team, huginn, jeux, say, key } = await skollheim();
   const draft = await say(huginn.id, 'The draft is up.');
   await store.open(team.threadId);
   mounted.push(mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } }));
@@ -285,7 +314,24 @@ test("the owner's composer says who a post wakes before it goes, and posts a men
   expect(query('[data-testid=team-replying]').textContent).toContain('Replying to Huginn (Réseaux)');
   type('Ship it');
   expect(wakes()).toBe('Wakes Huginn (Réseaux), whose post this answers');
+  const call = client.call.bind(client);
+  let refuse = true;
+  const sent = vi.spyOn(client, 'call').mockImplementation(((...args: Parameters<typeof call>) => {
+    if (args[0] === 'teams.post' && refuse) { refuse = false; return Promise.reject(new Error('Try again')); }
+    return call(...args);
+  }) as typeof call);
+  query<HTMLButtonElement>('[data-testid=team-send]').click(); flushSync();
+  const field = query<HTMLTextAreaElement>('[data-testid=team-composer-input]');
+  expect(field.value).toBe('');
+  expect(field.readOnly).toBe(true);
+  expect(document.querySelector('[data-testid=team-replying]')).toBeNull();
+  await vi.waitFor(() => expect(query('[data-testid=team-composer-error]').textContent).toBe('Try again'));
+  expect(field.value).toBe('Ship it');
+  expect(query('[data-testid=team-replying]').textContent).toContain('Replying to Huginn (Réseaux)');
   const answer = await send(3);
+  const posts = sent.mock.calls.filter(([method]) => method === 'teams.post');
+  expect(posts).toHaveLength(2);
+  expect(posts[1]).toEqual(posts[0]);
   expect(answer.querySelector('[data-testid=team-post-quote]')?.textContent).toContain('In reply to Huginn (Réseaux)');
   expect(document.querySelector('[data-testid=team-replying]')).toBeNull();
 
@@ -310,4 +356,50 @@ test('an archived team keeps its chat readable and takes no post', async () => {
   expect(all('[data-testid=team-post]')).toHaveLength(1);
   expect(document.querySelector('[data-testid=team-composer]')).toBeNull();
   expect(document.querySelector('[data-testid=team-post-reply]')).toBeNull();
+});
+
+test('leaving and returning to a team while a post fails restores the draft, reply, error and idempotent post id', async () => {
+  const { client, store, team, huginn, say } = await skollheim();
+  const draft = await say(huginn.id, 'Ready for review.');
+  await store.open(team.threadId);
+  const firstMount = mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } });
+  mounted.push(firstMount);
+  await vi.waitFor(() => expect(all('[data-testid=team-post]')).toHaveLength(1));
+  await vi.waitFor(() => query('[data-testid=team-composer-input]'));
+
+  query<HTMLButtonElement>(`[data-post-id="${draft.id}"] [data-testid=team-post-reply]`).click();
+  await settle();
+  type('Needs one tweak');
+
+  const call = client.call.bind(client);
+  let rejectPost!: (reason: Error) => void;
+  let firstCall = true;
+  const spy = vi.spyOn(client, 'call').mockImplementation(((...args: Parameters<typeof call>) => {
+    if (args[0] === 'teams.post' && firstCall) {
+      firstCall = false;
+      return new Promise<never>((_resolve, reject) => { rejectPost = reject; });
+    }
+    return call(...args);
+  }) as typeof call);
+
+  query<HTMLButtonElement>('[data-testid=team-send]').click();
+  flushSync();
+  await vi.waitFor(() => expect(spy.mock.calls.filter(([method]) => method === 'teams.post')).toHaveLength(1));
+
+  // Leave the team while teams.post is still in flight, then fail the request and come back.
+  await unmount(firstMount);
+  mounted.splice(mounted.indexOf(firstMount), 1);
+  rejectPost(new Error('Network dropped'));
+  await settle();
+
+  mounted.push(mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } }));
+  await vi.waitFor(() => expect(query('[data-testid=team-composer-error]').textContent).toBe('Network dropped'));
+  expect(query<HTMLTextAreaElement>('[data-testid=team-composer-input]').value).toBe('Needs one tweak');
+  expect(query('[data-testid=team-replying]').textContent).toContain('Replying to Huginn (Réseaux)');
+
+  query<HTMLButtonElement>('[data-testid=team-send]').click();
+  await vi.waitFor(() => expect(all('[data-testid=team-post]')).toHaveLength(2));
+  const posts = spy.mock.calls.filter(([method]) => method === 'teams.post');
+  expect(posts).toHaveLength(2);
+  expect(posts[1]).toEqual(posts[0]);
 });

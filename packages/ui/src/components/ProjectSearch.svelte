@@ -37,7 +37,7 @@
     placeholder?: string;
     noMatch?: string;
     /** An action under the list that never scrolls away, the drafts' "Open a folder". */
-    footer?: { id: string; label: string };
+    footer?: { id: string; label: string; preload?: string };
     onpick: (id: string) => void;
     /** `refocus`: closed from the keyboard, which goes back where it came from. */
     onclose: (refocus: boolean) => void;
@@ -223,6 +223,7 @@
         id={optionId(footer.id)}
         data-row
         data-value={footer.id}
+        data-preload-view={footer.preload}
         onpointermove={() => (highlight = order.indexOf(footer.id))}
         onclick={() => onpick(footer.id)}
       >

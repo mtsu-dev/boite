@@ -80,7 +80,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="done-thread" class:open class:restorable={thread.archived} data-testid="done-thread" data-thread-id={thread.id} data-machine-id={machine?.id ?? workspace.machines.find(m => m.store === owner)?.id}
   oncontextmenu={(event) => contextMenu.open(event, items, pick)} use:longPress={(target) => !!target.closest('.row')}>
-  <button type="button" class="ghost row" data-testid="done-thread-open" title="{thread.title} · {agent}" disabled={deleting} onclick={select}>
+  <button type="button" class="ghost row" data-testid="done-thread-open" data-preload-thread={thread.id} title="{thread.title} · {agent}" disabled={deleting} onclick={select}>
     <span class="headline">
       <span class="provider" aria-hidden="true"><ProviderLogo providerId={thread.providerId} size={14} /></span>
       {#if machine}

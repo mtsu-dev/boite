@@ -74,7 +74,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
   'threads.read': {
     methods: [
       'projects.list', 'threads.list', 'threads.listChanges', 'threads.get', 'threads.capabilities', 'threads.stats', 'threads.subscribe', 'threads.unsubscribe',
-      'threads.pullRequest', 'threads.pullRequests', 'threads.pullRequestReview', 'threads.pullRequestFiles',
+      'threads.search', 'threads.pullRequest', 'threads.pullRequests', 'threads.pullRequestReview', 'threads.pullRequestFiles',
       'messages.list', 'messages.toolOutput', 'messages.toolPart', 'messages.attachment', 'artifacts.read', 'artifacts.viewBlock',
       'composer.list', 'composer.asset.get', 'permissions.list', 'questions.list',
     ],
@@ -159,6 +159,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
  * reason is worth saying.
  */
 export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
+  { name: 'agents.trigger.', reason: 'only the owner configures a mochi\'s triggers and receives webhook credentials' },
   { name: 'accounts.', reason: 'the agents\' sign-ins and their settings are the owner\'s' },
   { name: 'quotas.alert', reason: 'an account\'s alert thresholds are the owner\'s account settings' },
   { name: 'providers.probe', reason: 'it starts an agent with the owner\'s login' },

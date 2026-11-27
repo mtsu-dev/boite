@@ -1,5 +1,5 @@
-import type { Message } from '@boite/contracts';
-import { visibleAnswer, visibleUserText } from './message-display';
+import { messageMatchRanges, type Message, type MessageSearchTerm } from '@boite/contracts';
+import { promptText, visibleAnswer } from './message-display';
 import { planOf } from './plan';
 
 /**
@@ -30,7 +30,7 @@ function occurrences(text: string, needle: string): number[] {
  */
 function readable(message: Message): { part: number; text: string }[] {
   return message.parts.flatMap((part, index) => {
-    if (part.type === 'text') return [{ part: index, text: message.role === 'user' ? visibleUserText(part.text) : visibleAnswer(part.text) }];
+    if (part.type === 'text') return [{ part: index, text: message.role === 'user' ? promptText(part) : visibleAnswer(part.text) }];
     if (part.type === 'tool') {
       const plan = planOf(part.name, part.input);
       return plan === null ? [] : [{ part: index, text: plan }];
@@ -75,6 +75,47 @@ export function findRanges(root: Node, query: string): Range[] {
 
 const ALL = 'boite-find';
 const CURRENT = 'boite-find-current';
+const MESSAGE_SEARCH = 'boite-message-search';
+
+export function messageSearchPosition(message: Message, terms: MessageSearchTerm[]): { part: number; offset: number } | undefined {
+  for (const { part, text } of readable(message)) {
+    const first = messageMatchRanges(text, terms)[0];
+    if (first) return { part, offset: first.start };
+  }
+}
+
+export function paintMessageSearch(root: HTMLElement, terms: MessageSearchTerm[], selector = '[data-testid="text-part"], .part[data-kind="text"]'): void {
+  if (typeof CSS === 'undefined' || !('highlights' in CSS) || typeof Highlight === 'undefined') return;
+  const ranges: Range[] = [];
+  for (const part of root.querySelectorAll(selector)) {
+    const nodes: { node: Node; start: number; end: number }[] = [];
+    let text = '';
+    const walker = document.createTreeWalker(part, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const value = node.nodeValue ?? '';
+      if (!value) continue;
+      nodes.push({ node, start: text.length, end: text.length + value.length });
+      text += value;
+    }
+    let cursor = 0;
+    for (const { start, end } of messageMatchRanges(text, terms)) {
+      while (nodes[cursor]!.end <= start) cursor++;
+      const first = nodes[cursor]!;
+      while (nodes[cursor]!.end < end) cursor++;
+      const last = nodes[cursor]!;
+      const range = document.createRange();
+      range.setStart(first.node, start - first.start);
+      range.setEnd(last.node, end - last.start);
+      ranges.push(range);
+    }
+  }
+  if (ranges.length) CSS.highlights.set(MESSAGE_SEARCH, new Highlight(...ranges));
+  else CSS.highlights.delete(MESSAGE_SEARCH);
+}
+
+export function clearMessageSearch(): void {
+  if (typeof CSS !== 'undefined' && 'highlights' in CSS) CSS.highlights.delete(MESSAGE_SEARCH);
+}
 
 /** Paints the matches with the CSS highlight API, which leaves the DOM alone. A browser without it paints nothing. */
 export function paintFind(all: Range[], current: Range | null): void {

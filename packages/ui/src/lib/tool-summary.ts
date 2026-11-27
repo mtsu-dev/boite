@@ -1,3 +1,4 @@
+import { toolFamily, toolInputDiff, type ToolFamily } from '@boite/contracts';
 import { fill, strings } from './strings';
 
 /**
@@ -7,7 +8,7 @@ import { fill, strings } from './strings';
  * when it is a known one and from the shape of the input otherwise.
  */
 
-export type ToolFamily = 'command' | 'edit' | 'write' | 'read' | 'search' | 'fetch' | 'web' | 'agent' | 'other';
+export type { ToolFamily };
 
 export interface ToolDescription {
   family: ToolFamily;
@@ -24,18 +25,6 @@ const SUMMARY_KEYS = ['file_path', 'path', 'command', 'cmd', 'pattern', 'query',
 
 /** The first `"key": "value` of a half-typed JSON object, so the line reads before it closes. */
 const PARTIAL_VALUE = /"[^"]*"\s*:\s*"((?:[^"\\]|\\.)*)/;
-
-/** Tool names, lowered and stripped of `_`, `-` and spaces, and the family each one is. */
-const BY_NAME: Record<string, ToolFamily> = {
-  bash: 'command', shell: 'command', exec: 'command', execute: 'command', runshellcommand: 'command', command: 'command', powershell: 'command',
-  edit: 'edit', multiedit: 'edit', strreplace: 'edit', strreplacebasededittool: 'edit', applypatch: 'edit', patch: 'edit', notebookedit: 'edit', replace: 'edit',
-  write: 'write', writefile: 'write', create: 'write', createfile: 'write',
-  read: 'read', readfile: 'read', view: 'read', cat: 'read', notebookread: 'read',
-  grep: 'search', glob: 'search', search: 'search', find: 'search', ls: 'search', listdirectory: 'search', searchfiles: 'search',
-  webfetch: 'fetch', fetch: 'fetch', readurl: 'fetch',
-  websearch: 'web', googlesearch: 'web',
-  task: 'agent', agent: 'agent'
-};
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -65,23 +54,6 @@ export function partialSummaryOf(raw: string): string {
   return value.length > 0 ? (value.split('\\n')[0] ?? '') : '';
 }
 
-function familyOfShape(fields: Record<string, unknown>): ToolFamily {
-  if (typeof fields['command'] === 'string' || Array.isArray(fields['command']) || typeof fields['cmd'] === 'string') return 'command';
-  if ('old_string' in fields || 'new_string' in fields || Array.isArray(fields['edits'])) return 'edit';
-  if (bodyOf(fields) !== null && (typeof fields['file_path'] === 'string' || typeof fields['path'] === 'string')) return 'write';
-  if (typeof fields['url'] === 'string') return 'fetch';
-  if (typeof fields['query'] === 'string') return 'web';
-  if (typeof fields['pattern'] === 'string') return 'search';
-  if ('grantRoot' in fields) return 'edit';
-  return 'other';
-}
-
-/** A written file's body: Claude says `content`, some ACP agents `contents`. */
-function bodyOf(fields: Record<string, unknown>): string | null {
-  if (typeof fields['content'] === 'string') return fields['content'];
-  return typeof fields['contents'] === 'string' ? fields['contents'] : null;
-}
-
 /** A command given as an argv array, the way Codex and some ACP agents send it, reads as one line. */
 function commandOf(value: unknown): string {
   if (Array.isArray(value)) return value.filter((part) => typeof part === 'string').join(' ');
@@ -107,8 +79,7 @@ export function describeTool(name: string, input: unknown): ToolDescription {
 
 function describe(name: string, input: unknown): ToolDescription {
   const fields = record(input) ?? {};
-  const key = name.toLowerCase().replace(/[\s_-]/g, '');
-  const family = BY_NAME[key] ?? familyOfShape(fields);
+  const family = toolFamily(name, fields);
   const path = text(fields['file_path']) || text(fields['path']) || text(fields['notebook_path']) || text(fields['grantRoot']);
   let subject: string;
   switch (family) {
@@ -120,13 +91,7 @@ function describe(name: string, input: unknown): ToolDescription {
     case 'edit': case 'write': case 'read': subject = path || summaryOf(input); break;
     default: subject = summaryOf(input);
   }
-  let change: ToolDescription['change'] = null;
-  if (family === 'edit' && path && (typeof fields['old_string'] === 'string' || typeof fields['new_string'] === 'string')) {
-    change = { kind: 'diff', path, oldText: text(fields['old_string']), newText: text(fields['new_string']) };
-  } else if (family === 'write' && path && bodyOf(fields) !== null) {
-    change = { kind: 'diff', path, oldText: '', newText: bodyOf(fields) ?? '' };
-  }
-  return { family, subject, change };
+  return { family, subject, change: toolInputDiff(name, input) };
 }
 
 /** The last segment of a path, for a sentence; the whole path rides in the title. */

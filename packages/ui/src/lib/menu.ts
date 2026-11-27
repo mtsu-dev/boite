@@ -28,6 +28,7 @@ export interface MenuItem {
   icon?: 'settings';
   danger?: boolean;
   disabled?: boolean;
+  preload?: string;
   separator?: boolean;
   /** Opens another list in the same menu: ArrowRight picks it, as Enter does. */
   submenu?: boolean;

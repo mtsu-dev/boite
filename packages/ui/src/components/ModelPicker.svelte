@@ -101,7 +101,7 @@
 <div class="picker" bind:this={root}>
   {#if !choice && store.owner}
     <!-- Nothing to pick from yet: the chip is the way to get something. -->
-    <button type="button" class="ui-chip trigger connect" data-testid="composer-connect" onclick={() => store.openConnect()}>
+    <button type="button" class="ui-chip trigger connect" data-testid="composer-connect" data-preload-view="connect" onclick={() => store.openConnect()}>
       <Plug size={14} strokeWidth={1.75} />
       <span class="label ui-label">{strings.connect.button}</span>
     </button>
@@ -122,6 +122,7 @@
     data-testid={actionLabel ? 'recovery-model-picker' : 'composer-picker'}
     {disabled}
     bind:this={trigger}
+    data-preload-view="model"
     onclick={toggle}
     {onkeydown}
   >

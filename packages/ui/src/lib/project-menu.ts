@@ -7,7 +7,7 @@ import { confirm } from './confirm.svelte';
 import { contextMenu } from './context-menu.svelte';
 import { separator, type MenuItem } from './menu';
 import { fill, strings } from './strings';
-import { count, projectName } from './format';
+import { projectName } from './format';
 import { undo } from './undo.svelte';
 
 /** Asks before a project leaves Boite, then removes it. Its folder, when there is one left, stays. */
@@ -30,14 +30,12 @@ export async function archiveProjectWithUndo(owner: Store, project: Project): Pr
   });
 }
 
-/** A card's archived threads: their count names the menu's way to their one home, Settings' archive opened on this project. */
-export type ArchivedInCard = { count: number };
 
 export function projectMenu(event: MouseEvent, owner: Store, project: Project, reorder?: {
   up: boolean;
   down: boolean;
   move: (direction: -1 | 1) => void;
-}, opened?: () => void, archived?: ArchivedInCard) {
+}, opened?: () => void, archivedInCard = false) {
   const client = owner.client;
   const clientGeneration = owner.clientGeneration;
   const management: MenuItem[] = [
@@ -50,7 +48,7 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
     ] : []),
     ...(owner.owner
       ? [
-          { id: 'import', label: strings.sidebar.importSession, glyph: Import },
+          { id: 'import', preload: 'import', label: strings.sidebar.importSession, glyph: Import },
           ...(project.kind !== 'drafts' && project.repository === true ? [{ id: 'worktree-default', label: strings.sidebar.worktreeDefault, glyph: GitBranch, checked: project.worktreeDefault === true }, { id: 'worktrees', label: strings.settings.worktrees.heading, glyph: GitBranch }] : []),
           ...(project.kind !== 'drafts' && project.repository !== false && project.autoArchiveMergedPr !== undefined ? [{
             id: 'auto-archive-merged-pr', label: strings.sidebar.autoArchiveMergedPr, glyph: Archive,
@@ -77,13 +75,9 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
     { id: 'new', label: strings.sidebar.newThread, glyph: Plus, disabled: project.missing === true, ...(project.missing === true ? { title: strings.sidebar.projectMissing } : {}) },
     { id: 'copy', label: strings.sidebar.copyPath, title: project.path, glyph: Copy },
     ...(project.kind !== 'drafts' ? [{ id: 'rename', label: strings.common.rename, glyph: PencilLine }] : []),
-    // The archive in Settings (lib/archived-view.svelte.ts): from a card it opens on this project, its count beside.
-    {
-      id: 'archived', label: strings.settings.archived.heading, glyph: History, testid: 'project-archived-toggle',
-      ...(archived && archived.count > 0 ? {
-        hint: count(archived.count), title: fill(strings.sidebar.projectArchivedThreads, { count: String(archived.count), project: projectName(project) })
-      } : {})
-    },
+    // A project card counts its archived threads in its head, which opens them under it as Done does
+    // (ProjectThreadCounters.svelte, `archivedInCard`); elsewhere the archive in Settings opens on this project (lib/archived-view.svelte.ts).
+    ...(archivedInCard ? [] : [{ id: 'archived', label: strings.settings.archived.heading, glyph: History, testid: 'project-archived-menu' }]),
     ...(owner.owner || project.kind !== 'drafts' || reorder
       ? [separator(), { id: 'manage', label: strings.sidebar.manageProject, glyph: Settings, hint: '›', submenu: true }]
       : [])

@@ -49,8 +49,8 @@ test('phone settings expose browser profiles and allowed windows only to owners 
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
   const rows = `[...document.querySelectorAll('[data-testid=mobile-settings-home] .row')].map(row => row.dataset.testid)`;
   // Home lists the desktop's families; the owner-only pages (accounts, plugins, the brain, the browser's profiles, System's compaction, Diagnostics) leave a paired phone.
-  const expected = ['settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage', 'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'];
-  const ownerOnly = ['settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-browser', 'settings-tab-advanced', 'settings-tab-diagnostics'];
+  const expected = ['settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-mcp', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage', 'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'];
+  const ownerOnly = ['settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-mcp', 'settings-tab-brain', 'settings-tab-browser', 'settings-tab-advanced', 'settings-tab-diagnostics'];
   expect(await page.evaluate<string[]>(rows)).toEqual(expected);
   expect(await page.evaluate(`document.querySelector('[data-testid=settings-tab-resources]') === null && document.querySelector('[data-testid=settings-tab-keyboard]') === null`)).toBe(true);
   // An owner finds the browser profiles under Browser and the windows agents may see under Machines.
@@ -478,7 +478,7 @@ test('a phone pins and archives a thread without a right-click, from the header 
   await page.click('[data-testid=thread-menu-trigger]');
   await page.waitFor(`document.querySelector('[data-testid=thread-menu-trigger-menu]')`);
   // The thread's own actions; the panel has its door, so the menu does not repeat it.
-  expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=thread-menu-trigger-menu] [data-value]')].map(row => row.dataset.value)`)).toEqual(['find', 'rename', 'retitle', 'pin', 'copy-thread-id', 'done', 'archive', 'move', 'delete']);
+  expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=thread-menu-trigger-menu] [data-value]')].map(row => row.dataset.value)`)).toEqual(['find', 'export-thread', 'rename', 'retitle', 'pin', 'copy-thread-id', 'done', 'archive', 'move', 'delete']);
   await capture('mobile-thread-menu.png');
   await page.evaluate('history.back()');
   await page.waitFor(`!document.querySelector('[data-testid=thread-menu-trigger-menu]')`);

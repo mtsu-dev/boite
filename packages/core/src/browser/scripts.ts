@@ -49,9 +49,11 @@ const LABEL_OF = `o => String(o.label || o.text || '').replace(/\\s+/g, ' ').tri
  * viewer to draw: Chrome draws the list in a window of its own that no frame shows.
  * Null where there is none, and the tap stays a click.
  */
-export const pickerScript = (x: number, y: number, max: number) => `(() => {
+export const tapPickerScript = (x: number, y: number, max: number, page: { width: number; height: number; href: string; origin: number }) => `(() => {
+  const page = ${JSON.stringify({ width: page.width, height: page.height, href: page.href, origin: page.origin })};
+  if (innerWidth !== page.width || innerHeight !== page.height || location.href !== page.href || performance.timeOrigin !== page.origin) return null;
   const e = (${SELECT_AT})(${x}, ${y});
-  if (!e) return null;
+  if (!e) return { picker: null };
   e.focus();
   const clip = s => String(s ?? '').replace(/\\s+/g, ' ').trim().slice(0, 200), unit = n => Math.max(0, Math.min(1, n));
   const options = Array.from(e.options).slice(0, ${max}).map(o => {
@@ -62,7 +64,7 @@ export const pickerScript = (x: number, y: number, max: number) => `(() => {
     return item;
   });
   const r = e.getBoundingClientRect();
-  return { selected: e.selectedIndex, options, rect: { x: unit(r.left / innerWidth), y: unit(r.top / innerHeight), width: unit(r.width / innerWidth), height: unit(r.height / innerHeight) } };
+  return { picker: { selected: e.selectedIndex, options, rect: { x: unit(r.left / innerWidth), y: unit(r.top / innerHeight), width: unit(r.width / innerWidth), height: unit(r.height / innerHeight) } } };
 })()`;
 
 /**

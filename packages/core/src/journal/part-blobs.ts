@@ -2,6 +2,9 @@ import type { Database } from 'bun:sqlite';
 import { TOOL_OUTPUT_INLINE_CHARS, TOOL_OUTPUT_PREVIEW_CHARS } from '@boite/contracts';
 import type { Message, MessagePart } from '@boite/contracts';
 import { runWrite } from './statements.ts';
+import { attachmentMetadata, compactAttachment, isAttachment, previewDigests, type AttachmentPreviewOptions } from './attachment-previews.ts';
+
+export { previewDigests } from './attachment-previews.ts';
 
 /**
  * Large values of a message part live in `part_blobs`, one row each, instead
@@ -111,7 +114,8 @@ function decodeValue(data: string | Uint8Array, codec: number): string {
 
 function writeBlob(db: Database, message: Pick<Message, 'id' | 'threadId'>, index: number, field: string, value: string, digest: string, packed?: Packed): void {
   const { data, codec } = encodeValue(value, packed);
-  const preview = codec === CODEC_ZSTD && field === 'output' ? Buffer.from(value.slice(0, TOOL_OUTPUT_PREVIEW_CHARS), 'utf8') : null;
+  const preview = field === 'data' ? JSON.stringify(attachmentMetadata(value))
+    : codec === CODEC_ZSTD && field === 'output' ? Buffer.from(value.slice(0, TOOL_OUTPUT_PREVIEW_CHARS), 'utf8') : null;
   runWrite(db, INSERT_BLOB, message.id, index, field, message.threadId, data, digest, codec, preview, value.length);
 }
 
@@ -151,7 +155,8 @@ export function storeParts(db: Database, message: Pick<Message, 'id' | 'threadId
   return message.parts.map((part, index) => storePart(db, message, index, part));
 }
 
-interface BlobRow { partIndex: number; field: string; data: string | Uint8Array; digest: string; codec: number; cut: number }
+interface BlobRow { partIndex: number; field: string; data: string | Uint8Array | null; digest: string; codec: number; cut: number; meta: string | null; chars: number }
+export interface HydrateOptions extends AttachmentPreviewOptions { toolPreviews?: boolean }
 
 /**
  * Puts the moved values back. With `toolPreviews`, a finished tool's output
@@ -160,25 +165,49 @@ interface BlobRow { partIndex: number; field: string; data: string | Uint8Array;
  * start of its text, so a page never loads or decompresses the whole
  * screenshot. A shorter one comes back whole, as it would from the row.
  */
-export function hydrate(db: Database, message: Message, toolPreviews = false): Message {
-  if (!message.parts.some(part => part !== null && typeof part === 'object' && MARK in part)) return message;
-  const full = db.query('SELECT part_index AS partIndex, field, data, digest, codec, 0 AS cut FROM part_blobs WHERE message_id = ?');
-  // `chars` is null on rows from before schema 37, all of them past the inline size.
-  const preview = db.query(`SELECT part_index AS partIndex, field, digest,
-      CASE WHEN field = 'output' AND (chars IS NULL OR chars > ${TOOL_OUTPUT_INLINE_CHARS}) THEN 1 ELSE 0 END AS cut,
-      CASE WHEN field = 'output' AND (chars IS NULL OR chars > ${TOOL_OUTPUT_INLINE_CHARS})
+export function hydrate(db: Database, message: Message, options: HydrateOptions | boolean = false): Message {
+  const opts = typeof options === 'boolean' ? { toolPreviews: options } : options;
+  const { toolPreviews, compactFiles, compactImages } = opts;
+  const { id, role } = message;
+  const compactData = !!(compactFiles || compactImages);
+  const hasBlobs = message.parts.some(part => part !== null && typeof part === 'object' && MARK in part);
+  if (!hasBlobs && !compactData) return message;
+  // `chars` is null on tool outputs from before schema 37, all past the inline size.
+  const cut = toolPreviews ? `field = 'output' AND (chars IS NULL OR chars > ${TOOL_OUTPUT_INLINE_CHARS})` : '0';
+  const defer = compactData ? "field = 'data' AND preview IS NOT NULL" : '0';
+  const rows = hasBlobs ? db.query(`SELECT part_index AS partIndex, field, digest, chars,
+      CASE WHEN ${defer} THEN preview END AS meta, (${cut}) AS cut,
+      CASE WHEN ${defer} THEN NULL WHEN ${cut}
         THEN (CASE codec WHEN ${CODEC_ZSTD} THEN preview ELSE substr(data, 1, ${TOOL_OUTPUT_PREVIEW_CHARS}) END) ELSE data END AS data,
-      CASE WHEN field = 'output' AND (chars IS NULL OR chars > ${TOOL_OUTPUT_INLINE_CHARS}) THEN ${CODEC_TEXT} ELSE codec END AS codec
-    FROM part_blobs WHERE message_id = ?`);
-  const rows = (toolPreviews ? preview : full).all(message.id) as BlobRow[];
+      CASE WHEN ${cut} THEN ${CODEC_TEXT} ELSE codec END AS codec
+    FROM part_blobs WHERE message_id = ?`).all(id) as BlobRow[] : [];
   const values = new Map(rows.map(row => [`${row.partIndex}:${row.field}`, row]));
   const text = (row: BlobRow | undefined) => row === undefined || row.data === null ? '' : decodeValue(row.data, row.codec);
+  let changed = hasBlobs;
   const parts = message.parts.map((part, index) => {
     const moved = (part as Stored | null)?.[MARK];
-    if (!moved) return part;
+    if (!moved) {
+      if (!compactData || !isAttachment(part)) return part;
+      const projected = compactAttachment(part, id, role, index, opts);
+      changed ||= projected !== part;
+      return projected;
+    }
     const restored: Record<string, unknown> = { ...part };
     delete restored[MARK];
     for (const field of moved) restored[field] = text(values.get(`${index}:${field}`));
+    const current = restored as MessagePart;
+    if (compactData && isAttachment(current)) {
+      const row = values.get(`${index}:data`);
+      if (row?.meta != null) {
+        const { digest, chars } = row;
+        const projected = compactAttachment(current, id, role, index, opts, {
+          metadata: JSON.parse(row.meta), digest,
+          source: { chars, read: () => readMatchingData(db, id, index, digest) },
+        });
+        if (projected !== current) return projected;
+        current.data = readValue(db, id, index, 'data');
+      } else return compactAttachment(current, id, role, index, opts);
+    }
     const output = values.get(`${index}:output`);
     if (toolPreviews && part.type === 'tool' && moved.includes('output') && part.status !== 'running' && output?.cut !== 0) {
       restored.output = (restored.output as string).slice(0, TOOL_OUTPUT_PREVIEW_CHARS);
@@ -190,15 +219,14 @@ export function hydrate(db: Database, message: Message, toolPreviews = false): M
     }
     return restored as MessagePart;
   });
-  return { ...message, parts };
+  return changed ? { ...message, parts } : message;
 }
 
-/**
- * The digest of the whole output behind each preview `hydrate` made. A resume
- * proof hashes it in place of the output, so a change past the preview still
- * changes the proof, as it did when pages carried the whole output.
- */
-export const previewDigests = new WeakMap<object, string>();
+function readMatchingData(db: Database, id: string, index: number, digest: string): string | null {
+  const row = db.query("SELECT data, codec FROM part_blobs WHERE message_id = ? AND part_index = ? AND field = 'data' AND digest = ?")
+    .get(id, index, digest) as { data: string | Uint8Array; codec: number } | null;
+  return row === null ? null : decodeValue(row.data, row.codec);
+}
 
 function readValue(db: Database, messageId: string, index: number, field: string): string {
   const row = db.query('SELECT data, codec FROM part_blobs WHERE message_id = ? AND part_index = ? AND field = ?')
@@ -332,7 +360,7 @@ export async function recodePartBlobs(db: Database, afterRowid: number, budget: 
   if (rows.length === 0) return null;
   const packed = await packValues(rows.map(row => row.data));
   if (isClosed()) return afterRowid;
-  const update = db.query(`UPDATE part_blobs SET data = ?, codec = ${CODEC_ZSTD}, preview = CAST(? AS TEXT), chars = ? WHERE rowid = ? AND codec = ${CODEC_TEXT} AND digest = ?`);
+  const update = db.query(`UPDATE part_blobs SET data = ?, codec = ${CODEC_ZSTD}, preview = COALESCE(CAST(? AS TEXT), preview), chars = ? WHERE rowid = ? AND codec = ${CODEC_TEXT} AND digest = ?`);
   const measure = db.query(`UPDATE part_blobs SET chars = ? WHERE rowid = ? AND codec = ${CODEC_TEXT} AND digest = ? AND chars IS NULL`);
   db.transaction(() => {
     for (const row of rows) {

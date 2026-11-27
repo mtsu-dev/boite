@@ -39,6 +39,7 @@ import { CodexRpc } from './rpc.ts';
 import { CodexSkillCommands } from './skills.ts';
 import { resumeThread, ThreadLostError } from './resume.ts';
 import { threadConfig } from './config.ts';
+import { sessionMcp } from '../mcp.ts';
 import { updateTurnSettings } from './live-settings.ts';
 import { CodexTurn } from './turn.ts';
 import { CodexUsageReports } from './usage-report.ts';
@@ -85,6 +86,7 @@ export class CodexSession {
   #exited: Promise<number | null> | null = null;
   #processClosed: Promise<void> = Promise.resolve();
   readonly #writer: CodexWriter;
+  #mcp: ReturnType<typeof sessionMcp> = null;
   readonly #idle = new IdleTimer(() => this.#drop());
   /** The turn whose `turn/start` is in flight. Context updates also arrive while idle. */
   #current: CodexTurn | null = null;
@@ -367,8 +369,8 @@ export class CodexSession {
     this.skills.opened(rpc, ctx);
     const policy = MODE_POLICY[ctx.thread.permissionMode];
     const model = modelOf(ctx);
-    // A context mode without MCP turns the user's servers off by name.
-    const config = {...await threadConfig(rpc, ctx.thread.cwd, (level, message) => ctx.log(level, message), !!ctx.protectedExecution || ctx.thread.contextMode?.mcp === false, !!ctx.protectedExecution), ...protectedCodexConfig(ctx)};
+    this.#mcp = sessionMcp(ctx);
+    const config = {...await threadConfig(rpc, ctx.thread.cwd, (level, message) => ctx.log(level, message), !!ctx.protectedExecution || ctx.thread.contextMode?.mcp === false, !!ctx.protectedExecution, this.#mcp), ...protectedCodexConfig(ctx)};
     const sandbox = ctx.protectedExecution ? protectedCodexThread(ctx) : {sandbox: policy.sandbox};
     // Codex checks this at its own model/tool boundaries. Its live settings
     // RPC does not accept it; the session key reopens changed limits between turns.
@@ -560,6 +562,7 @@ export class CodexSession {
     this.#idle.clear();
     this.#usage.clear();
     endOnClose(this.#current, 'the codex session was closed');
+    this.#mcp?.release();
     this.#rpc?.fail('the codex session was closed');
     this.#rpc = null;
     const child = this.#child;

@@ -216,3 +216,34 @@ test('an agent opened while its selection is still subscribing keeps its subscri
     expect(sent).not.toContain('threads.unsubscribe t-team-running');
   } finally { store.detach(); client.close(); }
 });
+
+test('a click inherits the bytes already received during a press and later slices keep counting', async () => {
+  const { store, client } = await ready();
+  const real = client.call.bind(client);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let progress: ((received: number, total: number) => void) | undefined;
+  const threadId = 't-descriptors';
+  try {
+    store.core!.features!.chunkedAnswers = true;
+    const calls = vi.spyOn(client, 'call').mockImplementation((async (method, params, options) => {
+      if (method === 'threads.get' && (params as { threadId?: string }).threadId === threadId) {
+        progress = options?.onProgress;
+        await gate;
+      }
+      return real(method, params, options);
+    }) as typeof client.call);
+    store.preload(threadId);
+    expect(progress).toBeTypeOf('function');
+    progress!(42, 100);
+    const opening = store.open(threadId);
+    expect(store.openThread?.id).toBe(threadId);
+    expect(store.loadingBytes).toEqual({ threadId, received: 42, total: 100 });
+    progress!(73, 100);
+    expect(store.loadingBytes?.received).toBe(73);
+    release();
+    await opening;
+    expect(store.loadingBytes).toBeNull();
+    expect(calls.mock.calls.filter(([method, params]) => method === 'threads.get' && (params as { threadId?: string }).threadId === threadId)).toHaveLength(1);
+  } finally { release(); store.detach(); client.close(); }
+});

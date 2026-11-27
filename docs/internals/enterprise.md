@@ -55,6 +55,7 @@ Windows registry policies are not read yet; the file is the only source.
 | `dictation` | `"local"`, `"off"` | `local` refuses cloud transcription engines and the cloud fallback. `off` refuses dictation and its downloads. |
 | `previews.remoteResources` | `false` | Agent-made HTML previews and views may load only their own files: a content security policy blocks remote scripts, images, styles, fonts and requests. |
 | `agentBrowser` | `false`, or `{ "searchUrl": "https://...{query}..." }` | `false` refuses every agent browser command, from an agent, the CLI or the panel. `searchUrl` is the address used for text typed in the browser's address bar that is not a URL; it must be https and contain `{query}`. |
+| `mcp` | `false` | Blocks tests and revokes access to [Boite-managed MCP servers](mcp.md). It applies to the registry, not a provider's own configuration. |
 | `agentDesktop` | `false` | Refuses the agents' [virtual desktop](desktop.md): starting one, running a program on it and the agent-desktop download. Its status and stop stay open. |
 | `network.lan` | `false` | The core listens on loopback only, whatever the setting or `--lan`/`--host` say, and a grouped core opens no listener on its private LAN addresses. An explicit loopback `--host` is kept. |
 | `network.tailscaleServe` | `false` | Serving the core over Tailscale HTTPS is refused. |

@@ -61,6 +61,7 @@ export class Layout {
   /** The find bar over the open thread, and a count each ask bumps so a second Ctrl+F refocuses it. */
   findOpen = $state(false);
   findRequest = $state(0);
+  messageSearchJump = $state<{ threadId: string; messageId: string; query: string } | null>(null);
   /** Bumped to open the draft's project dropdown from the keyboard. */
   projectChoiceRequest = $state(0);
   page = $state<Page>('chat');
@@ -114,7 +115,7 @@ export class Layout {
     this.#saveLayout();
   }
 
-  async copy(text: string): Promise<void> {
+  async copy(text: string, options?: { reportFailure?: boolean; within?: HTMLElement }): Promise<boolean> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;
     const navigation = this.ctx.threads.openGeneration;
@@ -122,14 +123,15 @@ export class Layout {
       const clipboard = navigator.clipboard;
       if (clipboard) {
         await clipboard.writeText(text);
-        return;
+        return true;
       }
-      if (copyByCommand(text)) return;
+      if (copyByCommand(text, options?.within)) return true;
     } catch {
       // Report the failure below if the view still owns the action.
     }
-    if (this.ctx.client === client && this.ctx.clientGeneration === clientGeneration && this.ctx.threads.openGeneration === navigation)
+    if (options?.reportFailure !== false && this.ctx.client === client && this.ctx.clientGeneration === clientGeneration && this.ctx.threads.openGeneration === navigation)
       this.ctx.store.reportError(strings.errors.clipboard, 'minor');
+    return false;
   }
 
   // -------------------------------------------------------------------------

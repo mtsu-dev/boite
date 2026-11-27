@@ -3,7 +3,8 @@ import { Readable, Writable } from 'node:stream';
 import type { SessionNotification } from '@agentclientprotocol/sdk/unstable';
 import { unavailable } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
-import { OPENCODE_V2, openCodeServerReachable, withOpenCodeCompactionBuffer } from '../../providers/opencode.ts';
+import type { McpRegistration } from '../../mcp/lazy.ts';
+import { OPENCODE_V2, openCodeServerReachable, withOpenCodeCompactionBuffer, withOpenCodeMcp } from '../../providers/opencode.ts';
 import { agentEnv, profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import { grokLaunchArgs } from '../grok.ts';
 import { launchTemp } from '../launch-temp.ts';
@@ -17,7 +18,7 @@ import type { AcpTurn } from './turn.ts';
 import { answerPermission, sessionNotificationOf } from './updates.ts';
 
 export function spawnTransport(
-  ctx: SessionContext, deps: AcpDeps, memory: CompactionCaches, current: () => AcpTurn | null,
+  ctx: SessionContext, deps: AcpDeps, memory: CompactionCaches, current: () => AcpTurn | null, mcp: McpRegistration | null = null,
 ) {
   const profile = profileFor(ctx.provider);
   const launch = resolveLaunch(profile);
@@ -41,7 +42,7 @@ export function spawnTransport(
   // OpenCode 2 compacts at the thread's limit once a process has read the
   // model's window; until then it keeps its own ceiling.
   const buffer = native ? wantedCompactionBuffer(memory, ctx) : null;
-  const accountEnv = withOpenCodeCompactionBuffer(ctx.accountEnv, buffer);
+  const accountEnv = withOpenCodeCompactionBuffer(native ? withOpenCodeMcp(ctx.accountEnv, mcp) : ctx.accountEnv, buffer);
   const env: Record<string, string | undefined> = { ...agentEnv(ctx.provider, temp === null ? accountEnv : { ...accountEnv, ...temp.env }), ...protection?.env, ...(password === null ? {} : { OPENCODE_PASSWORD: password }) };
   try {
     child = ctx.spawnChild(launch.executable, native ? nativeArgs : args, { cwd: protection?.cwd ?? ctx.thread.cwd, env });
@@ -104,6 +105,6 @@ export async function initializeTransport(ctx: SessionContext, sdk: Sdk, connect
     event: 'driver.initialized', data: { agent: agentName, version: agentVersion, protocol, loadSession: canLoad },
   });
 
-  return { meta: acpSessionMeta(ctx.provider, init), canLoad, canDelete: canDeleteSessions(init),
+  return { meta: acpSessionMeta(ctx.provider, init), canLoad, canDelete: canDeleteSessions(init), canMcpHttp: init.agentCapabilities?.mcpCapabilities?.http === true,
     imagesSupported: init.agentCapabilities?.promptCapabilities?.image === true };
 }

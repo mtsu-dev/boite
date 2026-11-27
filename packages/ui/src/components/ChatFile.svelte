@@ -2,14 +2,13 @@
   import { desktopShell } from '../lib/shell-platform';
   import { errorText } from '../lib/errors';
   import { onMount } from 'svelte';
-  import { Check, Download, FileText, Image, Film, Music2, Maximize2, RefreshCw, X } from '@lucide/svelte';
+  import { Check, Download, FileText, Image, Film, Music2, Maximize2, RefreshCw } from '@lucide/svelte';
   import { ATTACHMENT_MAX_BYTES, CHAT_PREVIEW_IMAGES, FILE_TICKET_TTL_MS, chatPreviewSize, decodedBytes, imageSize, type ChatPreviewSize, type MessagePart } from '@boite/contracts';
   import { onView } from '../lib/on-view';
   import type { Store } from '../lib/store.svelte';
   import { featureOn } from '../lib/features.svelte';
   import { fill, strings } from '../lib/strings';
   import { bytes, millis } from '../lib/format';
-  import { executableLink, localFileDirectory, openChatFile, openLocalFile } from '../lib/local-files';
   import { browserDownload, decodeBase64, saveAttachment, saveAttachmentUrl } from '../lib/attachment-save';
   import { galleryFrom, media, viewerHost, type Gallery, type MediaItem } from '../lib/media-gallery';
   import { videoPlayable } from '../lib/video-support';
@@ -17,19 +16,17 @@
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
 
-  let { file, store, threadId, messageId, partIndex, path, line, onclose }: {
-    file?: Extract<MessagePart, { type: 'file' | 'artifact' }>; store?: Store; threadId?: string; messageId?: string;
-    partIndex?: number; path?: string; line?: number; onclose?: () => void;
+  /** An attachment or an artifact of a message. A file a link names opens in the panel or the viewer (`lib/file-open.svelte.ts`). */
+  let { file, store, threadId, messageId, partIndex }: {
+    file: Extract<MessagePart, { type: 'file' | 'artifact' }>; store?: Store; threadId?: string; messageId?: string; partIndex?: number;
   } = $props();
   let url = $state('');
   let mime = $state('');
-  let text = $state<string | null>(null);
   let size = $state(0);
   let error = $state('');
   let loading = $state(false);
   let expanded = $state(false);
-  let opening = $state(false);
-  /** The timeline's viewer; outside one (a file opened from a link) this file shows its own. */
+  /** The timeline's viewer; outside one (a plan, a view) this file shows its own. */
   const host = viewerHost();
   let viewing = $state<Gallery | null>(null);
   let shot = $state<HTMLElement | undefined>(undefined);
@@ -46,10 +43,7 @@
   let objectUrl = '';
   /** The attachment's decoded bytes, kept for the shell to save. */
   let body: Uint8Array<ArrayBuffer> | null = null;
-  const directory = $derived(!file && path ? localFileDirectory(store, threadId) : null);
-  /** A program on this computer, from a chat link: only the visible Open button launches it, its name does nothing. */
-  const program = $derived(directory !== null && !!path && executableLink(path));
-  const name = $derived(file?.name ?? path?.split('/').at(-1) ?? strings.composer.attachAlt);
+  const name = $derived(file.name || strings.composer.attachAlt);
   const timelineImage = $derived(!!file && (file.type === 'artifact' || file.dataDeferred || file.bytes !== undefined)
     && CHAT_PREVIEW_IMAGES.test(file.mimeType) && !!store && !!threadId && !!messageId && partIndex !== undefined);
   const rich = $derived(featureOn('chat-artifacts'));
@@ -60,7 +54,7 @@
   // A WebM on an iPhone without WebM support: offer the download rather than a black frame.
   const unplayable = $derived(video && !videoPlayable(mime));
   const deferredImage = $derived(image && size > ATTACHMENT_MAX_BYTES && !imageRequested);
-  const previewable = $derived(text !== null || image || (pdf && !!file) || audio || video);
+  const previewable = $derived(image || (pdf && !!file) || audio || video);
   /**
    * A picture's own size, from the core for one it deferred or from the header
    * of the bytes it sent: the preview is drawn at it from the first frame, so
@@ -72,7 +66,7 @@
     return file.data ? imageSize(file.data) : null;
   });
   /** The size this attachment loaded at, here or in an earlier mount of its row (lib/media-size.ts). */
-  const sizeKey = $derived(mediaKey({ threadId, messageId, partIndex, artifactId: file?.type === 'artifact' ? file.id : undefined, path }));
+  const sizeKey = $derived(mediaKey({ threadId, messageId, partIndex, artifactId: file?.type === 'artifact' ? file.id : undefined }));
   let learned = $state<MediaSize | null>(null);
   /** A picture or a video, known from the part before an artifact's bytes say so. */
   const visual = $derived(image || video || (!mime && /^(image|video)\//.test(file?.mimeType ?? '')));
@@ -165,19 +159,6 @@
   }
 
   /**
-   * The Open button is the explicit launch. The name opens only what the shell
-   * opens directly from a chat link (`open_chat_file`: a folder or a document
-   * inside the thread's folder), and shows why it refuses the rest.
-   */
-  async function open(direct = false): Promise<void> {
-    if (!directory || !path || opening) return;
-    opening = true;
-    try { await (direct ? openChatFile : openLocalFile)(directory, path); }
-    catch (reason) { error = errorText(reason); }
-    finally { opening = false; }
-  }
-
-  /**
    * The shell writes the file into Downloads and, asked to, opens it: a picture
    * or a document in its viewer, anything that could run shown in its folder.
    * Returns false outside the shell, where the browser handles it.
@@ -200,8 +181,6 @@
   /** The name or the icon: take the file out and open it. */
   async function launch(): Promise<void> {
     if (timelineImage) { openOriginal(); return; }
-    if (program) return;
-    if (directory && !image) return open(true);
     if (file?.type === 'file' && file.dataDeferred) await load();
     if (!url) return;
     if (image) { imageRequested = true; view(shot); return; }
@@ -283,20 +262,7 @@
           // Only inert media gets an inline URL. Other content is download-only.
           objectUrl = URL.createObjectURL(new Blob([body], { type: mime }));
           url = objectUrl;
-        } else if (path && store && threadId) {
-          if (!store.owner) throw new Error(strings.artifacts.ownerOnly);
-          const result = await store.readFile(threadId, path);
-          if (disposed) return;
-          if (!result.ok) throw new Error(result.error);
-          const content = result.value;
-          size = content.bytes;
-          if (content.kind === 'text') {
-            text = content.text;
-            objectUrl = URL.createObjectURL(new Blob([content.text], { type: 'text/plain' }));
-            url = objectUrl;
-          } else { url = content.url; mime = content.mime; }
-          expanded = true;
-        } else throw new Error(strings.artifacts.ownerOnly);
+        }
       } catch (reason) { if (!disposed) error = reason instanceof Error ? reason.message : strings.artifacts.failed; }
       finally { if (!disposed) loading = false; }
   }
@@ -382,31 +348,28 @@
         </div>
       {:else}
         {#key attempt}
-          {#if text !== null}<pre>{#if line}<span class="line">{`${path}:${line}\n`}</span>{/if}{text}</pre>
-          {:else if image}<button type="button" class="shot" class:boxed={frame !== null} style:width={boxWidth} style:aspect-ratio={boxRatio} bind:this={shot} use:media={mediaItem} onclick={() => view(shot)} title={strings.artifacts.enlarge} aria-label={strings.artifacts.enlarge} data-testid="artifact-enlarge">{#if box !== null && !dimensions && file?.type === 'file' && file.preview}<img class="blur" src={file.preview} alt="" aria-hidden="true" />{/if}<img src={url} alt={name} loading="lazy" decoding="async" onload={imageLoaded} onerror={() => previewError = true} /><span class="enlarge"><Maximize2 size={16} /></span></button>
+          {#if image}<button type="button" class="shot" class:boxed={frame !== null} style:width={boxWidth} style:aspect-ratio={boxRatio} bind:this={shot} use:media={mediaItem} onclick={() => view(shot)} title={strings.artifacts.enlarge} aria-label={strings.artifacts.enlarge} data-testid="artifact-enlarge">{#if box !== null && !dimensions && file?.type === 'file' && file.preview}<img class="blur" src={file.preview} alt="" aria-hidden="true" />{/if}<img src={url} alt={name} loading="lazy" decoding="async" onload={imageLoaded} onerror={() => previewError = true} /><span class="enlarge"><Maximize2 size={16} /></span></button>
           {:else if pdf && file}
             <!-- Only signature-checked PDF content reaches the built-in viewer. -->
             <iframe title={name} src={url} referrerpolicy="no-referrer"></iframe>
           {:else if video}<div class="clip" class:boxed={frame !== null} style:width={boxWidth} style:aspect-ratio={boxRatio} bind:this={clip} use:media={mediaItem}><video src={url} aria-label={name} controls playsinline preload="metadata" onloadedmetadata={mediaLoaded} onerror={() => previewError = true}><track kind="captions" /></video><button type="button" class="enlarge" onclick={() => view(clip)} title={strings.artifacts.enlarge} aria-label={strings.artifacts.enlarge} data-testid="video-enlarge"><Maximize2 size={16} /></button></div>
           {:else if audio}<audio src={url} aria-label={name} controls preload="metadata" onloadedmetadata={mediaLoaded} onerror={() => previewError = true}></audio>
-          {:else}<p>{directory ? strings.artifacts.openLocal : strings.artifacts.unavailable}</p>{/if}
+          {:else}<p>{strings.artifacts.unavailable}</p>{/if}
         {/key}
       {/if}
     </div>
   {/if}
   <div class="file-row">
-    <button type="button" class="identity" onclick={launch} disabled={program || opening || saving || loading || (!timelineImage && !url && !directory && !(file?.type === 'file' && file.dataDeferred))} title={saved || name}
-      aria-label={program ? name : fill(strings.chat.openFile, { name })} data-testid="artifact-launch">
+    <button type="button" class="identity" onclick={launch} disabled={saving || loading || (!timelineImage && !url && !(file?.type === 'file' && file.dataDeferred))} title={saved || name}
+      aria-label={fill(strings.chat.openFile, { name })} data-testid="artifact-launch">
       {#if image}<Image size={18} />{:else if video}<Film size={18} />{:else if audio}<Music2 size={18} />{:else}<FileText size={20} />{/if}
       <span class="label"><span class="filename">{name}</span><small>{loading ? strings.artifacts.loading : saving ? strings.artifacts.saving : saved ? strings.artifacts.saved : [bytes(size), dimensions || (box ? `${box.width} × ${box.height}` : ''), duration ? millis(duration * 1000) : ''].filter(Boolean).join(' · ')}</small></span>
     </button>
-    {#if directory}<button class="ghost small" type="button" onclick={() => open()} disabled={opening} data-testid="artifact-open"><span class="ui-label">{strings.common.open}</span></button>{/if}
     {#if url || timelineImage || (file?.type === 'file' && file.dataDeferred)}
       {#if deferredImage && !timelineImage}<button class="ghost small" type="button" onclick={requestImage} data-testid="artifact-load-image"><span class="ui-label">{strings.artifacts.loadImage}</span></button>
       {:else if rich && previewable && !inlineMedia}<button class="ghost small" type="button" onclick={() => expanded = !expanded} aria-expanded={expanded} data-testid="artifact-preview"><span class="ui-label">{strings.artifacts.preview}</span></button>{/if}
       <a class="ghost small download" href={url || '#'} download={name} onclick={download} data-testid="artifact-download" aria-label={strings.artifacts.download} aria-disabled={saving || loading} title={strings.artifacts.download}>{#if saved}<Check size={16} />{:else}<Download size={16} />{/if}</a>
     {/if}
-    {#if onclose}<button class="ghost small icon" type="button" onclick={onclose} aria-label={strings.artifacts.close}><X size={16} /></button>{/if}
   </div>
   {#if error}<div class="error" role="alert"><p>{error}</p><button type="button" class="ghost small" onclick={timelineImage ? near : load} disabled={loading}><span class="ui-label">{strings.common.retry}</span></button></div>{/if}
 </section>
@@ -437,7 +400,7 @@
   .clip.boxed { max-width: 100%; margin: auto; }
   .clip.boxed video { width: 100%; height: 100%; min-width: 0; max-height: none; }
   .clip .enlarge { padding: 0; border: 0; color: inherit; }
-  small, .line { color: var(--color-muted-foreground); font-size: var(--text-xs); }
+  small { color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .download { display: inline-flex; align-items: center; justify-content: center; min-height: var(--control); }
   .fallback-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
   .download-label { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding-inline: 12px; color: var(--color-foreground); text-decoration: none; }
@@ -447,7 +410,6 @@
   .error { order: 2; padding: 0 12px 10px; }
   p { margin: 12px; font-size: var(--text-sm); overflow-wrap: anywhere; }
   /* Text belongs to the conversation's vertical scroll; long lines still scroll sideways. */
-  pre { margin: 0; padding: 12px; overflow-x: auto; font-family: var(--font-mono); font-size: var(--text-sm); }
   img, video { display: block; width: auto; height: auto; max-width: 100%; max-height: min(480px, 65vh); margin: auto; object-fit: contain; }
   img { min-height: 80px; }
   video { min-width: min(320px, 100%); }

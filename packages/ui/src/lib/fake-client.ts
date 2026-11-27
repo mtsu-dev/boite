@@ -45,6 +45,7 @@ import { RpcFailure, type CallOptions, type ClientState, type EventHandler, type
 import { closedFailure } from './rpc-error';
 import { accountMethods } from './fake-client/accounts';
 import { activityMethods, pauseActivity } from './fake-client/activity';
+import { mcpMethods } from './fake-client/mcp';
 import { brainMethods } from './fake-client/brain';
 import { FakeContext, type FakeClientOptions, type FakeMethods } from './fake-client/context';
 import { hookMethods, recordHookRun } from './fake-client/hooks';
@@ -136,7 +137,7 @@ export class FakeClient implements ObservableClient {
     this.#ctx = ctx;
     this.#methods = this.#answer(ctx);
     this.#missing = new Set(options.missing ?? []);
-    ctx.core.features = { ...ctx.core.features, composerPersistence: !this.#missing.has('composer.list'), composerPages: !this.#missing.has('composer.listPage') && !this.#missing.has('composer.get'), listChanges: !this.#missing.has('threads.listChanges'), streamChannels: true, browserStream: !this.#missing.has('browser.remoteStream') };
+    ctx.core.features = { ...ctx.core.features, composerPersistence: !this.#missing.has('composer.list'), composerPages: !this.#missing.has('composer.listPage') && !this.#missing.has('composer.get'), listChanges: !this.#missing.has('threads.listChanges'), messageSearch: !this.#missing.has('threads.search'), streamChannels: true, browserStream: !this.#missing.has('browser.remoteStream') };
     this.#agentSettings = agentSettingMethods(ctx);
     registerCore(ctx);
     seed(ctx);
@@ -665,6 +666,7 @@ export class FakeClient implements ObservableClient {
         return { core: ctx.core, principal: ctx.bus.principal };
       },
       ...brainMethods(ctx),
+      ...mcpMethods(ctx),
       ...composerMethods(ctx, () => methods),
       ...logMethods(ctx),
       ...serverUpdateMethods(ctx),

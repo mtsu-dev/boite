@@ -7,7 +7,7 @@ them. In the table, Ctrl means Ctrl on Windows and Linux and Cmd on macOS.
 
 | Shortcut | What it does |
 | --- | --- |
-| Ctrl+K | Open the command palette |
+| Ctrl+K | Search threads, messages, projects and commands |
 | Ctrl+N | Start a new thread in the open project |
 | Ctrl+Enter | Send the message, then open a fresh draft with the same choices |
 | Ctrl+Shift+S | Stash the composer text, or take it back |

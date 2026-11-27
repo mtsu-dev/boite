@@ -61,7 +61,7 @@ time { font-variant-numeric: tabular-nums; }
 ::highlight(boite-find) {
   background: color-mix(in oklch, var(--color-live) 35%, transparent);
 }
-::highlight(boite-find-current) {
+::highlight(boite-find-current), ::highlight(boite-message-search) {
   background: var(--color-live);
   color: var(--color-accent-ink);
 }

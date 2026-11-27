@@ -156,7 +156,12 @@ export function liveState(agent: Pick<AgentProfile, 'status'>, status: AgentStat
 }
 
 /** The newest `openAgent` per machine: an older answer arriving after it opens nothing. */
-const agentOpens = new WeakMap<Store, number>();
+const agentOpens = new WeakMap<Store, {
+  client: NonNullable<Store['client']>;
+  navigation: number;
+  threadId: string | null;
+  rollback: (() => void) | undefined;
+}>();
 
 /**
  * Opens an agent's thread on the machine that owns it: the core hands the
@@ -167,12 +172,15 @@ const agentOpens = new WeakMap<Store, number>();
 export async function openAgent(store: Store, agentId: string): Promise<string | null> {
   const client = store.client;
   if (!client) return null;
-  const request = (agentOpens.get(store) ?? 0) + 1;
-  agentOpens.set(store, request);
-  const navigation = store.navigationGeneration;
   const known = threadOfAgent(AgentsView.of(store).snapshot, agentId) ?? threadOfAgent(agentDirectory(store).snapshot, agentId);
-  // Start fetching the known thread in parallel with agents.open so opening takes one round trip instead of two;
-  // store.open adopts the in-flight preload once agents.open confirms the thread, and finally releases it on refusal or handoff.
+  const previous = agentOpens.get(store);
+  const preview = previous?.client === client && previous.navigation === store.navigationGeneration ? previous : undefined;
+  // A second press can share the preview. A different target starts from the last confirmed conversation.
+  if (preview && preview.threadId !== known) preview.rollback?.();
+  const rollback = (preview?.threadId === known ? preview.rollback : undefined) ?? (known ? store.previewAgentThread(known) : undefined);
+  const request = { client, navigation: store.navigationGeneration, threadId: known, rollback };
+  agentOpens.set(store, request);
+  const current = () => store.client === client && agentOpens.get(store) === request && store.navigationGeneration === request.navigation;
   const release = known && typeof store.preload === 'function' ? store.preload(known) : null;
   let threadId = known;
   try {
@@ -180,13 +188,18 @@ export async function openAgent(store: Store, agentId: string): Promise<string |
       threadId = (await client.call('agents.open', { agentId })).threadId;
     } catch (error) {
       // An older core without `agents.open` still lists the thread in its sessions; any other refusal is the answer.
-      if (!known || !(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) { store.error = errorText(error); return null; }
+      if (!known || !(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) {
+        if (current()) { rollback?.(); store.error = errorText(error); }
+        return null;
+      }
     }
-    if (!threadId || store.client !== client || agentOpens.get(store) !== request || store.navigationGeneration !== navigation) return null;
+    if (!current()) return null;
+    if (!threadId) { rollback?.(); return null; }
     lastAgent.set(store, agentId);
     await store.open(threadId);
     return threadId;
   } finally {
+    if (agentOpens.get(store) === request) agentOpens.delete(store);
     release?.();
   }
 }
@@ -329,7 +342,13 @@ export class AgentsView {
       const result = await this.store.client.call(method, $state.snapshot(params) as RpcParams<M>);
       await this.refresh();
       return result;
-    } catch (error) { this.error = errorText(error); return null; }
+    } catch (error) {
+      const details = error instanceof RpcFailure && error.data && typeof error.data === 'object' ? error.data as Record<string, unknown> : null;
+      this.error = details?.kind === 'trigger' && typeof details.expectedRevision === 'number'
+        ? strings.agents.triggers.conflict
+        : errorText(error);
+      return null;
+    }
     finally { this.pending = false; }
   }
   private saves: Promise<unknown> = Promise.resolve();

@@ -42,6 +42,7 @@ import type { MessagesRpcEvents, MessagesRpcMethods } from './messages';
 import type { PairingRpcMethods } from './pairing';
 import type { PanelRpcEvents, PanelRpcMethods } from './panel';
 import type { PermissionsRpcEvents, PermissionsRpcMethods } from './permissions';
+import type { McpRpcEvents, McpRpcMethods } from './mcp';
 import type { PluginsRpcEvents, PluginsRpcMethods } from './plugins';
 import type { ProjectsRpcEvents, ProjectsRpcMethods } from './projects';
 import type { ProvidersRpcEvents, ProvidersRpcMethods } from './providers';
@@ -67,6 +68,9 @@ export * from './providers';
 export * from './local-acp';
 export * from './accounts';
 export * from './plugins';
+export * from './mcp';
+export * from './mcp-presets';
+export * from './mcp-input';
 export * from './plugin-source';
 export * from './projects';
 export * from './threads';
@@ -76,6 +80,7 @@ export * from './prompt-suggestions';
 export * from './usage';
 export * from './turns';
 export * from './messages';
+export * from './message-search';
 export * from './permissions';
 export * from './questions';
 export * from './secrets';
@@ -128,7 +133,8 @@ export { IMAGE_MIME_TYPES, IMAGE_MAX_EDGE, ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER
 export type { ImageMimeType } from './attachment-limits.ts';
 
 export { PREVIEW_REFERENCES_PER_TURN, previewReferencesError, previewPrompt } from './preview';
-export { previewToolOutputs, previewToolPart, TOOL_OUTPUT_INLINE_CHARS, TOOL_OUTPUT_PREVIEW_CHARS } from './message-preview';
+export { extractToolPatches, previewToolOutputs, previewToolPart, projectToolDiffs, toolFamily, toolInputDiff, TOOL_OUTPUT_INLINE_CHARS, TOOL_OUTPUT_PREVIEW_CHARS, type ToolFamily } from './message-preview';
+export { BINARY_PATCH_VERIFY_BUDGET, checkGitBinaryHunk, isGitBase85Line, type BinaryHunkStatus } from './git-binary';
 export { forTransport, projectLiveMessage, projectLivePart, projectMessage, MESSAGE_SENT_MAX_BYTES, type TransportOptions } from './transport.ts';
 export { boundedMessageWindow } from './message-window.ts';
 export { FOLDED_CHANNELS, StreamGate, partChannel, type StreamChannel } from './stream-channels.ts';
@@ -149,6 +155,7 @@ export interface RpcMethods extends
   ProvidersRpcMethods,
   AccountsRpcMethods,
   PluginsRpcMethods,
+  McpRpcMethods,
   ProjectsRpcMethods,
   ThreadsRpcMethods,
   UsageRpcMethods,
@@ -199,6 +206,7 @@ export interface RpcEvents extends
   ProvidersRpcEvents,
   AccountsRpcEvents,
   PluginsRpcEvents,
+  McpRpcEvents,
   ProjectsRpcEvents,
   ThreadsRpcEvents,
   PromptSuggestionsRpcEvents,

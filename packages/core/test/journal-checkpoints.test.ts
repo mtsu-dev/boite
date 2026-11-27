@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { Journal } from '../src/journal.ts';
 import { compactionSteps, ONE_TIME_PASSES, pruneEventsOnce } from '../src/journal/retention.ts';
 import type { WalCheckpointOptions } from '../src/journal/wal-checkpoints.ts';
@@ -74,6 +74,48 @@ test('a quiet WAL is truncated, and closing waits for the checkpoint the Worker 
   // Linux's SQLite removes the file; Apple's system SQLite keeps it at 0 bytes.
   expect(walBytes()).toBe(0);
   expect(errors).toEqual([]);
+});
+
+test('idle truncation retires the worker and shrinks the main cache, with lazy worker restart', async () => {
+  let started = 0, stopped = 0;
+  const target = open({ idleMs: 0, workerIdleMs: 20, worker: () => {
+    started++;
+    const worker: ReturnType<NonNullable<WalCheckpointOptions['worker']>> = {
+      onmessage: null, onerror: null,
+      postMessage({ state }) {
+        Atomics.store(state, 0, 0);
+        worker.onmessage?.(new MessageEvent('message', { data: { busy: 0, log: 0, checkpointed: 0 } }));
+      },
+      terminate() { stopped++; },
+    };
+    return worker;
+  } });
+  const exec = spyOn(target.db, 'exec');
+  try {
+    write(target, 1);
+    target.checkpoints!.tick();
+    expect(started).toBe(1);
+    write(target, 2);
+    // The timer observes writes even when they happen between regular ticks.
+    await Bun.sleep(50);
+    expect(stopped).toBe(0);
+    expect(exec).not.toHaveBeenCalledWith('PRAGMA shrink_memory');
+    target.checkpoints!.tick();
+    await Bun.sleep(50);
+    expect(stopped).toBe(1);
+    expect(exec).toHaveBeenCalledWith('PRAGMA shrink_memory');
+    expect(target.db.query('PRAGMA cache_size').get()).toEqual({ cache_size: -64 * 1024 });
+    write(target, 3);
+    expect(started).toBe(1);
+    target.checkpoints!.tick();
+    expect(started).toBe(2);
+    target.close();
+    journal = undefined;
+    await Bun.sleep(50);
+    expect(stopped).toBe(2);
+    expect(exec.mock.calls.filter(([sql]) => sql === 'PRAGMA shrink_memory')).toHaveLength(1);
+    expect(errors).toEqual([]);
+  } finally { exec.mockRestore(); }
 });
 
 test('without a Worker the main thread checkpoints and the owner hears it once', () => {

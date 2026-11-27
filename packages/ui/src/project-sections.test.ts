@@ -9,7 +9,6 @@ import { closeTour } from './lib/onboarding.svelte';
 import { work } from './lib/work-prefs.svelte';
 import { projectThreadView, projectSections } from './lib/project-threads.svelte';
 import { recentPreferences } from './lib/recent.svelte';
-import { archivedFocus, clearArchivedFocus } from './lib/archived-focus.svelte';
 import type { ProjectEntry } from './lib/project-view.svelte';
 
 /*
@@ -134,20 +133,21 @@ test('a project where nothing runs and nothing waits sits under Inactive; one wi
   expect(document.querySelector('[data-testid=later-projects]')).toBeNull();
   expect(card('[data-testid=sidebar]', archivedOnly.id)).toBeNull();
   expect(card('[data-testid=sidebar]', finished.id)).toBeNull();
-  // A card's archived threads are no pill on it: their count is in its menu, on the way to their home, the archive
-  // opened on this project.
+  // A card counts its archived threads in its head, beside Done; the count opens them under the card, as Done does,
+  // and the card's menu no longer sends them to Settings.
   const pausedCard = `[data-testid=paused-projects] section[data-project-id="${resting.id}"]`;
-  expect(document.querySelector(`${pausedCard} [data-testid=project-archived-toggle]`)).toBeNull();
-  const item = '[data-testid=context-menu] [data-testid=project-archived-toggle]';
+  const count = document.querySelector<HTMLButtonElement>(`${pausedCard} .head [data-testid=project-archived-toggle]`)!;
+  expect([count.dataset.count, count.getAttribute('aria-expanded')]).toEqual(['1', 'false']);
   document.querySelector<HTMLButtonElement>(`${pausedCard} [data-testid=project-menu]`)!.click();
-  await waitFor(() => document.querySelector(item) !== null);
-  const home = document.querySelector<HTMLButtonElement>(item)!;
-  expect([home.dataset.value, home.querySelector('.hint')?.textContent]).toEqual(['archived', '1']);
-  home.click();
-  await waitFor(() => store.page === 'settings' && store.settingsSection?.id === 'archived');
-  expect([archivedFocus.store === store, archivedFocus.projectId]).toEqual([true, resting.id]);
-  clearArchivedFocus();
-  store.showChat();
+  await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+  expect(document.querySelector('[data-testid=context-menu] [data-value=archived]')).toBeNull();
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
+  count.click();
+  await waitFor(() => document.querySelector(`${pausedCard} [data-testid=project-archived] [data-thread-id="${putAway.id}"]`) !== null);
+  expect(store.page).toBe('chat');
+  count.click();
+  await waitFor(() => document.querySelector(`${pausedCard} [data-testid=project-archived] [data-thread-id="${putAway.id}"]`) === null);
 
   // Folded, Inactive keeps its header and count and hides the card.
   await waitFor(() => document.querySelector('[data-testid=paused-projects-toggle]') !== null);

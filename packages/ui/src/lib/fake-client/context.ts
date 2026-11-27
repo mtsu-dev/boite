@@ -477,6 +477,7 @@ export class FakeContext {
       // A wake runs on the thread like a turn the user started; one already running refuses it, as the composer's queue would wait.
       wake: (threadId, prompt, operation, label) => this.startTurn(threadId, prompt, [], operation, undefined, undefined, [], false, label),
       thread: threadId => this.threads.get(threadId),
+      project: projectId => this.projects.some(project => project.id === projectId && !project.archived),
       settle: threadId => { const thread = this.threads.get(threadId); if (thread?.unread) { thread.unread = false; this.touch(thread); } },
       waiting: threadId => [...this.pendingQuestions.values()].some(q => q.request.threadId === threadId) || [...this.pendingPermissions.values()].some(p => p.request.threadId === threadId),
       question: threadId => {
@@ -623,7 +624,7 @@ export class FakeContext {
       version: options.version ?? '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
-      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true, threadListPages: true },
+      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true, threadListPages: true, messageSearch: true, diffOnlyToolParts: true },
       os,
       channel: 'stable',
       pid: 4242,

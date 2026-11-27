@@ -6,15 +6,32 @@
 //! media are opened; anything else is shown selected in its folder instead. An
 //! agent, local or remote, can therefore not run a program through a click.
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use tauri::ipc::{InvokeBody, Request};
 use tauri::{Manager, Webview};
 
 /// `ATTACHMENT_MAX_BYTES` in `packages/contracts/src/attachment-limits.ts`.
 const MAX_BYTES: usize = 5 * 1024 * 1024;
+/// Markdown and HTML exports are built in memory by the main webview and can
+/// span many turns. Bound that IPC payload separately from chat attachments.
+/// Keep in sync with `DESKTOP_EXPORT_MAX_MIB` in `thread-export.ts`.
+const MAX_EXPORT_BYTES: usize = 64 * 1024 * 1024;
 const FALLBACK_NAME: &str = "attachment";
 const MAX_NAME_CHARS: usize = 150;
+const COMPARE_CHUNK_BYTES: usize = 64 * 1024;
+
+fn check_save_size(name: &str, open: bool, export: bool, bytes: usize) -> Result<(), String> {
+    let is_export = export && !open && Path::new(name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("html"));
+    let limit = if is_export { MAX_EXPORT_BYTES } else { MAX_BYTES };
+    if bytes > limit {
+        return Err(format!("body: expected at most {limit} bytes, got {bytes}"));
+    }
+    Ok(())
+}
 
 /// Extensions whose default application only displays or plays the file.
 const OPENABLE: &[&str] = &[
@@ -63,6 +80,37 @@ pub(crate) fn openable(path: &Path) -> bool {
         .is_some_and(|extension| OPENABLE.contains(&extension.to_ascii_lowercase().as_str()))
 }
 
+fn same_bytes(path: &Path, expected: &[u8]) -> bool {
+    let Ok(meta) = fs::symlink_metadata(path) else { return false; };
+    if !meta.is_file() || meta.len() != expected.len() as u64 {
+        return false;
+    }
+    let mut open = OpenOptions::new();
+    open.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        open.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
+    }
+    let Ok(mut file) = open.open(path) else { return false; };
+    let Ok(opened) = file.metadata() else { return false; };
+    if !opened.is_file() || opened.len() != expected.len() as u64 {
+        return false;
+    }
+    let mut buffer = [0u8; COMPARE_CHUNK_BYTES];
+    let mut offset = 0;
+    loop {
+        let Ok(read) = file.read(&mut buffer) else { return false; };
+        if read == 0 {
+            return offset == expected.len();
+        }
+        if expected.get(offset..offset + read) != Some(&buffer[..read]) {
+            return false;
+        }
+        offset += read;
+    }
+}
+
 /// Writes `bytes` in `directory` under `name`, or `name (2)` and so on when
 /// another file holds it. A file there with the same name and the same bytes
 /// is the one a previous click saved, and is reused rather than copied again.
@@ -87,9 +135,7 @@ pub(crate) fn save_into(directory: &Path, name: &str, bytes: &[u8]) -> Result<Pa
                 return Ok(candidate);
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                let same = fs::metadata(&candidate).is_ok_and(|meta| meta.is_file() && meta.len() == bytes.len() as u64)
-                    && fs::read(&candidate).is_ok_and(|existing| existing == bytes);
-                if same {
+                if same_bytes(&candidate, bytes) {
                     return Ok(candidate);
                 }
             }
@@ -112,26 +158,32 @@ fn header<'a>(request: &'a Request<'_>, name: &str) -> Option<&'a str> {
 
 /// Body: the raw bytes. Headers: `x-boite-name`, percent-encoded, and
 /// `x-boite-open`, `1` to open the saved file (or show it when its type is not
-/// inert), anything else to only save it.
+/// inert), anything else to only save it. `x-boite-export: 1` allows a larger
+/// body for Markdown and HTML downloads.
 #[tauri::command]
 pub async fn save_attachment(webview: Webview, request: Request<'_>) -> Result<Saved, String> {
     crate::browser::only_main(&webview)?;
     let InvokeBody::Raw(bytes) = request.body() else {
         return Err("body: expected the attachment's raw bytes".into());
     };
-    if bytes.len() > MAX_BYTES {
-        return Err(format!("body: expected at most {MAX_BYTES} bytes, got {}", bytes.len()));
-    }
     let name = header(&request, "x-boite-name").ok_or("x-boite-name: expected the file name")?;
     let name = decode(name).ok_or("x-boite-name: expected a percent-encoded UTF-8 name")?;
+    let safe = safe_name(&name);
     let open = header(&request, "x-boite-open") == Some("1");
+    let export = header(&request, "x-boite-export") == Some("1");
+    check_save_size(&safe, open, export, bytes.len())?;
     let directory = webview
         .app_handle()
         .path()
         .download_dir()
         .map_err(|error| format!("downloads folder: {error}"))?;
-    let path = save_into(&directory, &name, bytes)?;
-    finish_save(path, open)
+    let bytes = bytes.to_vec();
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = save_into(&directory, &safe, &bytes)?;
+        finish_save(path, open)
+    })
+    .await
+    .map_err(|error| format!("save task: {error}"))?
 }
 
 pub(crate) fn finish_save(path: PathBuf, open: bool) -> Result<Saved, String> {
@@ -191,6 +243,20 @@ mod tests {
     }
 
     #[test]
+    fn downloads_accept_an_export_larger_than_an_attachment() {
+        for name in ["conversation.md", "conversation.html", "conversation.md. "] {
+            let safe = safe_name(name);
+            assert!(check_save_size(&safe, false, true, MAX_BYTES + 1).is_ok());
+            assert!(check_save_size(&safe, false, true, MAX_EXPORT_BYTES).is_ok());
+            assert!(check_save_size(&safe, false, true, MAX_EXPORT_BYTES + 1).is_err());
+            assert!(check_save_size(&safe, true, true, MAX_BYTES + 1).is_err());
+            assert!(check_save_size(&safe, false, false, MAX_BYTES + 1).is_err());
+        }
+        assert!(check_save_size(&safe_name("attachment.zip"), false, true, MAX_BYTES + 1).is_err());
+        assert!(check_save_size(&safe_name("..."), false, true, MAX_BYTES + 1).is_err());
+    }
+
+    #[test]
     fn saving_twice_reuses_the_same_bytes_and_numbers_different_ones() {
         let root = std::env::temp_dir().join(format!("boite-attachments-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -201,7 +267,31 @@ mod tests {
         assert_eq!(save_into(&root, "shot.png", b"two").unwrap(), root.join("shot (2).png"));
         assert_eq!(save_into(&root, "README", b"x").unwrap(), root.join("README"));
         assert_eq!(save_into(&root, "README", b"y").unwrap(), root.join("README (2)"));
+        // Multi-chunk streaming comparison matches identical large exports and numbers changed tails.
+        let mut big = vec![b'a'; COMPARE_CHUNK_BYTES * 2 + 17];
+        let big_first = save_into(&root, "export.md", &big).unwrap();
+        assert_eq!(save_into(&root, "export.md", &big).unwrap(), big_first);
+        *big.last_mut().unwrap() = b'b';
+        assert_eq!(save_into(&root, "export.md", &big).unwrap(), root.join("export (2).md"));
         assert_eq!(fs::read(root.join("shot (2).png")).unwrap(), b"two");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saving_skips_named_pipe_without_blocking() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = std::env::temp_dir().join(format!("boite-attachments-fifo-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let fifo = root.join("export.md");
+        let c_fifo = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c_fifo.as_ptr(), 0o600) }, 0);
+        let saved = save_into(&root, "export.md", b"# Hello\n").unwrap();
+        assert_eq!(saved, root.join("export (2).md"));
+        assert_eq!(fs::read(&saved).unwrap(), b"# Hello\n");
         fs::remove_dir_all(root).unwrap();
     }
 

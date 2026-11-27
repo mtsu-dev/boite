@@ -465,6 +465,37 @@ The synthetic turns are spread over many threads at once, so the slots hold
 folds more turns into each row. What is left is about half the slots read and
 half the thread ranking, which still sums the turns themselves.
 
+## Message search
+
+Schema 54 adds `message_search_keys` and two FTS5 indexes, `messages_fts` (word
+and prefix) and `messages_fts_infix` (trigram). On SQLite 3.43+, both tables use
+`content='', contentless_delete=1` so message bodies are not stored twice; on
+older system SQLite builds (such as macOS 13 with SQLite 3.39.5), both fall back
+to standard FTS5 tables so startup migration still succeeds. For
+`messages_fts_infix`, builds lacking `trigram remove_diacritics 1` (SQLite
+3.34 to 3.44, including macOS 13 to 15) fall back to plain `tokenize='trigram'`
+so substring search remains active, and the table is skipped only if the
+`trigram` tokenizer itself is unavailable. `threads.search` runs in a worker on
+a read-only connection, ranks at most four candidates per thread
+(`position <= 4`) in one bounded query (`LIMIT` 400 to 1,600) per pass without
+`OFFSET` rescans or nested `MATCH` joins, overlays `streaming_parts` by
+`part_index` on top of `messages.parts`, and skips the prefix and infix passes
+once the exact pass fills the page with higher-scoring matches. Very long
+threads with many matches for a common word may stop inspecting candidates
+beyond their top four BM25 hits per pass. While a response streams,
+`refreshStreamMessageSearch` updates the message's FTS rows only on flushes
+where a text part changed, skipping tool and thinking deltas.
+
+`bun bench/message-search.ts` builds synthetic 120,000-message journals of
+~900-byte messages (`125.3 MB` before migration 54, WAL truncated before and
+after; most of the +272 MB growth is the trigram index) and times migration 54
+plus representative queries. On 2026-11-27, Linux, Bun 1.4.2 (SQLite 3.53.2):
+
+| Journal shape | Size after migration 54 | Migration 54 (blocking startup tx) | Common word (`deploy`) | Short + word (`the error`) | Substring (`ploy`) | Worst-case 3-pass (`test the build`) | Miss (`xyzzynotfound`) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 120,000 messages, 20 threads | 397.2 MB | 11.92 s | 162.5 ms | 188.4 ms | 170.9 ms | 170.9 ms (4 hits) | 0.8 ms |
+| 120,000 messages, 500 threads | 397.4 MB | 10.58 s | 203.9 ms | 368.5 ms | 325.0 ms | 123.3 ms (20 hits) | 1.6 ms |
+
 ## Local and remote connections
 
 The core decides per connection. A WebSocket whose `Host` header is
@@ -716,12 +747,20 @@ the turn's other events, which no channel holds back.
   file carries that file in its input and again in its diff. The card's line
   reads from the preview; a card with deferred documents stays folded and shows
   its document chip. Opening it retrieves the whole call with
-  `messages.toolPart`, `messages.toolOutput` on older cores. A proposed plan
+  `messages.toolPart`, `messages.toolOutput` on older cores. On a core
+  advertising `features.diffOnlyToolParts`, `messages.toolPart` accepts
+  `diffsOnly: true` to strip non-diff inputs, outputs and attachments before
+  the 16 MiB frame check. `threads.get` and `messages.list` also accept
+  `omitThinking: true` to strip unchecked reasoning text and `omitTools: true`
+  (or `'running'`) to drop tool calls before page and frame limits are
+  measured, while `messages.list` accepts `fullText: true` to re-read complete
+  prose without lifting `compactToolParts`. A proposed plan
   whose input was cut is completed as soon as it is drawn. Running tools remain
-  complete. Older cores that ignore the preview options still return full
-  content; disclosures fall back to their existing history methods if needed.
-  An expanded output refreshes after compact revalidation: matching preview
-  prefixes cannot prove that the omitted text stayed unchanged.
+  complete unless `omitTools` drops them. Older cores that ignore the preview
+  options still return full content; disclosures fall back to their existing
+  history methods if needed. An expanded output refreshes after compact
+  revalidation: matching preview prefixes cannot prove that the omitted text
+  stayed unchanged.
 - File links arrive with their name, MIME type and decoded byte count. Their
   base64 data loads through `messages.attachment` when opened or downloaded.
   Video and audio players ask for a file ticket within 400 px of the screen;

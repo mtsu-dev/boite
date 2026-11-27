@@ -1,4 +1,4 @@
-import { chatPreviewSizeProblem, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, resolveModelSelection, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
+import { chatPreviewSizeProblem, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, projectToolDiffs, resolveModelSelection, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread, writeFakeFork } from './create-thread';
@@ -108,16 +108,17 @@ function forwardOf(messages: Message[], from: number, limit: number, project: Pr
 }
 
 /**
- * Half a page on either side of the anchor when more than a page follows it.
- * Both halves share the byte and count budgets, retaining a complete single
- * anchor when needed; cuts rewrite cursors to the retained edges.
+ * A page retaining the anchor even when the byte budget cuts a short thread.
  */
 function aroundOf(messages: Message[], around: string | undefined, limit: number, project: Projection, maxBytes: number): { messages: Message[]; before: string | null; after: string | null } | null {
   const at = around === undefined ? -1 : messages.findIndex(message => message.id === around);
-  if (at < 0 || messages.length - at <= limit) return null;
-  const half = Math.max(1, Math.floor(limit / 2));
-  const older = pageOf(messages, at, half, project, maxBytes);
-  const newer = forwardOf(messages, at, Math.max(1, limit - half), project, maxBytes);
+  if (at < 0) return null;
+  const following = messages.length - at;
+  const newerCount = following <= limit ? following : Math.ceil(limit / 2);
+  const olderCount = limit - newerCount;
+  const older = olderCount > 0 ? pageOf(messages, at, olderCount, project, maxBytes)
+    : { messages: [], before: at > 0 ? around! : null };
+  const newer = forwardOf(messages, at, newerCount, project, maxBytes);
   const candidates = [...older.messages, ...newer.messages];
   const { start, end } = boundedMessageWindow(candidates.map(project), older.messages.length, maxBytes, limit);
   return {
@@ -158,7 +159,7 @@ function tailOf(messages: Message[], from: number, limit = MESSAGE_PAGE, project
 
 /** Opaque fixture proofs. The real core uses native SHA-256 over the same complete message data. */
 function snapshotHash(messages: Message[], options: RpcParams<'threads.get'>): string {
-  const json = `${!!options.compactTools}:${!!options.compactFiles}:${!!options.compactImages}:${!!options.compactToolParts}:` + JSON.stringify(messages);
+  const json = `${!!options.compactTools}:${!!options.compactFiles}:${!!options.compactImages}:${!!options.compactToolParts}:${options.omitThinking ? 'nt:' : ''}${options.omitTools ? `${options.omitTools}:` : ''}` + JSON.stringify(messages);
   let a = 0x811c9dc5, b = 0x9e3779b9;
   for (let i = 0; i < json.length; i++) {
     a = Math.imul(a ^ json.charCodeAt(i), 0x01000193);
@@ -448,7 +449,10 @@ export function threadMethods(ctx: FakeContext) {
       return pagingReply({ ...page, offset, turns: thread.turns.filter((turn) => turns.has(turn.id)) });
     },
     'messages.toolOutput': async (params) => ({ output: toolOf(ctx.thread(params.threadId), params).output }),
-    'messages.toolPart': async (params) => pagingReply({ part: toolOf(ctx.thread(params.threadId), params) }),
+    'messages.toolPart': async (params) => {
+      const part = toolOf(ctx.thread(params.threadId), params);
+      return pagingReply({ part: params.diffsOnly === true ? projectToolDiffs(part) : part });
+    },
     'messages.attachment': async (params): Promise<RpcResult<'messages.attachment'>> => {
       const thread = ctx.thread(params.threadId);
       if (!Number.isSafeInteger(params.partIndex) || params.partIndex < 0) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'messages.attachment.partIndex: expected a nonnegative integer', data: { field: 'partIndex', expected: 'a nonnegative integer' } });
