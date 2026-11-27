@@ -4,6 +4,7 @@ import type {
   AgentTotals,
   CoreLogContext,
   AgentCommand,
+  Attachment,
   ImageAttachment,
   Message,
   MessageId,
@@ -430,11 +431,9 @@ export interface LiveTurnSettings {
   speed?: string | null;
 }
 
-export type TurnStopReason = 'queued-input';
-
 export interface TurnHandle {
   done: Promise<TurnResult>;
-  stop(reason?: TurnStopReason): void;
+  stop(): void;
   /**
    * Change the effort or the speed of the active native turn, for the model
    * requests it has not sent yet. Only the named fields changed. The answer
@@ -451,8 +450,8 @@ export interface TurnHandle {
   steer?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean>;
   /** Native user input, when system coordination uses a separate tool-boundary hook. */
   steerUser?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean>;
-  /** Whether the composer can stop the current prompt at a tool boundary and start the queued input. */
-  canInterruptForQueuedInput?(): boolean;
+  /** Ask the agent to finish its prompt at a tool boundary, keeping its session alive. */
+  cancelForQueuedInput?(attachments: Attachment[]): boolean;
 }
 
 /**

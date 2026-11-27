@@ -782,15 +782,15 @@ descriptor uses additional fields available to other providers:
 ### Queued input on ACP
 
 Grok and OpenCode 2's native server steer the running prompt. On other ACP
-transports, a queued message can start after Boite receives a tool completion
-and no other tool is running. Boite cancels the current prompt, waits for it
-to settle, then starts a new turn using the saved session or the conversation
-history if the agent cannot load it. When the agent acknowledges cancellation,
-Boite skips replay of the original input in that same session. A pending card,
-a changed selection, or work that must keep running, such as a goal or
-Antigravity's detached workers, leaves the message queued. Hermes background delegations and
-Antigravity swarm launches also prevent automatic cancellation on later prompts
-in the same process, where the children can still be active. Explicit Send now
+transports, Boite can ask the agent to cancel its prompt when the last active
+tool finishes. The queued message starts through the normal turn queue. After
+an acknowledged cancellation, it reuses the running session without replaying
+the original input. If the agent ignores cancellation, the message waits for
+the prompt to end. Boite validates the queued images against the negotiated
+ACP capabilities before sending cancellation. Pending cards, selection
+changes and active goals leave the message queued. A Hermes delegation or an
+Antigravity child launch can prevent automatic cancellation on later prompts
+in the same process, where children can still be active. Explicit Send now
 can still interrupt.
 
 `quirks` turns on a dialect the ACP driver knows, and there are three.

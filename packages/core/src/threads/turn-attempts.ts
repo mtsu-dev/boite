@@ -1,7 +1,7 @@
 import type { Account, MessageId, ProviderDescriptor, ProviderId, RpcEvents, ThreadId, ThreadRetry, ThreadSummary, Turn, TurnId, Usage } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, releaseThread } from '../drivers/index.ts';
-import type { Driver, StepDecision, TurnContext, TurnHandle, TurnResult, TurnStopReason } from '../drivers/types.ts';
+import type { Driver, StepDecision, TurnContext, TurnHandle, TurnResult } from '../drivers/types.ts';
 import type { Resume } from '../providers/update-resume.ts';
 import type { ThreadStore } from '../threads.ts';
 import { costOrRates, implausibleCost, sumUsage, totalTokens } from '../usage.ts';
@@ -664,7 +664,7 @@ export class TurnAttempts {
     return { ...thread, sessionId: null, sessionResumeAt: null, sessionGeneration: generation, context: null, promptCache: null };
   }
 
-  stopRunning(threadId: ThreadId, reason?: TurnStopReason): boolean {
+  stopRunning(threadId: ThreadId): boolean {
     const state = this.#turns.get(threadId);
     if (!state) return false;
     if (state.stop.signal.aborted) return true;
@@ -697,7 +697,7 @@ export class TurnAttempts {
     this.steering.end(threadId);
     // A background copy still running stops with the turn, and a step parked on it goes on.
     this.threads.backgroundCompact.turnStopped(threadId);
-    handle.stop(reason);
+    handle.stop();
     this.#armStopDeadline(threadId, handle);
     return true;
   }

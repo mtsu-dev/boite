@@ -23,13 +23,19 @@ import { thrown } from './settle.ts';
 /** The fake ACP agent: a real ACP process over stdio, run by bun. */
 const FAKE_AGENT = fileURLToPath(new URL('./fixtures/acp-agent.ts', import.meta.url));
 
-test.each(['antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local ACP', 'hermes with detached work', 'antigravity with a paused queue'])('%s handles queued input when its parallel tools finish', async scenario => {
-  const client = await startCore();
+test.each([
+  'antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local ACP',
+  'hermes with split delegation output', 'antigravity with a paused queue', 'antigravity without image support', 'antigravity ignoring cancellation',
+])('%s handles queued input when its parallel tools finish', async scenario => {
+  const client = await startCore({ warmProcessMinutes: 0 });
   const core = harness!.core;
-  const detached = scenario === 'hermes with detached work';
+  const detached = scenario === 'hermes with split delegation output';
   const paused = scenario === 'antigravity with a paused queue';
-  const holds = detached || paused;
-  const provider = detached ? 'hermes' : paused ? 'antigravity' : scenario;
+  const noImages = scenario === 'antigravity without image support';
+  const ignoresCancel = scenario === 'antigravity ignoring cancellation';
+  const holds = detached || paused || noImages || ignoresCancel;
+  const provider = detached ? 'hermes' : holds ? 'antigravity' : scenario;
+  if (noImages) process.env['ACP_FAKE_NO_IMAGES'] = '1';
   let threadId: string;
   if (provider === 'local ACP') threadId = await acpThread(client);
   else {
@@ -46,7 +52,8 @@ test.each(['antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local AC
     await client.call('threads.subscribe', { threadId });
   }
   const secondTool = client.next('message.part', ({ threadId: id, part }) => id === threadId && part.type === 'tool' && part.toolId === 'second', 10_000);
-  const turn = await client.call('turns.start', { threadId, prompt: `[parallel-tools]${detached ? ' [detached-delegation]' : paused ? ' [finish-on-gate]' : ''}` });
+  const directives = [detached && '[detached-delegation]', holds && '[finish-on-gate]', ignoresCancel && '[ignore-cancel]'].filter(Boolean);
+  const turn = await client.call('turns.start', { threadId, prompt: ['[parallel-tools]', ...directives].join(' ') });
   await secondTool;
   const originalSession = core.threads.require(threadId).sessionId;
   expect(originalSession).toBeString();
@@ -72,25 +79,37 @@ test.each(['antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local AC
     await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision,
       value: { input: { text: '', attachments: [], paused: false, queued } } });
   }
+  if (noImages) {
+    await waitFor(() => core.composer.storage.get('inputs', threadId).value?.input.paused === true);
+    expect(core.journal.getTurn(turn.id)?.status).toBe('running');
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued[0]?.request?.failed).toContain('takes no images');
+  }
   if (holds) {
-    await Bun.sleep(150);
-    expect(fakeLog()).not.toContain('session/cancel');
+    if (ignoresCancel) {
+      await waitFor(() => fakeLog().includes('session/cancel'));
+      // Outlast the manual ACP Stop grace while keeping the original prompt alive.
+      await Bun.sleep(3200);
+      expect(core.journal.getTurn(turn.id)?.status).toBe('running');
+    } else {
+      await Bun.sleep(150);
+      expect(fakeLog()).not.toContain('session/cancel');
+    }
     writeFileSync(`${logFile}.end`, 'ready');
   }
-  await waitFor(() => countLogLines(fakeLog(), 'session/prompt') === 2);
   await waitFor(() => core.journal.listTurns(threadId).at(-1)?.status === 'done');
+  if (!noImages) await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
   const current = await client.call('threads.get', { threadId });
-  expect(current.turns.map(at => at.status)).toEqual([holds ? 'done' : 'stopped', 'done']);
+  expect(current.turns.map(at => at.status)).toEqual(noImages ? ['done'] : [holds ? 'done' : 'stopped', 'done']);
   const finishedTools = current.messages.filter(message => message.turnId === turn.id).flatMap(message => message.parts)
     .flatMap(part => part.type === 'tool' && ['first', 'second'].includes(part.toolId) ? [part.status] : []);
   expect(finishedTools).toEqual(['done', 'done']);
   expect(current.sessionId).toBe(originalSession);
-  if (!holds) expect(fakeLog()).toContain(`loaded:${originalSession}`);
-  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(holds ? 0 : 1);
+  if (!holds) expect(fakeLog()).not.toContain(`loaded:${originalSession}`);
+  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(!holds || ignoresCancel ? 1 : 0);
   expect(fakeLog()).not.toContain('replayed interrupted prompt');
-  expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' ? 0 : 1);
-  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(2);
-  expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+  expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || noImages ? 0 : 1);
+  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(noImages ? 1 : 2);
+  expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(noImages ? ['parallel-tools-follow-up'] : []);
 }, 20_000);
 
 test('ACP named task calls reach the native team without exposing the side conversation', async () => {

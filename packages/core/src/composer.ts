@@ -286,19 +286,19 @@ export class Composer {
         if (active && (!turn || boundary?.turnId !== turn.id || boundary.boundary === item.afterBoundary || item.request || isComposerActivity(item.text)
           || !choice || !sameChoice(choice, choiceOf({ ...thread, ...turn.execution })))) return;
         const steeringReason = turn ? userSteeringUnavailable(this.#core, this.#core.threads, id, turn) : null;
-        const interrupt = turn !== null && boundary?.fresh === true && steeringReason === 'unsupported' && this.#canInterruptForQueuedInput(turn);
-        if (steeringReason !== null && !interrupt) return;
+        const handle = turn && boundary?.fresh === true && steeringReason === 'unsupported' && this.#canCancelForQueuedInput(turn)
+          ? runner.handles.get(id) : undefined;
+        if (steeringReason !== null && !handle?.cancelForQueuedInput) return;
         const batch = composerBatch(value.input.queued, this.storage);
         const attachments = batch.attachments;
         this.#captured.set(key, batch.entries);
-        if (interrupt) {
-          // Validate the input before cancelling work. The next pass uses the normal durable start.
+        if (turn && handle?.cancelForQueuedInput) {
+          // Validate before asking the agent to cancel. Turn completion wakes the durable queue.
           checkAttachments(attachments, this.#core.providers.require(turn.execution?.providerId ?? thread.providerId));
           const error = previewReferencesError(batch.previewReferences, batch.text);
           if (error) throw refused(error);
-          this.#boundaries.delete(recordId);
-          await Promise.race([this.#stopped, this.#core.scheduler.stopAndWait(id, 'queued-input')]);
-          continue;
+          if (handle.cancelForQueuedInput(attachments)) this.#boundaries.delete(recordId);
+          return;
         }
         if (turn) {
           for (const entry of batch.entries) this.#reserve(record, entry, id, batch.requestId);
@@ -342,11 +342,10 @@ export class Composer {
     }
   }
 
-  #canInterruptForQueuedInput(turn: Turn): boolean {
+  #canCancelForQueuedInput(turn: Turn): boolean {
     const { threadId } = turn;
     const { threads, activity, scheduler } = this.#core;
-    if (turn.execution?.operation || scheduler.stopTarget(threadId) !== turn.id || threads.handoff.toolsRunning(threadId) > 0
-      || !threads.runner.handles.get(threadId)?.canInterruptForQueuedInput?.()) return false;
+    if (turn.execution?.operation || scheduler.stopTarget(threadId) !== turn.id || threads.handoff.toolsRunning(threadId) > 0) return false;
     const { goal, loop } = activity.get(threadId);
     return goal?.status !== 'active' && loop?.status !== 'active' && !activity.ownsReviewer(threadId) && !activity.ownsTracker(threadId);
   }

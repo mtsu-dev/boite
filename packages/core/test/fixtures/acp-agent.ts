@@ -434,7 +434,10 @@ const app = agent({ name: 'acp-fake' })
     if (instructions.includes('[parallel-tools]')) {
       const detached = instructions.includes('[detached-delegation]');
       const stopped = Promise.withResolvers<void>();
-      cancels.set(sessionId, () => { log('session/cancel'); stopped.resolve(); });
+      cancels.set(sessionId, () => {
+        log('session/cancel');
+        if (!instructions.includes('[ignore-cancel]')) stopped.resolve();
+      });
       try {
         for (const id of ['first', 'second']) {
           await send({ sessionUpdate: 'tool_call', toolCallId: id, title: detached && id === 'second' ? 'delegate_task: Review the parser' : id, status: 'in_progress' });
@@ -444,14 +447,15 @@ const app = agent({ name: 'acp-fake' })
           while (!existsSync(gate)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
           }
-          await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed',
-            ...(detached && id === 'second' ? { content: [{ type: 'content', content: { type: 'text', text: '{"status": "dispatched", "mode": "background", "delegation_id": "fixture-child"}' } }] } : {}),
-          });
+          await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed' });
         }
         if (detached || instructions.includes('[finish-on-gate]')) {
           while (!existsSync(`${process.env['ACP_FAKE_LOG']}.end`)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
           }
+          if (detached) await send({ sessionUpdate: 'tool_call_update', toolCallId: 'second',
+            content: [{ type: 'content', content: { type: 'text', text: '{"mode": "background", "status": "dispatched", "delegation_id": "fixture-child"}' } }],
+          });
           return { stopReason: 'end_turn' };
         }
         await stopped.promise;

@@ -6,15 +6,16 @@ import type {
   SessionConfigOption,
   SessionNotification,
 } from '@agentclientprotocol/sdk/unstable';
-import type { PermissionMode, ProviderId, ModelInfo } from '@boite/contracts';
-import { messageOf } from '../../errors.ts';
+import type { Attachment, PermissionMode, ProviderId, ModelInfo } from '@boite/contracts';
+import { nativeImage } from '../../attachments.ts';
+import { messageOf, refused } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { profileFor } from '../../providers/resolve.ts';
 import { stderrLines } from '../lines.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import { IdleTimer } from '../idle-timer.ts';
 import { SessionTurns } from '../session-turns.ts';
-import type { LiveTurnSettings, ProbeContext, ProbeFilter, SessionContext, TurnStopReason } from '../types.ts';
+import type { LiveTurnSettings, ProbeContext, ProbeFilter, SessionContext } from '../types.ts';
 import { OpenCommands } from './commands.ts';
 import { readDetachedWork, readPendingReply } from './detached.ts';
 import { ModelRefused, SessionControls } from './controls.ts';
@@ -132,7 +133,7 @@ export class AcpSession {
   #geminiHome: string | null = null;
   /** The turn kept open after its prompt for the children it launched. */
   #holding: AcpTurn | null = null;
-  /** Earlier prompts can leave a Hermes delegation or a parked Antigravity swarm worker in this process. */
+  /** Earlier prompts can leave native workers in this process. */
   #hasDetachedWork = false;
   /** When this session last sent an update, to tell a reply that ended from one still streaming. */
   #lastUpdateAt = 0;
@@ -287,8 +288,9 @@ export class AcpSession {
    * not answered yet can be cancelled. Closing the connection rejects the
    * pending request, and the turn settles as stopped.
    */
-  stopTurn(turn: AcpTurn, reason?: TurnStopReason): void {
+  stopTurn(turn: AcpTurn): void {
     if (turn.settled) return;
+    turn.stoppedForQueuedInput = false;
     turn.markStopped();
     // Not begun: `runTurn` settles it the moment the queue reaches it.
     if (this.#active !== turn) return;
@@ -297,7 +299,6 @@ export class AcpSession {
       this.#drop();
       return;
     }
-    turn.stoppedForQueuedInput = reason === 'queued-input';
     this.#cancel();
     if (this.#stopTimer !== null) return;
     this.#stopTimer = setTimeout(() => {
@@ -307,10 +308,16 @@ export class AcpSession {
     this.#stopTimer.unref?.();
   }
 
-  canInterruptPrompt(turn: AcpTurn): boolean {
-    return this.#current === turn && !turn.isStopped && !turn.awaitingUser && !turn.hasExecutionError
-      && this.#holding !== turn && !this.#commands.outlived() && !turn.mayHaveDetachedChildren()
-      && !this.#hasDetachedWork && !turn.launchedHermesDelegation;
+  cancelForQueuedInput(turn: AcpTurn, attachments: Attachment[]): boolean {
+    if (this.#current !== turn || turn.isStopped || turn.stoppedForQueuedInput || turn.awaitingUser || turn.hasExecutionError
+      || this.#holding === turn || this.#commands.outlived() || this.#hasDetachedWork || turn.mayHaveDetachedChildren()) return false;
+    if (!this.#imagesSupported && attachments.some(attachment => nativeImage(turn.ctx.provider, attachment))) {
+      throw refused(`${turn.ctx.provider.name} takes no images`);
+    }
+    turn.stoppedForQueuedInput = true;
+    // A queued follow-up can wait if the agent ignores cancellation.
+    this.#cancel();
+    return true;
   }
 
   /**
@@ -469,6 +476,8 @@ export class AcpSession {
     // The turn may have moved the thread to another model.
     this.#noteCompactionWindow(turn.ctx);
     turn.finish(response);
+    // Keep this session for the queued follow-up even with zero warm time.
+    if (turn.stoppedForQueuedInput && response.stopReason === 'cancelled') this.#retention.prepare(true);
     // A resumed session whose first total came in below what the session
     // already cost: this agent counts each process from zero.
     const total = turn.costUsdEquivalent;
@@ -584,7 +593,7 @@ export class AcpSession {
       this.#stopTimer = null;
     }
     if (this.#active === turn) this.#active = null;
-    this.#hasDetachedWork ||= turn.launchedHermesDelegation || turn.launchedSwarm();
+    this.#hasDetachedWork ||= turn.mayHaveDetachedChildren();
     // A command the prompt left running keeps the process: closing it would
     // end the command, which Stop on the idle thread does when asked.
     const outlived = !drop && !this.#closing && turn.antigravity && this.#commands.promote(turn.ctx);

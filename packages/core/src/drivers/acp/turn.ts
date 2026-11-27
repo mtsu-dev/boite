@@ -143,7 +143,6 @@ export class AcpTurn extends TurnParts {
 
   /** This agent's dialect fixes, read once from the descriptor. */
   readonly antigravity: boolean;
-  launchedHermesDelegation = false;
   stoppedForQueuedInput = false;
 
   constructor(ctx: TurnContext) {
@@ -178,16 +177,11 @@ export class AcpTurn extends TurnParts {
 
   /** A completed launch can leave children working in the agent process. */
   mayHaveDetachedChildren(): boolean {
-    if (!this.antigravity) return false;
+    const hermes = this.ctx.provider.quirks?.includes('hermes');
+    if (!this.antigravity && !hermes) return false;
     for (const tool of this.#tools.values()) {
-      if (tool.status !== 'error' && (tool.launch === 'subagent' || tool.launch === 'swarm')) return true;
-    }
-    return false;
-  }
-
-  launchedSwarm(): boolean {
-    for (const tool of this.#tools.values()) {
-      if (tool.status === 'done' && tool.launch === 'swarm') return true;
+      // A Hermes delegation can announce completion before its result names the mode.
+      if (tool.status !== 'error' && (tool.launch === 'subagent' || tool.launch === 'swarm' || (hermes && /^delegate_task(?::|$)/.test(tool.name)))) return true;
     }
     return false;
   }
@@ -354,12 +348,6 @@ export class AcpTurn extends TurnParts {
         if (text.length > 0) entry.output = boundText(text.join('\n'));
         entry.documents = documentsOf(content.filter(item => item.type !== 'content' || item.content.type !== 'text'));
       } else entry.documents = documentsOf(content);
-    }
-    if (this.ctx.provider.quirks?.includes('hermes') && entry.status === 'done' && /^delegate_task(?::|$)/.test(entry.name)) {
-      // Hermes sends this JSON as text content, without rawInput or rawOutput.
-      // Its formatter can truncate the rest of the JSON after the dispatch fields.
-      this.launchedHermesDelegation ||= entry.documents.some(document => document.kind === 'markdown'
-        && /^\{\s*"status"\s*:\s*"dispatched"\s*,\s*"mode"\s*:\s*"background"/.test(document.text));
     }
     this.#tools.set(toolCallId, entry);
     this.part(entry.index, {

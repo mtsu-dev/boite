@@ -1,6 +1,5 @@
 import type { AccountId, DelegationConfig, ProviderId, SchedulerState, ThreadId, Timestamp, Turn, TurnId } from '@boite/contracts';
 import type { Core } from './core.ts';
-import type { TurnStopReason } from './drivers/types.ts';
 import { logMessageOf } from './log-errors.ts';
 import { waitForVersion } from './providers/versions.ts';
 
@@ -104,10 +103,10 @@ export class Scheduler {
     }
   }
 
-  stop(threadId: ThreadId, reason?: TurnStopReason): boolean {
+  stop(threadId: ThreadId): boolean {
     const running = this.running.get(threadId);
     if (running !== undefined) {
-      const stopping = this.#core.threads.stopRunning(threadId, reason);
+      const stopping = this.#core.threads.stopRunning(threadId);
       this.#core.logs.info(stopping ? `Stop sent to the running turn after ${Math.round((Date.now() - running.startedAt) / 1000)} s` : 'Stop asked, but the running turn had no handle to stop yet', {
         source: 'scheduler', event: 'turn.stop-requested', threadId, turnId: running.turnId, data: { state: 'running', accepted: stopping },
       });
@@ -129,9 +128,9 @@ export class Scheduler {
     return false;
   }
 
-  async stopAndWait(threadId: ThreadId, reason?: TurnStopReason): Promise<void> {
+  async stopAndWait(threadId: ThreadId): Promise<void> {
     const entry = this.running.get(threadId);
-    this.stop(threadId, reason);
+    this.stop(threadId);
     await entry?.done;
   }
 
