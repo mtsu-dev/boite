@@ -181,14 +181,18 @@ export class TurnRunner {
     }
     try { this.#core.delegation.submitted(threadId, turnId, result.status === 'done'); }
     catch (error) { reportSettlementError(this.#core, threadId, turnId, 'delegation submission', error); }
+    const queuedInputSession = result.queuedInputCancelled ? result.sessionId : null;
+    const queuedInputInterrupted = result.status === 'error' && result.queuedInputInterrupted === true;
     const finished: Turn = {
       ...running,
       status: result.status === 'done' ? 'done' : result.status,
       finishedAt: Date.now(),
       usage: result.usage,
       error: result.error ?? null,
-      ...(running.execution && result.queuedInputCancelled && result.sessionId !== null
-        ? { execution: { ...running.execution, queuedInputSession: result.sessionId } } : {}),
+      ...(running.execution && queuedInputSession !== null
+        ? { execution: { ...running.execution, queuedInputSession } } : {}),
+      ...(running.execution && queuedInputInterrupted
+        ? { execution: { ...running.execution, queuedInputInterrupted: true } } : {}),
       ...(result.checkpoint ? { checkpoint: result.checkpoint } : {}),
       ...(result.agentTotals ? { agentTotals: result.agentTotals } : {}),
     };

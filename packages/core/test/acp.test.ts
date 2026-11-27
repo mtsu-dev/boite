@@ -29,6 +29,7 @@ test.each([
   'hermes with split delegation output', 'antigravity with a paused queue', 'antigravity without image support', 'antigravity ignoring cancellation',
   'local ACP switching back to an account', 'local ACP reporting its first result', 'local ACP rejecting cancellation',
   'local ACP with an expired session', 'local ACP carrying a manually stopped prompt',
+  'local ACP receiving tool updates for a different session',
   'local ACP reloading the same session after cancellation', 'local ACP with a blocked upload', 'local ACP with a disabled provider',
   'local ACP rediscovering its model',
   // Windows can lock a running process's working directory against renames.
@@ -45,6 +46,7 @@ test.each([
   const rejectsCancel = scenario === 'local ACP rejecting cancellation';
   const expires = scenario === 'local ACP with an expired session';
   const reloads = scenario === 'local ACP reloading the same session after cancellation';
+  const foreignTools = scenario === 'local ACP receiving tool updates for a different session';
   const carriesStopped = reloads || scenario === 'local ACP carrying a manually stopped prompt';
   const blockedUpload = scenario === 'local ACP with a blocked upload';
   const disableProvider = scenario === 'local ACP with a disabled provider';
@@ -97,6 +99,7 @@ test.each([
   const directives = [
     detached && '[detached-delegation]', holds && '[finish-on-gate]', ignoresCancel && '[ignore-cancel]',
     rejectsCancel && '[error-on-cancel]', expires && '[expire-on-cancel]', reloads && '[confirm-on-gate]',
+    foreignTools && '[foreign-tools]',
   ].filter(Boolean);
   const prompt = ['[parallel-tools]', ...directives].join(' ');
   const starterId = spawned ? threadId : null;
@@ -117,7 +120,10 @@ test.each([
     if (id === threadId && files.some(file => file.name === attachment.name)) throw new Error(uploadRefusal);
   });
   const { assetId } = await client.call('composer.asset.put', { attachment });
-  const firstTool = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+  const firstTool = foreignTools
+    ? client.next('message.part', event => event.threadId === threadId && event.part.type === 'tool'
+      && event.part.toolId === 'first' && event.part.status === 'done', 10_000)
+    : client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
   const queued = [{
     id: 'parallel-tools-follow-up', text: 'Use the new instructions',
     attachments: provider === 'opencode' ? [] : [{ kind: attachment.kind, mimeType: attachment.mimeType, name: attachment.name, assetId }],
@@ -129,6 +135,11 @@ test.each([
   await firstTool;
   expect(core.journal.getTurn(turnId)?.status).toBe('running');
   expect(fakeLog()).not.toContain('session/cancel');
+  if (foreignTools) {
+    const tools = core.journal.listMessages(threadId).filter(message => message.turnId === turnId)
+      .flatMap(message => message.parts).filter(part => part.type === 'tool');
+    expect(tools.map(part => [part.toolId, part.status])).toEqual([['first', 'done'], ['second', 'running']]);
+  }
   if (disableProvider) await client.call('providers.setEnabled', { providerId: 'acp-fake', enabled: false });
   if (rediscoverModel) forgetProbes({ providerId: 'acp-fake', accountId: core.threads.require(threadId).accountId });
   if (movedFolder) {
@@ -205,10 +216,52 @@ test.each([
   }
   if (pause) expect(pause.mock.calls.some(([id, reason]) => id === threadId && (reason ?? 'stop') === 'stop')).toBe(false);
   expect(countLogLines(fakeLog(), 'session/cancel')).toBe(!holds || ignoresCancel ? 1 : 0);
-  expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(reloads ? 1 : 0);
+  expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(reloads || rejectsCancel ? 1 : 0);
   expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || refusesInput ? 0 : 1);
   expect(current.messages.filter(message => message.role === 'user')).toHaveLength(priorTurns + (refusesInput ? 1 : 2));
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(refusesInput ? ['parallel-tools-follow-up'] : []);
+}, 20_000);
+
+test('an ACP restart during a queued follow-up recovers both requests on the loaded session', async () => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const first = harness!;
+  const earlierRequest = 'Earlier request from before the follow-up';
+  const currentRequest = 'Follow-up request still running at restart';
+  const { id: earlier } = await client.call('turns.start', { threadId, prompt: `[parallel-tools] ${earlierRequest}` });
+  await waitFor(() => first.core.threads.require(threadId).sessionId !== null);
+  const sessionId = first.core.threads.require(threadId).sessionId;
+  const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'restart-follow-up', text: `[slow] ${currentRequest}`, attachments: [] }] } } });
+  expect(saved.accepted).toBe(true);
+  writeFileSync(`${logFile}.first`, 'ready');
+  writeFileSync(`${logFile}.second`, 'ready');
+  await waitFor(() => fakeLog().includes('waiting for cancel'));
+  expect(first.core.journal.getTurn(earlier)?.status).toBe('stopped');
+  expect(first.core.journal.lastTurn(threadId)?.status).toBe('running');
+  expect(countLogLines(fakeLog(), 'initialize')).toBe(1);
+  expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(0);
+
+  await first.core.threads.handoff.begin(0);
+  await first.core.drain();
+  await first.server.stop();
+  await first.core.close();
+  writeFileSync(`${logFile}.release-slow`, 'ready');
+  const next = await startTestCore({ dataDir: first.dataDir });
+  try {
+    const { journal } = next.core;
+    await waitFor(() => journal.listTurns(threadId)[2]?.status === 'done');
+    const resumed = journal.listTurns(threadId)[2]!;
+    expect(resumed.execution?.operation).toBe('resume');
+    expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(1);
+    const response = [...journal.walkTurnMessages(threadId, resumed.id)].filter(message => message.role === 'assistant')
+      .flatMap(message => message.parts).map(part => part.type === 'text' ? part.text : '').join('');
+    expect(response.split(earlierRequest)).toHaveLength(2);
+    expect(response.split(currentRequest)).toHaveLength(2);
+
+    const after = await startTurn(await next.connect(), threadId, 'New request after the restart');
+    expect((await after.finished).status).toBe('done');
+    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+  } finally { await next.stop(); }
 }, 20_000);
 
 test.each(['another tool finishes', 'the user sends now'])('ACP delivers queued input when %s during a working-folder check', async action => {

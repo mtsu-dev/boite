@@ -404,24 +404,26 @@ export class TurnContexts {
     const missed = fresh || kind === 'compact' || kind === 'keepalive' || kind === 'background' || nativeCommandPrompt(input.prompt)
       || (resumePrompt !== undefined && this.#threads.accountSessions.carrying(threadId) === turn.id)
       ? null : this.#threads.accountSessions.gap(thread);
-    let continued: HistoryInput = kind === 'resume' ? {
+    const request: HistoryInput = kind === 'resume' ? {
       ...input, historicalImages: input.attachments.filter(file => file.kind === 'image'),
     } : input;
+    let continued = request;
     const fileReference = (part: Extract<MessagePart, { type: 'file' }>, place: PartPlace): string => {
       this.#core.sharedAccess.uploads(threadId, [part]);
       return this.#files.of(threadId, part, place);
     };
     const tail = !fresh && resumePrompt === undefined && thread.sessionId !== null && kind !== 'compact' && kind !== 'keepalive'
       && kind !== 'background' && kind !== 'resume' && !nativeCommandPrompt(input.prompt) ? compactionTail(this.#core, thread) : null;
+    const handoffSource = provider.protocol === 'acp' ? turn.execution?.handoffSourceTurnId : undefined;
     const carryStopped = resumePrompt === undefined && !kind && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt);
     // ACP chooses the stopped-input cutoff once it has the receiving process.
     const livePrompt = deferInterruptedInput && provider.protocol === 'acp' && carryStopped && thread.sessionId !== null
       && thread.sessionResumeAt == null && missed === null && tail === null;
     const interruptedInput = (receivedTurns?: ReadonlySet<TurnId>): HistoryInput =>
-      stoppedInput(this.#core.journal, threadId, missed?.turnId ?? turn.id, input, fileReference, missed !== null, receivedTurns);
+      stoppedInput(this.#core.journal, threadId, missed?.turnId ?? handoffSource ?? turn.id, request, fileReference, missed !== null, receivedTurns);
     if (fresh) continued = carry();
     // After a switch back, the prompts a stop cut before the resumed session's last turn: the missed exchanges hold the later ones.
-    else if (carryStopped && !livePrompt) {
+    else if ((carryStopped && !livePrompt) || handoffSource !== undefined) {
       const interrupted = interruptedInput();
       // The first stopped prompt may never have created a native session or
       // advanced its generation. That fresh start still needs journal history.
@@ -434,7 +436,7 @@ export class TurnContexts {
       this.#threads.backgroundCompact.carried(threadId, turn.id);
     }
     if (missed !== null) {
-      continued = switchBackInput(this.#core.journal, threadId, missed, turn.id, continued, provider, fileReference);
+      continued = switchBackInput(this.#core.journal, threadId, missed, handoffSource ?? turn.id, continued, provider, fileReference);
       this.#threads.accountSessions.carried(threadId, turn.id);
       recordHandover(this.#core, turn, 'resumed', continued.carried ?? { full: 0, cut: 0, omitted: 0, chars: 0 });
     }

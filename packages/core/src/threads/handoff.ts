@@ -218,7 +218,10 @@ export class RestartHandoff {
           }
           const read = this.#core.providers.pendingVersion(thread.providerId);
           if (waitForVersion(read, this.#versionReads, () => this.resume())) continue;
-          const continuation = this.#threads.startTurn(thread.id, this.continuation(turn), { kind: 'resume', reason: 'handoff', requestId: this.#requestId(entry) });
+          const sourceTurnId = turn.execution?.handoffSourceTurnId ?? (turn.execution?.operation === undefined ? turn.id : undefined);
+          const continuation = this.#threads.startTurn(thread.id, this.continuation(turn), {
+            kind: 'resume', reason: 'handoff', requestId: this.#requestId(entry), sourceTurnId,
+          });
           this.#remember(entry, continuation.id);
           resumed += 1;
         } else this.#consume(entry);

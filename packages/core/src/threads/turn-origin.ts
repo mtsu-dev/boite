@@ -1,4 +1,4 @@
-import type { ActivityTurn, Attachment, ComposerChoice, PreviewReference, PluginActor, SentFrom, ThreadLink, Turn } from '@boite/contracts';
+import type { ActivityTurn, Attachment, ComposerChoice, PreviewReference, PluginActor, SentFrom, ThreadLink, Turn, TurnId } from '@boite/contracts';
 import type { AutonomousSource } from '../agents/runtime.ts';
 
 /** What a turn opens with. `display` replaces the prompt in the conversation. */
@@ -32,7 +32,8 @@ export type TurnOrigin =
   | Keyed & { kind: 'compact'; automatic: boolean }
   | Keyed & { kind: 'keepalive' }
   | Keyed & { kind: 'resume'; reason: 'manual'; plugin?: PluginActor }
-  | Keyed & { kind: 'resume'; reason: Exclude<ResumeReason, 'manual'> }
+  | Keyed & { kind: 'resume'; reason: 'handoff'; sourceTurnId?: TurnId }
+  | Keyed & { kind: 'resume'; reason: Exclude<ResumeReason, 'manual' | 'handoff'> }
   /** `owner`: a team letter with the owner's post among its triggers, a wake no bot pause or budget holds (`docs/internals/teams.md`). */
   | Keyed & { kind: 'coordination'; owner?: true }
   /** `followUp`: whoever delegated this thread's work writes to it again, as opposed to its own agents reporting or Boite running a step. */

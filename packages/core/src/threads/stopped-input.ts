@@ -30,16 +30,21 @@ export function stoppedInput(
   if (opening.first === null) return input;
   // Read user rows without blobs until a completed request: assistant/tool
   // payloads are irrelevant, and stopped attachments load only when carried.
-  const statement = journal.db.prepare("SELECT id, turn_id AS turnId, parts FROM messages WHERE thread_id = ? AND role = 'user' AND rowid < ? ORDER BY rowid DESC");
+  const statement = journal.db.prepare("SELECT id, turn_id AS turnId, role, parts FROM messages WHERE thread_id = ? AND role IN ('user', 'system') AND rowid < ? ORDER BY rowid DESC");
   const messages: Message[] = [];
   try {
-    for (const row of statement.iterate(threadId, opening.first) as Iterable<{ id: string; turnId: TurnId; parts: string }>) {
+    for (const row of statement.iterate(threadId, opening.first) as Iterable<{ id: string; turnId: TurnId; role: 'user' | 'system'; parts: string }>) {
       const turn = journal.getTurn(row.turnId);
+      if (row.role === 'system') {
+        // A completed handoff carried the source request and its interrupted context.
+        if (turn?.status === 'done' && turn.execution?.handoffSourceTurnId !== undefined) break;
+        continue;
+      }
       if (!turn || turn.execution?.operation || turn.execution?.automatic) continue;
       const parts = JSON.parse(row.parts) as MessagePart[];
       if (nativeCommandPrompt(parts.filter(part => part.type === 'text').map(part => part.text).join(''))) continue;
       if (turn.status === 'done') break;
-      if (turn.status === 'stopped') {
+      if (turn.status === 'stopped' || (turn.status === 'error' && turn.execution?.queuedInputInterrupted)) {
         // The acknowledged prompt already carried the older stopped input.
         if (turn.execution?.queuedInputSession !== undefined && receivedTurns?.has(turn.id)) break;
         const message = journal.getMessage(row.id);
@@ -70,10 +75,10 @@ export function stoppedInput(
       attachments.push({ kind: 'image', mimeType: part.mimeType, data: part.data, name: part.alt });
       return `[Image: ${part.alt ?? 'attachment'}]`;
     }).filter(Boolean).join('\n');
-    return `[Earlier user message, turn stopped]\n${parts}`;
+    return `[Earlier interrupted user message]\n${parts}`;
   }).join('\n\n');
   return {
-    prompt: `Earlier user messages were stopped and may be missing from your native session. Keep them as conversation context; the current user request determines what to do next. Do not repeat completed work.\n\n<interrupted-user-messages>\n${history}\n</interrupted-user-messages>\n\nCurrent user request:\n${input.prompt}`,
+    prompt: `Earlier user messages were interrupted and may be missing from your native session. Keep them as conversation context; the current user request determines what to do next. Do not repeat completed work.\n\n<interrupted-user-messages>\n${history}\n</interrupted-user-messages>\n\nCurrent user request:\n${input.prompt}`,
     attachments: [...attachments, ...input.attachments],
     historicalImages: [...attachments, ...(input.historicalImages ?? [])],
   };

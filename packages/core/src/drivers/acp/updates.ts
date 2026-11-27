@@ -155,7 +155,7 @@ export function sessionNotificationOf(params: unknown): SessionNotification | nu
 }
 
 /** One `session/update` of the prompt in flight. */
-export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): void {
+export function drawUpdate(turn: AcpTurn, update: Update, sessionId = turn.sessionId): void {
   const ownSession = sessionId === turn.sessionId;
   switch (update.sessionUpdate) {
     case 'agent_message_chunk':
@@ -174,7 +174,8 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): v
       break;
     }
     case 'tool_call':
-      if (ownSession) turn.flushExecutionError();
+      if (!ownSession) break;
+      turn.flushExecutionError();
       turn.upsertTool(
         update.toolCallId,
         update.name ?? update.title,
@@ -186,6 +187,7 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): v
       );
       break;
     case 'tool_call_update':
+      if (!ownSession) break;
       turn.upsertTool(
         update.toolCallId,
         update.name ?? (turn.ctx.provider.id === 'opencode-v2' ? null : update.title ?? null),

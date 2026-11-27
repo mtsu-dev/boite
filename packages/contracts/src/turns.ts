@@ -22,6 +22,10 @@ export type TurnExecution = Pick<ThreadSummary,
   frozenSelection?: true;
   /** The live native session acknowledged cancellation for queued input. A later load may predate it. */
   queuedInputSession?: string;
+  /** A queued-input cancellation was followed by an error, with no native receipt. */
+  queuedInputInterrupted?: true;
+  /** The original user turn whose request a restart handoff already includes. */
+  handoffSourceTurnId?: TurnId;
   /**
    * `background`: the agent resumed on its own after background work it
    * started finished; the turn carries no prompt of the user's.

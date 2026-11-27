@@ -372,6 +372,8 @@ export interface TurnResult {
   sessionId: string | null;
   /** The agent acknowledged cancellation at a tool boundary to accept queued input. */
   queuedInputCancelled?: true;
+  /** The prompt failed after advisory cancellation, so its input is still needed. */
+  queuedInputInterrupted?: true;
   usage: Usage | null;
   error?: string;
   /** Safe technical failure for diagnostics when error includes raw provider output. */

@@ -475,6 +475,12 @@ const app = agent({ name: 'acp-fake' })
             if (id === 'second' && compaction) {
               await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'in_progress' });
             }
+            if (id === 'first' && instructions.includes('[foreign-tools]')) {
+              await client.notify('session/update', { sessionId: 'foreign-session',
+                update: { sessionUpdate: 'tool_call', toolCallId: 'foreign-tool', title: 'Unrelated tool', status: 'completed' } });
+              await client.notify('session/update', { sessionId: 'foreign-session',
+                update: { sessionUpdate: 'tool_call_update', toolCallId: 'second', status: 'completed' } });
+            }
             await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed',
               ...(detached && id === 'second' ? { title: 'Parser review' } : {}),
             });
@@ -671,6 +677,7 @@ const app = agent({ name: 'acp-fake' })
           }
           break;
         case 'slow':
+          if (existsSync(`${process.env['ACP_FAKE_LOG']}.release-slow`)) break;
           log('waiting for cancel');
           await new Promise<void>((resolve) => {
             cancels.set(sessionId, resolve);
