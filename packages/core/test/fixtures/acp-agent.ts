@@ -348,6 +348,10 @@ const app = agent({ name: 'acp-fake' })
     }
     known.add(params.sessionId);
     log(`loaded:${params.sessionId}`);
+    if (existsSync(`${process.env['ACP_FAKE_LOG']}.hold-load`)) {
+      log('holding session/load');
+      await new Promise<void>(() => undefined);
+    }
     if (existsSync(`${process.env['ACP_FAKE_LOG']}.replay-compaction`)) {
       await client.notify('session/update', { sessionId: params.sessionId,
         update: { sessionUpdate: 'compaction_update', compactionId: 'old', status: 'in_progress' } });
@@ -409,7 +413,7 @@ const app = agent({ name: 'acp-fake' })
   .onRequest('session/set_mode', ({ params }) => {
     // A mode nobody listed is refused, so a wrong mapping fails loudly instead
     // of passing as a call that went out.
-    if (process.env['ACP_FAKE_REFUSE_MODES'] === '1' || !MODES.some((mode) => mode.id === params.modeId)) {
+    if (process.env['ACP_FAKE_REFUSE_MODES'] === '1' || existsSync(`${process.env['ACP_FAKE_LOG']}.refuse-mode`) || !MODES.some((mode) => mode.id === params.modeId)) {
       log(`set_mode:refused ${params.modeId}`);
       throw RequestError.invalidParams({ modeId: params.modeId }, `unknown mode ${params.modeId}`);
     }

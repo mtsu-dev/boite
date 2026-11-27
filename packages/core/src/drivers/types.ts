@@ -372,7 +372,7 @@ export interface TurnResult {
   sessionId: string | null;
   /** The agent acknowledged cancellation at a tool boundary to accept queued input. */
   queuedInputCancelled?: true;
-  /** The prompt failed after advisory cancellation, so its input is still needed. */
+  /** The prompt ended after advisory cancellation without a receipt, so its input is still needed. */
   queuedInputInterrupted?: true;
   usage: Usage | null;
   error?: string;
@@ -442,7 +442,8 @@ export interface LiveTurnSettings {
 
 export interface TurnHandle {
   done: Promise<TurnResult>;
-  stop(): void;
+  /** The runner can stop a native attempt to restart it within the same turn. */
+  stop(reason?: 'restart'): void;
   /**
    * Change the effort or the speed of the active native turn, for the model
    * requests it has not sent yet. Only the named fields changed. The answer

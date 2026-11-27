@@ -104,7 +104,7 @@ export class TurnAttempts {
     const permissions = new LivePermissions(state.thread.permissionMode, handle => {
       this.threads.cards.clearPermissionsOf(threadId, 'mode change');
       this.threads.cards.clearQuestionsOf(threadId, false, 'mode change');
-      handle.stop();
+      handle.stop('restart');
       this.#armStopDeadline(threadId, handle);
     }, mode => {
       state.thread.permissionMode = mode;
@@ -216,6 +216,7 @@ export class TurnAttempts {
     let result: TurnResult;
     /** What the agent is told when its turn goes on after an agent update. */
     let afterUpdate: Resume | null = null;
+    let promptDispatched = false;
     let attempt = 0;
     /** What started the next attempt, set where the loop goes round again. */
     let because = 'first attempt';
@@ -235,12 +236,16 @@ export class TurnAttempts {
       state.thread.permissionMode = permissions.mode;
       const note = afterUpdate;
       afterUpdate = null;
+      // A pause can end ACP startup before the agent receives the turn's request.
+      const beforeDispatch = provider.protocol === 'acp' && !promptDispatched;
+      const resumePrompt = beforeDispatch ? undefined : note?.prompt;
       // The resumed session already holds what the first attempt took from the thread.
       const continuing = afterCapacity && wroteBefore;
       afterCapacity = false;
       const prepared = this.threads.contexts.makeContext(
         state.thread, provider, this.#core.accounts.require(accountId), state.running,
-        note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt, signal, !continuing && !resumed,
+        resumePrompt !== undefined || continuing ? { memory: '', deferred: '', letters: '' } : carried,
+        resumePrompt, signal, !continuing && (!resumed || beforeDispatch),
       );
       const context = prepared instanceof Promise ? await abortable(prepared, signal) : prepared;
       signal.throwIfAborted();
@@ -257,6 +262,11 @@ export class TurnAttempts {
       // after that belongs to no turn the journal still holds open, so it
       // reaches no message.
       let listening = true;
+      const inputReady = context.inputReady;
+      context.inputReady = () => {
+        if (listening) promptDispatched = true;
+        inputReady?.();
+      };
       const generation = context.thread.sessionGeneration ?? 0;
       if (context.sessionId === null) {
         context.sessionAccepted = sessionId => {
@@ -317,7 +327,7 @@ export class TurnAttempts {
       } else if (note) {
         // Shown once the context is built, so a fresh session's history does not carry it twice.
         this.threads.noteSystem(threadId, turnId, note.prompt, note.label, 'turn.resumedAfterUpdate');
-      } else if (resumed && state.thread.sessionId !== null) {
+      } else if (resumed && !beforeDispatch && state.thread.sessionId !== null) {
         context.prompt = modeRestartPrompt(permissions.mode, context.prompt);
       }
       // A later attempt resumes a session that already holds the earlier ones, refused or not.
@@ -382,7 +392,7 @@ export class TurnAttempts {
         break;
       }
       // The composer owns the follow-up. Settle the interrupted input before any retry can send it.
-      if (result.queuedInputInterrupted) break;
+      if (result.queuedInputCancelled || result.queuedInputInterrupted) break;
       // A keepalive on a fresh session would write the whole history to warm nothing: it fails, and the wait ends.
       if (fresh !== null && result.status === 'error' && queued.execution?.operation !== 'keepalive') {
         state.thread = fresh;
@@ -614,7 +624,7 @@ export class TurnAttempts {
       if (this.threads.cards.listPermissions(threadId).length > 0 || this.threads.cards.listQuestions(threadId).some((question) => !question.async)) return;
       this.#pauseWanted.delete(threadId);
       this.#pausing.set(threadId, providerId);
-      handle.stop();
+      handle.stop('restart');
       this.#armStopDeadline(threadId, handle);
     }, 0);
   }

@@ -212,7 +212,8 @@ export class RestartHandoff {
           resumed += 1;
         } else if (admitted === null && entry.was === 'running' && turn.status === 'stopped') {
           // The planned turn may have handed over to the composer, or a newer turn may already be committed.
-          if (turn.execution?.queuedInputSession !== undefined || this.#core.journal.lastTurn(thread.id, true)?.id !== turn.id) {
+          if (turn.execution?.queuedInputSession !== undefined || turn.execution?.queuedInputInterrupted
+            || this.#core.journal.lastTurn(thread.id, true)?.id !== turn.id) {
             this.#consume(entry);
             continue;
           }

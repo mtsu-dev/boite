@@ -292,9 +292,9 @@ export class AcpSession {
    * not answered yet can be cancelled. Closing the connection rejects the
    * pending request, and the turn settles as stopped.
    */
-  stopTurn(turn: AcpTurn): void {
+  stopTurn(turn: AcpTurn, reason?: 'restart'): void {
     if (turn.settled) return;
-    turn.stoppedForQueuedInput = false;
+    if (reason !== 'restart') turn.stoppedForQueuedInput = false;
     turn.markStopped();
     // Not begun: `runTurn` settles it the moment the queue reaches it.
     if (this.#active !== turn) return;
@@ -303,7 +303,7 @@ export class AcpSession {
       this.#drop();
       return;
     }
-    this.#cancel();
+    if (!turn.stoppedForQueuedInput) this.#cancel();
     if (this.#stopTimer !== null) return;
     this.#stopTimer = setTimeout(() => {
       this.#stopTimer = null;

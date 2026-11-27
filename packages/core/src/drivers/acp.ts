@@ -234,7 +234,7 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
         done: turn.done,
         ...(isGrok(ctx.provider) || ctx.protectedExecution ? {} : { setPermissionMode: (mode: TurnContext['thread']['permissionMode']) => running.setPermissionMode(turn, mode) }),
         ...(isGrok(ctx.provider) ? {} : { applySettings: (change: LiveTurnSettings) => running.applySettings(turn, change) }),
-        stop: () => running.stopTurn(turn),
+        stop: reason => running.stopTurn(turn, reason),
         // Grok and OpenCode 2's native server can steer the active prompt.
         // With plain ACP, queued input must follow a cancelled prompt.
         get outputRevision() { return turn.outputRevision; },

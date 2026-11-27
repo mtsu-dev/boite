@@ -22,7 +22,7 @@ export type TurnExecution = Pick<ThreadSummary,
   frozenSelection?: true;
   /** The live native session acknowledged cancellation for queued input. A later load may predate it. */
   queuedInputSession?: string;
-  /** A queued-input cancellation was followed by an error, with no native receipt. */
+  /** The turn ended after a queued-input cancellation without a native receipt. */
   queuedInputInterrupted?: true;
   /** The original user turn whose request the resume note already includes. */
   resumeSourceTurnId?: TurnId;

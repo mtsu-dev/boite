@@ -182,7 +182,7 @@ export class TurnRunner {
     try { this.#core.delegation.submitted(threadId, turnId, result.status === 'done'); }
     catch (error) { reportSettlementError(this.#core, threadId, turnId, 'delegation submission', error); }
     const queuedInputSession = result.queuedInputCancelled ? result.sessionId : null;
-    const queuedInputInterrupted = result.status === 'error' && result.queuedInputInterrupted === true;
+    const queuedInputInterrupted = result.queuedInputInterrupted === true;
     const finished: Turn = {
       ...running,
       status: result.status === 'done' ? 'done' : result.status,
@@ -242,7 +242,7 @@ export class TurnRunner {
     // A Stop pauses coordination until the user's next message. Failures and queued follow-ups leave it available.
     // A keepalive was only waiting.
     const keepalive = queued.execution?.operation === 'keepalive';
-    if (result.status === 'stopped' && !keepalive && !result.queuedInputCancelled) this.#core.coordination.pause(threadId);
+    if (result.status === 'stopped' && !keepalive && !result.queuedInputCancelled && !queuedInputInterrupted) this.#core.coordination.pause(threadId);
     // A spent subscription window: the thread may resume by itself once it resets (`threads/limit-resume.ts`).
     if (result.status === 'error' && !queuedInputInterrupted && result.refusal?.kind === 'usage-limit' && !next.archived && !keepalive) this.threads.limitResumes.turnFailed(next, finished, result.refusal.resetsAt);
     // Any other stop before the answer resumes by itself, twice in a row at most (`threads/auto-continue.ts`).

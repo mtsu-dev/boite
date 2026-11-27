@@ -235,7 +235,46 @@ test.each([
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(refusesInput ? ['parallel-tools-follow-up'] : []);
 }, 20_000);
 
-test.each(['restart', 'manual recovery', 'manual recovery with an agent update'])('ACP %s during a queued follow-up recovers both requests on the loaded session', async method => {
+test.each(['acknowledged', 'rejected'])('a permission restart leaves the queue paused when ACP cancellation is %s', async outcome => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const { core } = harness!;
+  const prompt = `[parallel-tools] [confirm-on-gate]${outcome === 'rejected' ? ' [error-on-cancel]' : ''}`;
+  const { id } = await client.call('turns.start', { threadId, prompt });
+  await waitFor(() => core.threads.require(threadId).sessionId !== null);
+  const queued = [{ id: 'permission-race-follow-up', text: 'Queued after the mode change', attachments: [] }];
+  const setPaused = async (paused: boolean) => {
+    const current = core.composer.storage.get('inputs', threadId);
+    const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: current.revision,
+      value: { input: { text: '', attachments: [], paused, queued } } });
+    expect(saved.accepted).toBe(true);
+  };
+  await setPaused(false);
+  writeFileSync(`${logFile}.first`, 'ready');
+  writeFileSync(`${logFile}.second`, 'ready');
+  await waitFor(() => fakeLog().includes('session/cancel'));
+  await setPaused(true);
+  const refusal = `${logFile}.refuse-mode`;
+  writeFileSync(refusal, 'ready');
+  const stop = spyOn(core.threads.runner.handles.get(threadId)!, 'stop');
+  await client.call('threads.update', { threadId, permissionMode: 'plan' });
+  await waitFor(() => stop.mock.calls.length > 0);
+  rmSync(refusal);
+  writeFileSync(`${logFile}.end`, 'ready');
+  await waitFor(() => countLogLines(fakeLog(), 'session/prompt') > 1 || core.journal.getTurn(id)?.status === 'stopped');
+  expect(countLogLines(fakeLog(), 'session/prompt')).toBe(1);
+  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+  expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
+  expect(core.journal.getTurn(id)?.execution).toMatchObject(outcome === 'acknowledged'
+    ? { queuedInputSession: expect.any(String) } : { queuedInputInterrupted: true });
+
+  await setPaused(false);
+  await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
+  expect(countLogLines(fakeLog(), 'session/prompt')).toBe(2);
+  expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+  expect(setModeCount('plan')).toBe(1);
+}, 20_000);
+
+test.each(['restart', 'manual recovery', 'manual recovery with an agent update before dispatch', 'manual recovery with an agent update after dispatch'])('ACP %s during a queued follow-up recovers both requests on the loaded session', async method => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const first = harness!;
   const earlierRequest = 'Earlier request from before the follow-up';
@@ -255,7 +294,8 @@ test.each(['restart', 'manual recovery', 'manual recovery with an agent update']
   expect(countLogLines(fakeLog(), 'initialize')).toBe(1);
   expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(0);
 
-  const updateDuringResume = method === 'manual recovery with an agent update';
+  const updateBeforePrompt = method === 'manual recovery with an agent update before dispatch';
+  const updateDuringResume = updateBeforePrompt || method === 'manual recovery with an agent update after dispatch';
   let next = first;
   if (method === 'restart') {
     await closeForHandoff(first);
@@ -266,11 +306,11 @@ test.each(['restart', 'manual recovery', 'manual recovery with an agent update']
     const stopped = first.core.journal.getTurn(followUp.id)!;
     expect(stopped.status).toBe('stopped');
     first.core.threads.resumes.offer(stopped, { kind: 'interrupted' });
-    const hold = `${logFile}.hold-prompt`;
+    const hold = `${logFile}.${updateBeforePrompt ? 'hold-load' : 'hold-prompt'}`;
     if (updateDuringResume) writeFileSync(hold, 'ready');
     await client.call('turns.resume', { threadId, turnId: stopped.id });
     if (updateDuringResume) {
-      await waitFor(() => countLogLines(fakeLog(), 'waiting for cancel') === 2);
+      await waitFor(() => updateBeforePrompt ? fakeLog().includes('holding session/load') : countLogLines(fakeLog(), 'waiting for cancel') === 2);
       rmSync(hold);
       const { core } = first;
       spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
