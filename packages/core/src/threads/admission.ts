@@ -49,7 +49,7 @@ export function prepareTurnExecution(core: Core, thread: ThreadSummary, attachme
   const provider = core.providers.require(thread.providerId);
   const account = core.accounts.require(thread.accountId);
   if (account.providerId !== provider.id) throw refused(`accountId: account ${account.id} belongs to provider ${account.providerId}; expected provider ${provider.id}`, {
-    field: 'accountId', accountId: account.id, providerId: provider.id, expected: provider.id,
+    field: 'accountId', accountId: account.id, providerId: account.providerId, expected: provider.id,
   });
   assertDriverRunnable(provider.protocol, core.providers.summary(provider.id), account, () => core.providers.launcherScriptOnly(provider.id));
   checkStoredEffort(provider, account.id, thread.model, thread.effort);
