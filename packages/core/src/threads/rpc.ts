@@ -101,7 +101,10 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     const provider = core.providers.require(params.providerId);
     const account = core.accounts.require(params.accountId);
     if (account.providerId !== provider.id) throw invalidParams(`drafts.images.accountId: ${account.id} is an account of ${account.providerId}, not ${provider.id}`, { field: 'accountId', expected: provider.id });
-    const model = imageInputModel(core, provider, { accountId: account.id, model: params.model, cwd: project.path });
+    const thread = params.threadId === undefined ? null : core.threads.require(params.threadId);
+    if (thread && thread.projectId !== project.id) throw invalidParams(`drafts.images.threadId: ${thread.id} is a thread of project ${thread.projectId}, not ${project.id}`, { field: 'threadId', expected: project.id });
+    // A pick for a thread's next prompt goes to the thread's folder, which may be a worktree of the project.
+    const model = imageInputModel(core, provider, { accountId: account.id, model: params.model, cwd: thread?.cwd ?? project.path });
     return { supported: provider.capabilities.images && model?.images !== false };
   });
   core.router.register('threads.previewAccountSwitch', params => {

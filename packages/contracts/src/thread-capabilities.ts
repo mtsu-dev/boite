@@ -5,10 +5,11 @@ export interface ThreadControlsRpcMethods {
   /** Supported operations and their current availability for this thread. */
   'threads.capabilities': { params: { threadId: ThreadId }; result: ThreadCapabilities };
   /**
-   * Whether a draft's first prompt may carry images on this choice, before any thread exists. pi's own model
-   * starts where the project folder's pi settings say, which only the core reads. Starts nothing.
+   * Whether a draft's first prompt may carry images on this choice, before any thread exists, or with `threadId`
+   * a prompt of that thread of the project on a model picked for it. pi's own model starts where the folder's pi
+   * settings say, and the folder's extensions may give a model images, which only the core reads. Starts nothing.
    */
-  'drafts.images': { params: { projectId: ProjectId; providerId: ProviderId; accountId: AccountId; model: string | null }; result: { supported: boolean } };
+  'drafts.images': { params: { projectId: ProjectId; providerId: ProviderId; accountId: AccountId; model: string | null; threadId?: ThreadId }; result: { supported: boolean } };
   /** Forecasts the native session after an account switch, without starting an agent or changing the thread. */
   'threads.previewAccountSwitch': { params: { threadId: ThreadId; accountId: AccountId }; result: { session: 'unchanged' | 'resume' | 'fresh' } };
 }

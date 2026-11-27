@@ -132,6 +132,9 @@ if (extensionProvider && process.argv.includes('--no-extensions') && (flag('--pr
   process.stderr.write(`Error: Unknown provider "${extensionProvider}". Use --list-models to see available providers/models.\n`);
   process.exit(1);
 }
+// `PI_FAKE_ONE_SHOT_REFUSAL`: a one-shot warns of a custom model id at startup, as pi does and runs on, then refuses the prompt.
+const oneShotRefusal = oneShot && Boolean(process.env['PI_FAKE_ONE_SHOT_REFUSAL']);
+if (oneShotRefusal) process.stderr.write(`Warning: Model "${model}" not found for provider "fake-a". Using custom model id.\n`);
 for (const [index, arg] of process.argv.entries()) {
   if (arg === '--extension') log(`extension ${process.argv[index + 1] ?? ''}`);
 }
@@ -614,6 +617,10 @@ function handle(message: Record<string, unknown>): void {
           log(`image ${textOf(entry['mimeType'])} ${textOf(entry['data']).length}`);
         }
       }
+      if (oneShotRefusal) {
+        send({ id, type: 'response', command: 'prompt', success: false, error: 'No API key found for fake-a' });
+        return;
+      }
       const text = textOf(message['message']);
       if (text.includes('[small]')) log('small-session');
       if (process.env['PI_FAKE_LOG']) rmSync(`${process.env['PI_FAKE_LOG']}.compacted`, { force: true });
@@ -621,7 +628,7 @@ function handle(message: Record<string, unknown>): void {
       if (!oneShot && text.trimStart().startsWith('/fake-report')) {
         // An extension command: pi runs it, answers the prompt and starts no run,
         // so no event and no `agent_settled` follow.
-        send({ id, type: 'response', command: 'prompt', success: true });
+        send({ id, type: 'response', command: 'prompt', success: true, data: { disposition: 'handled' } });
         log('extension command handled');
         return;
       }
@@ -715,12 +722,21 @@ function handle(message: Record<string, unknown>): void {
   }
 }
 
-// pi runs its `session_shutdown` hooks before it exits, and they may still write the session file.
+// pi runs its `session_shutdown` hooks before it exits, and they may still write the session file. pi 1.6.1's rpc
+// mode shuts down so on SIGTERM and on the end of its input alike (rpc-mode.js `onInputEnd`): a closed stdin read
+// first must not let the process slip out without them.
 const slowExit = Number(process.env['PI_FAKE_SLOW_EXIT'] ?? 0);
-if (slowExit > 0 && !oneShot && sessionId) process.on('SIGTERM', () => {
+let shuttingDown = false;
+function shutDown(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
   log(`shutting down ${sessionId}`);
   setTimeout(() => { log(`exited ${sessionId}`); process.exit(0); }, slowExit);
-});
+}
+if (slowExit > 0 && !oneShot && sessionId) {
+  process.on('SIGTERM', shutDown);
+  process.stdin.on('end', shutDown);
+}
 
 let buffer = '';
 process.stdin.setEncoding('utf8');

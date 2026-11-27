@@ -283,6 +283,15 @@ test('pi default follows the model a resumed session restores, not the one pi st
   expect(await resumes()).toBe(false);
   writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(cwd)]: true }));
   expect(await resumes()).toBe(true);
+  // So may it register a named model the catalog lists text-only.
+  const { projectId, accountId } = harness!.core.threads.require(threadId);
+  const draft = async () => (await client.call('drafts.images', { projectId: projectId!, providerId: 'pi-fake', accountId, model: 'fake-b/plain' })).supported;
+  await client.call('threads.update', { threadId, model: 'fake-b/plain' });
+  expect([await resumes(), await draft()]).toEqual([true, true]);
+  rmSync(join(cwd, '.pi', 'extensions', 'vision.ts'));
+  expect([await resumes(), await draft()]).toEqual([false, false]);
+  writeFileSync(join(cwd, '.pi', 'extensions', 'vision.ts'), 'export default () => {};');
+  await client.call('threads.update', { threadId, model: null });
   // An extension of the account's own may trust the folder before pi reads `trust.json`.
   writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(cwd)]: false }));
   expect(await resumes()).toBe(false);
@@ -693,8 +702,35 @@ test('a pi one-shot on a model an extension registers falls back to pi\'s own mo
     // The same request without the model, and still without extensions or tools.
     expect(shots[1]).not.toContain('--model');
     expect(shots[1]).toEqual(expect.arrayContaining(['--no-tools', '--no-extensions', '--no-mcp']));
+    const shotCount = () => fakeLog().split('\n').filter(line => line.startsWith('one-shot [')).length;
+    const btw = async (requestId: string) => {
+      const answered = client.next('thread.btw', event => event.requestId === requestId);
+      await client.call('threads.btw', { threadId, question: 'What did we add?', requestId });
+      return await answered;
+    };
+    // pi's own model is that provider when the profile pins it: one refusal, no second start.
+    const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
+    const descriptor = readFileSync(descriptorFile, 'utf8');
+    const pinned = JSON.parse(descriptor) as { profiles: Record<string, { launch: { args: string[] } }> };
+    for (const profile of Object.values(pinned.profiles)) profile.launch.args.push('--provider', 'fake-a');
+    writeFileSync(descriptorFile, JSON.stringify(pinned));
+    expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+    let before = shotCount();
+    expect((await btw('side_pinned')).error).toContain('Unknown provider "fake-a"');
+    expect(shotCount()).toBe(before + 1);
+    writeFileSync(descriptorFile, descriptor);
+    expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+    // A live pi that refuses the prompt after warning of a custom model id says why itself, with no second start.
+    delete process.env['PI_FAKE_EXTENSION_PROVIDER'];
+    process.env['PI_FAKE_ONE_SHOT_REFUSAL'] = '1';
+    before = shotCount();
+    const refused = await btw('side_refused');
+    expect(refused.error).toContain('No API key found for fake-a');
+    expect(refused.error).not.toContain('custom model id');
+    expect(shotCount()).toBe(before + 1);
   } finally {
     delete process.env['PI_FAKE_EXTENSION_PROVIDER'];
+    delete process.env['PI_FAKE_ONE_SHOT_REFUSAL'];
   }
 });
 
@@ -1340,13 +1376,22 @@ describe('pi driver', () => {
     expect(errors).toEqual([{ type: 'error', message: '529 overloaded after 3 attempts' }]);
   });
 
-  test('an extension command that starts no run ends the turn, and the process stays warm', async () => {
+  test('an extension command that starts no run ends the turn, takes no steer, and the process stays warm', async () => {
+    // Each state answer waits, so a steer can come while Boite reads it.
+    process.env['PI_FAKE_SLOW_STATE'] = '400';
     const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
     const { finished } = await startTurn(client, threadId, '/fake-report', 10000);
     const done = await finished;
     expect(done.status).toBe('done');
     expect(fakeLog()).toContain('extension command handled');
     expect(harness?.core.procs.liveCount(threadId)).toBe(1);
+    // pi took that prompt without a run: a steer before Boite reads its state would open one of its own.
+    const settled = client.next('turn.finished', ended => ended.threadId === threadId, 10_000);
+    const started = await client.call('turns.start', { threadId, prompt: '/fake-report again' });
+    await waitFor(() => fakeLog().split('extension command handled').length === 3);
+    expect(await client.call('turns.steer', { threadId, turnId: started.id, prompt: 'Also this', clientRequestId: 'pi_handled' })).toEqual({ accepted: false });
+    expect((await settled).status).toBe('done');
+    expect(fakeLog()).not.toContain('steer without a run');
     // A normal turn on the same process still streams to its own agent_settled.
     await runTurn(client, threadId, '[tool] after the command');
     expect(argvLines()).toHaveLength(1);
@@ -1565,11 +1610,13 @@ describe('pi driver', () => {
     const waited = await thread('waited'), stopped = await thread('stopped');
     delete process.env['PI_FAKE_NO_TEAM'];
     await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+    const session = harness!.core.threads.require(waited).sessionId;
     // pi's shutdown hooks may still write the session file: the new process opens it once the old one has exited.
     await runTurn(client, waited, 'second');
-    const session = harness!.core.threads.require(waited).sessionId;
+    expect(harness!.core.threads.require(waited).sessionId).toBe(session);
+    // The whole log in the message when the old process's exit is missing.
+    expect(fakeLog()).toContain(`exited ${session}\n`);
     const lines = fakeLog().split('\n');
-    expect(lines.indexOf(`exited ${session}`)).toBeGreaterThan(-1);
     expect(lines.indexOf(`exited ${session}`)).toBeLessThan(lines.findLastIndex(line => line.startsWith(`argv sessionId=${session} `)));
     const launched = argvLines().length;
     const { finished } = await startTurn(client, stopped, 'second', 20_000);

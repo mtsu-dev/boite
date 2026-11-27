@@ -2211,6 +2211,34 @@ test('pi default on an open thread before its first turn asks the core, which re
   await waitFor(() => asked.mock.calls.length > before);
 });
 
+test('a named pi model the catalog lists text-only asks the core, which reads the folder\'s extensions', async () => {
+  await mountOnFake();
+  await openIdle('t-trace');
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  const capabilities = store.threadCapabilities.bind(store);
+  const asked = vi.spyOn(store, 'threadCapabilities').mockImplementation(async (threadId) => {
+    const value = await capabilities(threadId);
+    return value && { ...value, images: { supported: true, available: true, reason: null } };
+  });
+  // The catalog marks pi's demo model text-only; an extension of this folder registers it with images.
+  expect(await store.update('t-trace', { accountId: account.id, model: 'pi-demo' })).toBe(true);
+  await waitFor(() => store.openThread?.providerId === 'pi' && store.openThread.model === 'pi-demo');
+  await waitFor(() => asked.mock.calls.length > 0);
+  await asked.mock.results.at(-1)!.value;
+  flushSync();
+  paste(pngFile());
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
+  expect(store.error).toBeNull();
+  // A model the catalog says reads images needs no answer.
+  const key = `pi::${account.id}`;
+  store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(({ images, ...model }) => model.id === 'pi-demo' ? model : { ...model, images }) };
+  const calls = asked.mock.calls.length;
+  flushSync();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(asked.mock.calls.length).toBe(calls);
+});
+
 test('a pi draft on its own model asks the core, which reads the project folder', async ({ app: _app }) => {
   await openDraft();
   const account = store.accounts.find(entry => entry.providerId === 'pi')!;
@@ -2227,6 +2255,11 @@ test('a pi draft on its own model asks the core, which reads the project folder'
   paste(pngFile());
   await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
   expect(store.error).toBeNull();
+  // A named model the catalog lists text-only: the project's extensions may give it images.
+  const calls = asked.mock.calls.length;
+  store.draftChoice = { ...store.draftChoice!, model: 'pi-demo' };
+  await waitFor(() => asked.mock.calls.length > calls);
+  expect(asked.mock.calls.at(-1)![0]).toEqual({ projectId: store.draft!.projectId, providerId: 'pi', accountId: account.id, model: 'pi-demo' });
 });
 
 test('a picture pasted while the core reads pi\'s own model is held, and Send waits for that answer', async ({ app: _app }) => {

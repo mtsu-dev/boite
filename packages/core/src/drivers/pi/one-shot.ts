@@ -4,14 +4,14 @@ import { join } from 'node:path';
 import { TOOL_FREE_CONTEXT } from '@boite/contracts';
 import type { ModelInfo } from '@boite/contracts';
 import { abortable } from '../../abortable.ts';
-import { messageOf, unavailable } from '../../errors.ts';
+import { unavailable } from '../../errors.ts';
 import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import { titleRequest } from '../../titles.ts';
 import { NativeForkUnsupported } from '../native-fork.ts';
 import { releaseChild } from '../session-close.ts';
 import type { SideQuestionContext, TitleContext } from '../types.ts';
 import { agentEnv, contextArgs, imagesOf, sessionDirOf, textOf } from './mapping.ts';
-import { piModelArgs } from './models.ts';
+import { piCatalogPair, piModelArgs } from './models.ts';
 import { AGENT_OWN_MODEL, STDERR_MAX } from './protocol.ts';
 import { PiPeer } from './rpc.ts';
 import { copySession } from './session-files.ts';
@@ -55,12 +55,14 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   args.push(...(own ? piModelArgs(model, effort, catalog) : effort === null ? [] : ['--thinking', effort]));
 
   const child = ctx.spawnChild(launch.executable, args, { cwd: ctx.thread.cwd, env: agentEnv(ctx.accountEnv) });
-  let stderr = '', text = '', error = '';
-  const closed = new Promise<void>(resolve => child.once('close', () => resolve()));
+  let stderr = '', text = '', error = '', broken = false;
+  const closed = Promise.withResolvers<void>();
+  child.once('close', () => closed.resolve());
+  child.once('error', () => closed.resolve());
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-STDERR_MAX); });
   const done = Promise.withResolvers<string | null>();
-  const fault = (reason: string) => done.resolve(stderr.trim() || reason);
+  const fault = (reason: string) => { broken = true; done.resolve(stderr.trim() || reason); };
   child.once('error', error => fault(error.message));
   const peer = new PiPeer(child, {
     log: ctx.log,
@@ -83,10 +85,16 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
     try {
       await peer.command('prompt', { message: prompt, ...(images.length ? { images } : {}) }, { signal });
     } catch (failure) {
-      // pi refuses a model it does not hold on stderr and exits before it reads a request: say why, once it has.
-      if (signal.aborted) throw failure;
-      await Promise.race([closed, new Promise(resolve => setTimeout(resolve, 1_000))]);
-      throw stderr.trim() ? new Error(stderr.trim()) : failure;
+      // pi refuses a model it does not hold on stderr and exits before it reads a request: say why, once it has. A
+      // prompt a live pi refused says why itself.
+      if (signal.aborted || !broken) throw failure;
+      let timer: Timer | undefined;
+      await Promise.race([closed.promise, abortable(new Promise(resolve => { timer = setTimeout(resolve, 1_000); }), signal)]).catch(() => undefined);
+      clearTimeout(timer);
+      signal.throwIfAborted();
+      const said = stderr.trim();
+      if (STARTUP_REFUSAL.test(said)) throw new ModelRefused(said);
+      throw said ? new Error(said) : failure;
     }
     const failure = await abortable(done.promise, signal);
     if (failure) throw new Error(failure);
@@ -97,18 +105,28 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   }
 }
 
-/** pi 1.6.1's words for a model it does not hold (`model-resolver.js`). */
-const UNKNOWN_MODEL = /Unknown provider "|Model "[^"]*" not found/;
+/**
+ * pi 1.6.1's words when it exits at startup on a `--provider` or `--model` it does not hold (`model-resolver.js`),
+ * not its warning for a custom model id, after which it runs.
+ */
+const STARTUP_REFUSAL = /Unknown provider "[^"]*"\. Use --list-models|Model "[^"]*" not found\. Use --list-models/;
+
+/** pi exited before the prompt on the model it was launched with. */
+class ModelRefused extends Error {}
 
 /**
  * A one-shot runs without extensions, so a provider one of them registers is unknown there: the request goes to pi's
- * own model instead, with the same restrictions.
+ * own model instead, with the same restrictions, unless the profile's own `--model` or `--provider` is that provider.
  */
 async function askOn(ctx: TitleContext | SideQuestionContext, prompt: string, model: string | null, catalog: readonly ModelInfo[] | null, signal: AbortSignal, sessionFile?: string): Promise<string> {
   try {
     return await ask(ctx, prompt, model, catalog, signal, sessionFile);
   } catch (error) {
-    if (model === null || model === AGENT_OWN_MODEL || signal.aborted || !UNKNOWN_MODEL.test(messageOf(error))) throw error;
+    if (!(error instanceof ModelRefused) || model === null || model === AGENT_OWN_MODEL || signal.aborted) throw error;
+    const provider = piCatalogPair(model, catalog)?.provider ?? model.slice(0, Math.max(model.indexOf('/'), 0));
+    const declared = profileFor(ctx.provider)?.launch?.args ?? [];
+    const pinned = declared.some((arg, i) => (arg === '--provider' && declared[i + 1] === provider) || (arg === '--model' && (declared[i + 1] === model || declared[i + 1]?.startsWith(`${provider}/`))));
+    if (provider === '' || pinned) throw error;
     ctx.log('info', `pi one-shot: ${model} is not known without extensions, pi's own model answers`);
     return await ask(ctx, prompt, null, catalog, signal, sessionFile);
   }

@@ -90,12 +90,13 @@ export function imageInputModel(
   // models, so neither its model nor its catalog tells this folder's, for a named model, a resumed session or a new one.
   const env = account ? piLaunchEnv(core.accounts.profileEnv(account, provider)) : null;
   if (env && piAgentDirFollowsCwd(env)) return undefined;
+  // The folder's own extensions may register any pair over the catalog's, a named one or the profile's included, for
+  // a resumed session as for a new one.
+  if (env && cwd && folderExtends(piAgentDir(env, cwd), cwd, launch)) return undefined;
   // A `--model` in the profile beats the session, as it does in pi.
   if (pi && wanted === AGENT_OWN_MODEL && cwd && !launch.model) {
     // A protected run starts a new pi session with `--no-approve` and settings of its own: pi alone knows that model.
     if (runsIn && core.sharedAccess.bound(runsIn) !== null) return undefined;
-    // The folder's own extensions may register the pair over the catalog's, for a resumed session as for a new one.
-    if (env && folderExtends(piAgentDir(env, cwd), cwd, launch)) return undefined;
     const resumed = account && id && sessionId ? sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId, cwd) : null;
     if (resumed) {
       // pi restores the session's own pair; a catalog entry spelled the same for another pair says nothing of it.

@@ -278,7 +278,8 @@ export class PiSession {
     const effort = change.effort;
     if (typeof effort !== 'string' || effort.length === 0) return {};
     if (effort !== this.#effort) {
-      await this.#peer.command('set_thinking_level', { level: effort });
+      // Live settings give up on it after their own bound; this one frees the request pi never answers.
+      await this.#peer.command('set_thinking_level', { level: effort }, { timeoutMs: stopDeadlineMs });
       this.#effort = effort;
     }
     turn.ctx.thread.effort = effort;
@@ -363,11 +364,12 @@ export class PiSession {
         }
         if (turn.isStopped) turn.settleRun();
         else {
-          await peer.command('prompt', {
+          const accepted = await peer.command('prompt', {
             message: prompt,
             ...(attachments.length === 0 ? {} : { images: imagesOf(attachments) }),
           });
-          this.#prompted = turn;
+          // pi 1.6.1 answers `handled` for a prompt an extension command or an input hook took without a run.
+          if (dataOf(accepted)['disposition'] !== 'handled') this.#prompted = turn;
           turn.ctx.inputReady?.();
           if (turn.isStopped) this.#abort(turn, peer);
           else await this.#settleIfIdle(turn, peer);
@@ -380,7 +382,7 @@ export class PiSession {
       const code = await exitWithin(this.#exited, EXIT_GRACE_MS, this.#processClosed);
       if (turn.isStopped) turn.settleRun();
       else turn.fail(code === undefined ? messageOf(error) : this.#exitSentence(code), code === undefined ? logMessageOf(error) : this.#exitSentence(code, true));
-      this.#current = null;
+      this.#current = this.#prompted = null;
       this.#endTurn(turn, true);
       return;
     }
@@ -388,7 +390,7 @@ export class PiSession {
 
     await turn.finished;
     await this.#readContext(turn, peer);
-    this.#current = null;
+    this.#current = this.#prompted = null;
     this.#endTurn(turn, turn.isStopped);
   }
 
@@ -735,7 +737,7 @@ export class PiSession {
     this.#protection = null;
     this.#idle.clear();
     const turn = this.#current;
-    this.#current = null;
+    this.#current = this.#prompted = null;
     endOnClose(turn, 'the pi session was closed');
     this.#peer?.fail('the pi session was closed');
     this.#peer = null;

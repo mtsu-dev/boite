@@ -1,4 +1,4 @@
-import type { Thread } from '@boite/contracts';
+import { resolveModelSelection, type Thread } from '@boite/contracts';
 import { untrack } from 'svelte';
 import { chipChoice } from './composer-choice';
 import type { Choice, Store } from './store.svelte';
@@ -6,29 +6,38 @@ import type { Choice, Store } from './store.svelte';
 /**
  * pi's own model on an open thread is the one its session resumes on, or for a
  * new session the one the folder's pi settings may choose, which only the core
- * reads (`threads.capabilities`, `drafts.images` for a draft). The key changes when that can:
+ * reads (`threads.capabilities`, `drafts.images` for a draft or a pick). So is a
+ * named model the catalog lists text-only, which the folder's own extensions may
+ * give images. The key changes when that can:
  * another session, folder, selection or turn, a new catalog for the account (the core reads
  * the session's model in it, and a name change can put another pi pair behind an id), a reconnection.
  */
 function resumedImagesKey(store: Store, thread: Thread | null, choice: Choice | null): string | null {
   if (!choice || store.providerOf(choice.providerId)?.protocol !== 'pi') return null;
   const catalog = (providerId: string, accountId: string) => store.modelsOf(providerId, accountId).map(model => `${model.id}\t${model.name}${model.images === false ? '-' : '+'}${model.virtual ? 'v' : ''}`).join(',');
+  const own = (model: string | null) => model === null || model === 'default';
+  // A named model the catalog lets read images needs no answer.
+  const asks = (model: string | null) => own(model) || resolveModelSelection(store.modelsOf(choice.providerId, choice.accountId), model)?.model.images === false;
   if (!thread) {
     const projectId = store.draft?.projectId;
-    if (!projectId || (choice.model !== null && choice.model !== 'default')) return null;
+    if (!projectId || !asks(choice.model)) return null;
     return ['draft', projectId, choice.providerId, choice.accountId, choice.model ?? '', store.connection, catalog(choice.providerId, choice.accountId)].join('\n');
   }
-  if ((thread.model !== null && thread.model !== 'default') || choice.providerId !== thread.providerId || choice.accountId !== thread.accountId) return null;
-  // A model picked for the next prompt is not the one the session resumes on.
-  if (choice.model !== null && choice.model !== 'default' && choice.model !== chipChoice(store, thread)?.model) return null;
+  if (choice.providerId !== thread.providerId || choice.accountId !== thread.accountId) return null;
+  if (own(choice.model) ? !own(thread.model) : choice.model !== chipChoice(store, thread)?.model) {
+    // A model picked for the next prompt is not the one the session resumes on: it starts in the thread's folder.
+    if (own(choice.model) || !thread.projectId || !asks(choice.model)) return null;
+    return ['pick', thread.projectId, choice.providerId, choice.accountId, choice.model, store.connection, catalog(choice.providerId, choice.accountId), thread.id, thread.cwd].join('\n');
+  }
+  if (!asks(thread.model)) return null;
   // A finished turn may have left the session on another model: a queued prompt keeps its own.
   return ['thread', thread.id, thread.sessionId ?? '', thread.cwd, thread.selectionVersion ?? 0, thread.status, store.connection, catalog(thread.providerId, thread.accountId)].join('\n');
 }
 
 function askCore(store: Store, key: string): Promise<boolean | null> {
-  const [kind, id, providerId, accountId, model] = key.split('\n');
+  const [kind, id, providerId, accountId, model, , , threadId] = key.split('\n');
   if (kind === 'thread') return store.threadCapabilities(id!).then(value => value ? value.images.supported : null);
-  return store.draftImages({ projectId: id!, providerId: providerId!, accountId: accountId!, model: model || null }).then(value => value ? value.supported : null);
+  return store.draftImages({ projectId: id!, providerId: providerId!, accountId: accountId!, model: model || null, ...(kind === 'pick' ? { threadId: threadId! } : {}) }).then(value => value ? value.supported : null);
 }
 
 /**
