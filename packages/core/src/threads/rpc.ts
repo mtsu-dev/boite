@@ -98,7 +98,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     const project = core.projects.require(params.projectId);
     const provider = core.providers.require(params.providerId);
     const account = core.accounts.require(params.accountId);
-    if (account.providerId !== provider.id) throw invalidParams(`drafts.images.accountId: ${account.id} is an account of ${account.providerId}, not ${provider.id}`);
+    if (account.providerId !== provider.id) throw invalidParams(`drafts.images.accountId: ${account.id} is an account of ${account.providerId}, not ${provider.id}`, { field: 'accountId', expected: provider.id });
     const model = imageInputModel(core, provider, { accountId: account.id, model: params.model, cwd: project.path });
     return { supported: provider.capabilities.images && model?.images !== false };
   });

@@ -57,7 +57,9 @@ export function folderStartModel(agentDir: string, cwd: string, catalog: readonl
   const project = (launch.trust ?? trusted(agentDir, folder, global)) ? settingsAt(join(folder, '.pi', 'settings.json')) : null;
   if (!project) return 'account';
   const value = (key: typeof CHOOSING[number]) => project[key] !== undefined ? project[key] : global[key];
-  const same = (key: typeof CHOOSING[number]) => JSON.stringify(value(key)) === JSON.stringify(global[key]);
+  // An empty scope is no scope, as pi reads it: `enabledModels: []` changes nothing over a missing key.
+  const shown = (setting: unknown) => JSON.stringify(Array.isArray(setting) && setting.length === 0 ? undefined : setting);
+  const same = (key: typeof CHOOSING[number]) => shown(value(key)) === shown(global[key]);
   if (CHOOSING.every(same) || (launch.scope !== null && same('defaultProvider') && same('defaultModel'))) return 'account';
   if (!catalog) return null;
   const provider = value('defaultProvider');

@@ -460,6 +460,15 @@ export const SCENARIOS: Record<string, Scenario> = {
     same(messages[0]!.parts.filter(part => part.type === 'file'), [{ type: 'file', mimeType: file.mimeType, data: file.data, name: file.name }], 'initial file');
     same(messages[1]!.parts.filter(part => part.type === 'image' || part.type === 'file'), [], 'uploads on the next iteration');
   },
+  'drafts.images answers from the draft provider and refuses a missing account or one of another provider': async env => {
+    const setup = await echo(env);
+    const params = { projectId: setup.projectId, providerId: setup.provider.id, accountId: setup.account.id, model: setup.model };
+    same(await env.call('drafts.images', params), { supported: setup.provider.capabilities.images }, 'the echo draft answer');
+    await refusedWith(env.call('drafts.images', { ...params, accountId: 'missing-draft-account' }), RpcErrorCode.NotFound, ['accountId']);
+    const { account } = await unavailable(env);
+    const data = await refusedWith(env.call('drafts.images', { ...params, accountId: account.id }), RpcErrorCode.InvalidParams, ['field', 'expected']);
+    same(data, { field: 'accountId', expected: setup.provider.id }, 'the refused account');
+  },
   'banked resets require confirmation and reject missing or unsupported accounts': async env => {
     const account = (await env.call('accounts.list', {})).find(account => account.providerId === 'echo')!;
     const invalid = await refusedWith(env.call('quotas.reset', { accountId: account.id, confirmed: false } as unknown as RpcParams<'quotas.reset'>), RpcErrorCode.InvalidParams, ['field', 'expected']);

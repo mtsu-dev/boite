@@ -12,8 +12,8 @@ export function capabilityMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.
       const provider = ctx.providers.find(item => item.id === providerId);
       if (!provider) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `unknown provider ${providerId}` });
       const account = ctx.accounts.find(item => item.id === accountId);
-      if (!account) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `unknown account ${accountId}` });
-      if (account.providerId !== providerId) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `drafts.images.accountId: ${accountId} is an account of ${account.providerId}, not ${providerId}` });
+      if (!account) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `unknown account ${accountId}`, data: { accountId } });
+      if (account.providerId !== providerId) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `drafts.images.accountId: ${accountId} is an account of ${account.providerId}, not ${providerId}`, data: { field: 'accountId', expected: providerId } });
       return { supported: provider.capabilities.images && threadModel(ctx, { providerId, accountId, model: model ?? (provider.protocol === 'pi' ? 'default' : null) })?.images !== false };
     },
     'threads.capabilities': async ({ threadId }) => {

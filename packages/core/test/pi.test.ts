@@ -97,6 +97,11 @@ test('pi default refuses images while pi itself runs a text-only model', async (
   expect(await images()).toBe(false);
   folder({ enabledModels: [], defaultProvider: 'fake-a', defaultModel: 'smart' });
   expect(await images()).toBe(true);
+  // An empty scope over none changes nothing: the account's own model answers.
+  rmSync(join(agentDir, 'settings.json'));
+  folder({ enabledModels: [] });
+  expect(await images()).toBe(false);
+  writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ enabledModels: ['fake-b/plain'] }));
   folder({ enabledModels: ['fake-b/plain:high'] });
   expect(await images()).toBe(false);
   // Within a scope, pi starts on the saved default when the scope holds it.
