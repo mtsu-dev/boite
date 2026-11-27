@@ -6,7 +6,7 @@ import type {
   SessionConfigOption,
   SessionNotification,
 } from '@agentclientprotocol/sdk/unstable';
-import type { Attachment, PermissionMode, ProviderId, ModelInfo } from '@boite/contracts';
+import type { Attachment, PermissionMode, ProviderId, ModelInfo, TurnId } from '@boite/contracts';
 import { nativeImage } from '../../attachments.ts';
 import { messageOf, refused } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
@@ -135,6 +135,8 @@ export class AcpSession {
   #holding: AcpTurn | null = null;
   /** Earlier prompts can leave native workers in this process. */
   #hasDetachedWork = false;
+  /** Prompts this process acknowledged cancelling for queued input. */
+  readonly #queuedInputReceipts = new Set<TurnId>();
   /** When this session last sent an update, to tell a reply that ended from one still streaming. */
   #lastUpdateAt = 0;
   /** Grok answered `_x.ai/interject` with an error once: this process has no mid-turn input. */
@@ -407,7 +409,11 @@ export class AcpSession {
       this.#endTurn(turn, true);
       return;
     }
-    const input = this.#replaces !== null && this.#replaces === turn.ctx.sessionId ? await this.#carryPrompt(turn) : turn.ctx;
+    const prepareSessionPrompt = turn.ctx.prepareSessionPrompt;
+    turn.ctx.prepareSessionPrompt = undefined;
+    const replaces = this.#replaces !== null && this.#replaces === turn.ctx.sessionId;
+    const receipts = turn.ctx.sessionId === sessionId ? this.#queuedInputReceipts : undefined;
+    const input = replaces ? await this.#carryPrompt(turn) : await prepareSessionPrompt?.(receipts) ?? turn.ctx;
     if (input === null || this.#stopBeforePrompt(turn)) return;
     const { prompt, attachments } = input;
 
@@ -482,7 +488,10 @@ export class AcpSession {
     this.#noteCompactionWindow(turn.ctx);
     turn.finish(response);
     // Keep this session for the queued follow-up even with zero warm time.
-    if (turn.stoppedForQueuedInput && response.stopReason === 'cancelled') this.#retention.prepare(true);
+    if (turn.stoppedForQueuedInput && response.stopReason === 'cancelled') {
+      this.#queuedInputReceipts.add(turn.ctx.turn.id);
+      this.#retention.prepare(true);
+    }
     // A resumed session whose first total came in below what the session
     // already cost: this agent counts each process from zero.
     const total = turn.costUsdEquivalent;

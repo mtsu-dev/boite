@@ -240,7 +240,7 @@ export class TurnAttempts {
       afterCapacity = false;
       const prepared = this.threads.contexts.makeContext(
         state.thread, provider, this.#core.accounts.require(accountId), state.running,
-        note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt, signal,
+        note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt, signal, !continuing && !resumed,
       );
       const context = prepared instanceof Promise ? await abortable(prepared, signal) : prepared;
       signal.throwIfAborted();

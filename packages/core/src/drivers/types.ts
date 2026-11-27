@@ -192,6 +192,11 @@ export interface TurnContext {
    * turns; a driver hands each one to its agent in that protocol's shape.
    */
   attachments: ImageAttachment[];
+  /**
+   * Prepares interrupted user input once ACP knows which process will receive it.
+   * A freshly loaded process cannot confirm receipt, even on the same session ID.
+   */
+  prepareSessionPrompt?(receivedTurns?: ReadonlySet<TurnId>): Promise<{ prompt: string; attachments: ImageAttachment[] }>;
   sessionId: string | null;
   /**
    * Resume `sessionId` only up to this entry of its transcript and fork the

@@ -211,8 +211,8 @@ export class RestartHandoff {
           this.#core.scheduler.enqueue(turn, turn.execution?.accountId ?? thread.accountId, { recovering: true });
           resumed += 1;
         } else if (admitted === null && entry.was === 'running' && turn.status === 'stopped') {
-          // The core may have stopped after committing a new turn, before observing its start.
-          if (this.#core.journal.lastTurn(thread.id, true)?.id !== turn.id) {
+          // The planned turn may have handed over to the composer, or a newer turn may already be committed.
+          if (turn.execution?.queuedInputSession !== undefined || this.#core.journal.lastTurn(thread.id, true)?.id !== turn.id) {
             this.#consume(entry);
             continue;
           }

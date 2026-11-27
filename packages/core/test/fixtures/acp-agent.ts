@@ -468,6 +468,9 @@ const app = agent({ name: 'acp-fake' })
           return { stopReason: 'end_turn' };
         }
         await stopped.promise;
+        if (instructions.includes('[confirm-on-gate]')) {
+          while (!existsSync(`${process.env['ACP_FAKE_LOG']}.end`)) await Bun.sleep(10);
+        }
         if (instructions.includes('[expire-on-cancel]')) {
           known.delete(sessionId);
           throw RequestError.resourceNotFound(sessionId);

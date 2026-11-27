@@ -8,7 +8,7 @@ type FilePart = Extract<MessagePart, { type: 'file' }>;
 /**
  * Stop can win before a provider saves the prompt, even when an older native
  * session exists. Carry interrupted user input until a later user turn succeeds
- * or its receipt confirms a queued cancellation on the same session.
+ * or the live process confirms it received the interrupted input.
  * Read the journal rather than consuming a queue, so another stop or restart
  * cannot lose it. Native commands and automatic turns do not consume it.
  * With `through`, the walk starts after `turnId` instead of before it: a
@@ -22,7 +22,7 @@ export function stoppedInput(
   input: HistoryInput,
   fileReference: (file: FilePart, place: PartPlace) => string,
   through = false,
-  sessionId: string | null = null,
+  receivedTurns?: ReadonlySet<TurnId>,
 ): HistoryInput {
   const opening = journal.db.query(through
     ? 'SELECT MAX(rowid) + 1 AS first FROM messages WHERE thread_id = ? AND turn_id = ?'
@@ -41,7 +41,7 @@ export function stoppedInput(
       if (turn.status === 'done') break;
       if (turn.status === 'stopped') {
         // The acknowledged prompt already carried the older stopped input.
-        if (turn.execution?.queuedInputSession === sessionId) break;
+        if (turn.execution?.queuedInputSession !== undefined && receivedTurns?.has(turn.id)) break;
         const message = journal.getMessage(row.id);
         if (message) messages.push(message);
       }

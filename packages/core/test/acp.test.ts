@@ -28,6 +28,7 @@ test.each([
   'hermes with split delegation output', 'antigravity with a paused queue', 'antigravity without image support', 'antigravity ignoring cancellation',
   'local ACP switching back to an account', 'local ACP reporting its first result', 'local ACP rejecting cancellation',
   'local ACP with an expired session', 'local ACP carrying a manually stopped prompt',
+  'local ACP reloading the same session after cancellation',
 ])('%s handles queued input when its parallel tools finish', async scenario => {
   const client = await startCore({ warmProcessMinutes: 0 });
   const core = harness!.core;
@@ -39,7 +40,8 @@ test.each([
   const spawned = scenario === 'local ACP reporting its first result';
   const rejectsCancel = scenario === 'local ACP rejecting cancellation';
   const expires = scenario === 'local ACP with an expired session';
-  const carriesStopped = scenario === 'local ACP carrying a manually stopped prompt';
+  const reloads = scenario === 'local ACP reloading the same session after cancellation';
+  const carriesStopped = reloads || scenario === 'local ACP carrying a manually stopped prompt';
   const holds = detached || paused || noImages || ignoresCancel || switchesBack || spawned;
   const provider = detached ? 'hermes' : scenario.startsWith('local ACP') ? 'local ACP' : holds ? 'antigravity' : scenario;
   if (noImages) process.env['ACP_FAKE_NO_IMAGES'] = '1';
@@ -80,7 +82,7 @@ test.each([
   const pause = scenario === 'local ACP' ? spyOn(core.coordination, 'pause') : null;
   const directives = [
     detached && '[detached-delegation]', holds && '[finish-on-gate]', ignoresCancel && '[ignore-cancel]',
-    rejectsCancel && '[error-on-cancel]', expires && '[expire-on-cancel]',
+    rejectsCancel && '[error-on-cancel]', expires && '[expire-on-cancel]', reloads && '[confirm-on-gate]',
   ].filter(Boolean);
   const prompt = ['[parallel-tools]', ...directives].join(' ');
   const starterId = spawned ? threadId : null;
@@ -112,6 +114,21 @@ test.each([
   const lastTool = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
   writeFileSync(`${logFile}.second`, 'ready');
   await lastTool;
+  if (reloads) {
+    await waitFor(() => fakeLog().includes('session/cancel'));
+    const setPaused = async (paused: boolean) => {
+      const record = core.composer.storage.get('inputs', threadId);
+      const result = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision,
+        value: { input: { text: '', attachments: [], paused, queued } } });
+      expect(result.accepted).toBe(true);
+    };
+    await setPaused(true);
+    writeFileSync(`${logFile}.end`, 'ready');
+    await waitFor(() => core.journal.getTurn(turnId)?.status === 'stopped');
+    getDriver('acp').releaseThread?.(threadId);
+    await waitFor(() => core.procs.liveCount(threadId) === 0);
+    await setPaused(false);
+  }
   if (paused) {
     const record = core.composer.storage.get('inputs', threadId);
     await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision,
@@ -148,16 +165,16 @@ test.each([
     const answer = current.messages.at(-1)?.parts[0];
     expect(answer).toMatchObject({ type: 'text', text: expect.stringContaining('[parallel-tools]') });
   } else expect(current.sessionId).toBe(originalSession);
-  if (!holds) expect(countLogLines(fakeLog(), `loaded:${originalSession}`)).toBe(priorLoads);
+  if (!holds) expect(countLogLines(fakeLog(), `loaded:${originalSession}`)).toBe(priorLoads + (reloads ? 1 : 0));
   if (switchesBack) expect(countLogLines(fakeLog(), 'account catch-up')).toBe(1);
-  if (carriesStopped) expect(countLogLines(fakeLog(), 'manual request catch-up')).toBe(1);
+  if (carriesStopped) expect(countLogLines(fakeLog(), 'manual request catch-up')).toBe(reloads ? 2 : 1);
   if (starterId) {
     await waitFor(() => core.coordination.get(starterId).messages.some(letter => letter.from.threadId === threadId));
     expect(core.coordination.get(starterId).messages.find(letter => letter.from.threadId === threadId)?.text).toContain(': done');
   }
   if (pause) expect(pause.mock.calls.some(([id, reason]) => id === threadId && (reason ?? 'stop') === 'stop')).toBe(false);
   expect(countLogLines(fakeLog(), 'session/cancel')).toBe(!holds || ignoresCancel ? 1 : 0);
-  expect(fakeLog()).not.toContain('replayed interrupted prompt');
+  expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(reloads ? 1 : 0);
   expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || noImages ? 0 : 1);
   expect(current.messages.filter(message => message.role === 'user')).toHaveLength(priorTurns + (noImages ? 1 : 2));
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(noImages ? ['parallel-tools-follow-up'] : []);
