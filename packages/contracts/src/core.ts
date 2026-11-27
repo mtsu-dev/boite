@@ -72,6 +72,8 @@ export interface CoreInfo {
     listChanges?: boolean;
     /** `threads.listChanges` can return the full list in byte-bounded pages. */
     threadListPages?: boolean;
+    /** `threads.search` searches the text of conversations on this machine. */
+    messageSearch?: boolean;
     /** `threads.subscribe` and an opening `threads.get` take `channels`: a client leaves live command output, or more, on the core. */
     streamChannels?: boolean;
     /** `browser.remoteStream`: a viewer's frames are pushed on a websocket of their own (`BROWSER_STREAM_ROUTE`). Without it a viewer asks for each frame with `browser.remoteFrame`, which every core answers. */

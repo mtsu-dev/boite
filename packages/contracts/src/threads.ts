@@ -6,6 +6,7 @@ import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, 
 import type { AgentShape } from './imports';
 import type { JournalInspection, JournalInspectionCursor } from './journal-inspection';
 import type { Attachment, Message, MoveNotice, PendingMove, PreviewReference } from './messages';
+import type { ThreadMessageMatch } from './message-search';
 import type { OwnerThreadRequest } from './owner-thread';
 import type { PermissionRequest } from './permissions';
 import type { PluginActor } from './plugins';
@@ -602,6 +603,11 @@ export interface ThreadStats {
 }
 
 export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
+  'threads.search': {
+    /** `replacePending` replaces an unfinished search that set this option on the same connection. */
+    params: { query: string; limit?: number; includeArchived?: boolean; replacePending?: boolean };
+    result: { query: string; matches: ThreadMessageMatch[] };
+  };
   /** Owner-only, private bounded diagnostic history, including earlier runs. */
   'journal.inspect': { params: { cursor?: JournalInspectionCursor | null; limit?: number }; result: JournalInspection };
   /**
@@ -700,10 +706,10 @@ export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
    * with more than a page's count or serialized byte budget behind it, is
    * answered with the full page, without `messagesFrom`.
    *
-   * `around` is the message a reader was last looking at. When more than
-   * `limit` messages were written after it, the answer is the page centred on
-   * it, with `messagesAfter` set; otherwise it is the last page, which holds
-   * it. An `around` the thread does not hold gets the last page; `after` wins
+   * `around` is the message a reader was last looking at. The page always
+   * includes it, even when the byte budget leaves out the newer messages.
+   * `messagesAfter` is set if more messages follow the page. An `around`
+   * the thread does not hold gets the last page; `after` wins
    * over it. `compactImages` defers large images as `compactFiles` defers
    * files. Both need `features.readingPages`. `compactToolParts` leaves long
    * tool inputs and heavy documents on the core as well, and caps each message

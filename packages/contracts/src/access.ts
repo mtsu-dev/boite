@@ -149,6 +149,7 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // Only this phone connection's bounded attachment bytes, with the same validation as Send.
   'attachments.upload', 'attachments.release',
   'threads.get',
+  'threads.search', // Read-only search of the owner's conversations for the desktop and phone palette.
   'threads.capabilities', // Read-only controls for the conversation already visible; never prepares or probes a runtime.
   'drafts.images', // Whether a phone draft's images can go, read from files of a project the phone already drafts in; starts nothing.
   'threads.previewAccountSwitch', // A phone confirms model picks for its conversations, including account switches.

@@ -58,6 +58,20 @@ test('adding a task at the core limit refuses it without changing the list', asy
   expect(await client.call('threads.tasks.get', { threadId })).toEqual(tasks);
 });
 
+test('conversation search returns the best message and follows archive visibility like the core', async () => {
+  const client = await fake();
+  const query = '"TRACE tab"';
+  const search = () => client.call('threads.search', { query, replacePending: true });
+  expect(await search()).toEqual({ query, matches: [{
+    threadId: 't-trace', messageId: 'm-1', role: 'user', score: 3,
+    messageCreatedAt: expect.any(Number), snippet: 'What does the trace tab need from the core?',
+  }] });
+  await client.call('threads.archive', { threadId: 't-trace', archived: true });
+  expect((await search()).matches).toHaveLength(1);
+  expect((await client.call('threads.search', { query, includeArchived: false })).matches).toEqual([]);
+  expect(await code(client.call('threads.search', { query, limit: 51 }))).toBe(RpcErrorCode.InvalidParams);
+});
+
 test('a first-turn title reaches the client while the answer is still running', async () => {
   const client = await fake({ delayMs: 100, chunkSize: 16 });
   const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });

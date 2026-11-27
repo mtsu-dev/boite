@@ -108,16 +108,17 @@ function forwardOf(messages: Message[], from: number, limit: number, project: Pr
 }
 
 /**
- * Half a page on either side of the anchor when more than a page follows it.
- * Both halves share the byte and count budgets, retaining a complete single
- * anchor when needed; cuts rewrite cursors to the retained edges.
+ * A page retaining the anchor even when the byte budget cuts a short thread.
  */
 function aroundOf(messages: Message[], around: string | undefined, limit: number, project: Projection, maxBytes: number): { messages: Message[]; before: string | null; after: string | null } | null {
   const at = around === undefined ? -1 : messages.findIndex(message => message.id === around);
-  if (at < 0 || messages.length - at <= limit) return null;
-  const half = Math.max(1, Math.floor(limit / 2));
-  const older = pageOf(messages, at, half, project, maxBytes);
-  const newer = forwardOf(messages, at, Math.max(1, limit - half), project, maxBytes);
+  if (at < 0) return null;
+  const following = messages.length - at;
+  const newerCount = following <= limit ? following : Math.ceil(limit / 2);
+  const olderCount = limit - newerCount;
+  const older = olderCount > 0 ? pageOf(messages, at, olderCount, project, maxBytes)
+    : { messages: [], before: at > 0 ? around! : null };
+  const newer = forwardOf(messages, at, newerCount, project, maxBytes);
   const candidates = [...older.messages, ...newer.messages];
   const { start, end } = boundedMessageWindow(candidates.map(project), older.messages.length, maxBytes, limit);
   return {

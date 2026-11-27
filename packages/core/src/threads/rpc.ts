@@ -18,6 +18,8 @@ import { checkTurnRequest } from './inputs.ts';
 import { archiveForPlugin } from './plugin-archive.ts';
 import { pluginActor, recordCreator } from '../plugins/actor.ts';
 import { trustLetters } from '../contacts/letter-scopes.ts';
+import { searchJournalMessages } from '../journal-reads.ts';
+import type { Connection } from '../router.ts';
 
 /**
  * A turn in a folder that is gone gets it back from its branch when it can
@@ -205,6 +207,20 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     } };
   });
   core.router.register('messages.list', params => core.threads.messages(params));
+  const replaceableSearches = new WeakMap<Connection, AbortController>();
+  core.router.register('threads.search', async (params, { connection, signal }) => {
+    const query = params.query;
+    if (!params.replacePending) return { query, matches: await searchJournalMessages(core.journal.db, params, signal) };
+    replaceableSearches.get(connection)?.abort();
+    const request = new AbortController();
+    replaceableSearches.set(connection, request);
+    const stop = signal ? AbortSignal.any([signal, request.signal]) : request.signal;
+    try {
+      return { query, matches: await searchJournalMessages(core.journal.db, params, stop) };
+    } finally {
+      if (replaceableSearches.get(connection) === request) replaceableSearches.delete(connection);
+    }
+  });
   core.router.register('messages.toolOutput', (params) => readToolOutput(core, params));
   core.router.register('messages.toolPart', (params) => readToolPart(core, params));
   core.router.register('messages.attachment', params => readMessageAttachment(core, params));

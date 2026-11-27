@@ -167,6 +167,10 @@ describe('journal', () => {
     journal.putMessage({ ...sampleMessage('kept-message'), threadId: 'old', state: 'complete' });
     if (version >= 4) journal.db.exec("INSERT INTO sessions VALUES ('paired', 'hash', 'phone', '1', 1, 2, 'owner')");
     // Restore the old NOT NULL ownership constraint without losing newer columns or indexes.
+    journal.db.exec(`
+      DROP TRIGGER message_search_insert; DROP TRIGGER message_search_update; DROP TRIGGER message_search_delete;
+      DROP TABLE IF EXISTS messages_fts_infix; DROP TABLE messages_fts; DROP TABLE message_search_keys;
+    `);
     const definition = journal.db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'threads'").get() as { sql: string };
     const indexes = journal.db.query("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'threads' AND sql IS NOT NULL").all() as { sql: string }[];
     journal.db.exec(definition.sql.replace(/CREATE TABLE (?:IF NOT EXISTS )?["`[]?threads["`\]]?/i, 'CREATE TABLE threads_legacy')
