@@ -409,12 +409,21 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   `model_change`, else the model of the newest answer, unless the change before
   that answer names a router pi still lists (`virtual: true`, from its
   `pi-virtual` api). A `--model` in the profile wins over the session. Without
-  a session to resume, a folder whose `.pi/settings.json` sets `defaultModel`,
-  `defaultProvider` or `enabledModels` may start pi on a model the account's
-  probe never saw, so Boite lets the image through and pi replaces it if that
-  model reads none. On an open thread the composer asks the core, again when
-  the session, the selection, the account's catalog, the turn or the connection
-  changes; a draft reads the account's catalog.
+  a session to resume, pi starts where the folder's own settings say, which the
+  account's probe, run in a temporary folder, never sees
+  (`drivers/pi/start-model.ts`). pi reads `<folder>/.pi/settings.json` over the
+  account's `settings.json` only for a trusted folder: a decision for it or a
+  parent in the account's `trust.json`, else `defaultProjectTrust: "always"`; in
+  RPC mode "ask" means no. Then the first available model `enabledModels` names
+  wins, else `defaultProvider` and `defaultModel` when available. Boite follows
+  that with the account's catalog, a leading BOM and an empty `enabledModels`
+  included. When the folder changes nothing, the probe's `default` answers; when
+  only pi can name the model (a glob or fuzzy pattern, a model missing from the
+  catalog), Boite lets the image through and pi replaces it if that model reads
+  none. A goal or loop sent on another account starts in the same folder. On an
+  open thread the composer asks the core (`threads.capabilities`), again when
+  the session, the folder, the selection, the account's catalog, the turn or the
+  connection changes; a draft asks `drafts.images` with its project's folder.
   Without the field, the model follows the agent's image capability.
   A native agent may declare an empty list and let the probe supply its catalog.
   The unnamed `default` alias remains accepted for existing descriptors. Echo

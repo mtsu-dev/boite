@@ -5,7 +5,8 @@ import { antigravityVariant } from '../drivers/acp/antigravity-catalog.ts';
 import { isAntigravity } from '../drivers/antigravity.ts';
 import { sessionDirOf } from '../drivers/pi/mapping.ts';
 import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
-import { projectPicksModel, sessionModelOf } from '../drivers/pi/session-model.ts';
+import { sessionModelOf } from '../drivers/pi/session-model.ts';
+import { folderStartModel, piAgentDir } from '../drivers/pi/start-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
 import { profileFor } from '../providers/resolve.ts';
@@ -47,8 +48,9 @@ export function selectionFor(provider: ProviderDescriptor, accountId: AccountId,
 
 /**
  * The model an image goes to. pi's own model (`default`, or none) is the one a
- * resumed session restores, which may not be the one pi starts a new session
- * on. Image admission also uses pi's saved list before the first probe after a restart.
+ * resumed session restores, else the one a new session starts on in `cwd`
+ * (`folderStartModel`), else the account's. Undefined when only pi can tell.
+ * Image admission also uses pi's saved list before the first probe after a restart.
  */
 export function imageInputModel(
   core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId, cwd }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId' | 'cwd'>>,
@@ -56,20 +58,24 @@ export function imageInputModel(
   const pi = provider.protocol === 'pi';
   const wanted = model ?? (pi ? AGENT_OWN_MODEL : null);
   if (!wanted || !provider.capabilities.images) return undefined;
-  const listed = (choice: string) => {
-    const saved = pi && probedModelsOf(provider.protocol, provider.id, accountId) === null ? readSavedCatalog(core, provider.id, accountId) : null;
-    return (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
-  };
+  const probed = pi ? probedModelsOf(provider.protocol, provider.id, accountId) : null;
+  const saved = pi && probed === null ? readSavedCatalog(core, provider.id, accountId) : null;
+  const listed = (choice: string) => (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
+  const args = pi ? profileFor(provider)?.launch?.args ?? [] : [];
   // A `--model` in the profile beats the session, as it does in pi.
-  if (pi && wanted === AGENT_OWN_MODEL && cwd && !profileFor(provider)?.launch?.args?.includes('--model')) {
-    const account = id && sessionId ? core.accounts.list().find(entry => entry.id === accountId) : undefined;
-    const resumed = account && sessionModelOf(sessionDirOf({ account, thread: { id: id! } }), sessionId!, cwd);
+  if (pi && wanted === AGENT_OWN_MODEL && cwd && !args.includes('--model')) {
+    const account = core.accounts.list().find(entry => entry.id === accountId);
+    const resumed = account && id && sessionId ? sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId, cwd) : null;
     // A registered virtual model holds over the physical models it answered through.
     const router = resumed?.router ? listed(resumed.router) : undefined;
     const found = router?.virtual ? router : resumed ? listed(resumed.model) : undefined;
     if (found) return found;
-    // A new session starts on what the folder's pi settings choose, which the probe cannot see: pi handles the images.
-    if (projectPicksModel(cwd)) return undefined;
+    // A new session starts where the folder's own pi settings say, which the account's probe, run elsewhere, cannot
+    // see. When only pi can name that model, it handles the images itself.
+    const scope = args.includes('--models') ? args[args.indexOf('--models') + 1]?.split(',').map(pattern => pattern.trim()).filter(Boolean) ?? null : null;
+    const start = account ? folderStartModel(piAgentDir(account.isolationDir), cwd, (probed ?? saved?.models ?? null)?.map(entry => entry.id) ?? null, scope) : 'account';
+    if (start === null) return undefined;
+    if (start !== 'account') return listed(start);
   }
   return listed(wanted);
 }

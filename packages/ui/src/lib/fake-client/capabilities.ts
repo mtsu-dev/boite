@@ -1,10 +1,18 @@
-import { deriveThreadCapabilities, providerSupportsSteering, providerEnabled, threadActive } from '@boite/contracts';
+import { RpcErrorCode, deriveThreadCapabilities, providerSupportsSteering, providerEnabled, threadActive } from '@boite/contracts';
 import type { FakeContext, FakeMethods } from './context';
+import { RpcFailure } from '../client';
 import { threadModel } from './provider-catalog';
 
 /** The fixture reports its implemented controls through the same pure mapping as the core. */
-export function capabilityMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.capabilities'> {
+export function capabilityMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.capabilities' | 'drafts.images'> {
   return {
+    // The fixture has no folders of pi settings: the account's catalog answers, as the core's does for a folder that changes nothing.
+    'drafts.images': async ({ projectId, providerId, accountId, model }) => {
+      if (!ctx.projects.some(project => project.id === projectId)) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `unknown project ${projectId}` });
+      const provider = ctx.providers.find(item => item.id === providerId);
+      if (!provider) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `unknown provider ${providerId}` });
+      return { supported: provider.capabilities.images && threadModel(ctx, { providerId, accountId, model: model ?? (provider.protocol === 'pi' ? 'default' : null) })?.images !== false };
+    },
     'threads.capabilities': async ({ threadId }) => {
       const thread = ctx.thread(threadId);
       const provider = ctx.providers.find(item => item.id === thread.providerId);

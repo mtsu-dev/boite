@@ -1,6 +1,6 @@
 import { createWithPreparation, mergeCreationSnapshot } from './thread-creation';
 import { messageCopies, RowIndex, threadCopies } from './thread-lookup';
-import type { Message, MessageId, PermissionMode, ProjectId, ProviderId, RpcParams, Thread, ThreadId, ThreadRewind, ThreadSummary } from '@boite/contracts';
+import type { Message, MessageId, PermissionMode, ProjectId, ProviderId, RpcParams, RpcResult, Thread, ThreadId, ThreadRewind, ThreadSummary } from '@boite/contracts';
 import { ReadingCache } from '../reading-cache';
 import { DeviceSnapshots, readingPage } from './device-snapshots';
 import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, mergeWorkingChildren, READING_PAGE_BYTES } from '@boite/contracts';
@@ -79,19 +79,24 @@ export class Threads {
   }
   get openTarget(): ThreadId | null { return this.#openTarget; }
 
-  async capabilities(threadId: ThreadId) {
+  /** One read for the client in hand: null once it changed meanwhile, or from an older core, which keeps its own checks. */
+  async #read<M extends 'threads.capabilities' | 'drafts.images'>(method: M, params: RpcParams<M>): Promise<RpcResult<M> | null> {
     const client = this.ctx.client;
     const generation = this.ctx.clientGeneration;
     if (!client) return null;
     try {
-      const capabilities = await client.call('threads.capabilities', { threadId });
-      return this.ctx.currentClient(client, generation) ? capabilities : null;
+      const value = await client.call(method, params);
+      return this.ctx.currentClient(client, generation) ? value : null;
     } catch (error) {
-      // Older cores keep their existing action checks until updated.
       if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) return null;
       throw error;
     }
   }
+
+  /** Whether a draft's first prompt may carry images on this choice. */
+  draftImages(params: RpcParams<'drafts.images'>) { return this.#read('drafts.images', params); }
+  capabilities(threadId: ThreadId) { return this.#read('threads.capabilities', { threadId }); }
+
 
   async previewAccountSwitch(threadId: ThreadId, accountId: string) {
     const client = this.ctx.client;

@@ -5,7 +5,7 @@ import { invalidParams, messageOf, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
 import { ensureThreadCwd } from './cwd.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
-import { defaultModel, needsModelDiscovery, selectionFor } from './selection.ts';
+import { defaultModel, imageInputModel, needsModelDiscovery, selectionFor } from './selection.ts';
 import { LinkedPullRequests } from '../linked-pull-requests.ts';
 import { threadCapabilities } from './capabilities.ts';
 import { agentShape } from './agent-shape.ts';
@@ -94,6 +94,12 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return { ok: true };
   });
   core.router.register('threads.capabilities', params => threadCapabilities(core, params.threadId));
+  core.router.register('drafts.images', params => {
+    const project = core.projects.require(params.projectId);
+    const provider = core.providers.require(params.providerId);
+    const model = imageInputModel(core, provider, { accountId: core.accounts.require(params.accountId).id, model: params.model, cwd: project.path });
+    return { supported: provider.capabilities.images && model?.images !== false };
+  });
   core.router.register('threads.previewAccountSwitch', params => {
     const thread = requireAgent(core.threads, params.threadId);
     const account = core.accounts.require(params.accountId);

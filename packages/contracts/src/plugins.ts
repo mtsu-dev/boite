@@ -73,7 +73,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
   // `projects.list` too: a row names its project, and plugins asking for threads.read before the domains used it.
   'threads.read': {
     methods: [
-      'projects.list', 'threads.list', 'threads.listChanges', 'threads.get', 'threads.capabilities', 'threads.stats', 'threads.subscribe', 'threads.unsubscribe',
+      'projects.list', 'threads.list', 'threads.listChanges', 'threads.get', 'threads.capabilities', 'drafts.images', 'threads.stats', 'threads.subscribe', 'threads.unsubscribe',
       'threads.pullRequest', 'threads.pullRequests', 'threads.pullRequestReview', 'threads.pullRequestFiles',
       'messages.list', 'messages.toolOutput', 'messages.toolPart', 'messages.attachment', 'artifacts.read', 'artifacts.viewBlock',
       'composer.list', 'composer.asset.get', 'permissions.list', 'questions.list',

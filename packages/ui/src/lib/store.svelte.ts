@@ -651,6 +651,7 @@ export class Store {
     try { await client.call('turns.cancelRetry', { threadId }); } catch (error) { this.#ctx.fail(error); }
   }
   threadCapabilities(...args: Parameters<Threads['capabilities']>) { return this.#ctx.threads.capabilities(...args); }
+  draftImages(...args: Parameters<Threads['draftImages']>) { return this.#ctx.threads.draftImages(...args); }
   async threadExportMessages(
     threadId: ThreadId,
     options: import('./thread-export').ExportOptions,

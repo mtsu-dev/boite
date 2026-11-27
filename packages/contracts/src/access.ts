@@ -150,6 +150,7 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'attachments.upload', 'attachments.release',
   'threads.get',
   'threads.capabilities', // Read-only controls for the conversation already visible; never prepares or probes a runtime.
+  'drafts.images', // Whether a phone draft's images can go, read from files of a project the phone already drafts in; starts nothing.
   'threads.previewAccountSwitch', // A phone confirms model picks for its conversations, including account switches.
   'threads.stats', // Two counts over the conversation the phone already reads in full through threads.get pages.
   // A phone can manage continued prompts in the same thread it can already send to.

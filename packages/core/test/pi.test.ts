@@ -77,10 +77,49 @@ test('pi default refuses images while pi itself runs a text-only model', async (
   const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
   expect((await rejection(client.call('turns.start', { threadId, prompt: 'Read this', attachments: [image] }))).reason)
     .toMatchObject({ rpc: { message: 'pi default takes no images: send the prompt without them' } });
-  // A folder whose pi settings choose the model starts elsewhere than the probe saw: pi handles the images.
-  mkdirSync(join(harness!.core.threads.require(threadId).cwd, '.pi'), { recursive: true });
-  writeFileSync(join(harness!.core.threads.require(threadId).cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-a', defaultModel: 'smart' }));
-  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
+  // pi reads the folder's own settings over the account's only once it trusts the folder, which RPC mode never asks.
+  const { cwd, projectId } = harness!.core.threads.require(threadId);
+  const agentDir = join(harness!.dataDir, 'pi-agent');
+  process.env['PI_CODING_AGENT_DIR'] = agentDir;
+  mkdirSync(join(cwd, '.pi'), { recursive: true });
+  mkdirSync(agentDir, { recursive: true });
+  const folder = (settings: object, bom = '') => writeFileSync(join(cwd, '.pi', 'settings.json'), bom + JSON.stringify(settings));
+  const images = async () => (await client.call('threads.capabilities', { threadId })).images.supported;
+  const draft = async () => (await client.call('drafts.images', { projectId: projectId!, providerId: 'pi-fake', accountId, model: null })).supported;
+  folder({ defaultProvider: 'fake-a', defaultModel: 'smart' });
+  expect(await images()).toBe(false);
+  writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(join(cwd, '..'))]: true }));
+  expect([await images(), await draft()]).toEqual([true, true]);
+  // As pi does, a BOM and a scope of the folder's own count, and a pattern only pi resolves leaves the images to it.
+  folder({ defaultProvider: 'fake-a', defaultModel: 'smart' }, '\uFEFF');
+  expect(await images()).toBe(true);
+  writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ enabledModels: ['fake-b/plain'] }));
+  expect(await images()).toBe(false);
+  folder({ enabledModels: [], defaultProvider: 'fake-a', defaultModel: 'smart' });
+  expect(await images()).toBe(true);
+  folder({ enabledModels: ['fake-b/plain:high'] });
+  expect(await images()).toBe(false);
+  // Within a scope, pi starts on the saved default when the scope holds it.
+  folder({ enabledModels: ['fake-b/plain', 'fake-a/smart'], defaultProvider: 'fake-a', defaultModel: 'smart' });
+  expect(await images()).toBe(true);
+  folder({ enabledModels: ['fake-*'] });
+  expect(await images()).toBe(true);
+  // A folder that picks a text-only model refuses what the account's model would read.
+  rmSync(join(agentDir, 'settings.json'));
+  delete process.env['PI_FAKE_CURRENT'];
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true });
+  folder({ defaultProvider: 'fake-b', defaultModel: 'plain' });
+  expect((await rejection(client.call('turns.start', { threadId, prompt: 'Read this', attachments: [image] }))).reason)
+    .toMatchObject({ rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } });
+  expect(await draft()).toBe(false);
+  // A goal sent on another account of the same pi starts in the same folder.
+  const other = await client.call('accounts.add', { providerId: 'pi-fake', label: 'Other', useDefaultLocation: true });
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId: other.id });
+  expect(() => harness!.core.activity.set({ threadId, goal: { objective: 'Read this' }, attachments: [image] }, undefined,
+    { providerId: 'pi-fake', accountId: other.id, permissionMode: 'default', model: 'default', effort: null })).toThrow('Fake-b / Fake Plain takes no images');
+  // The account's trust stays its own.
+  rmSync(join(agentDir, 'trust.json'));
+  expect(await images()).toBe(true);
 });
 
 test('pi default follows the model a resumed session restores, not the one pi starts on', async () => {
@@ -206,6 +245,7 @@ afterEach(async () => {
   harness = null;
   delete process.env['PI_FAKE_LOG'];
   delete process.env['PI_FAKE_CURRENT'];
+  delete process.env['PI_CODING_AGENT_DIR'];
   delete process.env['PI_FAKE_VIRTUAL'];
   if (open !== null) await open.stop();
 });

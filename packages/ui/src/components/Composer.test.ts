@@ -2139,6 +2139,10 @@ test('pi default on an open thread follows the model its session resumes on', as
   expect(await store.update('t-trace', { model: 'default' })).toBe(true);
   await waitFor(() => store.openThread?.model === 'default' && !!store.openThread.sessionId);
   expect(chipText('composer-picker')).toBe('pi demo model');
+  // Until the core answers for this session, the composer reads the account's catalog.
+  await waitFor(() => asked.mock.calls.length > 0);
+  await asked.mock.results.at(-1)!.value;
+  flushSync();
   paste(pngFile());
   await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
   expect(store.error).toBeNull();
@@ -2184,6 +2188,28 @@ test('pi default on an open thread before its first turn asks the core, which re
   expect(await store.update('t-trace', { accountId: account.id, model: 'default' })).toBe(true);
   await waitFor(() => store.openThread?.providerId === 'pi' && store.openThread.model === 'default');
   await waitFor(() => asked.mock.calls.length > 0);
+  await asked.mock.results.at(-1)!.value;
+  flushSync();
+  paste(pngFile());
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
+  expect(store.error).toBeNull();
+  // Moved to another folder before its first turn, the thread keeps its id and session: the core reads the new folder.
+  const before = asked.mock.calls.length;
+  store.openThread = { ...store.openThread!, cwd: `${store.openThread!.cwd}-moved` };
+  await waitFor(() => asked.mock.calls.length > before);
+});
+
+test('a pi draft on its own model asks the core, which reads the project folder', async ({ app: _app }) => {
+  await openDraft();
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  // The account's probe saw pi start on a text-only model; the project's pi settings choose another one.
+  const key = `pi::${account.id}`;
+  store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'default' ? { ...model, images: false as const } : model) };
+  const asked = vi.spyOn(store, 'draftImages').mockResolvedValue({ supported: true });
+  store.draftChoice = { ...store.defaultChoice()!, providerId: 'pi', accountId: account.id, model: 'default', effort: null };
+  await waitFor(() => asked.mock.calls.length > 0);
+  expect(asked.mock.calls.at(-1)![0]).toEqual({ projectId: store.draft!.projectId, providerId: 'pi', accountId: account.id, model: 'default' });
   await asked.mock.results.at(-1)!.value;
   flushSync();
   paste(pngFile());
