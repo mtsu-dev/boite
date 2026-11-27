@@ -448,7 +448,11 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   only pi can name the model (a glob or fuzzy pattern, a model missing from the
   catalog, a trusted folder with extensions in `.pi/extensions/` or listed by its
   `extensions` or `packages`, which load only there and may register the model
-  the settings name), Boite lets the image through and pi replaces it if that model reads
+  the settings name or a resumed session's pair over the catalog's), Boite lets
+  the image through, for a resumed session as for a new one. So it does for a
+  folder with settings or extensions of its own while the account or the profile
+  loads extensions and no `--approve` or `--no-approve` decides: pi asks those
+  extensions' `project_trust` hook before `trust.json`. Boite lets the image through and pi replaces it if that model reads
   none. A goal or loop sent on another account starts in the same folder. On an
   open thread the composer asks the core (`threads.capabilities`), again when
   the session, the folder, the selection, the account's catalog, the turn or the
@@ -1839,8 +1843,9 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   process, whatever closed the last one, a session closed before it launched
   pi included, starts only once every earlier process has exited; one still
   running at the stop deadline fails the turn that would open it, and a stop
-  ends that wait at once. Input steered while that switch may happen waits for the
-  next turn. Images steered into a running turn are checked
+  ends that wait at once. Input steered before pi accepted the turn's prompt
+  waits for the next turn: the process may still be replaced or fail its switch,
+  and pi would open a run of its own for it. Images steered into a running turn are checked
   against the list that turn was given, the one its process runs, not a list
   refreshed since.
 - Before a prompt with images of its own, the driver asks pi (`get_state`)
@@ -1850,8 +1855,7 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   reads `models.json` once), a new process opens, whatever model the thread
   names, `default` included; any other text-only model fails the turn with
   admission's sentence. Earlier images a continuation carries (a new session,
-  a resume) are pi's to replace, as for any model that reads none. Input
-  steered during that check waits for the next turn. Images steered into a run
+  a resume) are pi's to replace, as for any model that reads none. Images steered into a run
   on a text-only model wait for the next turn too, and so do they when pi does
   not give its state within the read deadline or the turn ends meanwhile, in
   Boite or in pi, so
@@ -1872,7 +1876,10 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   The profile's own tool and session flags, short aliases included, are
   dropped from these launches. Its `--model` and `--provider` are dropped when
   Boite names a model and kept when the thread leaves the model to pi, so a
-  profile `--api-key` still has the model it binds to.
+  profile `--api-key` still has the model it binds to. A model an extension
+  registers is unknown without extensions: when pi refuses it at startup
+  (`Unknown provider`, `Model ... not found`), the same request goes to pi's own
+  model, with the same restrictions.
 - `/btw` reuses that isolated launch, with a session and tools as below. At a
   settled checkpoint, it opens a temporary copy of the session cut at that
   checkpoint and keeps pi's read-only tools

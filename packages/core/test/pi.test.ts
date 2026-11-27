@@ -9,7 +9,7 @@ import type { CoreClient } from '../src/client.ts';
 import type { SharedAccess } from '../src/contacts/access-policy.ts';
 import { forgetProbes, getDriver, probedModelsOf } from '../src/drivers/index.ts';
 import { setPiReadDeadlineForTests, setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
-import { folderStartModel } from '../src/drivers/pi/start-model.ts';
+import { folderStartModel, piLaunchChoices } from '../src/drivers/pi/start-model.ts';
 import { forgetSavedCatalog, readSavedCatalog } from '../src/providers/saved-catalogs.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
 import * as selection from '../src/threads/selection.ts';
@@ -132,13 +132,13 @@ test('pi default refuses images while pi itself runs a text-only model', async (
   expect(await images()).toBe(true);
 });
 
-test('pi default leaves the start model to pi in a trusted folder whose own extensions may register it', () => {
+test('pi default leaves the start model to pi where the folder\'s extensions or an extension\'s trust decide it', () => {
   const root = join(tmpdir(), `pi-folder-extensions-${process.pid}-${Date.now()}`);
   const agentDir = join(root, 'agent'), cwd = join(root, 'project');
   mkdirSync(agentDir, { recursive: true });
   mkdirSync(join(cwd, '.pi', 'extensions'), { recursive: true });
   try {
-    const catalog = [{ id: 'fake-b/plain', name: 'Fake B / Plain' }];
+    const catalog = [{ id: 'fake-b/plain', name: 'Fake-b / Plain' }];
     // No settings of its own and an empty extensions folder: the account's probe saw the same start.
     expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: true })).toBe('account');
     // A local extension may register the model the account's settings name, which the probe, run elsewhere, lacked.
@@ -152,6 +152,16 @@ test('pi default leaves the start model to pi in a trusted folder whose own exte
     expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: true })).toBeNull();
     writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ packages: [] }));
     expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: true })).toBe('account');
+    // An extension the account or the profile loads may trust a folder with settings of its own, whatever
+    // `trust.json` says, unless the launch decides.
+    writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
+    expect(folderStartModel(agentDir, cwd, catalog)).toBe('account');
+    expect(folderStartModel(agentDir, cwd, catalog, piLaunchChoices(['-e', './trust.ts']))).toBeNull();
+    mkdirSync(join(agentDir, 'extensions'));
+    writeFileSync(join(agentDir, 'extensions', 'trust.ts'), 'export default () => {};');
+    expect(folderStartModel(agentDir, cwd, catalog)).toBeNull();
+    expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: false })).toBe('account');
+    expect(folderStartModel(agentDir, cwd, catalog, { scope: null, trust: true })).toBe('fake-b/plain');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -262,6 +272,26 @@ test('pi default follows the model a resumed session restores, not the one pi st
   const bound = spyOn(harness!.core.sharedAccess, 'bound').mockImplementation(id => id === threadId ? {} as ReturnType<SharedAccess['bound']> : null);
   expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
   bound.mockRestore();
+  // A trusted folder's own extension may register Fake Plain again with images: only pi knows the pair it resumes.
+  const { cwd } = harness!.core.threads.require(threadId);
+  const agentDir = join(harness!.dataDir, 'pi-agent');
+  process.env['PI_CODING_AGENT_DIR'] = agentDir;
+  mkdirSync(join(cwd, '.pi', 'extensions'), { recursive: true });
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(cwd, '.pi', 'extensions', 'vision.ts'), 'export default () => {};');
+  const resumes = async () => (await client.call('threads.capabilities', { threadId })).images.supported;
+  expect(await resumes()).toBe(false);
+  writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(cwd)]: true }));
+  expect(await resumes()).toBe(true);
+  // An extension of the account's own may trust the folder before pi reads `trust.json`.
+  writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(cwd)]: false }));
+  expect(await resumes()).toBe(false);
+  mkdirSync(join(agentDir, 'extensions'));
+  writeFileSync(join(agentDir, 'extensions', 'trust.ts'), 'export default () => {};');
+  expect(await resumes()).toBe(true);
+  rmSync(join(cwd, '.pi'), { recursive: true });
+  rmSync(agentDir, { recursive: true });
+  delete process.env['PI_CODING_AGENT_DIR'];
   // A relative configuration folder: the catalog the probe read elsewhere says nothing of the model this folder resumes.
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
   const descriptor = readFileSync(descriptorFile, 'utf8');
@@ -646,6 +676,26 @@ test('pi titles a new thread with a tool-free request on its chosen model', asyn
   const args = JSON.parse(invocation.slice('one-shot '.length)) as string[];
   expect(args).toEqual(expect.arrayContaining(['--no-session', '--no-tools', '--no-extensions', '--no-mcp', '--no-context-files', '--no-skills', '--no-prompt-templates']));
   expect(args[args.indexOf('--model') + 1]).toBe('anthropic/claude-sonnet-5');
+});
+
+test('a pi one-shot on a model an extension registers falls back to pi\'s own model', async () => {
+  process.env['PI_FAKE_EXTENSION_PROVIDER'] = 'fake-a';
+  try {
+    const client = await startCore();
+    const { projectId, accountId } = await piAccount(client);
+    await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+    const { id: threadId } = await client.call('threads.create', { projectId, providerId: 'pi-fake', accountId, model: 'fake-a/smart' });
+    expect((await (await startTurn(client, threadId, 'Add a feature')).finished).status).toBe('done');
+    await settle(() => harness!.core.threads.require(threadId).titleSource === 'agent');
+    const shots = fakeLog().split('\n').filter(line => line.startsWith('one-shot [') && line.includes('--no-tools')).map(line => JSON.parse(line.slice('one-shot '.length)) as string[]);
+    expect(shots).toHaveLength(2);
+    expect(shots[0]![shots[0]!.indexOf('--model') + 1]).toBe('fake-a/smart');
+    // The same request without the model, and still without extensions or tools.
+    expect(shots[1]).not.toContain('--model');
+    expect(shots[1]).toEqual(expect.arrayContaining(['--no-tools', '--no-extensions', '--no-mcp']));
+  } finally {
+    delete process.env['PI_FAKE_EXTENSION_PROVIDER'];
+  }
 });
 
 test('pi one-shots on its own model keep the profile model its --api-key needs', async () => {
@@ -1735,12 +1785,12 @@ describe('pi driver', () => {
     ['get_available_models', 'fake-a/quick'],
     // pi answers `set_model` once its `model_select` hooks ran.
     ['set_model', 'fake-a/quick'],
-  ])('a warm switch whose %s pi never answers fails the turn and drops the process', async (command, model) => {
+  ])('a warm switch whose %s pi never answers takes no steer, fails the turn and drops the process', async (command, model) => {
     process.env['PI_FAKE_LITERAL'] = '1';
     const silent = join(tmpdir(), `pi-silent-${process.pid}-${Date.now()}`);
     process.env['PI_FAKE_SILENT'] = silent;
-    setPiReadDeadlineForTests(300);
-    setPiStopDeadlineForTests(300);
+    setPiReadDeadlineForTests(1_000);
+    setPiStopDeadlineForTests(1_000);
     try {
       const client = await startCore({ warmProcessMinutes: 5 });
       const { projectId, accountId } = await piAccount(client);
@@ -1750,9 +1800,14 @@ describe('pi driver', () => {
       await runTurn(client, threadId, 'first');
       writeFileSync(silent, command);
       await client.call('threads.update', { threadId, model });
-      const { finished } = await startTurn(client, threadId, 'second', 20_000);
+      const finished = client.next('turn.finished', done => done.threadId === threadId, 20_000);
+      const started = await client.call('turns.start', { threadId, prompt: 'second' });
+      // pi has no run yet: a steer now would open one of its own beside the prompt.
+      await waitFor(() => fakeLog().includes(`${command} unanswered`));
+      expect(await client.call('turns.steer', { threadId, turnId: started.id, prompt: 'Also this', clientRequestId: `pi_switch_${command}` })).toEqual({ accepted: false });
+      expect(harness!.core.journal.db.query('SELECT 1 FROM turn_requests WHERE request_id = ?').all(`pi_switch_${command}`)).toEqual([]);
       expect(await finished).toMatchObject({ status: 'error', error: expect.stringContaining('timed out') });
-      expect(fakeLog()).toContain(`${command} unanswered`);
+      expect(fakeLog()).not.toContain('steer without a run');
       // The process went with the turn: the next one starts a new pi.
       rmSync(silent, { force: true });
       const launched = argvLines().filter(line => !line.includes('sessionId= ')).length;

@@ -8,7 +8,7 @@ import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
 import { piModelOf } from '../drivers/pi/models.ts';
 import { sessionModelOf } from '../drivers/pi/session-model.ts';
 import type { PiPair } from '../drivers/pi/session-model.ts';
-import { folderStartModel, piLaunchChoices } from '../drivers/pi/start-model.ts';
+import { folderExtends, folderStartModel, piLaunchChoices } from '../drivers/pi/start-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
 import { profileFor } from '../providers/resolve.ts';
@@ -94,6 +94,8 @@ export function imageInputModel(
   if (pi && wanted === AGENT_OWN_MODEL && cwd && !launch.model) {
     // A protected run starts a new pi session with `--no-approve` and settings of its own: pi alone knows that model.
     if (runsIn && core.sharedAccess.bound(runsIn) !== null) return undefined;
+    // The folder's own extensions may register the pair over the catalog's, for a resumed session as for a new one.
+    if (env && folderExtends(piAgentDir(env, cwd), cwd, launch)) return undefined;
     const resumed = account && id && sessionId ? sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId, cwd) : null;
     if (resumed) {
       // pi restores the session's own pair; a catalog entry spelled the same for another pair says nothing of it.

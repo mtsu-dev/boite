@@ -96,8 +96,11 @@ export class PiSession {
   #current: PiTurn | null = null;
   #opening: PiTurn | null = null;
   #steered = false;
-  /** While `#align` may replace the process: input steered then would be lost with it. */
-  #switching = false;
+  /**
+   * The turn whose prompt pi accepted. Before that, its process may still be replaced or fail a switch, and pi
+   * would open a run of its own for a steer: input then waits for the next turn.
+   */
+  #prompted: PiTurn | null = null;
   readonly #turns = new SessionTurns<PiTurn>(turn => this.#runTurn(turn), (turn, error) => {
     turn.fail(messageOf(error));
     this.#endTurn(turn, true);
@@ -250,14 +253,14 @@ export class PiSession {
 
   /** Submit input at pi's next tool boundary. */
   async steer(turn: PiTurn, message: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
-    if (this.#current !== turn || turn.decided || turn.isStopped || !this.#peer || this.#switching) return false;
+    if (this.#current !== turn || this.#prompted !== turn || turn.decided || turn.isStopped || !this.#peer) return false;
     // A run cannot change its process: images a text-only model would drop wait for the next turn, which reopens it.
     // Nothing is written yet, so a state pi does not give refuses the steer rather than leave its delivery unconfirmed.
     const peer = this.#peer;
     if (imagesOf(attachments).length > 0 && await peer.command('get_state', {}, { signal, timeoutMs: readDeadlineMs })
       .then(state => piReadsImages(dataOf(state)['model'] as PiModel | null) === false, () => true)) return false;
     // A run that pi ended meanwhile takes no more input: a steer now would open a run of its own.
-    if (this.#current !== turn || turn.decided || turn.isStopped || this.#peer !== peer || this.#switching) return false;
+    if (this.#current !== turn || this.#prompted !== turn || turn.decided || turn.isStopped || this.#peer !== peer) return false;
     this.#steered = true;
     await peer.command('steer', { message, ...(attachments.length ? { images: imagesOf(attachments) } : {}) }, { onAccepted, signal, writeKind: 'steer' });
     return true;
@@ -364,6 +367,7 @@ export class PiSession {
             message: prompt,
             ...(attachments.length === 0 ? {} : { images: imagesOf(attachments) }),
           });
+          this.#prompted = turn;
           turn.ctx.inputReady?.();
           if (turn.isStopped) this.#abort(turn, peer);
           else await this.#settleIfIdle(turn, peer);
@@ -405,15 +409,8 @@ export class PiSession {
     // the process follows it even when the id did not change.
     const named = piCatalogPair(model, this.catalog(ctx));
     if (model !== this.#model || (named !== undefined && JSON.stringify(named) !== this.#pair)) {
-      // Input steered meanwhile would reach a process that may be replaced: it waits for the next turn instead.
-      this.#switching = true;
-      let listed: unknown;
-      try {
-        listed = dataOf(await peer.command('get_available_models', {}, { timeoutMs: readDeadlineMs }))['models'];
-        if (named !== undefined && !piListsPair(listed, named)) return turn.isStopped ? peer : await this.#reopen(turn);
-      } finally {
-        this.#switching = false;
-      }
+      const listed: unknown = dataOf(await peer.command('get_available_models', {}, { timeoutMs: readDeadlineMs }))['models'];
+      if (named !== undefined && !piListsPair(listed, named)) return turn.isStopped ? peer : await this.#reopen(turn);
       // Else pi's own listing names the pair: a provider id may hold a `/`, so the first one is not the split.
       const pair = named ?? piPairOf(listed, model);
       if (pair === undefined) throw new Error(`pi cannot switch to the model ${model}: its id is not <provider>/<id>`);
@@ -478,26 +475,21 @@ export class PiSession {
    * the turn was queued under, and pi reads `models.json` once: when the pair pi
    * runs (whatever the thread names) gained images after the launch, a new
    * process opens; any other text-only model fails the turn with admission's
-   * sentence. A model without its inputs is pi's. Steered input waits meanwhile.
+   * sentence. A model without its inputs is pi's.
    */
   async #imagesReach(turn: PiTurn, peer: PiPeer): Promise<PiPeer> {
     const running = async (to: PiPeer) => dataOf(await to.command('get_state', {}, { timeoutMs: readDeadlineMs }))['model'] as PiModel | null | undefined;
-    this.#switching = true;
-    try {
-      let model = await running(peer);
+    let model = await running(peer);
+    if (piReadsImages(model) !== false) return peer;
+    const ran = model;
+    const listed = this.catalog(turn.ctx)?.find(entry => { const pair = piModelOf(entry); return pair !== undefined && pair.provider === ran?.provider && pair.id === ran?.id; });
+    if (listed !== undefined && listed.images !== false && !turn.isStopped) {
+      peer = await this.#reopen(turn);
+      model = await running(peer);
       if (piReadsImages(model) !== false) return peer;
-      const ran = model;
-      const listed = this.catalog(turn.ctx)?.find(entry => { const pair = piModelOf(entry); return pair !== undefined && pair.provider === ran?.provider && pair.id === ran?.id; });
-      if (listed !== undefined && listed.images !== false && !turn.isStopped) {
-        peer = await this.#reopen(turn);
-        model = await running(peer);
-        if (piReadsImages(model) !== false) return peer;
-      }
-      // The model that refused, the new process's after a reopen.
-      throw new Error(`${model?.name || listed?.name || turn.ctx.thread.model || 'pi\'s model'} takes no images: send the prompt without them`);
-    } finally {
-      this.#switching = false;
     }
+    // The model that refused, the new process's after a reopen.
+    throw new Error(`${model?.name || listed?.name || turn.ctx.thread.model || 'pi\'s model'} takes no images: send the prompt without them`);
   }
 
   /**

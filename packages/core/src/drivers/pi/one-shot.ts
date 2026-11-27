@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { TOOL_FREE_CONTEXT } from '@boite/contracts';
 import type { ModelInfo } from '@boite/contracts';
 import { abortable } from '../../abortable.ts';
-import { unavailable } from '../../errors.ts';
+import { messageOf, unavailable } from '../../errors.ts';
 import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import { titleRequest } from '../../titles.ts';
 import { NativeForkUnsupported } from '../native-fork.ts';
@@ -56,6 +56,7 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
 
   const child = ctx.spawnChild(launch.executable, args, { cwd: ctx.thread.cwd, env: agentEnv(ctx.accountEnv) });
   let stderr = '', text = '', error = '';
+  const closed = new Promise<void>(resolve => child.once('close', () => resolve()));
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-STDERR_MAX); });
   const done = Promise.withResolvers<string | null>();
@@ -79,7 +80,14 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   });
   try {
     const images = 'attachments' in ctx ? imagesOf(ctx.attachments ?? []) : [];
-    await peer.command('prompt', { message: prompt, ...(images.length ? { images } : {}) }, { signal });
+    try {
+      await peer.command('prompt', { message: prompt, ...(images.length ? { images } : {}) }, { signal });
+    } catch (failure) {
+      // pi refuses a model it does not hold on stderr and exits before it reads a request: say why, once it has.
+      if (signal.aborted) throw failure;
+      await Promise.race([closed, new Promise(resolve => setTimeout(resolve, 1_000))]);
+      throw stderr.trim() ? new Error(stderr.trim()) : failure;
+    }
     const failure = await abortable(done.promise, signal);
     if (failure) throw new Error(failure);
     return text.trim();
@@ -89,9 +97,26 @@ async function ask(ctx: TitleContext | SideQuestionContext, prompt: string, mode
   }
 }
 
+/** pi 1.6.1's words for a model it does not hold (`model-resolver.js`). */
+const UNKNOWN_MODEL = /Unknown provider "|Model "[^"]*" not found/;
+
+/**
+ * A one-shot runs without extensions, so a provider one of them registers is unknown there: the request goes to pi's
+ * own model instead, with the same restrictions.
+ */
+async function askOn(ctx: TitleContext | SideQuestionContext, prompt: string, model: string | null, catalog: readonly ModelInfo[] | null, signal: AbortSignal, sessionFile?: string): Promise<string> {
+  try {
+    return await ask(ctx, prompt, model, catalog, signal, sessionFile);
+  } catch (error) {
+    if (model === null || model === AGENT_OWN_MODEL || signal.aborted || !UNKNOWN_MODEL.test(messageOf(error))) throw error;
+    ctx.log('info', `pi one-shot: ${model} is not known without extensions, pi's own model answers`);
+    return await ask(ctx, prompt, null, catalog, signal, sessionFile);
+  }
+}
+
 export async function title(ctx: TitleContext, catalog: readonly ModelInfo[] | null = null): Promise<string | null> {
   const model = ctx.model ?? ctx.thread.model;
-  return await ask(ctx, titleRequest(ctx.prompt, ctx.answer, ctx.initial, ctx.nameBranch), model, catalog, AbortSignal.timeout(30_000)) || null;
+  return await askOn(ctx, titleRequest(ctx.prompt, ctx.answer, ctx.initial, ctx.nameBranch), model, catalog, AbortSignal.timeout(30_000)) || null;
 }
 
 export async function sideQuestion(ctx: SideQuestionContext, catalog: readonly ModelInfo[] | null = null): Promise<string> {
@@ -111,7 +136,7 @@ export async function sideQuestion(ctx: SideQuestionContext, catalog: readonly M
       'Do not change anything, resume the main task or ask follow-up questions. Say when the context does not contain the answer.',
       '<side-question>', ctx.question, '</side-question>',
     ].join('\n');
-    const answer = await ask(ctx, prompt, ctx.thread.model, catalog, ctx.signal, sessionFile);
+    const answer = await askOn(ctx, prompt, ctx.thread.model, catalog, ctx.signal, sessionFile);
     if (!answer) throw new Error('pi wrote no side answer');
     return answer;
   } finally {

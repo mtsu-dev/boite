@@ -126,6 +126,12 @@ let leaf: string | null = saved.at(-1)?.id ?? null;
 let activePrompt = '';
 log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model} provider=${flag('--provider')} thinking=${flag('--thinking')}`);
 if (oneShot) log(`one-shot ${JSON.stringify(process.argv.slice(2))}`);
+// `PI_FAKE_EXTENSION_PROVIDER` is a provider an extension registers: pi launched without extensions does not know it.
+const extensionProvider = process.env['PI_FAKE_EXTENSION_PROVIDER'];
+if (extensionProvider && process.argv.includes('--no-extensions') && (flag('--provider') === extensionProvider || model.startsWith(`${extensionProvider}/`))) {
+  process.stderr.write(`Error: Unknown provider "${extensionProvider}". Use --list-models to see available providers/models.\n`);
+  process.exit(1);
+}
 for (const [index, arg] of process.argv.entries()) {
   if (arg === '--extension') log(`extension ${process.argv[index + 1] ?? ''}`);
 }
