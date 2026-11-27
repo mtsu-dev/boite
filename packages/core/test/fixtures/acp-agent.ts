@@ -417,6 +417,7 @@ const app = agent({ name: 'acp-fake' })
     const sessionId = params.sessionId;
     const text = promptText(params.prompt);
     if (text.includes('<interrupted-user-messages>') && text.includes('[parallel-tools]')) log('replayed interrupted prompt');
+    if (text.includes('It then went on with another agent')) log('account catch-up');
     // Historical test directives are context, never another request to execute.
     const instructions = instructionsOf(text);
     for (const block of params.prompt) {
@@ -447,7 +448,9 @@ const app = agent({ name: 'acp-fake' })
           while (!existsSync(gate)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
           }
-          await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed' });
+          await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed',
+            ...(detached && id === 'second' ? { title: 'Parser review' } : {}),
+          });
         }
         if (detached || instructions.includes('[finish-on-gate]')) {
           while (!existsSync(`${process.env['ACP_FAKE_LOG']}.end`)) {
@@ -459,6 +462,7 @@ const app = agent({ name: 'acp-fake' })
           return { stopReason: 'end_turn' };
         }
         await stopped.promise;
+        if (instructions.includes('[error-on-cancel]')) throw RequestError.internalError({ details: 'Prompt aborted' });
         return { stopReason: 'cancelled' };
       } finally { cancels.delete(sessionId); }
     }

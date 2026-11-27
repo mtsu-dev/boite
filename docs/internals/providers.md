@@ -788,7 +788,10 @@ an acknowledged cancellation, it reuses the running session without replaying
 the original input. If the agent ignores cancellation, the message waits for
 the prompt to end. Boite validates the queued images against the negotiated
 ACP capabilities before sending cancellation. Pending cards, selection
-changes and active goals leave the message queued. A Hermes delegation or an
+changes and active goals leave the message queued, as do prompts carrying
+history from an account switch or compaction and the first result owed to
+a thread's starter. A permission request arriving during cancellation can
+still open a card while the agent runs. A Hermes delegation or an
 Antigravity child launch can prevent automatic cancellation on later prompts
 in the same process, where children can still be active. Explicit Send now
 can still interrupt.

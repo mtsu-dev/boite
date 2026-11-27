@@ -235,10 +235,10 @@ export class TurnRunner {
     this.threads.agentDone.applyWaiting(threadId);
     // A thread an agent started answers it before a failure pauses its coordination.
     await this.threads.spawns.sendResult(threadId);
-    // A stopped turn pauses coordination until the user's next message. A failed one pauses nothing: another agent
-    // can wake the crashed thread, and a letter that arrived during the turn reaches it now. A keepalive was only waiting.
+    // A Stop pauses coordination until the user's next message. Failures and queued follow-ups leave it available.
+    // A keepalive was only waiting.
     const keepalive = queued.execution?.operation === 'keepalive';
-    if (result.status === 'stopped' && !keepalive) this.#core.coordination.pause(threadId);
+    if (result.status === 'stopped' && !keepalive && !result.queuedInputCancelled) this.#core.coordination.pause(threadId);
     // A spent subscription window: the thread may resume by itself once it resets (`threads/limit-resume.ts`).
     if (result.status === 'error' && result.refusal?.kind === 'usage-limit' && !next.archived && !keepalive) this.threads.limitResumes.turnFailed(next, finished, result.refusal.resetsAt);
     // Any other stop before the answer resumes by itself, twice in a row at most (`threads/auto-continue.ts`).

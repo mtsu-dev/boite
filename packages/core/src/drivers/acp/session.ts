@@ -464,7 +464,11 @@ export class AcpSession {
       } else {
         await this.#fail(turn, error);
       }
-      this.#endTurn(turn, true);
+      // A live agent may answer an advisory cancellation with an RPC error.
+      // Report the failure while keeping the process and any background work.
+      const retain = !turn.isStopped && !this.#closing && turn.stoppedForQueuedInput && rpcRefusal(error);
+      if (retain) this.#retention.prepare(true);
+      this.#endTurn(turn, !retain);
       return;
     }
     this.#current = null;

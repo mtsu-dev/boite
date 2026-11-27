@@ -185,6 +185,11 @@ export class BackgroundCompaction {
     this.#carrying.set(threadId, turnId);
   }
 
+  /** The turn whose prompt carries the compacted session's tail, if any. */
+  carrying(threadId: ThreadId): TurnId | undefined {
+    return this.#carrying.get(threadId);
+  }
+
   /**
    * Whether a finished copy waits for the thread's next pause. A driver that
    * swaps inside a turn keeps it for the step that reaches the limit, as

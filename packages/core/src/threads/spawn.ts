@@ -464,6 +464,12 @@ export class ThreadSpawns {
     return known !== null ? answer(known, false) : answer(this.#core.projects.add(path, name), true);
   }
 
+  /** Whether the starter's first result has yet to be staged by a finished turn. */
+  awaitingFirstResult(threadId: ThreadId): boolean {
+    const saved = this.#core.journal.getSetting(`${ORIGIN}${threadId}`) as Origin | undefined;
+    return saved !== undefined && !saved.reported && !saved.pending;
+  }
+
   /** Stage the first result in the runner's settlement transaction. */
   stageResult(turn: Turn): void {
     if (turn.execution?.operation === 'compact' || turn.execution?.operation === 'keepalive') return;

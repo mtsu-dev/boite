@@ -59,6 +59,7 @@ interface ToolEntry {
   status: ToolStatus;
   documents: ToolDocument[];
   launch: AntigravityLaunch | null;
+  hermesDelegation?: true;
 }
 
 /**
@@ -181,7 +182,7 @@ export class AcpTurn extends TurnParts {
     if (!this.antigravity && !hermes) return false;
     for (const tool of this.#tools.values()) {
       // A Hermes delegation can announce completion before its result names the mode.
-      if (tool.status !== 'error' && (tool.launch === 'subagent' || tool.launch === 'swarm' || (hermes && /^delegate_task(?::|$)/.test(tool.name)))) return true;
+      if (tool.status !== 'error' && (tool.launch === 'subagent' || tool.launch === 'swarm' || tool.hermesDelegation)) return true;
     }
     return false;
   }
@@ -315,7 +316,7 @@ export class AcpTurn extends TurnParts {
     launch: AntigravityLaunch | null = null,
     fallbackName: string | null = null,
   ): void {
-    const entry = this.#tools.get(toolCallId) ?? {
+    const entry: ToolEntry = this.#tools.get(toolCallId) ?? {
       index: this.takeIndex(),
       name: name ?? fallbackName ?? toolCallId,
       input: null,
@@ -326,6 +327,8 @@ export class AcpTurn extends TurnParts {
     };
     if (launch === 'mcp' || entry.launch === null) entry.launch = launch;
     if (name !== null && name.length > 0) entry.name = name;
+    // A later update can change the card's title, even before its result arrives.
+    if (this.ctx.provider.quirks?.includes('hermes') && /^delegate_task(?::|$)/.test(entry.name)) entry.hermesDelegation = true;
     // Antigravity carries a shell call's command, its cwd and its combined
     // output under half a dozen spellings, and pads `_meta` with base64
     // images: the quirk folds those into what the card already draws.

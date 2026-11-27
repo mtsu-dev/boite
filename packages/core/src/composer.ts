@@ -346,6 +346,9 @@ export class Composer {
     const { threadId } = turn;
     const { threads, activity, scheduler } = this.#core;
     if (turn.execution?.operation || scheduler.stopTarget(threadId) !== turn.id || threads.handoff.toolsRunning(threadId) > 0) return false;
+    // These prompts must finish to acknowledge their history or report their first result.
+    if (threads.accountSessions.carrying(threadId) === turn.id || threads.backgroundCompact.carrying(threadId) === turn.id
+      || threads.spawns.awaitingFirstResult(threadId)) return false;
     const { goal, loop } = activity.get(threadId);
     return goal?.status !== 'active' && loop?.status !== 'active' && !activity.ownsReviewer(threadId) && !activity.ownsTracker(threadId);
   }

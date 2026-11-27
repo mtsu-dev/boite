@@ -26,6 +26,7 @@ const FAKE_AGENT = fileURLToPath(new URL('./fixtures/acp-agent.ts', import.meta.
 test.each([
   'antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local ACP',
   'hermes with split delegation output', 'antigravity with a paused queue', 'antigravity without image support', 'antigravity ignoring cancellation',
+  'local ACP switching back to an account', 'local ACP reporting its first result', 'local ACP rejecting cancellation',
 ])('%s handles queued input when its parallel tools finish', async scenario => {
   const client = await startCore({ warmProcessMinutes: 0 });
   const core = harness!.core;
@@ -33,8 +34,11 @@ test.each([
   const paused = scenario === 'antigravity with a paused queue';
   const noImages = scenario === 'antigravity without image support';
   const ignoresCancel = scenario === 'antigravity ignoring cancellation';
-  const holds = detached || paused || noImages || ignoresCancel;
-  const provider = detached ? 'hermes' : holds ? 'antigravity' : scenario;
+  const switchesBack = scenario === 'local ACP switching back to an account';
+  const spawned = scenario === 'local ACP reporting its first result';
+  const rejectsCancel = scenario === 'local ACP rejecting cancellation';
+  const holds = detached || paused || noImages || ignoresCancel || switchesBack || spawned;
+  const provider = detached ? 'hermes' : scenario.startsWith('local ACP') ? 'local ACP' : holds ? 'antigravity' : scenario;
   if (noImages) process.env['ACP_FAKE_NO_IMAGES'] = '1';
   let threadId: string;
   if (provider === 'local ACP') threadId = await acpThread(client);
@@ -51,15 +55,33 @@ test.each([
     threadId = (await client.call('threads.create', { projectId: project.id, providerId: provider, accountId: account.id })).id;
     await client.call('threads.subscribe', { threadId });
   }
-  const secondTool = client.next('message.part', ({ threadId: id, part }) => id === threadId && part.type === 'tool' && part.toolId === 'second', 10_000);
-  const directives = [detached && '[detached-delegation]', holds && '[finish-on-gate]', ignoresCancel && '[ignore-cancel]'].filter(Boolean);
-  const turn = await client.call('turns.start', { threadId, prompt: ['[parallel-tools]', ...directives].join(' ') });
-  await secondTool;
+  if (switchesBack) {
+    const { accountId } = core.threads.require(threadId);
+    const other = { ...core.accounts.require(accountId), id: 'second-account', label: 'Second' };
+    core.journal.putAccount(other);
+    await (await startTurn(client, threadId, 'Original account')).finished;
+    await client.call('threads.update', { threadId, accountId: other.id });
+    await (await startTurn(client, threadId, 'While the original account was away')).finished;
+    await client.call('threads.update', { threadId, accountId });
+  }
+  if (spawned || scenario === 'local ACP') core.coordination.configure(threadId, { mode: 'brief', resources: '', remote: false, paused: false });
+  const pause = scenario === 'local ACP' ? spyOn(core.coordination, 'pause') : null;
+  const directives = [detached && '[detached-delegation]', holds && '[finish-on-gate]', ignoresCancel && '[ignore-cancel]', rejectsCancel && '[error-on-cancel]'].filter(Boolean);
+  const prompt = ['[parallel-tools]', ...directives].join(' ');
+  const starterId = spawned ? threadId : null;
+  let turnId: string;
+  if (starterId) {
+    const child = await core.threads.spawns.spawn({ threadId: starterId, project: 'acp', prompt, requestId: 'first-acp-result' });
+    threadId = child.thread.id;
+    await client.call('threads.subscribe', { threadId });
+    turnId = child.turnId;
+  } else turnId = (await client.call('turns.start', { threadId, prompt })).id;
+  await waitFor(() => core.journal.listMessages(threadId).some(message => message.turnId === turnId && message.parts.some(part => part.type === 'tool' && part.toolId === 'second')));
   const originalSession = core.threads.require(threadId).sessionId;
   expect(originalSession).toBeString();
   const attachment: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'shot.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
   const { assetId } = await client.call('composer.asset.put', { attachment });
-  const firstTool = client.next('turn.toolCompleted', event => event.turnId === turn.id, 10_000);
+  const firstTool = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
   const queued = [{
     id: 'parallel-tools-follow-up', text: 'Use the new instructions',
     attachments: provider === 'opencode' ? [] : [{ kind: attachment.kind, mimeType: attachment.mimeType, name: attachment.name, assetId }],
@@ -69,9 +91,9 @@ test.each([
   expect(saved.accepted).toBe(true);
   writeFileSync(`${logFile}.first`, 'ready');
   await firstTool;
-  expect(core.journal.getTurn(turn.id)?.status).toBe('running');
+  expect(core.journal.getTurn(turnId)?.status).toBe('running');
   expect(fakeLog()).not.toContain('session/cancel');
-  const lastTool = client.next('turn.toolCompleted', event => event.turnId === turn.id, 10_000);
+  const lastTool = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
   writeFileSync(`${logFile}.second`, 'ready');
   await lastTool;
   if (paused) {
@@ -81,7 +103,7 @@ test.each([
   }
   if (noImages) {
     await waitFor(() => core.composer.storage.get('inputs', threadId).value?.input.paused === true);
-    expect(core.journal.getTurn(turn.id)?.status).toBe('running');
+    expect(core.journal.getTurn(turnId)?.status).toBe('running');
     expect(core.composer.storage.get('inputs', threadId).value?.input.queued[0]?.request?.failed).toContain('takes no images');
   }
   if (holds) {
@@ -89,7 +111,7 @@ test.each([
       await waitFor(() => fakeLog().includes('session/cancel'));
       // Outlast the manual ACP Stop grace while keeping the original prompt alive.
       await Bun.sleep(3200);
-      expect(core.journal.getTurn(turn.id)?.status).toBe('running');
+      expect(core.journal.getTurn(turnId)?.status).toBe('running');
     } else {
       await Bun.sleep(150);
       expect(fakeLog()).not.toContain('session/cancel');
@@ -97,18 +119,24 @@ test.each([
     writeFileSync(`${logFile}.end`, 'ready');
   }
   await waitFor(() => core.journal.listTurns(threadId).at(-1)?.status === 'done');
-  if (!noImages) await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
+  if (!noImages) await waitFor(() => core.journal.listTurns(threadId).at(switchesBack ? 3 : 1)?.status === 'done');
   const current = await client.call('threads.get', { threadId });
-  expect(current.turns.map(at => at.status)).toEqual(noImages ? ['done'] : [holds ? 'done' : 'stopped', 'done']);
-  const finishedTools = current.messages.filter(message => message.turnId === turn.id).flatMap(message => message.parts)
+  expect(current.turns.slice(switchesBack ? 2 : 0).map(at => at.status)).toEqual(noImages ? ['done'] : [holds ? 'done' : rejectsCancel ? 'error' : 'stopped', 'done']);
+  const finishedTools = current.messages.filter(message => message.turnId === turnId).flatMap(message => message.parts)
     .flatMap(part => part.type === 'tool' && ['first', 'second'].includes(part.toolId) ? [part.status] : []);
   expect(finishedTools).toEqual(['done', 'done']);
   expect(current.sessionId).toBe(originalSession);
   if (!holds) expect(fakeLog()).not.toContain(`loaded:${originalSession}`);
+  if (switchesBack) expect(countLogLines(fakeLog(), 'account catch-up')).toBe(1);
+  if (starterId) {
+    await waitFor(() => core.coordination.get(starterId).messages.some(letter => letter.from.threadId === threadId));
+    expect(core.coordination.get(starterId).messages.find(letter => letter.from.threadId === threadId)?.text).toContain(': done');
+  }
+  if (pause) expect(pause.mock.calls.some(([id, reason]) => id === threadId && (reason ?? 'stop') === 'stop')).toBe(false);
   expect(countLogLines(fakeLog(), 'session/cancel')).toBe(!holds || ignoresCancel ? 1 : 0);
   expect(fakeLog()).not.toContain('replayed interrupted prompt');
   expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || noImages ? 0 : 1);
-  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(noImages ? 1 : 2);
+  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(noImages ? 1 : switchesBack ? 4 : 2);
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(noImages ? ['parallel-tools-follow-up'] : []);
 }, 20_000);
 
