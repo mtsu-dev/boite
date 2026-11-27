@@ -816,6 +816,26 @@ test('the restored view reads every link-free path as the restore leaves it, and
     // On a volume that ignores case, another case of a name reads what the restore writes there.
     const caseless = root.toUpperCase() !== root && await stat(root.toUpperCase()).then(() => true, () => false);
     if (caseless) expect(preview.read(join(root, 'CONFIG', 'PI.JSON'))).toBe('plain');
+    // Each folder has its own case rule: one that ignores case under a root that keeps it (ext4's casefold), the
+    // reverse (an NTFS folder made case-sensitive), and a folder the restore makes, which keeps its parent's.
+    const mixed = join(base, 'mixed');
+    await mkdir(join(mixed, '.pi'), { recursive: true });
+    await mkdir(join(mixed, 'Keep'));
+    await writeFile(join(mixed, '.pi', 'pi.json'), 'disk');
+    const cased: FileChange[] = [
+      { name: '.pi/SETTINGS.JSON', before: await file('plain'), after: undefined },
+      { name: 'Keep/Pi.json', before: await file('kept'), after: undefined },
+      { name: 'Made/Pi.json', before: await file('made'), after: undefined },
+    ];
+    const ruled = (rule: (dir: string) => boolean | null) => restoredView(mixed, objects, cased, mixed, rule);
+    const folded = ruled(dir => dir === join(mixed, '.pi'));
+    expect([folded.read(join(mixed, '.pi', 'settings.json')), folded.exists(join(mixed, 'keep', 'pi.json')), folded.exists(join(mixed, 'made'))])
+      .toEqual(['plain', false, false]);
+    const kept = ruled(dir => dir === mixed);
+    expect([kept.read(join(mixed, '.PI', 'SETTINGS.JSON')), kept.exists(join(mixed, '.pi', 'settings.json')), kept.read(join(mixed, 'made', 'PI.json')),
+      kept.read(join(mixed, 'keep', 'Pi.json'))]).toEqual(['plain', false, 'made', 'kept']);
+    const unknown = ruled(() => null);
+    expect([unknown.linked(join(mixed, 'made', 'Pi.json')), unknown.read(join(mixed, 'Made', 'Pi.json'))]).toEqual([true, 'made']);
     // A file the restore writes is this process's, with the saved mode: without its owner's read bit, unreadable,
     // whoever could read it before.
     if (process.platform !== 'win32' && process.getuid?.() !== 0) {

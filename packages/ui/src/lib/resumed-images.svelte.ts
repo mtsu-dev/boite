@@ -1,5 +1,6 @@
 import { resolveModelSelection, type RpcParams, type Thread, type ThreadId } from '@boite/contracts';
 import { untrack } from 'svelte';
+import { isImageMimeType } from './attachments';
 import { chipChoice } from './composer-choice';
 import type { Choice, Store } from './store.svelte';
 
@@ -63,6 +64,8 @@ export class ResumedImages {
   #request = $derived.by(() => resumedImagesRequest(this.store(), this.thread(), this.choice()));
   #key = $derived(this.#request && this.#request !== 'first-turn' ? JSON.stringify(this.#request) : null);
   #read = $state<{ key: string; images: boolean | undefined } | null>(null);
+  /** Bumped by `refresh`, so the same key is asked again. */
+  #asked = $state(0);
 
   constructor(
     private readonly store: () => Store, private readonly thread: () => Thread | null, private readonly choice: () => Choice | null,
@@ -71,6 +74,7 @@ export class ResumedImages {
   ) {
     $effect(() => {
       const key = this.#key;
+      void this.#asked;
       if (key === null || this.store().connection !== 'ready') return;
       // A reconnection can bring the same key back: an answer read before it no longer holds.
       untrack(() => { this.#read = null; });
@@ -79,6 +83,16 @@ export class ResumedImages {
       askCore(this.store(), JSON.parse(key) as ImagesRequest).then(answer, () => answer(null));
       return () => { current = false; };
     });
+  }
+
+  /**
+   * A picture being taken asks the core again: an edit of the folder's pi settings changes its answer, which no key
+   * shows. The picture waits for that answer instead of meeting the old one.
+   */
+  refresh(files: readonly File[]) {
+    if (this.#read === null || !files.some(file => isImageMimeType(file.type))) return;
+    this.#read = null;
+    this.#asked++;
   }
 
   get images(): boolean | null | undefined {

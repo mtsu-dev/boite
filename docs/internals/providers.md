@@ -473,6 +473,9 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   open thread the composer asks the core (`threads.capabilities`), again when
   the session, the folder, the selection, the account's catalog, the turn or the
   connection changes; a draft asks `drafts.images` with its project's folder.
+  A picture being added asks again, since an edit of the folder's pi settings
+  changes the answer without changing any of these, and the picture waits for
+  that answer.
   A draft that starts in a new folder, a new worktree (`worktree`) or a
   folder of its own in the drafts (`incognito` for a private one), finds none
   of the project's untracked files there, its `.pi/settings.json` included, so

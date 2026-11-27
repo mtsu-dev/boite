@@ -486,7 +486,7 @@
   /** Each file shows at once as a loading tile, its `[Image N]` at the caret, and is read behind the box. */
   function take(files: File[]) {
     if (files.length === 0) return;
-    track();
+    track(); resumed.refresh(files);
     const taken = stateForInput();
     void takeFiles(store, taken, files, imageRefusal, () => { if (sendWhenLoaded?.state === taken) sendWhenLoaded = null; });
   }

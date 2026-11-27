@@ -2155,9 +2155,12 @@ test('pi default on an open thread follows the model its session resumes on', as
   await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Another turn' });
   await waitFor(() => store.openThread?.status === 'running');
   await waitFor(() => store.openThread?.status === 'idle' && store.openThread.model === 'default');
+  // A picture asks again: it waits on the box for the answer, which refuses it there.
   paste(pngFile());
-  await waitFor(() => store.error !== null);
-  expect(document.querySelector('[data-testid=composer-attachment]')).toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') !== null);
+  expect(store.error).toBeNull();
+  query<HTMLButtonElement>('[data-testid=composer-attachment-remove]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') === null);
   // So does a new catalog for the account, which the core reads the session's model in.
   sessionImages = true;
   store.error = null;
@@ -2180,8 +2183,8 @@ test('pi default on an open thread follows the model its session resumes on', as
   await asked.mock.results.at(-1)!.value;
   flushSync();
   paste(pngFile());
-  await waitFor(() => store.error !== null);
-  expect(document.querySelector('[data-testid=composer-attachment]')).toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') !== null);
+  expect(query<HTMLButtonElement>('[data-testid=composer-send]').disabled).toBe(true);
 });
 
 test('pi default on an open thread before its first turn asks the core, which reads the folder', async () => {
@@ -2254,9 +2257,9 @@ test('an edit on pi leaves a picture to the core, which reads the session its cu
   await waitFor(() => store.openThread?.providerId === 'pi' && store.openThread.model === 'default');
   await send('original request');
   paste(pngFile());
-  await waitFor(() => store.error !== null);
-  expect(document.querySelector('[data-testid=composer-attachment]')).toBeNull();
-  store.error = null;
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') !== null);
+  query<HTMLButtonElement>('[data-testid=composer-attachment-remove]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') === null);
 
   const client = store.client!;
   const call = client.call.bind(client);
@@ -2285,14 +2288,21 @@ test('a pi draft on its own model asks the core, which reads the project folder'
   const key = `pi::${account.id}`;
   // Its name carries a line break, which must not move into the request's fields.
   store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'default' ? { ...model, name: 'pi own\nmodel', images: false as const } : model) };
-  const asked = vi.spyOn(store, 'draftImages').mockResolvedValue({ supported: true });
+  // The folder's settings first chose a text-only model, then an edit there chose one that reads images.
+  const asked = vi.spyOn(store, 'draftImages').mockResolvedValueOnce({ supported: false }).mockResolvedValue({ supported: true });
   store.draftChoice = { ...store.defaultChoice()!, providerId: 'pi', accountId: account.id, model: 'default', effort: null };
   await waitFor(() => asked.mock.calls.length > 0);
   expect(asked.mock.calls.at(-1)![0]).toEqual({ projectId: store.draft!.projectId, providerId: 'pi', accountId: account.id, model: 'default' });
   await asked.mock.results.at(-1)!.value;
   flushSync();
+  // A picture asks again rather than meet the refusal the core gave before that edit.
+  const before = asked.mock.calls.length;
   paste(pngFile());
   await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
+  expect(asked.mock.calls.length).toBe(before + 1);
+  await asked.mock.results.at(-1)!.value;
+  flushSync();
+  expect(document.querySelector('[data-testid=composer-image-warning]')).toBeNull();
   expect(store.error).toBeNull();
   // A named model the catalog lists text-only: the project's extensions may give it images.
   const calls = asked.mock.calls.length;
@@ -2480,8 +2490,10 @@ test('switching a draft to a text-only pi model blocks its image but keeps file 
   query<HTMLButtonElement>('[data-testid=composer-attachment-remove]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') === null);
   paste(pngFile());
-  await waitFor(() => store.error?.startsWith('pi demo model takes no images') === true);
-  expect(document.querySelector('[data-testid=composer-attachment]')).toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]')?.textContent?.includes('pi demo model') === true);
+  expect(send.disabled).toBe(true);
+  query<HTMLButtonElement>('[data-testid=composer-attachment-remove]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') === null);
   paste(new File(['hello'], 'notes.txt', { type: 'text/plain' }));
   await waitFor(() => document.querySelector('[data-testid=composer-attachment]')?.textContent?.includes('notes.txt') === true);
   expect(send.disabled).toBe(false);

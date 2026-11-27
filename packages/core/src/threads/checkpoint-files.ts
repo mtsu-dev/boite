@@ -378,8 +378,6 @@ async function writeEntry(root: string, objects: string, name: string, entry: Fi
   } finally { await rm(temporary, { force: true }); }
 }
 
-/** Whether this system's file names may ignore case, so two spellings may name one entry. */
-const FOLDED = process.platform === 'win32' || process.platform === 'darwin';
 const LINKED = { state: 'linked' } as const;
 const MISSING = { state: 'missing' } as const;
 type Spot = typeof LINKED | typeof MISSING | { state: 'file' | 'dir'; at: string; restored: boolean };
@@ -396,11 +394,11 @@ function real(path: string): string {
 const flip = (name: string) => name === name.toLowerCase() ? name.toUpperCase() : name.toLowerCase();
 
 /**
- * Whether the names in `dir` ignore case: an entry there and its other case are one file. False where two entries
- * differ only by case, null when no entry has a letter to try.
+ * Whether the names in `dir` ignore case: an entry there and its other case are one file. Each folder has its own
+ * rule (an ext4 folder with casefold, an NTFS folder made case-sensitive). False where two entries differ only by
+ * case, null when no entry has a letter to try.
  */
 function caseless(dir: string): boolean | null {
-  if (!FOLDED) return false;
   let names: string[];
   try { names = readdirSync(dir); } catch { return null; }
   const seen = new Set<string>();
@@ -424,23 +422,22 @@ const split = (path: string) => path.split(process.platform === 'win32' ? /[\\/]
 /**
  * The files under `root` as `restoreFiles(root, objects, changes)` will leave them, read without writing anything:
  * each change's `before`, a parent its deleted files leave empty gone, every other path as the disk holds it. A path
- * spelled under `cwd`, the thread's spelling of `root` that `realpath` expands, reads under `root`. Where the root's
- * names ignore case, any case of a name reads the entry the restore writes; a restored file this process would own
- * without its read bit reads as unreadable.
+ * spelled under `cwd`, the thread's spelling of `root` that `realpath` expands, reads under `root`. In a folder whose
+ * names ignore case (`ignoresCase`, read in each folder; a folder the restore makes keeps its parent's rule), any
+ * case of a name reads the entry the restore writes; a restored file this process would own without its read bit
+ * reads as unreadable.
  *
  * The view follows no link inside the workspace. A path whose way there crosses a symbolic link or a junction, on
- * disk or restored, or names an entry the restore writes under two spellings (or under another case, where the case
- * rule is unknown), is `linked` and reads as missing; so is
- * one spelled outside `cwd` and `root` whose way enters the workspace. Any other path outside reads from the disk,
- * which the restore leaves alone.
+ * disk or restored, or names an entry the restore writes under two spellings in a folder that may ignore case (or
+ * under another case, where the folder's rule is unknown), is `linked` and reads as missing; so is one spelled
+ * outside `cwd` and `root` whose way enters the workspace under any case. Any other path outside reads from the
+ * disk, which the restore leaves alone.
  */
-export function restoredView(root: string, objects: string, changes: readonly FileChange[], cwd = root): FileView {
+export function restoredView(root: string, objects: string, changes: readonly FileChange[], cwd = root, ignoresCase = caseless): FileView {
   const base = real(root);
-  const folds = caseless(base);
-  const fold = (path: string) => folds === true ? path.toLowerCase() : path;
-  const lower = (path: string) => FOLDED ? path.toLowerCase() : path;
-  const planned = new Map(changes.map(change => [fold(join(base, change.name)), change.before]));
-  /** Each spelling the restore writes, and every folder above one, by its name without case. */
+  const lower = (path: string) => path.toLowerCase();
+  const planned = new Map(changes.map(change => [join(base, change.name), change.before]));
+  /** Each spelling the restore writes, and every folder above one, by its path without case. */
   const spellings = new Map<string, Set<string>>();
   for (const change of changes) {
     for (let at = join(base, change.name); at !== base && within(base, at); at = dirname(at)) {
@@ -449,20 +446,39 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
       spellings.set(lower(at), seen);
     }
   }
-  const below = (dir: string) => { const own = fold(dir); return own.endsWith(sep) ? own : own + sep; };
+  const rules = new Map<string, boolean | null>();
+  const ruleOf = (dir: string) => {
+    if (!rules.has(dir)) rules.set(dir, ignoresCase(dir));
+    return rules.get(dir)!;
+  };
+  /**
+   * The entry `part` names in `here`, a folder with case rule `rule`, spelled as the restore writes it; null when the
+   * name may reach another spelling the restore writes there, or another case of one where the rule is unknown.
+   */
+  const child = (here: string, rule: boolean | null, part: string): string | null => {
+    const next = join(here, part);
+    const kin = [...spellings.get(lower(next)) ?? []].filter(at => dirname(at) === here);
+    if (rule === false || kin.length === 0) return next;
+    if (rule === true) return kin.length === 1 ? kin[0]! : null;
+    return kin.length === 1 && kin[0] === next ? next : null;
+  };
+  const below = (dir: string) => dir.endsWith(sep) ? dir : dir + sep;
   /** Whether the restore puts any entry below `dir`, which then stands as a directory. */
   const created = (dir: string) => [...planned].some(([path, entry]) => entry !== undefined && path.startsWith(below(dir)));
   const touched = (dir: string) => [...planned.keys()].some(path => path.startsWith(below(dir)));
   const names = (dir: string) => { try { return readdirSync(dir); } catch { return []; } };
   /** Whether an entry stands at `path` itself, a link not followed, every directory above it standing. */
   const present = (path: string): boolean => {
-    if (planned.has(fold(path))) return planned.get(fold(path)) !== undefined || created(path);
+    if (planned.has(path)) return planned.get(path) !== undefined || created(path);
     let directory: boolean;
     try { directory = lstatSync(path).isDirectory(); } catch { return created(path); }
     if (!directory) return true;
     // `writeEntry` removes only the parents a deleted file leaves empty: a directory empty before stays.
-    return created(path) || names(path).some(name => present(join(path, name))) || !touched(path);
+    return created(path) || holds(path) || !touched(path);
   };
+  /** Whether a folder on disk keeps an entry, one whose spelling is unsure counted. */
+  const holds = (dir: string) => names(dir).some(name => { const at = child(dir, ruleOf(dir), name); return at === null || present(at); });
+  // Any case: a folder on the way may ignore it, and a path counted inside is only left to pi.
   const inWorkspace = (path: string) => within(lower(base), lower(path));
   /**
    * A path spelled outside the workspace: `linked` when its way, each link followed as the disk holds it, enters the
@@ -506,15 +522,15 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
     else return outside(full);
     const parts = split(relative(base, at));
     let here = base;
+    let rule = ruleOf(base);
     let restored = false;
     for (const [index, part] of parts.entries()) {
-      const next = join(here, part);
+      const next = child(here, rule, part);
+      if (next === null) return LINKED;
       const last = index === parts.length - 1;
-      // Two spellings of one entry, or, where the case rule is unknown, another case of one the restore writes.
-      const written = spellings.get(lower(next));
-      if (written && (written.size > 1 && folds !== false || folds === null && !written.has(next))) return LINKED;
-      if (planned.has(fold(next))) {
-        const entry = planned.get(fold(next));
+      // A folder the restore makes keeps its parent's rule; one on disk has its own.
+      if (planned.has(next)) {
+        const entry = planned.get(next);
         if (entry === undefined) {
           if (!created(next)) return MISSING;
           here = next; restored = true; continue;
@@ -534,6 +550,7 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
       if (info.isSymbolicLink()) return LINKED;
       if (!info.isDirectory()) return last ? { state: 'file', at: next, restored } : MISSING;
       here = next;
+      rule = ruleOf(next);
     }
     // The restore never removes the root, even when it empties it.
     return here === base || restored || present(here) ? { state: 'dir', at: here, restored } : MISSING;
@@ -543,7 +560,7 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
       const spot = locate(path);
       if (spot === null) return DISK_VIEW.read(path);
       if (spot.state !== 'file') return null;
-      const entry = planned.get(fold(spot.at));
+      const entry = planned.get(spot.at);
       if (entry) return ownReadable(entry.mode) ? readBlobSync(join(objects, entry.hash), entry.hash)?.toString('utf8') ?? null : null;
       try { return readFileSync(spot.at, 'utf8'); } catch { return null; }
     },
@@ -555,7 +572,7 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
       const spot = locate(path);
       if (spot === null) return DISK_VIEW.listsAny(path);
       if (spot.state !== 'dir') return false;
-      return created(spot.at) || (!spot.restored && names(spot.at).some(name => present(join(spot.at, name))));
+      return created(spot.at) || (!spot.restored && holds(spot.at));
     },
     linked: path => locate(path)?.state === 'linked',
   };
