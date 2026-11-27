@@ -2334,6 +2334,38 @@ test('a pi draft on its own model asks the core, which reads the project folder'
   expect(asked.mock.calls.at(-1)![0]).toMatchObject({ model: 'pi-demo', worktree: true });
 });
 
+test('a copied picture and one the composer converts ask the core again before pi\'s old answer refuses them', async ({ app: _app }) => {
+  await openIdle('t-trace');
+  paste(pngFile('copied.png'));
+  await waitFor(() => input().value === '[Image 1] ' && loaded());
+  input().focus();
+  input().setSelectionRange(0, 9);
+  const copied = clipboard();
+  expect(clipboardEvent('copy', copied).defaultPrevented).toBe(true);
+  await openDraft();
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  const key = `pi::${account.id}`;
+  store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'default' ? { ...model, images: false as const } : model) };
+  // The folder's settings chose a text-only model, then an edit there chose one that reads images.
+  const asked = vi.spyOn(store, 'draftImages').mockResolvedValueOnce({ supported: false }).mockResolvedValue({ supported: true });
+  store.draftChoice = { ...store.defaultChoice()!, providerId: 'pi', accountId: account.id, model: 'default', effort: null };
+  await waitFor(() => asked.mock.calls.length > 0);
+  await asked.mock.results.at(-1)!.value;
+  flushSync();
+  const before = asked.mock.calls.length;
+  input().focus();
+  expect(clipboardEvent('paste', copied).defaultPrevented).toBe(true);
+  await waitFor(() => asked.mock.calls.length === before + 1 && chips().length === 1);
+  expect(store.error).toBeNull();
+  // A HEIC photo becomes a picture too: it asks again as well.
+  await asked.mock.results.at(-1)!.value;
+  flushSync();
+  const photo = asked.mock.calls.length;
+  paste(new File([new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 104, 101, 105, 99])], 'photo.heic', { type: 'image/heic' }));
+  await waitFor(() => asked.mock.calls.length === photo + 1);
+});
+
 test('a draft started before the drafts exist asks about the folder its preparation made there', async ({ app: _app }) => {
   await openDraft();
   expect(store.draftsProject).toBeNull();

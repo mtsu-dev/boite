@@ -669,7 +669,7 @@ symbolic link or a junction in the folder, on disk or restored, or enters the
 folder from outside through one, leaves the model to pi, at an edit as at a
 send (`diskView`). Each directory has its own case rule (an ext4 directory
 with casefold, an NTFS directory made case-sensitive), and one the restore
-makes keeps its parent's: where a directory's names ignore case, any case of a
+makes, or empties before its writes and makes again, keeps its parent's: where a directory's names ignore case, any case of a
 name reads the file the restore writes; where Boite cannot tell, another case
 is left to pi. A restored file the core would own without its read bit reads as
 unreadable, as pi will find it. Wherever only pi can tell the model, the edit goes

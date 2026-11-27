@@ -423,7 +423,8 @@ const split = (path: string) => path.split(process.platform === 'win32' ? /[\\/]
  * The files under `root` as `restoreFiles(root, objects, changes)` will leave them, read without writing anything:
  * each change's `before`, a parent its deleted files leave empty gone, every other path as the disk holds it. A path
  * spelled under `cwd`, the thread's spelling of `root` that `realpath` expands, reads under `root`. In a folder whose
- * names ignore case (`ignoresCase`, read in each folder; a folder the restore makes keeps its parent's rule), any
+ * names ignore case (`ignoresCase`, read in each folder; a folder the restore makes, or empties and makes again,
+ * keeps its parent's rule), any
  * case of a name reads the entry the restore writes; a restored file this process would own without its read bit
  * reads as unreadable.
  *
@@ -476,6 +477,17 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
     // `writeEntry` removes only the parents a deleted file leaves empty: a directory empty before stays.
     return created(path) || holds(path) || !touched(path);
   };
+  /**
+   * Whether the restore's deletions, which run before its writes, leave the folder `dir` on disk empty, so `rmdir`
+   * removes it: a write below then makes it again, under its parent's case rule.
+   */
+  const emptied = (dir: string): boolean => [...planned].some(([path, entry]) => entry === undefined && path.startsWith(below(dir)))
+    && names(dir).every(name => {
+      const at = child(dir, ruleOf(dir), name);
+      if (at === null) return false;
+      if (planned.has(at)) return planned.get(at) === undefined;
+      try { const info = lstatSync(at); return info.isDirectory() && emptied(at); } catch { return true; }
+    });
   /** Whether a folder on disk keeps an entry, one whose spelling is unsure counted. */
   const holds = (dir: string) => names(dir).some(name => { const at = child(dir, ruleOf(dir), name); return at === null || present(at); });
   // Any case: a folder on the way may ignore it, and a path counted inside is only left to pi.
@@ -528,7 +540,8 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
       const next = child(here, rule, part);
       if (next === null) return LINKED;
       const last = index === parts.length - 1;
-      // A folder the restore makes keeps its parent's rule; one on disk has its own.
+      // A folder the restore makes keeps its parent's rule; one on disk has its own, unless the restore empties it
+      // and makes it again.
       if (planned.has(next)) {
         const entry = planned.get(next);
         if (entry === undefined) {
@@ -549,8 +562,8 @@ export function restoredView(root: string, objects: string, changes: readonly Fi
       }
       if (info.isSymbolicLink()) return LINKED;
       if (!info.isDirectory()) return last ? { state: 'file', at: next, restored } : MISSING;
+      if (!emptied(next)) rule = ruleOf(next);
       here = next;
-      rule = ruleOf(next);
     }
     // The restore never removes the root, even when it empties it.
     return here === base || restored || present(here) ? { state: 'dir', at: here, restored } : MISSING;

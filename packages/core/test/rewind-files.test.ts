@@ -834,6 +834,11 @@ test('the restored view reads every link-free path as the restore leaves it, and
     const kept = ruled(dir => dir === mixed);
     expect([kept.read(join(mixed, '.PI', 'SETTINGS.JSON')), kept.exists(join(mixed, '.pi', 'settings.json')), kept.read(join(mixed, 'made', 'PI.json')),
       kept.read(join(mixed, 'keep', 'Pi.json'))]).toEqual(['plain', false, 'made', 'kept']);
+    // The restore deletes `.pi`'s last file before it writes, so `rmdir` removes the folder and the write makes it
+    // again under the root's rule.
+    const remade = restoredView(mixed, objects, [...cased, { name: '.pi/pi.json', before: undefined, after: { hash: sha('disk'), mode: 0o644 } }], mixed,
+      dir => dir === join(mixed, '.pi'));
+    expect([remade.read(join(mixed, '.pi', 'settings.json')), remade.read(join(mixed, '.pi', 'SETTINGS.JSON'))]).toEqual([null, 'plain']);
     const unknown = ruled(() => null);
     expect([unknown.linked(join(mixed, 'made', 'Pi.json')), unknown.read(join(mixed, 'Made', 'Pi.json'))]).toEqual([true, 'made']);
     // A file the restore writes is this process's, with the saved mode: without its owner's read bit, unreadable,

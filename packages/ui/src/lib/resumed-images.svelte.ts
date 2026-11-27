@@ -1,7 +1,9 @@
 import { resolveModelSelection, type RpcParams, type Thread, type ThreadId } from '@boite/contracts';
 import { untrack } from 'svelte';
 import { isImageMimeType } from './attachments';
+import { copiedFrom } from './composer-clipboard';
 import { chipChoice } from './composer-choice';
+import { isReducible } from './image-prepare';
 import type { Choice, Store } from './store.svelte';
 
 /** What the core is asked, and what else changes its answer: the cache key is both, serialized. */
@@ -49,6 +51,14 @@ function resumedImagesRequest(store: Store, thread: Thread | null, choice: Choic
   return { ask: { thread: thread.id }, also: [thread.sessionId ?? null, thread.cwd, thread.selectionVersion ?? 0, thread.status, store.connection, catalog(thread.providerId, thread.accountId)] };
 }
 
+/**
+ * Whether a paste or a drop brings a picture: an image file, one the composer converts to one (HEIC, BMP, TIFF), or
+ * a copy of an `[Image N]` of ours with its pictures.
+ */
+export function bringsPictures(files: readonly File[], clipboard: DataTransfer | null = null): boolean {
+  return files.some(file => isImageMimeType(file.type) || isReducible(file)) || (copiedFrom(clipboard)?.images.size ?? 0) > 0;
+}
+
 function askCore(store: Store, { ask }: ImagesRequest): Promise<boolean | null> {
   if ('thread' in ask) return store.threadCapabilities(ask.thread).then(value => value ? value.images.supported : null);
   return store.draftImages(ask.draft).then(value => value ? value.supported : null);
@@ -89,8 +99,8 @@ export class ResumedImages {
    * A picture being taken asks the core again: an edit of the folder's pi settings changes its answer, which no key
    * shows. The picture waits for that answer instead of meeting the old one.
    */
-  refresh(files: readonly File[]) {
-    if (this.#read === null || !files.some(file => isImageMimeType(file.type))) return;
+  refresh(pictures: boolean) {
+    if (this.#read === null || !pictures) return;
     this.#read = null;
     this.#asked++;
   }

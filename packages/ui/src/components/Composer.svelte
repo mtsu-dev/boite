@@ -12,7 +12,7 @@
   import { rewindComposerEdit } from '../lib/composer-edit';
   import { editWhole } from '../lib/reading-window';
   import { fitHeight, selfSizing } from '../lib/composer-size';
-  import { ResumedImages } from '../lib/resumed-images.svelte';
+  import { bringsPictures, ResumedImages } from '../lib/resumed-images.svelte';
   import { editComposerInput, imageRefusalOf, removeImageReferences, sameSend, sendShape, sendTarget, touchesImageReference, trackImageSend, type SendShape } from '../lib/composer-images';
   import { checkpoint, editKind, recordEdit, resetHistory, settled } from '../lib/composer-history';
   import { boxSelection, closeDraftUndo, copySelection, offerDraftUndo, pasteImages, travel, type EditingHost } from '../lib/composer-editing';
@@ -486,7 +486,7 @@
   /** Each file shows at once as a loading tile, its `[Image N]` at the caret, and is read behind the box. */
   function take(files: File[]) {
     if (files.length === 0) return;
-    track(); resumed.refresh(files);
+    track(); resumed.refresh(bringsPictures(files));
     const taken = stateForInput();
     void takeFiles(store, taken, files, imageRefusal, () => { if (sendWhenLoaded?.state === taken) sendWhenLoaded = null; });
   }
@@ -496,7 +496,7 @@
       .filter((item) => item.kind === 'file')
       .map((item) => item.getAsFile())
       .filter((file): file is File => file !== null);
-    if (files.length === 0) { pasteImages(editing(), event); return; }
+    if (files.length === 0) { resumed.refresh(bringsPictures([], event.clipboardData)); pasteImages(editing(), event); return; }
     // The text of a clipboard that also carries an image stays out of the box.
     event.preventDefault();
     void take(files);
