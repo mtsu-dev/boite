@@ -66,6 +66,20 @@ function providerLabel(provider: string): string {
   return `${provider.slice(0, 1).toUpperCase()}${provider.slice(1)}`;
 }
 
+/**
+ * The pi provider, id and name behind a catalog entry, read back from the id and
+ * the name `modelsFrom` gives it: a provider id may hold a `/` itself, which the
+ * `<provider>/<id>` text alone cannot tell. Undefined for an entry of another shape.
+ */
+export function piModelOf(model: { id: string; name: string }): { provider: string; id: string; name: string } | undefined {
+  for (let slash = model.id.indexOf('/'); slash > 0 && slash + 1 < model.id.length; slash = model.id.indexOf('/', slash + 1)) {
+    const provider = model.id.slice(0, slash);
+    const label = `${providerLabel(provider)} / `;
+    if (model.name.startsWith(label)) return { provider, id: model.id.slice(slash + 1), name: model.name.slice(label.length) };
+  }
+  return undefined;
+}
+
 /** What one probe read from the agent, before any of it becomes a `ModelInfo`. */
 interface PiListing {
   models: PiModel[];

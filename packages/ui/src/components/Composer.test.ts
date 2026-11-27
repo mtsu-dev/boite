@@ -2217,6 +2217,43 @@ test('a pi draft on its own model asks the core, which reads the project folder'
   expect(store.error).toBeNull();
 });
 
+test('a picture pasted while the core reads pi\'s own model is held, and Send waits for that answer', async ({ app: _app }) => {
+  await openDraft();
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  // The account's catalog says pi's own model reads no images; only the core's answer for this folder decides.
+  const key = `pi::${account.id}`;
+  store.probedModels = { ...store.probedModels, [key]: store.probedModels[key]!.map(model => model.id === 'default' ? { ...model, images: false as const } : model) };
+  let answer: (value: { supported: boolean }) => void = () => {};
+  const asked = vi.spyOn(store, 'draftImages').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
+  store.draftChoice = { ...store.defaultChoice()!, providerId: 'pi', accountId: account.id, model: 'default', effort: null };
+  await waitFor(() => asked.mock.calls.length > 0);
+  paste(pngFile());
+  await waitFor(() => document.querySelector('[data-testid=composer-attachment]') !== null);
+  expect(store.error).toBeNull();
+  await type('Read the picture');
+  press('Enter');
+  flushSync();
+  expect(input().value).toBe('Read the picture');
+  // The core says no: the picture is refused and nothing went.
+  answer({ supported: false });
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') !== null);
+  expect(input().value).toBe('Read the picture');
+  // Another catalog asks again; Send pressed meanwhile goes once the core says yes.
+  const calls = asked.mock.calls.length;
+  store.probedModels = { ...store.probedModels, [key]: [...store.probedModels[key]!, { id: 'pi-new', name: 'pi new model' }] };
+  await waitFor(() => asked.mock.calls.length > calls);
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') === null);
+  const sent = vi.spyOn(store.client!, 'call');
+  press('Enter');
+  flushSync();
+  const prompts = () => sent.mock.calls.filter(([, params]) => JSON.stringify(params ?? null).includes('Read the picture'));
+  expect(prompts()).toEqual([]);
+  answer({ supported: true });
+  // The fake core keeps its own text-only catalog and refuses the turn: what counts here is that it went.
+  await waitFor(() => prompts().length > 0);
+});
+
 test('switching a draft to a text-only pi model blocks its image but keeps file attachments', async ({ app: _app }) => {
   await openDraft();
   const account = store.accounts.find(entry => entry.providerId === 'pi')!;

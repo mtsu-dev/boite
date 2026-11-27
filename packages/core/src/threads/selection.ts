@@ -6,7 +6,7 @@ import { isAntigravity } from '../drivers/antigravity.ts';
 import { agentEnv as piLaunchEnv, sessionDirOf } from '../drivers/pi/mapping.ts';
 import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
 import { sessionModelOf } from '../drivers/pi/session-model.ts';
-import { folderStartModel, piAgentDir, piLaunchChoices } from '../drivers/pi/start-model.ts';
+import { folderStartModel, piAgentDir, piAgentDirFollowsCwd, piLaunchChoices } from '../drivers/pi/start-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
 import { profileFor } from '../providers/resolve.ts';
@@ -67,21 +67,26 @@ export function imageInputModel(
   const launch = piLaunchChoices(pi ? profileFor(provider)?.launch?.args ?? [] : []);
   // A `--model` in the profile beats the session, as it does in pi.
   if (pi && wanted === AGENT_OWN_MODEL && cwd && !launch.model) {
+    // A protected run starts a new pi session with `--no-approve` and settings of its own: pi alone knows that model.
+    if (runsIn && core.sharedAccess.bound(runsIn) !== null) return undefined;
     const account = core.accounts.list().find(entry => entry.id === accountId);
     const resumed = account && id && sessionId ? sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId, cwd) : null;
-    // A registered virtual model holds over the physical models it answered through.
-    const router = resumed?.router ? listed(resumed.router) : undefined;
-    const found = router?.virtual ? router : resumed ? listed(resumed.model) : undefined;
-    if (found) return found;
+    if (resumed) {
+      // A registered virtual model holds over the physical models it answered through. pi resumes a model gone
+      // from the catalog on its saved default, outside any scope, which only it reads.
+      const router = resumed.router ? listed(resumed.router) : undefined;
+      return router?.virtual ? router : listed(resumed.model);
+    }
     // A new session starts where the folder's own pi settings say, which the account's probe, run elsewhere, cannot
     // see. When only pi can name that model, it handles the images itself.
-    // A protected run starts pi with `--no-approve` and its own settings: pi alone knows that model.
-    if (runsIn && core.sharedAccess.bound(runsIn) !== null) return undefined;
     // pi reads its settings where the environment the driver starts it with says; Boite's own `default` entry names no model.
+    const env = account ? piLaunchEnv(core.accounts.profileEnv(account, provider)) : null;
     const catalog = (probed ?? saved?.models ?? null)?.filter(entry => entry.id !== AGENT_OWN_MODEL) ?? null;
-    const start = account ? folderStartModel(piAgentDir(piLaunchEnv(core.accounts.profileEnv(account, provider)), cwd), cwd, catalog, launch) : 'account';
+    const start = env ? folderStartModel(piAgentDir(env, cwd), cwd, catalog, launch) : 'account';
     if (start === null) return undefined;
     if (start !== 'account') return listed(start);
+    // A relative configuration folder is another one in each folder pi starts in: the probe saw none of this one.
+    if (env && piAgentDirFollowsCwd(env)) return undefined;
   }
   return listed(wanted);
 }

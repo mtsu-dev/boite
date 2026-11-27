@@ -30,22 +30,30 @@ function askCore(store: Store, key: string): Promise<boolean | null> {
   return store.draftImages({ projectId: id!, providerId: providerId!, accountId: accountId!, model: model || null }).then(value => value ? value.supported : null);
 }
 
-/** Whether pi's own model on the open thread or draft reads images, once the core answered for the current key. */
+/**
+ * Whether pi's own model on the open thread or draft reads images: what the core
+ * answered for the current key, null while that answer is on its way, undefined
+ * when no answer applies (another protocol or model, offline, or the core could not tell).
+ */
 export class ResumedImages {
   #key = $derived.by(() => resumedImagesKey(this.store(), this.thread(), this.choice()));
-  #read = $state<{ key: string; images: boolean } | null>(null);
+  #read = $state<{ key: string; images: boolean | undefined } | null>(null);
 
   constructor(private readonly store: () => Store, private readonly thread: () => Thread | null, private readonly choice: () => Choice | null) {
     $effect(() => {
       const key = this.#key;
       if (key === null || this.store().connection !== 'ready') return;
       let current = true;
-      askCore(this.store(), key).then(images => { if (current && images !== null) this.#read = { key, images }; }, () => {});
+      const answer = (images: boolean | null) => { if (current) this.#read = { key, images: images ?? undefined }; };
+      askCore(this.store(), key).then(answer, () => answer(null));
       return () => { current = false; };
     });
   }
 
-  get images(): boolean | undefined {
-    return this.#read !== null && this.#read.key === this.#key ? this.#read.images : undefined;
+  get images(): boolean | null | undefined {
+    const key = this.#key;
+    if (key === null) return undefined;
+    if (this.#read !== null && this.#read.key === key) return this.#read.images;
+    return this.store().connection === 'ready' ? null : undefined;
   }
 }

@@ -24,11 +24,12 @@ export function trackImageSend(state: ComposerState, prompt: string, sentImages:
 
 /**
  * Why the picked model takes no image, or null. An answer's files reach the agent as paths, so it takes images whatever the model reads.
- * `resumed` is what the core read for the open thread when the choice leaves pi its own model (`ResumedImages`).
+ * `resumed` is what the core read for the open thread when the choice leaves pi its own model (`ResumedImages`);
+ * while it is on its way (null) a picture is held, and the composer sends once the answer allows it.
  */
-export function imageRefusalOf(store: Store, choice: Choice | null, answering: boolean, resumed?: boolean): string | null {
+export function imageRefusalOf(store: Store, choice: Choice | null, answering: boolean, resumed?: boolean | null): string | null {
   const provider = choice && !answering ? store.providerOf(choice.providerId) : null;
-  if (!provider || !choice) return null;
+  if (!provider || !choice || resumed === null) return null;
   const model = resolveModelSelection(store.modelsOf(choice.providerId, choice.accountId), choice.model)?.model;
   // The resumed session decides, even before this client has the account's catalog.
   const { images: _listed, ...read } = model ?? { id: choice.model ?? '', name: provider.name };

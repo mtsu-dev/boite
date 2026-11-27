@@ -408,7 +408,8 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   as pi 1.6.1 does: the newest
   `model_change`, else the model of the newest answer, unless the change before
   that answer names a router pi still lists (`virtual: true`, from its
-  `pi-virtual` api). A `--model` in the profile wins over the session. Without
+  `pi-virtual` api); a session model gone from the catalog resumes on pi's saved
+  default, which only pi reads. A `--model` in the profile wins over the session. Without
   a session to resume, pi starts where the folder's own settings say, which the
   account's probe, run in a temporary folder, never sees
   (`drivers/pi/start-model.ts`). pi reads `<folder>/.pi/settings.json` over the
@@ -417,18 +418,21 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   parent in the account's `trust.json`, else `defaultProjectTrust: "always"`; in
   RPC mode "ask" means no. Both files sit in the configuration folder of the
   environment the driver starts pi with (`PI_CODING_AGENT_DIR` from the core's
-  environment or the profile's, else `~/.pi/agent`). With a scope (the
+  environment or the profile's, else `~/.pi/agent`); a relative folder is another
+  one in each folder pi starts in, so the probe's model says nothing there. With a scope (the
   profile's `--models`, else `enabledModels`), the saved
   `defaultProvider`/`defaultModel` wins when the scope holds it, else the first
   scoped model; without one, the saved default when available. A `--models`
   left with no pattern clears the scope. The profile's arguments are walked as
   pi parses them, so an option's value is never read as a flag. Boite follows
   that with the account's catalog, never its own `default` entry: a pattern
-  names a model only when its whole text, without case, is one `provider/id` or
-  one bare id; a partial or ambiguous match is pi's pick, and a `:suffix` is
+  names a model only when its whole text, without case, is one id on the
+  provider of the longest known `provider/` prefix (a provider id may hold a
+  `/`), else a bare id on one provider; a partial or ambiguous match is pi's pick, and a `:suffix` is
   dropped only when the whole text matches nothing. A leading BOM and an empty
-  `enabledModels` count as pi counts them. A protected run starts pi with
-  `--no-approve` and settings of its own, so pi decides there. When
+  `enabledModels` count as pi counts them. A protected run starts a new pi
+  session with `--no-approve` and settings of its own, so pi decides there,
+  whatever the thread's last session was on. When
   the folder changes nothing, the probe's `default` answers; when
   only pi can name the model (a glob or fuzzy pattern, a model missing from the
   catalog), Boite lets the image through and pi replaces it if that model reads
@@ -436,6 +440,8 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   open thread the composer asks the core (`threads.capabilities`), again when
   the session, the folder, the selection, the account's catalog, the turn or the
   connection changes; a draft asks `drafts.images` with its project's folder.
+  Until that answer comes, a picture is held and Send waits for it; an answer
+  that never comes leaves the account's catalog to decide.
   Without the field, the model follows the agent's image capability.
   A native agent may declare an empty list and let the probe supply its catalog.
   The unnamed `default` alias remains accepted for existing descriptors. Echo

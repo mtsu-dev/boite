@@ -65,8 +65,6 @@
   let previewReferences = $derived(composer?.previewReferences ?? []);
   let choice = $state<Choice | null>(null);
   let picking = $state(false);
-  /** Files still being read into this prompt: their tiles show, Send waits for them. */
-  let loadingFiles = $derived(attachments.some(isLoading));
   /** Send pressed while files were still being read: it goes once they are ready, unless the user types on. */
   let sendWhenLoaded = $state.raw<{ store: Store; key: string; state: ComposerState; shape: SendShape; nextDraft: boolean } | null>(null);
   let dictating = $state(false);
@@ -155,6 +153,8 @@
    */
   let reply = $derived(replyTarget(store));
   const resumed = new ResumedImages(() => store, () => thread, () => choice);
+  /** Files still being read into this prompt, or a picture pi's own model may refuse while the core reads it (`ResumedImages`): Send waits. */
+  let loadingFiles = $derived(attachments.some(isLoading) || (resumed.images === null && attachments.some(item => item.kind === 'image')));
   let imageRefusal = $derived(imageRefusalOf(store, choice, reply !== null, resumed.images));
   let imageWarning = $derived(imageRefusal !== null && attachments.some(item => item.kind === 'image') ? imageRefusal : null);
   /** The open thread's first page is still on its way: the field says so and Send waits (ChatView draws the shapes meanwhile). */

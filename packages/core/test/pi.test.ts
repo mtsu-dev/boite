@@ -164,6 +164,8 @@ test('pi default reads the folder as the launch decides: its approval flags, its
   process.env['PI_CODING_AGENT_DIR'] = agentDir;
   expect(await launch([], profile => { profile.unsetEnv = ['PI_CODING_AGENT_DIR']; })).toBe(true);
   process.env['PI_CODING_AGENT_DIR'] = join(harness!.dataDir, 'not-this-pi');
+  // A relative folder is another one in each folder pi starts in: the probe's model says nothing of this one.
+  expect(await launch([], profile => { profile.env = { ...profile.env, PI_CODING_AGENT_DIR: 'relative-pi' }; })).toBe(true);
   // A `--models` with no pattern left (descriptors refuse an empty argument) clears the saved scope rather than falling back to it.
   writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ enabledModels: ['fake-b/plain'] }));
   expect(await launch(['--models', ' , '])).toBe(true);
@@ -178,6 +180,9 @@ test('pi default reads the folder as the launch decides: its approval flags, its
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['SMART:high'] }));
   expect(await launch([])).toBe(false);
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['fake-b/plain:low'] }));
+  expect(await launch([])).toBe(true);
+  // The longest provider a pattern starts with names it, as in pi: `base` on `fake-a/team`, partly matched there.
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['fake-a/team/base'] }));
   expect(await launch([])).toBe(true);
   // A protected run starts pi on settings of its own, so pi decides there.
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
@@ -205,8 +210,21 @@ test('pi default follows the model a resumed session restores, not the one pi st
       .toMatchObject({ rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } });
     expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ available: false, reason: 'unsupported' });
   }
-  // A copy of the session under another name: pi opens one of them and still restores Fake Plain.
+  // A protected run starts a new session of its own, whatever this one was on.
+  const bound = spyOn(harness!.core.sharedAccess, 'bound').mockImplementation(id => id === threadId ? {} as ReturnType<SharedAccess['bound']> : null);
+  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
+  bound.mockRestore();
+  // A model gone from the catalog resumes on pi's saved default, which only pi reads, even where pi starts on a text-only one.
+  process.env['PI_FAKE_CURRENT'] = 'plain';
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId: harness!.core.threads.require(threadId).accountId, refresh: true });
   const file = piSessionFile(threadId);
+  const session = readFileSync(file, 'utf8');
+  writeFileSync(file, session.replaceAll('"plain"', '"gone"'));
+  expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: true });
+  writeFileSync(file, session);
+  delete process.env['PI_FAKE_CURRENT'];
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId: harness!.core.threads.require(threadId).accountId, refresh: true });
+  // A copy of the session under another name: pi opens one of them and still restores Fake Plain.
   writeFileSync(join(file, '..', `2020-01-01T00-00-00-000Z_${harness!.core.threads.require(threadId).sessionId}.jsonl`), readFileSync(file, 'utf8'));
   expect((await client.call('threads.capabilities', { threadId })).images).toMatchObject({ supported: false });
   // pi skips a session whose header names another folder.

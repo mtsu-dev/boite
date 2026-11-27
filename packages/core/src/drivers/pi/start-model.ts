@@ -1,7 +1,8 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { isRecord } from '../stdio.ts';
+import { piModelOf } from './models.ts';
 import { piProcessCwd } from './session-model.ts';
 
 /** The keys pi 1.6.1 `findInitialModel` chooses a new session's model from, in its order. */
@@ -27,8 +28,11 @@ export interface PiLaunchChoices {
   model: boolean;
 }
 
-/** A model of the account's catalog as Boite lists it: `provider/id` and pi's name within its own. */
-export interface CatalogModel { id: string; name?: string }
+/** A model of the account's catalog as Boite lists it (`drivers/pi/models.ts`): `provider/id`, and a name that starts with the provider. */
+export interface CatalogModel { id: string; name: string }
+
+/** A catalog model as pi holds it, with the `provider/id` Boite names it by. */
+interface PiEntry { full: string; provider: string; id: string; name: string }
 
 export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
   const choices: PiLaunchChoices = { scope: null, trust: null, model: false };
@@ -54,11 +58,21 @@ export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
   return choices;
 }
 
-/** Where pi keeps an account's settings and trust decisions, from the environment it starts with. */
-export function piAgentDir(env: Record<string, string | undefined>, cwd: string): string {
+/** `PI_CODING_AGENT_DIR` with its `~` expanded, else pi's own folder in the home. */
+function configuredAgentDir(env: Record<string, string | undefined>): string {
   const home = env['HOME'] || homedir();
   const configured = env['PI_CODING_AGENT_DIR'] || join(home, '.pi', 'agent');
-  return resolve(cwd, configured === '~' ? home : configured.startsWith('~/') ? join(home, configured.slice(2)) : configured);
+  return configured === '~' ? home : configured.startsWith('~/') ? join(home, configured.slice(2)) : configured;
+}
+
+/** Where pi keeps an account's settings and trust decisions, from the environment it starts with. */
+export function piAgentDir(env: Record<string, string | undefined>, cwd: string): string {
+  return resolve(cwd, configuredAgentDir(env));
+}
+
+/** Whether that folder is relative, so each folder pi starts in has its own: the account's probe, run elsewhere, read another one. */
+export function piAgentDirFollowsCwd(env: Record<string, string | undefined>): boolean {
+  return !isAbsolute(configuredAgentDir(env));
 }
 
 /**
@@ -87,42 +101,79 @@ export function folderStartModel(agentDir: string, cwd: string, catalog: readonl
   const shown = (setting: unknown) => JSON.stringify(Array.isArray(setting) && setting.length === 0 ? undefined : setting);
   const same = (key: typeof CHOOSING[number]) => shown(value(key)) === shown(global[key]);
   if (CHOOSING.every(same) || (launch.scope !== null && same('defaultProvider') && same('defaultModel'))) return 'account';
-  if (!catalog) return null;
+  const pool = catalog?.map(entry => {
+    const model = piModelOf(entry);
+    return model && { full: entry.id, ...model };
+  });
+  if (!pool || pool.some(entry => entry === undefined)) return null;
+  const entries = pool as PiEntry[];
   const provider = value('defaultProvider');
   const model = value('defaultModel');
-  const named = typeof provider === 'string' && typeof model === 'string' ? `${provider}/${model}` : null;
+  const named = entries.find(entry => entry.provider === provider && entry.id === model)?.full ?? null;
   const patterns = launch.scope ?? value('enabledModels');
   if (Array.isArray(patterns) && patterns.length > 0) {
-    const scope = patterns.map(pattern => typeof pattern === 'string' ? scopedModel(pattern, catalog) : null);
+    const scope = patterns.map(pattern => typeof pattern === 'string' ? scopedModel(pattern, entries) : null);
     if (scope.includes(null)) return null;
     return named && scope.includes(named) ? named : scope[0]!;
   }
-  return named && catalog.some(entry => entry.id === named) ? named : null;
+  return named;
 }
 
 /**
  * The one catalog model pi 1.6.1 resolves a scope pattern to
  * (`resolveModelScopeFromModels`), or null when only pi can tell. pi matches
- * the whole text first, without case: a `provider/id`, else a bare id on one
- * provider, else part of an id or a name, its pick among those being its own;
- * only then does it drop a `:suffix` and try again. A glob, a partial or an
- * ambiguous match are null.
+ * the whole text first (`selectReference`), then part of an id or a name, its
+ * pick among those being its own; only then does it drop a `:suffix` and try
+ * again. A glob, a partial or an ambiguous match are null.
  */
-function scopedModel(pattern: string, catalog: readonly CatalogModel[]): string | null {
+function scopedModel(pattern: string, pool: readonly PiEntry[]): string | null {
   if (/[*?[]/.test(pattern)) return null;
-  for (let text = pattern.trim().toLowerCase(); text.length > 0;) {
-    const full = catalog.filter(entry => entry.id.toLowerCase() === text);
-    if (full.length > 0) return full.length === 1 ? full[0]!.id : null;
-    const bare = text.includes('/') ? [] : catalog.filter(entry => entry.id.slice(entry.id.indexOf('/') + 1).toLowerCase() === text);
-    if (bare.length > 0) return bare.length === 1 ? bare[0]!.id : null;
-    // What follows any `/` may be the id part of a `provider/` hint, which pi matches in part within that provider.
-    const parts = [text, ...[...text].flatMap((char, at) => char === '/' && at + 1 < text.length ? [text.slice(at + 1)] : [])];
-    if (catalog.some(entry => parts.some(part => entry.id.toLowerCase().includes(part) || entry.name?.toLowerCase().includes(part)))) return null;
+  for (let text = pattern.trim(); text.length > 0;) {
+    const whole = reference(text, pool);
+    if (whole !== undefined) return whole;
+    const lower = text.toLowerCase();
+    if (pool.some(entry => entry.id.toLowerCase().includes(lower) || entry.name.toLowerCase().includes(lower))) return null;
     const colon = text.lastIndexOf(':');
     if (colon < 0) return null;
     text = text.slice(0, colon);
   }
   return null;
+}
+
+/**
+ * pi's `selectReference` with every model usable, as in a scope: the id on the
+ * provider the longest known `provider/` prefix names, else the one provider
+ * whose id is the whole text. Undefined when nothing matches whole; null when
+ * only pi picks (part of an id within the named provider, several providers).
+ */
+function reference(text: string, pool: readonly PiEntry[]): string | null | undefined {
+  const lower = text.toLowerCase();
+  const raw = pool.filter(entry => entry.id.toLowerCase() === lower);
+  const split = providerPrefix(text, pool);
+  if (split) {
+    const wanted = split.model.toLowerCase();
+    const own = pool.filter(entry => entry.provider === split.provider);
+    const named = own.find(entry => entry.id.toLowerCase() === wanted) ?? raw.find(entry => entry.provider === split.provider);
+    if (named) return named.full;
+    if (own.some(entry => entry.id.toLowerCase().includes(wanted) || entry.name.toLowerCase().includes(wanted))) return null;
+  }
+  if (raw.length === 0) return undefined;
+  return new Set(raw.map(entry => entry.provider)).size === 1 ? raw[0]!.full : null;
+}
+
+/** pi's `splitProviderPrefix`: the longest provider id the text starts with before a `/`, and the rest. */
+function providerPrefix(text: string, pool: readonly PiEntry[]): { provider: string; model: string } | undefined {
+  const lower = text.toLowerCase();
+  let best: { provider: string; model: string } | undefined;
+  for (const { provider } of pool) {
+    const prefix = provider.trim().toLowerCase();
+    if (!prefix || (best && best.provider.length >= provider.length)) continue;
+    const slash = lower.indexOf('/', prefix.length);
+    if (slash === -1 || lower.slice(0, slash).trim() !== prefix) continue;
+    const model = text.slice(slash + 1).trim();
+    if (model) best = { provider, model };
+  }
+  return best;
 }
 
 /** pi's trust for a folder: the nearest decision in `trust.json`, else its `defaultProjectTrust`. */
