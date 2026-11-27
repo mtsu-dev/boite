@@ -165,7 +165,15 @@ test('pi default reads the folder as the launch decides: its approval flags, its
   expect(await launch([], profile => { profile.unsetEnv = ['PI_CODING_AGENT_DIR']; })).toBe(true);
   process.env['PI_CODING_AGENT_DIR'] = join(harness!.dataDir, 'not-this-pi');
   // A relative folder is another one in each folder pi starts in: the probe's model says nothing of this one.
-  expect(await launch([], profile => { profile.env = { ...profile.env, PI_CODING_AGENT_DIR: 'relative-pi' }; })).toBe(true);
+  const relative = (profile: Profile) => { profile.env = { ...profile.env, PI_CODING_AGENT_DIR: 'relative-pi' }; };
+  expect(await launch([], relative)).toBe(true);
+  // Nor does its catalog, even for a model the folder names.
+  mkdirSync(join(cwd, 'relative-pi'));
+  writeFileSync(join(cwd, 'relative-pi', 'trust.json'), JSON.stringify({ [realpathSync(cwd)]: true }));
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
+  expect(await launch([], relative)).toBe(true);
+  rmSync(join(cwd, 'relative-pi'), { recursive: true });
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-a', defaultModel: 'smart' }));
   // A `--models` with no pattern left (descriptors refuse an empty argument) clears the saved scope rather than falling back to it.
   writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ enabledModels: ['fake-b/plain'] }));
   expect(await launch(['--models', ' , '])).toBe(true);
@@ -181,9 +189,9 @@ test('pi default reads the folder as the launch decides: its approval flags, its
   expect(await launch([])).toBe(false);
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['fake-b/plain:low'] }));
   expect(await launch([])).toBe(true);
-  // The longest provider a pattern starts with names it, as in pi: `base` on `fake-a/team`, partly matched there.
+  // The longest provider a pattern starts with names it, as in pi: `base` on `fake-a/team`, not `team/base` on `fake-a`.
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ enabledModels: ['fake-a/team/base'] }));
-  expect(await launch([])).toBe(true);
+  expect(await launch([])).toBe(false);
   // A protected run starts pi on settings of its own, so pi decides there.
   writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
   expect(await launch([])).toBe(false);

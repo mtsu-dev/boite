@@ -81,12 +81,13 @@ export function imageInputModel(
     // see. When only pi can name that model, it handles the images itself.
     // pi reads its settings where the environment the driver starts it with says; Boite's own `default` entry names no model.
     const env = account ? piLaunchEnv(core.accounts.profileEnv(account, provider)) : null;
+    // A relative configuration folder is another one in each folder pi starts in: the probe, run elsewhere, read
+    // another one's settings and models, so neither its model nor its catalog tells this folder's.
+    if (env && piAgentDirFollowsCwd(env)) return undefined;
     const catalog = (probed ?? saved?.models ?? null)?.filter(entry => entry.id !== AGENT_OWN_MODEL) ?? null;
     const start = env ? folderStartModel(piAgentDir(env, cwd), cwd, catalog, launch) : 'account';
     if (start === null) return undefined;
     if (start !== 'account') return listed(start);
-    // A relative configuration folder is another one in each folder pi starts in: the probe saw none of this one.
-    if (env && piAgentDirFollowsCwd(env)) return undefined;
   }
   return listed(wanted);
 }

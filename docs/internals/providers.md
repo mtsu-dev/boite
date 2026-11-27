@@ -419,7 +419,8 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   RPC mode "ask" means no. Both files sit in the configuration folder of the
   environment the driver starts pi with (`PI_CODING_AGENT_DIR` from the core's
   environment or the profile's, else `~/.pi/agent`); a relative folder is another
-  one in each folder pi starts in, so the probe's model says nothing there. With a scope (the
+  one in each folder pi starts in, so neither the probe's model nor its catalog
+  says anything there and pi decides. With a scope (the
   profile's `--models`, else `enabledModels`), the saved
   `defaultProvider`/`defaultModel` wins when the scope holds it, else the first
   scoped model; without one, the saved default when available. A `--models`
@@ -428,7 +429,8 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   that with the account's catalog, never its own `default` entry: a pattern
   names a model only when its whole text, without case, is one id on the
   provider of the longest known `provider/` prefix (a provider id may hold a
-  `/`), else a bare id on one provider; a partial or ambiguous match is pi's pick, and a `:suffix` is
+  `/`; when two pairs spell one `provider/id`, the catalog keeps that longest
+  provider's, the one pi reads the text as), else a bare id on one provider; a partial or ambiguous match is pi's pick, and a `:suffix` is
   dropped only when the whole text matches nothing. A leading BOM and an empty
   `enabledModels` count as pi counts them. A protected run starts a new pi
   session with `--no-approve` and settings of its own, so pi decides there,
@@ -440,8 +442,10 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   open thread the composer asks the core (`threads.capabilities`), again when
   the session, the folder, the selection, the account's catalog, the turn or the
   connection changes; a draft asks `drafts.images` with its project's folder.
-  Until that answer comes, a picture is held and Send waits for it; an answer
-  that never comes leaves the account's catalog to decide.
+  Until that answer comes, a picture is held and Send waits for it, asked again
+  after a reconnection; another agent, account or model picked meanwhile cancels
+  the waiting Send, and an answer that never comes leaves the account's catalog
+  to decide.
   Without the field, the model follows the agent's image capability.
   A native agent may declare an empty list and let the probe supply its catalog.
   The unnamed `default` alias remains accepted for existing descriptors. Echo

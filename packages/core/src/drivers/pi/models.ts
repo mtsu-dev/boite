@@ -85,6 +85,8 @@ interface PiListing {
   models: PiModel[];
   /** The model the session is on, as `<provider>/<id>`, or an empty string. */
   current: string;
+  /** Its provider, which that text alone cannot tell when a provider id holds a `/`. */
+  currentProvider: string;
   /** The thinking level the session is on: the default effort of the current model, and of it alone. */
   thinkingLevel: string;
   /** `get_available_thinking_levels`: the scale of the current model, and of it alone. */
@@ -101,31 +103,38 @@ interface PiListing {
  */
 function modelsFrom(provider: ProviderDescriptor, listing: PiListing): ModelInfo[] {
   const models: ModelInfo[] = [];
-  const seen = new Set<string>();
+  // Each id's provider, so a later pair that spells the same id can take its place.
+  const seen = new Map<string, string>();
   const own = provider.models.find((model) => model.id === AGENT_OWN_MODEL);
   if (own !== undefined) {
     models.push({ id: AGENT_OWN_MODEL, name: own.name, default: false });
-    seen.add(AGENT_OWN_MODEL);
+    seen.set(AGENT_OWN_MODEL, '');
   }
   for (const entry of listing.models) {
     const id = entry.id ?? '';
     const providerId = entry.provider ?? '';
     if (id.length === 0 || providerId.length === 0) continue;
     const full = `${providerId}/${id}`;
-    if (seen.has(full)) continue;
-    seen.add(full);
-    const effort = effortOf(entry, full === listing.current ? listing.thinkingLevel : null);
+    // `gateway` + `team/base` and `gateway/team` + `base` spell one id; pi reads that text on the longest provider
+    // (`splitProviderPrefix`), for `--model` as for a scope, so that pair is the one the id names.
+    const held = seen.get(full);
+    if (held !== undefined && held.length >= providerId.length) continue;
+    if (held !== undefined) models.splice(models.findIndex((model) => model.id === full), 1);
+    seen.set(full, providerId);
+    const current = full === listing.current && providerId === listing.currentProvider;
+    const effort = effortOf(entry, current ? listing.thinkingLevel : null);
     models.push({
       id: full,
       name: `${providerLabel(providerId)} / ${entry.name ?? id}`,
-      default: full === listing.current,
+      default: current,
       ...(Array.isArray(entry.input) && !entry.input.includes('image') ? { images: false as const } : {}),
       ...(entry.api === VIRTUAL_API ? { virtual: true as const } : {}),
       ...(effort === null ? {} : { effort }),
     });
   }
   // "pi default" runs the current model, so it reads images only when that model does.
-  if (own !== undefined && models.find((model) => model.id === listing.current)?.images === false) models[0]!.images = false;
+  const current = listing.models.find((model) => model.provider === listing.currentProvider && `${model.provider}/${model.id ?? ''}` === listing.current);
+  if (own !== undefined && Array.isArray(current?.input) && !current.input.includes('image')) models[0]!.images = false;
   return models.length === (own === undefined ? 0 : 1) ? provider.models : models;
 }
 
@@ -168,6 +177,7 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
     const listing: PiListing = {
       models: Array.isArray(listed['models']) ? (listed['models'] as PiModel[]) : [],
       current: currentId,
+      currentProvider: currentId === '' ? '' : current.provider!,
       thinkingLevel: textOf(state['thinkingLevel']),
       sessionLevels: Array.isArray(levels['levels']) ? (levels['levels'] as string[]) : [],
     };
@@ -186,7 +196,7 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
  */
 function checkLevels(ctx: ProbeContext, listing: PiListing): void {
   if (listing.sessionLevels.length === 0 || listing.current === '') return;
-  const current = listing.models.find((model) => `${model.provider ?? ''}/${model.id ?? ''}` === listing.current);
+  const current = listing.models.find((model) => model.provider === listing.currentProvider && `${model.provider}/${model.id ?? ''}` === listing.current);
   if (current === undefined) return;
   const computed = supportedLevels(current).join(',');
   const answered = listing.sessionLevels.join(',');

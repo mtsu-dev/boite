@@ -254,9 +254,9 @@ if (process.env['PI_FAKE_VIRTUAL']) MODELS.push({ ...MODELS[0]!, id: 'router', n
 if (process.env['PI_FAKE_LITERAL']) {
   MODELS.push({ ...MODELS[2]!, provider: 'fake-a', id: 'smart:high', name: 'Fake Smart High' });
   MODELS.push({ ...MODELS[0]!, provider: 'fake-b', id: 'plain:low-plus', name: 'Fake Plain Low Plus' });
-  // A provider id may hold a `/`: `fake-a/team/base` is `base` on `fake-a/team` for pi, which only has `base-v2` there.
-  MODELS.push({ ...MODELS[2]!, provider: 'fake-a', id: 'team/base', name: 'Fake Team Base' });
-  MODELS.push({ ...MODELS[0]!, provider: 'fake-a/team', id: 'base-v2', name: 'Fake Base v2' });
+  // A provider id may hold a `/`: both spell `fake-a/team/base`, which pi reads as `base` on `fake-a/team`.
+  MODELS.push({ ...MODELS[0]!, provider: 'fake-a', id: 'team/base', name: 'Fake Team Base' });
+  MODELS.push({ ...MODELS[2]!, provider: 'fake-a/team', id: 'base', name: 'Fake Base' });
 }
 /** The model the session is on, which is the one pi reports as current. */
 const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0]!;

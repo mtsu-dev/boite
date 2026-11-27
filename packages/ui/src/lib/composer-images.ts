@@ -109,6 +109,11 @@ export function sameSend(pressed: SendShape, now: SendShape): boolean {
   return pressed.words === now.words && pressed.tiles.length === now.tiles.length && pressed.tiles.every((tile, at) => tile === now.tiles[at]);
 }
 
+/** Where a waiting Send goes: another agent, account or model picked meanwhile cancels it. */
+export function sendTarget(choice: Choice | null): string {
+  return choice ? [choice.providerId, choice.accountId, choice.model ?? ''].join('\n') : '';
+}
+
 /** A box nobody types in: a step of the undo history, or a draft set aside. */
 export interface QuietBox {
   text: string;

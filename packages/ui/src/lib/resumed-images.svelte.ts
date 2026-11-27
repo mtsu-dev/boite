@@ -1,4 +1,5 @@
 import type { Thread } from '@boite/contracts';
+import { untrack } from 'svelte';
 import { chipChoice } from './composer-choice';
 import type { Choice, Store } from './store.svelte';
 
@@ -43,6 +44,8 @@ export class ResumedImages {
     $effect(() => {
       const key = this.#key;
       if (key === null || this.store().connection !== 'ready') return;
+      // A reconnection can bring the same key back: an answer read before it no longer holds.
+      untrack(() => { this.#read = null; });
       let current = true;
       const answer = (images: boolean | null) => { if (current) this.#read = { key, images: images ?? undefined }; };
       askCore(this.store(), key).then(answer, () => answer(null));

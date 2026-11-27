@@ -2239,15 +2239,33 @@ test('a picture pasted while the core reads pi\'s own model is held, and Send wa
   answer({ supported: false });
   await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') !== null);
   expect(input().value).toBe('Read the picture');
+  // A reconnection asks again: the old answer no longer holds while the new one is on its way.
+  store.connection = 'connecting';
+  flushSync();
+  store.connection = 'ready';
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') === null);
+  answer({ supported: false });
+  await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') !== null);
   // Another catalog asks again; Send pressed meanwhile goes once the core says yes.
   const calls = asked.mock.calls.length;
   store.probedModels = { ...store.probedModels, [key]: [...store.probedModels[key]!, { id: 'pi-new', name: 'pi new model' }] };
   await waitFor(() => asked.mock.calls.length > calls);
   await waitFor(() => document.querySelector('[data-testid=composer-image-warning]') === null);
   const sent = vi.spyOn(store.client!, 'call');
+  const prompts = () => sent.mock.calls.filter(([, params]) => JSON.stringify(params ?? null).includes('Read the picture'));
+  // Another agent picked before the answer: the Send pressed for pi goes nowhere.
   press('Enter');
   flushSync();
-  const prompts = () => sent.mock.calls.filter(([, params]) => JSON.stringify(params ?? null).includes('Read the picture'));
+  const piChoice = store.draftChoice!;
+  const reader = store.accounts.find(entry => entry.providerId !== 'pi' && store.providerOf(entry.providerId)?.capabilities.images === true)!;
+  store.draftChoice = { ...piChoice, providerId: reader.providerId, accountId: reader.id, model: null };
+  await waitFor(() => chipText('composer-picker') !== 'pi');
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(prompts()).toEqual([]);
+  store.draftChoice = piChoice;
+  await waitFor(() => chipText('composer-picker') === 'pi');
+  press('Enter');
+  flushSync();
   expect(prompts()).toEqual([]);
   answer({ supported: true });
   // The fake core keeps its own text-only catalog and refuses the turn: what counts here is that it went.
