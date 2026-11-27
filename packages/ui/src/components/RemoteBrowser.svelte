@@ -18,6 +18,8 @@
    * active tab.
    */
   let { store, threadId, tabId }: { store: Store; threadId: string; tabId?: string } = $props();
+  // Tab status updates replace the parent object even while the tab stays the same.
+  const watchedTabId = $derived(tabId);
   let paused = $state(false), busy = $state(false), error = $state(''), text = $state('');
   let frame = $state.raw<RemoteBrowserFrame | null>(null), picture = $state<HTMLCanvasElement>();
   // Input must name a frame from the current stream. Use local time for its
@@ -97,7 +99,7 @@
     const swapped = () => { if (client === store.client) return false; stop(); blank(); error = strings.remoteBrowser.reconnecting; return true; };
     let next: RemoteBrowserFrame | null = null;
     stream = frameStream({
-      client, threadId, ...(tabId ? { tabId } : {}), maxWidth: widest,
+      client, threadId, ...(watchedTabId ? { tabId: watchedTabId } : {}), maxWidth: widest,
       page: (page) => {
         if (!mine() || swapped()) return;
         next = { ...page, base64: '' };
@@ -114,7 +116,7 @@
   }
   const pushed = () => !pullOnly && store.core?.features?.browserStream === true && typeof store.client?.frames === 'function';
   $effect(() => { void requestWidth; void pixelRatio; untrack(() => stream?.resized()); });
-  $effect(() => { void tabId; untrack(() => { if (stream || pullOnly) { pullOnly = false; resume(); } }); });
+  $effect(() => { void watchedTabId; untrack(() => { if (stream || pullOnly) { pullOnly = false; resume(); } }); });
   // A list stays with the page it was tapped on.
   $effect(() => { if (choice && (!frame || frame.width !== choice.tap.width || frame.height !== choice.tap.height || paused)) choice = null; });
 
@@ -129,7 +131,7 @@
       const maxWidth = widest(), quality = frameQuality(roundTrip);
       // The frame shown: the core answers with a newer one, or that the page drew nothing new within a second.
       const after = frame && fromCurrentStream(frame) && frameClient === client ? frame.id : undefined;
-      const next = await client.call('browser.remoteFrame', { threadId, ...(tabId ? { tabId } : {}), ...(maxWidth ? { maxWidth } : {}), ...(quality !== 55 ? { quality } : {}), ...(after ? { after } : {}) });
+      const next = await client.call('browser.remoteFrame', { threadId, ...(watchedTabId ? { tabId: watchedTabId } : {}), ...(maxWidth ? { maxWidth } : {}), ...(quality !== 55 ? { quality } : {}), ...(after ? { after } : {}) });
       const changed = 'unchanged' in next ? null : next;
       if (!alive || run !== generation) return;
       if (client !== store.client) { blank(); error = strings.remoteBrowser.reconnecting; }
