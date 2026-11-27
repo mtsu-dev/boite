@@ -242,6 +242,7 @@ export const strings = {
       instructionsLarge: 'The instruction files hold {chars} characters, over the {limit} recommended: the agent may be slower and less precise',
       instructionsLargeOne: 'The instruction file holds {chars} characters, over the {limit} recommended: the agent may be slower and less precise',
       mirrorFailed: 'Part of this conversation was not copied to the session store: that copy misses it',
+      nothingToCompact: 'Nothing new to compact: the conversation is too short or was just summarized',
     },
     /** What the agent asks to do, one sentence per kind of tool (`lib/tool-summary.ts`). */
     permissionAsk: {

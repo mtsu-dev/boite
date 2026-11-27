@@ -22,8 +22,8 @@ export interface EditingHost {
   key: string;
   box: HTMLTextAreaElement | undefined;
   state: ComposerState;
-  /** Where pasted pictures go; null for an answer, whose files reach the agent as paths whatever it reads. */
-  provider: { name: string; capabilities: { images: boolean } } | null;
+  /** Why the composer refuses pictures, or null when it accepts them. */
+  imageRefusal: string | null;
   moved: (caret: number) => void;
   /** The key the box shows now, when it can move to another one while a toast waits. */
   shown?: () => string;
@@ -128,7 +128,7 @@ export function copySelection(host: EditingHost, event: ClipboardEvent, cut: boo
  * stand under the same numbers, the browser's own paste is enough.
  */
 export function pasteImages(host: EditingHost, event: ClipboardEvent): boolean {
-  const { box, state, store, provider } = host;
+  const { box, state, store, imageRefusal } = host;
   const copied = copiedFrom(event.clipboardData);
   if (!copied || !box || pastesAsText(copied, state)) return false;
   event.preventDefault();
@@ -136,8 +136,8 @@ export function pasteImages(host: EditingHost, event: ClipboardEvent): boolean {
   const start = box.selectionStart, end = box.selectionEnd;
   const fitted = fitCopy(copied, state.attachments, (incoming) => {
     if (incoming.length === 0) return [];
-    if (provider && !provider.capabilities.images) {
-      store.error = fill(strings.composer.attachNoImages, { provider: provider.name });
+    if (imageRefusal !== null) {
+      store.error = imageRefusal;
       return [];
     }
     const result = acceptAttachments(state.attachments, incoming, { fit: true });

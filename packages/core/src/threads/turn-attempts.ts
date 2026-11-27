@@ -1,4 +1,4 @@
-import type { Account, MessageId, ProviderDescriptor, ProviderId, RpcEvents, ThreadId, ThreadRetry, ThreadSummary, Turn, TurnId, Usage } from '@boite/contracts';
+import type { Account, MessageId, ModelInfo, ProviderDescriptor, ProviderId, RpcEvents, ThreadId, ThreadRetry, ThreadSummary, Turn, TurnId, Usage } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, releaseThread } from '../drivers/index.ts';
 import type { Driver, StepDecision, TurnContext, TurnHandle, TurnResult } from '../drivers/types.ts';
@@ -66,6 +66,8 @@ function sameSelectionTarget(a: ThreadSummary, b: ThreadSummary): boolean {
 /** Native attempts and their active controls belong to one visible turn. */
 export class TurnAttempts {
   readonly handles = new Map<ThreadId, TurnHandle>();
+  /** The model list each running attempt was given: what its pi process runs, which input steered into it must suit. */
+  readonly catalogs = new WeakMap<TurnHandle, readonly ModelInfo[] | null>();
   readonly steering = new TurnSteering();
   readonly #livePermissions = new Map<ThreadId, LivePermissions>();
   readonly #liveSettings = new Map<ThreadId, { state: TurnAttemptState; settings: LiveSettings; selectionVersion: number }>();
@@ -311,6 +313,7 @@ export class TurnAttempts {
         // The native session already holds the request and what the agent did with it.
         context.prompt = CAPACITY_CONTINUE_PROMPT;
         context.attachments = [];
+        context.ownImages = 0;
         // The brain this context may have taken stays out of the prompt: the next turn sends it whole.
         forgetBrainContext(this.#core, threadId);
         coordinationGuideUnsent(this.#core, threadId);
@@ -338,6 +341,7 @@ export class TurnAttempts {
         if (!resumed && !retriedLostSession && capacityTries === 0 && !queued.execution?.operation) this.threads.titles.autoTitle(threadId, turnId);
         const handle = driver.startTurn(context);
         this.handles.set(threadId, handle);
+        if (context.catalog !== undefined) this.catalogs.set(handle, context.catalog);
         permissions.attach(handle);
         settings?.attach(handle);
         this.#reconcileSelection(state, permissions);

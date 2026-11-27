@@ -13,7 +13,7 @@ import { loginFolders, publishLoginCatalog } from './account-login.ts';
 import { AccountOperations } from './account-operations.ts';
 import { openCodeBackgroundCompaction } from './providers/opencode.ts';
 import { activeSubscriptionProxy, subscriptionProxyEnv } from './subscription-proxy.ts';
-import { agentEnv, hostAgentsEnabled, profileFor, resolveExecutable, resolveLaunch } from './providers/resolve.ts';
+import { agentEnv, hostAgentsEnabled, profileFor, resolveLaunch } from './providers/resolve.ts';
 import { sqliteHasRows } from './providers/sqlite-login.ts';
 import { providerLoginHome, providerSessionFiles } from './providers/session-paths.ts';
 import { browserNoopPath, browserNoopScript, currentOs, homePath } from './paths.ts';
@@ -328,9 +328,18 @@ export class AccountStore {
    * agent's own and lands in the account's directory, whatever the proxy is.
    */
   accountEnv(account: Account, provider: ProviderDescriptor, thread: Pick<ThreadSummary, 'parentThreadId' | 'agentSessionId'> = {}, { gateway = true }: { gateway?: boolean } = {}): Record<string, string> {
+    if (profileFor(provider) === undefined) return {};
+    this.prepare(account, provider);
+    const env = this.profileEnv(account, provider);
+    if (provider.quirks?.includes('antigravity') === true) Object.assign(env, antigravityCertificates(currentOs(), process.env, existsSync));
+    // OpenCode 2's own background compaction follows the thread type, off included; the driver adds the limit once it knows the window.
+    return openCodeBackgroundCompaction(provider.id, effectiveCompaction(this.#core.settings.get(), thread).backgroundCompaction, { ...env, ...(gateway ? subscriptionProxyEnv(this.#core, provider) : {}) });
+  }
+
+  /** The profile's own variables for this account, `{isolationDir}` filled in; reads and writes nothing. */
+  profileEnv(account: Account, provider: ProviderDescriptor): Record<string, string> {
     const profile = profileFor(provider);
     if (profile === undefined) return {};
-    this.prepare(account, provider);
     const isolationDir = account.isolationDir;
     const env: Record<string, string> = { ...profile.env };
     if (isolationDir !== null) {
@@ -341,9 +350,7 @@ export class AccountStore {
     for (const [key, value] of Object.entries(env)) {
       env[key] = isolationDir === null ? value : value.split('{isolationDir}').join(isolationDir);
     }
-    if (provider.quirks?.includes('antigravity') === true) Object.assign(env, antigravityCertificates(currentOs(), process.env, existsSync));
-    // OpenCode 2's own background compaction follows the thread type, off included; the driver adds the limit once it knows the window.
-    return openCodeBackgroundCompaction(provider.id, effectiveCompaction(this.#core.settings.get(), thread).backgroundCompaction, { ...env, ...(gateway ? subscriptionProxyEnv(this.#core, provider) : {}) });
+    return env;
   }
 
   /**
@@ -461,17 +468,17 @@ export class AccountStore {
 
     const [first, ...args] = command;
     if (first === undefined) throw refused('the login command is empty', { accountId, field: 'login.command' });
-    const executable = this.#loginExecutable(provider, first);
+    const [executable, ...launchArgs] = this.#loginCommand(provider, first, args);
 
     let spawned: SpawnedPipedProcess;
     this.#core.providers.installs.acquire(provider.id);
     try {
-      spawned = this.#core.procs.spawnPiped(loginThreadId(accountId), executable, args, { cwd: isolationDir, env });
+      spawned = this.#core.procs.spawnPiped(loginThreadId(accountId), executable, launchArgs, { cwd: isolationDir, env });
     } catch (error) {
       this.#core.providers.installs.release(provider.id);
       throw refused(`the login command ${executable} did not start: ${messageOf(error)}`, {
         accountId,
-        command: [executable, ...args].join(' '),
+        command: [executable, ...launchArgs].join(' '),
       });
     }
 
@@ -522,7 +529,7 @@ export class AccountStore {
         env,
         cols,
         rows,
-        type: [this.#loginExecutable(provider, first), ...args],
+        type: this.#loginCommand(provider, first, args),
         onExit: () => {
           this.#core.providers.installs.release(provider.id);
           if (this.#core.journal.isClosed()) return;
@@ -766,15 +773,16 @@ export class AccountStore {
 
   /**
    * A descriptor names its executable the way a shell would (`claude`). When the
-   * OS profile already resolved that same name to a real file, use the file: the
-   * CLI here is an install the PATH does not always carry.
+   * OS profile names it, use the resolved launch. An npm install may only have
+   * a package script, so the command also needs its runtime and script prefix.
    */
-  #loginExecutable(provider: ProviderDescriptor, first: string): string {
+  #loginCommand(provider: ProviderDescriptor, first: string, args: string[]): [string, ...string[]] {
     const profile = profileFor(provider);
-    if (profile === undefined) return first;
-    const named = profile.executable.some((candidate) => candidate.kind === 'path' && candidate.value === first);
-    if (!named) return first;
-    return resolveExecutable(profile) ?? first;
+    const named = profile?.executable.some((candidate) =>
+      (candidate.kind === 'path' && candidate.value === first)
+      || (candidate.kind === 'npm' && candidate.value.endsWith(`#${first}`)));
+    const launch = named ? resolveLaunch(profile) : null;
+    return launch === null ? [first, ...args] : [launch.executable, ...launch.prefix, ...args];
   }
 
   #emitLogin(

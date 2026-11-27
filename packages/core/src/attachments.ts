@@ -143,7 +143,7 @@ export function questionTextOf(entry: { header?: string; question?: string }): s
 const ANTIGRAVITY_IMAGES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 /** An image this provider's agent takes as a prompt block; any other is handed over as a file. */
-function nativeImage(provider: ProviderDescriptor | undefined, file: Attachment): file is ImageAttachment {
+export function nativeImage(provider: ProviderDescriptor | undefined, file: Attachment): file is ImageAttachment {
   return file.kind === 'image' && (provider?.quirks?.includes('antigravity') !== true || ANTIGRAVITY_IMAGES.has(file.mimeType));
 }
 

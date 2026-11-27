@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises';
-import type { Project, RpcParams, ThreadId, ThreadSummary } from '@boite/contracts';
+import { DRAFT_PREPARATION_LIFETIME_MS, type Project, type RpcParams, type ThreadId, type ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, getDriver, releaseThread, setThreadViewed } from '../drivers/index.ts';
 import type { SessionContext } from '../drivers/types.ts';
@@ -9,7 +9,7 @@ import { titleOf } from './inputs.ts';
 import { DraftReservationLedger, type DraftOwnership } from './draft-reservation-ledger.ts';
 
 type Params = RpcParams<'drafts.prepare'>;
-const LIFETIME_MS = 10 * 60_000;
+const LIFETIME_MS = DRAFT_PREPARATION_LIFETIME_MS;
 const CONNECTION_BACKLOG = 4;
 const GLOBAL_BACKLOG = 32;
 interface Reservation {
@@ -66,6 +66,13 @@ export class DraftPreparations {
 
   /** Startup and speculative admission share one reconciliation barrier. */
   recover(): Promise<void> { return this.#readiness ??= this.#ledger.recover(); }
+
+  /** The folder this connection's draft of the project reserved, once created, if the draft starts in one of that kind. */
+  reservedFolder(connectionId: string, projectId: string, kind: { worktree: boolean; incognito: boolean }): string | undefined {
+    const entry = this.#entries.get(connectionId);
+    return entry && !entry.cancelled && entry.project.id === projectId && Boolean(entry.params.worktree) === kind.worktree &&
+      (entry.params.incognito === true) === kind.incognito ? entry.thread?.cwd : undefined;
+  }
 
   catalogThread(providerId: string, accountId: string): ThreadSummary | undefined {
     return [...this.#entries.values()].find(entry => !entry.cancelled && entry.thread?.providerId === providerId && entry.thread.accountId === accountId)?.thread ?? undefined;

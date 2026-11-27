@@ -191,6 +191,13 @@ export interface TurnContext {
    * turns; a driver hands each one to its agent in that protocol's shape.
    */
   attachments: ImageAttachment[];
+  /**
+   * How many of `attachments` the user sent with this turn's own prompt, the
+   * ones admission checked against the model; the others are earlier images a
+   * continuation carries, which an agent may replace for a model that reads
+   * none. Undefined: all of them.
+   */
+  ownImages?: number;
   sessionId: string | null;
   /**
    * Resume `sessionId` only up to this entry of its transcript and fork the
@@ -216,6 +223,11 @@ export interface TurnContext {
   sessionBefore?: AgentTotals;
   /** The isolation environment of this account, empty for the provider's own login. */
   accountEnv: Record<string, string>;
+  /**
+   * The account's models as the core admits them: the probe, a list held while it refreshes, else the list saved
+   * before a restart. pi names a model's provider from it at launch, as image admission does. Absent for other drivers.
+   */
+  catalog?: readonly ModelInfo[] | null;
   /**
    * Boite's guide for a driver that puts it in its agent's system prompt
    * (`takesSystemGuide`); the prompt then does not carry it. Absent for the
@@ -354,7 +366,7 @@ export interface TurnContext {
 /** Native session setup without a prompt, a turn or a message sink. */
 export type SessionContext = Pick<TurnContext,
   'thread' | 'account' | 'provider' | 'sessionId' | 'resumeAt' | 'sessionBefore' |
-  'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'promptSuggestions' | 'suggestion' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
+  'accountEnv' | 'catalog' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'promptSuggestions' | 'suggestion' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
   'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'stopChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'mcpRevision' | 'protectedExecution' | 'modeRequired'>;
 
 type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -499,6 +511,8 @@ export interface TitleContext {
   account: Account;
   /** The isolation environment of this account, empty for the provider's own login. */
   accountEnv: Record<string, string>;
+  /** The writer account's models, as `TurnContext.catalog`. */
+  catalog?: readonly ModelInfo[] | null;
   /** The first prompt of the thread, its text parts only. */
   prompt: string;
   /** The first answer of the thread, its text parts only. Empty when the agent wrote no text. */
@@ -544,9 +558,9 @@ export interface Driver {
   protocol: Protocol;
   capabilities?: DriverCapabilities;
   /** Exact inclusive completed turn boundary; no prompt or source mutation. */
-  forkSession?(ctx: SessionContext, checkpoint: { sessionId: string; entry: string }): Promise<ForkedSession>;
+  forkSession?(ctx: SessionContext, checkpoint: NonNullable<TurnResult['checkpoint']>, sourceThreadId: ThreadId): Promise<ForkedSession>;
   startTurn(ctx: TurnContext): TurnHandle;
-  /** A separate, tool-free request. No native session or chat transcript is changed. */
+  /** A separate request that changes nothing: tool-free, or read-only tools where a session copy holds tool calls (pi). No native session or chat transcript is changed. */
   sideQuestion?(ctx: SideQuestionContext): Promise<string>;
   /** Initialize or resume a session without submitting a prompt. Unsupported protocols remain cold. */
   prepare?(ctx: SessionContext, options?: { forTurn?: boolean }): Promise<void>;
@@ -582,8 +596,13 @@ export interface Driver {
 
 export interface SideQuestionContext {
   thread: ThreadSummary;
+  account: Account;
   provider: ProviderDescriptor;
+  /** A settled boundary matching the visible snapshot, when the driver can copy it. */
+  checkpoint?: TurnResult['checkpoint'];
   accountEnv: Record<string, string>;
+  /** As `TurnContext.catalog`. */
+  catalog?: readonly ModelInfo[] | null;
   prompt: string;
   question: string;
   signal: AbortSignal;

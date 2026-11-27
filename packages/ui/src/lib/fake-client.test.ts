@@ -1,7 +1,7 @@
 import { expect, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import type { FakeClient } from './fake-client';
-import { ATTACHMENT_MAX_BYTES, DEFAULT_DELEGATION_CONFIG, matchSpeed, speedName, speedRefusal, MESSAGE_PAGE_MAX_BYTES, MESSAGE_SENT_MAX_BYTES, RPC_MAX_FRAME_BYTES, RpcErrorCode, SPEECH_DEFAULT_MODEL, TODO_TEXT_MAX, type RpcEvents, type RpcMethodName, type Turn } from '@boite/contracts';
+import { ATTACHMENT_MAX_BYTES, DEFAULT_DELEGATION_CONFIG, matchSpeed, speedName, speedRefusal, MESSAGE_PAGE_MAX_BYTES, MESSAGE_SENT_MAX_BYTES, RPC_MAX_FRAME_BYTES, RpcErrorCode, SPEECH_DEFAULT_MODEL, TODO_TEXT_MAX, type ImageAttachment, type RpcEvents, type RpcMethodName, type Turn } from '@boite/contracts';
 import { FAKE_AUTO_COMPACT_SETTLE_MS } from './fake-client/turns';
 import { FakeContext } from './fake-client/context';
 import { seed } from './fake-client/seed';
@@ -339,6 +339,35 @@ test('rewinding a live follow-up keeps the turn belonging to earlier messages', 
   await client.call('threads.rewind', { threadId: 't-trace', messageId: prompt.id });
   expect((await client.call('turns.start', original)).id).not.toBe(turn.id);
   await client.settled();
+});
+
+test('a fake steer checks its images against the model of the turn it joins', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 5 });
+  const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'pi')!;
+  await client.call('providers.probe', { providerId: 'pi', accountId: account.id });
+  await client.call('threads.update', { threadId: 't-trace', accountId: account.id, model: 'pi-demo' });
+  const turn = await client.call('turns.start', { threadId: 't-trace', prompt: '[tools] Keep reading', clientRequestId: 'steer_turn_model' });
+  // The picker now shows a model that reads images; the running turn still answers on the text-only one.
+  await client.call('threads.update', { threadId: 't-trace', model: 'default' });
+  const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+  await expect(client.call('turns.steer', { threadId: 't-trace', turnId: turn.id, prompt: 'Use this', attachments: [image], clientRequestId: 'steer_turn_image' }))
+    .rejects.toThrow('takes no images');
+  await client.call('turns.stop', { threadId: 't-trace' });
+  await client.settled();
+});
+
+test('a fake steer receipt replays after the thread moves to a provider without images', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 5 });
+  const turn = await client.call('turns.start', { threadId: 't-trace', prompt: '[tools] Keep reading', clientRequestId: 'steer_receipt_turn' });
+  const image: ImageAttachment = { kind: 'image', name: 'sample.png', mimeType: 'image/png', data: 'aGVsbG8=' };
+  const params = { threadId: 't-trace', turnId: turn.id, prompt: 'Use this', attachments: [image], clientRequestId: 'steer_receipt_image' };
+  expect(await client.call('turns.steer', params)).toEqual({ accepted: true });
+  await client.call('turns.stop', { threadId: 't-trace' });
+  await client.settled();
+  const textOnly = (await client.call('providers.list', {})).loaded.find(provider => !provider.capabilities.images && provider.available)!;
+  const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === textOnly.id)!;
+  await client.call('threads.update', { threadId: 't-trace', accountId: account.id });
+  expect(await client.call('turns.steer', params)).toEqual({ accepted: true });
 });
 
 test('fake agent receives selected element context while the visible prompt stays compact', async ({ createClient }) => {

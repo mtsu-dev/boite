@@ -80,8 +80,8 @@ The existing Stop action cancels the maintenance turn. Paired devices may call i
 |---|---|
 | Claude | `/compact` through the SDK prompt, without prompt-only reasoning suffixes |
 | Codex | `thread/compact/start`, completed by normal turn notifications |
-| Muse | `session/compact`; a `noop` fails with the host's reason |
-| pi | `compact` RPC, completed by its response, whose `estimatedTokensAfter` is pi's own estimate of what is left; Stop closes the process because prompt abort does not cancel this RPC |
+| Muse | `session/compact`; a `noop` ends the turn with a `nothing_to_compact` notice carrying the host's reason |
+| pi | `compact` RPC, completed by its response, whose `estimatedTokensAfter` is pi's own estimate of what is left; Stop closes the process because prompt abort does not cancel this RPC; its refusals `Nothing to compact (session too small)` and `Already compacted` end the turn with a `nothing_to_compact` notice, not an error |
 | ACP | `/compact` only when the session advertised that command |
 | echo | `[compact]`, a deterministic test operation; the divider it draws says `manual`, while `[compact]` inside a prompt draws an `auto` one |
 
@@ -654,7 +654,30 @@ device reports input. See
 after it, then returns the new thread with the removed prompt, attachments and
 element references for the composer. It refuses a thread with a turn running or
 queued (`reason: 'turn-in-flight'`) and any message that is not a user message
-of that thread (`field: 'messageId'`). The journal keeps a `thread.rewound`
+of that thread (`field: 'messageId'`). The composer sends `images: true` when
+the prompt that replaces the message carries images: the core then checks the
+model the cut leaves the thread on, as the send would, and refuses
+(`field: 'images'`) before it writes a file or cuts the conversation. For pi
+that model can differ from the current session's: a native cut resumes on the
+model at that point, a new session starts on the folder's settings as the
+restored files will leave them. The check reads those files from the
+checkpoint (`restoredView` in `threads/checkpoint-files.ts`), under the
+thread's own spelling of its folder, so a refusal leaves the folder as it was,
+its empty directories and hard links included. The view follows no link: a
+pi settings, trust or extensions path the launch lets pi read that crosses a
+symbolic link or a junction in the folder, on disk or restored, or enters the
+folder from outside through one, leaves the model to pi, at an edit as at a
+send (`diskView`). Each directory has its own case rule (an ext4 directory
+with casefold, an NTFS directory made case-sensitive), and one the restore
+makes, or empties before its writes and makes again, keeps its parent's: where a directory's names ignore case, any case of a
+name reads the file the restore writes; where Boite cannot tell, another case
+is left to pi. A restored file the core would own without its read bit reads as
+unreadable, as pi will find it. Wherever only pi can tell the model, the edit goes
+through; if pi then runs a text-only model, the driver fails the turn before
+the prompt with the same sentence, and the edited prompt stays in the
+conversation to send again without its images.
+While editing, the composer leaves that answer to the core instead of the
+current session's. The journal keeps a `thread.rewound`
 event naming every removed message and turn. The projection drops those
 messages, so `threads.get` and `messages.list` no longer return them. The turn
 rows stay, so the usage history still counts what they spent. Every subscribed
@@ -753,7 +776,8 @@ ways, and the rewind result's `session` field says which one applied:
 |---|---|
 | Claude | Exact. Each turn records `checkpoint: { sessionId, entry }`, the uuid of the last transcript entry it wrote. The next turn resumes that session with `resumeSessionAt: entry` and `forkSession: true`, so the CLI keeps the transcript up to the cut under a new session id and the original transcript is never shortened. A rewind closes the warm process first. |
 | Codex | Exact at a completed native turn boundary on the same account and session generation. A traced appserver, started without plugins or connectors, calls `thread/fork` with the retained native turn ID as an inclusive boundary and every MCP server turned off for that call only. Rewind prepares a new native session before restoring files and committing the journal cut. The source native transcript is unchanged. |
-| ACP, Muse, pi and echo | Seeded. The thread drops its native session. The next turn starts a fresh one carrying the kept history as bounded excerpts, the same [context transfer](model-switching.md#context-transfer) a change of account uses. |
+| pi | Exact at a completed native turn boundary on the same account and session generation. Boite copies the saved JSONL entry and its ancestors into a new session in the destination thread's folder. Rewind adopts the copy after file restore and journal validation. |
+| ACP, Muse and echo | Seeded. The thread drops its native session. The next turn starts a fresh one carrying the kept history as bounded excerpts, the same [context transfer](model-switching.md#context-transfer) a change of account uses. |
 
 Claude falls back to the seeded path in four cases: the kept turn left no
 checkpoint (it ran before checkpoints existed, failed early, or was stopped
@@ -845,8 +869,8 @@ with a fixture shape written for it.
 
 ## Side questions
 
-In an existing Claude conversation, `/btw <question>` asks a temporary question
-while the main turn continues, including while it waits for a permission. The
+In an existing Claude Code or pi conversation, `/btw <question>` asks a temporary
+question while the main turn continues, including while it waits for input. The
 answer appears beneath `/btw` and the question above the composer, and closes
 with Escape or its close button.
 Closing it or leaving the chat cancels an unfinished request. It works from
@@ -864,6 +888,11 @@ and says when earlier context was omitted. This is a separate request, so native
 is not guaranteed. Neither the question nor its answer enters the conversation,
 changes its native session or updates the main context meter.
 
+pi uses an RPC process limited to its read-only tools on a temporary copy at
+the latest matching settled checkpoint. Active conversations and older sessions without a matching
+checkpoint use the same text snapshot as Claude. The temporary file, when used,
+is deleted after the request.
+
 The echo driver supplies offline test answers. Other protocols currently refuse
 side questions by provider name, and their slash menu omits `/btw`. Merely
 forwarding `/btw` to a provider would queue it as a normal turn instead of
@@ -875,7 +904,7 @@ serialized WebSocket request queue. One side request runs per thread; dismissal
 cancels only its request ID. Archive and core shutdown cancel pending requests.
 
 After a successful answer, the compact "Fork" button creates and opens
-an idle fork. It carries exactly the bounded text snapshot sent to the side
+an idle fork. It carries the bounded text snapshot captured for the side
 request, followed by its question and answer. Later output from the original
 thread stays there. The fork uses a fresh native session, the original selection
 and folder, and normal tool permissions on its next turn. It does not create a

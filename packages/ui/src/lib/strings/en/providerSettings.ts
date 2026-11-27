@@ -38,6 +38,8 @@ export const strings = {
     offHeading: 'Turned off',
     off: 'Turned off',
     experimental: 'Experimental',
+    obsolete: 'Obsolete',
+    replacedBy: 'Replaced by {name}',
     /** The switch's accessible name: `{provider}` is the provider's own name. */
     enable: 'Use {provider}',
     enableHint: 'Off, Boite starts nothing of this provider and no list offers it. Its accounts and conversations are kept.',

@@ -154,6 +154,7 @@ export function seedAccounts() {
     {
       id: UPDATABLE_ID,
       name: 'OpenCode',
+      deprecated: { replacedBy: 'opencode-v2' },
       shortName: 'OpenCode',
       protocol: 'acp',
       login: { kind: 'terminal' },
@@ -179,8 +180,6 @@ export function seedAccounts() {
         resume: true
       }
     },
-    // The next major of the same agent, driven without long use behind it: off
-    // until the user turns it on, and its row says Experimental.
     {
       id: 'opencode-v2',
       acpSteering: true,
@@ -194,7 +193,6 @@ export function seedAccounts() {
       executable: 'C:\\Users\\you\\AppData\\Roaming\\npm\\opencode.exe',
       models: [{ id: 'default', name: 'OpenCode default', default: true }],
       install: null,
-      experimental: true,
       capabilities: {
         approvals: true,
         hooks: true,
@@ -239,14 +237,14 @@ export function seedAccounts() {
     executable: `${DATA_DIR}\\demo\\${provider.id}.exe`,
     models: [{ id: 'default', name: `${provider.name} default`, default: true }],
     capabilities: {
-      approvals: provider.protocol !== 'pi', hooks: false, checkpoint: false,
-      images: false, planMode: provider.protocol !== 'pi', resume: true
+      approvals: provider.protocol !== 'pi', hooks: false, checkpoint: provider.protocol === 'pi',
+      images: provider.protocol === 'pi', planMode: provider.protocol !== 'pi', resume: true
     },
     install: null,
     alwaysIsolated: false
   })));
   // The core's drivers that write titles (`ProviderSummary.titles`).
-  for (const provider of providers) provider.titles = ['claude-sdk', 'codex-appserver', 'echo'].includes(provider.protocol);
+  for (const provider of providers) provider.titles = ['claude-sdk', 'codex-appserver', 'echo', 'pi'].includes(provider.protocol);
   // The core's `summarize`: every summary says whether it is on, and an
   // experimental one is off until the user turns it on.
   for (const provider of providers) provider.enabled = provider.experimental !== true;
@@ -299,9 +297,10 @@ export function seedAccounts() {
       createdAt: T0
     }
   ];
-  accounts.push(...PROBE_PROVIDERS.map((provider): Account => ({
-    id: `a-${provider.id}`,
-    providerId: provider.id,
+  const defaultProviders = [...PROBE_PROVIDERS.map((provider) => provider.id), 'opencode-v2'];
+  accounts.push(...defaultProviders.map((providerId): Account => ({
+    id: `a-${providerId}`,
+    providerId,
     label: 'Default',
     isolationDir: null,
     status: 'ok',

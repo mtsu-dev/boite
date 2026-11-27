@@ -1,8 +1,19 @@
-import type { AccountId, Protocol, ProviderCapabilities, ProviderDescriptor, ProviderId, ProviderSummary, ThreadCapabilities, ThreadCapability, ThreadCapabilityReason, ThreadId } from './index.ts';
+import type { AccountId, ProjectId, Protocol, ProviderCapabilities, ProviderDescriptor, ProviderId, ProviderSummary, ThreadCapabilities, ThreadCapability, ThreadCapabilityReason, ThreadId } from './index.ts';
+import { supportsSideQuestions } from './providers.ts';
 
 export interface ThreadControlsRpcMethods {
   /** Supported operations and their current availability for this thread. */
   'threads.capabilities': { params: { threadId: ThreadId }; result: ThreadCapabilities };
+  /**
+   * Whether a draft's first prompt may carry images on this choice, before any thread exists, or with `threadId`
+   * a prompt of that thread of the project on a model picked for it. pi's own model starts where the folder's pi
+   * settings say, and the folder's extensions may give a model images, which only the core reads. Starts nothing.
+   * A draft of the drafts project starts in a new folder of its own, and a `worktree` draft in a new worktree: neither
+   * holds the project's untracked files, so the core reads the folder this connection's `drafts.prepare` reserved
+   * for a draft of that kind (`worktree`, `incognito`), and before it exists leaves the images to the first turn's
+   * admission there. Both are refused with `threadId`, whose thread has its folder, and `incognito` outside the drafts.
+   */
+  'drafts.images': { params: { projectId: ProjectId; providerId: ProviderId; accountId: AccountId; model: string | null; threadId?: ThreadId; worktree?: boolean; incognito?: boolean }; result: { supported: boolean } };
   /** Forecasts the native session after an account switch, without starting an agent or changing the thread. */
   'threads.previewAccountSwitch': { params: { threadId: ThreadId; accountId: AccountId }; result: { session: 'unchanged' | 'resume' | 'fresh' } };
 }
@@ -25,6 +36,7 @@ export interface ThreadCapabilitySnapshot {
   protocol: Protocol | null;
   selectionVersion: number;
   providerCapabilities: ProviderCapabilities | null;
+  modelImages?: false;
   runtimeReason: ThreadCapabilityReason | null;
   conversationReason: ThreadCapabilityReason | null;
   busy: boolean;
@@ -56,11 +68,12 @@ export function deriveThreadCapabilities(s: ThreadCapabilitySnapshot): ThreadCap
     threadId: s.threadId, providerId: s.providerId, protocol: s.protocol, selectionVersion: s.selectionVersion,
     steering: capability(s.steeringSupported, s.runtimeReason ?? s.conversationReason ?? s.steeringReason),
     compaction: capability(known, idle ?? s.compactionReason),
-    images: capability(s.providerCapabilities?.images === true, s.steeringReason === null ? s.runtimeReason ?? s.conversationReason : idle),
+    images: capability(s.providerCapabilities?.images === true && s.modelImages !== false, s.steeringReason === null ? s.runtimeReason ?? s.conversationReason : idle),
     plan: capability(s.providerCapabilities?.planMode === true, idle),
     approvals: capability(s.providerCapabilities?.approvals === true, s.pendingApprovals ? null : 'no-request'),
     // Boite also accepts asynchronous question cards through its scoped CLI, independently of native questions.
     questions: capability(known, s.pendingQuestions ? null : 'no-request'),
+    btw: capability(s.protocol !== null && supportsSideQuestions(s.protocol), s.runtimeReason ?? s.conversationReason),
     fork: { seeded: capability(known, forkReason), native: capability(s.nativeForkSupported, forkReason ?? (s.nativeForkAvailable ? null : 'no-checkpoint')) },
     rewind: { seeded: capability(known, rewindReason), native: capability(s.nativeRewindSupported, rewindReason ?? (s.nativeRewindAvailable ? null : 'no-checkpoint')) },
     sessionPreparation: capability(s.preparationSupported, idle),

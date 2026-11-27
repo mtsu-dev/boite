@@ -139,6 +139,8 @@ export class Store {
   get navigationGeneration(): number { return this.#ctx.threads.navigationGeneration; }
   get shared() { return this.#ctx.shared; }
   get serverUpdater() { return this.#ctx.serverUpdater; }
+  /** The draft preparation whose new worktree exists now, or null. */
+  preparedFolder(draft: Draft | null): string | null { return this.#ctx.draftStartup.preparedFolder(draft); }
 
   // -------------------------------------------------------------------------
   // Wiring
@@ -654,6 +656,7 @@ export class Store {
     try { await client.call('turns.cancelRetry', { threadId }); } catch (error) { this.#ctx.fail(error); }
   }
   threadCapabilities(...args: Parameters<Threads['capabilities']>) { return this.#ctx.threads.capabilities(...args); }
+  draftImages(...args: Parameters<Threads['draftImages']>) { return this.#ctx.threads.draftImages(...args); }
   async threadExportMessages(
     threadId: ThreadId,
     options: import('./thread-export').ExportOptions,

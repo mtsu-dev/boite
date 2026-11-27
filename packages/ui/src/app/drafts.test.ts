@@ -113,6 +113,9 @@ test('a machine with no AI shows one action, Connect an AI, and the draft opens 
   // The two services most people already pay for come first, each saying which plan it uses.
   const services = Array.from(document.querySelectorAll('[data-testid=connect-service]')).map((row) => row.getAttribute('data-provider'));
   expect(services.slice(0, 2)).toEqual(['claude', 'codex']);
+  expect(services).toContain('opencode-v2');
+  expect(services.indexOf('opencode-v2')).toBeLessThan(services.indexOf('opencode'));
+  expect(query('[data-testid=connect-service][data-provider=opencode]').textContent).toContain('Obsolete');
   expect(query('[data-testid=connect-dialog]').textContent).toContain('Uses a Claude Pro or Max plan');
 
   query<HTMLButtonElement>('[data-testid=connect-service][data-provider=claude]').click();

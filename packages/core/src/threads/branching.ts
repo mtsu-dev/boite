@@ -13,17 +13,19 @@ import type {
   Turn,
   TurnId,
 } from '@boite/contracts';
-import { threadActive } from '@boite/contracts';
+import { imageAttachmentBlocker, threadActive } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { getDriver } from '../drivers/index.ts';
 import { NativeForkUnsupported } from '../drivers/native-fork.ts';
 import type { ForkedSession } from '../drivers/types.ts';
 import { invalidParams, refused } from '../errors.ts';
+import type { FileView } from '../file-view.ts';
 import { requireAgent } from './agentless.ts';
 import { newId } from '../ids.ts';
 import type { ThreadStore } from '../threads.ts';
 import { MOVE_NOTE_PREFIX, moveNote } from './move.ts';
 import { withLoad } from './records.ts';
+import { imageInputModel } from './selection.ts';
 
 type SessionPlan = Pick<ThreadSummary, 'sessionId' | 'sessionResumeAt'> & { session: ThreadRewind['session'] };
 /** What a fork needs of a source message to place its copy. */
@@ -49,7 +51,7 @@ export class ThreadBranching {
 
   constructor(core: Core, threads: ThreadStore) { this.#core = core; this.#threads = threads;}
 
-  async rewind(threadId: ThreadId, messageId: MessageId): Promise<ThreadRewind> {
+  async rewind(threadId: ThreadId, messageId: MessageId, images = false): Promise<ThreadRewind> {
     const thread = requireAgent(this.#threads, threadId);
     if (thread.archived) throw refused('cannot rewind an archived thread', { threadId, field: 'threadId', expected: 'a thread that is not archived' });
     if (this.#threads.isBusy(threadId)) {
@@ -87,7 +89,7 @@ export class ThreadBranching {
         const provider = this.#core.providers.require(thread.providerId);
         const account = this.#core.accounts.require(thread.accountId);
         const ctx = this.#threads.contexts.makeSessionContext({ ...thread, sessionId: null, sessionResumeAt: null }, provider, account);
-        try { native = await getDriver(provider.protocol).forkSession!(ctx, checkpoint); }
+        try { native = await getDriver(provider.protocol).forkSession!(ctx, checkpoint, thread.id); }
         catch (error) { if (!(error instanceof NativeForkUnsupported)) throw error; }
         const current = this.#threads.require(threadId);
         if (current.updatedAt !== thread.updatedAt || current.selectionVersion !== thread.selectionVersion
@@ -100,6 +102,22 @@ export class ThreadBranching {
           throw refused('the source thread changed while preparing its rewind; retry the edit', { threadId, expected: 'the unchanged source boundary' });
         }
       }
+      // The prompt that replaces the message carries images: the session the cut leaves reads them, as its send would
+      // check, or nothing is restored or cut. A pi session resumes on its model at the cut, a new one on the folder's
+      // settings as the restored files will leave them, read before any is written; either can differ from the
+      // current session's model.
+      const admit = (files: FileView) => {
+        if (!images) return;
+        const provider = this.#core.providers.require(thread.providerId);
+        const sessionId = native ? native.sessionId
+          : kept === null || movedBeforeSetup !== null ? null : this.#resumable(thread, kept.turnId, thread.cwd)?.sessionId ?? null;
+        const blocker = imageAttachmentBlocker(provider, imageInputModel(this.#core, provider, { ...thread, sessionId, files }));
+        if (blocker) {
+          throw refused(`${blocker.name} takes no images: send the prompt without them`, {
+            threadId, field: 'images', providerId: provider.id, ...(blocker.modelId === undefined ? {} : { model: blocker.modelId }), expected: 'a prompt without images',
+          });
+        }
+      };
       const result = await this.#threads.codeCheckpoints.rewind(thread, removed.turnIds, messageId, files => {
       const current = this.#threads.require(threadId);
       if (current.archived || current.cwd !== thread.cwd || threadActive(current.status) || current.updatedAt !== thread.updatedAt
@@ -166,7 +184,7 @@ export class ThreadBranching {
       this.#core.bus.emit('thread.updated', withLoad(this.#core, this.#threads.require(threadId)));
       const content = contentOf(message);
       return { thread: this.#threads.get(threadId), ...content, session: plan.session, files };
-      });
+      }, admit);
       await native?.release().catch(cleanup => this.#core.log('error', `native rewind process cleanup failed: ${String(cleanup)}`, { threadId }));
       return result;
     } catch (error) {
@@ -228,7 +246,7 @@ export class ThreadBranching {
         const account = this.#core.accounts.require(source.accountId);
         const targetThread = { ...source, id: placed.id, cwd: placed.cwd, sessionId: null, sessionResumeAt: null };
         const ctx = this.#threads.contexts.makeSessionContext(targetThread, provider, account);
-        try { native = await getDriver(provider.protocol).forkSession!(ctx, checkpoint); }
+        try { native = await getDriver(provider.protocol).forkSession!(ctx, checkpoint, source.id); }
         catch (error) { if (!(error instanceof NativeForkUnsupported)) throw error; }
         if (native) plan = { sessionId: native.sessionId, sessionResumeAt: null, session: 'native' };
       }
@@ -394,10 +412,10 @@ export class ThreadBranching {
   /** Indexed metadata existence checks: no provider load or transcript hydration. */
   nativeForkAvailable(thread: ThreadSummary): boolean {
     const provider = this.#core.providers.require(thread.providerId);
-    const codex = getDriver(provider.protocol).forkSession !== undefined;
-    if (!codex && provider.protocol !== 'claude-sdk') return false;
-    if (codex && (this.#threads.isBusy(thread.id) || thread.sessionId === null)) return false;
-    const nativeConditions = codex
+    const copiesSession = getDriver(provider.protocol).forkSession !== undefined;
+    if (!copiesSession && provider.protocol !== 'claude-sdk') return false;
+    if (copiesSession && (this.#threads.isBusy(thread.id) || thread.sessionId === null)) return false;
+    const nativeConditions = copiesSession
       ? "AND t.status = 'done' AND json_extract(t.checkpoint, '$.sessionId') = ? AND json_extract(t.execution, '$.sessionGeneration') = ?"
       : "AND t.status IN ('done','stopped','error') AND (SELECT COUNT(*) FROM messages u WHERE u.thread_id = t.thread_id AND u.turn_id = t.id AND u.role = 'user') <= 1";
     return this.#core.journal.db.query(`SELECT 1 FROM turns t WHERE t.thread_id = ?
@@ -405,7 +423,7 @@ export class ThreadBranching {
       AND json_extract(t.execution, '$.providerId') = ? AND json_extract(t.execution, '$.accountId') = ?
       ${nativeConditions}
       AND (SELECT state FROM messages m WHERE m.thread_id = t.thread_id AND m.turn_id = t.id ORDER BY rowid DESC LIMIT 1) = 'complete'
-      LIMIT 1`).get(thread.id, thread.providerId, thread.accountId, ...(codex ? [thread.sessionId!, thread.sessionGeneration ?? 0] : [])) !== null;
+      LIMIT 1`).get(thread.id, thread.providerId, thread.accountId, ...(copiesSession ? [thread.sessionId!, thread.sessionGeneration ?? 0] : [])) !== null;
   }
 
   nativeRewindAvailable(thread: ThreadSummary): boolean {

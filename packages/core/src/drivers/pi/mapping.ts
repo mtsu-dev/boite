@@ -1,4 +1,5 @@
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
 import type { AgentCommand, ImageAttachment, ThreadContextMode } from '@boite/contracts';
 import { stringify } from '../tool-text.ts';
 import { resolveDataDir } from '../../paths.ts';
@@ -89,9 +90,9 @@ export function contentText(value: unknown): string | null {
  * isolation directory, or under the core's data directory for an account on the
  * provider's own location, which must never write into the user's real `~/.pi`.
  */
-export function sessionDirOf(ctx: SessionContext): string {
+export function sessionDirOf(ctx: { account: Pick<SessionContext['account'], 'isolationDir'>; thread: Pick<SessionContext['thread'], 'id'> }, threadId = ctx.thread.id): string {
   const base = ctx.account.isolationDir ?? resolveDataDir();
-  return join(base, SESSION_ROOT, ctx.thread.id);
+  return join(base, SESSION_ROOT, threadId);
 }
 
 /**
@@ -108,18 +109,6 @@ export function contextArgs(mode: ThreadContextMode | null | undefined): string[
     ...(mode.mcp && mode.hooks ? [] : ['--no-extensions']),
     ...(mode.instructions ? [] : ['--no-context-files', '--no-skills', '--no-prompt-templates']),
   ];
-}
-
-/**
- * pi takes the model on the command line and nowhere else at launch:
- * `--model provider/id`, with `:<thinking>` appended for the reasoning level.
- * `default` is Boite's own id for "the agent keeps its own", so it sends
- * nothing at all.
- */
-export function modelArgs(ctx: SessionContext): string[] {
-  const model = ctx.thread.model;
-  if (model === null || model === AGENT_OWN_MODEL) return [];
-  return ['--model', ctx.thread.effort === null ? model : `${model}:${ctx.thread.effort}`];
 }
 
 /**
@@ -144,4 +133,21 @@ export function sessionKey(ctx: SessionContext): string {
     providerId: ctx.provider.id,
     env: ctx.accountEnv,
   });
+}
+
+/** `PI_CODING_AGENT_DIR` with its `~` expanded, else pi's own folder in the home. */
+export function configuredAgentDir(env: Record<string, string | undefined>): string {
+  const home = env['HOME'] || homedir();
+  const configured = env['PI_CODING_AGENT_DIR'] || join(home, '.pi', 'agent');
+  return configured === '~' ? home : configured.startsWith('~/') ? join(home, configured.slice(2)) : configured;
+}
+
+/** Where pi keeps an account's settings and trust decisions, from the environment it starts with. */
+export function piAgentDir(env: Record<string, string | undefined>, cwd: string): string {
+  return resolve(cwd, configuredAgentDir(env));
+}
+
+/** Whether that folder is relative, so each folder pi starts in has its own: the account's probe, run elsewhere, read another one. */
+export function piAgentDirFollowsCwd(env: Record<string, string | undefined>): boolean {
+  return !isAbsolute(configuredAgentDir(env));
 }

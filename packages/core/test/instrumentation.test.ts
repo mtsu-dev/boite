@@ -92,6 +92,9 @@ test('a stop the core asked for is no crash, and old stderr does not describe a 
   expect(abnormalExit(null, 'SIGKILL')).toBe(true);
   expect(abnormalExit(null, 'SIGSEGV')).toBe(true);
   expect(abnormalExit(1, null)).toBe(true);
+  // pi traps SIGTERM and exits 128 + 15: after the core's own stop, that code is the stop.
+  expect(abnormalExit(143, null, true)).toBe(false);
+  expect(abnormalExit(143, null)).toBe(true);
   noteStderr('thr_old', 'from an hour ago', Date.now() - 60 * 60_000);
   expect(stderrTail('thr_old')).toBeNull();
   forgetStderr('thr_old');

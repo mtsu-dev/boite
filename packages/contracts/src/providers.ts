@@ -325,6 +325,10 @@ export interface ModelInfo {
   legacy?: boolean;
   /** A small mark next to the name in the picker. */
   badge?: 'new';
+  /** False when this model reads no images although its agent does. Absent follows the agent. */
+  images?: false;
+  /** A pi router that answers through other models, which a session resumes on while it is registered. */
+  virtual?: true;
   /**
    * Reasoning effort this model offers. A model without it has no effort control.
    * `default` is the level the agent runs this model on when none is picked;
@@ -372,6 +376,7 @@ export interface ThreadCapabilities {
   plan: ThreadCapability;
   approvals: ThreadCapability;
   questions: ThreadCapability;
+  btw: ThreadCapability;
   fork: { native: ThreadCapability; seeded: ThreadCapability };
   rewind: { native: ThreadCapability; seeded: ThreadCapability };
   sessionPreparation: ThreadCapability;
@@ -414,6 +419,8 @@ export interface ProviderDescriptor {
    * user turns it on in Providers, and its row says so.
    */
   experimental?: boolean;
+  /** Still runs and shows as Obsolete. The model picker and Connect an AI prefer its replacement. */
+  deprecated?: { replacedBy?: ProviderId };
   /** Native protocols may leave this empty; providers.probe supplies the account's catalog. */
   models: ModelInfo[];
   capabilities: ProviderCapabilities;
@@ -456,6 +463,8 @@ export interface ProviderSummary {
   policy?: PolicyRefusalData;
   /** The descriptor's `experimental`. Missing reads as false. */
   experimental?: boolean;
+  /** The descriptor's `deprecated`. */
+  deprecated?: { replacedBy?: ProviderId };
 }
 
 /** Whether a provider is turned on. A summary from a core older than the switch has no field and is on. */
@@ -485,7 +494,7 @@ export interface ProviderRejected {
 
 /** Protocols that can answer a side question with tools disabled. */
 export function supportsSideQuestions(protocol: Protocol): boolean {
-  return protocol === 'claude-sdk' || protocol === 'echo';
+  return protocol === 'claude-sdk' || protocol === 'echo' || protocol === 'pi';
 }
 
 export interface ProvidersRpcMethods {

@@ -173,9 +173,11 @@ test("Ctrl+J opens a shell under the thread, typing reaches it, and OpenCode sig
     await page.click("[data-testid=nav-settings]");
     await page.waitFor('document.querySelector("[data-testid=settings-tab-accounts]")');
     await page.click("[data-testid=settings-tab-accounts]");
-    await page.click("[data-provider-id=opencode] [data-testid=provider-details-toggle]");
-    await page.waitFor('document.querySelector("[data-provider-id=opencode] [data-testid=account-login]")');
-    await page.click("[data-provider-id=opencode] [data-testid=account-login]");
+    await page.click("[data-testid=provider-settings][data-provider-id=opencode] [data-testid=provider-details-toggle]");
+    // The family row holds OpenCode 2 as well: name the OpenCode member.
+    const login = "[data-testid=provider-member][data-provider-id=opencode] [data-testid=account-login]";
+    await page.waitFor(`document.querySelector("${login}")`);
+    await page.click(login);
     await page.waitFor('document.querySelector("[data-testid=account-login-terminal] .xterm-rows")?.textContent.includes("Select provider")');
     await page.evaluate('document.querySelector("[data-testid=account-login-terminal]").scrollIntoView({ block: "center" })');
     await settled(page);

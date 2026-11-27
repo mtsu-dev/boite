@@ -4,6 +4,7 @@
   "name": "OpenCode",
   "shortName": "OpenCode",
   "protocol": "acp",
+  "deprecated": { "replacedBy": "opencode-v2" },
   "roots": ["{home}/.local/share/opencode", "{home}/.config/opencode", "{isolationDir}"],
   "env": { "OPENCODE_CONFIG_CONTENT": "{\"permission\":{\"task\":\"deny\"}}" },
   "profiles": {

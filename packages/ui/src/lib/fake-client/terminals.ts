@@ -10,8 +10,10 @@ export function closeTerminal(ctx: FakeContext, id: string): void {
   if (!id.startsWith('login:')) return;
   const account = ctx.accounts.find((a) => `login:${a.id}` === id);
   if (!account) return;
+  // As the core's check after the terminal closes: pi wrote its credential
+  // store when it started, which names no one.
   account.status = 'ok';
-  account.identity = 'you@example.com';
+  if (account.providerId !== 'pi') account.identity = 'you@example.com';
   ctx.emit('accounts.updated', structuredClone(account));
 }
 

@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path';
 import { resolveDataDir } from '../../paths.ts';
 import type { SessionContext } from '../types.ts';
+import type { PiUsage } from './protocol.ts';
+import { dataOf, type PiPeer } from './rpc.ts';
 
 /** The one variable the extension reads: the thread's limit, the switch and the core's thresholds, as JSON. */
 export const COMPACTION_ENV = 'BOITE_COMPACTION';
@@ -224,3 +226,19 @@ function noteFiles(message, fileOps) {
   }
 }
 `;
+
+type PiCompactResult = { tokensBefore?: unknown; estimatedTokensAfter?: unknown; usage?: PiUsage };
+
+/**
+ * pi's `compact`, or the reason pi had nothing to summarize: a Compact asked of
+ * a short conversation, or right after another, changes nothing and is no
+ * failure (`agent-session.js` in pi 1.6.1). Any other refusal fails the turn.
+ */
+export async function compactOrNothing(peer: PiPeer): Promise<{ result: PiCompactResult } | { nothing: string }> {
+  try {
+    return { result: dataOf(await peer.command('compact')) as PiCompactResult };
+  } catch (error) {
+    if (error instanceof Error && /^(Nothing to compact|Already compacted)\b/.test(error.message)) return { nothing: error.message };
+    throw error;
+  }
+}

@@ -25,6 +25,7 @@ export { STOP_DEADLINE } from './turn-attempts.ts';
 export class TurnRunner {
   readonly #attempts: TurnAttempts;
   readonly handles: TurnAttempts['handles'];
+  readonly catalogs: TurnAttempts['catalogs'];
   readonly steering: Pick<TurnAttempts['steering'], 'has' | 'size'>;
   /**
    * Standalone messages inserted during a running answer, with their timestamps.
@@ -38,6 +39,7 @@ export class TurnRunner {
     this.#core = core;
     this.#attempts = new TurnAttempts(core, threads);
     this.handles = this.#attempts.handles;
+    this.catalogs = this.#attempts.catalogs;
     this.steering = this.#attempts.steering;
   }
 

@@ -1,6 +1,7 @@
 import { noteUserMessage } from './checklist';
 import { attachmentError, previewPrompt, previewReferencesError, providerSupportsSteering, type MessagePart, type Message, type RpcParams } from '@boite/contracts';
 import type { FakeContext } from './context';
+import { threadModel } from './provider-catalog';
 import { refusal } from './shared';
 
 /** The fixture accepts live user messages without opening or stopping a turn. */
@@ -14,17 +15,19 @@ export async function steerUser(ctx: FakeContext, params: RpcParams<'turns.steer
   if (!Array.isArray(attachments) || attachments.some(attachment => !attachment || typeof attachment !== 'object')) throw refusal('attachments must be an array of attachment objects');
   const referenceError = previewReferencesError(references, params.prompt);
   if (referenceError) throw refusal(referenceError);
-  const provider = ctx.providers.find(provider => provider.id === thread.providerId);
-  if (!provider) throw ctx.notFound('provider', thread.providerId);
-  const error = attachmentError(attachments, provider);
-  if (error) throw refusal(error.message);
-  const content = 'steer:' + JSON.stringify([params.turnId, params.prompt, attachments, references]);
   const key = `${params.threadId}:${params.clientRequestId}`;
   const previous = ctx.turnRequests.get(key);
+  const content = 'steer:' + JSON.stringify([params.turnId, params.prompt, attachments, references]);
+  // As in the core: a receipt keeps the turn that accepted it; new input goes to the active turn's model.
   if (previous) {
     if (previous.content !== content) throw refusal('clientRequestId was already used for different content');
     return { accepted: true };
   }
+  const runs = thread.turns.find(turn => turn.id === params.turnId)?.execution ?? thread;
+  const provider = ctx.providers.find(provider => provider.id === runs.providerId);
+  if (!provider) throw ctx.notFound('provider', runs.providerId);
+  const error = attachmentError(attachments, provider, threadModel(ctx, runs));
+  if (error) throw refusal(error.message, error.data);
   if (params.expectedSelectionVersion !== undefined && params.expectedSelectionVersion !== (thread.selectionVersion ?? 0)) throw refusal('the model selection changed; review the selected model and send again');
   const turn = thread.turns.find(turn => turn.id === params.turnId);
   const running = ctx.inFlight.get(thread.id);

@@ -403,12 +403,105 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   from Boite; its account controls show the refusal.
 - `models` is a `ModelInfo` list: `id`, `name`, an optional `default`, `legacy`
   (still accepted, folded away in the picker), `badge: "new"`, and an `effort`
-  block of named levels with a default. A native agent may declare an empty list
-  and let the probe supply its catalog. The unnamed `default` alias remains
-  accepted for existing descriptors. Echo requires at least one static model.
+  block of named levels with a default. A probed model may have `images: false`
+  when it reads no images. Only pi reports this today, from the model's `input`
+  list; pi's `default` entry copies the flag of the model pi reports as current.
+  A pi thread on `default` or on no model resumes its session on the model that
+  session last used, so image admission and `threads.capabilities` read that
+  model from the session file pi opens (the first `.jsonl` in the thread's
+  session folder whose header has the session id and the thread's folder as
+  pi's process sees it, symbolic links resolved outside Windows; a native fork
+  writes that same folder in its copy's header),
+  as pi 1.6.1 does: the newest
+  `model_change`, else the model of the newest answer, unless the change before
+  that answer names a router pi still lists (`virtual: true`, from its
+  `pi-virtual` api; a router the catalog does not hold, which a folder's own
+  extension may register, leaves the answer to pi); pi restores that provider and id as a pair, so a catalog
+  entry spelling the same `provider/id` for another pair says nothing of it, and
+  a session model gone from the catalog resumes on pi's saved default, which
+  only pi reads. A `--model` in the profile wins over the session. Without
+  a session to resume, pi starts where the folder's own settings say, which the
+  account's probe, run in a temporary folder, never sees
+  (`drivers/pi/start-model.ts`). pi reads `<folder>/.pi/settings.json` over the
+  account's `settings.json` only for a trusted folder: the profile's
+  `--approve` or `--no-approve` (the last one wins), else a decision for it or a
+  parent in the account's `trust.json`, else `defaultProjectTrust: "always"`; in
+  RPC mode "ask" means no. Both files sit in the configuration folder of the
+  environment the driver starts pi with (`PI_CODING_AGENT_DIR` from the core's
+  environment or the profile's, else `~/.pi/agent`); a relative folder is another
+  one in each folder pi starts in, so neither the probe's model nor its catalog
+  says anything there, for a resumed session as for a new one, and pi decides;
+  that catalog marks no model text-only either, since the folder's own
+  `models.json` may give it images. With a scope (the
+  profile's `--models`, else `enabledModels`), the saved
+  `defaultProvider`/`defaultModel` wins when the scope holds it, else the first
+  scoped model; without one, the saved default when available. A `--models`
+  left with no pattern clears the scope. The profile's arguments are walked as
+  pi parses them, so an option's value is never read as a flag. Boite follows
+  that with the account's catalog, never its own `default` entry: a pattern
+  names a model only when its whole text, without case, is one id on the
+  provider of the longest known `provider/` prefix (a provider id may hold a
+  `/`; when two pairs spell one `provider/id`, the catalog keeps that longest
+  provider's, the one pi reads the text as), else a bare id on one provider; a partial or ambiguous match is pi's pick, and a `:suffix` is
+  dropped only when the whole text matches nothing. When the catalog dropped a
+  shorter pair (a `gateway` + `team/base` behind `gateway/team` + `base`), whose
+  name it no longer holds, a pattern resolves only when its whole text names
+  the same model with or without that pair; anything else is pi's pick. With a
+  relative configuration folder, a named model is left to pi as well. A leading BOM and an empty
+  `enabledModels` count as pi counts them. A protected run starts a new pi
+  session with `--no-approve` and settings of its own, so pi decides there,
+  whatever the thread's last session was on. When
+  the folder changes nothing, the probe's `default` answers; when
+  only pi can name the model (a glob or fuzzy pattern, a model missing from the
+  catalog, a settings, `trust.json` or extensions path the launch lets pi read
+  whose way crosses a symbolic link or a junction inside the project, which
+  Boite does not resolve, a trusted folder with extensions in `.pi/extensions/` or listed by its
+  `extensions` or `packages`, which load only there and may register the model
+  the settings name or a resumed session's pair over the catalog's), Boite lets
+  the image through, for a resumed session as for a new one, and for a named
+  model or the profile's `--model` too, since such an extension may register
+  any pair. The composer asks the core for a named model the catalog lists
+  text-only as it does for pi's own (`threads.capabilities`, else
+  `drafts.images`, with `threadId` for a model picked for an open thread's next
+  prompt, which runs in that thread's folder). So it does for a
+  folder with settings or extensions of its own while the account or the profile
+  loads extensions and no `--approve` or `--no-approve` decides: pi asks those
+  extensions' `project_trust` hook before `trust.json`. And so it does wherever the account or the profile loads
+  extensions at all (`-e`, the account's `extensions/` folder, its settings' `extensions` or `packages`): such an
+  extension may register a pair by the folder it runs in, and the probe ran outside it. Boite lets the image through
+  and pi replaces it if that model reads none. A goal or loop sent on another account starts in the same folder. On an
+  open thread the composer asks the core (`threads.capabilities`), again when
+  the session, the folder, the selection, the account's catalog, the turn or the
+  connection changes; a draft asks `drafts.images` with its project's folder.
+  A picture being added asks again, a photo the composer converts and a copied
+  `[Image N]` with its picture included, since an edit of the folder's pi settings
+  changes the answer without changing any of these, and the picture waits for
+  that answer.
+  A draft that starts in a new folder, a new worktree (`worktree`) or a
+  folder of its own in the drafts (`incognito` for a private one), finds none
+  of the project's untracked files there, its `.pi/settings.json` included, so
+  the core reads the folder the draft's preparation made for a draft of that
+  kind, asked again once it exists, and before then lets the image through to
+  the first turn's admission, which reads that folder. A draft with no project
+  asks for the drafts once its preparation made them, and before they exist
+  leaves the image to the first turn. The client drops that reservation when
+  the core does, `DRAFT_PREPARATION_LIFETIME_MS` after asking for it, and asks
+  again.
+  Until that answer comes, a picture is held and Send waits for it, asked again
+  after a reconnection; another agent, account or model picked meanwhile cancels
+  the waiting Send, as does another draft, a draft moved to another project, or a worktree or incognito switch, and an answer that never comes leaves the account's catalog
+  to decide.
+  Without the field, the model follows the agent's image capability.
+  A native agent may declare an empty list and let the probe supply its catalog.
+  The unnamed `default` alias remains accepted for existing descriptors. Echo
+  requires at least one static model.
 - `experimental: true` marks an agent Boite drives without long use behind it.
   It stays off until the user turns it on ([below](#turning-a-provider-off)),
   and its row on the Providers page carries an Experimental badge.
+- `deprecated: { replacedBy?: ProviderId }` marks an agent as Obsolete while
+  keeping it runnable. When present, `replacedBy` is a non-empty provider ID.
+  Providers shows the replacement, and Connect an AI and the model picker list
+  current providers first.
 - `capabilities` is six booleans: `approvals`, `hooks`, `checkpoint`, `images`,
   `planMode`, `resume`. `approvals: false` means the thread's permission mode
   never reaches that agent, and the UI stops promising a gate that does not exist.
@@ -722,8 +815,8 @@ is the deterministic fake the tests and the bench run on, loaded only under
 | Provider | Protocol | Launch |
 | --- | --- | --- |
 | Claude | `claude-sdk` | SDK-driven CLI |
-| OpenCode | `acp` | `opencode acp --port 0` |
-| OpenCode 2 | `acp` | `opencode2 acp`, experimental and off until turned on |
+| OpenCode 2 | `acp` | `opencode2 acp` |
+| OpenCode 1 (obsolete) | `acp` | `opencode acp --port 0` |
 | Antigravity | `acp` | Managed `agy_acp_server` for the host OS |
 | Grok | `acp` | `grok [permission flags] agent [approval flag] stdio` |
 | Hermes Agent | `acp` | `hermes acp` ([below](#hermes)) |
@@ -898,10 +991,10 @@ pass that size is drawn as a sentence giving its size.
 
 ## OpenCode 2
 
-OpenCode 2 is another program than OpenCode 1, published as `@opencode/cli`
-beside `opencode-ai`, and its descriptor `opencode-v2` ships beside `opencode`
-as an experimental provider. Both speak ACP to the same driver. What the
-descriptor accounts for, each point read off OpenCode 2.0.24 on Linux:
+OpenCode 2 ships as `@opencode/cli` with descriptor `opencode-v2`. It replaces
+the obsolete OpenCode 1 provider, which ships as `opencode-ai` with descriptor
+`opencode`. Both speak ACP to the same driver. What the OpenCode 2 descriptor
+accounts for, each point read off OpenCode 2.0.24 on Linux:
 
 - The two install under one name. The npm package and the installer both put
   a program called `opencode` on the machine, where OpenCode 1 already is, and
@@ -1168,7 +1261,10 @@ a turn's own session, answers instead and starts nothing. While nothing has
 been read yet, every such probe gets the saved list, a second one while the
 first refresh still reads and one after it failed included, held for model
 checks the same way. Any change to the account (`accounts.updated`, a sign-in under
-the same identity included) and its removal delete its saved list.
+the same identity included) and its removal delete its saved list. A pi list
+also holds only for the configuration folder the driver starts pi on, which the
+core's own environment may name: after a restart on another one it waits for a
+probe.
 A model picked from a list the core gave on this connection lands at once, and
 a draft created on it is not read again, except an ACP effort that list carries
 no scale for. A list restored from browser storage, or one the core has not
@@ -1666,8 +1762,8 @@ process here goes through `procs.spawnChild`. The driver refuses a host whose
   denial when there is none. The server-request forms are declined.
 - A missing login ends the turn with `authRequired`, which the driver turns into
   a sentence saying to sign the account in from Providers.
-- `threads.compact` sends `session/compact`; a `noop` answer fails the turn
-  with Muse's reason. `session/todoListChanged` fills the thread's tasks, a
+- `threads.compact` sends `session/compact`; a `noop` answer ends the turn
+  with a `nothing_to_compact` notice carrying Muse's reason. `session/todoListChanged` fills the thread's tasks, a
   cancelled item left out, and `session/contextUsage` feeds the context meter.
 - Each startup step, `initialize` and then `session/start` or `session/resume`,
   has 90 s. A host that misses it is closed and the turn fails with the step's
@@ -1715,6 +1811,11 @@ verified native registry gate, not its shell sandbox or a permission callback.
 `packages/core/src/drivers/pi.ts` and the modules under `drivers/pi/` speak
 pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
 
+- Account sign-in opens an interactive `pi --no-session` terminal with the
+  account's `PI_CODING_AGENT_DIR`. The card prompts the user to type `/login`
+  to choose a provider. The profile keeps an account usable with status
+  `unknown` when it has no stored credentials. pi can get credentials from
+  the environment or the account's own `models.json`.
 - A turn ends on `agent_settled`, never on `agent_end`. pi retries an overloaded
   or dropped request by itself inside the same run (`auto_retry_start`,
   `auto_retry_end`) and recovers from a context overflow by compacting, so only
@@ -1742,15 +1843,132 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   and an error notice becomes an error card that does not fail the turn.
   `setStatus`, `setWidget`, `setTitle` and `set_editor_text` get no answer and
   are not drawn.
+- A new process takes a listed model as `--provider <provider> --model
+  <provider>/<id>`, the pair the catalog names, which pi reads as that exact
+  pair rather than by a partial match, and the level as `--thinking`, never as a
+  `:<level>` tail pi could read as part of an id; a model no probe listed goes
+  as `--model` alone. The catalog is the one image admission reads: the probe,
+  the list held while it refreshes, else the list saved before a restart. With a
+  relative configuration folder the probe read another folder's providers, so
+  the model goes as `--model` alone there too. Titles, `/btw` and a contact
+  review's inference launch the same way.
 - A warm process follows a change of model or level with `set_model` and
-  `set_thinking_level`. There is no call that goes back to pi's own model or to
-  no level, so either change starts a new process.
+  `set_thinking_level`. `set_model` takes the pair the catalog names, the one
+  image admission checked, else the pair pi's own `get_available_models` spells
+  the thread's `provider/id` with, the longest provider among them as at a cold
+  start, since a provider id may hold a `/`. A refresh that puts another pair
+  behind the same id moves the warm process to it the same way, unless pi
+  already runs that pair (a process launched on the text before any probe),
+  where a switch would only reset pi's own level. pi matches `--model` without
+  regard to case, so a launch where two ids differ only by it may start on the
+  other one. Every process, a reopened one and a title or side question
+  included, then switches to the catalog's pair before its first prompt, and
+  sends again the level its launch asked for (the last valid `--thinking` as
+  pi's parser walks the arguments, the thread's effort or the profile's): `set_model` replaces it with the model's
+  own, and pi bounded the first one to the other model. A launch that asked for
+  none keeps the level pi picks on a switch, as when its user switches models.
+  Every start also checks that pi lists the catalog's pair, even when pi
+  reports it: for an id its provider no longer lists, pi runs a custom model of
+  that id with another model's capabilities. A process that does not list it
+  fails the turn and asks to refresh the models list (its models changed, or
+  its provider is no longer signed in); a title or side question goes to pi's
+  own model instead, even when the profile pins that provider, since pi holds
+  it. Every such fallback, one after an extension's provider included, asks
+  only a model pi lists: a profile whose `--model` names an id pi no longer
+  lists starts pi on a custom model of it, and the request fails. pi reads its models once, at
+  start: a pair the catalog found since (a `models.json` edited after the
+  launch) is not in the running process's listing, so a new process opens the
+  same session on it with `--provider` once the old one has exited (pi runs its
+  shutdown hooks first, and they may still write the session file), and only
+  pi itself stops, not what its tools left running. The listing is a control
+  read, bounded like `get_state`; `set_model` and `set_thinking_level`, which pi
+  answers after its `model_select` hooks, are bounded by the stop deadline, and
+  one unanswered fails the turn and drops the process. A stop or a close meanwhile
+  drops the session as during a cold start, without waiting for that exit: the
+  old process goes down with the thread's processes. The thread's next pi
+  process, whatever closed the last one, a session closed before it launched
+  pi included, starts only once every earlier process has exited; one still
+  running at the stop deadline fails the turn that would open it, and a stop
+  ends that wait at once. Input steered before pi accepted the turn's prompt,
+  or after pi answered it `handled` (an extension command or an input hook took
+  it without a run), waits for the next turn: the process may still be replaced
+  or fail its switch, and pi would open a run of its own for it. Images steered into a running turn are checked
+  against the list that turn was given, the one its process runs, not a list
+  refreshed since.
+- Before a prompt with images of its own, the driver asks pi (`get_state`)
+  whether the model it runs reads them: admission checked the list the turn
+  was sent under, and a later attempt may run another pair. When the catalog
+  says the pair pi runs reads images (it gained them after the launch, since pi
+  reads `models.json` once), a new process opens, whatever model the thread
+  names, `default` included; any other text-only model fails the turn with
+  admission's sentence. Earlier images a continuation carries (a new session,
+  a resume) are pi's to replace, as for any model that reads none. Images steered into a run
+  on a text-only model wait for the next turn too, and so do they when pi does
+  not give its state within the read deadline or the turn ends meanwhile, in
+  Boite or in pi, so
+  the steer is refused before anything is written rather than left
+  unconfirmed. Any driver may answer a steer the end of its attempt cut short:
+  `false` within 250 ms says nothing was written.
+  There is no call that goes back to pi's own model or to no level, so either
+  change starts a new process.
 - Pi can refresh prompt caches during a turn. Refreshes between turns require
   an explicit `"cacheWarming": "idle"` in the selected Pi profile's
   `settings.json`.
 - After each turn `get_session_stats` feeds the context meter with a five-second
   control-read expiry. A timed-out response is removed and cannot update a later
   turn's context.
+- A pi profile whose `launch.args` hold `--api-key` as an option (not as
+  another option's value) is rejected, with that
+  argument's field. pi binds an inline key to whichever provider its own
+  reading of the other flags starts on (case, fuzzy matches, raw ids, the
+  saved scope and default), and Boite changes those flags: a named model, a
+  light context's `--no-extensions`, a resumed session that makes pi ignore a
+  `--models` scope, a one-shot without extensions. The key could then reach
+  another provider. The provider's own variable in `env`
+  (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) or a pi `/login` is bound to one
+  provider.
+- A pi profile whose `launch.args` hold `--provider` without `--model` is
+  rejected, with that argument's field: pi 1.6.1 exits on it ("--provider
+  requires --model"), so every launch left to the profile would fail. So is
+  one that ends on an option missing its value, which would take the first
+  argument Boite adds, and one that holds `--`, after which pi reads every
+  argument, Boite's own included, as the prompt's text. So is one that holds
+  an option that picks or drops the session (`--continue`, `-c`,
+  `--resume`, `-r`, `--session`, `--session-id`, `--fork`, `--no-session`):
+  Boite gives every launch its session, and pi 1.6.1 exits on `--session-id`
+  beside `--continue`, `--resume` or `--session`. A `--session-dir` stays:
+  pi keeps its last value, which is Boite's.
+  Boite reads the profile as pi's parser walks it
+  (`drivers/pi/args.ts`), each option with the value it consumes, here and
+  wherever it replaces or drops the profile's model flags: in
+  `--append-system-prompt --model`, `--model` is the prompt's text.
+- Titles use a separate, tool-free RPC process with no session file, extensions,
+  MCP, context files, skills or prompt templates. Boite uses the selected title
+  model or the thread's own model at low effort and allows 30 seconds per call.
+  The profile's own tool and session flags, short aliases included, are
+  dropped from these launches. Its `--model` and `--provider` are dropped when
+  Boite names a model and kept when the thread leaves the model to pi.
+  A model an extension
+  registers is unknown without extensions: when pi exits at startup on it
+  (`Unknown provider "..."` or `Model "..." not found`, each followed by `Use
+  --list-models`), the same request goes once to pi's own model, with the same
+  restrictions, unless the profile's last `--provider`, or its last `--model`
+  spelled as the catalog lists it, names that provider. A prompt a running pi refuses keeps pi's own error, whatever pi
+  warned on stderr before.
+- `/btw` reuses that isolated launch, with a session and tools as below. At a
+  settled checkpoint, it opens a temporary copy of the session cut at that
+  checkpoint and keeps pi's read-only tools
+  (`--tools read,grep,find,ls`): the copy's tool calls need tools defined, or
+  Anthropic's Messages API refuses the request. When the current conversation
+  has no matching checkpoint, it receives Boite's frozen text snapshot in
+  memory, tool-free. The main session stays intact in either case.
+- A completed turn records the last persisted JSONL entry from the session
+  named by `get_session_stats`. Native fork and rewind copy that entry and its
+  `parentId` ancestry into a new session ID in the destination thread's folder.
+  A malformed line is skipped, as pi skips it on resume; a missing ancestor
+  falls back to the seeded path.
+  Rewind switches the thread to the copy after the journal and file checks pass.
+  Older turns without checkpoints and cuts inside a turn use the seeded path.
 
 ### Hermes
 

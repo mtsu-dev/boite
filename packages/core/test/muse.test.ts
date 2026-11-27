@@ -578,6 +578,21 @@ describe('muse driver', () => {
     expect(thread.context?.window).toBe(200000);
   });
 
+  test('a manual compaction Muse finds nothing to do in ends as a quiet notice', async () => {
+    const { client, threadId } = await startThread();
+    await runTurn(client, threadId, 'remember this');
+    let finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
+    await client.call('threads.compact', { threadId });
+    await finished;
+    // Right after a compaction there is nothing new: Muse answers noop and sends no item.
+    finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
+    await client.call('threads.compact', { threadId });
+    expect((await finished).status).toBe('done');
+    const last = (await client.call('threads.get', { threadId })).messages.at(-1)!;
+    expect(last.parts).toContainEqual({ type: 'notice', notice: { kind: 'nothing_to_compact' }, detail: 'Muse had nothing to compact' });
+    expect(last.parts.some((part) => part.type === 'error' || part.type === 'compaction')).toBe(false);
+  });
+
   test('manual compaction goes through session/compact and draws its part', async () => {
     const { client, threadId } = await startThread();
     await runTurn(client, threadId, 'remember this');

@@ -1,6 +1,6 @@
 import { createWithPreparation, mergeCreationSnapshot } from './thread-creation';
 import { messageCopies, RowIndex, threadCopies } from './thread-lookup';
-import type { Message, MessageId, PermissionMode, ProjectId, ProviderId, RpcParams, Thread, ThreadId, ThreadRewind, ThreadSummary } from '@boite/contracts';
+import type { Message, MessageId, PermissionMode, ProjectId, ProviderId, RpcParams, RpcResult, Thread, ThreadId, ThreadRewind, ThreadSummary } from '@boite/contracts';
 import { ReadingCache } from '../reading-cache';
 import { DeviceSnapshots, readingPage } from './device-snapshots';
 import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, mergeWorkingChildren, READING_PAGE_BYTES } from '@boite/contracts';
@@ -79,46 +79,25 @@ export class Threads {
   }
   get openTarget(): ThreadId | null { return this.#openTarget; }
 
-  async capabilities(threadId: ThreadId) {
-    const client = this.ctx.client;
-    const generation = this.ctx.clientGeneration;
+  /** One read for the client in hand: null once it changed meanwhile, or from an older core, which keeps its own checks. */
+  async #read<M extends 'threads.capabilities' | 'drafts.images' | 'threads.previewAccountSwitch' | 'threads.stats'>(method: M, params: RpcParams<M>): Promise<RpcResult<M> | null> {
+    const client = this.ctx.client, generation = this.ctx.clientGeneration;
     if (!client) return null;
     try {
-      const capabilities = await client.call('threads.capabilities', { threadId });
-      return this.ctx.currentClient(client, generation) ? capabilities : null;
-    } catch (error) {
-      // Older cores keep their existing action checks until updated.
-      if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) return null;
-      throw error;
-    }
-  }
-
-  async previewAccountSwitch(threadId: ThreadId, accountId: string) {
-    const client = this.ctx.client;
-    const generation = this.ctx.clientGeneration;
-    if (!client) return null;
-    try {
-      const preview = await client.call('threads.previewAccountSwitch', { threadId, accountId });
-      return this.ctx.currentClient(client, generation) ? preview : null;
+      const value = await client.call(method, params);
+      return this.ctx.currentClient(client, generation) ? value : null;
     } catch (error) {
       if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) return null;
       throw error;
     }
   }
 
+  /** What a thread, or a draft's first prompt on this choice, may carry. */
+  capabilities(threadId: ThreadId) { return this.#read('threads.capabilities', { threadId }); }
+  draftImages(params: RpcParams<'drafts.images'>) { return this.#read('drafts.images', params); }
+  previewAccountSwitch(threadId: ThreadId, accountId: string) { return this.#read('threads.previewAccountSwitch', { threadId, accountId }); }
   /** The whole thread's compactions and prompts for the context popup; null from a core that predates `threads.stats`. */
-  async stats(threadId: ThreadId) {
-    const client = this.ctx.client;
-    const generation = this.ctx.clientGeneration;
-    if (!client) return null;
-    try {
-      const stats = await client.call('threads.stats', { threadId });
-      return this.ctx.currentClient(client, generation) ? stats : null;
-    } catch (error) {
-      if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) return null;
-      throw error;
-    }
-  }
+  stats(threadId: ThreadId) { return this.#read('threads.stats', { threadId }); }
 
   async recoverTurn(threadId: ThreadId, turnId: string, action: 'resume' | 'discard'): Promise<void> {
     const client = this.ctx.client;
@@ -211,15 +190,16 @@ export class Threads {
    * core and on screen, and what it held comes back for the composer to fill
    * itself with. The thread must be idle: the caller stops a running turn
    * first, and a refusal is shown like any other and answers null. `threadId`
-   * defaults to the open thread.
+   * defaults to the open thread. `images` says the prompt replacing it carries
+   * some, which the core refuses before cutting when the model left cannot read them.
    */
-  async rewind(messageId: MessageId, threadId: ThreadId | undefined = this.openThread?.id): Promise<RewoundMessage | null> {
+  async rewind(messageId: MessageId, threadId: ThreadId | undefined = this.openThread?.id, images = false): Promise<RewoundMessage | null> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;
     if (!client || !threadId) return null;
     this.rewinding[threadId] = messageId;
     try {
-      const { thread, ...rewound } = await client.call('threads.rewind', { threadId, messageId });
+      const { thread, ...rewound } = await client.call('threads.rewind', { threadId, messageId, ...(images ? { images } : {}) });
       if (!this.ctx.currentClient(client, clientGeneration)) return null;
       this.applyRewound(thread);
       if (rewound.files?.status === 'unavailable') this.ctx.store.error = rewound.files.busy ? strings.composer.filesBusy : strings.composer.filesUnavailable;

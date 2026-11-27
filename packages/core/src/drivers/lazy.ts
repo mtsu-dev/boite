@@ -71,9 +71,9 @@ export function lazyDriver(
     // Capability checks run before the first module import.
     ...(options.capabilities ? { capabilities: options.capabilities } : {}),
     ...(options.forkSession ? {
-      forkSession: (ctx, checkpoint) => defer({ threadId: ctx.thread.id }, driver => {
+      forkSession: (ctx, checkpoint, sourceThreadId) => defer({ threadId: ctx.thread.id }, driver => {
         if (!driver.forkSession) throw new Error(`${protocol} has no native fork implementation`);
-        return driver.forkSession(ctx, checkpoint);
+        return driver.forkSession(ctx, checkpoint, sourceThreadId);
       }).result,
     } : {}),
     ...(options.titles ? {

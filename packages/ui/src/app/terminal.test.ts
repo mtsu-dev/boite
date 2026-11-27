@@ -163,7 +163,9 @@ test('OpenCode signs in from a terminal with its login command typed in, and clo
   await openProviderDetails('opencode');
 
   // The user's own OpenCode login gets the button too: the terminal is theirs to answer.
-  const button = query<HTMLButtonElement>('[data-provider-id=opencode] [data-testid=account-login]');
+  // The family row holds OpenCode 2 as well: name the OpenCode member.
+  const member = '[data-testid=provider-member][data-provider-id=opencode]';
+  const button = query<HTMLButtonElement>(`${member} [data-testid=account-login]`);
   expect(button.getAttribute('data-account-id')).toBe('a-opencode');
   button.click();
   await waitFor(() => document.querySelector('[data-testid=account-login-terminal] [data-testid=terminal]') !== null);
@@ -172,11 +174,11 @@ test('OpenCode signs in from a terminal with its login command typed in, and clo
   expect(query('[data-testid=account-login-terminal]').textContent).toContain('opencode auth login');
   // No piped login and its code field while the terminal holds the sign-in.
   expect(document.querySelector('[data-testid=account-login-row]')).toBeNull();
-  expect(query('[data-provider-id=opencode]').getAttribute('data-step')).toBe('signing-in');
+  expect(query(member).getAttribute('data-step')).toBe('signing-in');
 
   query<HTMLButtonElement>('[data-testid=account-login-terminal-close]').click();
   await waitFor(() => document.querySelector('[data-testid=account-login-terminal]') === null);
-  await waitFor(() => query('[data-provider-id=opencode]').getAttribute('data-step') === 'ready');
+  await waitFor(() => query(member).getAttribute('data-step') === 'ready');
 
   query<HTMLButtonElement>('[data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);

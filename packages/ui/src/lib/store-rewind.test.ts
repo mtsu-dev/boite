@@ -101,6 +101,19 @@ test('store.rewind applies the new thread and hands the composer its content', a
   expect(await store.rewind('m-none')).toBeNull();
 });
 
+test('an edit with images is refused before the cut when the model the thread is left on takes none', async ({ ready }) => {
+  const { store, client } = await ready();
+  await store.open('t-trace');
+  const [, edited] = await twoTurns(client, 't-trace');
+  const account = store.accounts.find(entry => entry.providerId === 'pi')!;
+  await store.probeModels('pi', account.id);
+  expect(await store.update('t-trace', { accountId: account.id, model: 'pi-demo' })).toBe(true);
+  expect(await store.rewind(edited, 't-trace', true)).toBeNull();
+  expect(store.error).toContain('pi demo model takes no images');
+  expect((await client.call('threads.get', { threadId: 't-trace' })).messages.some(message => message.id === edited)).toBe(true);
+  expect((await store.rewind(edited, 't-trace'))?.prompt).toBe('edit this');
+});
+
 test('a rewind asked elsewhere drops the messages from the open thread', async ({ ready }) => {
   const { store, client } = await ready();
   await store.open('t-trace');

@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { link, lstat, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { zstdDecompress } from 'node:zlib';
+import { readFileSync } from 'node:fs';
+import { zstdDecompress, zstdDecompressSync } from 'node:zlib';
 
 /**
  * How checkpoint blobs and manifests sit on disk. A blob keeps the SHA-256 of
@@ -51,6 +52,17 @@ export async function decodeBlob(stored: Buffer, hash: string): Promise<Buffer |
 export async function readBlob(path: string, hash: string): Promise<Buffer | null> {
   const stored = await readFile(path).catch(() => null);
   return stored === null ? null : decodeBlob(stored, hash);
+}
+
+/** `readBlob` for a reader that cannot wait, with the same checks: a small file's, such as a folder's settings. */
+export function readBlobSync(path: string, hash: string): Buffer | null {
+  let stored: Buffer;
+  try { stored = readFileSync(path); } catch { return null; }
+  if (sha256(stored) === hash) return stored;
+  if (!framed(stored)) return null;
+  let content: Buffer;
+  try { content = zstdDecompressSync(stored, { maxOutputLength: BLOB_BYTE_LIMIT }); } catch { return null; }
+  return sha256(content) === hash ? content : null;
 }
 
 /** A manifest as written: always a zstd frame, the JSON inside. */

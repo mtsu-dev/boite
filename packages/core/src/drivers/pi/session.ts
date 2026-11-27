@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import { messageOf, unavailable } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
+import type { ModelInfo } from '@boite/contracts';
 import type { LiveTurnSettings, SessionContext, TurnContext } from '../types.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import { IdleTimer } from '../idle-timer.ts';
@@ -15,23 +16,26 @@ import {
   contentText,
   contextArgs,
   imagesOf,
-  modelArgs,
   numberOf,
   piCacheLife,
   sessionDirOf,
   textOf,
 } from './mapping.ts';
-import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX, UI_DIALOGS, UI_NOTICES } from './protocol.ts';
-import type { PiAssistantMessage, PiCommand, PiUsage } from './protocol.ts';
+import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX } from './protocol.ts';
+import type { PiAssistantMessage, PiCommand, PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
+import { alignLaunchedPair, launchLevel } from './launch-pair.ts';
+import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piPairOf, piProfileArgs, piReadsImages } from './models.ts';
+import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
-import { answerText } from '../../attachments.ts';
+import { answerDialog } from './dialogs.ts';
+import { drawCompaction, drawEntry } from './compaction-events.ts';
 import { noteReady } from '../driver-log.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { endOnClose, releaseChild } from '../session-close.ts';
 import {protectedPi} from './protected.ts';
 import { writeCacheWarmingExtension } from './cache-warming.ts';
-import { COMPACTION_ENV, extensionWriter, isBackgroundCompaction, writeCompactionExtension } from './compaction.ts';
+import { COMPACTION_ENV, compactOrNothing, extensionWriter, writeCompactionExtension } from './compaction.ts';
 
 type Timer = ReturnType<typeof setTimeout>;
 
@@ -65,6 +69,18 @@ export function setPiReadDeadlineForTests(ms: number | null): void {
  */
 export class PiSession {
   #child: SpawnedChild | null = null;
+  /** The old process `#reopen` waits on, which a stop or a close kills, and the wake that ends that wait. */
+  #draining: { child: SpawnedChild | null; exited: Promise<number | null> | null; wake: () => void } | null = null;
+  #markGone: () => void = () => {};
+  /** Settles once this session has closed and its pi processes and every one before them have exited. */
+  readonly gone = new Promise<void>((resolve) => { this.#markGone = resolve; });
+  /**
+   * The exits this session's processes wait for: the thread's previous session's, then each process a reopen
+   * replaced. Unbounded: a process that outlives its stop still holds the session file.
+   */
+  #before: Promise<unknown>;
+  #wakeOpen: () => void = () => {};
+  readonly #dropped = new Promise<undefined>((resolve) => { this.#wakeOpen = () => resolve(undefined); });
   #peer: PiPeer | null = null;
   #starting: Promise<void> | null = null;
 
@@ -81,6 +97,11 @@ export class PiSession {
   #current: PiTurn | null = null;
   #opening: PiTurn | null = null;
   #steered = false;
+  /**
+   * The turn whose prompt pi accepted. Before that, its process may still be replaced or fail a switch, and pi
+   * would open a run of its own for a steer: input then waits for the next turn.
+   */
+  #prompted: PiTurn | null = null;
   readonly #turns = new SessionTurns<PiTurn>(turn => this.#runTurn(turn), (turn, error) => {
     turn.fail(messageOf(error));
     this.#endTurn(turn, true);
@@ -91,6 +112,8 @@ export class PiSession {
   #killTree: (() => void) | null = null;
   /** The model and the thinking level the process is on, so a warm turn only sends a change. */
   #model: string | null = null;
+  /** The pair pi runs `#model` as when the catalog named it, as `provider` and `modelId` in JSON; null when pi resolved the text. */
+  #pair: string | null = null;
   #effort: string | null = null;
   #protection: ReturnType<typeof protectedPi> = null;
 
@@ -100,7 +123,13 @@ export class PiSession {
     private readonly onEnded: (session: PiSession) => void,
     /** `BOITE_COMPACTION` for this process, null for none (`compaction.ts`). */
     readonly compaction: string | null = null,
-  ) {}
+    /** The account's probed catalog, which names the pi pair behind a model at launch. */
+    private readonly catalog: (ctx: SessionContext) => readonly ModelInfo[] | null = () => null,
+    /** The thread's previous session's `gone`: its pi may still write the session file this one opens. */
+    previousGone: Promise<void> = Promise.resolve(),
+  ) {
+    this.#before = previousGone;
+  }
 
   /**
    * Reusable only while the process is up and the turn asks for the very same
@@ -225,9 +254,16 @@ export class PiSession {
 
   /** Submit input at pi's next tool boundary. */
   async steer(turn: PiTurn, message: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
-    if (this.#current !== turn || turn.settled || turn.isStopped || !this.#peer) return false;
+    if (this.#current !== turn || this.#prompted !== turn || turn.decided || turn.isStopped || !this.#peer) return false;
+    // A run cannot change its process: images a text-only model would drop wait for the next turn, which reopens it.
+    // Nothing is written yet, so a state pi does not give refuses the steer rather than leave its delivery unconfirmed.
+    const peer = this.#peer;
+    if (imagesOf(attachments).length > 0 && await peer.command('get_state', {}, { signal, timeoutMs: readDeadlineMs })
+      .then(state => piReadsImages(dataOf(state)['model'] as PiModel | null) === false, () => true)) return false;
+    // A run that pi ended meanwhile takes no more input: a steer now would open a run of its own.
+    if (this.#current !== turn || this.#prompted !== turn || turn.decided || turn.isStopped || this.#peer !== peer) return false;
     this.#steered = true;
-    await this.#peer.command('steer', { message, ...(attachments.length ? { images: imagesOf(attachments) } : {}) }, { onAccepted, signal, writeKind: 'steer' });
+    await peer.command('steer', { message, ...(attachments.length ? { images: imagesOf(attachments) } : {}) }, { onAccepted, signal, writeKind: 'steer' });
     return true;
   }
 
@@ -243,7 +279,8 @@ export class PiSession {
     const effort = change.effort;
     if (typeof effort !== 'string' || effort.length === 0) return {};
     if (effort !== this.#effort) {
-      await this.#peer.command('set_thinking_level', { level: effort });
+      // Live settings give up on it after their own bound; this one frees the request pi never answers.
+      await this.#peer.command('set_thinking_level', { level: effort }, { timeoutMs: stopDeadlineMs });
       this.#effort = effort;
     }
     turn.ctx.thread.effort = effort;
@@ -280,7 +317,7 @@ export class PiSession {
       this.#opening = null;
     }
 
-    const peer = this.#peer;
+    let peer = this.#peer;
     const sessionId = this.#sessionId;
     if (peer === null || sessionId === null) {
       turn.fail('the pi session went away before the turn');
@@ -298,20 +335,27 @@ export class PiSession {
     this.#steered = false;
     turn.awaitingPi = true;
     try {
-      await this.#align(turn.ctx, peer);
+      // A model pi registered after this process started takes a new one, which may hold another session id.
+      peer = await this.#align(turn, peer);
       if (turn.isStopped) {
         turn.settleRun();
       } else if (turn.ctx.turn.execution?.operation === 'compact') {
-        const result = dataOf(await peer.command('compact')) as { tokensBefore?: unknown; estimatedTokensAfter?: unknown; usage?: PiUsage };
-        if (result.usage !== undefined && result.usage !== null) turn.addUsage(result.usage);
-        turn.part(turn.takeIndex(), {
-          type: 'compaction',
-          trigger: 'manual',
-          preTokens: numberOf(result.tokensBefore) ?? turn.ctx.thread.context?.tokens ?? null,
-          postTokens: numberOf(result.estimatedTokensAfter),
-        });
+        const outcome = await compactOrNothing(peer);
+        if ('nothing' in outcome) {
+          turn.part(turn.takeIndex(), { type: 'notice', notice: { kind: 'nothing_to_compact' }, detail: outcome.nothing });
+        } else {
+          const { result } = outcome;
+          if (result.usage !== undefined && result.usage !== null) turn.addUsage(result.usage);
+          turn.part(turn.takeIndex(), {
+            type: 'compaction',
+            trigger: 'manual',
+            preTokens: numberOf(result.tokensBefore) ?? turn.ctx.thread.context?.tokens ?? null,
+            postTokens: numberOf(result.estimatedTokensAfter),
+          });
+        }
         turn.settleRun();
       } else {
+        if ((turn.ctx.ownImages ?? imagesOf(turn.ctx.attachments).length) > 0) peer = await this.#imagesReach(turn, peer);
         let prompt = turn.ctx.prompt, attachments = turn.ctx.attachments;
         if (this.#replaces !== null && this.#replaces === turn.ctx.sessionId) {
           this.#replaces = null;
@@ -321,10 +365,12 @@ export class PiSession {
         }
         if (turn.isStopped) turn.settleRun();
         else {
-          await peer.command('prompt', {
+          const accepted = await peer.command('prompt', {
             message: prompt,
             ...(attachments.length === 0 ? {} : { images: imagesOf(attachments) }),
           });
+          // pi 1.6.1 answers `handled` for a prompt an extension command or an input hook took without a run.
+          if (dataOf(accepted)['disposition'] !== 'handled') this.#prompted = turn;
           turn.ctx.inputReady?.();
           if (turn.isStopped) this.#abort(turn, peer);
           else await this.#settleIfIdle(turn, peer);
@@ -337,7 +383,7 @@ export class PiSession {
       const code = await exitWithin(this.#exited, EXIT_GRACE_MS, this.#processClosed);
       if (turn.isStopped) turn.settleRun();
       else turn.fail(code === undefined ? messageOf(error) : this.#exitSentence(code), code === undefined ? logMessageOf(error) : this.#exitSentence(code, true));
-      this.#current = null;
+      this.#current = this.#prompted = null;
       this.#endTurn(turn, true);
       return;
     }
@@ -345,7 +391,7 @@ export class PiSession {
 
     await turn.finished;
     await this.#readContext(turn, peer);
-    this.#current = null;
+    this.#current = this.#prompted = null;
     this.#endTurn(turn, turn.isStopped);
   }
 
@@ -353,27 +399,100 @@ export class PiSession {
    * A warm process on another model or level than the thread now wants. pi
    * takes both over RPC (`set_model`, `set_thinking_level`), so the process
    * stays. `set_model` clamps the level to the new model, so the level is sent
-   * again after it. A refusal fails the turn with pi's own sentence and drops
-   * the process, and the next turn launches with `--model`.
+   * again after it. A pair the catalog found after pi read its models (at
+   * start) opens a new process on it. A refusal fails the turn with pi's own
+   * sentence and drops the process. Returns the peer the turn talks to.
    */
-  async #align(ctx: SessionContext, peer: PiPeer): Promise<void> {
+  async #align(turn: PiTurn, peer: PiPeer): Promise<PiPeer> {
+    const ctx = turn.ctx;
     const model = ctx.thread.model;
-    if (model === null || model === AGENT_OWN_MODEL) return;
+    if (model === null || model === AGENT_OWN_MODEL) return peer;
     let changed = false;
-    if (model !== this.#model) {
-      const slash = model.indexOf('/');
-      if (slash <= 0 || slash === model.length - 1) {
-        throw new Error(`pi cannot switch to the model ${model}: its id is not <provider>/<id>`);
+    // The catalog's pair is the one image admission checked. A refresh can put another pair behind the same id, so
+    // the process follows it even when the id did not change.
+    const named = piCatalogPair(model, this.catalog(ctx));
+    if (model !== this.#model || (named !== undefined && JSON.stringify(named) !== this.#pair)) {
+      const listed: unknown = dataOf(await peer.command('get_available_models', {}, { timeoutMs: readDeadlineMs }))['models'];
+      if (named !== undefined && !piListsPair(listed, named)) return turn.isStopped ? peer : await this.#reopen(turn);
+      // Else pi's own listing names the pair: a provider id may hold a `/`, so the first one is not the split.
+      const pair = named ?? piPairOf(listed, model);
+      if (pair === undefined) throw new Error(`pi cannot switch to the model ${model}: its id is not <provider>/<id>`);
+      // The same id on a process that pi launched on its text: when pi already runs the catalog's pair, a switch
+      // would only reset a level pi keeps itself.
+      const running = model === this.#model ? dataOf(await peer.command('get_state', {}, { timeoutMs: readDeadlineMs }))['model'] as { provider?: unknown; id?: unknown } | null | undefined : undefined;
+      if (running?.provider !== pair.provider || running?.id !== pair.modelId) {
+        // pi answers once its `model_select` hooks ran: one that never ends fails the turn and drops the process.
+        await peer.command('set_model', pair, { timeoutMs: stopDeadlineMs });
+        changed = true;
       }
-      await peer.command('set_model', { provider: model.slice(0, slash), modelId: model.slice(slash + 1) });
       this.#model = model;
-      changed = true;
+      this.#pair = named === undefined ? null : JSON.stringify(named);
     }
     const effort = ctx.thread.effort;
     if (effort !== null && (changed || effort !== this.#effort)) {
-      await peer.command('set_thinking_level', { level: effort });
+      await peer.command('set_thinking_level', { level: effort }, { timeoutMs: stopDeadlineMs });
       this.#effort = effort;
     }
+    return peer;
+  }
+
+  /**
+   * The process goes, the session stays: a new process opens this turn's session with the thread's model and level,
+   * as a cold turn does, once the old one has exited, since pi's shutdown hooks may still write the session file. Only
+   * pi itself is stopped, not what its tools left running. A stop meanwhile drops the session, as during a cold start.
+   */
+  async #reopen(turn: PiTurn): Promise<PiPeer> {
+    this.#opening = turn;
+    try {
+      const child = this.#child, exited = this.#exited, closed = this.#processClosed;
+      this.#protection?.close(exited ?? closed);
+      this.#peer?.fail('the pi process was replaced');
+      this.#protection = null; this.#peer = null; this.#child = null; this.#starting = null;
+      // What a failure from here reports is the new process's exit, not the old one's, a stuck old one included.
+      this.#exited = null; this.#processClosed = Promise.resolve(); this.#exitCode = null; this.#lastStderr = '';
+      releaseChild(child);
+      if (exited !== null) this.#before = Promise.all([this.#before, exited]);
+      const code = await new Promise<number | null | undefined | 'dropped'>((resolve) => {
+        this.#draining = { child, exited, wake: () => resolve('dropped') };
+        // Its exit, not its pipes' close: what its tools left running may hold them.
+        void exitWithin(exited, stopDeadlineMs).then(resolve);
+      }).finally(() => { this.#draining = null; });
+      if (code === undefined && exited !== null) {
+        releaseChild(child, this.#killTree);
+        throw new Error('the pi process on the previous model did not exit, so its session cannot be reopened yet');
+      }
+      if (turn.isStopped || this.#ended) throw new Error('the pi turn was stopped before its new process started');
+      turn.ctx.log('info', `pi session: ${turn.ctx.thread.model} needs what the running process lacks, a new process opens on it`);
+      await this.#start(turn.ctx);
+    } finally {
+      this.#opening = null;
+    }
+    const peer = this.#peer, sessionId = this.#sessionId;
+    if (peer === null || sessionId === null) throw new Error('the pi session went away before the turn');
+    turn.noteSession(sessionId);
+    return peer;
+  }
+
+  /**
+   * Images go only to a model pi says reads them. Admission checked the list
+   * the turn was queued under, and pi reads `models.json` once: when the pair pi
+   * runs (whatever the thread names) gained images after the launch, a new
+   * process opens; any other text-only model fails the turn with admission's
+   * sentence. A model without its inputs is pi's.
+   */
+  async #imagesReach(turn: PiTurn, peer: PiPeer): Promise<PiPeer> {
+    const running = async (to: PiPeer) => dataOf(await to.command('get_state', {}, { timeoutMs: readDeadlineMs }))['model'] as PiModel | null | undefined;
+    let model = await running(peer);
+    if (piReadsImages(model) !== false) return peer;
+    const ran = model;
+    const listed = this.catalog(turn.ctx)?.find(entry => { const pair = piModelOf(entry); return pair !== undefined && pair.provider === ran?.provider && pair.id === ran?.id; });
+    if (listed !== undefined && listed.images !== false && !turn.isStopped) {
+      peer = await this.#reopen(turn);
+      model = await running(peer);
+      if (piReadsImages(model) !== false) return peer;
+    }
+    // The model that refused, the new process's after a reopen.
+    throw new Error(`${model?.name || listed?.name || turn.ctx.thread.model || 'pi\'s model'} takes no images: send the prompt without them`);
   }
 
   /**
@@ -430,6 +549,11 @@ export class PiSession {
       const usage = (stats['contextUsage'] ?? {}) as { tokens?: unknown; contextWindow?: unknown };
       const tokens = numberOf(usage.tokens);
       if (!turn.isStopped && tokens !== null) turn.ctx.context({ tokens, window: numberOf(usage.contextWindow) });
+      if (!this.#protection && !turn.isStopped && turn.pendingError === null && turn.sessionId !== null
+        && stats['sessionId'] === turn.sessionId && (turn.requestAt !== null || turn.ctx.turn.execution?.operation === 'compact')) {
+        const path = textOf(stats['sessionFile']);
+        turn.checkpoint = await checkpointOf(path, turn.sessionId, sessionDirOf(turn.ctx));
+      }
     } catch (error) {
       if (!reading.signal.aborted) turn.ctx.log('warn', `pi: get_session_stats failed: ${messageOf(error)}`);
     }
@@ -453,7 +577,10 @@ export class PiSession {
   }
 
   async #open(ctx: SessionContext): Promise<void> {
+    // A stop meanwhile ends the wait at once; what it waited for still holds the next session (`#drop`).
+    const exited = await Promise.race([exitWithin(this.#before.then(() => 0), stopDeadlineMs), this.#dropped]);
     if (this.#ended) throw new Error('the pi session was closed before it started');
+    if (exited === undefined) throw new Error(`the thread's previous pi process did not exit within ${stopDeadlineMs / 1000} s: its session opens once it has`);
     const profile = profileFor(ctx.provider);
     const launch = resolveLaunch(profile);
     if (launch === null) {
@@ -477,12 +604,12 @@ export class PiSession {
 
     const args = [
       ...launch.prefix,
-      ...(profile?.launch?.args ?? []),
+      ...piProfileArgs(profile?.launch?.args ?? [], ctx.thread.model),
       '--session-id',
       sessionId,
       '--session-dir',
       sessionDir,
-      ...modelArgs(ctx),
+      ...piModelArgs(ctx.thread.model, ctx.thread.effort, this.catalog(ctx)),
       // Protected launch already removes every native/discovered resource.
       // --no-tools would also suppress its mandatory registered tools; the
       // captured toolsAllowed field still enforces a host tool-free context.
@@ -500,6 +627,8 @@ export class PiSession {
     this.#child = child;
     this.#killTree = ctx.killTree ?? null;
     this.#model = ctx.thread.model;
+    const launched = ctx.thread.model === null ? undefined : piCatalogPair(ctx.thread.model, this.catalog(ctx));
+    this.#pair = launched === undefined ? null : JSON.stringify(launched);
     this.#effort = ctx.thread.effort;
     const peer = new PiPeer(child, {
       event: (message) => {
@@ -522,7 +651,9 @@ export class PiSession {
     // session, memoized behind `start`. Not awaited, so a slow or unknown
     // command never holds up the turn that started this process.
     void this.#fetchCommands(ctx, peer);
-    await peer.command('get_state', {}, { timeoutMs: 20_000 });
+    const state = dataOf(await peer.command('get_state', {}, { timeoutMs: 20_000 }));
+    // Every start, a reopened process included, lands on the catalog's pair before a prompt can reach it.
+    if (launched !== undefined) await alignLaunchedPair(peer, state, launched, launchLevel(args), { readMs: readDeadlineMs, writeMs: stopDeadlineMs });
     this.#protection?.assertReady();
   }
 
@@ -609,12 +740,18 @@ export class PiSession {
     this.#protection = null;
     this.#idle.clear();
     const turn = this.#current;
-    this.#current = null;
+    this.#current = this.#prompted = null;
     endOnClose(turn, 'the pi session was closed');
     this.#peer?.fail('the pi session was closed');
     this.#peer = null;
-    const child = this.#child;
+    const child = this.#child ?? this.#draining?.child ?? null;
     this.#child = null;
+    // The thread's next session opens once this process and those it waited for have exited: their shutdown hooks may
+    // still write the session file. Their exit, not their pipes' close, which a stuck grandchild may hold.
+    void Promise.all([this.#before, this.#exited]).then(() => this.#markGone());
+    this.#wakeOpen();
+    this.#draining?.wake();
+    this.#draining = null;
     // The bash tool's children (a dev server started with `&`) are not pi's to
     // reap once bash exits; the thread's tree is. On Linux and macOS the tree
     // is the direct children only, which is `kill()`.
@@ -631,7 +768,7 @@ export class PiSession {
   #onEvent(ctx: SessionContext, message: Record<string, unknown>): void {
     const type = message['type'];
     if (type === 'extension_ui_request') {
-      void this.#answerDialog(ctx, message).catch((error) => ctx.log('warn', `pi question: ${messageOf(error)}`));
+      void answerDialog(ctx, this.#current, this.#peer, message).catch((error) => ctx.log('warn', `pi question: ${messageOf(error)}`));
       return;
     }
     if (type === 'extension_error') {
@@ -707,10 +844,10 @@ export class PiSession {
         }
         break;
       case 'compaction_end':
-        this.#onCompaction(turn, message);
+        drawCompaction(turn, message);
         break;
       case 'entry_appended':
-        this.#onEntry(turn, message['entry']);
+        drawEntry(turn, message['entry']);
         break;
       case 'compaction_start':
         turn.ctx.reportProgress?.('compacting');
@@ -724,133 +861,5 @@ export class PiSession {
         // the contract has no part for them, so they are dropped.
         break;
     }
-  }
-
-  /**
-   * An automatic compaction, on a threshold or to recover from an overflow,
-   * drawn as the divider a manual one gets. A manual one is the `compact`
-   * command's, which draws its own from the response.
-   */
-  #onCompaction(turn: PiTurn, message: Record<string, unknown>): void {
-    const reason = textOf(message['reason']);
-    if (reason === 'manual' || message['aborted'] === true) return;
-    const result = message['result'] as { tokensBefore?: unknown; estimatedTokensAfter?: unknown; usage?: PiUsage; details?: unknown } | undefined | null;
-    if (result === undefined || result === null) {
-      turn.ctx.log('warn', `pi: the automatic compaction failed: ${textOf(message['errorMessage']) || 'no reason given'}`);
-      return;
-    }
-    if (result.usage !== undefined && result.usage !== null) turn.addUsage(result.usage);
-    turn.part(turn.takeIndex(), {
-      type: 'compaction',
-      trigger: 'auto',
-      preTokens: numberOf(result.tokensBefore),
-      postTokens: numberOf(result.estimatedTokensAfter),
-      // pi's threshold compaction took the copy Boite's extension made.
-      ...(isBackgroundCompaction(result.details) ? { background: true as const } : {}),
-    });
-  }
-
-  /**
-   * An entry an extension appended. The one drawn is the compaction Boite's
-   * extension appends at a `turn_end` that reached the limit: its copy, made
-   * in the background, which pi announces with no `compaction_end`.
-   */
-  #onEntry(turn: PiTurn, value: unknown): void {
-    const entry = (value ?? {}) as { type?: unknown; tokensBefore?: unknown; details?: unknown; usage?: PiUsage };
-    if (entry.type !== 'compaction' || !isBackgroundCompaction(entry.details)) return;
-    if (entry.usage !== undefined && entry.usage !== null) turn.addUsage(entry.usage);
-    turn.part(turn.takeIndex(), { type: 'compaction', trigger: 'auto', preTokens: numberOf(entry.tokensBefore), postTokens: null, background: true });
-  }
-
-  /**
-   * pi's only request back to the client. `select`, `confirm`, `input` and
-   * `editor` block the agent until an answer with the same id arrives.
-   */
-  async #answerDialog(ctx: SessionContext, message: Record<string, unknown>): Promise<void> {
-    const method = textOf(message['method']);
-    if (UI_NOTICES.has(method)) {
-      this.#onNotice(ctx, method, message);
-      return;
-    }
-    const id = message['id'];
-    const peer = this.#peer;
-    // Nothing can be answered without the id the agent waits on, and nothing is
-    // waiting once the process is gone.
-    if (typeof id !== 'string') {
-      ctx.log('warn', `pi: an ${method || 'unnamed'} dialog arrived with no id, nothing can answer it`);
-      return;
-    }
-    if (peer === null) return;
-    // The turn running now, not the one that opened the process: a warm session
-    // outlives its first turn, and both the card and the journal row belong to
-    // whoever is running when the dialog arrives.
-    const turn = this.#current;
-    if (turn === null || !UI_DIALOGS.has(method)) {
-      // A refusal is the answer pi defines for a dialog the client will not
-      // draw. Dropping it silently leaves the extension blocked inside a
-      // process that stays warm, on an id nobody will ever answer.
-      const why = turn === null ? 'no turn is running' : 'boite draws no card for that method';
-      ctx.log('warn', `pi: the ${method} dialog ${id} is refused, ${why}`);
-      peer.answer({ type: 'extension_ui_response', id, cancelled: true });
-      return;
-    }
-    const live = turn.ctx;
-    const choices = Array.isArray(message['options']) ? message['options'].filter((option): option is string => typeof option === 'string') : [];
-    const options = method === 'confirm'
-      ? [{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }]
-      : choices.map((label, index) => ({ id: String(index), label }));
-    const ask = {
-      text: [textOf(message['title']) || 'pi asks', textOf(message['message']), textOf(message['prefill'])].filter(Boolean).join('\n\n'),
-      options, allowText: method === 'input' || method === 'editor', multiple: false,
-    };
-    const ticket = live.askQuestion(ask);
-    const index = turn.takeIndex();
-    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer: null });
-    // A dialog with a `timeout` resolves itself on pi's side with its default
-    // once the time is up, and the agent goes on: the card goes with it.
-    const timeout = typeof message['timeout'] === 'number' && message['timeout'] > 0 ? message['timeout'] : null;
-    let timer: Timer | undefined;
-    const expired = new Promise<'expired'>((resolve) => {
-      if (timeout === null) return;
-      timer = setTimeout(() => {
-        resolve('expired');
-      }, timeout);
-      timer.unref?.();
-    });
-    const answer = await Promise.race([ticket, turn.stopped.then(() => null), expired]);
-    clearTimeout(timer);
-    if (answer === 'expired') {
-      live.withdrawQuestion?.(ticket.questionId);
-      turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer: null });
-      return;
-    }
-    if (answer === null) { peer.answer({ type: 'extension_ui_response', id, cancelled: true }); return; }
-    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer });
-    const value = method === 'select' ? options.find((option) => option.id === answer.optionIds[0])?.label : answerText(answer);
-    peer.answer(method === 'confirm'
-      ? { type: 'extension_ui_response', id, confirmed: answer.optionIds[0] === 'yes' }
-      : { type: 'extension_ui_response', id, value });
-  }
-
-  /**
-   * The UI methods pi expects no answer to. A `notify` is what an extension
-   * command often says instead of running the model, so it is drawn in the
-   * turn; an error notice is an error card, but it does not fail the turn.
-   * Status lines, widgets, window titles and editor text have no place in a
-   * chat and are dropped.
-   */
-  #onNotice(ctx: SessionContext, method: string, message: Record<string, unknown>): void {
-    if (method !== 'notify') return;
-    const text = textOf(message['message']);
-    if (text.length === 0) return;
-    const turn = this.#current;
-    if (turn === null) {
-      ctx.log('info', `pi extension: ${text}`, { kind: 'provider-output', event: 'provider.output' });
-      return;
-    }
-    turn.part(
-      turn.takeIndex(),
-      textOf(message['notifyType']) === 'error' ? { type: 'error', message: text } : { type: 'text', text: `pi: ${text}` },
-    );
   }
 }

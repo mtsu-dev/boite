@@ -34,16 +34,17 @@ const showGatewayRow = `void (${gatewayRow} || document.querySelector("[data-tes
 const grokRow = 'document.querySelector("[data-testid=provider-settings][data-provider-id=grok]")';
 
 async function expectOpenCodeGateways(name: 'Douane' | 'CLIProxyAPI') {
+  const row = 'document.querySelector("[data-testid=provider-settings][data-provider-id=opencode]")';
+  await page.waitFor(row);
+  await page.evaluate(`void (${row}.querySelector("[data-testid=provider-details]") || ${row}.querySelector("[data-testid=provider-details-toggle]").click())`);
   for (const provider of ['opencode', 'opencode-v2']) {
-    const row = `document.querySelector("[data-testid=provider-settings][data-provider-id=${provider}]")`;
+    const member = `${row}.querySelector("[data-testid=provider-member][data-provider-id=${provider}]")`;
     const gateway = `[data-testid=account-gateway][data-provider=${provider}]`;
-    await page.waitFor(row);
-    await page.evaluate(`void (document.querySelector(${JSON.stringify(gateway)}) || ${row}.querySelector("[data-testid=provider-details-toggle]").click())`);
     await page.waitFor(`document.querySelector(${JSON.stringify(gateway)})?.textContent.includes(${JSON.stringify(name)})`);
     expect(await page.evaluate(`document.querySelectorAll(${JSON.stringify(gateway)}).length`)).toBe(1);
     expect(await page.text(gateway)).toContain(dashboard);
-    expect(await page.evaluate(`${row}.querySelectorAll("[data-testid=account-row], [data-testid=account-add], [data-testid=account-gateway] button").length`)).toBe(0);
-    await page.evaluate(`${row}.scrollIntoView({ block: 'center' })`);
+    expect(await page.evaluate(`${member}.querySelectorAll("[data-testid=account-row], [data-testid=account-add], [data-testid=account-gateway] button").length`)).toBe(0);
+    await page.evaluate(`${member}.scrollIntoView({ block: 'center' })`);
     await capture(`boite-proxy-${provider}-${name.toLowerCase()}-desktop.png`);
   }
 }
@@ -59,10 +60,6 @@ test('disabled mode retains the native glance; Douane brings its quota bars and 
   await page.click('[data-testid="nav-settings"]');
   await page.click('[data-testid="settings-tab-accounts"]');
   await page.waitFor('document.querySelector("[data-testid=subscription-proxy-settings]")');
-  // The experimental OpenCode member is off in the fixture until enabled here.
-  await page.click('[data-testid="provider-settings"][data-provider-id="opencode"] [data-testid="provider-details-toggle"]');
-  await page.click('[data-testid="provider-enabled"][data-provider-id="opencode-v2"]');
-  await page.waitFor('document.querySelector("[data-testid=provider-enabled][data-provider-id=opencode-v2]")?.checked === true');
   // Off, the section is its switch and one line; the form opens with the switch.
   expect(await page.evaluate('!!document.querySelector("[data-testid=subscription-proxy-off]") && !document.querySelector("[data-testid=subscription-proxy-url]")')).toBe(true);
   await page.click('[data-testid="subscription-proxy-enabled"]');

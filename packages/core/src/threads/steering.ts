@@ -4,6 +4,8 @@ import { abortable } from '../abortable.ts';
 
 type Steer = NonNullable<TurnHandle['steer']>;
 const MAIL_RECEIPT_GRACE_MS = 5_000;
+/** How long a steer the attempt's end cut short may still answer that it sent nothing. */
+const UNSENT_ANSWER_MS = 250;
 
 export interface MailDelivery {
   release: () => void;
@@ -44,7 +46,14 @@ export class TurnSteering {
       signal,
       send: async (steer: Steer, text: string, images?: Parameters<Steer>[1], accepted?: () => void): Promise<boolean> => {
         signal.throwIfAborted();
-        return abortable(steer(text, images, accepted && (() => { if (!signal.aborted) accepted(); }), signal), signal);
+        const sent = steer(text, images, accepted && (() => { if (!signal.aborted) accepted(); }), signal);
+        try { return await abortable(sent, signal); }
+        catch (error) {
+          // A driver whose steer the attempt's end cut short before it wrote anything says so with false:
+          // nothing is left unconfirmed then (pi's image check reads the model's state first).
+          if (signal.aborted && await Promise.race([sent.catch(() => undefined), Bun.sleep(UNSENT_ANSWER_MS)]) === false) return false;
+          throw error;
+        }
       },
       release: () => { if (this.#active.get(threadId) === controller) this.end(threadId); },
     };

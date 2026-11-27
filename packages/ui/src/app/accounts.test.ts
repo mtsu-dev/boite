@@ -56,6 +56,26 @@ test('Add another account names the account itself and goes straight to the sign
   await waitFor(() => document.querySelector(`[data-testid=account-login-row][data-account-id=${added.id}]`) !== null);
 });
 
+test('Add another pi account opens its own sign-in terminal and explains /login', async ({ app: _app }) => {
+  store.showSettings('accounts');
+  await openProviderDetails('pi');
+  query<HTMLButtonElement>('[data-provider-id=pi] [data-testid=account-add]').click();
+  await waitFor(() => document.querySelector('[data-testid=account-login-terminal] [data-testid=terminal]') !== null);
+
+  const account = store.accountsOf('pi').at(-1)!;
+  const card = query('[data-testid=account-login-terminal]');
+  expect(account.isolationDir).not.toBeNull();
+  expect(account.status).toBe('unknown');
+  expect(card.getAttribute('data-account-id')).toBe(account.id);
+  expect(card.textContent).toContain('/login');
+
+  await waitFor(() => card.textContent?.includes('pi --no-session') === true);
+  query<HTMLButtonElement>('[data-testid=account-login-terminal-close]').click();
+  await waitFor(() => document.querySelector('[data-testid=account-login-terminal]') === null);
+  // pi wrote its credential store on start: the account now reads signed in.
+  expect(store.accountOf(account.id)?.status).toBe('ok');
+});
+
 test('account lifecycle removal asks first and cancellation keeps the account', async ({ app: _app }) => {
   store.showSettings('accounts');
   await waitFor(() => document.querySelector('[data-testid=accounts-page]') !== null);

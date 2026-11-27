@@ -1,8 +1,10 @@
 import type { AccountId, ModelInfo, ProviderId, ThreadId } from '@boite/contracts';
 import { ModelProbes } from './model-probes.ts';
 import { compactionSetting } from './pi/compaction.ts';
-import { sessionKey } from './pi/mapping.ts';
+import { agentEnv, piAgentDirFollowsCwd, sessionKey } from './pi/mapping.ts';
 import { readModels } from './pi/models.ts';
+import { sideQuestion, title } from './pi/one-shot.ts';
+import { forkSession } from './pi/session-files.ts';
 import { PiSession } from './pi/session.ts';
 import { PiTurn } from './pi/turn.ts';
 import type { Driver, ProbeContext, ProbeFilter, ProbeResult, SessionContext, TurnContext, TurnHandle } from './types.ts';
@@ -14,7 +16,13 @@ const MINUTE_MS = 60_000;
 /** One `pi --mode rpc` process per thread, kept between turns like the Codex one. */
 export function createPiDriver(): Driver {
   const sessions = new ThreadSessions<PiSession>();
+  /** Each thread's last ended session's `gone`, until it settles. */
+  const exits = new Map<string, Promise<void>>();
   const probes = new ModelProbes(readModels);
+  // The core's catalog, the one image admission reads, names a launch's pair only where pi reads the same configuration
+  // folder: a relative one is another one in each folder pi starts in, so there the model goes as its text and pi resolves it.
+  const catalog = (ctx: { accountEnv: Record<string, string>; catalog?: readonly ModelInfo[] | null }) =>
+    piAgentDirFollowsCwd(agentEnv(ctx.accountEnv)) ? null : ctx.catalog ?? null;
 
   function acquire(ctx: SessionContext): PiSession {
     const threadId = ctx.thread.id;
@@ -32,7 +40,12 @@ export function createPiDriver(): Driver {
       session = null;
     }
     if (session === null) {
-      session = new PiSession(key, warmMs, ended => sessions.ended(threadId, ended), compaction);
+      // A session that just went may leave a pi still exiting on the same session file: the next one waits for it.
+      session = new PiSession(key, warmMs, (ended) => {
+        sessions.ended(threadId, ended);
+        exits.set(threadId, ended.gone);
+        void ended.gone.then(() => { if (exits.get(threadId) === ended.gone) exits.delete(threadId); });
+      }, compaction, catalog, exits.get(threadId));
       sessions.current.set(threadId, session);
     }
     const running = session;
@@ -41,6 +54,9 @@ export function createPiDriver(): Driver {
   }
 
   return {
+    title: ctx => title(ctx, catalog(ctx)),
+    sideQuestion: ctx => sideQuestion(ctx, catalog(ctx)),
+    forkSession,
     prepare: (ctx, options) => acquire(ctx).prepare(ctx, options?.forTurn),
     setViewed: sessions.setViewed,
     protocol: 'pi',

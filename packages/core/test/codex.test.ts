@@ -2320,8 +2320,8 @@ describe('native Codex fork', () => {
     const driver = getDriver('codex-appserver');
     const original = driver.forkSession!.bind(driver);
     let forkId: string | null = null;
-    const fork = spyOn(driver, 'forkSession').mockImplementation(async (ctx, checkpoint) => {
-      const native = await original(ctx, checkpoint);
+    const fork = spyOn(driver, 'forkSession').mockImplementation(async (ctx, checkpoint, sourceThreadId) => {
+      const native = await original(ctx, checkpoint, sourceThreadId);
       forkId = native.sessionId;
       harness!.core.journal.putThread({ ...before, selectionVersion: (before.selectionVersion ?? 0) + 1 });
       return native;

@@ -1,5 +1,5 @@
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, IMAGE_MIME_TYPES } from './attachment-limits.ts';
-import type { ProviderDescriptor } from './index.ts';
+import type { ModelInfo, ProviderDescriptor } from './index.ts';
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 type Refusal = { message: string; data?: Record<string, unknown> };
@@ -10,15 +10,27 @@ export function decodedBytes(data: string): number {
   return Math.floor(data.length * 3 / 4) - padding;
 }
 
+type AttachmentProvider = Pick<ProviderDescriptor, 'id' | 'name' | 'capabilities'>;
+
+/** The agent or model whose image input is unavailable. */
+export function imageAttachmentBlocker(provider: AttachmentProvider, model?: ModelInfo | null): { name: string; modelId?: string } | null {
+  if (!provider.capabilities.images) return { name: provider.name };
+  if (model?.images === false) return { name: model.name, modelId: model.id };
+  return null;
+}
+
 /** Pure validation shared by the core and its in-memory client. */
-export function attachmentError(attachments: unknown, provider: Pick<ProviderDescriptor, 'id' | 'name' | 'capabilities'>): Refusal | null {
+export function attachmentError(attachments: unknown, provider: AttachmentProvider, model?: ModelInfo | null): Refusal | null {
   if (!Array.isArray(attachments)) return refused('attachments must be an array');
   for (const [index, attachment] of attachments.entries()) {
     if (!attachment || typeof attachment !== 'object') return refused(`attachment ${index + 1}: expected an object`);
   }
   if (attachments.length === 0) return null;
-  if (!provider.capabilities.images && attachments.some(a => a?.kind === 'image')) {
-    return refused(`${provider.name} takes no images: send the prompt without them`, { providerId: provider.id });
+  const blocker = imageAttachmentBlocker(provider, model);
+  if (blocker && attachments.some(a => a.kind === 'image')) {
+    return refused(`${blocker.name} takes no images: send the prompt without them`, {
+      providerId: provider.id, ...(blocker.modelId === undefined ? {} : { model: blocker.modelId }),
+    });
   }
   return shapeError(attachments);
 }

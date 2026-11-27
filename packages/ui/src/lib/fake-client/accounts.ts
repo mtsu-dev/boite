@@ -217,7 +217,6 @@ export function accountMethods(ctx: FakeContext) {
         identity: null,
         createdAt: ctx.now()
       };
-      // As the core's `check`: a fresh isolated account is signed out until a login runs in it.
       account.status = sessionStatus(provider, account, false);
       account.identity = account.status === 'ok' ? 'you@example.com' : null;
       ctx.accounts.push(account);
@@ -326,7 +325,10 @@ export function accountMethods(ctx: FakeContext) {
       const id = `login:${account.id}`;
       const cwd = account.isolationDir ?? 'C:\\Users\\you';
       if (!ctx.terminals.has(id)) {
-        ctx.terminals.set(id, { cwd, output: `PS ${cwd}> & ${provider.id} auth login\r\n${FAKE_LOGIN_MENU}`, line: '', history: [] });
+        const output = provider.protocol === 'pi'
+          ? `PS ${cwd}> & pi --no-session\r\npi\r\n`
+          : `PS ${cwd}> & ${provider.id} auth login\r\n${FAKE_LOGIN_MENU}`;
+        ctx.terminals.set(id, { cwd, output, line: '', history: [] });
       }
       const shell = ctx.terminals.get(id)!;
       return { id, cwd: shell.cwd, output: shell.output };

@@ -27,9 +27,18 @@ const DESCRIPTOR_KEYS = [
   'hookSources',
   'quirks',
   'experimental',
+  'deprecated',
   'models',
   'capabilities',
 ] as const;
+
+function checkDeprecated(value: unknown, file: string): NonNullable<ProviderDescriptor['deprecated']> {
+  const obj = asObject(value, file, 'deprecated');
+  checkKeys(obj, ['replacedBy'], file, 'deprecated');
+  return obj['replacedBy'] === undefined
+    ? {}
+    : { replacedBy: asString(obj['replacedBy'], file, 'deprecated.replacedBy') };
+}
 
 export function validateDescriptor(
   raw: unknown,
@@ -91,6 +100,7 @@ export function validateDescriptor(
       ...(obj['hookSources'] === undefined ? {} : { hookSources: checkHookSources(obj['hookSources'], file, profiles, capabilities.hooks) }),
       ...(obj['quirks'] === undefined ? {} : { quirks: checkQuirks(obj['quirks'], file) }),
       ...(obj['experimental'] === undefined ? {} : { experimental: asBoolean(obj['experimental'], file, 'experimental') }),
+      ...(obj['deprecated'] === undefined ? {} : { deprecated: checkDeprecated(obj['deprecated'], file) }),
       models: checkModels(obj['models'], file, protocol as Protocol),
       capabilities,
     },

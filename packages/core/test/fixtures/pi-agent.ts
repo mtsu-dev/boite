@@ -8,7 +8,7 @@
  * is proved without the real binary and without a login.
  *
  * Run as `bun <this file>`. `PI_FAKE_LOG` names a file it appends to: one
- * `argv sessionId=<id> sessionDir=<dir> model=<m>` line per process at start,
+ * `argv sessionId=<id> sessionDir=<dir> model=<m> provider=<p> thinking=<t>` line per process at start,
  * then one line per command it receives (`prompt`, `abort`), and one
  * `image <mimeType> <byte length>` line per `images` entry a `prompt` command
  * carries. The argv line is what tells a test how many agent processes a warm
@@ -16,7 +16,9 @@
  *
  * The framing is copied from the real mode on purpose: strict JSONL, LF only.
  */
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { piArgs, piArgValue } from '../../src/drivers/pi/args.ts';
 import { instructionsOf } from './history.ts';
 
 const DIRECTIVE = /\[(agents|tool|thought|usage|slow|crash|splitcrash|ask|select|input|editor|retry|giveup|deaf|noclear|notify|timeout|compacted|swapped|taken)\]/g;
@@ -64,8 +66,18 @@ let deaf = false;
 let noClear = false;
 let hangClear = false;
 let hangStats = false;
-/** Set by `set_thinking_level`, reported by `get_state`. */
-let thinkingLevel = 'medium';
+/** Set by `--thinking` and `set_thinking_level`, reset by `set_model` as pi does, reported by `get_state`. */
+let thinkingLevel = (() => {
+  // As pi's parser: the last valid `--thinking` value, a warning for any other.
+  let level = 'medium';
+  for (let i = 0; i < process.argv.length - 1; i++) {
+    if (process.argv[i] === '--append-system-prompt') { i++; continue; }
+    if (process.argv[i] !== '--thinking') continue;
+    const value = process.argv[++i]!;
+    if (['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(value)) level = value;
+  }
+  return level;
+})();
 /** Resolves when an `abort` arrives, for the one directive that waits on it. */
 let waitingAbort: (() => void) | null = null;
 /**
@@ -92,19 +104,53 @@ function log(line: string): void {
   appendFileSync(file, `${line}\n`, 'utf8');
 }
 
+/** What this test's fake processes logged so far, a session's earlier prompts included. */
+function loggedLines(): string[] {
+  const file = process.env['PI_FAKE_LOG'];
+  return file === undefined || file.length === 0 || !existsSync(file) ? [] : readFileSync(file, 'utf8').split('\n');
+}
+
 // ---------------------------------------------------------------------------
 // What it was launched with
 // ---------------------------------------------------------------------------
 
+/** The last value of `name`, read as pi's parser walks the arguments, which pi keeps. */
 function flag(name: string): string {
-  const at = process.argv.indexOf(name);
-  return at < 0 ? '' : (process.argv[at + 1] ?? '');
+  return piArgValue(process.argv.slice(2), name) ?? '';
+}
+
+/** Whether pi reads the switch `name` itself, not as another option's value. */
+function has(name: string): boolean {
+  return piArgs(process.argv.slice(2)).some(({ words }) => words.length === 1 && words[0] === name);
 }
 
 const sessionId = flag('--session-id');
 const sessionDir = flag('--session-dir');
 const model = flag('--model');
-log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model}`);
+const sideCopy = flag('--session');
+const oneShot = has('--no-session') || Boolean(sideCopy);
+const sessionFile = sideCopy || (sessionId && join(sessionDir,
+  readdirSync(sessionDir).find(name => name.endsWith(`_${sessionId}.jsonl`)) ?? `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`));
+const saved = sessionFile && existsSync(sessionFile)
+  ? readFileSync(sessionFile, 'utf8').trim().split('\n').flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } }) : [];
+let leaf: string | null = saved.at(-1)?.id ?? null;
+let activePrompt = '';
+log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model} provider=${flag('--provider')} thinking=${flag('--thinking')}`);
+if (oneShot) log(`one-shot ${JSON.stringify(process.argv.slice(2))}`);
+// pi 1.6.1 refuses a `--provider` without a `--model` before it reads a request.
+if (flag('--provider') && !model) {
+  process.stderr.write(`Error: --provider requires --model (for example: --provider ${flag('--provider')} --model <pattern>)\n`);
+  process.exit(1);
+}
+// `PI_FAKE_EXTENSION_PROVIDER` is a provider an extension registers: pi launched without extensions does not know it.
+const extensionProvider = process.env['PI_FAKE_EXTENSION_PROVIDER'];
+if (extensionProvider && has('--no-extensions') && (flag('--provider') === extensionProvider || model.startsWith(`${extensionProvider}/`))) {
+  process.stderr.write(`Error: Unknown provider "${extensionProvider}". Use --list-models to see available providers/models.\n`);
+  process.exit(1);
+}
+// `PI_FAKE_ONE_SHOT_REFUSAL`: a one-shot warns of a custom model id at startup, as pi does and runs on, then refuses the prompt.
+const oneShotRefusal = oneShot && Boolean(process.env['PI_FAKE_ONE_SHOT_REFUSAL']);
+if (oneShotRefusal) process.stderr.write(`Warning: Model "${model}" not found for provider "fake-a". Using custom model id.\n`);
 for (const [index, arg] of process.argv.entries()) {
   if (arg === '--extension') log(`extension ${process.argv[index + 1] ?? ''}`);
 }
@@ -198,7 +244,7 @@ const MODELS = [
     provider: 'fake-a',
     baseUrl: 'https://example.invalid',
     reasoning: true,
-    input: ['text'],
+    input: ['text', 'image'],
     contextWindow: 200000,
     maxTokens: 64000,
     thinkingLevelMap: { xhigh: 'xhigh', max: 'max' },
@@ -210,7 +256,6 @@ const MODELS = [
     provider: 'fake-a',
     baseUrl: 'https://example.invalid',
     reasoning: true,
-    input: ['text'],
     contextWindow: 200000,
     maxTokens: 64000,
   },
@@ -227,8 +272,55 @@ const MODELS = [
   },
 ];
 
+// A virtual model as pi lists it: a router that answers through the others.
+if (process.env['PI_FAKE_VIRTUAL']) MODELS.push({ ...MODELS[0]!, id: 'router', name: 'Fake Router', api: 'pi-virtual' });
+// Ids that end like a thinking level: a text-only one pi matches literally first, and one that reads images
+// which `fake-b/plain:low` matches in part before pi drops `:low`.
+if (process.env['PI_FAKE_LITERAL']) {
+  MODELS.push({ ...MODELS[2]!, provider: 'fake-a', id: 'smart:high', name: 'Fake Smart High' });
+  MODELS.push({ ...MODELS[0]!, provider: 'fake-b', id: 'plain:low-plus', name: 'Fake Plain Low Plus' });
+  // A provider id may hold a `/`: both spell `fake-a/team/base`, which pi reads as `base` on `fake-a/team`.
+  MODELS.push({ ...MODELS[0]!, provider: 'fake-a', id: 'team/base', name: 'Fake Team Base' });
+  if (!process.env['PI_FAKE_NO_TEAM']) MODELS.push({ ...MODELS[2]!, provider: 'fake-a/team', id: 'base', name: 'Fake Base', reasoning: true });
+}
+// The catalog keeps `base` on `fake-a/team` for the text `fake-a/team/base`: a scope's `team/base` is then on
+// `fake-a` or on `fake-b`, which only pi picks.
+if (process.env['PI_FAKE_SHADOW']) MODELS.push({ ...MODELS[2]!, provider: 'fake-b', id: 'team/base', name: 'Fake Other Base' });
+// `PI_FAKE_SPARE`: another model of `fake-b`, which a profile can pin beside the thread's.
+if (process.env['PI_FAKE_SPARE']) MODELS.push({ ...MODELS[2]!, id: 'spare', name: 'Fake Spare' });
+// `fake-b/plain` gains images, as a `models.json` edited after a launch gives them.
+if (process.env['PI_FAKE_PLAIN_IMAGES']) MODELS[2]!.input = ['text', 'image'];
+// `PI_FAKE_CASE`: `fake-b/Plain` reads images but does not reason and sits before `fake-b/plain`, which reasons, and
+// `--model` matches without regard to case, as pi 1.6.1's resolver: `fake-b/plain` launches on `Plain`. Levels are
+// bounded to the model, as pi does. `PI_FAKE_CASE=only` lists `Plain` alone, as a `models.json` edited since a probe.
+const caseless = Boolean(process.env['PI_FAKE_CASE']);
+if (caseless) {
+  const at = MODELS.findIndex(entry => entry.provider === 'fake-b' && entry.id === 'plain');
+  MODELS[at]!.reasoning = true;
+  MODELS.splice(at, process.env['PI_FAKE_CASE'] === 'only' ? 1 : 0, { ...MODELS[0]!, provider: 'fake-b', id: 'Plain', name: 'Fake Plain Vision', reasoning: false });
+}
+// `PI_FAKE_GONE=<provider>/<id>`: that model is no longer listed, and pi runs `--model` naming it as a custom model of
+// that id with another model's capabilities, as pi 1.6.1 does for an id its provider does not list.
+const gone = process.env['PI_FAKE_GONE'] ?? '';
+if (gone) MODELS.splice(MODELS.findIndex(entry => `${entry.provider}/${entry.id}` === gone), 1);
+/** A level as pi bounds it to the model it runs. */
+const bounded = (level: string) => caseless && running.reasoning === false ? 'off' : level;
 /** The model the session is on, which is the one pi reports as current. */
-const CURRENT = MODELS[0];
+const CURRENT = MODELS.find(model => model.id === process.env['PI_FAKE_CURRENT']) ?? MODELS[0]!;
+/** What `get_state` reports: the pair `--provider`/`--model` named, else the longest provider spelling the text, as pi. */
+let running = (() => {
+  const text = model.replace(/:[a-z]+$/, ''), provider = flag('--provider');
+  const same = (a: string, b: string) => caseless ? a.toLowerCase() === b.toLowerCase() : a === b;
+  const spelled = MODELS.filter(entry => same(`${entry.provider}/${entry.id}`, text) && (provider === '' || entry.provider === provider));
+  if (gone && text === gone && spelled.length === 0) {
+    const [provider, id] = [gone.slice(0, gone.indexOf('/')), gone.slice(gone.indexOf('/') + 1)];
+    return { ...MODELS[0]!, provider, id, name: id };
+  }
+  return spelled.sort((a, b) => b.provider.length - a.provider.length)[0] ?? CURRENT;
+})();
+thinkingLevel = bounded(thinkingLevel);
+/** `--model provider/id[:level]` without its level, or the current model. */
+const answering = model.length === 0 ? `${CURRENT.provider}/${CURRENT.id}` : model.replace(/:[a-z]+$/, '');
 const CURRENT_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 function assistantMessage(stopReason: string, usage: Record<string, unknown>): Record<string, unknown> {
@@ -236,8 +328,9 @@ function assistantMessage(stopReason: string, usage: Record<string, unknown>): R
     role: 'assistant',
     content: [],
     api: 'fake',
-    provider: 'fake',
-    model: model.length === 0 ? 'fake-pi' : model,
+    // As pi records it: the provider and id of the model that answered.
+    provider: answering.slice(0, answering.indexOf('/')),
+    model: answering.slice(answering.indexOf('/') + 1),
     usage,
     stopReason,
     timestamp: Date.now(),
@@ -246,6 +339,15 @@ function assistantMessage(stopReason: string, usage: Record<string, unknown>): R
 
 /** The end of a run as pi writes it: `turn_end`, `agent_end` with nothing left to retry, `agent_settled`. */
 function endRun(message: Record<string, unknown>): void {
+  if (sessionFile) {
+    const timestamp = new Date().toISOString();
+    if (!existsSync(sessionFile)) writeFileSync(sessionFile, `${JSON.stringify({ type: 'session', version: 3, id: sessionId, cwd: process.cwd(), timestamp })}\n`);
+    for (const entry of [{ role: 'user', content: activePrompt }, message]) {
+      const id = crypto.randomUUID();
+      appendFileSync(sessionFile, `${JSON.stringify({ type: 'message', id, parentId: leaf, timestamp, message: entry })}\n`);
+      leaf = id;
+    }
+  }
   send({ type: 'turn_end', message, toolResults: [] });
   send({ type: 'agent_end', messages: [message], willRetry: false });
   streaming = false;
@@ -288,7 +390,8 @@ async function runRetry(giveUp: boolean): Promise<void> {
 }
 
 async function runPrompt(text: string): Promise<void> {
-  const directives = directivesOf(text);
+  activePrompt = text;
+  const directives = oneShot ? [] : directivesOf(text);
   if (directives.includes('retry') || directives.includes('giveup')) {
     await runRetry(directives.includes('giveup'));
     return;
@@ -316,7 +419,20 @@ async function runPrompt(text: string): Promise<void> {
     });
   }
 
-  for (const chunk of chunksOf(plainOf(text))) say(chunk);
+  // `[write <path>] <text>` and `[remove <path>]`: the turn writes or deletes that file under its folder, as an agent's
+  // edit would.
+  const write = /^\[write ([^\]]+)\] ([\s\S]*)$/.exec(text);
+  if (write) {
+    mkdirSync(dirname(join(process.cwd(), write[1]!)), { recursive: true });
+    writeFileSync(join(process.cwd(), write[1]!), write[2]!);
+  }
+  const remove = /^\[remove ([^\]]+)\]$/.exec(text);
+  if (remove) rmSync(join(process.cwd(), remove[1]!));
+  const history = saved.flatMap(entry => entry.message?.role === 'user' ? [entry.message.content] : []).join(', ');
+  if (sideCopy) log(`side prompt ${JSON.stringify(text)}`);
+  const answer = sideCopy || text === '[read-session]' ? `Native context: ${history}`
+    : oneShot && text.startsWith('Title the user') ? '{"title":"Name the feature","needsRefinement":false}' : plainOf(text);
+  for (const chunk of chunksOf(answer)) say(chunk);
 
   let usage = zeroUsage();
   let stopReason = 'stop';
@@ -448,7 +564,7 @@ async function runPrompt(text: string): Promise<void> {
     }
   }
 
-  const message = assistantMessage(stopReason, usage);
+  const message = { ...assistantMessage(stopReason, usage), content: [{ type: 'text', text: answer }] };
   send({ type: 'message_end', message });
   endRun(message);
 }
@@ -470,8 +586,26 @@ function handle(message: Record<string, unknown>): void {
   }
 
   log(type);
+  // A pi that keeps its pipes open without answering a command, once the file `PI_FAKE_SILENT` names holds its name.
+  const silent = process.env['PI_FAKE_SILENT'];
+  if (silent && existsSync(silent) && readFileSync(silent, 'utf8').trim() === type) { log(`${type} unanswered`); return; }
+  // `PI_FAKE_END_ON_STATE` names a file: once it exists, a `get_state` asked while the run waits ends that run first.
+  const endOnState = process.env['PI_FAKE_END_ON_STATE'];
+  if (type === 'get_state' && endOnState && existsSync(endOnState) && waitingAbort) { const end = waitingAbort; waitingAbort = null; end(); }
   switch (type) {
     case 'compact': {
+      // pi's own refusal when no entry is old enough to summarize: a test marks such a session with a `[small]` prompt.
+      if (loggedLines().includes('small-session')) {
+        send({ id, type: 'response', command: 'compact', success: false, error: 'Nothing to compact (session too small)' });
+        return;
+      }
+      // pi's refusal when the last entry is already a summary: a marker beside the log lasts until the next prompt.
+      const summarized = process.env['PI_FAKE_LOG'] ? `${process.env['PI_FAKE_LOG']}.compacted` : null;
+      if (summarized !== null && existsSync(summarized)) {
+        send({ id, type: 'response', command: 'compact', success: false, error: 'Already compacted' });
+        return;
+      }
+      if (summarized !== null) writeFileSync(summarized, '');
       send({ id, type: 'response', command: 'compact', success: true, data: { tokensBefore: 150000, summary: 'remember this', firstKeptEntryId: 'm-1' } });
       return;
     }
@@ -485,17 +619,19 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'set_model': {
-      log(`model ${textOf(message['provider'])}/${textOf(message['modelId'])}`);
+      log(`model ${textOf(message['provider'])} ${textOf(message['modelId'])}`);
       const found = MODELS.find((entry) => entry.provider === message['provider'] && entry.id === message['modelId']);
       if (found === undefined) {
         send({ id, type: 'response', command: 'set_model', success: false, error: `Model not found: ${textOf(message['provider'])}/${textOf(message['modelId'])}` });
         return;
       }
+      running = found;
+      thinkingLevel = bounded('medium');
       send({ id, type: 'response', command: 'set_model', success: true, data: found });
       return;
     }
     case 'set_thinking_level': {
-      thinkingLevel = textOf(message['level']);
+      thinkingLevel = bounded(textOf(message['level']));
       log(`level ${thinkingLevel}`);
       send({ id, type: 'response', command: 'set_thinking_level', success: true });
       return;
@@ -507,12 +643,12 @@ function handle(message: Record<string, unknown>): void {
         type: 'response',
         command: 'get_session_stats',
         success: true,
-        data: { sessionId, contextUsage: { tokens: 4321, contextWindow: 200000, percent: 2.16 } },
+        data: { sessionId, sessionFile, contextUsage: { tokens: 4321, contextWindow: 200000, percent: 2.16 } },
       });
       return;
     }
     case 'steer': {
-      if (!waitingAbort) { send({ id, type: 'response', command: 'steer', success: false, error: 'no active turn' }); return; }
+      if (!waitingAbort) { log('steer without a run'); send({ id, type: 'response', command: 'steer', success: false, error: 'no active turn' }); return; }
       log(`steering ${textOf(message['message'])}`);
       if (Array.isArray(message['images'])) for (const image of message['images']) log(`steer-image ${image.mimeType} ${image.data.length}`);
       const response = { id, type: 'response', command: 'steer', success: true };
@@ -523,6 +659,7 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'prompt': {
+      if (caseless || gone) log(`prompt on ${running.provider}/${running.id} ${thinkingLevel}${oneShot ? ' one-shot' : ''}`);
       const images = message['images'];
       if (Array.isArray(images)) {
         for (const image of images) {
@@ -530,12 +667,18 @@ function handle(message: Record<string, unknown>): void {
           log(`image ${textOf(entry['mimeType'])} ${textOf(entry['data']).length}`);
         }
       }
+      if (oneShotRefusal) {
+        send({ id, type: 'response', command: 'prompt', success: false, error: 'No API key found for fake-a' });
+        return;
+      }
       const text = textOf(message['message']);
-      const instructions = instructionsOf(text);
-      if (text.trimStart().startsWith('/fake-report')) {
+      if (text.includes('[small]')) log('small-session');
+      if (process.env['PI_FAKE_LOG']) rmSync(`${process.env['PI_FAKE_LOG']}.compacted`, { force: true });
+      const instructions = oneShot ? '' : instructionsOf(text);
+      if (!oneShot && text.trimStart().startsWith('/fake-report')) {
         // An extension command: pi runs it, answers the prompt and starts no run,
         // so no event and no `agent_settled` follow.
-        send({ id, type: 'response', command: 'prompt', success: true });
+        send({ id, type: 'response', command: 'prompt', success: true, data: { disposition: 'handled' } });
         log('extension command handled');
         return;
       }
@@ -560,13 +703,16 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'get_state': {
-      send({
+      // `PI_FAKE_SLOW_STATE` (ms) holds each answer, so a test can act while the driver waits for it.
+      const slowState = Number(process.env['PI_FAKE_SLOW_STATE'] ?? 0);
+      if (slowState > 0) log('state asked');
+      const answer = (): void => send({
         id,
         type: 'response',
         command: 'get_state',
         success: true,
         data: {
-          model: CURRENT,
+          model: running,
           thinkingLevel,
           isStreaming: streaming,
           isCompacting: false,
@@ -575,6 +721,8 @@ function handle(message: Record<string, unknown>): void {
           pendingMessageCount: 0,
         },
       });
+      if (slowState > 0) setTimeout(answer, slowState);
+      else answer();
       return;
     }
     case 'get_available_models': {
@@ -622,6 +770,22 @@ function handle(message: Record<string, unknown>): void {
     default:
       send({ id, type: 'response', command: type, success: false, error: `the fake pi does not implement ${type}` });
   }
+}
+
+// pi runs its `session_shutdown` hooks before it exits, and they may still write the session file. pi 1.6.1's rpc
+// mode shuts down so on SIGTERM and on the end of its input alike (rpc-mode.js `onInputEnd`): a closed stdin read
+// first must not let the process slip out without them.
+const slowExit = Number(process.env['PI_FAKE_SLOW_EXIT'] ?? 0);
+let shuttingDown = false;
+function shutDown(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log(`shutting down ${sessionId}`);
+  setTimeout(() => { log(`exited ${sessionId}`); process.exit(0); }, slowExit);
+}
+if (slowExit > 0 && !oneShot && sessionId) {
+  process.on('SIGTERM', shutDown);
+  process.stdin.on('end', shutDown);
 }
 
 let buffer = '';

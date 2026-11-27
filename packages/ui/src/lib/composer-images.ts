@@ -1,5 +1,5 @@
-import type { Attachment, PreviewReference } from '@boite/contracts';
-import type { Store } from './store.svelte';
+import { imageAttachmentBlocker, resolveModelSelection, type Attachment, type PreviewReference } from '@boite/contracts';
+import type { Choice, Draft, Store } from './store.svelte';
 import type { ComposerState } from './composer-queue';
 import { tileKey } from './draft-attachments';
 import { editPreviewMentions } from './preview-mentions';
@@ -21,6 +21,22 @@ export function trackImageSend(state: ComposerState, prompt: string, sentImages:
     state.mentionInsertion = (state.mentionInsertion ?? 0) + 1;
   };
 }
+
+/**
+ * Why the picked model takes no image, or null. An answer's files reach the agent as paths, so it takes images whatever the model reads.
+ * `resumed` is what the core read for the open thread when the choice leaves pi its own model (`ResumedImages`);
+ * while it is on its way (null) a picture is held, and the composer sends once the answer allows it.
+ */
+export function imageRefusalOf(store: Store, choice: Choice | null, answering: boolean, resumed?: boolean | null): string | null {
+  const provider = choice && !answering ? store.providerOf(choice.providerId) : null;
+  if (!provider || !choice || resumed === null) return null;
+  const model = resolveModelSelection(store.modelsOf(choice.providerId, choice.accountId), choice.model)?.model;
+  // The resumed session decides, even before this client has the account's catalog.
+  const { images: _listed, ...read } = model ?? { id: choice.model ?? '', name: provider.name };
+  const blocker = imageAttachmentBlocker(provider, resumed === undefined ? model : resumed ? read : { ...read, images: false });
+  return blocker ? fill(strings.composer.attachNoImages, { name: blocker.name }) : null;
+}
+
 
 export function imageLabel(number: number): string {
   return fill(strings.composer.imageReference, { number: String(number) });
@@ -91,6 +107,15 @@ export function sendShape(text: string, attachments: Attachment[]): SendShape {
 
 export function sameSend(pressed: SendShape, now: SendShape): boolean {
   return pressed.words === now.words && pressed.tiles.length === now.tiles.length && pressed.tiles.every((tile, at) => tile === now.tiles[at]);
+}
+
+/**
+ * Where a waiting Send goes: another agent, account or model picked meanwhile cancels it, and so does another draft,
+ * project, worktree switch or incognito switch, whose folder or conversation the images were not checked for.
+ */
+export function sendTarget(choice: Choice | null, draft: Pick<Draft, 'id' | 'projectId' | 'worktree' | 'incognito'> | null): string {
+  return choice ? JSON.stringify([choice.providerId, choice.accountId, choice.model ?? null,
+    draft ? [draft.id ?? null, draft.projectId, draft.worktree, draft.incognito === true] : null]) : '';
 }
 
 /** A box nobody types in: a step of the undo history, or a draft set aside. */

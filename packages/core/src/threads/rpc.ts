@@ -5,7 +5,7 @@ import { invalidParams, messageOf, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
 import { ensureThreadCwd } from './cwd.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
-import { defaultModel, needsModelDiscovery, selectionFor } from './selection.ts';
+import { defaultModel, imageInputModel, needsModelDiscovery, selectionFor } from './selection.ts';
 import { LinkedPullRequests } from '../linked-pull-requests.ts';
 import { threadCapabilities } from './capabilities.ts';
 import { agentShape } from './agent-shape.ts';
@@ -96,6 +96,27 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return { ok: true };
   });
   core.router.register('threads.capabilities', params => threadCapabilities(core, params.threadId));
+  core.router.register('drafts.images', (params, ctx) => {
+    const project = core.projects.require(params.projectId);
+    const provider = core.providers.require(params.providerId);
+    const account = core.accounts.require(params.accountId);
+    if (account.providerId !== provider.id) throw invalidParams(`drafts.images.accountId: ${account.id} is an account of ${account.providerId}, not ${provider.id}`, { field: 'accountId', expected: provider.id });
+    const thread = params.threadId === undefined ? null : core.threads.require(params.threadId);
+    if (thread && thread.projectId !== project.id) throw invalidParams(`drafts.images.threadId: ${thread.id} is a thread of project ${thread.projectId}, not ${project.id}`, { field: 'threadId', expected: project.id });
+    for (const field of ['worktree', 'incognito'] as const) {
+      if (thread && params[field]) throw invalidParams(`drafts.images.${field}: ${thread.id} already runs in ${thread.cwd}`, { field, expected: 'absent with threadId' });
+    }
+    if (params.incognito && project.kind !== 'drafts') throw invalidParams(`drafts.images.incognito: ${project.id} is not the drafts project`, { field: 'incognito', expected: 'the drafts project' });
+    // A pick for a thread's next prompt goes to the thread's folder, which may be a worktree of the project. A draft
+    // of the drafts project starts in a new folder of its own and a worktree draft in a new worktree: neither holds
+    // the project folder's untracked pi settings. Until this connection's preparation made that folder, only the
+    // first turn's admission there can tell.
+    const fresh = params.worktree === true || project.kind === 'drafts';
+    const cwd = thread?.cwd ?? (fresh ? core.drafts.reservedFolder(ctx.connection.id, project.id, { worktree: params.worktree === true, incognito: params.incognito === true }) : project.path);
+    if (cwd === undefined) return { supported: provider.capabilities.images };
+    const model = imageInputModel(core, provider, { accountId: account.id, model: params.model, cwd });
+    return { supported: provider.capabilities.images && model?.images !== false };
+  });
   core.router.register('threads.previewAccountSwitch', params => {
     const thread = requireAgent(core.threads, params.threadId);
     const account = core.accounts.require(params.accountId);
@@ -133,7 +154,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     await requireCwd(core, params.threadId);
     return core.threads.compact(params.threadId, params.expectedSelectionVersion);
   });
-  core.router.register('threads.rewind', (params) => core.threads.rewind(params.threadId, params.messageId));
+  core.router.register('threads.rewind', (params) => core.threads.rewind(params.threadId, params.messageId, params.images === true));
   core.router.register('threads.mergeBack', params => core.threads.branching.mergeBack(params));
   core.router.register('threads.fork', (params) => core.threads.fork(params.threadId, params.messageId, params.worktree === true));
   core.router.register('threads.list', (params) => core.threads.list(params));

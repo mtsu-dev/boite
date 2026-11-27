@@ -370,6 +370,44 @@ describe('accounts', () => {
     expect(after.status).toBe('ok');
   });
 
+  test('an isolated pi account is runnable before pi has written its credential store', async () => {
+    const client = await harness.connect();
+    const account = await client.call('accounts.add', { providerId: 'pi', label: 'Second', useDefaultLocation: false });
+    const auth = join(account.isolationDir!, 'auth.json');
+
+    // Keys may come from the environment or models.json: no file is no proof of a missing login.
+    expect(existsSync(auth)).toBe(false);
+    expect(account.status).toBe('unknown');
+    expect((await client.call('accounts.check', { accountId: account.id })).status).toBe('unknown');
+
+    // pi writes its store on its first start, from the sign-in terminal too: the account then reads signed in.
+    writeFileSync(auth, '{}', 'utf8');
+    expect((await client.call('accounts.check', { accountId: account.id })).status).toBe('ok');
+  });
+
+  test('an isolated pi account copies global prompts and keeps its own models', () => {
+    const source = join(harness.dataDir, 'pi-profile');
+    mkdirSync(source);
+    const prompts = ['AGENTS.md', 'APPEND_SYSTEM.md', 'SYSTEM.md'];
+    for (const file of prompts) writeFileSync(join(source, file), file, 'utf8');
+    writeFileSync(join(source, 'models.json'), '{}', 'utf8');
+
+    const originalDir = process.env.PI_CODING_AGENT_DIR;
+    const hostAgents = process.env.BOITE_HOST_AGENTS;
+    process.env.PI_CODING_AGENT_DIR = source;
+    process.env.BOITE_HOST_AGENTS = '1';
+    try {
+      const account = harness.core.accounts.add({ providerId: 'pi', label: 'Second', useDefaultLocation: false });
+      for (const file of prompts) expect(readFileSync(join(account.isolationDir!, file), 'utf8')).toBe(file);
+      expect(existsSync(join(account.isolationDir!, 'models.json'))).toBe(false);
+    } finally {
+      if (originalDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = originalDir;
+      if (hostAgents === undefined) delete process.env.BOITE_HOST_AGENTS;
+      else process.env.BOITE_HOST_AGENTS = hostAgents;
+    }
+  });
+
   test('a check that finds the same status writes nothing and tells nobody, and a changed one does both', async () => {
     const client = await harness.connect();
     const account = await client.call('accounts.add', { providerId: 'claude', label: 'Checked', useDefaultLocation: false });

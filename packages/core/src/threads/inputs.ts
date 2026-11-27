@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { attachmentError } from '@boite/contracts';
-import type { Attachment, PreviewReference, Project, ProviderDescriptor, ThreadId, Turn } from '@boite/contracts';
+import type { Attachment, ModelInfo, PreviewReference, Project, ProviderDescriptor, ThreadId, Turn } from '@boite/contracts';
 import { messageOf, refused } from '../errors.ts';
 import type { Journal } from '../journal.ts';
 
@@ -116,7 +116,8 @@ export function checkAttachmentArray(attachments: Attachment[]): void {
   });
 }
 
-export function checkAttachments(attachments: Attachment[], provider: ProviderDescriptor): void {
-  const error = attachmentError(attachments, provider);
+export function checkAttachments(attachments: Attachment[], provider: ProviderDescriptor, readModel?: () => ModelInfo | undefined): void {
+  const model = readModel && attachments.some(attachment => attachment?.kind === 'image') ? readModel() : undefined;
+  const error = attachmentError(attachments, provider, model);
   if (error) throw refused(error.message, error.data);
 }

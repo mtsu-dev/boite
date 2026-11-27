@@ -409,7 +409,7 @@
       </div>
     {:else}
     <div class="head provider-head">
-      <AccountSeats name={shown ? shown.name : strings.composer.models} {shown} {seats} {shownAccountId} {choice} {locked} {disabled} busy={disabled || pickPending} onpick={pickSeat} onsignin={store.owner ? signInSeat : undefined} />
+      <AccountSeats name={shown?.deprecated ? `${shown.name} · ${strings.providerSettings.obsolete}` : shown?.name ?? strings.composer.models} {shown} {seats} {shownAccountId} {choice} {locked} {disabled} busy={disabled || pickPending} onpick={pickSeat} onsignin={store.owner ? signInSeat : undefined} />
       <!-- The search shares the name's line, so the list keeps that row for models. -->
       {#if !needsInstall && !pending}<div class="head-search"><ModelSearch bind:value={modelQuery} bind:input={searchBox} /></div>{/if}
     </div>

@@ -1,5 +1,5 @@
 import { untrack } from 'svelte';
-import type { RpcParams } from '@boite/contracts';
+import { DRAFT_PREPARATION_LIFETIME_MS, type RpcParams } from '@boite/contracts';
 import type { Choice, Draft } from '../store.svelte';
 import type { Client } from '../client';
 import { DRAFT_STASH_KEY } from '../prefs';
@@ -18,6 +18,12 @@ export class DraftStartup {
   #prepared: Prepared | null = null;
   #sendingDraft: Draft | null = null;
   #hidden = $state(false);
+  /** The preparation whose folder exists now: a draft that starts in a new folder has its images read there. */
+  #folder = $state<{ id: string; draft: Draft } | null>(null);
+  /** Only for the draft it was made for: a switch makes another draft, whose folder is not made yet. */
+  preparedFolder(draft: Draft | null): string | null { return draft && this.#folder?.draft === draft ? this.#folder.id : null; }
+  /** The core drops a reservation once its lifetime ends: so does this client, and a draft in a new folder reads none. */
+  #expiry: ReturnType<typeof setTimeout> | null = null;
   constructor(private readonly ctx: StoreContext) { this.uploads = new AttachmentUploads(ctx); }
 
   watch(): () => void {
@@ -65,12 +71,16 @@ export class DraftStartup {
         permissionMode: final.permissionMode, effort: final.effort, speed: final.speed ?? null,
         ...(final.model ? { model: final.model } : {}), ...(made.draft.worktree ? { worktree: {} } : {}),
         ...(made.draft.incognito && s.draftInDrafts ? { incognito: true } : {}) };
+      // The core's lifetime starts when it accepts the request, after this.
+      const asked = Date.now();
       await made.client.call('drafts.prepare', made.input);
       if (this.#prepared !== made || !this.ctx.currentClient(made.client, made.generation)) {
         await made.client.call('drafts.release', { preparationId: made.id }).catch(() => undefined);
         return;
       }
       made.ready = true;
+      this.#folder = { id: made.id, draft: made.draft };
+      this.#expiry = setTimeout(() => { if (this.#prepared === made) this.release(); }, Math.max(0, asked + DRAFT_PREPARATION_LIFETIME_MS - Date.now()));
     } catch { /* Send validates and creates normally when speculation fails. */ }
   }
 
@@ -88,6 +98,7 @@ export class DraftStartup {
     if (held.key !== this.#key(draft, held.source)) return null;
     held.claimed = true;
     this.#prepared = null;
+    this.#clearExpiry();
     return { preparationId: held.id, choice: held.choice, projectId: held.input.projectId };
   }
 
@@ -108,7 +119,10 @@ export class DraftStartup {
   release(): void {
     const held = this.#prepared;
     this.#prepared = null;
+    this.#folder = null;
+    this.#clearExpiry();
     if (held && !held.claimed) void held.client.call('drafts.release', { preparationId: held.id }).catch(() => undefined);
   }
+  #clearExpiry(): void { if (this.#expiry !== null) clearTimeout(this.#expiry); this.#expiry = null; }
   reset(): void { this.#sendingDraft = null; this.release(); this.uploads.reset(); }
 }

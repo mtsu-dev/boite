@@ -35,9 +35,10 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
   await menuLoaded();
   await waitFor(() => shownModels().length === 3);
-  // One tile per provider an account answers for, in the core's order: the
-  // one still to download or sign into is Settings' business, one tile away.
-  expect(tiles()).toEqual(['favorites', 'claude', 'echo', 'opencode', 'codex', 'pi', 'grok', 'muse', 'vibe', 'more']);
+  // One tile per provider an account answers for, in the core's order with an
+  // obsolete one last: the one still to download or sign into is Settings'
+  // business, one tile away.
+  expect(tiles()).toEqual(['favorites', 'claude', 'echo', 'opencode-v2', 'codex', 'pi', 'grok', 'muse', 'vibe', 'opencode', 'more']);
   // Claude is the shown one and has two logins: its name is the button that lists them.
   expect(query('[data-testid=picker-account]').getAttribute('aria-expanded')).toBe('false');
   expect(seats()).toEqual([]);

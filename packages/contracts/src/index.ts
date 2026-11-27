@@ -238,7 +238,7 @@ export interface RpcEvents extends
 
 export type RpcEventName = keyof RpcEvents;
 
-export { attachmentError, answerAttachmentError, decodedBytes } from './attachment-validation.ts';
+export { attachmentError, answerAttachmentError, decodedBytes, imageAttachmentBlocker } from './attachment-validation.ts';
 export { AUTO_COMPACT_MOMENTS, AUTO_COMPACT_TOKENS, DEFAULT_AUTO_COMPACT, AUTO_GOAL_MIN_CHARS, CACHE_KEEPALIVE_HOURS, MODEL_FAVORITES_MAX, checkSettingsPatch, compareModelFavorites, keepLaterFavorites, type AutoCompact, type AutoCompactMoment, type CacheKeepalive } from './settings-validation.ts';
 export { checkRpcParams } from './rpc-params.ts';
 export { defaultTitleModel } from './title-models.ts';

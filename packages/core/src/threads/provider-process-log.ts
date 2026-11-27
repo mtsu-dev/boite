@@ -1,3 +1,4 @@
+import { constants } from 'node:os';
 import { basename } from 'node:path';
 import type { Core } from '../core.ts';
 import type { SpawnedChild } from '../procs.ts';
@@ -14,6 +15,11 @@ export interface ProviderProcess {
 
 /** Signals the core sends to stop a process on purpose; any other one is a crash. */
 const STOP_SIGNALS = new Set(['SIGTERM', 'SIGKILL', 'SIGINT', 'SIGHUP']);
+/**
+ * The exit codes of a program that handles one of those signals and exits
+ * with the shell's 128 + its number, as pi does on SIGTERM (143).
+ */
+const STOP_CODES = new Set([...STOP_SIGNALS].map(name => 128 + constants.signals[name as keyof typeof constants.signals]));
 
 /** Only the program's file name: a path would name the user and arguments are never logged. */
 export function programName(command: string): string {
@@ -28,6 +34,7 @@ export function programName(command: string): string {
 export function abnormalExit(code: number | null, signal: NodeJS.Signals | null, askedToStop = false): boolean {
   // A stop signal is the core's own stop only when the core asked: an OOM kill or an outside `kill` is a crash.
   if (signal !== null) return !(askedToStop && STOP_SIGNALS.has(signal));
+  if (askedToStop && code !== null && STOP_CODES.has(code)) return false;
   return code !== null && code !== 0;
 }
 

@@ -30,8 +30,8 @@ export type ToolDocument =
 /**
  * An image sent with a prompt. `data` is base64 with no `data:` prefix. The
  * core refuses one over `ATTACHMENT_MAX_BYTES`, more than `ATTACHMENTS_PER_TURN`
- * of them, a format outside `IMAGE_MIME_TYPES`, and any of them on a provider
- * whose `capabilities.images` is false, each by name.
+ * of them, a format outside `IMAGE_MIME_TYPES`, and any of them when the agent
+ * or its selected model reports that it takes no images.
  */
 export interface ImageAttachment {
   kind: 'image';
@@ -138,7 +138,9 @@ export type AgentNotice =
   | { kind: 'writes_lost'; cause: 'disk_full' | 'quota' | 'other'; transcript: boolean }
   | { kind: 'attachments_missing'; missing: number; sent: number }
   | { kind: 'instructions_large'; chars: number; limit: number; files: number }
-  | { kind: 'mirror_failed' };
+  | { kind: 'mirror_failed' }
+  /** A Compact the user asked for found too little to summarize: the conversation is unchanged. */
+  | { kind: 'nothing_to_compact' };
 
 /**
  * The marker a mochi's new conversation leaves in its thread
@@ -305,6 +307,8 @@ export interface Message {
   createdAt: Timestamp;
 }
 
+/** How long a `drafts.prepare` reservation lives after the core accepts it, unless Send claims it first. */
+export const DRAFT_PREPARATION_LIFETIME_MS = 10 * 60_000;
 /** The default page size of `threads.get` and `messages.list` when no limit is supplied. */
 export const MESSAGE_PAGE = 120;
 /** The first paint needs a small tail; older history uses the ordinary page size. */

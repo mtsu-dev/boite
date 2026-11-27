@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { TriangleAlert } from '@lucide/svelte';
+  import { Info, TriangleAlert } from '@lucide/svelte';
   import type { AgentNotice } from '@boite/contracts';
   import { count } from '../lib/format';
   import { fill, strings } from '../lib/strings';
@@ -8,11 +8,13 @@
   /**
    * The agent warned that something it saves or reads went wrong, and its turn
    * went on: one line in the user's language that says what happened and what
-   * it means, the agent's own report behind the "i".
+   * it means, the agent's own report behind the "i". A Compact that found
+   * nothing to summarize reads the same way, as information.
    */
   let { notice, detail }: { notice: AgentNotice; detail: string } = $props();
 
   const t = $derived(strings.chat.notice);
+  const quiet = $derived(notice.kind === 'nothing_to_compact');
   const line = $derived.by(() => {
     switch (notice.kind) {
       case 'writes_lost': {
@@ -25,8 +27,11 @@
         return fill(notice.files === 1 ? t.instructionsLargeOne : t.instructionsLarge, { chars: count(notice.chars), limit: count(notice.limit) });
       case 'mirror_failed':
         return t.mirrorFailed;
+      case 'nothing_to_compact':
+        return t.nothingToCompact;
     }
   });
 </script>
 
-<Notice icon={TriangleAlert} tone="caution" testid="notice-part" kind={notice.kind} detail={line} info={detail.trim() ? detail : undefined} />
+<!-- Nothing went wrong when there was nothing to compact: an information, not a warning. -->
+<Notice icon={quiet ? Info : TriangleAlert} tone={quiet ? 'info' : 'caution'} testid="notice-part" kind={notice.kind} detail={line} info={detail.trim() ? detail : undefined} />

@@ -330,9 +330,13 @@ describe('providers', () => {
     expect(rejected).toEqual([]);
     const ids = loaded.map((provider) => provider.id).sort();
     expect(ids).toEqual(['antigravity', 'claude', 'codex', 'echo', 'grok', 'hermes', 'muse', 'opencode', 'opencode-v2', 'pi', 'vibe']);
-    // OpenCode 2 is the one experimental descriptor: listed, and off until it is turned on.
-    expect(loaded.filter((provider) => provider.experimental === true).map((provider) => provider.id)).toEqual(['opencode-v2']);
-    expect(loaded.filter((provider) => provider.enabled === false).map((provider) => provider.id)).toEqual(['opencode-v2']);
+    const opencode2 = loaded.find((provider) => provider.id === 'opencode-v2');
+    expect(opencode2?.enabled).toBe(true);
+    expect(opencode2?.experimental).toBeUndefined();
+    expect(loaded.find((provider) => provider.id === 'opencode')).toMatchObject({
+      enabled: true,
+      deprecated: { replacedBy: 'opencode-v2' },
+    });
 
     const echo = loaded.find((provider) => provider.id === 'echo');
     expect(echo?.source).toBe('shipped');
@@ -398,7 +402,6 @@ describe('providers', () => {
 
   test('the opencode-v2 profile launches acp bare, isolates the state home and signs in without the background service', () => {
     const descriptor = harness.core.providers.require('opencode-v2');
-    expect(descriptor.experimental).toBe(true);
     expect(descriptor.auth).toEqual({ kind: 'oauth-cli', sqlite: { file: 'opencode/opencode.db', tables: ['credential', 'account', 'control_account'] } });
     expect(descriptor.login).toEqual({ command: ['opencode2', 'auth', 'login', '--standalone'], terminal: true });
     for (const os of ['windows', 'linux', 'macos'] as const) {
@@ -625,8 +628,9 @@ describe('providers', () => {
     const descriptor = harness.core.providers.require('pi');
     // One variable moves pi's whole config directory, `auth.json` included.
     expect(descriptor.auth).toEqual({ kind: 'oauth-cli', session: ['auth.json'] });
-    // No login block: `/login` is a slash command inside the tui, not a cli one.
-    expect(descriptor.login).toBeUndefined();
+    // The provider picker is a slash command inside pi's interactive UI.
+    expect(descriptor.login).toEqual({ command: ['pi', '--no-session'], terminal: true });
+    expect(pi?.login).toEqual({ kind: 'terminal' });
 
     const profile = descriptor.profiles[currentOs()];
     expect(profile?.isolation).toEqual({ PI_CODING_AGENT_DIR: '{isolationDir}' });

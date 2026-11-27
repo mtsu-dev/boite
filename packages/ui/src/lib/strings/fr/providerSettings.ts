@@ -40,6 +40,8 @@ export const fr: Translation = {
     offHeading: 'Désactivés',
     off: 'Désactivé',
     experimental: 'Expérimental',
+    obsolete: 'Obsolète',
+    replacedBy: 'Remplacé par {name}',
     /** The switch's accessible name: `{provider}` is the provider's own name. */
     enable: 'Utiliser {provider}',
     enableHint: "Désactivé, Boite ne lance rien de ce fournisseur et aucune liste ne le propose. Ses comptes et ses fils sont conservés.",

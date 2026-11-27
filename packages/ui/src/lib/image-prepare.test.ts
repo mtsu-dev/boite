@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN, type Attachment, type ProviderSummary } from '@boite/contracts';
+import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN, type Attachment } from '@boite/contracts';
 import { receiveFiles } from './composer-attachments';
 import type { Store } from './store.svelte';
 import { WORKER_IDLE_MS } from './worker-idle';
@@ -161,7 +161,7 @@ describe('receiveFiles', () => {
     } };
     return { store, box };
   }
-  const noImages = { name: 'Antigravity', capabilities: { images: false } } as unknown as ProviderSummary;
+  const noImages = 'Antigravity takes no images: send the prompt without them.';
 
   test('a full turn of reduced screenshots goes in, the next one is refused by name', async () => {
     const fake = codec({ width: 1179, height: 2556 }, { 'image/jpeg': 150_000, 'image/png': 1_500_000 });
@@ -177,7 +177,7 @@ describe('receiveFiles', () => {
     const fake = codec({ width: 100, height: 100 }, { 'image/jpeg': 10 });
     const { store, box } = inbox();
     await receiveFiles(store, [file('a.png', 'image/png', 10), file('notes.pdf', 'application/pdf', 10)], box, noImages, fake.codec);
-    expect(store.error).toBe('Antigravity takes no images: send the prompt without them.');
+    expect(store.error).toBe(noImages);
     expect(box.attachments.map((one) => one.name)).toEqual(['notes.pdf']);
     expect(fake.encoded).toEqual([]);
   });

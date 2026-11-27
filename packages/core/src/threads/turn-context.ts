@@ -20,8 +20,9 @@ import { agentEnvOf } from '../agent.ts';
 import { agentGuide, SHORT_ANSWERS } from '../agent-guide.ts';
 import { nativeSkillFiles } from '../brain.ts';
 import { takesSystemGuide } from '../drivers/index.ts';
+import { piCatalogOf } from './selection.ts';
 import { effectiveCompaction, contextRulesBlock, type CompactionPolicy } from '@boite/contracts';
-import { prepareAttachments, prepareHistoryImages, FileReferences } from '../attachments.ts';
+import { nativeImage, prepareAttachments, prepareHistoryImages, FileReferences } from '../attachments.ts';
 import { continuationInput, switchBackInput, tailInput, type HistoryInput, type PartPlace } from '../continuation.ts';
 import { recordHandover } from './switch-notice.ts';
 import type { Core } from '../core.ts';
@@ -149,6 +150,7 @@ export class TurnContexts {
       resumeAt: thread.sessionResumeAt ?? null,
       sessionBefore: provider.protocol === 'claude-sdk' ? this.#sessionBefore(thread, '') : undefined,
       accountEnv: this.#core.accounts.accountEnv(account, provider, thread),
+      catalog: piCatalogOf(this.#core, provider, account.id),
       systemGuide: this.#systemGuide(thread, provider),
       warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
       toolSummaries: this.#core.settings.get().toolSummaries === true,
@@ -521,11 +523,14 @@ export class TurnContexts {
         coordination: () => bare ? null : this.#core.delegation.take(threadId, turn.id) ?? this.#core.coordination.take(threadId, turn.id)
           ?? this.#threads.deferred.takeForRunningTurn(threadId),
         attachments: prepared.attachments,
+        // A resume's images are its interrupted turn's, carried as history like any earlier one.
+        ownImages: kind === 'resume' ? 0 : input.attachments.filter(file => nativeImage(provider, file)).length,
         sessionId: thread.sessionId,
         resumeAt: thread.sessionId === null ? null : thread.sessionResumeAt ?? null,
         get sessionBefore() { return sessionBefore ??= readSessionBefore(); },
         set sessionBefore(totals) { sessionBefore = totals; },
         accountEnv: env,
+        catalog: piCatalogOf(this.#core, provider, account.id),
         warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
         toolSummaries: this.#core.settings.get().toolSummaries === true,
         shortAnswers: this.#core.settings.get().shortAnswers !== false,

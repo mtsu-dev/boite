@@ -1,10 +1,20 @@
 import { resolveModelSelection } from '@boite/contracts';
-import type { AccountId, AgentProfile, AgentSelection, ModelInfo, Protocol, ProviderDescriptor } from '@boite/contracts';
+import type { AccountId, AgentProfile, AgentSelection, ModelInfo, Protocol, ProviderDescriptor, Thread } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { antigravityVariant } from '../drivers/acp/antigravity-catalog.ts';
 import { isAntigravity } from '../drivers/antigravity.ts';
+import { agentEnv as piLaunchEnv, piAgentDir, piAgentDirFollowsCwd, sessionDirOf } from '../drivers/pi/mapping.ts';
+import { AGENT_OWN_MODEL } from '../drivers/pi/protocol.ts';
+import { piModelOf } from '../drivers/pi/models.ts';
+import { sessionModelOf } from '../drivers/pi/session-model.ts';
+import type { PiPair } from '../drivers/pi/session-model.ts';
+import { folderExtends, folderStartModel, piLaunchChoices } from '../drivers/pi/start-model.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
+import { DISK_VIEW, type FileView } from '../file-view.ts';
+import { diskView } from './checkpoint-files.ts';
+import { profileFor } from '../providers/resolve.ts';
+import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 
 /** The protocols whose models come from the agent, not from the descriptor. */
 export const PROBED_PROTOCOLS: readonly Protocol[] = ['claude-sdk', 'acp', 'codex-appserver', 'muse', 'pi'];
@@ -38,6 +48,84 @@ export function modelsFor(provider: ProviderDescriptor, accountId: AccountId): M
 
 export function selectionFor(provider: ProviderDescriptor, accountId: AccountId, model: string | null, effort?: string | null) {
   return resolveModelSelection(modelsFor(provider, accountId), model, effort);
+}
+
+/**
+ * The pi account's models as image admission and the launch read them: the probe, or a list held while it refreshes,
+ * else the list saved before a restart. Undefined for another protocol, whose driver reads its own.
+ */
+export function piCatalogOf(core: Core, provider: ProviderDescriptor, accountId: AccountId): ModelInfo[] | null | undefined {
+  if (provider.protocol !== 'pi') return undefined;
+  return probedModelsOf(provider.protocol, provider.id, accountId) ?? readSavedCatalog(core, provider.id, accountId)?.models ?? null;
+}
+
+/**
+ * The model an image goes to. pi's own model (`default`, or none) is the one a
+ * resumed session restores, else the one a new session starts on in `cwd`
+ * (`folderStartModel`), else the account's. Undefined when only pi can tell.
+ * Image admission also uses pi's saved list before the first probe after a restart.
+ */
+export function imageInputModel(
+  core: Core, provider: ProviderDescriptor, { accountId, model, id, sessionId, cwd, runsIn = id, files }: Pick<Thread, 'accountId' | 'model'> & Partial<Pick<Thread, 'id' | 'sessionId' | 'cwd'>> & {
+    /** The thread the run belongs to, when `id` names no session to resume (another account's goal). */
+    runsIn?: string;
+    /** The folder's files as pi will find them: the disk, or the disk as an edit's restore leaves it. */
+    files?: FileView;
+  },
+  /**
+   * For pi, the list a running turn was given (`piCatalogOf` then): its process runs the pair that list named, which
+   * a refresh since does not move. Undefined reads the account's list now.
+   */
+  launched?: readonly ModelInfo[] | null,
+): ModelInfo | undefined {
+  const pi = provider.protocol === 'pi';
+  const wanted = model ?? (pi ? AGENT_OWN_MODEL : null);
+  if (!wanted || !provider.capabilities.images) return undefined;
+  const held = pi && launched !== undefined;
+  const probed = !pi ? null : held ? launched : probedModelsOf(provider.protocol, provider.id, accountId);
+  const saved = pi && !held && probed === null ? readSavedCatalog(core, provider.id, accountId) : null;
+  const listed = (choice: string) => held
+    ? resolveModelSelection(probed === null ? provider.models : [...probed, ...provider.models.filter(entry => !probed.some(known => known.id === entry.id))], choice)?.model
+    : (saved && resolveModelSelection(saved.models, choice)?.model) || selectionFor(provider, accountId, choice)?.model;
+  const launch = piLaunchChoices(pi ? profileFor(provider)?.launch?.args ?? [] : []);
+  const account = pi ? core.accounts.list().find(entry => entry.id === accountId) : undefined;
+  // pi reads its settings and models where the environment the driver starts it with says. A relative configuration
+  // folder is another one in each folder pi starts in: the probe, run elsewhere, read another one's settings and
+  // models, so neither its model nor its catalog tells this folder's, for a named model, a resumed session or a new one.
+  const env = account ? piLaunchEnv(core.accounts.profileEnv(account, provider)) : null;
+  if (env && piAgentDirFollowsCwd(env)) return undefined;
+  // The folder's files, read for pi only: the disk as an edit or a send finds it, links left to pi.
+  const view = env && cwd ? files ?? diskView(cwd) : DISK_VIEW;
+  // The folder's own extensions may register any pair over the catalog's, a named one or the profile's included, for
+  // a resumed session as for a new one.
+  if (env && cwd && folderExtends(piAgentDir(env, cwd), cwd, launch, view)) return undefined;
+  // A `--model` in the profile beats the session, as it does in pi.
+  if (pi && wanted === AGENT_OWN_MODEL && cwd && !launch.model) {
+    // A protected run starts a new pi session with `--no-approve` and settings of its own: pi alone knows that model.
+    if (runsIn && core.sharedAccess.bound(runsIn) !== null) return undefined;
+    const resumed = account && id && sessionId ? sessionModelOf(sessionDirOf({ account, thread: { id } }), sessionId, cwd) : null;
+    if (resumed) {
+      // pi restores the session's own pair; a catalog entry spelled the same for another pair says nothing of it.
+      const pair = (model: PiPair) => {
+        const entry = listed(`${model.provider}/${model.id}`);
+        const held = entry && piModelOf(entry);
+        return held && (held.provider !== model.provider || held.id !== model.id) ? undefined : entry;
+      };
+      // A registered virtual model holds over the physical models it answered through. pi resumes a model gone
+      // from the catalog on its saved default, outside any scope, which only it reads.
+      // A router the catalog does not hold may still be one pi registers in this folder (a project extension).
+      if (!resumed.router) return pair(resumed.model);
+      const router = pair(resumed.router);
+      return router === undefined ? undefined : router.virtual ? router : pair(resumed.model);
+    }
+    // A new session starts where the folder's own pi settings say, which the account's probe, run elsewhere, cannot
+    // see. When only pi can name that model, it handles the images itself. Boite's own `default` entry names no model.
+    const catalog = (probed ?? saved?.models ?? null)?.filter(entry => entry.id !== AGENT_OWN_MODEL) ?? null;
+    const start = env ? folderStartModel(piAgentDir(env, cwd), cwd, catalog, launch, view) : 'account';
+    if (start === null) return undefined;
+    if (start !== 'account') return listed(start);
+  }
+  return listed(wanted);
 }
 
 /**

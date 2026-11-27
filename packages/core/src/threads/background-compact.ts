@@ -481,6 +481,8 @@ export class BackgroundCompaction {
     if (thread.sessionId === null) return null;
     // Echo has no transcript to cut: its fork is named after the turn.
     if (provider.protocol === 'echo') return { sessionId: thread.sessionId, entry: turn.id };
+    // pi's in-process extension owns the copy and its eventual swap.
+    if (provider.protocol === 'pi') return null;
     if (provider.protocol !== 'claude-sdk' && getDriver(provider.protocol).forkSession === undefined) return null;
     const checkpoint = turn.checkpoint ?? null;
     return checkpoint !== null && checkpoint.sessionId === thread.sessionId && checkpoint.entry.length > 0 ? checkpoint : null;
@@ -501,7 +503,7 @@ export class BackgroundCompaction {
     try {
       // Codex forks first and compacts the fork; Claude and echo fork as the turn resumes at the checkpoint.
       if (provider.protocol !== 'claude-sdk' && provider.protocol !== 'echo') {
-        const fork = await driver.forkSession!(this.#sessionContext(thread, key, provider, account, null, null), checkpoint);
+        const fork = await driver.forkSession!(this.#sessionContext(thread, key, provider, account, null, null), checkpoint, thread.id);
         if (copy.dropped) { await fork.discard(); return; }
         await fork.release();
         sessionId = fork.sessionId;

@@ -10,10 +10,11 @@
   import { focusWithin, keepFocus } from '../lib/focus';
   import { AttachmentPreviews } from '../lib/attachment-previews.svelte';
 
-  /** The attachments this prompt carries, above the box they were pasted into. */
-  let { attachments, highlighted = null, onremove, onfocus }: {
+  /** The attachments this prompt carries, above the box they were pasted into, and why they cannot go as they are. */
+  let { attachments, highlighted = null, warning = null, onremove, onfocus }: {
     attachments: Attachment[];
     highlighted?: Attachment | null;
+    warning?: string | null;
     onremove: (at: number) => void;
     onfocus: () => void;
   } = $props();
@@ -148,8 +149,16 @@
       onmousedown={keepFocus} onclick={() => expanded = false}><ChevronUp size={16} /></button>
   {/if}
 </div>
+{#if warning}<p class="warning" role="status" data-testid="composer-image-warning">{warning}</p>{/if}
 
 <style>
+  .warning {
+    margin: 0;
+    padding: 4px 12px 0;
+    color: var(--color-danger);
+    font-size: var(--text-meta);
+  }
+
   /* One row of small tiles above the box; the last one counts what did not fit and opens the rest. */
   .attachments {
     display: flex;

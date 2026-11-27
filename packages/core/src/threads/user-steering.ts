@@ -7,6 +7,7 @@ import { requireAgent } from './agentless.ts';
 import { newId } from '../ids.ts';
 import type { ThreadStore } from '../threads.ts';
 import { checkAttachmentArray, checkAttachments } from './inputs.ts';
+import { imageInputModel } from './selection.ts';
 import { saveThread } from './records.ts';
 import { expandSlashPrompt } from '../plugins/extensions.ts';
 
@@ -39,14 +40,22 @@ export async function steerUser(core: Core, threads: ThreadStore, params: RpcPar
   checkAttachmentArray(attachments);
   const referenceError = previewReferencesError(references, prompt);
   if (referenceError) throw refused(referenceError);
-  checkAttachments(attachments, core.providers.require(thread.providerId));
-  const fingerprint = createHash('sha256').update(JSON.stringify([turnId, prompt, attachments, references])).digest('hex');
   const previous = core.journal.turnRequest(threadId, clientRequestId);
+  const fingerprint = createHash('sha256').update(JSON.stringify([turnId, prompt, attachments, references])).digest('hex');
+  // A receipt belongs to the turn that accepted it, whatever provider the thread is on now.
   if (previous) {
     if (!previous.fingerprint.endsWith(`:${fingerprint}`)) throw refused('clientRequestId was already used for different content');
     if (previous.fingerprint === `steer:accepted:${fingerprint}`) return { accepted: true };
     throw refused('delivery of this message is unconfirmed; it will not be submitted again automatically', { reason: 'delivery-uncertain', threadId });
   }
+  // The input joins the active turn, so its images go to that turn's model, which a queued prompt may have picked.
+  const active = core.journal.getTurn(turnId);
+  const runs = active?.threadId === threadId && active.execution ? { ...active.execution, id: threadId, cwd: thread.cwd } : thread;
+  const provider = core.providers.require(runs.providerId);
+  // Its pi process runs the pair the list it was given named: a refresh since may name another one.
+  const running = threads.runner.handles.get(threadId);
+  const launched = running === undefined ? undefined : threads.runner.catalogs.get(running);
+  checkAttachments(attachments, provider, () => imageInputModel(core, provider, runs, launched));
   if (expectedSelectionVersion !== undefined && expectedSelectionVersion !== (thread.selectionVersion ?? 0)) throw refused('the model selection changed; review the selected model and send again');
   const turn = core.journal.getTurn(turnId);
   const runner = threads.runner;

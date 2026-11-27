@@ -753,9 +753,9 @@ export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
   /**
    * A title written from the thread's first prompt and first answer. The
    * model `Settings.titleModel` names writes it, else the thread's own agent
-   * on its small model when its driver can (Claude and Codex on one short
-   * call, echo in memory); the core cuts the first line of the prompt
-   * otherwise. Refused by name on a thread that has no prompt yet, or while
+   * on its small model when available (pi uses the thread's model); the core
+   * cuts the first line of the prompt when the driver cannot write a title.
+   * Refused by name on a thread that has no prompt yet, or while
    * a title is already being written for it. The answer is the thread as
    * saved, `titleSource` saying which of the two wrote it.
    */
@@ -776,8 +776,12 @@ export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
    * persistent agent session, each naming the field and what it expected.
    * Every client subscribed to the thread gets `message.truncated`. The journal
    * keeps the removed messages' events; the removed turns keep their usage.
+   * `images: true` says the prompt that replaces the message carries images:
+   * when the session the cut leaves runs a model that reads none (pi's own
+   * model at that point, or the folder's for a new session), the rewind is
+   * refused with the send's message before anything is cut or restored.
    */
-  'threads.rewind': { params: { threadId: ThreadId; messageId: MessageId }; result: ThreadRewind };
+  'threads.rewind': { params: { threadId: ThreadId; messageId: MessageId; images?: boolean }; result: ThreadRewind };
   /**
    * A new thread holding a copy of this thread's history up to and including
    * `messageId`, whose next turn continues from there; the original thread is

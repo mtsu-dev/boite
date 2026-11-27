@@ -23,7 +23,8 @@ can replace the prompt title during the first turn. It preserves manual names.
   effort, no MCP server, plugin or app
   ([providers](providers.md#codex-startup)), and closes it after the answer; the thread's warm session is left
   alone. That app-server also runs without the user's hooks or native
-  subagents. Each attempt takes thirty seconds at most and is spawned under the thread so
+  subagents. pi runs one tool-free RPC prompt over a process with no session
+  file or discovered resources. Each attempt takes thirty seconds at most and is spawned under the thread so
   the trace carries them. The request includes the first message and its
   images when the title provider supports images. The model returns JSON
   with `title` and `needsRefinement`, plus an English `branch` slug when an
@@ -46,8 +47,8 @@ can replace the prompt title during the first turn. It preserves manual names.
   the revision and clears refinement. An in-flight call cannot overwrite a
   newer rename, even when the user types the same name or changes it back.
 
-Drivers without a `title` hook (Muse Code, OpenCode, Antigravity, Grok, pi
-today) keep the prompt's title when Automatic is
+Drivers without a `title` hook (Muse Code, OpenCode, Antigravity and Grok)
+keep the prompt's title when Automatic is
 chosen, so their threads read as they always did. `ProviderSummary.titles`
 says which providers have the hook.
 
@@ -64,7 +65,8 @@ a provider and a model, or `null` for Automatic.
   wins over `claude-haiku-4-5-20251001` and `gpt-6-luna` over `gpt-5.6-luna`.
   An account that lists none of the family is asked for the fallback:
   Claude's `haiku` alias, which its CLI resolves to its newest Haiku, and
-  `gpt-6-luna` for Codex.
+  `gpt-6-luna` for Codex. pi uses the thread's selected model, since its catalog
+  depends on which providers the user configured.
 - A pick: every title goes to that model, on the thread's own account when
   the thread uses the same provider, else on that provider's first account
   signed in. A pick whose provider is gone, not installed or signed out falls

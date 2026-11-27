@@ -4,6 +4,7 @@ import type { Account, ImageAttachment, Message, MessageId, MessagePart, Provide
 import { setTimeout as pause } from 'node:timers/promises';
 import type { Core } from '../core.ts';
 import { getDriver, probedModelsOf, writesTitles } from '../drivers/index.ts';
+import { piCatalogOf } from './selection.ts';
 import { messageOf, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
 import type { ThreadStore } from '../threads.ts';
@@ -170,6 +171,7 @@ export class ThreadTitles {
           const raw = await getDriver(writer.provider.protocol).title!({
             thread, provider: writer.provider, account: writer.account,
             accountEnv: this.#core.accounts.accountEnv(writer.account, writer.provider, thread),
+            catalog: piCatalogOf(this.#core, writer.provider, writer.account.id),
             nameBranch: thread.branchNamingPending === true,
             prompt, answer: answers.join('\n\n'), initial,
             attachments: writer.provider.capabilities.images ? attachments : [],

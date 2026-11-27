@@ -185,7 +185,12 @@ test('fake model cards name the provider and move an agent to another one, allow
   await client.settled();
   const read = (await client.call('agents.settings.read', { threadId, agent: mira.id })).settings.find(s => s.key === 'model')!;
   expect(read.value).toBe('echo/echo-1');
-  expect(read.choices?.slice(0, 3)).toEqual([{ id: 'echo/echo-1', label: 'Echo' }, { id: 'opencode/default', label: 'OpenCode default' }, { id: 'codex/default', label: 'Codex default' }]);
+  expect(read.choices?.slice(0, 4)).toEqual([
+    { id: 'echo/echo-1', label: 'Echo' },
+    { id: 'opencode/default', label: 'OpenCode default' },
+    { id: 'opencode-v2/default', label: 'OpenCode default' },
+    { id: 'codex/default', label: 'Codex default' },
+  ]);
   await expect(client.call('agents.settings.request', { threadId, agent: mira.id, key: 'model', value: 'echo-1', reason: 'r' })).rejects.toMatchObject({ code: RpcErrorCode.Refused, data: { field: 'value', key: 'model' } });
   // The refusal names why the model is out of reach, as the core's does.
   const ask = (value: string) => client.call('agents.settings.request', { threadId, agent: mira.id, key: 'model', value, reason: 'r' });

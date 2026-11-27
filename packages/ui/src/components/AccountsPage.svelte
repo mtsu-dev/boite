@@ -20,7 +20,7 @@
   import { confirm } from '../lib/confirm.svelte';
   import { bytes, percent } from '../lib/format';
   import { providerGroups, type ProviderRow } from '../lib/provider-family';
-  import { connected, nextAccountLabel, setupStep, signInTarget, type SetupStep } from '../lib/provider-setup';
+  import { connected, nextAccountLabel, preferCurrentProviders, setupStep, signInTarget, type SetupStep } from '../lib/provider-setup';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
@@ -31,7 +31,7 @@
    * page (`HarnessUpdatesCard.svelte`). Connected providers come first; the rest wait below as the ways to
    * add one, and the ones turned off close the page, dimmed, with only their
    * switch to act on. Accounts, the default model and the uninstall sit behind
-   * the row's chevron. A family (Antigravity and its CLI) is one row, each way
+   * the row's chevron. A family (OpenCode and OpenCode 2) is one row, each version
    * in its own block inside it with its own switch.
    */
   let { store }: { store: Store } = $props();
@@ -94,13 +94,14 @@
     return setupStep(provider, store.installOf(provider.id), store.accountsOf(provider.id), loggingIn);
   }
 
-  /** The member a row speaks for: one signed in, else one turned on with a step Boite can take, else the first turned on, else the head. */
+  /** The member a row speaks for, current versions before obsolete ones: one signed in, else one turned on with a step Boite can take, else the first turned on, else the first. */
   function leadOf(row: ProviderRow): ProviderSummary {
-    const on = row.members.filter((member) => providerEnabled(member));
-    return row.members.find((member) => connected(member, store.accountsOf(member.id)))
+    const members = preferCurrentProviders(row.members);
+    const on = members.filter((member) => providerEnabled(member));
+    return on.find((member) => connected(member, store.accountsOf(member.id)))
       ?? on.find((member) => stepOf(member) !== 'manual')
       ?? on[0]
-      ?? row.members[0]!;
+      ?? members[0]!;
   }
 
   /**
@@ -334,9 +335,23 @@
   />
 {/snippet}
 
-{#snippet experimentalBadge(provider: ProviderSummary)}
+{#snippet providerBadges(provider: ProviderSummary)}
   {#if provider.experimental}
     <span class="badge ui-label-box" data-testid="provider-experimental"><span class="ui-label">{strings.providerSettings.experimental}</span></span>
+  {/if}
+  {#if provider.deprecated}
+    <span class="badge ui-label-box" data-testid="provider-obsolete"><span class="ui-label">{strings.providerSettings.obsolete}</span></span>
+  {/if}
+{/snippet}
+
+{#snippet replacementTip(provider: ProviderSummary)}
+  {@const replacement = provider.deprecated?.replacedBy}
+  {#if replacement}
+    <InfoTip
+      topic={provider.name}
+      text={fill(strings.providerSettings.replacedBy, { name: store.providerOf(replacement)?.name ?? replacement })}
+      testid="provider-replacement"
+    />
   {/if}
 {/snippet}
 
@@ -392,6 +407,7 @@
   {@const login = loginAccount ? store.logins[loginAccount.id] : undefined}
   {#each accounts.filter((account) => store.loginTerminals.includes(account.id)) as account (account.id)}
     <div class="login" data-testid="account-login-terminal" data-account-id={account.id}>
+      {#if provider.protocol === 'pi'}<p class="hint">{strings.accounts.piTerminalHint}</p>{/if}
       <div class="screen">
         {#await terminalView() then { default: TerminalView }}
           <TerminalView
@@ -619,7 +635,7 @@
           <span class="knob"><ChevronRight size={16} strokeWidth={2.25} class={open[row.id] ? 'fold-caret open' : 'fold-caret'} /></span>
           <ProviderIcon providerId={row.id} size={secondary ? 18 : 22} />
           <span class="who">
-            <span class="name">{row.name}{#if alone}{@render experimentalBadge(lead)}{/if}</span>
+            <span class="name">{row.name}{#if alone}{@render providerBadges(lead)}{/if}</span>
             <span class="state" class:bad={!off && install?.state === 'failed' && step === 'install'} data-testid="provider-state">
               <span class="dot" class:ok={!off && step === 'ready'} class:live={!off && (step === 'installing' || step === 'signing-in')}></span>
               <span class="ui-label">{stateText(lead, step)}</span>
@@ -631,7 +647,7 @@
           <span class="knob blank"></span>
           <ProviderIcon providerId={row.id} size={secondary ? 18 : 22} />
           <span class="who">
-            <span class="name">{row.name}{#if alone}{@render experimentalBadge(lead)}{/if}</span>
+            <span class="name">{row.name}{#if alone}{@render providerBadges(lead)}{/if}</span>
             <span class="state" class:bad={!off && install?.state === 'failed' && step === 'install'} data-testid="provider-state">
               <span class="dot" class:ok={!off && step === 'ready'} class:live={!off && (step === 'installing' || step === 'signing-in')}></span>
               <span class="ui-label">{stateText(lead, step)}</span>
@@ -639,6 +655,7 @@
           </span>
         </div>
       {/if}
+      {#if alone}{@render replacementTip(lead)}{/if}
       <div class="act">
         <!-- A provider still to add shows its one way in. Its version and update are in the agent card lower on the page. -->
         <!-- Off, nothing of it is offered: no install, no sign-in, only the way back on. -->
@@ -663,7 +680,7 @@
               <div class="member-line">
                 <ProviderIcon providerId={member.id} size={16} />
                 <span class="who">
-                  <span class="member-name">{member.name}{@render experimentalBadge(member)}</span>
+                  <span class="member-name">{member.name}{@render providerBadges(member)}{@render replacementTip(member)}</span>
                   <span class="state" data-testid="provider-state">
                     <span class="dot" class:ok={!memberOff && memberStep === 'ready'} class:live={!memberOff && (memberStep === 'installing' || memberStep === 'signing-in')}></span>
                     <span class="ui-label">{stateText(member, memberStep)}</span>

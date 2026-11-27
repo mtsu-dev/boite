@@ -4,7 +4,6 @@
   "name": "OpenCode 2",
   "shortName": "OpenCode 2",
   "protocol": "acp",
-  "experimental": true,
   "roots": ["{home}/.local/share/opencode-v2", "{home}/.config/opencode-v2", "{home}/.local/state/opencode-v2", "{home}/.cache/opencode-v2", "{isolationDir}"],
   "env": { "XDG_DATA_HOME": "{home}/.local/share/opencode-v2", "XDG_CONFIG_HOME": "{home}/.config/opencode-v2", "XDG_STATE_HOME": "{home}/.local/state/opencode-v2", "XDG_CACHE_HOME": "{home}/.cache/opencode-v2", "OPENCODE_CONFIG_CONTENT": "{\"permissions\":[{\"action\":\"subagent\",\"resource\":\"*\",\"effect\":\"deny\"}]}" },
   "profiles": {

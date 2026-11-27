@@ -3,10 +3,9 @@ import { connected } from './provider-setup';
 
 /**
  * Descriptors that are one agent to the person using them, by member id to
- * the head's: every list shows one row with each way inside it. No shipped
- * provider has a second way today.
+ * the head's: Settings shows one row with each version inside it.
  */
-const FAMILY: Record<string, string> = {};
+const FAMILY: Record<string, string> = { 'opencode-v2': 'opencode' };
 
 /** The id of the row a provider is drawn in. */
 export function familyOf(providerId: string): string {
