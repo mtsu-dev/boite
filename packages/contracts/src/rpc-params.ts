@@ -19,13 +19,32 @@ function channelsRule<M extends 'threads.subscribe' | 'threads.get'>(params: unk
   return problem ? { ok: false, field: problem.field, message: `${problem.field} must be ${problem.expected}` } : { ok: true, params: params as RpcMethods[M]['params'] };
 }
 
+function checkProjectionFlags(params: unknown, allowFullText: boolean): { field: string; message: string } | null {
+  const input = (params ?? null) as { fullText?: unknown; omitThinking?: unknown; omitTools?: unknown } | null;
+  if (allowFullText && input?.fullText !== undefined && typeof input.fullText !== 'boolean') {
+    return { field: 'fullText', message: 'fullText must be a boolean' };
+  }
+  if (input?.omitThinking !== undefined && typeof input.omitThinking !== 'boolean') {
+    return { field: 'omitThinking', message: 'omitThinking must be a boolean' };
+  }
+  if (input?.omitTools !== undefined && typeof input.omitTools !== 'boolean' && input.omitTools !== 'running') {
+    return { field: 'omitTools', message: "omitTools must be a boolean or 'running'" };
+  }
+  return null;
+}
+
 const RPC_PARAMS: { readonly [M in RpcMethodName]?: (params: unknown) => RpcParamsCheck<RpcMethods[M]['params']> } = {
   'settings.set': params => {
     const checked = checkSettingsPatch(params);
     return checked.ok ? { ok: true, params: checked.patch } : checked;
   },
   'threads.subscribe': channelsRule<'threads.subscribe'>,
-  'threads.get': channelsRule<'threads.get'>,
+  'threads.get': params => {
+    const channels = channelsRule<'threads.get'>(params);
+    if (!channels.ok) return channels;
+    const problem = checkProjectionFlags(params, false);
+    return problem ? { ok: false, ...problem } : channels;
+  },
   'threads.search': params => {
     const { query, limit, includeArchived, replacePending } = (params ?? {}) as Record<string, unknown>;
     if (typeof query !== 'string' || query.length > MESSAGE_SEARCH_QUERY_LIMIT)
@@ -37,6 +56,17 @@ const RPC_PARAMS: { readonly [M in RpcMethodName]?: (params: unknown) => RpcPara
     if (replacePending !== undefined && typeof replacePending !== 'boolean')
       return { ok: false, field: 'replacePending', message: 'threads.search.replacePending: expected a boolean' };
     return { ok: true, params: params as RpcMethods['threads.search']['params'] };
+  },
+  'messages.list': params => {
+    const problem = checkProjectionFlags(params, true);
+    return problem ? { ok: false, ...problem } : { ok: true, params: params as RpcMethods['messages.list']['params'] };
+  },
+  'messages.toolPart': params => {
+    const diffsOnly = (params as { diffsOnly?: unknown } | null)?.diffsOnly;
+    if (diffsOnly !== undefined && typeof diffsOnly !== 'boolean') {
+      return { ok: false, field: 'diffsOnly', message: 'diffsOnly must be a boolean' };
+    }
+    return { ok: true, params: params as RpcMethods['messages.toolPart']['params'] };
   },
 };
 

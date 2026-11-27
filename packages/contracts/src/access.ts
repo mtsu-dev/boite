@@ -571,6 +571,9 @@ export interface AccessRefusal {
  */
 export function accessRefusal(method: RpcMethodName, caller: Caller, params?: unknown): AccessRefusal | null {
   if (caller.principal === 'owner') return null;
+  if (method === 'browser.command' && (params as { action?: { kind?: unknown } } | null | undefined)?.action?.kind === 'profile-switch') {
+    return { message: 'changing an open browser tab’s profile is for the owner only', data: { method, principal: caller.principal } };
+  }
   if (caller.principal === 'plugin') {
     if (pluginSelfCall(method, caller, params)) return null;
     if (PLUGIN_SELF_METHODS.has(method)) {

@@ -2,12 +2,13 @@
   import SettingsSection from './SettingsSection.svelte';
   import SettingField from './SettingField.svelte';
   import { errorText } from '../lib/errors';
-  import { parseChord, type KeybindingCommand } from '@boite/contracts';
+  import { isWheelCommand, parseChord, parseChordFor, type KeybindingCommand } from '@boite/contracts';
   import { RotateCcw, Search, X } from '@lucide/svelte';
   import SyncMark from './SyncMark.svelte';
   import { commandLabel } from '../lib/commands.svelte';
   import { openOwnFile } from '../lib/links';
-  import { COMMAND_GROUPS, chordFromEvent, chordParts, isMac, scopeOf } from '../lib/keybindings';
+  import { COMMAND_GROUPS, chordFromEvent, chordFromWheel, chordParts, isMac, scopeOf } from '../lib/keybindings';
+  import { recordingWheel } from '../lib/zoom';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
@@ -33,7 +34,7 @@
     return COMMAND_GROUPS.map((group) => ({
       id: group.id,
       rows: group.commands
-        .map((id) => ({ id, label: commandLabel(id), parts: partsOf(id), custom: store.bindings[id].custom }))
+        .map((id) => ({ id, label: commandLabel(id), parts: partsOf(id), custom: store.bindings[id].custom, wheel: isWheelCommand(id) }))
         .filter((row) => needle === '' || row.label.toLowerCase().includes(needle) || row.id.includes(needle) || (row.parts?.join('+').toLowerCase().includes(needle) ?? false))
     })).filter((group) => group.rows.length > 0);
   });
@@ -61,7 +62,8 @@
     const parsed = parseChord(text);
     if (!parsed.ok) return null;
     const wanted = chordParts(parsed.chord, mac).join('+');
-    const meets = (other: KeybindingCommand) => scopeOf(other) === scopeOf(id) || other === 'terminal' || id === 'terminal';
+    // A wheel chord and a key's never meet: one is turned, the other pressed.
+    const meets = (other: KeybindingCommand) => isWheelCommand(other) === isWheelCommand(id) && (scopeOf(other) === scopeOf(id) || other === 'terminal' || id === 'terminal');
     for (const group of COMMAND_GROUPS) {
       for (const other of group.commands) {
         if (other !== id && meets(other) && partsOf(other)?.join('+') === wanted) return other;
@@ -121,12 +123,23 @@
       );
       return;
     }
+    // The wheel's row takes no key: the modifiers above wait for the wheel, the rest is refused.
+    if (isWheelCommand(id)) {
+      problem = { id, message: strings.keyboard.wheelOnly };
+      held = [];
+      return;
+    }
     const parsed = parseChord(text);
     if (!parsed.ok) {
       problem = { id, message: strings.keyboard.needsModifier };
       held = [];
       return;
     }
+    save(id, text);
+  }
+
+  /** A chord heard on the row: saved, unless another command answers to it and the user has to say. */
+  function save(id: KeybindingCommand, text: string) {
     stop();
     problem = null;
     const other = takenBy(id, text);
@@ -136,6 +149,35 @@
     }
     void apply(id, text);
   }
+
+  /**
+   * The wheel's row records the first turn of the wheel with the modifiers
+   * held. Listened to, and cancellable, only while that row records, so the
+   * page does not scroll under it and the zoom's old chord zooms nothing.
+   */
+  function onwheel(event: WheelEvent) {
+    const id = recording;
+    if (id === null || !isWheelCommand(id)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const text = chordFromWheel(event, mac);
+    if (!parseChordFor(id, text).ok) {
+      problem = { id, message: strings.keyboard.wheelNeedsModifier };
+      held = [];
+      return;
+    }
+    save(id, text);
+  }
+
+  $effect(() => {
+    if (recording === null || !isWheelCommand(recording)) return;
+    recordingWheel(true);
+    window.addEventListener('wheel', onwheel, { capture: true, passive: false });
+    return () => {
+      window.removeEventListener('wheel', onwheel, true);
+      recordingWheel(false);
+    };
+  });
 
   function onkeyup(event: KeyboardEvent) {
     if (recording === null) return;
@@ -202,6 +244,7 @@
           class={[row.custom && 'custom', recording === row.id && 'recording'].filter(Boolean).join(' ')}
           data-testid="keybinding-row" data-command={row.id} data-recording={recording === row.id || undefined}
           children={conflict?.id === row.id ? conflictNote : undefined}
+          hint={row.wheel ? strings.keyboard.wheelHint : undefined}
           error={problem?.id === row.id ? problem.message : undefined}>
           {#snippet actions()}
             {#if row.custom}<span class="tag">{strings.keyboard.custom}</span>{/if}
@@ -212,9 +255,9 @@
               {#if recording === row.id}
                 <span class="capture" data-testid="keybinding-capture" role="status">
                   {#if held.length > 0}
-                    {#each held as part, index (part)}{#if index > 0}<span class="plus ui-label">+</span>{/if}<kbd class="kbd">{part}</kbd>{/each}<span class="plus ui-label">+</span>
+                    {#each held as part, index (part)}{#if index > 0}<span class="plus ui-label">+</span>{/if}<kbd class="kbd">{part}</kbd>{/each}<span class="plus ui-label">+</span>{#if row.wheel}<span class="ui-label">{strings.keyboard.wheelKey}</span>{/if}
                   {:else}
-                    <span class="ui-label">{strings.keyboard.record}</span>
+                    <span class="ui-label">{row.wheel ? strings.keyboard.recordWheel : strings.keyboard.record}</span>
                   {/if}
                 </span>
                 <button class="quiet small" onclick={stop}><span class="ui-label">{strings.common.cancel}</span></button>

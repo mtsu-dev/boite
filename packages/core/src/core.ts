@@ -599,7 +599,7 @@ export class Core {
       version: this.version,
       ...(this.bundleHash ? { bundleHash: this.bundleHash } : {}),
       protocolVersion: PROTOCOL_VERSION,
-      features: { threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, composerPages: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, threadListPages: true, messageSearch: true, streamChannels: true, browserStream: true },
+      features: { threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, composerPages: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, threadListPages: true, messageSearch: true, streamChannels: true, browserStream: true, diffOnlyToolParts: true },
       coreId: this.coordination.card().coreId,
       hostname: machineName(),
       os: currentOs(),

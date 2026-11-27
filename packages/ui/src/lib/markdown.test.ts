@@ -1,5 +1,7 @@
+import { WORKER_IDLE_MS } from './worker-idle';
 import { describe, expect, test, vi } from 'vitest';
 import { headingAt, renderBlock, renderMarkdown } from './markdown';
+import { fileChipHtml } from './file-links';
 
 describe('renderMarkdown', () => {
   test('emphasis spans links and keeps formatting inside their labels', () => {
@@ -10,7 +12,7 @@ describe('renderMarkdown', () => {
       // `$` patterns in a title are text: one would paste the tag, quotes and all, into the attribute.
       expect(renderMarkdown('[x](https://example.test/a "$` $& $\'")', rich)).toBe('<p><a href="https://example.test/a" target="_blank" rel="noopener noreferrer" title="$` $&amp; $\'">x</a></p>');
     }
-    expect(renderMarkdown('**Read [source](src/main.ts:4) and `docs/a.md`**', true)).toBe('<p><strong>Read <a href="#file" data-file-path="src/main.ts" data-file-line="4">source</a> and <code><a href="#file" data-file-path="docs/a.md">docs/a.md</a></code></strong></p>');
+    expect(renderMarkdown('**Read [source](src/main.ts:4) and `docs/a.md`**', true)).toBe(`<p><strong>Read ${fileChipHtml('source', 'src/main.ts:4', 'src/main.ts', 4)} and ${fileChipHtml('docs/a.md', 'docs/a.md', 'docs/a.md', undefined)}</strong></p>`);
   });
 
   test('CommonMark inline syntax handles nested emphasis, escapes, entities and hard breaks', () => {
@@ -27,18 +29,18 @@ describe('renderMarkdown', () => {
 
   test('automatic file paths keep underscores literal inside emphasis and outside code', () => {
     for (const path of ['src/__tests__/a.test.ts', 'src/_generated_/a.ts', '/project/__tests__/a.test.ts']) {
-      const link = `<a href="#file" data-file-path="${path}">${path}</a>`;
+      const link = fileChipHtml(path, path, path, undefined);
       expect(renderMarkdown(path, true)).toBe(`<p>${link}</p>`);
       expect(renderMarkdown(`**Read ${path}**`, true)).toBe(`<p><strong>Read ${link}</strong></p>`);
       expect(renderMarkdown(`__${path}__`, true)).toBe(`<p><strong>${link}</strong></p>`);
-      expect(renderMarkdown('`' + path + '`', true)).toBe(`<p><code>${link}</code></p>`);
+      expect(renderMarkdown('`' + path + '`', true)).toBe(`<p>${link}</p>`);
       expect(renderMarkdown(`[${path}](https://example.test/)`, true)).not.toContain('data-file-path');
     }
   });
 
   test('Windows link destinations retain separators before Markdown punctuation', () => {
     expect(renderMarkdown(String.raw`[src](src\_generated_\a.ts)`, true)).toContain('data-file-path="src/_generated_/a.ts"');
-    expect(renderMarkdown(String.raw`[src](C:\Dev\_generated_\a.ts:4 "Source")`, true)).toBe('<p><a href="#file" data-file-path="C:/Dev/_generated_/a.ts" data-file-line="4" title="Source">src</a></p>');
+    expect(renderMarkdown(String.raw`[src](C:\Dev\_generated_\a.ts:4 "Source")`, true)).toBe('<p><a href="#file" class="file-chip" data-file-path="C:/Dev/_generated_/a.ts" data-file-line="4" data-kind="code" title="Source">src</a></p>');
     expect(renderMarkdown(String.raw`[src](<C:\Dev\some folder\_generated_\a.ts:4>)`, true)).toContain('data-file-path="C:/Dev/some folder/_generated_/a.ts" data-file-line="4"');
     expect(renderMarkdown(String.raw`[src](C:\Dev\a&amp;b\_generated_\a.ts)`, true)).toContain('data-file-path="C:/Dev/a&amp;b/_generated_/a.ts"');
     expect(renderMarkdown(String.raw`[file](/tmp/a\(b\).md)`, true)).toContain('data-file-path="/tmp/a(b).md"');
@@ -47,13 +49,13 @@ describe('renderMarkdown', () => {
   });
 
   test('closed emphasis before a path cannot remove a trailing filename delimiter', () => {
-    expect(renderMarkdown('__Done__ /tmp/__pycache__', true)).toBe('<p><strong>Done</strong> <a href="#file" data-file-path="/tmp/__pycache__">/tmp/__pycache__</a></p>');
-    expect(renderMarkdown('**Read /tmp/__pycache__**', true)).toBe('<p><strong>Read <a href="#file" data-file-path="/tmp/__pycache__">/tmp/__pycache__</a></strong></p>');
+    expect(renderMarkdown('__Done__ /tmp/__pycache__', true)).toBe(`<p><strong>Done</strong> ${fileChipHtml('/tmp/__pycache__', '/tmp/__pycache__', '/tmp/__pycache__', undefined)}</p>`);
+    expect(renderMarkdown('**Read /tmp/__pycache__**', true)).toBe(`<p><strong>Read ${fileChipHtml('/tmp/__pycache__', '/tmp/__pycache__', '/tmp/__pycache__', undefined)}</strong></p>`);
   });
 
   test('an unfinished link label with a path preserves the preceding text', () => {
-    expect(renderMarkdown('prefix [bad src/a.ts', true)).toBe('<p>prefix [bad <a href="#file" data-file-path="src/a.ts">src/a.ts</a></p>');
-    expect(renderMarkdown('prefix [bad src/a.ts][missing] (later)', true)).toBe('<p>prefix [bad <a href="#file" data-file-path="src/a.ts">src/a.ts</a>][missing] (later)</p>');
+    expect(renderMarkdown('prefix [bad src/a.ts', true)).toBe(`<p>prefix [bad ${fileChipHtml('src/a.ts', 'src/a.ts', 'src/a.ts', undefined)}</p>`);
+    expect(renderMarkdown('prefix [bad src/a.ts][missing] (later)', true)).toBe(`<p>prefix [bad ${fileChipHtml('src/a.ts', 'src/a.ts', 'src/a.ts', undefined)}][missing] (later)</p>`);
   });
 
   test('inline code keeps emphasis and links literal', () => {
@@ -149,7 +151,7 @@ test('links are found in linear time: a line of 32,000 brackets renders at once'
   expect(renderMarkdown('['.repeat(32_000))).toBe(`<p>${'['.repeat(32_000)}</p>`);
   // Unmatched brackets stay outside the link; images still become links, never remote requests.
   expect(renderMarkdown(`${'['.repeat(100)}docs](https://a.b/c)`)).toBe(`<p>${'['.repeat(99)}<a href="https://a.b/c" target="_blank" rel="noopener noreferrer">docs</a></p>`);
-  expect(renderMarkdown('see ![a](<https://a.b/c d>) and [(x)](y(z)) now', true)).toBe('<p>see <a href="https://a.b/c%20d" target="_blank" rel="noopener noreferrer">a</a> and <a href="#file" data-file-path="y(z)">(x)</a> now</p>');
+  expect(renderMarkdown('see ![a](<https://a.b/c d>) and [(x)](y(z)) now', true)).toBe(`<p>see <a href="https://a.b/c%20d" target="_blank" rel="noopener noreferrer">a</a> and ${fileChipHtml('(x)', 'y(z)', 'y(z)', undefined)} now</p>`);
 });
 
 test('a thread address links to the thread, not to a file', () => {
@@ -159,7 +161,7 @@ test('a thread address links to the thread, not to a file', () => {
     .toBe(`<p>ask ${thread('boite/thr_tkw9n9qt4100rvq2jmg1')} or <code>${thread('thr_tkw9n9qt4100rvq2jmg1')}</code>.</p>`);
   // Opening a thread reads no file, so a code span links it without rich links.
   expect(renderMarkdown('`boite/thr_tkw9n9qt4100rvq2jmg1`')).toBe(`<p><code>${thread('boite/thr_tkw9n9qt4100rvq2jmg1')}</code></p>`);
-  expect(renderMarkdown('src/thr_tkw9n9qt4100rvq2jmg1.ts', true)).toBe('<p><a href="#file" data-file-path="src/thr_tkw9n9qt4100rvq2jmg1.ts">src/thr_tkw9n9qt4100rvq2jmg1.ts</a></p>');
+  expect(renderMarkdown('src/thr_tkw9n9qt4100rvq2jmg1.ts', true)).toBe(`<p>${fileChipHtml('src/thr_tkw9n9qt4100rvq2jmg1.ts', 'src/thr_tkw9n9qt4100rvq2jmg1.ts', 'src/thr_tkw9n9qt4100rvq2jmg1.ts', undefined)}</p>`);
   // A path that goes on around the id is no thread; a link whose destination is one is.
   for (const path of ['thr_tkw9n9qt4100rvq2jmg1.ts', 'src\\thr_tkw9n9qt4100rvq2jmg1', 'thr_tkw9n9qt4100rvq2jmg1-old']) {
     expect(renderMarkdown(path, true)).not.toContain('data-thread-address');
@@ -218,6 +220,23 @@ describe('diagrams and formulas', () => {
     expect(renderMarkdown('```view\n<p>Hi')).toBe('<pre data-language="view"><code>&lt;p&gt;Hi</code></pre>');
     expect(renderMarkdown('```html\n<p>Hi</p>\n```')).toBe('<pre data-language="html"><code>&lt;p&gt;Hi&lt;/p&gt;</code></pre>');
   });
+
+  test('a closed steps, options, bars or stats block is marked in rich rendering only; one still being written stays code', () => {
+    for (const kind of ['steps', 'options', 'bars', 'stats']) {
+      expect(renderMarkdown(`\`\`\`${kind}\n* A | <b>1</b>\n\`\`\``, true)).toBe(
+        `<div class="md-native md-native-${kind}" data-kind="${kind}" data-source="* A | &lt;b&gt;1&lt;/b&gt;"><pre data-language="${kind}"><code>* A | &lt;b&gt;1&lt;/b&gt;</code></pre></div>`
+      );
+      expect(renderMarkdown(`\`\`\`${kind}\nA | 1\n\`\`\``)).toBe(`<pre data-language="${kind}"><code>A | 1</code></pre>`);
+      expect(renderMarkdown(`\`\`\`${kind}\nA | 1`, true)).toBe(`<pre data-language="${kind}"><code>A | 1</code></pre>`);
+    }
+    expect(renderMarkdown('```Steps\nA\n```', true)).toContain('data-kind="steps"');
+    expect(renderMarkdown('~~~steps\n1. Run | ```\n~~~', true)).toContain('data-fence="~~~"');
+    // Unclosed inline math delimiters finish in linear time rather than rescanning the tail.
+    const started = performance.now();
+    expect(renderMarkdown('$$ '.repeat(10_000))).not.toContain('md-math');
+    expect(renderMarkdown(`${'\\( '.repeat(10_000)}\n\\)`)).not.toContain('md-math');
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
 });
 
 test('a page of history is rendered in the worker before its rows draw, and here when the worker is missing or slow', async () => {
@@ -225,14 +244,17 @@ test('a page of history is rendered in the worker before its rows draw, and here
   try {
     let delay = 10;
     const posted: string[][] = [];
+    const terminated = vi.fn();
+    const created = vi.fn();
     class FakeWorker {
       onmessage: ((event: MessageEvent) => void) | null = null;
       onerror: ((event: Event) => void) | null = null;
+      constructor() { created(); }
       postMessage(data: { id: number; blocks: string[]; rich: boolean }): void {
         posted.push(data.blocks);
         setTimeout(() => this.onmessage?.({ data: { id: data.id, html: data.blocks.map(block => `<p>worker: ${block}</p>`) } } as MessageEvent), delay);
       }
-      terminate(): void {}
+      terminate(): void { terminated(); }
     }
     vi.stubGlobal('Worker', FakeWorker);
     vi.resetModules();
@@ -253,6 +275,14 @@ test('a page of history is rendered in the worker before its rows draw, and here
     expect(markdown.knownBlock('Slow block')).toBe(false);
     await vi.advanceTimersByTimeAsync(200);
     expect(markdown.knownBlock('Slow block')).toBe(true);
+    await vi.advanceTimersByTimeAsync(WORKER_IDLE_MS);
+    expect(terminated).toHaveBeenCalledOnce();
+    expect(created).toHaveBeenCalledOnce();
+    delay = 10;
+    const afterIdle = markdown.prepareBlocks(['After idle']);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await afterIdle).toBe('worker');
+    expect(created).toHaveBeenCalledTimes(2);
     // No worker: here, at once.
     vi.stubGlobal('Worker', undefined);
     vi.resetModules();

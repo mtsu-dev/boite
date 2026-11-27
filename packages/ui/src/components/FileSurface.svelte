@@ -5,7 +5,7 @@
   // anything else. Everything reaches the disk through the core, never through
   // the browser's own file system.
   import { tick, untrack } from 'svelte';
-  import { Download, Maximize2, Minus, Plus, Save, Scan, CircleAlert } from '@lucide/svelte';
+  import { Download, Maximize2, Minus, Plus, Save, Scan, CircleAlert, FileX } from '@lucide/svelte';
   import type { FileContent } from '@boite/contracts';
   import { bytes } from '../lib/format';
   import { baseName } from '../lib/right-panel.svelte';
@@ -27,6 +27,8 @@
 
   let content = $state<FileContent | null>(null);
   let problem = $state<string | null>(null);
+  /** The file is not there: a page of its own, with the path looked for, rather than the core's error. */
+  let missing = $state(false);
   let loading = $state(false);
 
   // The editor
@@ -97,9 +99,11 @@
     if (threadId !== id || path !== wanted) return;
     if (!answer.ok) {
       content = null;
-      problem = fill(strings.files.readFailed, { reason: answer.error });
+      missing = /does not exist|is not a file|no longer a directory/.test(answer.error);
+      problem = missing ? fill(strings.files.notFoundDetail, { path: wanted, folder: store.openThread?.cwd ?? '' }) : fill(strings.files.readFailed, { reason: answer.error });
       return;
     }
+    missing = false;
     problem = null;
     content = answer.value;
     if (answer.value.kind === 'text') {
@@ -134,6 +138,7 @@
     // in an editor mounted after this one was closed, stays a draft.
     const { text, answer } = await panel.save(wanted, draft, (sent) => store.writeFile(id, wanted, sent));
     if (!answer.ok) {
+      missing = false;
       problem = fill(strings.files.writeFailed, { reason: answer.error });
       return;
     }
@@ -348,7 +353,7 @@
     {#if content?.kind === 'text' && (content.language || language)}
       <span class="meta ui-label" data-testid="file-language">{content.language ?? language}</span>
     {/if}
-    <span class="meta ui-label" data-testid="file-size">{bytes(content?.bytes ?? null)}</span>
+    {#if content}<span class="meta ui-label" data-testid="file-size">{bytes(content.bytes)}</span>{/if}
 
     {#if content?.kind === 'text'}
       <button
@@ -377,7 +382,9 @@
     {/if}
   </SurfaceHead>
 
-  {#if problem !== null}
+  {#if problem !== null && missing}
+    <div class="problem"><Notice icon={FileX} tone="caution" testid="file-missing" title={strings.files.notFound} detail={problem} /></div>
+  {:else if problem !== null}
     <div class="problem"><Notice icon={CircleAlert} tone="danger" testid="file-error" detail={problem} /></div>
   {:else if path === null}
     <p class="notice">{strings.files.noFile}</p>
@@ -447,6 +454,7 @@
     <div
       class="viewport"
       data-testid="file-viewport"
+      data-wheel-zoom={natural ? '' : undefined}
       bind:this={viewport}
       onwheel={onWheel}
       onpointerdown={onPointerDown}

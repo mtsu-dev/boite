@@ -1,4 +1,5 @@
 import type { AgentTask, AgentTaskChange } from './agent-tasks';
+import type { WorkingChildren } from './activity';
 import type { ContextPreset, ContextRequest, ThreadContextMode } from './context-mode';
 import type { AgentLetter } from './coordination';
 import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, TurnId } from './ids';
@@ -273,6 +274,8 @@ export interface ThreadSummary {
   openQuestions?: number;
   /** Unanswered child questions, including children on another machine. No question text; missing on older cores. */
   subagentQuestions?: { threadId: ThreadId; title: string; machine?: { coreId: string; name: string } }[];
+  /** Working or asking subagents on other machines. Null clears a previously reported wait. */
+  remoteSubagents?: WorkingChildren | null;
   unread: boolean;
   archived: boolean;
   /** Kept above the other threads of its project in the sidebar, whatever runs. */
@@ -729,7 +732,7 @@ export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
    */
   'threads.get': {
     params: {
-      threadId: ThreadId; after?: MessageId; around?: MessageId; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean;
+      threadId: ThreadId; after?: MessageId; around?: MessageId; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean; omitThinking?: boolean; omitTools?: boolean | 'running';
       /** Request a resume proof, or reuse a proof previously supplied by this core. */
       sync?: true | MessageSync;
       /** Subscribe after a successful snapshot, optionally replacing the previous subscription and acknowledging unread content. */

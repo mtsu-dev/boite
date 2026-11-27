@@ -4,6 +4,7 @@ import { DEFAULT_DELEGATION_CONFIG } from '../../packages/contracts/src/index.ts
 import { connect, type CoreClient } from '../../packages/core/src/client.ts';
 import { BrowserPage } from './lib/cdp.ts';
 import { pairingUrlOf, startCore, type RunningCore } from './lib/core.ts';
+import { mobileAction, screensSettled } from './lib/mobile.ts';
 
 let core: RunningCore;
 let page: BrowserPage;
@@ -133,3 +134,49 @@ test('a newly started workflow appears above the composer without reopening the 
   await page.waitFor('!document.querySelector("[data-testid=agent-dock]")');
   expect(page.errors()).toEqual([]);
 }, 25_000);
+
+test('desktop and phone rows show when a conversation waits on a subagent on another machine', async () => {
+  const worker = await startCore({ env: { BOITE_MACHINE_NAME: 'Review station' } });
+  const remote = await connect(worker.url, worker.token);
+  try {
+    await owner.call('group.create', { name: 'Review group' });
+    const { self } = await remote.call('group.join', { invite: (await owner.call('group.invite', {})).invite });
+    await remote.call('settings.set', { groupThreads: true });
+    await remote.call('projects.add', { path: worker.dataDir, name: 'Index checks' });
+    const project = (await owner.call('projects.list', {})).find(entry => entry.name === 'Delegation checks')!;
+    const account = (await owner.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+    const parent = await owner.call('threads.create', {
+      projectId: project.id, providerId: 'echo', accountId: account.id, model: 'echo', title: 'Review index formatting'
+    });
+    const desktopRow = `[data-testid="thread-row"][data-thread-id="${parent.id}"]`;
+    const phoneRow = `[data-testid="mobile-thread-${parent.id}"]`;
+    const chip = '[data-testid="thread-subagents"][data-count="1"].pulse';
+    const hasWait = (row: string) => `!!document.querySelector('${row} [data-state="delegating"] ${chip}')`;
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1310, height: 820, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(`document.querySelector('${desktopRow}')`);
+    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    const child = await owner.call('delegation.spawn', {
+      threadId: parent.id, machine: self.slice(0, 8), project: 'Index checks', title: 'Check spacing',
+      task: 'Check spacing [sleep:60000]', requestId: 'remote-row'
+    });
+    await page.waitFor(hasWait(desktopRow));
+    await page.click(desktopRow);
+    await page.waitFor('document.querySelector("[data-testid=agent-dock]")?.dataset.count === "1"');
+    expect(await page.text('[data-testid="agent-dock-label"]')).toBe('Waiting on 1 subagent');
+    await page.waitFor(`document.querySelector('${desktopRow} [data-testid="thread-elapsed"]')`);
+    await page.settleAnimations();
+    await page.screenshot(join(import.meta.dir, '.artifacts', 'remote-subagent-wait-desktop.png'));
+
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await mobileAction(page, 'mobile-conversations');
+    await page.waitFor(hasWait(phoneRow));
+    await page.waitFor(screensSettled);
+    await page.screenshot(join(import.meta.dir, '.artifacts', 'remote-subagent-wait-phone.png'));
+    await owner.call('delegation.stop', { threadId: parent.id, agentId: child.thread.id });
+    await page.waitFor(`document.querySelector('${phoneRow}') && !(${hasWait(phoneRow)})`);
+    expect(page.errors()).toEqual([]);
+  } finally {
+    remote.close();
+    await worker.stop();
+  }
+}, 40_000);

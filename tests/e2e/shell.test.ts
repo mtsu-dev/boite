@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { release, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
@@ -619,7 +619,7 @@ shellTest('the native updater reports its local version and refuses installation
   expect(refused).toContain('Updates require an installed Boite');
 }, TIMEOUT);
 
-shellTest('the native file opener launches the original executable and rejects paths outside the thread', async () => {
+shellTest('the native file opener launches a program only once confirmed and refuses shares and relative paths', async () => {
   if (!page) throw new Error('the shell did not expose its page');
   await shellReady(page);
   const executable = join(projectDir, 'game fixture.exe');
@@ -630,23 +630,28 @@ shellTest('the native file opener launches the original executable and rejects p
   expect(await compiler.exited, output).toBe(0);
   const marker = join(projectDir, 'game fixture.opened');
   expect(existsSync(marker)).toBe(false);
-  await page.evaluate(`window.__TAURI_INTERNALS__.invoke('open_local_file', ${JSON.stringify({ directory: projectDir, path: 'game fixture.exe' })})`);
+  const call = (command: string, args: Record<string, unknown>): Promise<string> => page!.evaluate<string>(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)}).then(value => String(value ?? 'opened'), error => 'error: ' + String(error))`);
+  const notes = join(dataDir, 'notes.txt');
+  writeFileSync(notes, 'a document');
+  // What the chat's chips ask before a click: the kind of an absolute path on this computer.
+  expect(await call('client_path_info', { path: executable })).toBe('program');
+  expect(await call('client_path_info', { path: notes })).toBe('document');
+  expect(await call('client_path_info', { path: projectDir })).toBe('folder');
+  expect(await call('client_path_info', { path: join(projectDir, 'gone.pdf') })).toBe('missing');
+  // A share, a device path or a relative one is refused before the disk is touched.
+  for (const path of ['\\\\server\\share\\x.txt', '//server/share/x.txt', 'game fixture.exe']) {
+    expect(await call('client_path_info', { path })).toContain('expected an absolute path on this computer');
+  }
+  // A program never starts without the user's yes, which the shell checks again.
+  expect(await call('open_client_path', { path: executable, confirmed: false })).toContain('confirmed');
+  await Bun.sleep(1_000);
+  expect(existsSync(marker)).toBe(false);
+  expect(await call('open_client_path', { path: executable, confirmed: true })).toBe('opened');
   const deadline = Date.now() + 10_000;
   while (!existsSync(marker) && Date.now() < deadline) await Bun.sleep(50);
   expect(readFileSync(marker, 'utf8')).toBe('opened original file');
-  const outside = join(dataDir, 'outside.txt');
-  writeFileSync(outside, 'must never open');
-  const error = await page.evaluate<string>(`window.__TAURI_INTERNALS__.invoke('open_local_file', ${JSON.stringify({ directory: projectDir, path: outside })}).then(() => 'allowed', error => String(error))`);
-  expect(error).toContain('expected a file inside');
-  // The chat-link command is registered and allowed in the main window, accepts the real local
-  // path as local, and refuses the same program and the outside file without running anything.
-  // A document it accepts would start the system viewer, whose PID this test cannot capture.
-  rmSync(marker);
-  const chatLink = (path: string): Promise<string> => page!.evaluate<string>(`window.__TAURI_INTERNALS__.invoke('open_chat_file', ${JSON.stringify({ directory: projectDir, path })}).then(() => 'opened', error => String(error))`);
-  expect(await chatLink('game fixture.exe')).toContain('expected a document');
-  expect(await chatLink(outside)).toContain('expected a file or folder inside');
-  await Bun.sleep(2_000);
-  expect(existsSync(marker)).toBe(false);
+  // A document it accepts would start the system viewer, whose PID this test cannot capture: only the refusals run.
+  expect(await call('open_client_path', { path: join(projectDir, 'gone.pdf'), confirmed: true })).toContain('not found on this computer');
 }, TIMEOUT);
 
 shellTest(
@@ -883,6 +888,52 @@ shellTest('Ctrl+= zooms the whole interface through the webview and Ctrl+0 puts 
   } finally {
     await key('0');
     await page?.waitFor(`window.innerWidth === ${width} && localStorage.getItem('boite.zoom') === '1'`);
+  }
+}, TIMEOUT);
+
+// Input.dispatchMouseEvent enters the webview's browser process as a hardware
+// wheel does, ahead of the point where WebView2 would zoom the page on its own:
+// unbound, Ctrl + wheel zooms nothing; bound, it walks the interface zoom.
+shellTest('a Ctrl wheel zooms the interface only once the zoom-wheel chord is bound', async () => {
+  if (!page || !coreFile) throw new Error('shell is not ready');
+  const shell = page;
+  const client = await connect(`http://127.0.0.1:${coreFile.port}`, coreFile.token);
+  const CTRL = 2;
+  const wheel = (modifiers: number, deltaY: number) =>
+    shell.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 300, y: 300, deltaX: 0, deltaY, modifiers });
+  const zoom = async () => String(await shell.evaluate(`localStorage.getItem('boite.zoom') ?? '1'`));
+  const width = Number(await shell.evaluate('window.innerWidth'));
+  // Past the wheel's rest every notch starts a turn and steps once; the first
+  // ones may land before the page has the new chord.
+  const notchUntil = async (modifiers: number, deltaY: number, wanted: string) => {
+    const deadline = Date.now() + 10_000;
+    while ((await zoom()) !== wanted && Date.now() < deadline) {
+      await wheel(modifiers, deltaY);
+      await Bun.sleep(400);
+    }
+    expect(await zoom()).toBe(wanted);
+  };
+  try {
+    expect(await zoom()).toBe('1');
+    await wheel(CTRL, -120);
+    await Bun.sleep(600);
+    expect(await zoom()).toBe('1');
+    expect(Number(await shell.evaluate('window.innerWidth'))).toBe(width);
+
+    await client.call('keybindings.set', { command: 'zoom-wheel', chord: 'mod+wheel' });
+    await notchUntil(CTRL, -120, '1.1');
+    await shell.waitFor(`Math.abs(window.innerWidth - ${width} / 1.1) < 3`);
+    // Without the chord's modifier the wheel only scrolls.
+    await wheel(0, -120);
+    await Bun.sleep(600);
+    expect(await zoom()).toBe('1.1');
+    await notchUntil(CTRL, 120, '1');
+    await shell.waitFor(`window.innerWidth === ${width}`);
+  } finally {
+    await client.call('keybindings.reset', { command: 'zoom-wheel' }).catch(() => undefined);
+    client.close();
+    await shell.evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key:'0', ctrlKey:true, bubbles:true, cancelable:true }))`);
+    await shell.waitFor(`window.innerWidth === ${width} && localStorage.getItem('boite.zoom') === '1'`);
   }
 }, TIMEOUT);
 

@@ -51,8 +51,8 @@
     {#if store === workspace.primary}<PluginSlotButtons slot="sidebar" threadId={store.openThread?.id ?? null} compact />{/if}
     <DisplayOptions {entries} {target} owner={targetOwner} {filters} word onaddproject={addProject} />
     {#if entries.length}
-      <button class="ghost icon search" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
-      {#if addProject}<button class="ghost icon add-project" title={strings.sidebar.addProject} aria-label={strings.sidebar.addProject} data-testid="head-add-project" onclick={addProject}><FolderPlus size={16} /></button>{/if}
+      <button class="ghost icon search" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" data-preload-view="palette" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
+      {#if addProject}<button class="ghost icon add-project" title={strings.sidebar.addProject} aria-label={strings.sidebar.addProject} data-testid="head-add-project" data-preload-view="project" onclick={addProject}><FolderPlus size={16} /></button>{/if}
       <button class="ghost icon" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>
     {/if}
   </div>

@@ -32,7 +32,7 @@ afterEach(() => {
   workspace.view = 'projects';
   projectView.order = 'recent';
   projectView.keys = [];
-  projectThreadView.shelfOpen = false;
+  projectThreadView.folds.idle = false;
 });
 
 async function waitFor(check: () => boolean, attempts = 2000): Promise<void> {
@@ -63,7 +63,9 @@ async function mountOnFake(): Promise<void> {
   running = mount(App, { target });
   await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null));
   workspace.view = 'projects';
-  await waitFor(() => document.querySelectorAll('section[data-testid=project]').length === 2);
+  // A header moves among the cards of its own section: pinned, both projects stay open cards, out of Inactive.
+  store.threads = store.threads.map((thread) => ({ ...thread, pinned: true }));
+  await waitFor(() => document.querySelectorAll('section[data-testid=project]').length === 2 && document.querySelector('[data-testid=paused-projects]') === null);
 }
 
 /** A pointer event at a point: jsdom has no PointerEvent. */
@@ -179,10 +181,10 @@ test('an idle project waits as a row in its fold, outside the headers that reord
   await mountOnFake();
   projectView.order = 'manual';
   const [first, second] = order() as [string, string];
-  // A project without conversations goes to the Idle projects fold, as a row with no header to drag.
+  // A project without conversations goes to the No threads fold, a header with no handle to drag.
   const template = store.projects.find((project) => project.id === first)!;
   store.projects = [...store.projects, { ...template, id: 'quiet-project', name: 'Quiet', createdAt: 0 }];
-  projectThreadView.shelfOpen = true;
+  projectThreadView.folds.idle = true;
   await waitFor(() => document.querySelector('[data-testid=idle-project][data-project-id="quiet-project"]') !== null);
   expect(order()).toEqual([first, second]);
   expect(document.querySelector('[data-testid=idle-project] [data-testid=project-row]')).toBeNull();

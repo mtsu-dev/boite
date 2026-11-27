@@ -12,8 +12,8 @@ let running: Record<string, unknown> | null = null;
 afterEach(() => {
   if (running) unmount(running, { outro: false });
   running = null;
-  projectThreadView.shelfOpen = false;
-  projectThreadView.archivedShelfOpen = false;
+  projectThreadView.folds.idle = false;
+  projectThreadView.folds.archived = false;
   contextMenu.close();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
@@ -49,8 +49,8 @@ test('the archived fold restores a project alone from its button, or restores it
   expect(toggle.querySelector('.fold-count')?.textContent).toBe('1');
   expect(document.querySelector('[data-testid=archived-project-restore]')).toBeNull();
   await unfold(toggle);
-  // One machine: no machine header.
-  expect(document.querySelector('[data-testid=project-shelf-machine]')).toBeNull();
+  // One machine: no machine icon on the card.
+  expect(document.querySelector('[data-testid=archived-project] [data-testid=project-host]')).toBeNull();
 
   click('[data-testid=archived-project-restore]');
   await settle();
@@ -64,7 +64,7 @@ test('the archived fold restores a project alone from its button, or restores it
   expect(onstart).toHaveBeenCalledOnce();
 });
 
-test('archived projects with matching ids show their machines and restore on the owning machine', async () => {
+test('archived projects with matching ids list as one, each card with its machine, and restore on the owning machine', async () => {
   const localRestore = vi.fn(async () => true);
   const remoteRestore = vi.fn(async () => true);
   running = mount(ProjectShelf, {
@@ -82,9 +82,10 @@ test('archived projects with matching ids show their machines and restore on the
   flushSync();
   await unfold();
   const rows = document.querySelectorAll('[data-testid=archived-project]');
-  expect([...document.querySelectorAll('[data-testid=project-shelf-machine]')].map(h => h.textContent?.trim())).toEqual(['Workstation', 'Build server']);
-  expect([...rows].map(r => r.getAttribute('data-machine-id'))).toEqual(['local', 'remote']);
-  click('[data-testid=archived-project-restore]', rows[1]!);
+  // No header per machine: one list by name, the machine's label settling a tie, its icon on each card.
+  expect(document.querySelectorAll('[data-testid=project-shelf-machine]')).toHaveLength(0);
+  expect([...rows].map(r => [r.getAttribute('data-machine-id'), r.querySelector('[data-testid=project-host]')?.getAttribute('aria-label')])).toEqual([['remote', 'Build server'], ['local', 'Workstation']]);
+  click('[data-testid=archived-project-restore]', rows[0]!);
   await settle();
   expect(remoteRestore).toHaveBeenCalledWith('p-1', false);
   expect(localRestore).not.toHaveBeenCalled();
@@ -143,19 +144,20 @@ test('an idle project starts a thread on its own machine when chosen, and archiv
   });
   flushSync();
   const toggle = document.querySelector<HTMLButtonElement>('[data-testid=project-shelf-toggle]')!;
-  expect(toggle.querySelector('.label')?.textContent).toBe('Idle projects');
+  expect(toggle.querySelector('.label')?.textContent).toBe('No threads');
   await unfold(toggle);
-  expect(projectThreadView.shelfOpen).toBe(true);
+  expect(projectThreadView.folds.idle).toBe(true);
   const rows = document.querySelectorAll('[data-testid=idle-project]');
   // An idle row takes a dragged thread like a project section does; an archived one never does.
   expect(rows[0]!.hasAttribute('data-thread-drop')).toBe(true);
 
-  click('[data-testid=idle-project-open]', rows[1]!);
+  // By name, then machine: Build server's copy first.
+  click('[data-testid=idle-project-open]', rows[0]!);
   await settle();
   expect(select).toHaveBeenCalledWith(remote, undefined, 'p-1');
   expect(onstart).toHaveBeenCalledOnce();
 
-  click('[data-testid=idle-project-archive]', rows[0]!);
+  click('[data-testid=idle-project-archive]', rows[1]!);
   await settle();
   expect(local.archiveProject).toHaveBeenCalledWith('p-1', true);
   expect(remote.archiveProject).not.toHaveBeenCalled();
@@ -192,11 +194,11 @@ test('idle and archived projects sit in two folds, each by name, the archived on
     flushSync();
     const toggles = [...document.querySelectorAll<HTMLButtonElement>('.fold-header')];
     expect(toggles.map(toggle => [toggle.dataset.testid, toggle.querySelector('.label')?.textContent, toggle.querySelector('.fold-count')?.textContent]))
-      .toEqual([['project-shelf-toggle', 'Idle projects', '2'], ['archived-shelf-toggle', 'Archived projects', '1']]);
-    // The idle fold says what it holds under the pointer: nothing to do there.
-    expect(toggles[0]!.title).toContain('Nothing to do');
+      .toEqual([['project-shelf-toggle', 'No threads', '2'], ['archived-shelf-toggle', 'Archived projects', '1']]);
+    // The idle fold says what it holds under the pointer: no thread there.
+    expect(toggles[0]!.title).toContain('No thread in these projects');
     await unfold(toggles[0]);
-    expect(projectThreadView.archivedShelfOpen).toBe(false);
+    expect(projectThreadView.folds.archived).toBe(false);
     expect([...document.querySelectorAll<HTMLElement>('[data-testid=project-shelf] li')].map(row => row.dataset.projectName)).toEqual(['alpha', 'zeta']);
     expect(document.querySelector('[data-testid=archived-shelf] li')).toBeNull();
     await unfold(toggles[1]);

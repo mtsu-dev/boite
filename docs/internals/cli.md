@@ -108,6 +108,10 @@ An agent can add a profile, never rename or delete one: that stays in Settings.
 `tab <id>` makes one current and `--tab <id>` aims a single command at it. The
 agent cannot select a tab from another conversation.
 
+`boite browser show` reveals the current tab to viewers of the conversation.
+Use `boite browser show --tab <id>` to reveal a specific tab. Opening a page
+with `boite browser open` leaves the panel closed until someone shows it.
+
 `snapshot -i` lists the page's interactive elements with refs:
 `- textbox "Email" [ref=e3]`, `- button "Continue" [ref=e5]`. A plain element
 that acts as a control, a `div` or `span` with a click handler, a `tabindex` or

@@ -1,4 +1,4 @@
-import { chatPreviewSizeProblem, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, resolveModelSelection, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
+import { chatPreviewSizeProblem, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, projectToolDiffs, resolveModelSelection, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread, writeFakeFork } from './create-thread';
@@ -159,7 +159,7 @@ function tailOf(messages: Message[], from: number, limit = MESSAGE_PAGE, project
 
 /** Opaque fixture proofs. The real core uses native SHA-256 over the same complete message data. */
 function snapshotHash(messages: Message[], options: RpcParams<'threads.get'>): string {
-  const json = `${!!options.compactTools}:${!!options.compactFiles}:${!!options.compactImages}:${!!options.compactToolParts}:` + JSON.stringify(messages);
+  const json = `${!!options.compactTools}:${!!options.compactFiles}:${!!options.compactImages}:${!!options.compactToolParts}:${options.omitThinking ? 'nt:' : ''}${options.omitTools ? `${options.omitTools}:` : ''}` + JSON.stringify(messages);
   let a = 0x811c9dc5, b = 0x9e3779b9;
   for (let i = 0; i < json.length; i++) {
     a = Math.imul(a ^ json.charCodeAt(i), 0x01000193);
@@ -449,7 +449,10 @@ export function threadMethods(ctx: FakeContext) {
       return pagingReply({ ...page, offset, turns: thread.turns.filter((turn) => turns.has(turn.id)) });
     },
     'messages.toolOutput': async (params) => ({ output: toolOf(ctx.thread(params.threadId), params).output }),
-    'messages.toolPart': async (params) => pagingReply({ part: toolOf(ctx.thread(params.threadId), params) }),
+    'messages.toolPart': async (params) => {
+      const part = toolOf(ctx.thread(params.threadId), params);
+      return pagingReply({ part: params.diffsOnly === true ? projectToolDiffs(part) : part });
+    },
     'messages.attachment': async (params): Promise<RpcResult<'messages.attachment'>> => {
       const thread = ctx.thread(params.threadId);
       if (!Number.isSafeInteger(params.partIndex) || params.partIndex < 0) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'messages.attachment.partIndex: expected a nonnegative integer', data: { field: 'partIndex', expected: 'a nonnegative integer' } });

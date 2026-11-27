@@ -88,7 +88,7 @@ import { activityMethods, finishActivityTurn } from './activity';
 import { FakeBus } from './bus';
 import { FAKE_TREE } from './files';
 import { seedHooks } from './hooks';
-import { delegationConfig, watchQuestionParents, workflowAnswer, workflowAgain, workflowChild } from './delegation';
+import { delegationConfig, watchSubagentParents, workflowAnswer, workflowAgain, workflowChild } from './delegation';
 import { FakePlugins } from './plugins';
 import { initialHarnessUpdates } from './provider-installs';
 import { DATA_DIR, T0, toSummary } from './shared';
@@ -465,7 +465,7 @@ export class FakeContext {
     this.brainLinkPermission = options.brainLinkPermission ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('brainLinkPermission') === '1');
     this.plainLink = options.plainLink ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('plainLink') === '1');
     this.bus = new FakeBus(options.principal ?? 'owner', { threadId: () => this.agentThreadId, projectOf: id => this.threads.get(id)?.projectId ?? null, visibleTodos: (id, todos) => agentTodos(this, id, todos), partType: (id, messageId, partIndex) => this.threads.get(id)?.messages.find(message => message.id === messageId)?.parts[partIndex]?.type });
-    watchQuestionParents(this);
+    watchSubagentParents(this);
     this.agents = new FakeAgents(revision => {
       this.emit('agents.changed', { revision });
       // As the core: a change to any agent may answer a card, settled once per burst after it commits.
@@ -623,7 +623,7 @@ export class FakeContext {
       version: options.version ?? '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
-      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true, threadListPages: true, messageSearch: true },
+      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true, threadListPages: true, messageSearch: true, diffOnlyToolParts: true },
       os,
       channel: 'stable',
       pid: 4242,

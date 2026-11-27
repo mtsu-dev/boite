@@ -10,7 +10,8 @@ requests mailed the owner every event of each contributor's pull request. The `r
 
 `PR title` runs `scripts/ci/pr-title.ts` on title edits. The squash title is
 `type(scope): summary`, with an optional scope and one of `feat`, `fix`, `perf`,
-`refactor`, `docs`, `test`, `ci`, `build`, `chore` or `revert`. Its body is empty.
+`refactor`, `docs`, `test`, `ci`, `build`, `chore` or `revert`, and no em dash
+(U+2014). Its body is empty.
 
 ## Merge queue
 
@@ -87,7 +88,9 @@ sooner. `Repository checks`, beside it on every change, installs frozen
 dependencies, runs `bun audit` (with the ignored advisories named and justified
 in `ci.yml`), local link checks, `bun test scripts/ci ./bench
 ./apps/shell/scripts`, architecture checks and their tests, translation
-validation, the no-em-dash UI copy rule (`bun run check:copy`), oxlint
+validation, the no-em-dash UI copy rule (`bun run check:copy`), the no-em-dash
+rule on every tracked text file (`bun run check:em-dash`; a fixture that needs
+U+2014 writes it as an escape), oxlint
 (`bun run lint`, every file, no warning allowed) and checksum-verified actionlint 1.7.12. When one job did both, every other job
 waited about 54 s for it (median of 27 runs, 2026-11-16), 40 of them for the
 script tests.

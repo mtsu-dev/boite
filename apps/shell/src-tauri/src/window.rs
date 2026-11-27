@@ -355,10 +355,15 @@ pub(crate) fn hide_main<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-/// The main page's memory level: low while the window waits in the tray,
-/// normal before it shows. Browser surfaces keep theirs, since a hidden one
-/// may still be recording. A minimized window keeps the normal level: it comes
-/// back from the taskbar often, and nothing should have to page back in.
+/// Native resize and focus events can restore the window without `show_main`.
+/// A restore that leaves it in the tray still keeps the low target.
+#[cfg(windows)]
+pub(crate) fn sync_main_memory<R: Runtime>(app: &AppHandle<R>, window: &tauri::WebviewWindow<R>, minimized: bool) {
+    main_memory(app, minimized || !window.is_visible().unwrap_or(true));
+}
+
+/// The main page's target is low while minimized or in the tray. Browser
+/// surfaces keep their own target, since a hidden one may still be recording.
 pub(crate) fn main_memory<R: Runtime>(app: &AppHandle<R>, low: bool) {
     if let Some(page) = app.get_webview(MAIN_LABEL) {
         crate::platform::memory_level(&page, low);

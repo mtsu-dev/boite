@@ -153,16 +153,17 @@ describe('git.status', () => {
     let live = 0;
     let most = 0;
     const spawn = harness.core.procs.spawn.bind(harness.core.procs);
-    // Each stand-in git takes 400 ms; the deadline of 700 ms is shorter than two in a row.
+    // Each stand-in git sleeps 1 s; the deadline of 1.7 s is shorter than two in a row and leaves a
+    // loaded runner 700 ms to start each one (a Windows runner missed the old 300 ms margin).
     const spy = spyOn(harness.core.procs, 'spawn').mockImplementation((scope, _command, _args, options) => {
       live += 1;
       most = Math.max(most, live);
-      const spawned = spawn(scope, process.execPath, ['-e', 'await Bun.sleep(400)'], options);
+      const spawned = spawn(scope, process.execPath, ['-e', 'await Bun.sleep(1000)'], options);
       void spawned.exited.then(() => { live -= 1; });
       return spawned;
     });
     try {
-      const reads = Array.from({ length: GIT_READ_SLOTS + 4 }, () => readGit(harness.core, threadId, path, ['status'], 700));
+      const reads = Array.from({ length: GIT_READ_SLOTS + 4 }, () => readGit(harness.core, threadId, path, ['status'], 1700));
       const answers = await Promise.all(reads);
       expect(answers.every((answer) => answer.code === 0)).toBe(true);
       expect(most).toBe(GIT_READ_SLOTS);

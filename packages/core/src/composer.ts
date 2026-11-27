@@ -413,5 +413,5 @@ export class Composer {
   }
 
   stop(): void { this.#closed = true; this.#unsubscribe(); this.#stopWaiting(); }
-  async close(): Promise<void> { this.stop(); await Promise.all(this.#running.values()); }
+  async close(): Promise<void> { this.stop(); this.storage.close(); await Promise.all(this.#running.values()); }
 }

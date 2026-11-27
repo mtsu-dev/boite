@@ -5,21 +5,24 @@ import type { Core } from '../core';
 import { invalidParams, refused } from '../errors';
 import type { AgentState } from './agent-state';
 import { readMemoryEvents } from './memory-read';
-import { previewDigests } from '../journal/part-blobs';
-import { transportProjection } from './transport';
+import { attachmentProofs, previewDigests } from '../journal/attachment-previews';
+import { pageTransport } from './transport';
 import { contactHistoryHold } from '../contacts/letter-scopes';
 
-type Projection = ReturnType<typeof transportProjection>;
-type Options = Pick<RpcParams<'threads.get'>, 'limit' | 'maxBytes' | 'compactTools' | 'compactFiles' | 'compactImages' | 'compactToolParts' | 'around' | 'sync' | 'open'>;
-// A preview read from part_blobs hashes the digest of its whole output, which the page does not carry.
+type PageTransport = ReturnType<typeof pageTransport>;
+type Options = Pick<RpcParams<'threads.get'>, 'limit' | 'maxBytes' | 'compactTools' | 'compactFiles' | 'compactImages' | 'compactToolParts' | 'omitThinking' | 'omitTools' | 'around' | 'sync' | 'open'>;
+// A deferred part hashes its stored digest, so a hidden change still invalidates a proof.
 const withDigests = (_key: string, value: unknown) => {
-  const digest = value !== null && typeof value === 'object' ? previewDigests.get(value) : undefined;
-  return digest === undefined ? value : { ...value as object, outputDigest: digest };
+  if (value === null || typeof value !== 'object') return value;
+  const digest = previewDigests.get(value);
+  if (digest === undefined) return value;
+  const attachment = attachmentProofs.get(value);
+  return attachment === undefined ? { ...value, outputDigest: digest } : { ...attachment, dataDigest: digest };
 };
 /** Over the rows as read, deferred content included: the same rows read with other options are another proof. */
-const hash = (messages: Message[], options: Options) => createHash('sha256').update(`${!!options.compactTools}:${!!options.compactFiles}:${!!options.compactImages}:${!!options.compactToolParts}:`).update(JSON.stringify(messages, withDigests)).digest('base64url');
-/** Outputs a page defers are read as previews from part_blobs, never whole. */
-const toolPreviews = (options: { compactTools?: boolean; compactToolParts?: boolean }) => !!(options.compactTools || options.compactToolParts);
+const hash = (messages: Message[], options: Options) => createHash('sha256')
+  .update(`${!!options.compactTools}:${!!options.compactFiles}:${!!options.compactImages}:${!!options.compactToolParts}:${options.omitThinking ? 'nt:' : ''}${options.omitTools ? `${options.omitTools}:` : ''}`)
+  .update(JSON.stringify(messages, withDigests)).digest('base64url');
 
 /** Validate new options before an opening can change the socket or unread state. */
 function checkSnapshotOptions(options: Options): void {
@@ -39,16 +42,16 @@ export function threadSnapshot(core: Core, thread: ThreadSummary, after: string 
   const from = after === undefined ? null : core.journal.messageRowid(thread.id, after);
   // Budgets apply to what the client receives, so compacted parts never block
   // a page. The proof covers the stored rows, deferred content included.
-  const project = transportProjection(options, options.compactImages ? core.media.lookup(thread.id) : undefined);
+  const transport = pageTransport(options, options.compactImages ? core.media.lookup(thread.id) : undefined);
   const known = options.sync && options.sync !== true ? options.sync : undefined;
   const prefix = known?.prefix;
   const preceding = from === null || !prefix ? undefined : prefix.count === 0 ? [] :
-    core.journal.listMessagePage(thread.id, { beforeRowid: from, limit: prefix.count, project, toolPreviews: toolPreviews(options) }).messages;
+    core.journal.listMessagePage(thread.id, { ...transport, beforeRowid: from, limit: prefix.count }).messages;
   const verified = !prefix || (preceding && known?.from === after && prefix.count === preceding.length
     && prefix.first === (preceding[0]?.id ?? after) && prefix.hash === hash(preceding, options));
-  const tail = from === null || !verified ? null : core.journal.listMessagesFrom(thread.id, from, limit, project, toolPreviews(options));
+  const tail = from === null || !verified ? null : core.journal.listMessagesFrom(thread.id, from, limit, transport.project, transport);
   // A tail is what the client misses, whole; only a page is cut to `maxBytes`.
-  const page = tail === null ? pageAround(core, thread.id, options.around, limit, project, toolPreviews(options), pageBytes(options.maxBytes)) : { ...tail, before: null, after: null };
+  const page = tail === null ? pageAround(core, thread.id, options.around, limit, transport, pageBytes(options.maxBytes)) : { ...tail, before: null, after: null };
   const turns = core.journal.listTurnsFor(thread.id, page.messages.map(message => message.turnId));
   const anchor = options.sync ? resumeAnchor({ messages: page.messages, turns }) : null;
   const anchorIndex = anchor === null ? -1 : page.messages.findIndex(message => message.id === anchor);
@@ -91,17 +94,17 @@ function positionOf(core: Core, threadId: string, messageId: string | undefined)
  * The last page, unless `around` names a message. Read from that anchor in
  * both directions so a byte cut cannot replace it with the end of the thread.
  */
-function pageAround(core: Core, threadId: string, around: string | undefined, limit: number, project: Projection, toolPreviews: boolean, maxBytes: number): { messages: Message[]; sent: Message[]; before: string | null; after: string | null } {
+function pageAround(core: Core, threadId: string, around: string | undefined, limit: number, transport: PageTransport, maxBytes: number): { messages: Message[]; sent: Message[]; before: string | null; after: string | null } {
   const journal = core.journal;
   const rowid = around === undefined ? null : journal.messageRowid(threadId, around);
-  if (rowid === null) return { ...journal.listMessagePage(threadId, { limit, project, toolPreviews, maxBytes }), after: null };
+  if (rowid === null) return { ...journal.listMessagePage(threadId, { ...transport, limit, maxBytes }), after: null };
   const following = journal.countMessagesFrom(threadId, rowid);
   const newerCount = following <= limit ? following : Math.ceil(limit / 2);
   const olderCount = limit - newerCount;
   const older = olderCount > 0
-    ? journal.listMessagePage(threadId, { beforeRowid: rowid, limit: olderCount, project, toolPreviews, maxBytes })
+    ? journal.listMessagePage(threadId, { ...transport, beforeRowid: rowid, limit: olderCount, maxBytes })
     : { messages: [], sent: [], before: journal.countMessagesBefore(threadId, rowid) > 0 ? around! : null };
-  const newer = journal.listMessagesForward(threadId, rowid, newerCount, project, toolPreviews, maxBytes);
+  const newer = journal.listMessagesForward(threadId, rowid, newerCount, transport.project, transport, maxBytes);
   const messages = [...older.messages, ...newer.messages], sent = [...older.sent, ...newer.sent];
   const { start, end } = boundedMessageWindow(sent, older.messages.length, maxBytes, limit);
   return {
@@ -139,15 +142,14 @@ export function messagePage(core: Core, params: RpcParams<'messages.list'>): Mes
     });
   }
   const limit = Math.min(Math.max(1, Math.trunc(params.limit ?? MESSAGE_PAGE)), MESSAGE_PAGE_MAX);
-  const project = transportProjection(params, params.compactImages ? core.media.lookup(params.threadId) : undefined);
-  const previews = toolPreviews(params);
+  const transport = pageTransport(params, params.compactImages ? core.media.lookup(params.threadId) : undefined);
   const turns = (stored: Message[]) => core.journal.listTurnsFor(params.threadId, stored.map((message) => message.turnId));
   const maxBytes = pageBytes(params.maxBytes);
   if (params.before === undefined) {
-    const page = core.journal.listMessagesForward(params.threadId, rowid + 1, limit, project, previews, maxBytes);
+    const page = core.journal.listMessagesForward(params.threadId, rowid + 1, limit, transport.project, transport, maxBytes);
     return { messages: page.sent, before: null, after: page.after, turns: turns(page.messages), offset: core.journal.countMessagesBefore(params.threadId, rowid + 1) };
   }
-  const page = core.journal.listMessagePage(params.threadId, { beforeRowid: rowid, limit, project, toolPreviews: previews, maxBytes });
+  const page = core.journal.listMessagePage(params.threadId, { ...transport, beforeRowid: rowid, limit, maxBytes });
   return { messages: page.sent, before: page.before, turns: turns(page.messages), offset: positionOf(core, params.threadId, page.messages[0]?.id) };
 }
 
@@ -163,8 +165,8 @@ function pageFrom(core: Core, params: RpcParams<'messages.list'>, from: number):
   const rowid = core.journal.rowidAt(params.threadId, from);
   if (rowid === null) return { messages: [], before: null, after: null, turns: [], offset: from };
   const limit = Math.min(Math.max(1, Math.trunc(params.limit ?? MESSAGE_PAGE)), MESSAGE_PAGE_MAX);
-  const project = transportProjection(params, params.compactImages ? core.media.lookup(params.threadId) : undefined);
-  const page = core.journal.listMessagesForward(params.threadId, rowid, limit, project, toolPreviews(params), pageBytes(params.maxBytes));
+  const transport = pageTransport(params, params.compactImages ? core.media.lookup(params.threadId) : undefined);
+  const page = core.journal.listMessagesForward(params.threadId, rowid, limit, transport.project, transport, pageBytes(params.maxBytes));
   return {
     messages: page.sent,
     before: from > 0 ? (page.messages[0]?.id ?? null) : null,

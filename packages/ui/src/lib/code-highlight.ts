@@ -1,4 +1,5 @@
 import { highlightText, knownLanguage, type Language } from './code-grammar';
+import { workerIdle } from './worker-idle';
 export { codeRow } from './code-grammar';
 
 /** File names select a grammar; unknown files remain plain text. No guessing on every keystroke. */
@@ -92,6 +93,16 @@ interface Job {
 let worker: Worker | null | undefined;
 let lastJob = 0;
 const jobs = new Map<number, Job>();
+const idle = workerIdle(() => stopWorker(undefined));
+
+function stopWorker(next: null | undefined): void {
+  idle.stop();
+  worker?.terminate();
+  worker = next;
+  const waiting = [...jobs.values()];
+  jobs.clear();
+  for (const job of waiting) job.here();
+}
 
 function highlightWorker(): Worker | null {
   if (worker !== undefined) return worker;
@@ -101,21 +112,20 @@ function highlightWorker(): Worker | null {
   } catch {
     return worker = null;
   }
-  worker.onmessage = ({ data }: MessageEvent<{ id: number; lines?: string[]; error?: string }>) => {
+  const active = worker;
+  active.onmessage = ({ data }: MessageEvent<{ id: number; lines?: string[]; error?: string }>) => {
+    if (worker !== active) return;
     const job = jobs.get(data.id);
     if (!job) return;
     jobs.delete(data.id);
+    idle.touch();
     if (data.lines) job.resolve(data.lines);
     else job.reject(new Error(data.error ?? 'highlight failed'));
   };
   // A worker that failed to load answers nothing: what it was given runs here.
-  worker.onerror = (event) => {
+  active.onerror = (event) => {
     event.preventDefault();
-    worker?.terminate();
-    worker = null;
-    const waiting = [...jobs.values()];
-    jobs.clear();
-    for (const job of waiting) job.here();
+    if (worker === active) stopWorker(null);
   };
   return worker;
 }
@@ -126,6 +136,8 @@ function highlightAway(text: string, language: Language): Promise<string[]> {
   return new Promise((resolve, reject) => {
     const id = ++lastJob;
     jobs.set(id, { resolve, reject, here: () => { highlightText(text, language).then(resolve, reject); } });
-    away.postMessage({ id, text, language });
+    idle.touch();
+    try { away.postMessage({ id, text, language }); }
+    catch { stopWorker(null); }
   });
 }

@@ -26,6 +26,7 @@
   import { focusOnMount } from '../lib/actions';
   import { watchRowCut } from '../lib/row-cut';
   import MobileThreadRow from './MobileThreadRow.svelte';
+  import BackgroundBrowser from './BackgroundBrowser.svelte';
   import FoldMore from './FoldMore.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
   import ViewSwitch from './ViewSwitch.svelte';
@@ -67,9 +68,11 @@
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
 
-  let { store, recover = false, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
+  let { store, recover = false, browserBackground, onbrowser, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
     store: Store;
     recover?: boolean;
+    browserBackground?: boolean;
+    onbrowser?: () => void;
     onleavesettings?: () => void;
     screen: 'chat' | 'threads' | 'activity';
     tabbed?: boolean;
@@ -161,7 +164,7 @@
   let groups = $derived(projectView.sorted(machines.flatMap(machine => machine.store.projects.filter(project => !project.archived).map(project => ({ machine, project })))));
   /** The thread list on screen, with projects to show: its header names its two views. */
   let threadViews = $derived(headerList === 'threads' && store.page === 'chat' && !recover && groups.length > 0);
-  /** At work on top when working grouping is on, open, then set aside; idle projects go to their fold, as on the desktop. */
+  /** At work on top when working grouping is on, open, then paused; idle projects go to their fold, as on the desktop. */
   let sections = $derived(projectSections(groups, recentPreferences.groupOtherProjects, recentPreferences.groupWorking));
   let shelved = $derived(machines.flatMap(machine => machine.store.projects.filter(project => project.archived === true).map(project => ({ machine, project }))));
   let selected = $derived(projectView.selected(groups));
@@ -307,7 +310,6 @@
     const key = projectKey(entry);
     return Object.values(sections).find(list => list.some(other => projectKey(other) === key)) ?? groups;
   }
-  /** A set-aside project shows its archived conversations as its body, with no pill for them. */
 </script>
 
 {#snippet connection()}
@@ -400,6 +402,7 @@
       <!-- Only on screen: kept under a page, its pairing would answer the page's own (Machines) and leave it. -->
       {#if listShown}<MobileConnect {store} onpaired={() => show('threads')} />{/if}
     {:else}
+    {#if browserBackground && listScreen === 'threads'}<BackgroundBrowser onclick={() => { show('chat'); onbrowser?.(); }} />{/if}
     <!-- Recent's filters are the display menu's, counted on its button: the list starts with its rows. -->
     {#snippet threadRow(row: typeof rows[number], grouped = false, helpers: typeof rows = [])}
       <!-- Activity: the row's verb is its own, else the first asking sub-agent's, which opens that sub-agent (ActivityRow.svelte). -->
@@ -410,12 +413,12 @@
         onaction={action => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
     {#if listScreen === 'threads' && workspace.view === 'projects'}
-      {#snippet projectRows(projects: ProjectEntry[], later = false)}
+      {#snippet projectRows(projects: ProjectEntry[])}
       {#each projects as group (projectKey(group))}
         {@const groupRows = rowsByProject.get(group.machine.id)?.get(group.project.id) ?? []}
         {@const workingOpen = projectThreadView.isOpen(group, 'working')}
-        {@const doneOpen = archiveCount(group.project, 'done') > 0 && doneFilter.shown}
-        {@const archivedOpen = later && archiveCount(group.project, 'archived') > 0}
+        {@const doneOpen = archiveCount(group.project, 'done') > 0 && (doneFilter.shown || projectThreadView.isOpen(group, 'done'))}
+        {@const archivedOpen = archiveCount(group.project, 'archived') > 0 && projectThreadView.isOpen(group, 'archived')}
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
         {@const needsHere = needsCount(group)}
         {@const waitingHere = needsHere.count}
@@ -443,9 +446,9 @@
                 { id: 'down', label: strings.sidebar.moveProjectDown, disabled: projectKey(foldOf(group).at(-1)!) === projectKey(group) }
               ]} onpick={action => projectView.step(foldOf(group), projectKey(group), action === 'up' ? -1 : 1)} label={strings.sidebar.customOrder} placement="bottom" variant="ghost" testid="mobile-project-order"><ArrowUpDown size={18} /></Menu>
             {/if}
-            <!-- The desktop header's menu: a new thread here, the path, archived threads and their switch (a set-aside group always shows them), managing the project. -->
+            <!-- The desktop header's menu: a new thread here, the path, archived threads, managing the project. -->
             <button type="button" class="ghost icon project-actions" data-testid="mobile-project-menu" title={strings.sidebar.projectMenu} aria-label={strings.sidebar.projectMenu}
-              onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'), { count: archiveCount(group.project, 'archived') })}><Ellipsis size={18} /></button>
+              onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'), true)}><Ellipsis size={18} /></button>
           </div>
           <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
           {#if group.machine.store.connection === 'closed'}<div class="offline"><MachineOffline store={group.machine.store} label={group.machine.label} /></div>{/if}
@@ -470,7 +473,8 @@
             <RecentDone entries={[group]} {scrollRoot} {now} {query} open={doneOpen && !folded} header={false} cap={10} onopen={() => show('chat')} />
           </div>
           <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
-            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && !folded && (!later || projectThreadView.laterOpen)} header={false} cap={10} onopen={() => show('chat')} />
+            {#if archivedOpen}<GroupLabel kind="archived" count={query ? undefined : archiveCount(group.project, 'archived')} />{/if}
+            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && !folded} header={false} cap={10} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
           </div></div>
@@ -483,7 +487,7 @@
         {#if sections.working.length > 0}<ProjectCardsSection kind="working" count={sections.working.length}>{@render projectRows(sections.working)}</ProjectCardsSection>{/if}
         {@render projectRows(sections.open)}
         {#if groups.length > 0 && sections.working.length + sections.open.length === 0}<p class="empty">{strings.sidebar.noActiveProjects}</p>{/if}
-        {#if sections.later.length > 0}<ProjectCardsSection kind="later" count={sections.later.length}>{@render projectRows(sections.later, true)}</ProjectCardsSection>{/if}
+        {#if sections.paused.length > 0}<ProjectCardsSection kind="paused" count={sections.paused.length}>{@render projectRows(sections.paused)}</ProjectCardsSection>{/if}
         <ProjectShelf projects={sections.idle} multi={several} {now} {scrollRoot} onopen={() => show('chat')} />
         <ProjectShelf kind="archived" projects={shelved} multi={several} {now} {scrollRoot} onopen={() => show('chat')} />
         {@render contacts()}

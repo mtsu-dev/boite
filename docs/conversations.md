@@ -18,12 +18,21 @@ The chat shows Starting agent while the agent launches, then Working for once
 it starts working. The startup timer counts the current turn.
 Your message stays near the top while the reply fits below it. When the reply
 outgrows that space, the chat follows the latest text until you scroll up.
+Once the thread is done, its last reply ends on one quiet line, Worked for and
+the time. Point at the reply, or move the keyboard into it, to see when it
+finished, the tokens it spent and its buttons (Copy, and Retry or Fork where
+the reply allows them). An earlier reply's line shows at rest only its marks,
+such as a compaction or a memory update; its time, tokens and buttons come when
+you point at the reply, move the keyboard into any part of it or, on a phone,
+tap it. On a phone the last reply's line shows its time and buttons, and the
+"i" at its end holds when it finished and the tokens.
 The conversation header names what it is waiting on and how long the wait has
 lasted when the start time is available. In the thread list, rows waiting on
-sub-agents, pull requests, monitors or background work show a pulsing icon and
-the elapsed time (with full details in the tooltip), while rows waiting on your
-answer keep the steady Needs you dot. When a pull request watch pauses, the
-header gives the reason and the next check time.
+sub-agents (including ones on another machine), pull requests, monitors or
+background work show a pulsing icon and the elapsed time (with full details in
+the tooltip), while rows waiting on your answer keep the steady Needs you dot.
+When a pull request watch pauses, the header gives the reason and the next
+check time.
 
 An agent can warn that something went wrong beside its work while it carries
 on: the disk was full and part of the conversation was not saved, attached
@@ -52,10 +61,10 @@ the conversation, to keep your text as typed, with no red underline.
 Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: on a desktop, switch between
 Projects and Recent under View in the Filter menu; on a phone, in the list's
-title. Under Display in the desktop Filter menu, Mochi layout turns on the left
-app rail with your mochis, teams and shortcuts along the window's edge; with it
-off, Activity, Contacts, Mochis, machines, updates, limits and Settings sit in
-the compact bar at the foot of the sidebar. The two arrows at the start of the
+title. On a desktop, the left app rail shows your mochis, teams and shortcuts
+along the window's edge. Turn off Mochi layout under Display in the Filter menu
+to hide it: Activity, Contacts, Mochis, machines, updates, limits and Settings
+then sit in a compact bar at the foot of the sidebar. The two arrows at the start of the
 list's head go back and forward through the conversations and pages you opened,
 as a mouse's side buttons do.
 
@@ -64,6 +73,13 @@ The conversations already loaded stay available while Boite reloads it.
 
 Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
+
+In the Projects view, the projects where something needs you come first.
+Below them, Inactive gathers the projects where no thread runs and nothing
+waits on you; fold it to hide them. No threads, closed at launch, lists the
+projects without a single thread: choose one to start a thread there. Archived
+projects come last, closed too. Turn off Inactive projects in the Filter menu
+to keep every project in the main list.
 
 A thread with a pull request keeps its last badge on this device. When you
 reopen Boite, the badge can appear as soon as the thread is listed, and Boite
@@ -168,6 +184,16 @@ replaced.
 - Muse Code, OpenCode, Antigravity, Grok and pi keep the prompt's title under
   Automatic.
 
+## Export a conversation
+
+Choose Export... in the conversation or mochi menu, or Export conversation in the
+Command Palette. Pick Markdown (.md) or HTML (.html), then Download. On desktop,
+Download saves to your Downloads folder and shows the saved path. HTML opens
+offline in a browser. When Markdown is selected, Copy Markdown puts the text on
+the clipboard. Include tool calls, Include diffs and Include thinking are optional.
+The export covers the complete conversation and lists attachments by name. Council
+conversations are not exported.
+
 ## Notifications
 
 On a desktop, notifications appear in the top-right corner, under the top bar,
@@ -178,14 +204,17 @@ above the message box or the bottom tabs.
 
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up
   later; the toast offers Undo, or press Ctrl+Z.
-- Archived threads is a section of Settings > General. Filter, a project's
-  menu and the command palette open it there; from a project's menu it lists
-  that project's threads until you choose All projects. Each row shows the
+- A project's archived threads open under its card from the archive count in
+  its heading, beside the Done count, on desktop and phone, ten rows at a time.
+  Select a row to read the conversation.
+- Archived threads is also a section of Settings > General, for every project.
+  Filter and the command palette open it there. Each row shows the
   project, why the thread was archived and when it will be deleted, with
   Restore and Delete. Select a title to read the conversation. Restore it from
   the row or from the open conversation before sending a message. Restoring brings back your message
   draft. Its agent starts again with your first message.
-- A project's Done list shows ten rows at a time; scroll it for the rest.
+- A project's Done list opens from the Done count in its heading, on desktop
+  and phone, and shows ten rows at a time; scroll it for the rest.
   The row shows when each conversation was put away. To reveal Restore on
   desktop, point to the row or focus it with the keyboard. Restore is visible
   on touch screens.

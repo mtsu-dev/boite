@@ -79,7 +79,18 @@ export function threadState(thread: ThreadStateFields, delegated: Delegated = 0)
  */
 export type WorkingChildren = { count: number; since: number | null; asking: number };
 
-/** Each parent with a working or asking child, shared by every row of this machine. */
+export function mergeWorkingChildren(local: WorkingChildren | null, remote: WorkingChildren | null): WorkingChildren | null {
+  if (local === null) return remote;
+  if (remote === null) return local;
+  const { since } = local;
+  return {
+    count: local.count + remote.count,
+    asking: local.asking + remote.asking,
+    since: since === null ? remote.since : remote.since === null ? since : Math.min(since, remote.since),
+  };
+}
+
+/** Each parent with a working or asking child in the given rows. */
 export function workingChildren(threads: readonly ThreadSummary[]): Map<ThreadId, WorkingChildren> {
   const parents = new Map<ThreadId, WorkingChildren>();
   for (const thread of threads) {
@@ -181,6 +192,11 @@ export function unreadInterruptionAt(thread: ThreadSummary): number | undefined 
 
 /** Acknowledging an interruption leaves any unread reply in Activity. */
 export function activityThreadState(thread: ThreadSummary, delegated: Delegated): ThreadState | null {
+  // A remote child's request is actionable on its own machine. The parent still counts as busy.
+  const remoteAsks = thread.remoteSubagents?.asking ?? 0;
+  if (remoteAsks > 0 && delegated && typeof delegated !== 'number') {
+    delegated = { ...delegated, asking: Math.max(0, delegated.asking - remoteAsks) };
+  }
   const kind = threadState(thread, delegated);
   return kind === 'interrupted' && unreadInterruptionAt(thread) === undefined
     ? threadState({ ...thread, backgroundWait: null }, delegated) : kind;

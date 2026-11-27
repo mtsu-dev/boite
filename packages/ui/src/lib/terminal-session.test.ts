@@ -52,3 +52,38 @@ test('the first buffered terminal input follows the pending resize', async () =>
     client.close();
   }
 });
+
+test('a third detached terminal frees only the oldest screen, and the session can attach again', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store();
+  store.attach(client);
+  const host = document.createElement('div');
+  Object.defineProperties(host, { clientWidth: { value: 800 }, clientHeight: { value: 400 } });
+  document.body.append(host);
+  const opened = vi.spyOn(Terminal.prototype, 'open');
+  const disposed = vi.spyOn(Terminal.prototype, 'dispose');
+  const sessions = ['a', 'b', 'c'].map(id => {
+    const attachment = vi.fn(async () => ({ id, cwd: '/workspace', output: 'shell output' }));
+    return { session: new TerminalSession(store, id, attachment, () => {}), attachment };
+  });
+  try {
+    await store.connect();
+    for (const { session, attachment } of sessions) {
+      session.mount(host, { autofocus: false });
+      await vi.waitFor(() => expect(attachment).toHaveBeenCalledOnce());
+      session.unmount(host);
+    }
+    expect(disposed.mock.contexts).toEqual([opened.mock.contexts[0]]);
+    sessions[0]!.session.mount(host, { autofocus: false });
+    await vi.waitFor(() => expect(sessions[0]!.attachment).toHaveBeenCalledTimes(2));
+    expect(opened).toHaveBeenCalledTimes(4);
+    expect(disposed.mock.contexts).toEqual([opened.mock.contexts[0]]);
+  } finally {
+    for (const { session } of sessions) session.dispose();
+    opened.mockRestore();
+    disposed.mockRestore();
+    host.remove();
+    store.detach();
+    client.close();
+  }
+});
