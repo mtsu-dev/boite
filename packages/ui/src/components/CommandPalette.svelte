@@ -96,9 +96,11 @@
 
   let machines = $derived(workspace.machinesOr(store));
   let mentions = $state.raw<{ machine: Machine; hit: ThreadMessageMatch }[]>([]);
+  let mentionsQuery = $state('');
   let searchFailed = $state(false);
   const mentionQuery = $derived(query.slice(0, MESSAGE_SEARCH_QUERY_LIMIT));
   const searchTerms = $derived(messageSearchTerms(mentionQuery));
+  const mentionTerms = $derived(messageSearchTerms(mentionsQuery));
   $effect(() => {
     if (!store.paletteOpen) return;
     const asked = mentionQuery;
@@ -107,11 +109,17 @@
     searchFailed = false;
     if (!enough || owners.length === 0) {
       mentions = [];
+      mentionsQuery = '';
       return;
     }
     let current = true;
     const timer = setTimeout(() => {
       const byMachine = new Map<string, { machine: Machine; hit: ThreadMessageMatch }[]>();
+      const publish = () => {
+        mentionsQuery = asked;
+        mentions = [...byMachine.values()].flat().sort((a, b) =>
+          orderMessageMatches(a.hit, b.hit) || a.machine.id.localeCompare(b.machine.id)).slice(0, 20);
+      };
       for (const machine of owners) {
         const client = machine.store.client;
         if (!client) continue;
@@ -119,10 +127,12 @@
         void client.call('threads.search', { query: asked, replacePending: true }).then(({ matches }) => {
           if (!wanted()) return;
           byMachine.set(machine.id, matches.map(hit => ({ machine, hit })));
-          mentions = [...byMachine.values()].flat().sort((a, b) =>
-            orderMessageMatches(a.hit, b.hit) || a.machine.id.localeCompare(b.machine.id)).slice(0, 20);
+          publish();
         }).catch((error: unknown) => {
-          if (wanted() && !(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) searchFailed = true;
+          if (!wanted()) return;
+          byMachine.delete(machine.id);
+          publish();
+          if (!(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) searchFailed = true;
         });
       }
     }, 120);
@@ -259,7 +269,7 @@
       if (!mention) return;
       const { hit, place } = mention;
       const target = place.machine.store;
-      const match = { messageId: hit.messageId, query: mentionQuery };
+      const match = { messageId: hit.messageId, query: mentionsQuery || mentionQuery };
       if (workspace.machines.length) void workspace.select(target, hit.threadId, undefined, { match });
       else { target.showChat(); void target.open(hit.threadId, true, { match }); }
       return;
@@ -425,7 +435,7 @@
                     {/if}
                   </span>
                   {#if mention}
-                    <span class="detail mention-snippet"><span class="speaker">{strings.palette.speakers[mention.hit.role]}</span> {@render highlighted(mention.hit.snippet, messageMatchRanges(mention.hit.snippet, searchTerms))}</span>
+                    <span class="detail mention-snippet"><span class="speaker">{strings.palette.speakers[mention.hit.role]}</span> {@render highlighted(mention.hit.snippet, messageMatchRanges(mention.hit.snippet, mentionTerms))}</span>
                   {:else if item.matchHint}
                     <span class="detail" data-testid="palette-match-hint">{strings.palette.matchFields[item.matchHint.field]} {@render highlighted(item.matchHint.text, item.matchHint.ranges)}</span>
                   {/if}

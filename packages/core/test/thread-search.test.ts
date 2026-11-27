@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { RpcErrorCode, type Message } from '@boite/contracts';
 import { Journal } from '../src/journal.ts';
 import { searchThreadMessages } from '../src/journal/message-search.ts';
+import { copyStoredParts } from '../src/journal/stream-buffer.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 let core: TestCore | undefined;
@@ -68,6 +69,19 @@ test('schema 54 indexes old visible messages and tracks replacements, streamed t
     journal.stream.setMessageState('revised', 'complete');
     expect(search('updated sentence')).toEqual([]);
     expect(search('original')).toEqual(['old']);
+
+    // A streaming message whose earlier text part lives only in messages.parts stays searchable
+    // when a later part index is flushed to streaming_parts, and copies preserve both parts.
+    journal.db.query("INSERT INTO threads (id, title, provider_id, account_id, cwd, permission_mode, status, unread, archived, created_at, updated_at, incognito) VALUES ('visible-copy', 'Copy', 'echo', 'echo', '.', 'default', 'idle', 0, 0, 1, 1, 0)").run();
+    journal.putMessage({ ...message('multi', 'visible', 'xylophonist baseline'), role: 'assistant', state: 'streaming' });
+    journal.stream.setMessagePart('multi', 1, { type: 'text', text: 'marimba continuation' });
+    journal.persistMessages();
+    expect(search('xylophonist')).toEqual(['multi']);
+    expect(search('marimba')).toEqual(['multi']);
+    expect(search('xylophonist marimba')).toEqual(['multi']);
+    journal.putMessage({ ...message('multi-copy', 'visible-copy', 'xylophonist baseline'), role: 'assistant', state: 'streaming' });
+    copyStoredParts(journal.db, 'multi', { id: 'multi-copy', threadId: 'visible-copy' });
+    expect(search('xylophonist marimba').sort()).toEqual(['multi', 'multi-copy']);
   } finally {
     journal.close();
     rmSync(dir, { recursive: true, force: true });
@@ -166,18 +180,22 @@ test('threads.search keeps exact whole words ahead of many prefix hits and scans
     for (let index = 0; index < 200; index++) journal.putMessage(message(`prefix-${index}`, prefixThread, 'Many planets orbit suns', index + 10));
     for (let index = 0; index < hexThreads.length; index++) {
       journal.putMessage(message(`hex-${index}`, hexThreads[index]!, `deadbeefabcd${String(index).padStart(4, '0')}`, index + 100));
+      if (index < 50) journal.putMessage(message(`pos1-${index}`, hexThreads[index]!, 'zephyr omega', index + 200));
     }
+    journal.putMessage(message('pos2-phrase', hexThreads[0]!, 'detailed notes covering the exact omega zephyr phrase rollout checklist', 50));
     journal.putMessage(message('real-infix', infixThread, 'Check prefixabcdsuffix here', 1));
   })();
 
   const planet = await client.call('threads.search', { query: 'planet', limit: 2 });
   expect(planet.matches[0]).toMatchObject({ threadId: exactThread, messageId: 'exact-planet' });
 
-  // Consecutive searches across >40 matching threads must not leave cached SQLite statements busy.
+  // Consecutive searches across >40 matching threads must still inspect position=2..4 candidates and leave no busy statements.
   const firstMany = await client.call('threads.search', { query: 'deadbeef', limit: 5 });
   const secondMany = await client.call('threads.search', { query: 'deadbeef', limit: 5 });
   expect(firstMany.matches).toHaveLength(5);
   expect(secondMany.matches).toHaveLength(5);
+  const phrase = await client.call('threads.search', { query: 'omega zephyr', limit: 5 });
+  expect(phrase.matches[0]).toMatchObject({ threadId: hexThreads[0], messageId: 'pos2-phrase' });
 
   if (journal.db.query("SELECT 1 FROM sqlite_schema WHERE name = 'messages_fts_infix'").get() !== null) {
     const infix = await client.call('threads.search', { query: 'abcd', limit: 5 });

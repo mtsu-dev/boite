@@ -467,23 +467,31 @@ half the thread ranking, which still sums the turns themselves.
 
 ## Message search
 
-Schema 54 adds `message_search_keys` and two contentless FTS5 indexes
-(`content='', contentless_delete=1`), `messages_fts` (word and prefix) and
-`messages_fts_infix` (trigram), so message bodies are not duplicated in the
-database. `threads.search` runs in a worker on a read-only connection, ranks at
-most four candidates per thread in one bounded query per pass without `OFFSET`
-rescans or nested `MATCH` joins, and skips the prefix and infix passes once the
-exact pass fills the page with higher-scoring matches. While a response streams,
-`refreshStreamMessageSearch` updates the message's FTS rows only on flushes
-where a text part changed, skipping tool and thinking deltas.
+Schema 54 adds `message_search_keys` and two FTS5 indexes, `messages_fts` (word
+and prefix) and `messages_fts_infix` (trigram). On SQLite 3.43+, both tables use
+`content='', contentless_delete=1` so message bodies are not stored twice; on
+older system SQLite builds (such as macOS 13 with SQLite 3.39.5), `messages_fts`
+falls back to a standard FTS5 table so startup migration still succeeds, and
+`messages_fts_infix` is skipped when the build lacks `trigram remove_diacritics 1`
+(SQLite 3.45+). `threads.search` runs in a worker on a read-only connection,
+ranks at most four candidates per thread (`position <= 4`) in one bounded query
+(`LIMIT` 400 to 1,600) per pass without `OFFSET` rescans or nested `MATCH`
+joins, overlays `streaming_parts` by `part_index` on top of `messages.parts`,
+and skips the prefix and infix passes once the exact pass fills the page with
+higher-scoring matches. Very long threads with many matches for a common word
+may stop inspecting candidates beyond their top four BM25 hits per pass. While a
+response streams, `refreshStreamMessageSearch` updates the message's FTS rows
+only on flushes where a text part changed, skipping tool and thinking deltas.
 
-On 2026-11-27, Linux, Bun 1.4.2 (SQLite 3.53.2), on synthetic 120,000-message
-journals (`23.1 MB` to `23.4 MB` before migration 54):
+On 2026-11-27, Linux, Bun 1.4.2 (SQLite 3.53.2), measured directly against
+`createMessageSearch` and `searchThreadMessages` on synthetic 120,000-message
+journals of ~900-byte messages (`125.2 MB` before migration 54, WAL truncated
+before and after; most of the +271.5 MB growth is the trigram index):
 
-| Journal shape | Size after migration 54 | Migration 54 | Common word (`deploy`) | Short + word (`the error`) | Substring (`ploy`) | Worst-case 3-pass fallback (`test the build`, 4 threads) |
+| Journal shape | Size after migration 54 | Migration 54 (blocking startup tx) | Common word (`deploy`) | Short + word (`the error`) | Substring (`ploy`) | Worst-case 3-pass (`test the build`) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 120,000 messages, 20 threads | 77.9 MB | 3.16 s | 162 ms | 165 ms | 170 ms | 146 ms |
-| 120,000 messages, 500 threads | 78.4 MB | 3.17 s | 160 ms | 163 ms | 172 ms | 46 ms (20 threads) |
+| 120,000 messages, 20 threads | 396.7 MB | 10.01 s | 168 ms | 190 ms | 170 ms | 163 ms (4 threads) |
+| 120,000 messages, 500 threads | 396.9 MB | 10.01 s | 165 ms | 206 ms | 182 ms | 69 ms (20 threads) |
 
 ## Local and remote connections
 

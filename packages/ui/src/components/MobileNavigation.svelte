@@ -589,7 +589,7 @@
     .mobile-header > :global(.thread-list-notice) { flex-basis: 100%; }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
-    .global-search { flex: 1 0 100%; justify-content: flex-start; gap: 8px; min-height: 36px; padding: 0 10px; font-size: var(--text-sm); color: var(--color-muted-foreground); white-space: nowrap; }
+    .global-search { flex: 1 0 100%; justify-content: flex-start; gap: 8px; min-height: var(--touch-target); padding: 0 10px; font-size: var(--text-sm); color: var(--color-muted-foreground); white-space: nowrap; }
     /* The display options close the field's row, after a hairline. */
     .display { display: flex; align-self: stretch; align-items: center; flex: none; border-left: 1px solid var(--color-border); }
     .display :global(.trigger) { width: var(--touch-target); height: var(--touch-target); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }

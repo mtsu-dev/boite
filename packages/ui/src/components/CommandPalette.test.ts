@@ -440,3 +440,32 @@ test('the keyboard ring leaves with a new query and with a reopen', async () => 
   await tick();
   expect(ringed()).toBe(0);
 });
+
+test('a failed follow-up message search clears stale mentions above the error hint', async () => {
+  const originalCall = client.call.bind(client);
+  let fail = false;
+  vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
+    if (method !== 'threads.search') return originalCall(method as never, params as never);
+    if (fail) throw new Error('search timeout');
+    const { query } = params as { query: string };
+    return {
+      query,
+      matches: [{ threadId: 't-trace', messageId: 'm-stale', role: 'assistant', snippet: `${query} found`, messageCreatedAt: 1, score: 3 }],
+    };
+  });
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  await type('alpha');
+  await vi.waitFor(() => {
+    flushSync();
+    expect(document.querySelectorAll('[data-section=mentions] [data-testid=palette-row]').length).toBe(1);
+  });
+  fail = true;
+  await type('beta');
+  await vi.waitFor(() => {
+    flushSync();
+    expect(document.querySelector('[data-testid=palette-search-hint]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-section=mentions] [data-testid=palette-row]').length).toBe(0);
+  });
+});
