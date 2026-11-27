@@ -237,6 +237,7 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
         stop: () => running.stopTurn(turn),
         // Grok and OpenCode 2's native server can steer the active prompt.
         // With plain ACP, queued input must follow a cancelled prompt.
+        get outputRevision() { return turn.outputRevision; },
         cancelForQueuedInput: (attachments) => steering !== 'grok' && !running.steersOpenCode() && running.cancelForQueuedInput(turn, attachments),
         get steer() {
           if (steering === 'grok') return (text: string) => running.steer(turn, text);

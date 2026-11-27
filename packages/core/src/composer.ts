@@ -18,7 +18,7 @@ import { ensureThreadCwd, folderPresent } from './threads/cwd.ts';
 const choiceOf = (thread: ThreadSummary): ComposerChoice => ({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, permissionMode: thread.permissionMode });
 const sameChoice = (a: ComposerChoice, b: ComposerChoice): boolean => a.providerId === b.providerId && a.accountId === b.accountId && a.model === b.model && a.effort === b.effort && (a.speed ?? null) === (b.speed ?? null);
 type ToolBoundary = RpcEvents['turn.toolCompleted'] & {
-  cancel?: 'check-folder' | { handle: TurnHandle; cwd: string; revision: number };
+  cancel?: { handle: TurnHandle; outputRevision: number; folder?: { cwd: string; revision: number } };
 };
 
 /** Durable owner outbox. No browser or subscription participates in execution. */
@@ -43,8 +43,11 @@ export class Composer {
     this.storage = new ComposerStorage(core);
     this.#unsubscribe = core.bus.onCommitted((name, payload) => {
       if (name === 'turn.toolCompleted') {
-        const boundary: ToolBoundary = { ...payload as RpcEvents['turn.toolCompleted'], cancel: 'check-folder' };
+        const boundary: ToolBoundary = { ...payload as RpcEvents['turn.toolCompleted'] };
         if (!this.storage.queued.has(recordKey('inputs', boundary.threadId))) return;
+        const handle = core.threads.runner.handles.get(boundary.threadId);
+        const outputRevision = handle?.outputRevision;
+        if (handle && outputRevision !== undefined) boundary.cancel = { handle, outputRevision };
         this.#boundaries.set(boundary.threadId, boundary);
         this.#schedule([{ section: 'inputs', id: boundary.threadId }]);
       } else if (['turn.finished', 'thread.updated', 'permission.resolved', 'question.answered'].includes(name)) {
@@ -294,21 +297,21 @@ export class Composer {
         if (active && (!turn || boundary?.turnId !== turn.id || boundary.boundary === item.afterBoundary || item.request || isComposerActivity(item.text)
           || !choice || !sameChoice(choice, choiceOf({ ...thread, ...turn.execution })))) return;
         const steeringReason = turn ? userSteeringUnavailable(this.#core, this.#core.threads, id, turn) : null;
-        const handle = turn && cancel && steeringReason === 'unsupported' && this.#canCancelForQueuedInput(turn)
-          ? runner.handles.get(id) : undefined;
+        const handle = turn && cancel && steeringReason === 'unsupported' && runner.handles.get(id) === cancel.handle
+          && cancel.handle.outputRevision === cancel.outputRevision && this.#canCancelForQueuedInput(turn) ? cancel.handle : undefined;
         if (steeringReason !== null && !handle?.cancelForQueuedInput) return;
         if (boundary && cancel && handle?.cancelForQueuedInput) {
-          if (cancel === 'check-folder') {
-            const check = { handle, cwd: thread.cwd, revision: record.revision };
+          if (!cancel.folder) {
+            const folder = { cwd: thread.cwd, revision: record.revision };
             // A slow share must leave the pump free to handle newer tools and Send now.
-            void folderPresent(check.cwd).then(present => {
+            void folderPresent(folder.cwd).then(present => {
               if (!present || this.#boundaries.get(recordId) !== boundary) return;
-              boundary.cancel = check;
+              boundary.cancel = { ...cancel, folder };
               this.#schedule([{ section, id: recordId }]);
             });
             return;
           }
-          if (cancel.handle !== handle || cancel.cwd !== thread.cwd || cancel.revision !== record.revision) return;
+          if (cancel.folder.cwd !== thread.cwd || cancel.folder.revision !== record.revision) return;
         }
         const batch = composerBatch(value.input.queued, this.storage);
         const attachments = batch.attachments;
@@ -342,6 +345,8 @@ export class Composer {
           const target = this.#core.journal.getThread(id);
           if (this.#core.stopping || this.#closed || !this.storage.queued.has(key) || !target || target.archived || target.cwd !== current.cwd || this.#core.threads.isBusy(id)
             || (target.projectId && this.#core.projects.require(target.projectId).archived)) return;
+          // An accepted pause or queue edit during discovery or the folder check takes effect before admission.
+          if (this.storage.get(section, recordId).revision !== record.revision) return;
           for (const entry of batch.entries) this.#reserve(record, entry, id, batch.requestId);
           if (activity) {
             if (item.previewReferences?.length) throw refused('Activity commands do not accept page references.');

@@ -162,6 +162,7 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): v
       if (update.content.type !== 'text') break;
       const { text } = update.content;
       if (text.length === 0) break;
+      turn.outputRevision += 1;
       if (ownSession) turn.flushExecutionError();
       // Antigravity sends this execution failure as a text update, then returns end_turn.
       if (turn.antigravity && ownSession && isAntigravityAccountUnavailable(text)) {
@@ -171,6 +172,7 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): v
     }
     case 'agent_thought_chunk':
       if (update.content.type === 'text' && update.content.text.length > 0) {
+        turn.outputRevision += 1;
         if (ownSession) turn.flushExecutionError();
         turn.writeThinking(update.content.text);
       }

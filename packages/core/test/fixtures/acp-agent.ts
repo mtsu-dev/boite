@@ -475,6 +475,12 @@ const app = agent({ name: 'acp-fake' })
           await send({ sessionUpdate: 'tool_call', toolCallId: 'third', title: 'third', status: 'in_progress' });
           await send({ sessionUpdate: 'tool_call_update', toolCallId: 'third', status: 'completed' });
         }
+        if (instructions.includes('[answer-on-gate]')) {
+          while (!existsSync(`${process.env['ACP_FAKE_LOG']}.answer`)) {
+            if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+          }
+          await say('The answer is already streaming');
+        }
         if (detached || instructions.includes('[finish-on-gate]')) {
           while (!existsSync(`${process.env['ACP_FAKE_LOG']}.end`)) {
             if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };

@@ -795,9 +795,11 @@ Before cancellation, Boite checks that the working folder exists and runs the
 same synchronous input and execution checks as turn admission. It rechecks the
 tool boundary and queue after reading the filesystem. The composer processes
 the latest completion even when several arrive together. New tool completions
-and Send now can proceed while the folder check is pending. A missing folder or a
-choice that needs model discovery waits for the active turn to end. The ACP
-process also checks its negotiated image support.
+and Send now can proceed while the folder check is pending. If the agent resumes
+streaming its answer or reasoning, the queue waits for the next tool completion
+or the end of the turn. A missing folder or a choice that needs model discovery
+waits for the active turn to end. A pause accepted before admission keeps the
+message queued. The ACP process also checks its negotiated image support.
 The next turn checks the input again at admission. Pending cards, selection
 changes and active goals leave the message queued, as do prompts carrying
 history from an account switch or compaction and the first result owed to

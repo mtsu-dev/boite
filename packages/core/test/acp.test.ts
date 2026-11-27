@@ -270,6 +270,74 @@ test('ACP delivers queued input after two completed tools arrive in one write', 
   expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
 }, 20_000);
 
+test('ACP finishes the answer it started during the working-folder check', async () => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] [answer-on-gate] [finish-on-gate]' });
+  const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'answer-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
+  expect(accepted).toBe(true);
+  const folder = Promise.withResolvers<boolean>();
+  const check = spyOn(threadCwd, 'folderPresent').mockImplementationOnce(() => folder.promise);
+  try {
+    const first = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+    writeFileSync(`${logFile}.first`, 'ready');
+    await first;
+    writeFileSync(`${logFile}.second`, 'ready');
+    await waitFor(() => check.mock.calls.length === 1);
+    const answer = client.next('message.delta', event => event.threadId === threadId && event.text.includes('already streaming'), 10_000);
+    writeFileSync(`${logFile}.answer`, 'ready');
+    await answer;
+    folder.resolve(true);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    writeFileSync(`${logFile}.end`, 'ready');
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
+    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['done', 'done']);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(0);
+  } finally {
+    folder.resolve(true);
+    check.mockRestore();
+  }
+}, 20_000);
+
+test('ACP honors a pause accepted during the queued turn working-folder check', async () => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools]' });
+  const queued = [{ id: 'paused-after-cancel', text: 'Use the new instructions', attachments: [] }];
+  const setPaused = async (paused: boolean) => {
+    const { revision, value } = core.composer.storage.get('inputs', threadId);
+    const input = value?.input ?? { text: '', attachments: [], queued, paused: false };
+    const result = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: revision,
+      value: { ...value, input: { ...input, paused } } });
+    expect(result.accepted).toBe(true);
+  };
+  await setPaused(false);
+  const folder = Promise.withResolvers<boolean>();
+  const check = spyOn(threadCwd, 'folderPresent').mockResolvedValueOnce(true).mockImplementationOnce(() => folder.promise);
+  try {
+    const first = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+    writeFileSync(`${logFile}.first`, 'ready');
+    await first;
+    writeFileSync(`${logFile}.second`, 'ready');
+    await waitFor(() => check.mock.calls.length === 2);
+    expect(core.journal.getTurn(turnId)?.status).toBe('stopped');
+    await setPaused(true);
+    folder.resolve(true);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
+    expect(core.composer.storage.delivery(queued[0]!.id)).toBeNull();
+    await setPaused(false);
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
+    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['stopped', 'done']);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+  } finally {
+    folder.resolve(true);
+    check.mockRestore();
+  }
+}, 20_000);
+
 test('ACP named task calls reach the native team without exposing the side conversation', async () => {
   const { client, threadId } = await startThread();
   // The file's first turn starts the fake agent and the ACP driver cold: 1.3

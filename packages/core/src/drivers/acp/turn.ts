@@ -145,6 +145,7 @@ export class AcpTurn extends TurnParts {
   /** This agent's dialect fixes, read once from the descriptor. */
   readonly antigravity: boolean;
   stoppedForQueuedInput = false;
+  outputRevision = 0;
 
   constructor(ctx: TurnContext) {
     super(ctx);

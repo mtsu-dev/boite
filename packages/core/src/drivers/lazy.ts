@@ -115,6 +115,7 @@ export function lazyDriver(
         get applySettings() { return inner?.applySettings?.bind(inner); },
         get steer() { return inner?.steer?.bind(inner); },
         get steerUser() { return inner?.steerUser?.bind(inner); },
+        get outputRevision() { return inner?.outputRevision; },
         get cancelForQueuedInput() { return inner?.cancelForQueuedInput?.bind(inner); },
         stop() {
           stopRequested = true;
