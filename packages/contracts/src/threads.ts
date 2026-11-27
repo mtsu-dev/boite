@@ -6,6 +6,7 @@ import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, 
 import type { AgentShape } from './imports';
 import type { JournalInspection, JournalInspectionCursor } from './journal-inspection';
 import type { Attachment, Message, MoveNotice, PendingMove, PreviewReference } from './messages';
+import type { ThreadMessageMatch } from './message-search';
 import type { OwnerThreadRequest } from './owner-thread';
 import type { PermissionRequest } from './permissions';
 import type { PluginActor } from './plugins';
@@ -599,15 +600,6 @@ export interface ThreadStats {
   compactions: number;
   /** The messages the user sent. */
   prompts: number;
-}
-
-export interface ThreadMessageMatch {
-  threadId: ThreadId;
-  messageId: MessageId;
-  role: 'user' | 'assistant';
-  snippet: string;
-  messageCreatedAt: Timestamp;
-  score: number;
 }
 
 export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {

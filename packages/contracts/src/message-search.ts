@@ -1,5 +1,14 @@
+import type { MessageId, ThreadId, Timestamp } from './ids';
 import type { Message } from './messages';
-import type { ThreadMessageMatch } from './threads';
+
+export interface ThreadMessageMatch {
+  threadId: ThreadId;
+  messageId: MessageId;
+  role: 'user' | 'assistant';
+  snippet: string;
+  messageCreatedAt: Timestamp;
+  score: number;
+}
 
 export const MESSAGE_SEARCH_QUERY_LIMIT = 200;
 export const MESSAGE_SEARCH_RESULT_LIMIT = 50;
