@@ -23,7 +23,7 @@ import { failureText, loadRefusal, LoadRefused, rpcReason, rpcRefusal } from './
 import { AGENT_OWN_MODEL, agentModelsOf } from './models.ts';
 import { EXIT_GRACE_MS, isGrok, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
 import { commandsOf, imageBlocksOf, usdCostOf, type AcpTurn } from './turn.ts';
-import { CompactionProgress, drawUpdate } from './updates.ts';
+import { drawUpdate } from './updates.ts';
 import { noteReady } from '../driver-log.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { releaseChild } from '../session-close.ts';
@@ -137,7 +137,6 @@ export class AcpSession {
   #hasDetachedWork = false;
   /** Prompts this process acknowledged cancelling for queued input. */
   readonly #queuedInputReceipts = new Set<TurnId>();
-  readonly #compactions = new CompactionProgress();
   /** When this session last sent an update, to tell a reply that ended from one still streaming. */
   #lastUpdateAt = 0;
   /** Grok answered `_x.ai/interject` with an error once: this process has no mid-turn input. */
@@ -312,7 +311,7 @@ export class AcpSession {
   }
 
   cancelForQueuedInput(turn: AcpTurn, attachments: Attachment[]): boolean {
-    if (this.#current !== turn || turn.isStopped || turn.stoppedForQueuedInput || turn.awaitingUser || turn.hasExecutionError || this.#compactions.inProgress(turn.sessionId)
+    if (this.#current !== turn || turn.isStopped || turn.stoppedForQueuedInput || turn.awaitingUser || turn.hasExecutionError || turn.activeCompactions.size > 0
       || this.#holding === turn || this.#commands.outlived() || this.#hasDetachedWork || turn.mayHaveDetachedChildren()) return false;
     if (!this.#imagesSupported && attachments.some(attachment => nativeImage(turn.ctx.provider, attachment))) {
       throw refused(`${turn.ctx.provider.name} takes no images`);
@@ -789,17 +788,6 @@ export class AcpSession {
   #onUpdate(params: SessionNotification): void {
     const update = params.update;
     if (this.#sessionId !== null && params.sessionId === this.#sessionId) this.#lastUpdateAt = Date.now();
-    if (update.sessionUpdate === 'compaction_update' || update.sessionUpdate === 'compaction_summary_chunk') {
-      if (this.#sessionId !== null && params.sessionId !== this.#sessionId) return;
-      const changed = this.#compactions.note(params.sessionId, update);
-      const turn = this.#current;
-      if (changed && turn?.sessionId === params.sessionId) {
-        turn.outputRevision += 1;
-        turn.ctx.reportProgress?.(this.#compactions.inProgress(params.sessionId) ? 'compacting' : 'working',
-          update.sessionUpdate === 'compaction_update' ? update.error ?? null : null);
-      }
-      return;
-    }
     // Not gated on `current`: this one arrives between turns as often as
     // during one, right after `session/new` or `session/load`.
     if (update.sessionUpdate === 'available_commands_update') {

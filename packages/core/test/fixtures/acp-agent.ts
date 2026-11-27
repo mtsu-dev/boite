@@ -301,10 +301,9 @@ function chunksOf(text: string): string[] {
   return chunks;
 }
 
-let reportsCompaction = false;
 const app = agent({ name: 'acp-fake' })
   .onRequest('initialize', async ({ params }) => {
-    reportsCompaction = params.clientCapabilities?.session?.compaction != null;
+    if (params.clientCapabilities?.session?.compaction != null) log('client advertises compaction summaries');
     log('initialize');
     if (process.env['ACP_FAKE_ARGV'] === '1') log(`argv ${JSON.stringify(process.argv.slice(2))}`);
     if (process.env['ACP_FAKE_HANG_INIT'] === '1') await new Promise<void>(() => undefined);
@@ -330,7 +329,7 @@ const app = agent({ name: 'acp-fake' })
     });
     return { sessionId, configOptions, modes: modeState() };
   })
-  .onRequest('session/load', ({ params }) => {
+  .onRequest('session/load', async ({ params, client }) => {
     if (process.env['ACP_FAKE_FORGET'] === '1') {
       log(`load-refused:${params.sessionId}`);
       // A plain throw, like OpenCode's: the SDK answers it with -32603.
@@ -346,6 +345,10 @@ const app = agent({ name: 'acp-fake' })
     }
     known.add(params.sessionId);
     log(`loaded:${params.sessionId}`);
+    if (existsSync(`${process.env['ACP_FAKE_LOG']}.replay-compaction`)) {
+      await client.notify('session/update', { sessionId: params.sessionId,
+        update: { sessionUpdate: 'compaction_update', compactionId: 'old', status: 'in_progress' } });
+    }
     // A conforming load may omit configOptions. The probe still supplied them.
     return opencode2 ? { modes: modeState(), configOptions } : { modes: modeState() };
   })
@@ -442,7 +445,7 @@ const app = agent({ name: 'acp-fake' })
 
     if (instructions.includes('[parallel-tools]')) {
       const detached = instructions.includes('[detached-delegation]');
-      const compaction = reportsCompaction && (instructions.includes('[compacting]') || instructions.includes('[compaction-summary]'));
+      const compaction = instructions.includes('[compacting]');
       const stopped = Promise.withResolvers<void>();
       cancels.set(sessionId, () => {
         log('session/cancel');
@@ -467,9 +470,7 @@ const app = agent({ name: 'acp-fake' })
               if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
             }
             if (id === 'second' && compaction) {
-              await send(instructions.includes('[compaction-summary]')
-                ? { sessionUpdate: 'compaction_summary_chunk', compactionId: 'fixture-compaction', content: { type: 'text', text: 'Summarizing context' } }
-                : { sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'in_progress' });
+              await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'in_progress' });
             }
             await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed',
               ...(detached && id === 'second' ? { title: 'Parser review' } : {}),
@@ -482,7 +483,6 @@ const app = agent({ name: 'acp-fake' })
           }
           if (compaction) {
             await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'completed' });
-            await send({ sessionUpdate: 'compaction_summary_chunk', compactionId: 'fixture-compaction', content: { type: 'text', text: 'Context summary' } });
           }
           await send({ sessionUpdate: 'tool_call', toolCallId: 'third', title: 'third', status: 'in_progress' });
           await send({ sessionUpdate: 'tool_call_update', toolCallId: 'third', status: 'completed' });

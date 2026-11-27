@@ -272,8 +272,7 @@ test('ACP delivers queued input after two completed tools arrive in one write', 
 
 test.each([
   ['text', '[answer-on-gate]'], ['image', '[answer-on-gate] [image-answer]'],
-  ['native compaction', '[compacting]'], ['native compaction with a summary first', '[compaction-summary]'],
-  ['native compaction followed by another tool', '[compaction-summary] [third-tool]'],
+  ['native compaction', '[compacting]'], ['native compaction followed by another tool', '[compacting] [third-tool]'],
 ])('ACP finishes %s before delivering queued input', async (output, directives) => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const core = harness!.core;
@@ -361,6 +360,29 @@ test.each(['succeeds after a pause', 'fails after a pause', 'fails after a move'
     folder.resolve();
     check.mockRestore();
   }
+}, 20_000);
+
+test('ACP compaction activity replayed on load does not block queued input', async () => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const first = await startTurn(client, threadId, 'Create a session', 10_000);
+  expect((await first.finished).status).toBe('done');
+  const sessionId = core.journal.getThread(threadId)!.sessionId;
+  expect(sessionId).not.toBeNull();
+  writeFileSync(`${logFile}.replay-compaction`, 'ready');
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools]' });
+  const queued = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'after-replay', text: 'Use the new instructions', attachments: [] }] } } });
+  expect(queued.accepted).toBe(true);
+  const completed = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+  writeFileSync(`${logFile}.first`, 'ready');
+  await completed;
+  writeFileSync(`${logFile}.second`, 'ready');
+  await waitFor(() => core.journal.listTurns(threadId)[2]?.finishedAt != null);
+  expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['done', 'stopped', 'done']);
+  expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(1);
+  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+  expect(countLogLines(fakeLog(), 'client advertises compaction summaries')).toBe(0);
 }, 20_000);
 
 test('ACP named task calls reach the native team without exposing the side conversation', async () => {
@@ -1439,17 +1461,6 @@ describe('acp driver', () => {
     expect(sessionNotificationOf(null)).toBeNull();
     expect(sessionNotificationOf({ update: { sessionUpdate: 'plan', entries: [] } })).toBeNull();
     expect(of({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 7 } })).toBeNull();
-    const summaryChunk = (content: unknown) => ({ sessionUpdate: 'compaction_summary_chunk', compactionId: 'c', content });
-    for (const content of [
-      { type: 'audio' }, { type: 'resource_link', uri: 'file:///summary' },
-      { type: 'resource', resource: { uri: 'file:///summary' } }, { type: 'unknown' },
-    ]) expect(of(summaryChunk(content))).toBeNull();
-    for (const content of [
-      { type: 'text', text: 'summary' }, { type: 'image', data: 'YQ==', mimeType: 'image/png' },
-      { type: 'audio', data: 'YQ==', mimeType: 'audio/wav' }, { type: 'resource_link', name: 'Summary', uri: 'file:///summary' },
-      { type: 'resource', resource: { uri: 'file:///summary', text: 'summary' } },
-      { type: 'resource', resource: { uri: 'file:///summary', blob: 'YQ==' } },
-    ]) expect(of(summaryChunk(content))).toEqual(summaryChunk(content));
     expect(of({ sessionUpdate: 'usage_update', used: '9', size: 10 })).toBeNull();
     expect(of({ sessionUpdate: 'tool_call', toolCallId: 't' })).toBeNull();
     expect(of({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } })).toEqual({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } });

@@ -333,13 +333,13 @@ export class Composer {
           this.#complete(section, recordId, batch.entries.map(entry => entry.id)); continue;
         }
         this.#boundaries.delete(recordId);
-        if (choice) await this.#discover(choice);
+        const discoveryFailure = choice ? await this.#discover(choice).catch((error: unknown) => ({ error })) : undefined;
         // A discovery RPC can yield while the user archives the target or stops the core.
         const current = this.#core.journal.getThread(id);
         if (this.#closed || this.#core.stopping || !current || current.archived || (current.projectId && this.#core.projects.require(current.projectId).archived)) return;
         // As `turns.start`: the project's folder is only reported (a shared worktree outlives it); the turn's own cwd decides.
-        if (current.projectId) void this.#core.projects.requireFolder(current.projectId).catch(() => undefined);
-        const folderFailure = await ensureThreadCwd(this.#core, current).catch((error: unknown) => ({ error }));
+        if (!discoveryFailure && current.projectId) void this.#core.projects.requireFolder(current.projectId).catch(() => undefined);
+        const admissionFailure = discoveryFailure ?? await ensureThreadCwd(this.#core, current).catch((error: unknown) => ({ error }));
         const activity = composerActivity(item.text);
         this.#atomic(() => {
           const target = this.#core.journal.getThread(id);
@@ -347,7 +347,7 @@ export class Composer {
             || (target.projectId && this.#core.projects.require(target.projectId).archived)) return;
           // An accepted pause or queue edit during discovery or the folder check takes effect before admission.
           if (this.storage.get(section, recordId).revision !== record.revision) return;
-          if (folderFailure) throw folderFailure.error;
+          if (admissionFailure) throw admissionFailure.error;
           for (const entry of batch.entries) this.#reserve(record, entry, id, batch.requestId);
           if (activity) {
             if (item.previewReferences?.length) throw refused('Activity commands do not accept page references.');

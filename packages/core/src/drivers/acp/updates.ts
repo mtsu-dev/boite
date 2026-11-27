@@ -54,27 +54,6 @@ function contentBlock(value: unknown): Fields | null {
   return block;
 }
 
-/** A summary can open a compaction, so require the payload for every accepted kind. */
-function compactionSummaryContent(value: unknown): boolean {
-  const block = contentBlock(value);
-  if (block === null) return false;
-  switch (block['type']) {
-    case 'text':
-    case 'image':
-      return true;
-    case 'audio':
-      return isString(block['data']) && isString(block['mimeType']);
-    case 'resource_link':
-      return isString(block['uri']) && isString(block['name']);
-    case 'resource': {
-      const resource = fields(block['resource']);
-      return resource !== null && isString(resource['uri']) && (isString(resource['text']) || isString(resource['blob']));
-    }
-    default:
-      return false;
-  }
-}
-
 function toolContent(entry: Fields): Fields | null {
   if (entry['type'] === 'diff') {
     if (!isString(entry['path']) || !isString(entry['newText'])) return null;
@@ -157,8 +136,6 @@ function checkedUpdate(update: Fields): Fields | null {
     case 'compaction_update':
       if (!isString(update['compactionId']) || !isString(update['status'])) return null;
       return { ...update, error: optionalString(update['error']) };
-    case 'compaction_summary_chunk':
-      return isString(update['compactionId']) && compactionSummaryContent(update['content']) ? update : null;
     default:
       return update;
   }
@@ -175,36 +152,6 @@ export function sessionNotificationOf(params: unknown): SessionNotification | nu
   if (notification === null || update === null || !isString(notification['sessionId']) || !isString(update['sessionUpdate'])) return null;
   const checked = checkedUpdate(update);
   return checked === null ? null : ({ ...notification, update: checked as Update } as SessionNotification);
-}
-
-type CompactionUpdate = Extract<Update, { sessionUpdate: 'compaction_update' | 'compaction_summary_chunk' }>;
-
-/** Compactions belong to the session and can be reported before a prompt starts. */
-export class CompactionProgress {
-  readonly #sessions = new Map<string, Map<string, boolean>>();
-
-  inProgress(sessionId: string | null): boolean {
-    if (sessionId === null) return false;
-    const states = this.#sessions.get(sessionId);
-    if (states) for (const active of states.values()) if (active) return true;
-    return false;
-  }
-
-  note(sessionId: string, update: CompactionUpdate): boolean {
-    let states = this.#sessions.get(sessionId);
-    const { compactionId } = update;
-    let active: boolean;
-    if (update.sessionUpdate === 'compaction_summary_chunk') {
-      // A summary can open a compaction, but appending to a finished one does not reopen it.
-      if (states?.get(compactionId) === false) return false;
-      active = true;
-    } else if (update.status === 'in_progress') active = true;
-    else if (update.status === 'completed' || update.status === 'failed' || update.status === 'cancelled') active = false;
-    else return false;
-    if (!states) this.#sessions.set(sessionId, states = new Map());
-    states.set(compactionId, active);
-    return true;
-  }
 }
 
 /** One `session/update` of the prompt in flight. */
@@ -259,6 +206,16 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): v
     case 'plan':
       turn.ctx.tasks?.(update.entries.map((entry, index) => ({ id: String(index), text: entry.content, status: entry.status })));
       break;
+    case 'compaction_update': {
+      if (!ownSession) break;
+      const { compactionId, status, error } = update;
+      if (status === 'in_progress') turn.activeCompactions.add(compactionId);
+      else if (status === 'completed' || status === 'failed' || status === 'cancelled') turn.activeCompactions.delete(compactionId);
+      else break;
+      turn.outputRevision += 1;
+      turn.ctx.reportProgress?.(turn.activeCompactions.size > 0 ? 'compacting' : 'working', error ?? null);
+      break;
+    }
     default:
       // user_message_chunk, plan_update, plan_removed,
       // config_option_update and session_info_update have no MessagePart in
