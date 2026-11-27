@@ -1,5 +1,5 @@
-import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
-import { composerInputThreadId, isComposerKey, privateTerminalComposerId } from '@boite/contracts';
+import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcEvents, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
+import { composerInputThreadId, isComposerKey, previewReferencesError, privateTerminalComposerId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
@@ -11,7 +11,7 @@ import { needsModelDiscovery } from './threads/selection.ts';
 import { admissionRefusal } from './threads/admission.ts';
 import { composerActivity, isComposerActivity, startsAutoGoal } from './composer-activity.ts';
 import { composerBatch } from './composer-batch.ts';
-import { checkTurnRequest } from './threads/inputs.ts';
+import { checkAttachments, checkTurnRequest } from './threads/inputs.ts';
 import { ensureThreadCwd } from './threads/cwd.ts';
 
 const choiceOf = (thread: ThreadSummary): ComposerChoice => ({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, permissionMode: thread.permissionMode });
@@ -26,7 +26,7 @@ export class Composer {
   readonly #pending = new Map<string, Pick<ComposerRecord, 'section' | 'id'>>();
   readonly #dirty = new Set<string>();
   readonly #captured = new Map<string, ComposerQueuedPrompt[]>();
-  readonly #boundaries = new Map<string, string>();
+  readonly #boundaries = new Map<string, RpcEvents['turn.toolCompleted']>();
   readonly #forced = new Map<string, string>();
   #stopWaiting!: () => void;
   readonly #stopped = new Promise<null>(resolve => { this.#stopWaiting = () => resolve(null); });
@@ -39,9 +39,9 @@ export class Composer {
     this.storage = new ComposerStorage(core);
     this.#unsubscribe = core.bus.onCommitted((name, payload) => {
       if (name === 'turn.toolCompleted') {
-        const boundary = payload as { threadId: string; boundary: string };
+        const boundary = payload as RpcEvents['turn.toolCompleted'];
         if (!this.storage.queued.has(recordKey('inputs', boundary.threadId))) return;
-        this.#boundaries.set(boundary.threadId, boundary.boundary);
+        this.#boundaries.set(boundary.threadId, boundary);
         this.#schedule([{ section: 'inputs', id: boundary.threadId }]);
       } else if (['turn.finished', 'thread.updated', 'permission.resolved', 'question.answered'].includes(name)) {
         const thread = payload as { threadId?: string; id?: string };
@@ -280,14 +280,25 @@ export class Composer {
           await Promise.race([this.#stopped, this.#core.scheduler.stopAndWait(id)]);
           continue;
         }
-        const running = active ? this.#core.journal.runningTurn(id) : null;
-        if (active && (!boundary || boundary === item.afterBoundary || item.request || isComposerActivity(item.text) || !choice || !sameChoice(choice, choiceOf({ ...thread, ...running?.execution })) || userSteeringUnavailable(this.#core, this.#core.threads, id, running) !== null)) return;
+        const turn = active ? this.#core.journal.runningTurn(id) : null;
+        if (active && (!turn || boundary?.turnId !== turn.id || boundary.boundary === item.afterBoundary || item.request || isComposerActivity(item.text)
+          || !choice || !sameChoice(choice, choiceOf({ ...thread, ...turn.execution })))) return;
+        const steeringReason = turn ? userSteeringUnavailable(this.#core, this.#core.threads, id, turn) : null;
+        const interrupt = turn !== null && steeringReason === 'unsupported' && this.#canInterruptForQueuedInput(turn);
+        if (steeringReason !== null && !interrupt) return;
         const batch = composerBatch(value.input.queued, this.storage);
         const attachments = batch.attachments;
         this.#captured.set(key, batch.entries);
-        if (active) {
-          const turn = running;
-          if (!turn) return;
+        if (interrupt) {
+          // Validate the input before cancelling work. The next pass uses the normal durable start.
+          checkAttachments(attachments, this.#core.providers.require(thread.providerId));
+          const error = previewReferencesError(batch.previewReferences, batch.text);
+          if (error) throw refused(error);
+          this.#boundaries.delete(recordId);
+          await Promise.race([this.#stopped, this.#core.scheduler.stopAndWait(id)]);
+          continue;
+        }
+        if (turn) {
           for (const entry of batch.entries) this.#reserve(record, entry, id, batch.requestId);
           const accepted = await Promise.race([this.#stopped, steerUser(this.#core, this.#core.threads, { threadId: id, turnId: turn.id, prompt: batch.text, attachments, previewReferences: batch.previewReferences, clientRequestId: batch.requestId, expectedSelectionVersion: thread.selectionVersion ?? 0 }, batch.entries[0]!.sentFrom ?? null)]);
           if (!accepted || this.#closed) return;
@@ -327,6 +338,15 @@ export class Composer {
         this.#hold(section, recordId, item.id, messageOf(error)); return;
       } finally { this.#captured.delete(key); }
     }
+  }
+
+  #canInterruptForQueuedInput(turn: Turn): boolean {
+    const { threadId } = turn;
+    const { threads, activity, scheduler } = this.#core;
+    if (turn.execution?.operation || scheduler.stopTarget(threadId) !== turn.id || threads.handoff.toolsRunning(threadId) > 0
+      || !threads.runner.handles.get(threadId)?.canInterruptForQueuedInput?.()) return false;
+    const { goal, loop } = activity.get(threadId);
+    return goal?.status !== 'active' && loop?.status !== 'active' && !activity.ownsReviewer(threadId) && !activity.ownsTracker(threadId);
   }
 
   /** Reads the agent's models once when the queued selection names one Boite has not seen yet. */

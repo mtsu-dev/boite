@@ -115,7 +115,7 @@ export class AcpSession {
   #diedAlone = false;
   readonly #idle = new IdleTimer(() => this.#drop());
   readonly #retention = new SessionRetention();
-  /** The turn whose `session/prompt` is in flight; updates outside one are dropped. */
+  /** The turn receiving updates, including Antigravity's reply after the prompt. */
   #current: AcpTurn | null = null;
   /** The turn the queue is running, from its start to its end, prompt or not. */
   #active: AcpTurn | null = null;
@@ -302,6 +302,11 @@ export class AcpSession {
       if (!turn.settled) this.#drop();
     }, STOP_GRACE_MS);
     this.#stopTimer.unref?.();
+  }
+
+  canInterruptPrompt(turn: AcpTurn): boolean {
+    return this.#current === turn && !turn.isStopped && !turn.awaitingUser && !turn.hasExecutionError
+      && this.#holding !== turn && !this.#commands.outlived() && !turn.mayHaveDetachedChildren();
   }
 
   /**
@@ -540,13 +545,13 @@ export class AcpSession {
     if (home === null) return;
     // Before any await: a tool the reply starts while the records are read is the reply's.
     const prompted = turn.toolCallIds();
-    const first = await readDetachedWork(home, sessionId, prompted).catch(() => null);
-    if (first === null || first.launched === 0) return;
-    turn.ctx.log('info', `acp: the prompt ended with ${first.atWork} of the ${first.launched} children it launched at work; the turn waits for their reports and the agent's reply`);
     this.#holding = turn;
     // The quiet counts from the last update or the last poll that found work.
     let busyAt = Date.now();
     try {
+      const first = await readDetachedWork(home, sessionId, prompted).catch(() => null);
+      if (first === null || first.launched === 0) return;
+      turn.ctx.log('info', `acp: the prompt ended with ${first.atWork} of the ${first.launched} children it launched at work; the turn waits for their reports and the agent's reply`);
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, DETACHED_POLL_MS));
         if (this.#ended || turn.settled || turn.isStopped) return;

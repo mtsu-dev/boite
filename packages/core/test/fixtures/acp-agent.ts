@@ -430,6 +430,25 @@ const app = agent({ name: 'acp-fake' })
     const say = (chunk: string): Promise<void> =>
       send({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: chunk } });
 
+    if (instructions.includes('[parallel-tools]')) {
+      const stopped = Promise.withResolvers<void>();
+      cancels.set(sessionId, () => { log('session/cancel'); stopped.resolve(); });
+      try {
+        for (const id of ['first', 'second']) {
+          await send({ sessionUpdate: 'tool_call', toolCallId: id, title: id, status: 'in_progress' });
+        }
+        for (const id of ['first', 'second']) {
+          const gate = `${process.env['ACP_FAKE_LOG']}.${id}`;
+          while (!existsSync(gate)) {
+            if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+          }
+          await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed' });
+        }
+        await stopped.promise;
+        return { stopReason: 'cancelled' };
+      } finally { cancels.delete(sessionId); }
+    }
+
     // The agent switching on its own, before anything else it says.
     const switched = modeSwitchIn(instructions);
     if (switched !== null) {

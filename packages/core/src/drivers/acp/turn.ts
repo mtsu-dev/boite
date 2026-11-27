@@ -174,6 +174,15 @@ export class AcpTurn extends TurnParts {
     return new Set(this.#tools.keys());
   }
 
+  /** A completed launch can leave children working in the agent process. */
+  mayHaveDetachedChildren(): boolean {
+    if (!this.antigravity) return false;
+    for (const tool of this.#tools.values()) {
+      if (tool.status !== 'error' && (tool.subagent === 'subagent' || /^(?:Running )?swarm$|^Run swarm\?$/.test(tool.name))) return true;
+    }
+    return false;
+  }
+
   /**
    * A tool call of this turn, not one in `before`, still running. A subagent
    * launch is left out: Antigravity never closes it, and its children are

@@ -447,6 +447,8 @@ export interface TurnHandle {
   steer?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean>;
   /** Native user input, when system coordination uses a separate tool-boundary hook. */
   steerUser?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean>;
+  /** Whether the composer can stop the current prompt at a tool boundary and start the queued input. */
+  canInterruptForQueuedInput?(): boolean;
 }
 
 /**

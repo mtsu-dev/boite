@@ -256,7 +256,8 @@ tool text stays output, while images and file diffs stay attached documents.
 Follow-ups use the native prompt inbox with `delivery: "steer"`, so queued
 messages join the running execution at tool boundaries. Send now interrupts
 the active turn before starting its queued input. OpenCode 2's ACP endpoint
-rejects concurrent prompts. Events received during a follow-up submission wait
+rejects concurrent prompts and uses the queued-input cancellation path below.
+Events received during a follow-up submission wait
 until its acceptance is journalled, keeping the user message before its reply.
 Accepted inbox IDs remain tracked until delivery or cancellation, so a previous
 execution's terminal event cannot discard a late follow-up. Yolo mode approves
@@ -777,6 +778,16 @@ descriptor uses additional fields available to other providers:
   The paste is checked against the `redirect_uri` of the link the agent printed,
   same port and same path, so the fetch lands on the agent's listener and
   nowhere else on the machine. [accounts.md](accounts.md) has the flow.
+
+### Queued input on ACP
+
+Grok and OpenCode 2's native server steer the running prompt. On other ACP
+transports, a queued message can start after Boite receives a tool completion
+and no other tool is running. Boite cancels the current prompt, waits for it
+to settle, then starts a new turn using the saved session or the conversation
+history if the agent cannot load it. A pending card, a changed selection,
+or work that must keep running, such as a goal or Antigravity's detached
+workers, leaves the message queued. Explicit Send now can still interrupt.
 
 `quirks` turns on a dialect the ACP driver knows, and there are three.
 `quirks: ["antigravity"]` folds a tool call's command, working directory and

@@ -6,7 +6,7 @@ import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import type { SessionNotification } from '@agentclientprotocol/sdk/unstable';
-import type { MessagePart, PermissionMode, RpcEvents, Settings } from '@boite/contracts';
+import type { ImageAttachment, MessagePart, PermissionMode, RpcEvents, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { createAcpDriver } from '../src/drivers/acp.ts';
 import { runAcpLogin } from '../src/drivers/acp/login.ts';
@@ -22,6 +22,55 @@ import { thrown } from './settle.ts';
 
 /** The fake ACP agent: a real ACP process over stdio, run by bun. */
 const FAKE_AGENT = fileURLToPath(new URL('./fixtures/acp-agent.ts', import.meta.url));
+
+test.each(['antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local ACP'])('%s delivers queued input when its parallel tools finish', async provider => {
+  const client = await startCore();
+  const core = harness!.core;
+  let threadId: string;
+  if (provider === 'local ACP') threadId = await acpThread(client);
+  else {
+    if (provider === 'opencode-v2') restoreDriver = setDriver('acp', createAcpDriver({
+      loadSdk: () => import('@agentclientprotocol/sdk/unstable'),
+      agentShim: process.execPath,
+    }));
+    const profile = { detect: {}, isolation: {}, executable: [{ kind: 'file' as const, value: process.execPath }], launch: { args: [FAKE_AGENT] } };
+    Object.assign(core.providers.require(provider), { auth: { kind: 'none' }, env: {}, seedFiles: undefined, profiles: { windows: profile, linux: profile, macos: profile } });
+    await client.call('providers.setEnabled', { providerId: provider, enabled: true });
+    const account = await client.call('accounts.add', { providerId: provider, label: 'Fixture' });
+    const project = await client.call('projects.add', { path: harness!.dataDir });
+    threadId = (await client.call('threads.create', { projectId: project.id, providerId: provider, accountId: account.id })).id;
+    await client.call('threads.subscribe', { threadId });
+  }
+  const secondTool = client.next('message.part', ({ threadId: id, part }) => id === threadId && part.type === 'tool' && part.toolId === 'second', 10_000);
+  const turn = await client.call('turns.start', { threadId, prompt: '[parallel-tools]' });
+  await secondTool;
+  const originalSession = core.threads.require(threadId).sessionId;
+  expect(originalSession).toBeString();
+  const attachment: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'shot.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+  const { assetId } = await client.call('composer.asset.put', { attachment });
+  const firstTool = client.next('turn.toolCompleted', event => event.turnId === turn.id, 10_000);
+  const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{
+      id: 'parallel-tools-follow-up', text: 'Use the new instructions',
+      attachments: provider === 'opencode' ? [] : [{ kind: attachment.kind, mimeType: attachment.mimeType, name: attachment.name, assetId }],
+    }] } } });
+  expect(saved.accepted).toBe(true);
+  writeFileSync(`${logFile}.first`, 'ready');
+  await firstTool;
+  expect(core.journal.getTurn(turn.id)?.status).toBe('running');
+  expect(fakeLog()).not.toContain('session/cancel');
+  writeFileSync(`${logFile}.second`, 'ready');
+  await waitFor(() => countLogLines(fakeLog(), 'session/prompt') === 2);
+  await waitFor(() => core.journal.listTurns(threadId).at(-1)?.status === 'done');
+  const current = await client.call('threads.get', { threadId });
+  expect(current.turns.map(at => at.status)).toEqual(['stopped', 'done']);
+  expect(current.sessionId).toBe(originalSession);
+  expect(fakeLog()).toContain(`loaded:${originalSession}`);
+  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+  expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' ? 0 : 1);
+  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(2);
+  expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+}, 20_000);
 
 test('ACP named task calls reach the native team without exposing the side conversation', async () => {
   const { client, threadId } = await startThread();
