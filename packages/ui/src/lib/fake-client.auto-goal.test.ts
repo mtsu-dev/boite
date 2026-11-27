@@ -1,6 +1,8 @@
 import { expect } from 'vitest';
 import { test } from '../test/fake-client';
 import type { FakeClient } from './fake-client';
+import { FakeContext } from './fake-client/context';
+import { startsAutoGoal } from './fake-client/activity';
 
 const prompt = (length: number) => `Fix the login page.\n${'x'.repeat(length - 20)}`;
 
@@ -24,6 +26,16 @@ test('a fresh fake starts no automatic goal and refuses goal track, as the core 
   expect((await client.call('threads.get', { threadId: thread.id })).activity?.goal ?? null).toBeNull();
   await expect(client.call('threads.goal.track', { threadId: thread.id })).rejects.toThrow('automatic goals, which are off on this machine');
   expect((await client.call('todos.list', { threadId: thread.id })).some(card => card.goalThreadId === thread.id)).toBe(false);
+});
+
+test('a fake Release starts no automatic goal from a setting a Nightly stored, as the core holds it', () => {
+  const release = new FakeContext({ delayMs: 0, version: '2.0.0' });
+  release.settings = { ...release.settings, autoGoals: true };
+  expect(release.settingsInForce().autoGoals).not.toBe(true);
+  expect(startsAutoGoal(release, prompt(5000))).toBe(false);
+  const nightly = new FakeContext({ delayMs: 0, version: '2.0.0-nightly.20261127.1' });
+  nightly.settings = { ...nightly.settings, autoGoals: true };
+  expect(startsAutoGoal(nightly, prompt(5000))).toBe(true);
 });
 
 test('the fake starts an automatic goal and its card on a long prompt, as the core does', async ({ createClient }) => {
