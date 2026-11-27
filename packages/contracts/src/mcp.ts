@@ -39,6 +39,8 @@ export interface McpPresetField {
   key: string;
   label: string;
   required: boolean;
+  /** Prefix added on save when the user pastes a bare credential without a scheme. */
+  prefix?: string;
 }
 
 export interface McpPreset {

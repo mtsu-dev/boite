@@ -25,16 +25,19 @@ the previous headers unless the save supplies replacement values.
 
 The registry resolves enabled global definitions and definitions for the
 thread's project. If `mcp-secrets.json` is unreadable or malformed, errors name
-the file path and expected JSON shape so the owner can fix or remove it to
-reset stored credentials; server removal still succeeds without touching the
-unreadable file, and session startup logs a warning and skips managed servers
-instead of blocking threads or dropping user stdio servers. Only `secretEnv`
-and `secretHeaders` are stored in `mcp-secrets.json` and masked; tokens placed
-in `url` or `args` stay in `mcp:servers` unmasked. Provider session keys
-include the revision for that project. Edits, disabling and removal revoke the
-affected server in warm sessions. New provider sessions load the current
-registry. A protected turn or a context mode with MCP disabled skips
-registration.
+the file path, a sanitized reason (omitting JSON parser token excerpts so
+credentials cannot leak into logs), and the expected JSON shape so the owner
+can fix or remove it to reset stored credentials; server removal still succeeds
+without touching the unreadable file, and session startup logs a warning and
+skips managed servers instead of blocking threads or dropping user stdio
+servers. Only `secretEnv` and `secretHeaders` are stored in `mcp-secrets.json`
+and masked; tokens placed in `url` or `args` stay in `mcp:servers` unmasked.
+HTTP catalog presets (GitHub, Linear, Notion, Sentry) prefix bare tokens with
+`Bearer ` on save while preserving any explicit authorization scheme. Provider
+session keys include the revision for that project. Edits, disabling and
+removal revoke the affected server in warm sessions. New provider sessions load
+the current registry. A protected turn or a context mode with MCP disabled
+skips registration.
 
 ## Proxy and tests
 
@@ -65,7 +68,9 @@ and waits for its child to stop. An HTTP test attempts to close its remote
 session. The PostgreSQL preset uses the restricted `postgres-mcp` command
 because it accepts the connection URI from its environment. HTTP presets
 (GitHub, Linear, Notion, Sentry) use credentials supplied by the owner,
-including a Notion OAuth access token.
+including a Notion OAuth access token. When a Muse binary lacks `.muse-version`
+and a `--version` check (bounded to 2 s) fails transiently, the session is not
+reused across turns so the next turn starts a fresh host and retries the check.
 
 The `mcp: false` [machine policy](enterprise.md) blocks tests and new managed
 registrations, revokes active ones and aborts in-flight tests. See [network flows](network.md) for

@@ -11,7 +11,7 @@ export const MCP_PRESETS: McpPreset[] = [
     id: 'github', name: 'GitHub', description: 'Work with issues, pull requests, and repositories.',
     docsUrl: 'https://github.com/github/github-mcp-server',
     transport: 'http', url: 'https://api.githubcopilot.com/mcp/',
-    fields: [{ target: 'header', key: 'Authorization', label: 'Authorization header (Bearer token)', required: true }],
+    fields: [{ target: 'header', key: 'Authorization', label: 'Personal access token', required: true, prefix: 'Bearer ' }],
   },
   {
     id: 'context7', name: 'Context7', description: 'Look up current library documentation and examples.',
@@ -40,18 +40,18 @@ export const MCP_PRESETS: McpPreset[] = [
     id: 'linear', name: 'Linear', description: 'Read and manage issues and projects in Linear.',
     docsUrl: 'https://linear.app/docs/mcp',
     transport: 'http', url: 'https://mcp.linear.app/mcp',
-    fields: [{ target: 'header', key: 'Authorization', label: 'Authorization header (Bearer token)', required: true }],
+    fields: [{ target: 'header', key: 'Authorization', label: 'Bearer token', required: true, prefix: 'Bearer ' }],
   },
   {
     id: 'notion', name: 'Notion', description: 'Search and update pages in a Notion workspace.',
     docsUrl: 'https://developers.notion.com/docs/mcp',
     transport: 'http', url: 'https://mcp.notion.com/mcp',
-    fields: [{ target: 'header', key: 'Authorization', label: 'Authorization header (OAuth access token)', required: true }],
+    fields: [{ target: 'header', key: 'Authorization', label: 'OAuth access token', required: true, prefix: 'Bearer ' }],
   },
   {
     id: 'sentry', name: 'Sentry', description: 'Investigate errors and find related Sentry events.',
     docsUrl: 'https://docs.sentry.io/product/sentry-mcp/',
     transport: 'http', url: 'https://mcp.sentry.dev/mcp',
-    fields: [{ target: 'header', key: 'Authorization', label: 'Authorization header (Bearer token)', required: true }],
+    fields: [{ target: 'header', key: 'Authorization', label: 'Bearer token', required: true, prefix: 'Bearer ' }],
   },
 ];

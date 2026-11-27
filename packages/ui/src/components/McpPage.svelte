@@ -38,7 +38,10 @@
     const refresh = () => {
       const request = ++latest;
       void client.call('mcp.list', {}).then(next => {
-        if (current === revision && request === latest) catalog = next;
+        if (current === revision && request === latest) {
+          catalog = next;
+          error = '';
+        }
       }, cause => {
         if (current === revision && request === latest) {
           error = cause instanceof RpcFailure && cause.code === RpcErrorCode.MethodNotFound ? t.missing : errorText(cause);
@@ -67,6 +70,7 @@
   async function toggle(server: McpServer): Promise<void> {
     const client = store.client;
     if (!client || busy.has(server.id)) return;
+    error = '';
     busy.set(server.id, 'toggle');
     try { await client.call('mcp.toggle', { id: server.id, enabled: !server.enabled }); }
     catch (cause) { error = errorText(cause); }
@@ -92,6 +96,7 @@
       confirmLabel: t.remove, cancelLabel: strings.common.cancel, danger: true,
     });
     if (!accepted || store.client !== client || busy.has(server.id)) return;
+    error = '';
     busy.set(server.id, 'remove');
     try {
       await client.call('mcp.remove', { id: server.id });
@@ -116,6 +121,7 @@
   async function save(input: McpServerInput): Promise<void> {
     const client = store.client;
     if (!client) throw new Error(t.missing);
+    error = '';
     const sendsSecret = (map?: Record<string, string | null>) => Object.values(map ?? {}).some(value => value !== null && value !== undefined);
     if (!encrypted && (sendsSecret(input.secretEnv) || sendsSecret(input.secretHeaders))) {
       throw new Error(t.plainLinkSecrets);
@@ -210,7 +216,7 @@
   .mcp-page { flex: 1 1 auto; overflow: auto; align-content: start; padding: var(--space-4); }
   .mcp-page.phone { overflow: visible; padding-top: var(--space-2); }
   @media (min-width: 721px) {
-    .mcp-page:not(.phone) { padding: 20px max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) var(--space-8); }
+    .mcp-page:not(.phone) { padding: var(--space-5) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) var(--space-8); }
   }
   .mcp-page, .layout { display: grid; gap: var(--space-4); min-width: 0; }
   .layout:has(.editor) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
@@ -230,7 +236,7 @@
   .server-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .metadata { display: flex; gap: var(--space-2); align-items: center; color: var(--color-subtle); font-size: var(--text-xs); }
   .metadata > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .transport { padding: 1px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-2); }
+  .transport { padding: 0 var(--space-2); line-height: 1.5; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-2); }
   .server-actions { display: flex; gap: var(--space-1); flex-wrap: wrap; }
   .remove { color: var(--color-subtle); }
   .remove:hover, .failure { color: var(--color-danger); }

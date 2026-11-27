@@ -368,9 +368,13 @@ test('corrupt mcp-secrets.json skips managed servers on session start without br
   const thread = harness.core.threads.require(threadId);
   const provider = harness.core.providers.get(thread.providerId)!;
   const account = harness.core.accounts.list().find(item => item.id === thread.accountId)!;
-  for (const broken of ['null', '{not-json']) {
+  for (const broken of ['null', '{not-json', '{"a":{"env":{"T": leaked_secret_token_123}}}']) {
     writeFileSync(secretsPath, broken, { mode: 0o600 });
-    expect(() => harness.core.mcp.resolve(null)).toThrow(`Cannot read MCP credentials file ${secretsPath}`);
+    let message = '';
+    try { harness.core.mcp.resolve(null); } catch (error) { message = error instanceof Error ? error.message : String(error); }
+    expect(message).toContain(`Cannot read MCP credentials file ${secretsPath}`);
+    expect(message).not.toContain('leaked_secret_token_123');
+    if (broken !== 'null') expect(message).toContain('invalid JSON');
     const ctx = harness.core.threads.contexts.makeSessionContext(thread, provider, account);
     const userStdio = new Map([['user-tool', { command: process.execPath, args: [FIXTURE], env: {} }]]);
     const active = ctx.lazyMcp!(process.env, userStdio);

@@ -248,8 +248,14 @@ export class McpRegistry {
       return parsed;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-      const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`Cannot read MCP credentials file ${path}: ${detail}. Expected a JSON object of server credentials; fix or remove the file to reset stored MCP credentials.`, { cause: error });
+      const reason = error instanceof SyntaxError
+        ? 'invalid JSON'
+        : error instanceof Error && error.message.startsWith('mcp-secrets.json ')
+          ? error.message
+          : typeof (error as NodeJS.ErrnoException).code === 'string'
+            ? (error as NodeJS.ErrnoException).code
+            : 'unreadable file';
+      throw new Error(`Cannot read MCP credentials file ${path}: ${reason}. Expected a JSON object of server credentials; fix or remove the file to reset stored MCP credentials.`);
     }
   }
 

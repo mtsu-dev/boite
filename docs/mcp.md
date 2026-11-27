@@ -6,7 +6,9 @@ server once and Boite makes it available to supported agents on that machine.
 ## Add a server
 
 1. Choose **Add** next to a server in **Server catalog**.
-2. Enter any directory or credentials the form requests. Use **Documentation**
+2. Enter any directory or credentials the form requests. For HTTP catalog
+   servers, paste the token directly: Boite adds the `Bearer ` prefix
+   automatically when no authorization scheme is present. Use **Documentation**
    for the server's setup instructions.
 3. Choose **All projects** or **Selected projects**, then **Save**.
 4. Click **Test** on the installed server. Expand the tool count to see the

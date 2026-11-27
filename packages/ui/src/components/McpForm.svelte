@@ -20,7 +20,7 @@
     oncancel: () => void;
   } = $props();
 
-  interface Entry { id: number; key: string; value: string; secret: boolean; savedKey?: string }
+  interface Entry { id: number; key: string; value: string; secret: boolean; savedKey?: string; prefix?: string }
   const t = strings.mcp;
   const start = untrack(() => ({ server, preset, defaultName }));
   let sequence = 0;
@@ -48,17 +48,26 @@
     return [
       ...Object.entries(display ?? {}).map(([key, value]) => ({ id: ++sequence, key, value, secret: false })),
       ...(secret ?? []).map(key => ({ id: ++sequence, key, value: '', secret: true, savedKey: key })),
-      ...fields.filter(field => field.target === target).map(field => ({ id: ++sequence, key: field.key, value: '', secret: true })),
+      ...fields.filter(field => field.target === target).map(field => ({ id: ++sequence, key: field.key, value: '', secret: true, prefix: field.prefix })),
     ];
   }
 
   function fieldLabel(field: McpPresetField): string {
     if (field.target === 'arg' && field.key === 'root') return t.directory;
-    if (field.key === 'GITHUB_PERSONAL_ACCESS_TOKEN') return t.githubToken;
     if (field.key === 'DATABASE_URI') return t.databaseUrl;
     if (field.key === 'CONTEXT7_API_KEY') return t.apiKey;
-    if (field.key.toLowerCase() === 'authorization') return preset?.id === 'notion' ? t.oauthAuthorization : t.authorization;
+    if (field.key.toLowerCase() === 'authorization') {
+      if (preset?.id === 'github') return t.githubToken;
+      return preset?.id === 'notion' ? t.oauthAuthorization : t.authorization;
+    }
     return field.label;
+  }
+
+  function formatValue(entry: Entry, key: string): string {
+    if (!entry.prefix || key.toLowerCase() !== 'authorization') return entry.value;
+    const trimmed = entry.value.trim();
+    if (!trimmed) return '';
+    return /^[A-Za-z][A-Za-z0-9+.-]*\s+\S/.test(trimmed) ? trimmed : entry.prefix + trimmed;
   }
 
   function setTransport(next: McpTransport): void {
@@ -91,9 +100,10 @@
       if (!key && !entry.value) continue;
       if (names.has(normalize(key))) throw new Error(t.distinctKeys);
       names.add(normalize(key));
-      if (!entry.secret) shown.push([key, entry.value]);
-      else if (entry.value !== '') {
-        secret.push([key, entry.value]);
+      const value = formatValue(entry, key);
+      if (!entry.secret) shown.push([key, value]);
+      else if (value !== '') {
+        secret.push([key, value]);
         kept.add(normalize(key));
       } else if (entry.savedKey && normalize(entry.savedKey) === normalize(key)) {
         kept.add(normalize(key));
@@ -144,7 +154,7 @@
             <input required={field.required} bind:value={presetArgs[field.key]} />
           {:else}
             {@const entry = (field.target === 'header' ? headers : env).find(item => item.key === field.key)}
-            {#if entry}<input type="password" autocomplete="off" required={field.required} bind:value={entry.value} />{/if}
+            {#if entry}<input type="password" autocomplete="off" placeholder={field.prefix ? t.bearerPlaceholder : undefined} required={field.required} bind:value={entry.value} />{/if}
           {/if}
         </label>
       {/each}

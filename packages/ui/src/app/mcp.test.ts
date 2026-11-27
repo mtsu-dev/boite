@@ -11,6 +11,18 @@ const text = (selector: string): string => document.querySelector(selector)?.tex
 const click = (selector: string): void => document.querySelector<HTMLElement>(selector)!.click();
 
 test('MCP settings follow fake-core changes, render test tools and keep saved credentials masked', async ({ app: _app }) => {
+  const client = store.client!;
+  const savedHeaders: Record<string, string | null | undefined>[] = [];
+  let failNextToggle = false;
+  const origCall = client.call.bind(client);
+  client.call = ((method: string, params: Record<string, unknown>) => {
+    if (method === 'mcp.save') savedHeaders.push((params.secretHeaders as Record<string, string | null | undefined>) ?? {});
+    if (method === 'mcp.toggle' && failNextToggle) {
+      failNextToggle = false;
+      return Promise.reject(new Error('transient toggle failure'));
+    }
+    return origCall(method as never, params as never);
+  }) as typeof client.call;
   store.showSettings('mcp');
   flushSync();
   await waitFor(() => !!document.querySelector('[data-testid=mcp-catalog]'));
@@ -18,12 +30,14 @@ test('MCP settings follow fake-core changes, render test tools and keep saved cr
   click('[aria-label="Add GitHub"]');
   await waitFor(() => !!document.querySelector(form));
   const secret = document.querySelector<HTMLInputElement>(form + ' input[type=password]')!;
+  expect(secret.placeholder).toContain('Bearer');
   secret.value = 'synthetic-ui-credential';
   secret.dispatchEvent(new Event('input', { bubbles: true }));
   click(form + ' button[type=submit]');
   await waitFor(() => text(installed).includes('GitHub'));
   expect(document.querySelector(form)).toBeNull();
-  const { servers } = await store.client!.call('mcp.list', {});
+  expect(savedHeaders[0]).toEqual({ Authorization: 'Bearer synthetic-ui-credential' });
+  const { servers } = await client.call('mcp.list', {});
   expect(servers[0]).toMatchObject({ id: 'github', transport: 'http', secretHeaderKeys: ['Authorization'], headers: {} });
   expect(JSON.stringify(servers)).not.toContain(secret.value);
   click('[aria-label="Test GitHub"]');
@@ -33,17 +47,34 @@ test('MCP settings follow fake-core changes, render test tools and keep saved cr
   actions.find(button => button.textContent?.includes('Edit'))!.click();
   await waitFor(() => text(form).includes('Saved'));
   expect(document.querySelector<HTMLInputElement>(form + ' input[type=password]')?.value).toBe('');
-  await store.client!.call('mcp.toggle', { id: 'github', enabled: false });
+  await client.call('mcp.toggle', { id: 'github', enabled: false });
   await waitFor(() => document.querySelector<HTMLInputElement>(installed + ' [role=switch]')?.checked === false);
   click(form + ' button[type=submit]');
   await waitFor(() => !document.querySelector(form));
-  expect((await store.client!.call('mcp.list', {})).servers[0]).toMatchObject({ enabled: false, secretHeaderKeys: ['Authorization'] });
+  expect((await client.call('mcp.list', {})).servers[0]).toMatchObject({ enabled: false, secretHeaderKeys: ['Authorization'] });
+  // Pasting an already-prefixed Bearer token does not double-prefix it.
+  click('[aria-label="Add Linear"]');
+  await waitFor(() => !!document.querySelector(form));
+  const linearSecret = document.querySelector<HTMLInputElement>(form + ' input[type=password]')!;
+  linearSecret.value = 'Bearer already-prefixed-token';
+  linearSecret.dispatchEvent(new Event('input', { bubbles: true }));
+  click(form + ' button[type=submit]');
+  await waitFor(() => text(installed).includes('Linear'));
+  expect(savedHeaders.at(-1)).toEqual({ Authorization: 'Bearer already-prefixed-token' });
+  // A transient page-level error clears after the next successful action.
+  failNextToggle = true;
+  click(installed + ' [role=switch]');
+  await waitFor(() => text('[data-testid=mcp-page] [role=alert]').includes('transient toggle failure'));
+  click(installed + ' [role=switch]');
+  await waitFor(() => !document.querySelector('[data-testid=mcp-page] [role=alert]'));
   [...document.querySelectorAll<HTMLButtonElement>(installed + ' .server-actions button')]
     .find(button => button.textContent?.includes('Remove'))!.click();
   await waitFor(() => !!document.querySelector('[data-testid=confirm-dialog]'));
   click('[data-testid=confirm-ok]');
   await waitFor(() => !text(installed).includes('GitHub'));
-  expect((await store.client!.call('mcp.list', {})).servers).toEqual([]);
+  await client.call('mcp.remove', { id: 'linear' });
+  await waitFor(() => !text(installed).includes('Linear'));
+  expect((await client.call('mcp.list', {})).servers).toEqual([]);
 });
 
 test('MCP settings warn when changing origin and handle a server named constructor', async ({ app: _app }) => {
