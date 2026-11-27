@@ -1,6 +1,7 @@
 import { WORKER_IDLE_MS } from './worker-idle';
 import { describe, expect, test, vi } from 'vitest';
 import { headingAt, renderBlock, renderMarkdown } from './markdown';
+import { fileChipHtml } from './file-links';
 
 describe('renderMarkdown', () => {
   test('emphasis spans links and keeps formatting inside their labels', () => {
@@ -11,7 +12,7 @@ describe('renderMarkdown', () => {
       // `$` patterns in a title are text: one would paste the tag, quotes and all, into the attribute.
       expect(renderMarkdown('[x](https://example.test/a "$` $& $\'")', rich)).toBe('<p><a href="https://example.test/a" target="_blank" rel="noopener noreferrer" title="$` $&amp; $\'">x</a></p>');
     }
-    expect(renderMarkdown('**Read [source](src/main.ts:4) and `docs/a.md`**', true)).toBe('<p><strong>Read <a href="#file" data-file-path="src/main.ts" data-file-line="4">source</a> and <code><a href="#file" data-file-path="docs/a.md">docs/a.md</a></code></strong></p>');
+    expect(renderMarkdown('**Read [source](src/main.ts:4) and `docs/a.md`**', true)).toBe(`<p><strong>Read ${fileChipHtml('source', 'src/main.ts:4', 'src/main.ts', 4)} and ${fileChipHtml('docs/a.md', 'docs/a.md', 'docs/a.md', undefined)}</strong></p>`);
   });
 
   test('CommonMark inline syntax handles nested emphasis, escapes, entities and hard breaks', () => {
@@ -28,18 +29,18 @@ describe('renderMarkdown', () => {
 
   test('automatic file paths keep underscores literal inside emphasis and outside code', () => {
     for (const path of ['src/__tests__/a.test.ts', 'src/_generated_/a.ts', '/project/__tests__/a.test.ts']) {
-      const link = `<a href="#file" data-file-path="${path}">${path}</a>`;
+      const link = fileChipHtml(path, path, path, undefined);
       expect(renderMarkdown(path, true)).toBe(`<p>${link}</p>`);
       expect(renderMarkdown(`**Read ${path}**`, true)).toBe(`<p><strong>Read ${link}</strong></p>`);
       expect(renderMarkdown(`__${path}__`, true)).toBe(`<p><strong>${link}</strong></p>`);
-      expect(renderMarkdown('`' + path + '`', true)).toBe(`<p><code>${link}</code></p>`);
+      expect(renderMarkdown('`' + path + '`', true)).toBe(`<p>${link}</p>`);
       expect(renderMarkdown(`[${path}](https://example.test/)`, true)).not.toContain('data-file-path');
     }
   });
 
   test('Windows link destinations retain separators before Markdown punctuation', () => {
     expect(renderMarkdown(String.raw`[src](src\_generated_\a.ts)`, true)).toContain('data-file-path="src/_generated_/a.ts"');
-    expect(renderMarkdown(String.raw`[src](C:\Dev\_generated_\a.ts:4 "Source")`, true)).toBe('<p><a href="#file" data-file-path="C:/Dev/_generated_/a.ts" data-file-line="4" title="Source">src</a></p>');
+    expect(renderMarkdown(String.raw`[src](C:\Dev\_generated_\a.ts:4 "Source")`, true)).toBe('<p><a href="#file" class="file-chip" data-file-path="C:/Dev/_generated_/a.ts" data-file-line="4" data-kind="code" title="Source">src</a></p>');
     expect(renderMarkdown(String.raw`[src](<C:\Dev\some folder\_generated_\a.ts:4>)`, true)).toContain('data-file-path="C:/Dev/some folder/_generated_/a.ts" data-file-line="4"');
     expect(renderMarkdown(String.raw`[src](C:\Dev\a&amp;b\_generated_\a.ts)`, true)).toContain('data-file-path="C:/Dev/a&amp;b/_generated_/a.ts"');
     expect(renderMarkdown(String.raw`[file](/tmp/a\(b\).md)`, true)).toContain('data-file-path="/tmp/a(b).md"');
@@ -48,13 +49,13 @@ describe('renderMarkdown', () => {
   });
 
   test('closed emphasis before a path cannot remove a trailing filename delimiter', () => {
-    expect(renderMarkdown('__Done__ /tmp/__pycache__', true)).toBe('<p><strong>Done</strong> <a href="#file" data-file-path="/tmp/__pycache__">/tmp/__pycache__</a></p>');
-    expect(renderMarkdown('**Read /tmp/__pycache__**', true)).toBe('<p><strong>Read <a href="#file" data-file-path="/tmp/__pycache__">/tmp/__pycache__</a></strong></p>');
+    expect(renderMarkdown('__Done__ /tmp/__pycache__', true)).toBe(`<p><strong>Done</strong> ${fileChipHtml('/tmp/__pycache__', '/tmp/__pycache__', '/tmp/__pycache__', undefined)}</p>`);
+    expect(renderMarkdown('**Read /tmp/__pycache__**', true)).toBe(`<p><strong>Read ${fileChipHtml('/tmp/__pycache__', '/tmp/__pycache__', '/tmp/__pycache__', undefined)}</strong></p>`);
   });
 
   test('an unfinished link label with a path preserves the preceding text', () => {
-    expect(renderMarkdown('prefix [bad src/a.ts', true)).toBe('<p>prefix [bad <a href="#file" data-file-path="src/a.ts">src/a.ts</a></p>');
-    expect(renderMarkdown('prefix [bad src/a.ts][missing] (later)', true)).toBe('<p>prefix [bad <a href="#file" data-file-path="src/a.ts">src/a.ts</a>][missing] (later)</p>');
+    expect(renderMarkdown('prefix [bad src/a.ts', true)).toBe(`<p>prefix [bad ${fileChipHtml('src/a.ts', 'src/a.ts', 'src/a.ts', undefined)}</p>`);
+    expect(renderMarkdown('prefix [bad src/a.ts][missing] (later)', true)).toBe(`<p>prefix [bad ${fileChipHtml('src/a.ts', 'src/a.ts', 'src/a.ts', undefined)}][missing] (later)</p>`);
   });
 
   test('inline code keeps emphasis and links literal', () => {
@@ -150,7 +151,7 @@ test('links are found in linear time: a line of 32,000 brackets renders at once'
   expect(renderMarkdown('['.repeat(32_000))).toBe(`<p>${'['.repeat(32_000)}</p>`);
   // Unmatched brackets stay outside the link; images still become links, never remote requests.
   expect(renderMarkdown(`${'['.repeat(100)}docs](https://a.b/c)`)).toBe(`<p>${'['.repeat(99)}<a href="https://a.b/c" target="_blank" rel="noopener noreferrer">docs</a></p>`);
-  expect(renderMarkdown('see ![a](<https://a.b/c d>) and [(x)](y(z)) now', true)).toBe('<p>see <a href="https://a.b/c%20d" target="_blank" rel="noopener noreferrer">a</a> and <a href="#file" data-file-path="y(z)">(x)</a> now</p>');
+  expect(renderMarkdown('see ![a](<https://a.b/c d>) and [(x)](y(z)) now', true)).toBe(`<p>see <a href="https://a.b/c%20d" target="_blank" rel="noopener noreferrer">a</a> and ${fileChipHtml('(x)', 'y(z)', 'y(z)', undefined)} now</p>`);
 });
 
 test('a thread address links to the thread, not to a file', () => {
@@ -160,7 +161,7 @@ test('a thread address links to the thread, not to a file', () => {
     .toBe(`<p>ask ${thread('boite/thr_tkw9n9qt4100rvq2jmg1')} or <code>${thread('thr_tkw9n9qt4100rvq2jmg1')}</code>.</p>`);
   // Opening a thread reads no file, so a code span links it without rich links.
   expect(renderMarkdown('`boite/thr_tkw9n9qt4100rvq2jmg1`')).toBe(`<p><code>${thread('boite/thr_tkw9n9qt4100rvq2jmg1')}</code></p>`);
-  expect(renderMarkdown('src/thr_tkw9n9qt4100rvq2jmg1.ts', true)).toBe('<p><a href="#file" data-file-path="src/thr_tkw9n9qt4100rvq2jmg1.ts">src/thr_tkw9n9qt4100rvq2jmg1.ts</a></p>');
+  expect(renderMarkdown('src/thr_tkw9n9qt4100rvq2jmg1.ts', true)).toBe(`<p>${fileChipHtml('src/thr_tkw9n9qt4100rvq2jmg1.ts', 'src/thr_tkw9n9qt4100rvq2jmg1.ts', 'src/thr_tkw9n9qt4100rvq2jmg1.ts', undefined)}</p>`);
   // A path that goes on around the id is no thread; a link whose destination is one is.
   for (const path of ['thr_tkw9n9qt4100rvq2jmg1.ts', 'src\\thr_tkw9n9qt4100rvq2jmg1', 'thr_tkw9n9qt4100rvq2jmg1-old']) {
     expect(renderMarkdown(path, true)).not.toContain('data-thread-address');

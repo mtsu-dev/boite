@@ -554,6 +554,7 @@ export class Core {
     this.worktreeCleanup = new WorktreeCleanup(this);
     this.worktreeCleanup.start();
     this.pullRequestWatches.start();
+    this.workforce.triggers.start();
     this.delegation.retirements.sweep();
     this.logs.record('info', `Core ${this.version} started in ${Date.now() - this.startedAt} ms, ${process.platform} ${process.arch}, Bun ${process.versions.bun ?? 'unknown'}`, {
       source: 'core', event: 'core.started', durationMs: Date.now() - this.startedAt,
@@ -636,6 +637,7 @@ export class Core {
     void this.mergedPrAsk.close();
     void this.worktreeCleanup.close();
     void this.pullRequestWatches.close();
+    this.workforce.triggers.close();
     this.group.beginClose();
     this.contacts.beginClose();
     this.sharedProjects.beginClose();

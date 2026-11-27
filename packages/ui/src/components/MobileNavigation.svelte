@@ -26,6 +26,7 @@
   import { focusOnMount } from '../lib/actions';
   import { watchRowCut } from '../lib/row-cut';
   import MobileThreadRow from './MobileThreadRow.svelte';
+  import BackgroundBrowser from './BackgroundBrowser.svelte';
   import FoldMore from './FoldMore.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
   import ViewSwitch from './ViewSwitch.svelte';
@@ -67,9 +68,11 @@
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
 
-  let { store, recover = false, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
+  let { store, recover = false, browserBackground, onbrowser, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
     store: Store;
     recover?: boolean;
+    browserBackground?: boolean;
+    onbrowser?: () => void;
     onleavesettings?: () => void;
     screen: 'chat' | 'threads' | 'activity';
     tabbed?: boolean;
@@ -396,6 +399,7 @@
       <!-- Only on screen: kept under a page, its pairing would answer the page's own (Machines) and leave it. -->
       {#if listShown}<MobileConnect {store} onpaired={() => show('threads')} />{/if}
     {:else}
+    {#if browserBackground && listScreen === 'threads'}<BackgroundBrowser onclick={() => { show('chat'); onbrowser?.(); }} />{/if}
     <!-- Recent's filters are the display menu's, counted on its button: the list starts with its rows. -->
     {#snippet threadRow(row: typeof rows[number], grouped = false, helpers: typeof rows = [])}
       <!-- Activity: the row's verb is its own, else the first asking sub-agent's, which opens that sub-agent (ActivityRow.svelte). -->
@@ -411,6 +415,7 @@
         {@const groupRows = rowsByProject.get(group.machine.id)?.get(group.project.id) ?? []}
         {@const workingOpen = projectThreadView.isOpen(group, 'working')}
         {@const doneOpen = archiveCount(group.project, 'done') > 0 && (doneFilter.shown || projectThreadView.isOpen(group, 'done'))}
+        {@const archivedOpen = archiveCount(group.project, 'archived') > 0 && projectThreadView.isOpen(group, 'archived')}
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
         {@const needsHere = needsCount(group)}
         {@const waitingHere = needsHere.count}
@@ -422,7 +427,7 @@
         {@const drafts = group.machine.store.draftEntries.filter(entry => entry.projectId === group.project.id)}
         {@const folded = !query && group.machine.store.isCollapsed(group.project.id)}
         {@const rollup = folded && group.machine.store.connection === 'ready' ? projectRollup(group.machine.store.threadsOf(group.project.id), thread => rowAsks(group.machine.store, thread.id)) : null}
-        {#if !query || groupRows.length > 0 || doneOpen}
+        {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
         <section class="project-group" class:inactive={!activeProject(group)} class:folded data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading" data-row-edge>
             <!-- The tile and the name fold the project, as its header does on the desktop; the counters and menus beside them keep their own action.
@@ -440,7 +445,7 @@
             {/if}
             <!-- The desktop header's menu: a new thread here, the path, archived threads, managing the project. -->
             <button type="button" class="ghost icon project-actions" data-testid="mobile-project-menu" title={strings.sidebar.projectMenu} aria-label={strings.sidebar.projectMenu}
-              onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'), { count: archiveCount(group.project, 'archived') })}><Ellipsis size={18} /></button>
+              onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'), true)}><Ellipsis size={18} /></button>
           </div>
           <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
           {#if group.machine.store.connection === 'closed'}<div class="offline"><MachineOffline store={group.machine.store} label={group.machine.label} /></div>{/if}
@@ -463,6 +468,10 @@
           <div id="{controls}-done" hidden={!doneOpen} data-testid="project-done">
             {#if doneOpen}<GroupLabel kind="done" count={query ? undefined : archiveCount(group.project, 'done')} />{/if}
             <RecentDone entries={[group]} {scrollRoot} {now} {query} open={doneOpen && !folded} header={false} cap={10} onopen={() => show('chat')} />
+          </div>
+          <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
+            {#if archivedOpen}<GroupLabel kind="archived" count={query ? undefined : archiveCount(group.project, 'archived')} />{/if}
+            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && !folded} header={false} cap={10} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
           </div></div>

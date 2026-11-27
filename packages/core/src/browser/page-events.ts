@@ -1,14 +1,17 @@
-import type { BrowserDiagnostic } from '@boite/contracts';
-import type { AgentPage } from './automation.ts';
+import type { BrowserDiagnostic, BrowserPageHealth } from '@boite/contracts';
+import { evaluate, type AgentPage } from './automation.ts';
 
 const DIALOGS_MAX = 20;
 const DIAGNOSTICS_MAX = 200;
+
+type DocumentHealth = BrowserPageHealth & { frameId: string };
 
 /** What of a tab its page's events write to. */
 export interface WatchedPage {
   /** An agent command is running: the dialogs it raises follow `page.dialogPolicy`. */
   acting: boolean;
   page: AgentPage;
+  title: string;
   diagnostics: BrowserDiagnostic[];
   dropped: number;
   requests: Map<string, string>;
@@ -40,6 +43,7 @@ export function bareUrl(raw: string): string {
 /**
  * Listens to one tab's page: its top frame's navigations, its dialogs, its
  * console, exceptions and failed requests, the diagnostics an agent reads.
+ * Returns a snapshot reader for the current document's loading and failures.
  * `on` subscribes to an event of this tab's session only.
  */
 export function watchPage(
@@ -47,14 +51,52 @@ export function watchPage(
   on: (method: string, listener: (params: Record<string, unknown>) => void) => void,
   answerDialog: (accept: boolean, promptText?: string) => void,
   navigated: (url: string) => void,
-): void {
+  changed: () => void,
+): () => BrowserPageHealth | undefined {
   const note = (entry: Omit<BrowserDiagnostic, 'at'>) => {
     tab.diagnostics.push({ at: Date.now(), ...entry, text: entry.text.slice(0, 2000) });
     if (tab.diagnostics.length > DIAGNOSTICS_MAX) { tab.diagnostics.shift(); tab.dropped++; }
   };
+  // Keep health by loader so a late failure cannot be attributed to the next page.
+  const documents = new Map<string, DocumentHealth>();
+  const scripts = new Map<unknown, DocumentHealth>();
+  let health: DocumentHealth | undefined;
+  function healthForDocument(loaderId: unknown, frameId: unknown): DocumentHealth | undefined {
+    if (typeof loaderId !== 'string' || !loaderId || typeof frameId !== 'string') return;
+    let state = documents.get(loaderId);
+    if (!state) {
+      if (documents.size >= 32) documents.delete(documents.keys().next().value!);
+      state = { frameId, loading: true, failedScripts: 0 };
+      documents.set(loaderId, state);
+    }
+    if (state.frameId === frameId) return state;
+  }
+  let mainDocument: { id: string; loaderId?: string } | undefined;
   on('Page.frameNavigated', params => {
-    const frame = params.frame as { parentId?: string; url: string };
-    if (!frame.parentId) navigated(frame.url);
+    const frame = params.frame as { id: string; loaderId?: string; parentId?: string; url: string };
+    if (frame.parentId) return;
+    mainDocument = frame;
+    health = healthForDocument(frame.loaderId, frame.id);
+    navigated(frame.url);
+  });
+  on('Page.lifecycleEvent', ({ name, frameId, loaderId }) => {
+    if (name === 'load') {
+      const state = healthForDocument(loaderId, frameId);
+      if (state?.loading) {
+        state.loading = false;
+        if (state === health) changed();
+      }
+      return;
+    }
+    // A target can still report the URL as its title when manual navigation returns.
+    const loaded = mainDocument;
+    if (name !== 'DOMContentLoaded' || !loaded || loaded.id !== frameId || loaded.loaderId !== loaderId) return;
+    const previous = tab.title;
+    void evaluate(tab.page, 'document.title', 5000).then(title => {
+      if (mainDocument !== loaded || tab.title !== previous || typeof title !== 'string' || title === previous) return;
+      tab.title = title.slice(0, 200);
+      changed();
+    }).catch(() => {});
   });
   on('Page.javascriptDialogOpening', params => {
     // Nobody can answer a dialog in a headless page. One an agent command raised follows
@@ -81,6 +123,13 @@ export function watchPage(
   });
   // The desktop app relays only these fields of the network events (`HOST_PAGE_EVENTS` in packages/ui/src/lib/browser-host.ts): read another, compact it there too.
   on('Network.requestWillBeSent', params => {
+    if (params.type === 'Script') {
+      const state = healthForDocument(params.loaderId, params.frameId);
+      if (state) {
+        if (scripts.size >= 500) scripts.delete(scripts.keys().next().value);
+        scripts.set(params.requestId, state);
+      }
+    }
     const url = String((params.request as { url: string }).url);
     // An inline `data:` or `blob:` address can weigh megabytes, and a failure there names no server.
     if (url.startsWith('data:') || url.startsWith('blob:')) return;
@@ -91,15 +140,36 @@ export function watchPage(
       if (tab.loading.size > LOADING_MAX) tab.loading.delete(tab.loading.keys().next().value!);
     }
   });
-  on('Network.loadingFinished', params => { tab.loading.delete(String(params.requestId)); });
+  on('Network.loadingFinished', ({ requestId }) => {
+    scripts.delete(requestId);
+    tab.loading.delete(String(requestId));
+  });
   on('Network.responseReceived', params => {
-    const response = params.response as { status: number; statusText?: string; url: string };
-    if (response.status >= 400) note({ kind: 'network', level: 'error', text: `HTTP ${response.status} ${response.statusText ?? ''}`.trim(), url: bareUrl(response.url) });
+    const { status, statusText, url } = params.response as { status: number; statusText?: string; url: string };
+    if (status >= 400) note({ kind: 'network', level: 'error', text: `HTTP ${status} ${statusText ?? ''}`.trim(), url: bareUrl(url) });
+    if (typeof status !== 'number' || status < 400) return;
+    const state = healthForDocument(params.loaderId, params.frameId);
+    if (!state) return;
+    if (params.type === 'Document') state.httpError = status;
+    else if (params.type === 'Script') { state.failedScripts++; scripts.delete(params.requestId); }
+    else return;
+    if (state === health) changed();
   });
   on('Network.loadingFailed', params => {
+    const state = scripts.get(params.requestId);
+    scripts.delete(params.requestId);
     tab.loading.delete(String(params.requestId));
     if (params.canceled) return;
+    if (state) {
+      state.failedScripts++;
+      if (state === health) changed();
+    }
     const url = tab.requests.get(String(params.requestId));
     note({ kind: 'network', level: 'error', text: String(params.errorText ?? 'request failed'), ...(url ? { url } : {}) });
   });
+  return () => {
+    if (!health) return;
+    const { loading, failedScripts, httpError } = health;
+    return { loading, failedScripts, ...(httpError ? { httpError } : {}) };
+  };
 }

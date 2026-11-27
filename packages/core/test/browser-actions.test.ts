@@ -1,4 +1,4 @@
-import { expect } from 'bun:test';
+import { expect, spyOn } from 'bun:test';
 import type { BrowserAction } from '@boite/contracts';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -155,14 +155,27 @@ real('a command that names no tab waits for every window still joining, and a wi
   await evaluate(`window.open('/popup?one', 'one'); setTimeout(() => window.open('/popup?two', 'two'), 300); true`);
   expect((await run({ kind: 'evaluate', expression: 'location.search' })).value).toBe('?two');
   // Archived while a window joins: the waiting command is refused and the window closes with the rest.
-  await evaluate(`window.open('/popup?late', 'late'); true`);
-  // The opener can return before Chromium announces the new window.
-  await waitFor(() => browser.joining.count(threadId) === 1);
-  const waiting = run({ kind: 'evaluate', expression: 'location.search' });
-  await Bun.sleep(100);
-  harness.core.journal.putThread({ ...harness.core.threads.require(threadId), archived: true });
-  browser.release(threadId);
-  expect(await thrown(waiting)).toThrow('the agent browser needs an active conversation');
+  browser.joining.delayMs = 0;
+  const resume = Promise.withResolvers<void>();
+  const join = browser.joining.window.bind(browser.joining);
+  const held = spyOn(browser.joining, 'window').mockImplementation((id, attach) => join(id, () => resume.promise.then(attach)));
+  const waits = spyOn(browser.joining, 'windows');
+  try {
+    await evaluate(`window.open('/popup?late', 'late'); true`);
+    // The opener can return before Chromium announces the new window.
+    await waitFor(() => browser.joining.count(threadId) === 1);
+    waits.mockClear();
+    const waiting = thrown(run({ kind: 'evaluate', expression: 'location.search' }));
+    await waitFor(() => waits.mock.calls.length > 0);
+    harness.core.journal.putThread({ ...harness.core.threads.require(threadId), archived: true });
+    browser.release(threadId);
+    resume.resolve();
+    expect(await waiting).toThrow('the agent browser needs an active conversation');
+  } finally {
+    resume.resolve();
+    waits.mockRestore();
+    held.mockRestore();
+  }
   for (let i = 0; i < 50 && tabs().length > 0; i++) await Bun.sleep(100);
   expect(tabs()).toEqual([]);
 }, 60_000);

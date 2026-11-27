@@ -276,8 +276,10 @@ export function registerAgentMethods(core: Core): void {
     const surface = checkSurface(thread.cwd, params.surface);
     // One browser per conversation: a page opens as a new tab of the browser
     // its agent drives, and every client brings that tab forward on its own.
-    if (surface.kind === 'browser') await core.browser.command({ threadId: thread.id, action: { kind: 'open', url: surface.url } });
-    else core.bus.emit('panel.requested', { threadId: thread.id, surface, at: Date.now() });
+    if (surface.kind === 'browser') {
+      const { tabId } = await core.browser.command({ threadId: thread.id, action: { kind: 'open', url: surface.url, manual: true } });
+      await core.browser.command({ threadId: thread.id, tabId, action: { kind: 'show' } });
+    } else core.bus.emit('panel.requested', { threadId: thread.id, surface, at: Date.now() });
     // Nobody is watching this thread: the agent learns its request went nowhere
     // rather than believing the user saw something.
     return { shown: core.subscribers.hasSubscribers(thread.id) };
@@ -298,7 +300,7 @@ export function registerAgentMethods(core: Core): void {
       await core.browser.command({ threadId: thread.id, tabId: opened, action: { kind: 'activate' } });
       return { ok: true } as const;
     }
-    const reply = await core.browser.command({ threadId: thread.id, action: { kind: 'open', url: surface.url } });
+    const reply = await core.browser.command({ threadId: thread.id, action: { kind: 'open', url: surface.url, manual: true } });
     if (reply.tabId !== undefined) {
       pageTabs.set(key, reply.tabId);
       if (pageTabs.size > 500) pageTabs.delete(pageTabs.keys().next().value!);

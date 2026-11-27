@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CheckCheck } from '@lucide/svelte';
+  import { Archive, CheckCheck } from '@lucide/svelte';
   import type { ProjectEntry } from '../lib/project-view.svelte';
   import { archiveCount, projectThreadView } from '../lib/project-threads.svelte';
   import { doneFilter } from '../lib/inbox.svelte';
@@ -17,15 +17,16 @@
    * say it. The working count stands only where no row says it:
    * a folded card, or the fold of working threads (the display menu's grouping), whose toggle it is, so there it
    * stays beside Needs you. The done ones keep a count of their own, the toggle of the card's done fold, unless the
-   * display menu's switch already lists every card's done threads. The archived ones live in the card's menu
-   * (lib/project-menu.ts).
+   * display menu's switch already lists every card's done threads. The archived ones keep the last count, the
+   * toggle of the card's archived fold under Done.
    * `away`: the machine is not connected; its last known counts stay, the working one without its live colour, the
    * one that asks as Activity and the rail's badge count it.
    * The amber count stands alone in the header: with threads that need the user, the working fold's toggle moves
-   * into the card, over the fold it opens (`place="fold"`, a row of its own with the same test id).
+   * into the card, over the fold it opens (`place="fold"`, a row of its own with the same test id). A narrow sidebar
+   * brings the archived count down the same way, over its own fold (`place="archived"`).
    */
   let { entry, working, controls, collapsed = false, searching = false, away = false, waiting = 0, failed = 0, listed = 0, place = 'head' }: {
-    entry: ProjectEntry; working: number; controls: string; collapsed?: boolean; searching?: boolean; away?: boolean; waiting?: number; failed?: number; listed?: number; place?: 'head' | 'fold';
+    entry: ProjectEntry; working: number; controls: string; collapsed?: boolean; searching?: boolean; away?: boolean; waiting?: number; failed?: number; listed?: number; place?: 'head' | 'fold' | 'archived';
   } = $props();
   const grouped = $derived(recentPreferences.groupWorking);
   const open = $derived(!collapsed && !searching && projectThreadView.isOpen(entry, 'working'));
@@ -37,6 +38,9 @@
   const done = $derived(archiveCount(entry.project, 'done'));
   const doneOpen = $derived(!collapsed && projectThreadView.isOpen(entry, 'done'));
   const doneLabel = $derived(fill(strings.sidebar.projectDoneThreads, { count: String(done), project: name }));
+  const archived = $derived(archiveCount(entry.project, 'archived'));
+  const archivedOpen = $derived(!collapsed && projectThreadView.isOpen(entry, 'archived'));
+  const archivedLabel = $derived(fill(strings.sidebar.projectArchivedThreads, { count: String(archived), project: name }));
   const workingLabel = $derived(fill(strings.sidebar.projectWorkingThreads, { count: String(working), project: name }));
 </script>
 
@@ -52,6 +56,15 @@
   {#if working > 0 && grouped && waiting > 0 && !collapsed}
     {@render workingCounter(true)}
   {/if}
+{:else if place === 'archived'}
+  {#if archived > 0 && !collapsed}
+    <!-- A sidebar too narrow for a third count in the head: Archived comes down into the card, a row over its fold. -->
+    <button type="button" class="ghost fold-toggle archived-fold" class:active={archivedOpen} data-testid="project-archived-fold-toggle" data-count={archived}
+      title={archivedLabel} aria-label={archivedLabel} aria-expanded={archivedOpen} aria-controls="{controls}-archived"
+      onclick={() => projectThreadView.toggle(entry, 'archived', collapsed)}>
+      <Archive size={12} aria-hidden="true" /><span class="ui-label">{strings.sidebar.archivedGroup}</span><span class="ui-label count">{formatCount(archived)}</span>
+    </button>
+  {/if}
 {:else}<div class="counters">
   {#if waiting > 0}
     <span class="counter waiting" class:failed={failOnly} data-testid="project-waiting-count" data-count={waiting} data-state={failOnly ? 'error' : 'waiting'} role="img" title={waitingLabel} aria-label={waitingLabel}><span class="mark-word">{#if failOnly}<FailMark />{:else}<span class="dot" aria-hidden="true"></span>{/if}<span class="ui-label word" class:spare={!collapsed && listed >= waiting}>{failOnly ? strings.sidebar.state.error : strings.sidebar.state.waiting}</span></span><span class="ui-label number">{formatCount(waiting)}</span></span>
@@ -64,6 +77,13 @@
       title={doneLabel} aria-label={doneLabel} aria-expanded={doneOpen} aria-controls="{controls}-done"
       onclick={() => projectThreadView.toggle(entry, 'done', collapsed)}>
       <CheckCheck size={14} aria-hidden="true" /><span class="ui-label">{formatCount(done)}</span>
+    </button>
+  {/if}
+  {#if archived > 0}
+    <button type="button" class="ghost counter archived" class:active={archivedOpen} data-testid="project-archived-toggle" data-count={archived}
+      title={archivedLabel} aria-label={archivedLabel} aria-expanded={archivedOpen} aria-controls="{controls}-archived"
+      onclick={() => projectThreadView.toggle(entry, 'archived', collapsed)}>
+      <Archive size={14} aria-hidden="true" /><span class="ui-label">{formatCount(archived)}</span>
     </button>
   {/if}
 </div>{/if}
@@ -103,12 +123,19 @@
     :global(html:lang(fr)) .counter .spare { display: block; }
     :global(html:lang(fr)) .working .word { display: none; }
   }
+  /* Archived is the head's last count and the first to give way: under 264 px of list its row comes down into the
+     card (`.archived-fold`), so the project's name keeps its room. Off the desktop sidebar (a phone's list), it stays up. */
+  .fold-toggle.archived-fold { display: none; }
+  @container sidebar (max-width: 263.98px) {
+    .counter.archived { display: none; }
+    .fold-toggle.archived-fold { display: flex; }
+  }
   /* Work: the rows' turning accent arc (ThreadState.svelte), on the same loop. */
   .work-ring { box-sizing: border-box; width: 10px; height: 10px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); animation: spin 0.9s steps(54) infinite var(--loops); }
   /* Offline: the last known count, not live work, so its ring takes the header's grey and stands still. */
   .away .work-ring { border-color: var(--color-muted-foreground); border-top-color: transparent; animation: none; transform: rotate(45deg); }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
-  /* Open, a count shows it by its fill and its ink, Working and Done alike, as long as its fold stays open. */
+  /* Open, a count shows it by its fill and its ink, Working, Done and Archived alike, as long as its fold stays open. */
   .counter.active, .counter.active:hover:not(:disabled) { background: var(--color-active); color: var(--color-foreground); }
   /* Done: the rows' finished green on the mark alone, the count in the header's grey. */
   .done :global(svg) { color: var(--color-success); }

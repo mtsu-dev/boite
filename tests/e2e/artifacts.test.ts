@@ -7,7 +7,7 @@ import { mintPairing, pairingUrlOf, startCore } from './lib/core.ts';
 import { mobileAction } from './lib/mobile.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
 
-test('the conversation scrolls over an open text preview at both widths', async () => {
+test('a text file link opens in the panel at its line at both widths', async () => {
   ensureProductionUi();
   const core = await startCore();
   const client = await connect(core.url, core.token);
@@ -20,36 +20,23 @@ test('the conversation scrolls over an open text preview at both widths', async 
     writeFileSync(join(core.dataDir, 'notes.txt'), Array.from({ length: 120 }, (_, i) => `Line ${i + 1}: ${i === 10 ? 'a long line '.repeat(80) : 'text to read'}`).join('\n'));
     await client.call('threads.subscribe', { threadId: thread.id });
     const done = client.next('turn.finished');
-    await client.call('turns.start', { threadId: thread.id, prompt: 'A paragraph around the preview.\n\n'.repeat(25) + '[Read the notes](notes.txt)' });
+    await client.call('turns.start', { threadId: thread.id, prompt: 'A paragraph around the preview.\n\n'.repeat(25) + '[Read the notes](notes.txt#L110)' });
     await done;
     page = await BrowserPage.launch({ url: pairingUrlOf(core), windowSize: { width: 1280, height: 900 } });
     await page.waitFor('document.querySelector("[data-testid=status-connection]")?.dataset.state === "ready"');
     await page.click(`[data-thread-id="${thread.id}"]`);
     await page.waitFor(`document.querySelector('a[data-file-path="notes.txt"]')`);
     await page.click('[data-role=assistant] a[data-file-path="notes.txt"]');
-    const pre = '[data-testid="artifact-content"] pre';
-    await page.waitFor(`document.querySelector('${pre}')?.textContent.includes('Line 120')`);
+    // A file of the project opens in the panel's Files tab at its line, never as a card in the answer.
+    await page.waitFor(`document.querySelector('[data-testid=file-text]')?.value.includes('Line 120')`);
+    await page.waitFor(`document.querySelector('[data-testid=file-highlight]') !== null`);
+    expect(await page.evaluate('document.querySelector("[data-testid=chat-file]")')).toBeNull();
     for (const narrow of [false, true]) {
       await page.send('Emulation.setDeviceMetricsOverride', { width: narrow ? 390 : 1280, height: narrow ? 844 : 900, deviceScaleFactor: 1, mobile: narrow });
-      await page.evaluate(`(() => { const box = document.querySelector('[data-testid=timeline]'); box.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true })); document.querySelector('${pre}').scrollIntoView({ block: 'start' }); })()`);
       await page.settleAnimations();
-      const point = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('${pre}').getBoundingClientRect(); const box = document.querySelector('[data-testid=timeline]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: Math.max(r.top, box.top) + 100 }; })()`);
-      const timeline = '[data-testid="timeline"]';
-      const before = await page.evaluate<number>(`document.querySelector('${timeline}').scrollTop`);
-      await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY: 200 });
-      await page.waitFor(`document.querySelector('${timeline}').scrollTop > ${before + 100}`);
-      expect(await page.evaluate<number>(`document.querySelector('${pre}').scrollTop`)).toBe(0);
-      await page.screenshot(join(import.meta.dir, '.artifacts', `text-preview-scroll-${narrow ? 'phone' : 'desktop'}.png`));
-      const down = await page.evaluate<number>(`document.querySelector('${timeline}').scrollTop`);
-      await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY: -200 });
-      await page.waitFor(`document.querySelector('${timeline}').scrollTop < ${down - 100}`);
-      await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 200, deltaY: 0 });
-      await page.waitFor(`document.querySelector('${pre}').scrollLeft > 100`);
+      expect(await page.evaluate('document.querySelector("[data-testid=file-panel]") !== null')).toBe(true);
+      await page.screenshot(join(import.meta.dir, '.artifacts', `text-link-panel-${narrow ? 'phone' : 'desktop'}.png`));
       expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
-      await page.click('[data-testid="artifact-preview"]');
-      await page.waitFor(`!document.querySelector('${pre}')`);
-      await page.click('[data-testid="artifact-preview"]');
-      await page.waitFor(`document.querySelector('${pre}')?.textContent.includes('Line 120')`);
     }
     expect(page.errors()).toEqual([]);
   } finally { await page?.close(); client.close(); await core.stop(); }
@@ -172,22 +159,22 @@ test('remote file previews load under the shell content security policy', async 
     })()`);
     await page.click(`[data-thread-id="${thread.id}"]`);
     await page.click('a[data-file-path="capture.png"]');
-    const preview = '[data-testid="chat-file"]:has([data-testid="artifact-preview"])';
-    await page.waitFor(`document.querySelector('${preview} img')?.naturalWidth > 0 || document.querySelector('${preview} [data-testid=media-fallback]')`);
-    const loaded = await page.evaluate<number>(`document.querySelector('${preview} img')?.naturalWidth ?? 0`);
-    if (loaded !== 192) await page.screenshot(join(import.meta.dir, '.artifacts', 'remote-preview-before-desktop.png'));
+    // A picture of the project opens in the viewer, read through the core's ticket route.
+    const linked = '[data-testid=image-viewer] img';
+    await page.waitFor(`document.querySelector('${linked}')?.naturalWidth > 0`);
     expect(await page.evaluate('window.__policyViolations')).toEqual([]);
-    expect(loaded).toBe(192);
-    const download = await page.evaluate<string>(`document.querySelector('${preview} [data-testid=artifact-download]').href`);
-    expect(new URL(download).origin).toBe(remote);
-    expect(Buffer.from(await (await fetch(download)).arrayBuffer())).toEqual(picture);
+    expect(await page.evaluate<number>(`document.querySelector('${linked}').naturalWidth`)).toBe(192);
+    const linkedUrl = await page.evaluate<string>(`document.querySelector('${linked}').src`);
+    expect(new URL(linkedUrl).origin).toBe(remote);
+    expect(Buffer.from(await (await fetch(linkedUrl)).arrayBuffer())).toEqual(picture);
     for (const phone of [false, true]) {
       if (phone) await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-      await page.evaluate(`document.querySelector('${preview}').scrollIntoView({ block: 'center' })`);
       await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `remote-preview-${phone ? 'phone' : 'desktop'}.png`));
       expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     }
+    await page.click('[data-testid=image-viewer-close]');
+    await page.waitFor('document.querySelector("[data-testid=image-viewer]") === null');
     // A streamed attachment uses the same remote ticket route, including its full-size viewer.
     const large = 'Array.from(document.querySelectorAll("[data-testid=chat-file]")).find(card => card.textContent.includes("large-picture.png"))';
     await page.evaluate(`${large}.scrollIntoView({ block: 'center' })`);
@@ -203,8 +190,7 @@ test('remote file previews load under the shell content security policy', async 
     expect((await (await fetch(originalUrl)).arrayBuffer()).byteLength).toBe(picture.length + 6 * 1024 * 1024);
     await page.click('[data-testid=image-viewer-close]');
     await page.click('a[data-file-path="preview.wav"]');
-    await page.waitFor('document.querySelector("[data-testid=artifact-content] audio")?.readyState >= 1 || document.querySelector("[data-testid=media-fallback]")');
-    expect(await page.evaluate('document.querySelector("[data-testid=artifact-content] audio")?.readyState')).toBeGreaterThanOrEqual(1);
+    await page.waitFor('document.querySelector("[data-testid=file-audio]")?.readyState >= 1');
     expect(await page.evaluate('window.__policyViolations')).toEqual([]);
     expect(page.errors()).toEqual([]);
     // An ordinary remote image still cannot bypass the ticket route.
@@ -285,24 +271,20 @@ test('agent deliverables and file links open in chat on desktop and paired phone
         document.querySelector('a[data-file-path=' + ${JSON.stringify(JSON.stringify(notesPath))} + ']').scrollIntoView({ block: 'center' });
       })()`);
       await page.click(`a[data-file-path=${JSON.stringify(notesPath)}]`);
-      await page.waitFor(mobile ? 'document.querySelector("[data-testid=chat-file] [role=alert]")' : 'document.querySelector("[data-testid=artifact-content] pre")');
-      expect(await page.text('[data-testid=chat-file]')).toContain(mobile ? 'owner connection' : 'Ready for review.');
+      // The project's notes open in the panel, on a paired phone too: reading a project file is a device's right.
+      const notesShown = mobile ? 'document.querySelector("[data-testid=file-lines]")?.textContent.includes("Ready for review.")' : 'document.querySelector("[data-testid=file-text]")?.value.includes("Ready for review.")';
+      await page.waitFor(notesShown);
       await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `artifacts-${mobile ? 'phone' : 'desktop'}.png`));
       if (!mobile) {
+        await page.click('[data-testid=surface-close], [data-testid=panel-close]').catch(() => {});
         await page.click(`a[data-file-path=${JSON.stringify(picturePath)}]`);
-        // The published picture is already loaded. Wait for the preview opened by this link.
-        const linkedImage = '[data-testid="chat-file"]:has([data-testid="artifact-preview"]) [data-testid="artifact-content"] img';
-        // The image loads lazily and the echo reply can push the card below the fold.
-        await page.waitFor(`document.querySelector(${JSON.stringify(linkedImage)})`);
-        await page.evaluate(`document.querySelector(${JSON.stringify(linkedImage)}).scrollIntoView({ block: 'center' })`);
-        await page.waitFor(`document.querySelector(${JSON.stringify(linkedImage)})?.naturalWidth > 0`).catch(async error => {
-          console.error(await page!.evaluate(`JSON.stringify(Array.from(document.querySelectorAll('[data-testid=chat-file]')).map(card => ({ text: card.textContent, images: Array.from(card.querySelectorAll('img')).map(img => ({ src: img.src, width: img.naturalWidth })) })))`));
-          await page!.screenshot(join(import.meta.dir, '.artifacts', 'artifacts-linked-image-failure.png'));
-          throw error;
-        });
-        expect(await page.evaluate(`document.querySelector(${JSON.stringify(linkedImage)}).naturalWidth`)).toBe(192);
+        // The linked picture opens in the viewer, at its own size.
+        await page.waitFor('document.querySelector("[data-testid=image-viewer] img")?.naturalWidth === 192');
+        await page.settleAnimations();
         await page.screenshot(join(import.meta.dir, '.artifacts', 'artifacts-image-desktop.png'));
+        await page.click('[data-testid=image-viewer-close]');
+        await page.waitFor('document.querySelector("[data-testid=image-viewer]") === null');
         await page.evaluate('Array.from(document.querySelectorAll("[data-testid=chat-file]")).find(card => card.textContent.includes("handoff.pdf")).querySelector("[data-testid=artifact-preview]").click()');
         await page.waitFor('document.querySelector("[data-testid=artifact-content] iframe")');
         // Chromium's PDF viewer paints asynchronously after the frame has loaded.

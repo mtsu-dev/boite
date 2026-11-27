@@ -1,7 +1,8 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN, type Attachment } from '@boite/contracts';
 import { receiveFiles } from './composer-attachments';
 import type { Store } from './store.svelte';
+import { WORKER_IDLE_MS } from './worker-idle';
 import {
   IMAGE_MAX_EDGE,
   IMAGE_SOURCE_MAX_BYTES,
@@ -215,5 +216,60 @@ describe('receiveFiles', () => {
     await Promise.all([first, second]);
     expect(box.attachments.map(one => one.name)).toEqual(notes.map(one => one.name));
     expect(store.error).toContain('heavy-a.bin');
+  });
+});
+
+describe('prepareImageAway', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  async function fakeImageWorker(fails = false) {
+    vi.resetModules();
+    const sent: { id: number; file: File }[] = [];
+    const created = vi.fn();
+    const terminated = vi.fn();
+    class FakeWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      constructor() { created(); }
+      postMessage(job: { id: number; file: File }) {
+        sent.push(job);
+        if (fails) { queueMicrotask(() => this.onerror?.(new Event('error', { cancelable: true }))); return; }
+        queueMicrotask(() => this.onmessage?.({ data: { id: job.id, prepared: { kind: 'kept', file: job.file } } } as MessageEvent));
+      }
+      terminate() { terminated(); }
+    }
+    vi.stubGlobal('Worker', FakeWorker);
+    vi.stubGlobal('OffscreenCanvas', class {});
+    return { sent, created, terminated, module: await import('./image-prepare') };
+  }
+
+  test('terminates the idle image worker and spawns a fresh one on the next image', async () => {
+    vi.useFakeTimers();
+    const { sent, created, terminated, module } = await fakeImageWorker();
+    const first = file('shot-1.png', 'image/png', 100);
+    expect(await module.prepareImageAway(first)).toEqual({ kind: 'kept', file: first });
+    expect(sent).toHaveLength(1);
+    expect(created).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(WORKER_IDLE_MS);
+    expect(terminated).toHaveBeenCalledOnce();
+    const second = file('shot-2.png', 'image/png', 100);
+    expect(await module.prepareImageAway(second)).toEqual({ kind: 'kept', file: second });
+    expect(created).toHaveBeenCalledTimes(2);
+    expect(sent).toHaveLength(2);
+  });
+
+  test('a worker that fails falls back to the page for that image and the next ones', async () => {
+    const { sent, terminated, module } = await fakeImageWorker(true);
+    const first = file('shot-1.png', 'image/png', 100);
+    expect(await module.prepareImageAway(first)).toEqual({ kind: 'kept', file: first });
+    expect(sent).toHaveLength(1);
+    expect(terminated).toHaveBeenCalledOnce();
+    const second = file('shot-2.png', 'image/png', 100);
+    expect(await module.prepareImageAway(second)).toEqual({ kind: 'kept', file: second });
+    expect(sent).toHaveLength(1);
   });
 });

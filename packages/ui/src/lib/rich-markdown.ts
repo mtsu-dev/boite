@@ -14,6 +14,7 @@
  */
 import { strings } from './strings';
 import type { MediaItem } from './media-gallery';
+import { copySource } from './selection-copy';
 
 type Drawing = typeof import('./rich-markdown-draw');
 
@@ -73,8 +74,8 @@ export function richMarkdown(node: HTMLElement, options: RichMarkdownOptions = {
   draw();
   const observer = new MutationObserver(draw);
   observer.observe(node, { childList: true, subtree: true });
-  // Nothing drawn, nothing to rewrite: until the module is here a copy is the browser's own.
-  const copy = (event: ClipboardEvent): void => drawing?.copySource(node, event);
+  // A drawing copies as its source, a file chip as its path; any other copy is the browser's own.
+  const copy = (event: ClipboardEvent): void => copySource(node, event);
   node.addEventListener('copy', copy);
   return {
     update(next: RichMarkdownOptions = {}) { current = next; },

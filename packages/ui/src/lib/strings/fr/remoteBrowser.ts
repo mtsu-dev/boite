@@ -2,6 +2,7 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
   remoteBrowser: {
+    keyboard: 'Commandes clavier',
     display: 'Affichage', resolution: 'Résolution de la page', fitPhone: 'Adapter à cet écran', phone: 'Téléphone', tablet: 'Tablette', rotate: 'Pivoter', width: 'Largeur', height: 'Hauteur', apply: 'Appliquer', sharedSize: 'La résolution change aussi la page que voit l’agent.', restoreSize: 'Revenir à la taille par défaut', previewZoom: 'Zoom de l’aperçu (cet appareil seulement)', fit: 'Ajuster', panHint: 'Glissez pour déplacer l’aperçu. Utilisez les flèches pour défiler dans la page.',
     address: 'Adresse', addressPlaceholder: 'Saisir une adresse', back: 'Précédent', forward: 'Suivant', reload: 'Recharger', badAddress: 'Saisissez une adresse web (http ou https).',
     title: 'Navigateur de l’agent', waiting: 'En attente de la page', paused: 'En pause', reconnecting: 'Reconnexion', pause: 'Pause', resume: 'Reprendre',

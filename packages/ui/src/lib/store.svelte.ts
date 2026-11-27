@@ -187,6 +187,7 @@ export class Store {
   detach(): void {
     const ctx = this.#ctx;
     ctx.threads.releaseCaches(this.machineId);
+    ctx.displayImages.clear();
     ctx.shared.reset();
     ctx.requests.resetSecrets();
     ctx.clientGeneration++;
