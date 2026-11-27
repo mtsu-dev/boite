@@ -1911,7 +1911,8 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
 - After each turn `get_session_stats` feeds the context meter with a five-second
   control-read expiry. A timed-out response is removed and cannot update a later
   turn's context.
-- A pi profile whose `launch.args` hold `--api-key` is rejected, with that
+- A pi profile whose `launch.args` hold `--api-key` as an option (not as
+  another option's value) is rejected, with that
   argument's field. pi binds an inline key to whichever provider its own
   reading of the other flags starts on (case, fuzzy matches, raw ids, the
   saved scope and default), and Boite changes those flags: a named model, a
@@ -1924,7 +1925,8 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   rejected, with that argument's field: pi 1.6.1 exits on it ("--provider
   requires --model"), so every launch left to the profile would fail. So is
   one that ends on an option missing its value, which would take the first
-  argument Boite adds. Boite reads the profile as pi's parser walks it
+  argument Boite adds, and one that holds `--`, after which pi reads every
+  argument, Boite's own included, as the prompt's text. Boite reads the profile as pi's parser walks it
   (`drivers/pi/args.ts`), each option with the value it consumes, here and
   wherever it replaces or drops the profile's model flags: in
   `--append-system-prompt --model`, `--model` is the prompt's text.

@@ -859,17 +859,22 @@ test.each([
   { args: ['--provider', 'fake-b'], expected: '--provider with a --model, or neither' },
   { args: ['--provider', 'fake-b', '--append-system-prompt', '--model'], expected: '--provider with a --model, or neither' },
   { args: ['--model', 'fake-b/plain', '--append-system-prompt'], expected: 'a value after --append-system-prompt' },
+  { args: ['--mode', 'rpc', '--'], expected: 'no --' },
   { args: ['--append-system-prompt', '--provider'], expected: null },
+  { args: ['--append-system-prompt', '--api-key'], expected: null },
 ])('a pi profile $args is refused when pi would exit on it or read a Boite argument as its value', async ({ args, expected }) => {
   const client = await startCore();
-  await piAccount(client);
+  const { accountId } = await piAccount(client);
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
   const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
   for (const profile of Object.values(descriptor.profiles)) profile.launch.args.push(...args);
   writeFileSync(descriptorFile, JSON.stringify(descriptor));
   const { rejected } = await client.call('providers.reload', {});
-  if (expected === null) expect(rejected).toEqual([]);
-  else expect(rejected).toEqual([expect.objectContaining({ field: expect.stringMatching(/^profiles\.\w+\.launch\.args\[\d+\]$/), expected })]);
+  // An accepted profile still lists its models: pi reads those words as the prompt's text.
+  if (expected === null) {
+    expect(rejected).toEqual([]);
+    expect((await client.call('providers.probe', { providerId: 'pi-fake', accountId, refresh: true })).models.length).toBeGreaterThan(0);
+  } else expect(rejected).toEqual([expect.objectContaining({ field: expect.stringMatching(/^profiles\.\w+\.launch\.args\[\d+\]$/), expected })]);
 });
 
 test('a pi profile with --api-key is refused with its field and what to use instead, its key never echoed', async () => {

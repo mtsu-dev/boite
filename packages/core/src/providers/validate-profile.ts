@@ -74,17 +74,22 @@ export function checkProfiles(value: unknown, file: string, protocol: Protocol):
     // those (a named model, a light context, a one-shot without extensions): a key there could reach another
     // provider. A provider's environment variable or pi's own login is bound to one provider.
     if (protocol === 'pi') {
-      const at = (profiles[os]!.launch?.args ?? []).indexOf('--api-key');
-      if (at >= 0) {
-        reject(file, `profiles.${os}.launch.args[${at}]`, "no --api-key: the provider's own variable in env (ANTHROPIC_API_KEY, OPENAI_API_KEY) or a pi /login", 'pi binds --api-key to whichever provider it starts on, so Boite cannot keep it on one provider');
+      // Read as pi does, each option with its value: a value that spells an option is the value.
+      const read = piArgs(profiles[os]!.launch?.args ?? []);
+      const key = read.find(({ words }) => words[0] === '--api-key');
+      if (key) {
+        reject(file, `profiles.${os}.launch.args[${key.at}]`, "no --api-key: the provider's own variable in env (ANTHROPIC_API_KEY, OPENAI_API_KEY) or a pi /login", 'pi binds --api-key to whichever provider it starts on, so Boite cannot keep it on one provider');
       }
       // pi 1.6.1 exits on a `--provider` without a `--model` ("--provider requires --model"), so every launch Boite
       // leaves to the profile, a fallback title or side question included, would fail.
-      // Read as pi does, each option with its value.
-      const read = piArgs(profiles[os]!.launch?.args ?? []);
       const provider = read.find(({ words }) => words[0] === '--provider' && words.length === 2);
       if (provider && !read.some(({ words }) => words[0] === '--model' && words.length === 2)) {
         reject(file, `profiles.${os}.launch.args[${provider.at}]`, '--provider with a --model, or neither', 'pi 1.6.1 exits on --provider without --model');
+      }
+      // pi reads every argument after `--` as the prompt's text, the ones Boite adds after the profile's included.
+      const separator = read.find(({ words }) => words[0] === '--');
+      if (separator) {
+        reject(file, `profiles.${os}.launch.args[${separator.at}]`, 'no --', 'pi reads every argument after -- as text, so the session, mode and model Boite adds would be lost');
       }
       // An option left without its value would take the first argument Boite adds after the profile's.
       const last = read.at(-1);

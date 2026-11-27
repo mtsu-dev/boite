@@ -18,6 +18,7 @@
  */
 import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { piArgValue } from '../../src/drivers/pi/args.ts';
 import { instructionsOf } from './history.ts';
 
 const DIRECTIVE = /\[(agents|tool|thought|usage|slow|crash|splitcrash|ask|select|input|editor|retry|giveup|deaf|noclear|notify|timeout|compacted|swapped|taken)\]/g;
@@ -113,10 +114,9 @@ function loggedLines(): string[] {
 // What it was launched with
 // ---------------------------------------------------------------------------
 
-/** The last value of `name`, which pi keeps. */
+/** The last value of `name`, read as pi's parser walks the arguments, which pi keeps. */
 function flag(name: string): string {
-  const at = process.argv.lastIndexOf(name);
-  return at < 0 ? '' : (process.argv[at + 1] ?? '');
+  return piArgValue(process.argv.slice(2), name) ?? '';
 }
 
 const sessionId = flag('--session-id');
