@@ -4,11 +4,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { TOOL_FREE_CONTEXT } from '@boite/contracts';
-import type { FileAttachment, ImageAttachment, MessagePart, RpcEvents, RpcParams, Settings } from '@boite/contracts';
+import type { FileAttachment, ImageAttachment, MessagePart, ModelInfo, RpcEvents, RpcParams, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import type { SharedAccess } from '../src/contacts/access-policy.ts';
 import { forgetProbes, getDriver, probedModelsOf } from '../src/drivers/index.ts';
 import { setPiReadDeadlineForTests, setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
+import { piProfileArgs } from '../src/drivers/pi/models.ts';
 import { folderExtends, folderStartModel, piLaunchChoices } from '../src/drivers/pi/start-model.ts';
 import { forgetSavedCatalog, readSavedCatalog } from '../src/providers/saved-catalogs.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
@@ -172,6 +173,12 @@ test('pi leaves the start model to pi where the folder\'s extensions or an exten
     expect(folderExtends(agentDir, bare, piLaunchChoices(['-e', './vision.ts']))).toBe(true);
     writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ packages: ['npm:pi-vision-provider'] }));
     expect(folderExtends(agentDir, bare)).toBe(true);
+    // `--no-extensions` loads only the `-e` ones: none it would discover, the folder's own included.
+    expect(folderExtends(agentDir, bare, piLaunchChoices(['--no-extensions']))).toBe(false);
+    expect(folderExtends(agentDir, bare, piLaunchChoices(['-ne', '-e', './vision.ts']))).toBe(true);
+    mkdirSync(join(cwd, '.pi', 'extensions'), { recursive: true });
+    writeFileSync(join(cwd, '.pi', 'extensions', 'vision.ts'), 'export default () => {};');
+    expect(folderExtends(agentDir, cwd, { ...piLaunchChoices(['-ne']), trust: true })).toBe(false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -745,7 +752,7 @@ test('a pi one-shot on a model an extension registers falls back to pi\'s own mo
 });
 
 test('pi one-shots on its own model keep the profile model its --api-key needs', async () => {
-  const client = await startCore();
+  const client = await startCore({ warmProcessMinutes: 5 });
   const { projectId, accountId } = await piAccount(client);
   const descriptorFile = join(harness!.dataDir, 'providers', 'pi-fake.json');
   const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8')) as { profiles: Record<string, { launch: { args: string[] } }> };
@@ -777,8 +784,38 @@ test('pi one-shots on its own model keep the profile model its --api-key needs',
       expect(lines.filter(line => line.startsWith('api-key '))).toEqual(['api-key test-key for fake-a', 'api-key test-key for fake-a']);
       expect(titled[titled.indexOf('--api-key') + 1]).toBe('test-key');
     }
+    if (model !== 'fake-b/plain') continue;
+    // pi binds the key at launch: the warm process on `fake-b` gives way to one that holds it for `fake-a`.
+    await client.call('threads.update', { threadId: id, model: 'fake-a/quick' });
+    const switched = fakeLog().split('\n').length;
+    expect((await (await startTurn(client, id, 'Again')).finished).status).toBe('done');
+    expect(fakeLog().split('\n').slice(switched).filter(line => line.startsWith('api-key '))).toEqual(['api-key test-key for fake-a']);
   }
 }, 20_000);
+
+test('a profile --api-key goes only to a launch on the provider the catalog shows the profile starts on', () => {
+  const entry = (provider: string, id: string): ModelInfo => ({ id: `${provider}/${id}`, name: `${provider.slice(0, 1).toUpperCase()}${provider.slice(1)} / ${id}` } as ModelInfo);
+  const catalog = [entry('openai', 'chat'), entry('openai', 'quick'), entry('anthropic', 'title'), entry('gateway', 'other'), entry('gateway/team', 'base')];
+  const key = (args: string[], model: string, list: ModelInfo[] | null = catalog) => piProfileArgs([...args, '--api-key', 'k'], model, list).includes('k');
+  expect(key(['--provider', 'openai'], 'openai/quick')).toBe(true);
+  expect(key(['--provider', 'openai'], 'anthropic/title')).toBe(false);
+  // A provider id may hold a `/`: `gateway/team` is not `gateway`.
+  expect(key(['--model', 'gateway/team/base'], 'gateway/other')).toBe(false);
+  expect(key(['--model', 'gateway/team/base'], 'gateway/team/base')).toBe(true);
+  // A scope names the provider when all its patterns do; a bare id when one provider holds it.
+  expect(key(['--models', 'openai/*'], 'anthropic/title')).toBe(false);
+  expect(key(['--models', 'openai/*'], 'openai/quick')).toBe(true);
+  expect(key(['--models', 'openai/*,anthropic/*'], 'openai/quick')).toBe(false);
+  expect(key(['--model', 'chat'], 'openai/quick')).toBe(true);
+  // The last of each flag wins, as pi reads them; a key nothing names a provider for follows the model, as in pi;
+  // a provider the catalog cannot confirm keeps it out.
+  expect(key(['--provider', 'anthropic', '--provider', 'openai'], 'openai/quick')).toBe(true);
+  expect(key([], 'anthropic/title')).toBe(true);
+  expect(key(['--provider', 'openai'], 'openai/quick', null)).toBe(false);
+  // Boite's own flags name the model: the profile's go, or pi would read an unlisted model under its provider.
+  expect(piProfileArgs(['--provider', 'openai', '--model', 'openai/chat', '--verbose'], 'anthropic/title', null)).toEqual(['--verbose']);
+  expect(piProfileArgs(['--provider', 'openai', '--api-key', 'k'], 'default', null)).toEqual(['--provider', 'openai', '--api-key', 'k']);
+});
 
 test('pi answers /btw from a disposable session copy and leaves the source intact', async () => {
   const { client, threadId } = await startThread();

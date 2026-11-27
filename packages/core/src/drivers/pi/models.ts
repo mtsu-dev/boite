@@ -108,24 +108,70 @@ export function piProviderOf(model: string, catalog: readonly ModelInfo[] | null
   return piCatalogPair(model, catalog)?.provider ?? model.slice(0, Math.max(model.indexOf('/'), 0));
 }
 
-/** Whether a profile's launch arguments pin `model`'s provider, by its `--provider` or a `--model` of that provider. */
+/**
+ * The provider pi 1.6.1 starts a profile on, from its own `--provider`, else its `--model`, else a `--models` scope
+ * whose patterns all name one provider, the last of each kind winning as `parseArgs` reads them. A text resolves only
+ * through the catalog: the pair it lists, else the longest provider whose `<provider>/` starts it (a provider id may
+ * hold a `/`), else the one provider holding that bare id. Null when only pi can tell.
+ */
+export function piProfileProvider(args: readonly string[], catalog: readonly ModelInfo[] | null): string | null {
+  let provider: string | null = null, model: string | null = null, scope: string[] | null = null;
+  for (let i = 0; i + 1 < args.length; i++) {
+    const arg = args[i]!, next = args[i + 1]!;
+    if (arg === '--provider') provider = next;
+    else if (arg === '--model') model = next;
+    else if (arg === '--models') scope = next.split(',').map(pattern => pattern.trim()).filter(pattern => pattern.length > 0);
+    else continue;
+    i++;
+  }
+  if (provider !== null) return provider;
+  if (model !== null) return catalogProvider(model, catalog);
+  const named = new Set((scope ?? []).map(pattern => catalogProvider(pattern, catalog)));
+  return named.size === 1 && !named.has(null) ? [...named][0]! : null;
+}
+
+function catalogProvider(text: string, catalog: readonly ModelInfo[] | null): string | null {
+  if (catalog === null) return null;
+  const listed = piCatalogPair(text, catalog);
+  if (listed) return listed.provider;
+  const pairs = catalog.flatMap(entry => piModelOf(entry) ?? []);
+  const prefixed = pairs.filter(pair => text.startsWith(`${pair.provider}/`)).map(pair => pair.provider).sort((a, b) => b.length - a.length);
+  if (prefixed.length > 0) return prefixed[0]!;
+  const holders = new Set(pairs.filter(pair => pair.id === text).map(pair => pair.provider));
+  return holders.size === 1 ? [...holders][0]! : null;
+}
+
+/** Whether the profile starts pi on `model`'s provider, or on `model` itself. */
 export function piProfilePins(args: readonly string[], model: string, catalog: readonly ModelInfo[] | null): boolean {
   const provider = piProviderOf(model, catalog);
-  return args.some((arg, i) => (arg === '--provider' && provider !== '' && args[i + 1] === provider)
-    || (arg === '--model' && (args[i + 1] === model || (provider !== '' && args[i + 1]?.startsWith(`${provider}/`) === true))));
+  return args.some((arg, i) => arg === '--model' && args[i + 1] === model) || (provider !== '' && piProfileProvider(args, catalog) === provider);
 }
 
 /**
- * A profile's launch arguments for a process Boite starts on `model`. pi 1.6.1 binds `--api-key` to the provider of
- * the model it starts on (`setRuntimeApiKey` in main.js), so a key the profile declares beside another `--provider`
- * or `--model` stays out of a process on another provider. A key with no provider beside it is the profile's choice.
+ * A profile's launch arguments for a process Boite starts on `model`. Boite's own `--provider` and `--model` name it,
+ * so the profile's go, or pi would read a model the catalog does not list under the profile's provider. pi 1.6.1
+ * binds `--api-key` to the provider of the model it starts on (`setRuntimeApiKey` in main.js), so the profile's key
+ * goes only where the catalog shows that provider is the one the profile starts on. A key no `--provider`, `--model`
+ * or `--models` names a provider for follows the model, as pi itself would.
  */
 export function piProfileArgs(args: readonly string[], model: string | null, catalog: readonly ModelInfo[] | null): string[] {
-  const at = args.indexOf('--api-key');
-  if (model === null || model === AGENT_OWN_MODEL || at < 0) return [...args];
-  const names = args.some((arg, i) => i + 1 < args.length && (arg === '--provider' || arg === '--model'));
-  if (!names || piProfilePins(args, model, catalog)) return [...args];
-  return args.filter((arg, i) => !(arg === '--api-key' && i + 1 < args.length) && !(i > 0 && args[i - 1] === '--api-key'));
+  if (model === null || model === AGENT_OWN_MODEL) return [...args];
+  const selected = piCatalogPair(model, catalog)?.provider ?? null;
+  const names = args.some((arg, i) => i + 1 < args.length && (arg === '--provider' || arg === '--model' || arg === '--models'));
+  const keyed = !names || (selected !== null && piProfileProvider(args, catalog) === selected);
+  const kept: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (i + 1 < args.length && (arg === '--provider' || arg === '--model' || (arg === '--api-key' && !keyed))) i++;
+    else kept.push(arg);
+  }
+  return kept;
+}
+
+/** The provider a launch on `model` binds the profile's `--api-key` to, or null when it passes none. */
+export function piKeyedProvider(args: readonly string[], model: string | null, catalog: readonly ModelInfo[] | null): string | null {
+  if (model === null || model === AGENT_OWN_MODEL || !piProfileArgs(args, model, catalog).includes('--api-key')) return null;
+  return piCatalogPair(model, catalog)?.provider ?? null;
 }
 
 /** The pair `catalog` names behind a Boite model id, the one image admission checked; undefined when it lists none. */

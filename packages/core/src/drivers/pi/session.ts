@@ -24,7 +24,7 @@ import {
 import { AGENT_OWN_MODEL, EXIT_GRACE_MS, STDERR_MAX } from './protocol.ts';
 import type { PiAssistantMessage, PiCommand, PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
-import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piPairOf, piProfileArgs, piReadsImages } from './models.ts';
+import { piCatalogPair, piListsPair, piModelArgs, piModelOf, piKeyedProvider, piPairOf, piProfileArgs, piReadsImages } from './models.ts';
 import { checkpointOf } from './session-files.ts';
 import type { PiTurn } from './turn.ts';
 import { answerDialog } from './dialogs.ts';
@@ -113,6 +113,8 @@ export class PiSession {
   #model: string | null = null;
   /** The pair pi runs `#model` as when the catalog named it, as `provider` and `modelId` in JSON; null when pi resolved the text. */
   #pair: string | null = null;
+  /** The provider pi bound the profile's `--api-key` to at launch, or null when the launch passed none. */
+  #keyedOn: string | null = null;
   #effort: string | null = null;
   #protection: ReturnType<typeof protectedPi> = null;
 
@@ -411,6 +413,10 @@ export class PiSession {
     // the process follows it even when the id did not change.
     const named = piCatalogPair(model, this.catalog(ctx));
     if (model !== this.#model || (named !== undefined && JSON.stringify(named) !== this.#pair)) {
+      // pi binds the profile's key at launch only: a model on the provider it is for, on a process that bound it to
+      // none or to another, opens a new process with it.
+      const keyed = piKeyedProvider(profileFor(ctx.provider)?.launch?.args ?? [], model, this.catalog(ctx));
+      if (keyed !== null && keyed !== this.#keyedOn) return turn.isStopped ? peer : await this.#reopen(turn);
       const listed: unknown = dataOf(await peer.command('get_available_models', {}, { timeoutMs: readDeadlineMs }))['models'];
       if (named !== undefined && !piListsPair(listed, named)) return turn.isStopped ? peer : await this.#reopen(turn);
       // Else pi's own listing names the pair: a provider id may hold a `/`, so the first one is not the split.
@@ -461,7 +467,7 @@ export class PiSession {
         throw new Error('the pi process on the previous model did not exit, so its session cannot be reopened yet');
       }
       if (turn.isStopped || this.#ended) throw new Error('the pi turn was stopped before its new process started');
-      turn.ctx.log('info', `pi session: ${turn.ctx.thread.model} is not in the running process's models, a new process opens on it`);
+      turn.ctx.log('info', `pi session: ${turn.ctx.thread.model} needs what the running process lacks (a pair it did not list, the profile's key), a new process opens on it`);
       await this.#start(turn.ctx);
     } finally {
       this.#opening = null;
@@ -628,6 +634,7 @@ export class PiSession {
     this.#model = ctx.thread.model;
     const launched = ctx.thread.model === null ? undefined : piCatalogPair(ctx.thread.model, this.catalog(ctx));
     this.#pair = launched === undefined ? null : JSON.stringify(launched);
+    this.#keyedOn = piKeyedProvider(profile?.launch?.args ?? [], ctx.thread.model, this.catalog(ctx));
     this.#effort = ctx.thread.effort;
     const peer = new PiPeer(child, {
       event: (message) => {

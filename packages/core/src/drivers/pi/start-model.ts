@@ -27,6 +27,8 @@ export interface PiLaunchChoices {
   model: boolean;
   /** An `--extension`/`-e`, which loads before pi decides whether it trusts the folder. */
   extensions?: boolean;
+  /** `--no-extensions`/`-ne`: pi then loads only the `-e` ones, none it discovers (`loadCurrentExtensionSet`). */
+  noExtensions?: boolean;
 }
 
 /** A model of the account's catalog as Boite lists it (`drivers/pi/models.ts`): `provider/id`, and a name that starts with the provider. */
@@ -47,7 +49,8 @@ export function piLaunchChoices(args: readonly string[]): PiLaunchChoices {
       if (arg === '--models') choices.scope = next.split(',').map(pattern => pattern.trim()).filter(pattern => pattern.length > 0);
       else if (arg === '--model') choices.model = true;
       else if (arg === '--extension' || arg === '-e') choices.extensions = true;
-    } else if (arg === '--approve' || arg === '-a') choices.trust = true;
+    } else if (arg === '--no-extensions' || arg === '-ne') choices.noExtensions = true;
+    else if (arg === '--approve' || arg === '-a') choices.trust = true;
     else if (arg === '--no-approve' || arg === '-na') choices.trust = false;
     else if (OPTIONAL.has(arg) || arg === '--list-models') {
       if (next !== undefined && !next.startsWith('-') && !(arg === '--list-models' && next.startsWith('@'))) i++;
@@ -126,21 +129,23 @@ export function folderExtends(agentDir: string, cwd: string, launch: Omit<PiLaun
 
 /**
  * What pi 1.6.1 reads of the account's and the folder's settings in `cwd`, whether only it can tell the start model,
- * and whether the account or the profile loads extensions (`--no-extensions` still loads `-e` ones, so it is not read).
+ * and whether the account or the profile loads extensions (`--no-extensions` leaves only the `-e` ones).
  */
 function folderView(agentDir: string, cwd: string, launch: Omit<PiLaunchChoices, 'model'>): { global: Record<string, unknown>; project: Record<string, unknown> | null; undecided: boolean; extensions: boolean } {
   const global = settingsAt(join(agentDir, 'settings.json')) ?? {};
   const folder = piProcessCwd(cwd);
   const own = join(folder, '.pi');
   const extended = entriesIn(join(own, 'extensions'));
-  const extensions = launch.extensions === true || entriesIn(join(agentDir, 'extensions')) || listed(global['extensions']) || listed(global['packages']);
+  const discovers = launch.noExtensions !== true;
+  const extensions = launch.extensions === true
+    || (discovers && (entriesIn(join(agentDir, 'extensions')) || listed(global['extensions']) || listed(global['packages'])));
   // For a folder with settings or extensions of its own, pi first asks the extensions it loads before trusting any
   // folder (the account's and the profile's): a `project_trust` hook decides over `trust.json` (`resolveProjectTrusted`).
   const hooked = launch.trust === null && (extended || existsSync(join(own, 'settings.json'))) && extensions;
   const trust = launch.trust ?? trusted(agentDir, folder, global);
   const project = trust ? settingsAt(join(own, 'settings.json')) : null;
   // A trusted folder's own extensions load only there (`DefaultPackageManager.resolve`).
-  const undecided = hooked || (trust && (extended || listed(project?.['extensions']) || listed(project?.['packages'])));
+  const undecided = hooked || (trust && discovers && (extended || listed(project?.['extensions']) || listed(project?.['packages'])));
   return { global, project, undecided, extensions };
 }
 

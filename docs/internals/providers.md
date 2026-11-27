@@ -1886,8 +1886,16 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   Boite names a model and kept when the thread leaves the model to pi, so a
   profile `--api-key` still has the model it binds to. pi binds that key to
   the provider of the model it starts on, so a launch, a conversation's or a
-  one-shot's, on a provider other than the one the profile's `--provider` or
-  `--model` names leaves the key out; a key with no provider beside it stays.
+  one-shot's, keeps the key only when the catalog shows the model's provider is
+  the one the profile starts on: its last `--provider`, else its `--model`
+  (a provider id may hold a `/`, and a bare id counts when one provider lists
+  it), else a `--models` scope whose patterns all name one provider. Without a
+  catalog the key stays out. A key nothing names a provider for follows the
+  model, as pi itself does. pi binds the key at launch only, so switching a
+  warm conversation to a model the key now goes with opens a new process.
+  When Boite names the model, the profile's `--provider` and `--model` are
+  dropped from the conversation too, or pi would look the model up under the
+  profile's provider.
   A model an extension
   registers is unknown without extensions: when pi exits at startup on it
   (`Unknown provider "..."` or `Model "..." not found`, each followed by `Use
