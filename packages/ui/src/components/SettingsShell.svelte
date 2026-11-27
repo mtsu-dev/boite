@@ -2,7 +2,7 @@
   import EmptyState from './EmptyState.svelte';
   import SearchField from './SearchField.svelte';
   import { desktopShell } from '../lib/shell-platform';
-  import { openArchived } from '../lib/archived-view.svelte';
+  import { archivedMachine } from '../lib/archived-view.svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { tick } from 'svelte';
   import MobileSettings from './MobileSettings.svelte';
@@ -54,7 +54,9 @@
    * this device's switches alone.
    */
   /** Machines this window controls, and the window's own whatever its role there. */
-  let choices = $derived(workspace.machines.filter((machine) => machine.store === store || (machine.store.connection === 'ready' && machine.store.owner)));
+  let choices = $derived(workspace.machines.filter((machine) => machine.store === store || machine.store === pinned || (machine.store.connection === 'ready' && machine.store.owner)));
+  /** The machine an archive request picked: it stays in the bar while its archive is read, even once it drops. */
+  let pinned = $state<Store | null>(null);
   let picked = $state<string | null>(null);
   /**
    * Until one is picked, a page shows the window's machine. Plugins open on
@@ -70,6 +72,25 @@
   $effect(() => {
     if (!store.pluginSource) return;
     untrack(() => { picked = choices.find((machine) => machine.store === store)?.id ?? picked; });
+  });
+  /** The archive opened from a project or a list of another machine shows that machine's (lib/archived-view.svelte.ts). */
+  $effect(() => {
+    const machine = archivedMachine.store;
+    if (!machine) return;
+    untrack(() => {
+      archivedMachine.store = null;
+      // A request another page overtook, picked while Settings loaded, moves no machine.
+      if (store.page !== 'settings' || store.settingsTab !== 'general' || store.settingsSection?.id !== 'archived') return;
+      // From the machines, not the bar: one that dropped while Settings loaded is pinned back into it.
+      const choice = workspace.machines.find((entry) => entry.store === machine);
+      if (!choice) return;
+      picked = choice.id;
+      pinned = choice.store === store ? null : choice.store;
+    });
+  });
+  /** Leaving General or picking another machine lets the pinned one go: away, it leaves the bar. */
+  $effect(() => {
+    if (pinned && (store.page !== 'settings' || store.settingsTab !== 'general' || chosen?.store !== pinned)) untrack(() => { pinned = null; });
   });
   /** The bar when there is a machine to pick or a default machine to speak of. */
   let bar = $derived(machinePage(tab) && chosen !== undefined && (choices.length > 1 || chosen.store.group?.settingsHome !== undefined));
@@ -354,8 +375,7 @@
 
   function open(entry: SettingsEntry) {
     query = '';
-    if (entry.tab === 'general' && entry.section === 'archived') openArchived(store);
-    else store.showSettings(entry.tab, entry.section);
+    store.showSettings(entry.tab, entry.section);
   }
 
   function go(page: SettingsTab) {

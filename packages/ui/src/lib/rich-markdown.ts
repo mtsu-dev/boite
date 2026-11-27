@@ -1,6 +1,6 @@
 /**
  * Draws the diagrams, formulas and views `lib/markdown.ts` marked
- * (`.md-mermaid`, `.md-math`, `.md-view`) in a node that shows rendered
+ * (`.md-mermaid`, `.md-math`, `.md-view`, `.md-native`) in a node that shows rendered
  * Markdown, as they arrive in it: the node is watched, so a block an answer
  * completes is drawn on its own.
  *
@@ -14,6 +14,7 @@
  */
 import { strings } from './strings';
 import type { MediaItem } from './media-gallery';
+import { copySource } from './selection-copy';
 
 type Drawing = typeof import('./rich-markdown-draw');
 
@@ -27,7 +28,7 @@ export interface RichMarkdownOptions {
   viewBlock?: (html: string) => Promise<{ ok: true; value: string } | { ok: false; error: string }>;
 }
 
-const PENDING = '.md-math:not([data-drawn]), .md-mermaid:not([data-drawn]), .md-view:not([data-drawn])';
+const PENDING = '.md-math:not([data-drawn]), .md-mermaid:not([data-drawn]), .md-view:not([data-drawn]), .md-native:not([data-drawn])';
 
 let drawing: Drawing | null = null;
 let loading: Promise<Drawing> | null = null;
@@ -61,7 +62,8 @@ export function richMarkdown(node: HTMLElement, options: RichMarkdownOptions = {
     for (const element of node.querySelectorAll<HTMLElement>(PENDING)) {
       element.dataset.drawn = '';
       element.classList.add('md-source');
-      if (element.classList.contains('md-math')) continue;
+      // A formula's TeX and a native block's lines read as they are.
+      if (element.classList.contains('md-math') || element.classList.contains('md-native')) continue;
       const line = document.createElement('p');
       line.className = 'md-diagram-error';
       line.dataset.testid = 'diagram-error';
@@ -72,8 +74,8 @@ export function richMarkdown(node: HTMLElement, options: RichMarkdownOptions = {
   draw();
   const observer = new MutationObserver(draw);
   observer.observe(node, { childList: true, subtree: true });
-  // Nothing drawn, nothing to rewrite: until the module is here a copy is the browser's own.
-  const copy = (event: ClipboardEvent): void => drawing?.copySource(node, event);
+  // A drawing copies as its source, a file chip as its path; any other copy is the browser's own.
+  const copy = (event: ClipboardEvent): void => copySource(node, event);
   node.addEventListener('copy', copy);
   return {
     update(next: RichMarkdownOptions = {}) { current = next; },

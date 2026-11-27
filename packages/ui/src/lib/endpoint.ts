@@ -1,8 +1,8 @@
 // Resolves the core for this page and preserves the public endpoint API.
 import { errorText } from './errors';
 import { GRANT_QUERY_PARAM, PAIR_QUERY_PARAM, parseGroupRelayUrl, withoutTrailingSlashes, type DeviceHello } from '@boite/contracts';
-import { appPage } from './app-origin';
 import { heldDeviceKey } from './device-key';
+import { mobileApp } from './shell-platform';
 
 import { setDropped } from './endpoint-dropped';
 import { readEnvironments } from './endpoint-env';
@@ -189,8 +189,8 @@ export async function shellStarting(): Promise<ShellStarting | null> {
 }
 
 function fromOrigin(): Endpoint | null {
-  // The phone app's page is no machine's: nothing to connect to until a machine is added.
-  if (appPage()) return null;
+  // The Android app's page is no machine's: nothing to connect to until a machine is added.
+  if (mobileApp()) return null;
   const protocol = window.location.protocol;
   if (protocol !== 'http:' && protocol !== 'https:') return null;
   return { url: withoutTrailingSlashes(window.location.origin), token: '' };

@@ -16,6 +16,7 @@ import { copyByCommand } from './clipboard';
 import { fill, strings } from './strings';
 import type { MediaItem } from './media-gallery';
 import type { RichMarkdownOptions } from './rich-markdown';
+import { isNativeKind, parseNative, drawNative } from './native-blocks';
 import { knownViewHeight, mountViewFrame } from './view-block';
 import './rich-markdown-draw.css';
 
@@ -69,6 +70,7 @@ const diagrams = new DrawnCache<{ fragment: DocumentFragment; width: number; hei
 export function draw(element: HTMLElement, options: () => RichMarkdownOptions): void {
   if (element.classList.contains('md-math')) drawMath(element);
   else if (element.classList.contains('md-view')) drawView(element, options);
+  else if (element.classList.contains('md-native')) drawNativeBlock(element);
   else drawDiagram(element, options);
 }
 
@@ -125,6 +127,37 @@ function drawDiagram(element: HTMLElement, options: () => RichMarkdownOptions): 
     ),
     () => showSource(element, source, strings.chat.diagram.unavailable)
   );
+}
+
+/**
+ * A ```steps, ```options, ```bars or ```stats block, drawn here from its lines
+ * (`lib/native-blocks.ts`). One its grammar does not fit stays code, with its
+ * copy button and no error line: it reads as the code block it is.
+ */
+export function drawNativeBlock(element: HTMLElement): void {
+  const source = element.dataset.source ?? '';
+  const raw = element.dataset.kind ?? '';
+  const kind = isNativeKind(raw) ? raw : null;
+  const items = kind ? parseNative(kind, source) : null;
+  if (!kind || !items) {
+    const bar = document.createElement('div');
+    bar.className = 'md-diagram-bar';
+    bar.append(copyButton(source));
+    element.prepend(bar);
+    element.classList.add('md-drawn', 'md-source');
+    return;
+  }
+  const figure = document.createElement('div');
+  figure.className = 'md-native-figure';
+  figure.dataset.testid = 'native-block';
+  figure.append(drawNative(kind, items));
+  for (const math of figure.querySelectorAll<HTMLElement>('.md-math:not([data-drawn])')) {
+    math.dataset.drawn = '';
+    drawMath(math);
+  }
+  element.querySelector(':scope > pre')?.before(figure);
+  element.prepend(drawnBar(element, source, strings.chat.diagram.showBlock));
+  element.classList.add('md-drawn');
 }
 
 /**
@@ -235,72 +268,4 @@ export function viewerItem(figure: HTMLElement): MediaItem {
   svg.setAttribute('style', [...colors, svg.getAttribute('style') ?? '', background ? `background:${background}` : ''].filter(Boolean).join(';'));
   const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
   return { src: URL.createObjectURL(blob), name: `${strings.chat.diagram.label}.svg`, mimeType: 'image/svg+xml', kind: 'image' };
-}
-
-const BLOCKS = new Set(['p', 'div', 'li', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr', 'table', 'ul', 'ol', 'hr']);
-/** Blocks a blank line separates in Markdown. */
-const SPACED = new Set(['p', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'ul', 'ol']);
-
-/** Puts the source of every drawing the selection touches on the clipboard, and leaves any other copy alone. */
-export function copySource(node: HTMLElement, event: ClipboardEvent): void {
-  const selection = node.ownerDocument.getSelection();
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !event.clipboardData) return;
-  const range = selection.getRangeAt(0);
-  if (!node.contains(range.commonAncestorContainer)) return;
-  const touched = [...node.querySelectorAll('.md-drawn')].some(element => range.intersectsNode(element));
-  if (!touched) return;
-  event.clipboardData.setData('text/plain', selectedSource(range));
-  event.preventDefault();
-}
-
-/**
- * The text of a selection with each drawing it touches as its source: a
- * formula as written with its delimiters, a diagram or a view as its fenced block. A
- * selection that starts or ends inside a drawing takes the whole of it.
- */
-export function selectedSource(range: Range): string {
-  const whole = range.cloneRange();
-  const start = drawingOf(range.startContainer);
-  if (start) whole.setStartBefore(start);
-  const end = drawingOf(range.endContainer);
-  if (end) whole.setEndAfter(end);
-  const fragment = whole.cloneContents();
-  for (const element of fragment.querySelectorAll<HTMLElement>('.md-math, .md-mermaid, .md-view')) {
-    const source = element.dataset.source ?? '';
-    const fence = element.classList.contains('md-mermaid') ? 'mermaid' : element.classList.contains('md-view') ? 'view' : '';
-    const text = fence ? `\`\`\`${fence}\n${source}\n\`\`\`` : source;
-    element.replaceWith(element.localName === 'div' ? blockOf(text) : document.createTextNode(text));
-  }
-  return plainText(fragment).replace(/\n{3,}/g, '\n\n').trim();
-}
-
-/** A drawing that was a block stays one in the copied text. */
-function blockOf(text: string): HTMLParagraphElement {
-  const paragraph = document.createElement('p');
-  paragraph.textContent = text;
-  return paragraph;
-}
-
-function drawingOf(at: Node): Element | null {
-  const element = at instanceof Element ? at : at.parentElement;
-  return element?.closest('.md-math, .md-mermaid, .md-view') ?? null;
-}
-
-/** Text with the line breaks its blocks imply: `textContent` would run two paragraphs together. */
-function plainText(root: Node): string {
-  let out = '';
-  const walk = (current: Node): void => {
-    if (current.nodeType === Node.TEXT_NODE) { out += current.nodeValue ?? ''; return; }
-    if (!(current instanceof Element) && current.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return;
-    const name = current instanceof Element ? current.localName : '';
-    if (name === 'br') { out += '\n'; return; }
-    const block = BLOCKS.has(name);
-    if (block && out && !out.endsWith('\n')) out += '\n';
-    for (const child of current.childNodes) walk(child);
-    if (name === 'td' || name === 'th') out += '\t';
-    if (block && !out.endsWith('\n')) out += '\n';
-    if (SPACED.has(name)) out += '\n';
-  };
-  walk(root);
-  return out;
 }

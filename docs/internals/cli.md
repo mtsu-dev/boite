@@ -108,6 +108,10 @@ An agent can add a profile, never rename or delete one: that stays in Settings.
 `tab <id>` makes one current and `--tab <id>` aims a single command at it. The
 agent cannot select a tab from another conversation.
 
+`boite browser show` reveals the current tab to viewers of the conversation.
+Use `boite browser show --tab <id>` to reveal a specific tab. Opening a page
+with `boite browser open` leaves the panel closed until someone shows it.
+
 `snapshot -i` lists the page's interactive elements with refs:
 `- textbox "Email" [ref=e3]`, `- button "Continue" [ref=e5]`. A plain element
 that acts as a control, a `div` or `span` with a click handler, a `tabindex` or
@@ -521,6 +525,8 @@ boite diff [file]                open the changes surface, or one file's diff
 boite browse <url>               open the url in a new tab of this conversation's browser (http, https)
 boite open trace|tasks|changes|files|workflow [dir|run-id]
 boite status                     git status: branch, upstream, one row per change
+boite transcripts [list|failures|read] ...
+                                 compacted conversations kept for audits (see Transcripts)
 boite journal-check [table rowid] [--limit <n>]
                                  read-only journal diagnostics, owner only (see Diagnostics)
 boite ask <question> [option ...] [--multiple] [--open <url>]
@@ -545,6 +551,7 @@ boite contacts [view]|forward|connect|start|share|ask-owner|refuse|cut|deliver|b
 boite mochi memory
 boite mochi remember [--section <title>] [--replace <start>] <fact>
 boite mochi routines
+boite mochi triggers
 boite mochi schedule <json>
 boite mochi unschedule <routine-id>
 boite mochi watch|unwatch <thread-id>
@@ -1228,6 +1235,24 @@ it checked and one line per issue, at most 100 rows a page (`--limit`, up to
 journal-check <table> <rowid>`. It is owner only: from the owner's terminal
 it needs no thread, and inside a thread's agent environment it is refused.
 `--json` keeps the result.
+
+## Transcripts
+
+`boite transcripts` reads the archive of compacted conversations
+([conversation storage](transcripts.md)), for the owner and for an agent in
+its thread; an agent's sandbox does not hold the data directory.
+
+```
+boite transcripts [list] [--query <text>] [--limit <n>]
+boite transcripts failures [<conversation>] [--query <text>] [--limit <n>]
+boite transcripts read <conversation> [--session <id>] [--after <line>]
+      [--kinds user,assistant,call,result] [--query <text>] [--limit <n>]
+```
+
+`list` prints one conversation a line, newest first. `failures` prints the
+failed tools, API errors and failed turns the index holds, each with the
+session and line to read from. `read` prints the records of one session in
+order, one JSON a line, and ends with the command for the next page.
 
 ## Where the command lives
 

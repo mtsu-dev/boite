@@ -6,16 +6,40 @@ import { desktopShell } from '../shell-platform';
 
 /** Copies kept for a scroll back; past either bound the oldest goes. */
 const KEPT = 120;
+const KEPT_GLOBAL = 4 * KEPT;
 /**
  * About 24 MB of `data:` strings, including originals sent by older cores.
  * A ticketed copy is an address: the browser's cache holds its bytes.
  */
 export const KEPT_CHARS = 24 * 1024 * 1024;
+/** Renderer-wide cap across all connected machines, evicting hidden stores first. */
+export const KEPT_GLOBAL_CHARS = KEPT_CHARS;
+
+interface RendererHeld {
+  chars: number;
+  visible: () => boolean;
+  evict: () => void;
+}
 
 interface Held {
   promise: Promise<string>;
   /** The URL's length once it arrived, 0 before. */
   chars: number;
+  global: RendererHeld;
+}
+
+const rendererEntries = new Set<RendererHeld>();
+let rendererChars = 0;
+
+function evictionCandidate(needChars: boolean): RendererHeld | undefined {
+  let hidden: RendererHeld | undefined;
+  let visible: RendererHeld | undefined;
+  for (const entry of rendererEntries) {
+    if (needChars && entry.chars === 0) continue;
+    if (!entry.visible()) { hidden = entry; break; }
+    visible ??= entry;
+  }
+  return hidden ?? visible;
 }
 
 /**
@@ -53,6 +77,8 @@ export class DisplayImages {
       // Most recently used last: the order the oldest leave in.
       this.#held.delete(key);
       this.#held.set(key, held);
+      rendererEntries.delete(held.global);
+      rendererEntries.add(held.global);
       return held.promise;
     }
     const thumb = size === true || (typeof size === 'number' && size <= DISPLAY_THUMB_MAX);
@@ -60,17 +86,25 @@ export class DisplayImages {
       threadId, messageId, partIndex, display: true,
       ...(thumb ? { thumb } : {}), ...(typeof size === 'number' ? { previewMax: size } : {})
     }, mimeType);
-    const entry: Held = { promise, chars: 0 };
+    const global: RendererHeld = {
+      chars: 0,
+      visible: () => this.ctx.store?.visible !== false,
+      evict: () => this.#drop(key)
+    };
+    const entry: Held = { promise, chars: 0, global };
     promise.then((url) => {
       if (this.#held.get(key) !== entry) return;
       entry.chars = url.length;
+      global.chars = url.length;
       this.#chars += url.length;
+      rendererChars += url.length;
       this.#evict();
     }, () => {
       // A failed read is asked again by the next picture that nears the screen.
-      if (this.#held.get(key) === entry) this.#held.delete(key);
+      if (this.#held.get(key) === entry) this.#drop(key);
     });
     this.#held.set(key, entry);
+    rendererEntries.add(global);
     this.#evict();
     return promise;
   }
@@ -99,24 +133,43 @@ export class DisplayImages {
    * core that restarted and forgot it.
    */
   forget(threadId: ThreadId, messageId: string, partIndex: number, size: boolean | ChatPreviewSize = false): void {
-    const key = JSON.stringify([threadId, messageId, partIndex, size]);
-    const held = this.#held.get(key);
-    if (!held) return;
-    this.#chars -= held.chars;
-    this.#held.delete(key);
+    this.#drop(JSON.stringify([threadId, messageId, partIndex, size]));
   }
 
   /** Another machine's pictures: its keys do not name the client they came from. */
   clear(): void {
+    for (const held of this.#held.values()) {
+      rendererEntries.delete(held.global);
+      rendererChars -= held.global.chars;
+    }
     this.#held.clear();
     this.#chars = 0;
   }
 
+  #drop(key: string): void {
+    const held = this.#held.get(key);
+    if (!held) return;
+    this.#chars -= held.chars;
+    rendererChars -= held.global.chars;
+    rendererEntries.delete(held.global);
+    this.#held.delete(key);
+  }
+
   #evict(): void {
     while (this.#held.size > KEPT || this.#chars > KEPT_CHARS) {
-      const oldest = this.#held.keys().next().value!;
-      this.#chars -= this.#held.get(oldest)!.chars;
-      this.#held.delete(oldest);
+      const oldest = this.#held.keys().next().value;
+      if (oldest === undefined) break;
+      this.#drop(oldest);
+    }
+    while (rendererChars > KEPT_GLOBAL_CHARS) {
+      const victim = evictionCandidate(true);
+      if (!victim) break;
+      victim.evict();
+    }
+    while (rendererEntries.size > KEPT_GLOBAL) {
+      const victim = evictionCandidate(false);
+      if (!victim) break;
+      victim.evict();
     }
   }
 }

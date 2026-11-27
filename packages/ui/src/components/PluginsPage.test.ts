@@ -203,10 +203,10 @@ test('the gear draws each declared setting and saves a change as soon as it is m
   await vi.waitFor(() => expect(calls).toHaveBeenCalledWith('plugins.settings.set', { id: 'standup', values: { tone: 'detailed' } }));
   await vi.waitFor(() => expect(setting('tone').querySelector('[data-testid="plugin-setting-menu"]')?.textContent).toContain('Detailed'));
 
-  input('signature').value = '— sent by standup';
+  input('signature').value = '\u2014 sent by standup';
   input('signature').dispatchEvent(new Event('change', { bubbles: true }));
-  await vi.waitFor(() => expect(calls).toHaveBeenCalledWith('plugins.settings.set', { id: 'standup', values: { signature: '— sent by standup' } }));
-  expect((await client!.call('plugins.settings.get', { id: 'standup' }))).toMatchObject({ includeTodos: false, tone: 'detailed', signature: '— sent by standup', maxThreads: 8 });
+  await vi.waitFor(() => expect(calls).toHaveBeenCalledWith('plugins.settings.set', { id: 'standup', values: { signature: '\u2014 sent by standup' } }));
+  expect((await client!.call('plugins.settings.get', { id: 'standup' }))).toMatchObject({ includeTodos: false, tone: 'detailed', signature: '\u2014 sent by standup', maxThreads: 8 });
 });
 
 test('a setting changed while the machine is not connected says it was not saved', async () => {

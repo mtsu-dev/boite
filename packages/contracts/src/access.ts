@@ -46,7 +46,7 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // Paired apps share the owner's composer and its validated, content-addressed attachments.
   'composer.list', 'composer.put', 'composer.asset.put', 'composer.asset.get',
   'composer.listPage', 'composer.get', // Bounded and individual reads of the same composer records.
-  // A paired phone lists the owner's agents with their state, desk and routines; talking to one is
+  // A paired phone lists the owner's agents with their state, desk, routines and triggers; talking to one is
   // `turns.start` on its thread, which the device already reaches.
   'agents.snapshot',
   // The agent's own thread, created again if it was lost: a thread the phone then opens like any other.
@@ -494,6 +494,10 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   // Diagnostics reach an agent anonymized, and only while the owner leaves agentLogAccess on (checked in diagnostics.ts).
   ['diagnostics.logs', 'anonymized app records so it can tell whether Boite itself failed; paths, names and addresses are placeholders'],
   ['diagnostics.summary', 'the anonymized environment and grouped recent problems'],
+  // The owner asked that agents reach the archive to audit past failures; it is read only, and a sandboxed agent cannot open the data directory.
+  ['transcripts.list', 'list the compacted conversations of the archive'],
+  ['transcripts.failures', 'read the failures the archive\'s index lists'],
+  ['transcripts.read', 'read the records of a compacted conversation, a bounded page at a time'],
   ['diagnostics.export', 'the anonymized export a developer reads, the same file the owner would send'],
   ['diagnostics.issue', 'a GitHub issue draft about Boite and its prefilled link; only the owner publishes it, so an agent never posts publicly under their login'],
 ]);
@@ -566,6 +570,9 @@ export interface AccessRefusal {
  */
 export function accessRefusal(method: RpcMethodName, caller: Caller, params?: unknown): AccessRefusal | null {
   if (caller.principal === 'owner') return null;
+  if (method === 'browser.command' && (params as { action?: { kind?: unknown } } | null | undefined)?.action?.kind === 'profile-switch') {
+    return { message: 'changing an open browser tab’s profile is for the owner only', data: { method, principal: caller.principal } };
+  }
   if (caller.principal === 'plugin') {
     if (pluginSelfCall(method, caller, params)) return null;
     if (PLUGIN_SELF_METHODS.has(method)) {

@@ -42,6 +42,7 @@ import { DraftPreparations } from './threads/draft-preparations.ts';
 import { ScheduledWakes } from './threads/scheduled-wakes.ts';
 import { AttachmentUploads } from './attachment-uploads.ts';
 import { scheduleThreadDeletionRetention } from './threads/deletion-retention.ts';
+import { Transcripts } from './transcripts/engine.ts';
 import { scheduleDoneRetention } from './threads/done-retention.ts';
 import { WorktreeCleanup } from './worktree-cleanup.ts';
 import { scheduleArtifactRetention } from './artifact-retention.ts';
@@ -207,6 +208,8 @@ export class Core {
   readonly worktrees: Worktrees;
   readonly keybindings: KeybindingStore;
   readonly imports: ImportStore;
+  /** The archive of compacted conversations and the pass that applies the storage mode. */
+  readonly transcripts: Transcripts;
   readonly activity: ActivityStore;
   readonly push: PushStore;
   /** The per-thread tokens the agents of this core say hello with. */
@@ -455,6 +458,7 @@ export class Core {
     this.procs.admitCwd = (cwd) => this.worktrees.reservations.assertFree(cwd, 'a process');
     this.keybindings = new KeybindingStore(this);
     this.imports = new ImportStore(this);
+    this.transcripts = new Transcripts(this);
     // The journal erased the incognito conversations the last core left behind; their transcripts follow.
     this.threads.transcriptPurge = removeTranscripts(this, this.journal.takeIncognitoSessions());
     // One scan of visible thread JSON serves activity and coordination recovery. It runs
@@ -516,6 +520,7 @@ export class Core {
     this.accounts.recheckSignedOut();
     this.#stopDeletionRetention = scheduleThreadDeletionRetention(this, options.retentionPassMs);
     this.#stopDoneRetention = scheduleDoneRetention(this);
+    this.#stopTranscripts = this.transcripts.start();
     // The journal is open and no socket is accepted yet: whatever a dead core
     // left running or queued is closed here, or nothing ever would.
     const interrupted = this.threads.agentState.backgroundHistory.interruptLive();
@@ -551,6 +556,7 @@ export class Core {
     this.worktreeCleanup = new WorktreeCleanup(this);
     this.worktreeCleanup.start();
     this.pullRequestWatches.start();
+    this.workforce.triggers.start();
     this.delegation.retirements.sweep();
     this.logs.record('info', `Core ${this.version} started in ${Date.now() - this.startedAt} ms, ${process.platform} ${process.arch}, Bun ${process.versions.bun ?? 'unknown'}`, {
       source: 'core', event: 'core.started', durationMs: Date.now() - this.startedAt,
@@ -596,7 +602,7 @@ export class Core {
       version: this.version,
       ...(this.bundleHash ? { bundleHash: this.bundleHash } : {}),
       protocolVersion: PROTOCOL_VERSION,
-      features: { threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, composerPages: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, threadListPages: true, streamChannels: true, browserStream: true },
+      features: { threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, composerPages: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, threadListPages: true, streamChannels: true, browserStream: true, diffOnlyToolParts: true },
       coreId: this.coordination.card().coreId,
       hostname: machineName(),
       os: currentOs(),
@@ -633,6 +639,7 @@ export class Core {
     void this.mergedPrAsk.close();
     void this.worktreeCleanup.close();
     void this.pullRequestWatches.close();
+    this.workforce.triggers.close();
     this.group.beginClose();
     this.contacts.beginClose();
     this.sharedProjects.beginClose();
@@ -655,6 +662,7 @@ export class Core {
   #stopMoves: () => void;
   #stopDeletionRetention: () => void;
   #stopDoneRetention: () => Promise<void>;
+  #stopTranscripts: () => Promise<void>;
 
   /** Share both an active wait and its completion across shutdown phases. */
   #drainPromise: Promise<void> | null = null;
@@ -688,6 +696,7 @@ export class Core {
     this.workforce.close();
     this.#stopping = true;
     await this.#stopDoneRetention();
+    await this.#stopTranscripts();
     await this.drafts.close().catch(error => this.log('warn', `draft shutdown cleanup failed: ${String(error)}`));
     await this.attachmentUploads.close().catch(error => this.log('warn', `attachment shutdown cleanup failed: ${String(error)}`));
     await this.brain.close();

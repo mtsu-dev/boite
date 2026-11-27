@@ -65,8 +65,8 @@ pub async fn browser_protocol(app: AppHandle, webview: Webview, id: String, meth
 
 /// The DevTools events an agent surface relays to the UI, which hands them to
 /// the core's agent browser. Page-level only, like the methods it may call.
-pub const AGENT_EVENTS: [&str; 16] = [
-    "Page.frameNavigated", "Page.javascriptDialogOpening", "Page.loadEventFired", "Page.domContentEventFired",
+pub const AGENT_EVENTS: [&str; 17] = [
+    "Page.frameNavigated", "Page.lifecycleEvent", "Page.javascriptDialogOpening", "Page.loadEventFired", "Page.domContentEventFired",
     "Page.screencastFrame", "Page.frameStartedLoading", "Page.frameStoppedLoading",
     "Runtime.consoleAPICalled", "Runtime.exceptionThrown", "Runtime.executionContextCreated", "Runtime.executionContextsCleared",
     "Network.requestWillBeSent", "Network.responseReceived", "Network.loadingFinished", "Network.loadingFailed", "Log.entryAdded",
@@ -221,6 +221,12 @@ mod tests {
     fn events_are_relayed_for_agent_surfaces_from_the_allowlist_only() {
         let names = |list: &[&str]| list.iter().map(|name| name.to_string()).collect::<Vec<_>>();
         assert!(check_events("agent-1", &names(&AGENT_EVENTS)).is_ok());
+        let ui = include_str!("../../../../packages/ui/src/lib/browser-host.ts");
+        let (_, requested) = ui.split_once("export const HOST_PAGE_EVENTS = [").unwrap();
+        let (requested, _) = requested.split_once("] as const;").unwrap();
+        let requested = requested.split('\'').skip(1).step_by(2).collect::<Vec<_>>();
+        assert!(!requested.is_empty());
+        check_events("agent-1", &names(&requested)).unwrap();
         assert!(check_events("agent-1", &[]).is_ok());
         assert!(check_events("browser:1", &names(&["Page.loadEventFired"])).unwrap_err().contains("agent-"));
         let error = check_events("agent-1", &names(&["Page.loadEventFired", "Target.attachedToTarget"])).unwrap_err();

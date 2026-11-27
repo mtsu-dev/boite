@@ -5,6 +5,7 @@ import type { Core } from './core.ts';
 import { invalidParams, notFound, refused } from './errors.ts';
 import type { Connection } from './router.ts';
 import { collectStoredComposerAssets } from './journal/composer-assets.ts';
+import { runWrite } from './journal/statements.ts';
 
 type Row = { section: ComposerRecord['section']; id: string; revision: number; updated_at: number; value: string | null };
 export interface Delivery {
@@ -15,6 +16,8 @@ export interface Delivery {
 export const digest = (value: unknown): string => createHash('sha256').update(stableComposerValue(value)).digest('hex');
 export const recordKey = (section: string, id: string): string => JSON.stringify([section, id]);
 const wireBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+const PRIVATE_PENDING_LIMITS = { perConnection: 64 * 1024 * 1024, global: 128 * 1024 * 1024, ttlMs: 15 * 60_000 };
+type PendingPrivateAsset = { ownerId: string; bytes: number; expiresAt: number };
 
 /** Composer data has its own rows: typing never rewrites a message or an attachment. */
 export class ComposerStorage {
@@ -24,11 +27,18 @@ export class ComposerStorage {
   readonly #privateOwners = new Map<string, Connection>();
   readonly #privateAssetOwners = new Map<string, string>();
   readonly #pendingAssets = new Map<string, Set<string>>();
+  readonly #pendingPrivateAssets = new Map<string, PendingPrivateAsset>();
+  readonly #pendingOwnerBytes = new Map<string, number>();
+  readonly #pendingLimits: typeof PRIVATE_PENDING_LIMITS;
+  #pendingBytes = 0;
+  #pendingExpiry: ReturnType<typeof setTimeout> | undefined;
   readonly #connections = new Set<string>();
   readonly queued = new Map<string, Pick<ComposerRecord, 'section' | 'id'>>();
   readonly #core: Core;
 
-  constructor(core: Core) { this.#core = core;
+  constructor(core: Core, pendingLimits = PRIVATE_PENDING_LIMITS) {
+    this.#core = core;
+    this.#pendingLimits = pendingLimits;
     core.journal.collectComposerAssets = assets => this.#collectAssets(assets);
     // No client can still be uploading here. Messages already own their bytes;
     // only live composer references retain an uploaded composer asset.
@@ -117,12 +127,14 @@ export class ComposerStorage {
       this.#track(connection);
       this.#privateOwners.set(recordKey(section, id), connection);
       this.#privateRecords.set(recordKey(section, id), record);
-    } else this.#core.journal.db.query(`INSERT INTO composer_records VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(section,id) DO UPDATE SET revision=excluded.revision, updated_at=excluded.updated_at, value=excluded.value`)
-      .run(section, id, record.revision, record.updatedAt, value === null ? null : JSON.stringify(value));
+    } else runWrite(this.#core.journal.db, `INSERT INTO composer_records VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(section,id) DO UPDATE SET revision=excluded.revision, updated_at=excluded.updated_at, value=excluded.value`,
+    section, id, record.revision, record.updatedAt, value === null ? null : JSON.stringify(value));
     if (value?.input.queued.length) this.queued.set(recordKey(section, id), { section, id });
     else this.queued.delete(recordKey(section, id));
     for (const assetId of references) {
+      const privateOwner = this.#pendingPrivateAssets.get(assetId)?.ownerId;
+      if (privateOwner !== undefined && privateOwner === (this.owner(record) ?? owner)?.id) this.#removePendingPrivate(assetId);
       const pending = this.#pendingAssets.get(assetId);
       if (owner) pending?.delete(owner.id);
       if (pending?.size === 0) this.#pendingAssets.delete(assetId);
@@ -140,11 +152,74 @@ export class ComposerStorage {
     if (error) throw invalidParams(`composer.asset.put: ${error.message}`);
     this.#track(owner);
     const assetId = `${incognito ? 'private-' : ''}${digest(incognito ? [owner.id, attachment] : attachment)}`;
-    if (incognito) { this.#privateAssets.set(assetId, structuredClone(attachment)); this.#privateAssetOwners.set(assetId, owner.id); }
-    else this.#core.journal.db.query('INSERT OR IGNORE INTO composer_assets VALUES (?, ?, ?, ?, ?, ?)').run(assetId, JSON.stringify(attachment), attachment.kind, attachment.mimeType, attachment.name, decodedBytes(attachment.data));
+    if (incognito) {
+      this.#putPrivateAsset(assetId, attachment, owner.id);
+      return { assetId };
+    }
+    runWrite(this.#core.journal.db, 'INSERT OR IGNORE INTO composer_assets VALUES (?, ?, ?, ?, ?, ?)', assetId, JSON.stringify(attachment), attachment.kind, attachment.mimeType, attachment.name, decodedBytes(attachment.data));
     const pending = this.#pendingAssets.get(assetId) ?? new Set<string>();
     pending.add(owner.id); this.#pendingAssets.set(assetId, pending);
     return { assetId };
+  }
+
+  #putPrivateAsset(id: string, attachment: Attachment, ownerId: string): void {
+    this.#expirePendingPrivate();
+    const pending = this.#pendingPrivateAssets.get(id);
+    const expiresAt = performance.now() + this.#pendingLimits.ttlMs;
+    if (pending) {
+      // A retry holds the same bytes and goes to the end of the expiry queue.
+      this.#pendingPrivateAssets.delete(id);
+      this.#pendingPrivateAssets.set(id, { ...pending, expiresAt });
+    } else if (!this.#privateAssets.has(id)) {
+      // Count the retained base64 plus an allowance for each object's fields.
+      const bytes = attachment.data.length + Buffer.byteLength(attachment.name ?? '') + Buffer.byteLength(attachment.mimeType) + 256;
+      const ownerBytes = (this.#pendingOwnerBytes.get(ownerId) ?? 0) + bytes;
+      if (ownerBytes > this.#pendingLimits.perConnection || this.#pendingBytes + bytes > this.#pendingLimits.global) {
+        throw refused('composer.asset.put: pending incognito attachments exceed the byte budget; save the draft before uploading more');
+      }
+      this.#pendingPrivateAssets.set(id, { ownerId, bytes, expiresAt });
+      this.#pendingOwnerBytes.set(ownerId, ownerBytes);
+      this.#pendingBytes += bytes;
+      this.#privateAssets.set(id, structuredClone(attachment));
+      this.#privateAssetOwners.set(id, ownerId);
+    }
+    this.#schedulePendingExpiry();
+  }
+
+  #removePendingPrivate(id: string): void {
+    const pending = this.#pendingPrivateAssets.get(id);
+    if (pending === undefined) return;
+    this.#pendingPrivateAssets.delete(id);
+    this.#pendingBytes -= pending.bytes;
+    const ownerBytes = this.#pendingOwnerBytes.get(pending.ownerId)! - pending.bytes;
+    if (ownerBytes === 0) this.#pendingOwnerBytes.delete(pending.ownerId);
+    else this.#pendingOwnerBytes.set(pending.ownerId, ownerBytes);
+  }
+
+  #expirePendingPrivate(): void {
+    const now = performance.now();
+    for (const [id, pending] of this.#pendingPrivateAssets) {
+      if (pending.expiresAt > now) break;
+      this.#removePendingPrivate(id);
+      this.#privateAssets.delete(id);
+      this.#privateAssetOwners.delete(id);
+    }
+  }
+
+  #schedulePendingExpiry(): void {
+    const next = this.#pendingPrivateAssets.values().next().value;
+    if (this.#pendingExpiry !== undefined || next === undefined) return;
+    this.#pendingExpiry = setTimeout(() => {
+      this.#pendingExpiry = undefined;
+      this.#expirePendingPrivate();
+      this.#schedulePendingExpiry();
+    }, Math.max(1, Math.ceil(next.expiresAt - performance.now())));
+    this.#pendingExpiry.unref();
+  }
+
+  close(): void {
+    clearTimeout(this.#pendingExpiry);
+    this.#pendingExpiry = undefined;
   }
 
   #track(connection: Connection): void {
@@ -164,7 +239,10 @@ export class ComposerStorage {
       for (const [id, delivery] of this.#privateDeliveries) {
         if (delivery.status !== 'delivered' && records.has(recordKey(delivery.section, delivery.record_id))) this.#privateDeliveries.delete(id);
       }
-      for (const [id, ownerId] of this.#privateAssetOwners) if (ownerId === connection.id) assets.add(id);
+      for (const [id, ownerId] of this.#privateAssetOwners) if (ownerId === connection.id) {
+        this.#removePendingPrivate(id);
+        assets.add(id);
+      }
       for (const [id, pending] of this.#pendingAssets) if (pending.delete(connection.id)) {
         if (!pending.size) this.#pendingAssets.delete(id);
         assets.add(id);
@@ -176,7 +254,7 @@ export class ComposerStorage {
   #collectAssets(assetIds: Iterable<string>): void {
     const stored: string[] = [];
     for (const id of new Set(assetIds)) {
-      if (this.#pendingAssets.has(id)) continue;
+      if (this.#pendingAssets.has(id) || this.#pendingPrivateAssets.has(id)) continue;
       if ([...this.#privateRecords.values()].some(record => record.value && this.references(record.value).some(reference => reference.assetId === id))) continue;
       if (!id.startsWith('private-')) { stored.push(id); continue; }
       this.#privateAssets.delete(id); this.#privateAssetOwners.delete(id);

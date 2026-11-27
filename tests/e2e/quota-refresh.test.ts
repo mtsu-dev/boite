@@ -1,4 +1,4 @@
-import { mobileAction, openLimitsTab } from './lib/mobile.ts';
+import { mobileAction, openLimitsTab, openSettings } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -59,7 +59,7 @@ test('limits identify the owning machine in the desktop glance and desktop and p
           const css = getComputedStyle(panel);
           const left = parseFloat(panel.style.left);
           const bottom = parseFloat(panel.style.top) + panel.offsetHeight;
-          return { positiveGap: left > trigger.closest('.app-rail').getBoundingClientRect().right,
+          return { positiveGap: left > trigger.closest('.app-rail, .rail').getBoundingClientRect().right,
             style: [css.borderRadius, css.boxShadow, css.padding], left, width: panel.offsetWidth,
             aligned: Math.abs(bottom - trigger.getBoundingClientRect().bottom) < 1 };
         })()`);
@@ -84,7 +84,7 @@ test('limits identify the owning machine in the desktop glance and desktop and p
       await page.click(trigger);
     }
     else {
-      await page.click('[data-testid="nav-settings"]');
+      await openSettings(page);
       await openLimitsTab(page);
     }
     await page.waitFor(`document.querySelector('${scope}')?.dataset.remote === 'true'`);
@@ -244,7 +244,7 @@ for (const view of ['tray', 'desktop', 'phone', 'sidebar']) {
     if (view === 'sidebar') {
       await page.click('[data-testid="nav-limits"]');
     } else if (view !== 'tray') {
-      await page.click('[data-testid="nav-settings"]');
+      await openSettings(page);
       await openLimitsTab(page);
     }
     const refresh = `[data-testid="${view === 'tray' ? 'quota' : view === 'sidebar' ? 'limits-glance' : 'limits'}-refresh"]`;
@@ -324,7 +324,7 @@ for (const width of [1280, 390]) {
   test(`subscription names and separate rows survive rename at ${width}px`, async () => {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width === 390 });
     await page.navigate(`${origin}/?fake=1&open=recent`);
-    await page.click('[data-testid="nav-settings"]');
+    await openSettings(page);
     await openLimitsTab(page);
     await page.waitFor(`document.querySelector('[data-testid="limits-refresh"]')?.getAttribute('aria-busy') === 'false'`);
     // The adopted "Default" login reads as the address the provider reported for it.
@@ -418,7 +418,7 @@ for (const width of [1280, 390]) {
     await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width === 390 });
     await page.navigate(`${origin}/?fake=1&open=recent&quotaExtras=1`);
-    await page.click('[data-testid="nav-settings"]');
+    await openSettings(page);
     await openLimitsTab(page);
     const codex = '[data-testid="usage-limit-provider"][data-account-id="a-codex"]';
     const claude = '[data-testid="usage-limit-provider"][data-account-id="a-claude-main"]';

@@ -18,7 +18,9 @@ export const DEV_LAUNCHER = join(core, 'native', 'build', LAUNCHER_NAME);
 export function buildLauncher(outfile = DEV_LAUNCHER): string {
   mkdirSync(dirname(outfile), { recursive: true });
   const cc = process.env.CC || 'cc';
-  const result = Bun.spawnSync([cc, '-static', '-O2', '-Wall', '-Wextra', '-Werror', '-o', outfile, join(core, 'native', 'launch.c')], { stdout: 'pipe', stderr: 'pipe' });
+  const args = ['-static', '-O2', '-Wall', '-Wextra', '-Werror', '-o', outfile, join(core, 'native', 'launch.c')];
+  let result = Bun.spawnSync([cc, '-s', ...args], { stdout: 'pipe', stderr: 'pipe' });
+  if (result.exitCode !== 0) result = Bun.spawnSync([cc, ...args], { stdout: 'pipe', stderr: 'pipe' });
   if (result.exitCode !== 0) throw new Error(`${cc} could not build ${LAUNCHER_NAME}: ${result.stderr.toString().trim() || `exit ${result.exitCode}`}`);
   return outfile;
 }

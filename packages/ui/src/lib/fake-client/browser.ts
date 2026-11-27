@@ -38,10 +38,12 @@ export function browserMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     if (!browser) { browser = { tabs: [], active: null, frames: [], requestedAt: 0 }; browsers.set(threadId, browser); }
     return browser;
   };
-  const tabsOf = (browser: Browser | undefined): AgentBrowserTab[] => (browser?.tabs ?? []).map(tab => ({ tabId: tab.tabId, url: tab.url, title: tab.title, profile: tab.profile, active: tab.tabId === browser?.active }));
-  const changed = (threadId: ThreadId) => {
+  const profileName = (id: string) => id === DEFAULT_BROWSER_PROFILE ? 'Default' : id === PRIVATE_BROWSER_PROFILE ? 'Private'
+    : browserProfilesOf(ctx.settings).profiles.find(profile => profile.id === id)?.name ?? id;
+  const tabsOf = (browser: Browser | undefined): AgentBrowserTab[] => (browser?.tabs ?? []).map(tab => ({ tabId: tab.tabId, url: tab.url, title: tab.title, profile: tab.profile, profileName: profileName(tab.profile), active: tab.tabId === browser?.active }));
+  const changed = (threadId: ThreadId, show = false) => {
     const browser = browsers.get(threadId);
-    ctx.emitToThread(threadId, 'browser.remoteChanged', { threadId, live: (browser?.tabs.length ?? 0) > 0, tabs: tabsOf(browser) });
+    ctx.emitToThread(threadId, 'browser.remoteChanged', { threadId, live: (browser?.tabs.length ?? 0) > 0, tabs: tabsOf(browser), ...(show ? { show: true } : {}) });
   };
   const closeAll = (threadId: ThreadId) => {
     if (!browsers.get(threadId)?.tabs.length) { browsers.delete(threadId); return; }
@@ -165,6 +167,21 @@ export function browserMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     if (!browser || !tab) throw refusal('no browser tab in this conversation; use browser open, or pass a tabId from browser status');
     const reply = (value: unknown = { ok: true }): BrowserReply => ({ tabId: tab.tabId, value });
     switch (action.kind) {
+      case 'show':
+        browser.active = tab.tabId;
+        changed(threadId, true);
+        return reply();
+      case 'profile-switch': {
+        const profile = findBrowserProfile(browserProfilesOf(ctx.settings).profiles, action.profile);
+        if (profile === null) throw refusal(`no browser profile is named ${action.profile}; browser profiles lists them`);
+        if (profile !== tab.profile) {
+          Object.assign(tab, { profile, taps: 0, text: '', scrollY: 0, selected: false, history: [tab.url], historyIndex: 0 });
+          delete tab.choice;
+          moved(browser, tab);
+          changed(threadId);
+        }
+        return { ...reply(), profile, url: tab.url, title: tab.title };
+      }
       case 'close': {
         browser.tabs = browser.tabs.filter(one => one !== tab); moved(browser, tab);
         if (browser.active === tab.tabId) browser.active = browser.tabs.at(-1)?.tabId ?? null;

@@ -2,6 +2,8 @@
 //! command line that starts it, from the sidecar, a repository build or its
 //! sources.
 
+use std::fs::File;
+use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -20,8 +22,18 @@ impl CoreCommand {
     pub(super) fn bundle_hash(&self) -> Option<String> {
         use sha2::{Digest, Sha256};
         let entry = self.args.iter().find(|arg| arg.ends_with(".js"))?;
-        let bytes = std::fs::read(entry).ok()?;
-        Some(Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect())
+        let mut file = File::open(entry).ok()?;
+        let mut hash = Sha256::new();
+        let mut chunk = [0; 64 * 1024];
+        loop {
+            match file.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(count) => hash.update(&chunk[..count]),
+                Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+                Err(_) => return None,
+            }
+        }
+        Some(hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
     }
 }
 
@@ -219,6 +231,9 @@ mod tests {
         assert_eq!(command.bundle_hash().as_deref(), Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
         std::fs::write(&entry, "different").unwrap();
         assert_ne!(command.bundle_hash().as_deref(), Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
+        let bytes = vec![b'a'; 128 * 1024 + 1];
+        std::fs::write(&entry, &bytes).unwrap();
+        assert_eq!(command.bundle_hash().as_deref(), Some("7e009ea4ef882e385b3c0bcbbfa8d009bb0a633bdd764415c09182ee0e75da73"));
         std::fs::remove_dir_all(directory).unwrap();
     }
 

@@ -8,19 +8,10 @@ import { mintPairing, pairingUrlOf, startCore } from './lib/core.ts';
 import { mobileAction } from './lib/mobile.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
 
-// The whole path on a real core: the core starts its own headless Chromium for
-// the conversation. The desktop opens its viewer automatically; a paired
-// phone chooses when to show it. Both start covered, then a tap on the live
-// frame reaches the real page. Returning to chat leaves the agent's page alive.
+// The core starts a hidden browser. Desktop and phone can show it from
+// the background row and interact with the same page the agent drives.
 const id = (name: string) => `[data-testid="${name}"]`;
 const artifacts = join(import.meta.dir, '.artifacts');
-
-/** A phone reaches the agent browser through the header's Panels door, then the panel's own switcher. */
-async function openPhoneBrowser(page: BrowserPage) {
-  await page.click(id('panel-toggle'));
-  await page.click(id('panel-add'));
-  await page.click(`${id('panel-add-menu')} [data-value="agent-browser"]`);
-}
 
 const real = findChromium().path ? test : test.skip;
 
@@ -37,27 +28,70 @@ async function capture(page: BrowserPage, name: string) {
   await page.evaluate('document.fonts.ready');
   await page.screenshot(join(artifacts, name));
 }
+
+// Capture the hit test, the real pointer events and the input reply before a
+// later frame can clear an error. The viewer and the counter only use fixtures.
+const TRACE_TAP = `(() => {
+  const canvas = document.querySelector('${id('remote-browser-frame')}');
+  const screen = canvas.closest('button');
+  const rect = canvas.getBoundingClientRect();
+  const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+  const name = node => node instanceof Element ? (node.getAttribute('data-testid') || node.tagName + '.' + node.className) : null;
+  const trace = window.__boiteTestTap = {
+    x, y, width: rect.width, height: rect.height,
+    hit: name(document.elementFromPoint(x, y)), screen: name(screen), disabled: screen.disabled,
+    slide: document.querySelector('${id('mobile-header')}')?.getAttribute('data-slide'),
+    events: [], requests: [], replies: [],
+  };
+  for (const type of ['touchstart', 'touchend', 'touchcancel', 'pointerdown', 'pointerup', 'pointercancel']) {
+    document.addEventListener(type, event => {
+      if (trace.events.length >= 16) return;
+      trace.events.push({ type, target: name(event.target), onScreen: screen.contains(event.target),
+        disabled: screen.disabled, connected: screen.isConnected, x: event.clientX, y: event.clientY });
+    }, { capture: true, passive: true });
+  }
+  const send = WebSocket.prototype.send;
+  WebSocket.prototype.send = function(payload) {
+    if (typeof payload === 'string' && payload.includes('"method":"browser.remoteInput"')) {
+      const { id, params } = JSON.parse(payload);
+      trace.requests.push({ id, frameId: params.frameId, input: params.input });
+      const reply = event => {
+        if (typeof event.data !== 'string' || !event.data.startsWith('{')) return;
+        const message = JSON.parse(event.data);
+        if (message.id !== id) return;
+        trace.replies.push({ id, ok: message.result?.ok, error: message.error?.message });
+        this.removeEventListener('message', reply);
+      };
+      this.addEventListener('message', reply);
+    }
+    return send.call(this, payload);
+  };
+  return { x, y };
+})()`;
+
 /** A real pointer press and release in the middle of the shown frame. */
-async function tapFrame(page: BrowserPage, touch: boolean) {
-  const box = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('${id('remote-browser-frame')}').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+async function tapFrame(page: BrowserPage, touch: boolean, trace = false) {
+  const box = await page.evaluate<{ x: number; y: number }>(trace ? TRACE_TAP : `(() => { const r = document.querySelector('${id('remote-browser-frame')}').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
   if (touch) {
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [box] });
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   } else for (const type of ['mousePressed', 'mouseReleased'] as const) await page.send('Input.dispatchMouseEvent', { type, ...box, button: 'left', clickCount: 1 });
 }
-// A lone viewer fits the viewport. With two viewers, the page may keep the
-// other's dimensions, but its decoded frame must fit without distortion.
-const frameShown = (fit = true) => `(() => {
+// Each viewer fits the decoded frame to its own space without distortion.
+const frameShown = (counter = false) => `(() => {
   const image = document.querySelector('${id('remote-browser-frame')}');
   const screen = image?.closest('button'), area = screen?.closest('.screen-area');
   if (!image || image.width <= 100 || !screen || !area || screen.disabled) return false;
+  if (${counter}) {
+    const [red, green, blue] = image.getContext('2d').getImageData(10, 10, 1, 1).data;
+    if (!(green > red + 30 && green > blue + 20)) return false;
+  }
   const scale = Math.min(area.clientWidth / image.width, area.clientHeight / image.height);
   return Math.abs(screen.offsetWidth - image.width * scale) <= 2
-    && Math.abs(screen.offsetHeight - image.height * scale) <= 2
-    && (${!fit} || Math.abs(screen.offsetWidth - area.clientWidth) <= 2 && Math.abs(screen.offsetHeight - area.clientHeight) <= 2);
+    && Math.abs(screen.offsetHeight - image.height * scale) <= 2;
 })()`;
 
-real('the core runs the agent browser; desktop and phone show it covered, then live, and their taps reach the page', async () => {
+real('desktop and phone reveal background browser tabs, and their taps reach the page', async () => {
   ensureProductionUi();
   const site = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: request => new Response(new URL(request.url).pathname === '/type' ? TYPE : PAGE, { headers: { 'content-type': 'text/html' } }) });
   const core = await startCore();
@@ -85,33 +119,22 @@ real('the core runs the agent browser; desktop and phone show it covered, then l
       await page.waitFor(`document.querySelector('${row}')`);
       await page.click(row);
       await Bun.sleep(1000);
-      // The agent opens a page while the conversation is on screen. Only the
-      // desktop brings the panel forward; the phone chooses its Browser button.
       const { tabId } = await owner.call('browser.command', { threadId: thread.id, action: { kind: 'open', url: site.url.href } });
+      expect(await page.evaluate(`document.querySelector('${id('right-panel')}') === null`)).toBe(true);
+      if (phone) await page.click(id('mobile-back'));
+      const background = phone ? `${id('mobile-list')} ${id('agent-browser-background')}` : id('agent-browser-background');
+      await page.waitFor(`document.querySelector('${background}')?.getBoundingClientRect().width > 0`);
+      await page.settleAnimations();
+      await capture(page, `agent-browser-core-background-${phone ? 'phone' : 'desktop'}.png`);
+      await page.click(background);
+      await page.waitFor(`document.querySelector('${id('agent-browser-cookies')}')?.dataset.profile === 'default'`);
       if (phone) {
-        await page.settleAnimations();
-        expect(await page.evaluate(`document.querySelector('${id('right-panel')}') === null`)).toBe(true);
-        await capture(page, 'agent-browser-core-chat-phone.png');
-        // Let the desktop finish fitting the new tab before the phone starts
-        // its own deferred fit, so neither can overwrite the later preset.
-        await pages[0]!.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 2`);
-        await pages[0]!.waitFor(frameShown(), 20_000);
-        await openPhoneBrowser(page);
-      }
-      await page.waitFor(`document.querySelector('${id('agent-browser-cover-text')}')?.getBoundingClientRect().width > 0`, 20_000);
-      expect(await page.text(id('agent-browser-cover-text'))).toMatch(/^This agent controls a browser on .+/);
-      await page.waitFor(`document.querySelector('${id('agent-browser-cover')}').textContent.includes('Counter')`);
-      expect(await page.evaluate<number>(`document.querySelectorAll('${id('remote-browser-frame')}').length`)).toBe(0);
-      await capture(page, `agent-browser-core-cover-${phone ? 'phone' : 'desktop'}.png`);
-      await page.click(id('agent-browser-show'));
-      if (phone) {
-        // A preset applied from the other device remains valid until this
-        // viewer changes size. Two viewers cannot both own the tab's viewport.
-        await page.waitFor(frameShown(), 20_000);
+        // The agent can still change the viewport of the page both screens watch.
+        await page.waitFor(frameShown(true), 20_000);
         await owner.call('browser.command', {threadId: thread.id, tabId, action: {kind: 'preset', preset: 'laptop-1366x768'}});
         await page.waitFor(`(() => {const image = document.querySelector('${id('remote-browser-frame')}'); return image && Math.abs(image.width / image.height - 1366 / 768) < .02;})()`);
       }
-      try { await page.waitFor(frameShown(!phone), 20_000); }
+      try { await page.waitFor(frameShown(true), 20_000); }
       catch (error) {
         console.error('browser frame geometry', phone, await page.evaluate(`(() => {
           const image = document.querySelector('${id('remote-browser-frame')}');
@@ -136,26 +159,24 @@ real('the core runs the agent browser; desktop and phone show it covered, then l
         await page.click(id('panel-close'));
         await page.waitFor(`!document.querySelector('${id('right-panel')}')`);
         expect(await button(tabId)).not.toBe(before);
-        // The CLI's browse path also leaves the phone in chat. The owner can
-        // still evaluate the original page after the phone reopens and hides it.
-        await owner.call('panel.open', { threadId: thread.id, surface: { kind: 'browser', url: site.url.href } });
-        await page.settleAnimations();
-        expect(await page.evaluate(`document.querySelector('${id('right-panel')}') === null`)).toBe(true);
-        // Finish the desktop's initial viewport fit before the phone starts
-        // its own. A tap between those two resizes targets an obsolete frame.
-        await pages[0]!.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 3`);
-        await pages[0]!.waitFor(frameShown(), 20_000);
-        await openPhoneBrowser(page);
+        // The agent can explicitly display a new tab while the phone shows the conversation list.
+        await page.click(id('mobile-back'));
+        await page.waitFor(`document.querySelector('${background}')?.getBoundingClientRect().width > 0`);
+        const revealed = new URL('/revealed', site.url).href;
+        await owner.call('panel.open', { threadId: thread.id, surface: { kind: 'browser', url: revealed } });
+        await page.waitFor(`document.querySelector('.app.phone-chat') && !document.querySelector('.body.mobile-covered')`);
         await page.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 3`);
-        await page.waitFor(frameShown(), 20_000);
+        await page.settleAnimations();
+        await page.waitFor(`document.querySelector('${id('remote-browser-address')}')?.value === ${JSON.stringify(revealed)} && ${frameShown(true)}`, 20_000);
         const nextBefore = await button();
-        await tapFrame(page, true);
+        await tapFrame(page, true, true);
         const nextDeadline = Date.now() + 10_000;
         while (await button() === nextBefore && Date.now() < nextDeadline) await Bun.sleep(100);
         const nextAfter = await button();
         if (nextAfter === nextBefore) {
           await capture(page, 'agent-browser-core-failed-tap-phone.png');
-          console.error('browser tap failure', await page.evaluate('document.body.innerText'));
+          const { product } = await page.send('Browser.getVersion', {}) as { product: string };
+          console.error('browser tap failure', product, JSON.stringify(await page.evaluate('window.__boiteTestTap')));
         }
         expect(nextAfter).not.toBe(nextBefore);
         await page.evaluate('history.back()');

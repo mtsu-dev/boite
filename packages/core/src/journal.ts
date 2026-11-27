@@ -16,7 +16,7 @@ import type {
 import { isNativeAgentPart } from './journal/native-agent-parts.ts';
 import { TRAIL_ONLY, UNWRITTEN, pruneOldEvents, pruneTrail, rewindTrailCursor, trailOf } from './journal/trail.ts';
 import { analyze, staleStatistics } from './journal/statistics.ts';
-import { hydrate, hydratePart } from './journal/part-blobs.ts';
+import { hydrate, hydratePart, type HydrateOptions } from './journal/part-blobs.ts';
 import { migrate } from './journal/schema.ts';
 import { openAsyncQuestions, projectQuestion } from './journal/questions.ts';
 import { PROCESS_COLUMNS, PROCESS_FROM, ProcessRows } from './journal/processes.ts';
@@ -110,7 +110,7 @@ export class Journal {
       // An incognito conversation never outlives the core that held it.
       this.purgeIncognitoThreads();
       // Started after the writes above: SQLite checkpoints those itself, as before.
-      this.checkpoints = WalCheckpoints.start(this.db, file, this.onError, options.checkpoints);
+      this.checkpoints = WalCheckpoints.start(this.db, file, this.onError, options.checkpoints, () => this.db.exec('PRAGMA shrink_memory'));
     } catch (error) {
       this.checkpoints?.close();
       this.db.close(false);
@@ -335,6 +335,22 @@ export class Journal {
     if (rows.length > 0) beforeDelete?.(rows.map(row => row.thread_id));
     this.deleteThreads(rows.map(row => row.thread_id), { keepUsage: true });
     return rows.length;
+  }
+
+  /**
+   * Purges one deleted family whatever its age, keeping its usage: the archive
+   * holds its conversations by then (`transcripts/engine.ts`). Nothing goes
+   * unless `rootId` is still deleted since `deletedAt`: a family restored, or
+   * restored and deleted again, stays. `beforeDelete` reads their rows last.
+   */
+  purgeDeletedFamily(rootId: string, deletedAt: number, beforeDelete?: (threadIds: string[]) => void): string[] {
+    if (this.closed) return [];
+    const rows = this.db.query(`SELECT thread_id FROM thread_deletions WHERE root_id = ?1
+      AND EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = ?1 AND root_id = ?1 AND deleted_at = ?2)`).all(rootId, deletedAt) as { thread_id: string }[];
+    const ids = rows.map(row => row.thread_id);
+    if (ids.length > 0) beforeDelete?.(ids);
+    this.deleteThreads(ids, { keepUsage: true });
+    return ids;
   }
 
   /** Erase conversation history and its dependent records in one transaction, before client notifications. */
@@ -624,7 +640,7 @@ export class Journal {
    * are an index search, descending, with no sort step and no scan of the rest of
    * the thread.
    */
-  listMessagePage(threadId: string, options: { beforeRowid?: number; limit: number; project?: Projection; toolPreviews?: boolean; maxBytes?: number }): MessagePage {
+  listMessagePage(threadId: string, options: HydrateOptions & { beforeRowid?: number; limit: number; project?: Projection; maxBytes?: number }): MessagePage {
     // Subscribers have already received buffered deltas. A reload must not replace
     // those messages with an older projection while the next delta is streaming.
     this.flushDeltas();
@@ -641,7 +657,7 @@ export class Journal {
       for (const row of rows) {
         if (messages.length >= limit || (messages.length && bytes >= budget)) { older = true; break; }
         // One complete attachment-sized message can exceed the page budget.
-        const message = this.currentMessage(row as MessageRow, options.toolPreviews);
+        const message = this.currentMessage(row as MessageRow, options);
         const { sent: projected, size } = sent(message, options.project);
         const next = bytes + size + (messages.length ? 1 : 0);
         if (messages.length && next > budget) { older = true; break; }
@@ -661,7 +677,7 @@ export class Journal {
    * newest one returned while the thread holds newer ones, and is null once
    * the page reaches the last message.
    */
-  listMessagesForward(threadId: string, fromRowid: number, limit: number, project?: Projection, toolPreviews = false, maxBytes = MESSAGE_PAGE_MAX_BYTES): { messages: Message[]; sent: Message[]; after: string | null } {
+  listMessagesForward(threadId: string, fromRowid: number, limit: number, project?: Projection, hydration: HydrateOptions | boolean = false, maxBytes = MESSAGE_PAGE_MAX_BYTES): { messages: Message[]; sent: Message[]; after: string | null } {
     this.flushDeltas();
     const cap = Math.max(1, Math.trunc(limit));
     const statement = this.db.prepare('SELECT * FROM messages WHERE thread_id = ? AND rowid >= ? ORDER BY rowid ASC LIMIT ?');
@@ -670,7 +686,7 @@ export class Journal {
     try {
       for (const row of statement.iterate(threadId, fromRowid, cap + 1)) {
         if (messages.length >= cap || (messages.length && bytes >= maxBytes)) { newer = true; break; }
-        const message = this.currentMessage(row as MessageRow, toolPreviews);
+        const message = this.currentMessage(row as MessageRow, hydration);
         const { sent: projected, size } = sent(message, project);
         const next = bytes + size + (messages.length ? 1 : 0);
         if (messages.length && next > maxBytes) { newer = true; break; }
@@ -707,7 +723,7 @@ export class Journal {
   }
 
   /** The complete reconnect tail, or null when its count or the serialized bytes `project` sends exceed a page. */
-  listMessagesFrom(threadId: string, fromRowid: number, limit: number, project?: Projection, toolPreviews = false): { messages: Message[]; sent: Message[] } | null {
+  listMessagesFrom(threadId: string, fromRowid: number, limit: number, project?: Projection, hydration: HydrateOptions | boolean = false): { messages: Message[]; sent: Message[] } | null {
     this.flushDeltas();
     const statement = this.db.prepare('SELECT * FROM messages WHERE thread_id = ? AND rowid >= ? ORDER BY rowid ASC LIMIT ?');
     const messages: Message[] = [], out: Message[] = [];
@@ -715,7 +731,7 @@ export class Journal {
     try {
       for (const row of statement.iterate(threadId, fromRowid, limit + 1)) {
         if (messages.length >= limit) return null;
-        const message = this.currentMessage(row as MessageRow, toolPreviews);
+        const message = this.currentMessage(row as MessageRow, hydration);
         const { sent: projected, size } = sent(message, project);
         bytes += size + (messages.length ? 1 : 0);
         if (bytes > MESSAGE_PAGE_MAX_BYTES) return null;
@@ -763,8 +779,8 @@ export class Journal {
   }
 
   /** Only selected rows need current parts; reads leave the persistence timer alone. */
-  private currentMessage(row: MessageRow, toolPreviews = false): Message {
-    return this.stream.openCopy(row.id) ?? hydrate(this.db, toMessage(row), toolPreviews);
+  private currentMessage(row: MessageRow, hydration: HydrateOptions | boolean = false): Message {
+    return hydrate(this.db, this.stream.openCopy(row.id) ?? toMessage(row), hydration);
   }
 
   /** One part of a message, reading only that part's large values. */

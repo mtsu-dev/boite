@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { richInline } from './chat-links';
+import { fileChipHtml } from './file-links';
 import { renderMarkdown } from './markdown';
 import { paragraphBlocks } from './message-display';
 
@@ -33,10 +34,10 @@ test('a relative path is a link only when no word character or colon comes befor
   const id = (text: string) => text;
   expect(richInline('see src/lib/a.ts now', id)).toContain('data-file-path="src/lib/a.ts"');
   expect(richInline('xsrc/a.ts', id)).not.toContain('data-file-path="src/a.ts"');
-  // Refused after a colon, the absolute path at the next slash is still found.
-  expect(richInline('foo:bar/baz.ts', id)).toBe('foo:bar<a href="#file" data-file-path="/baz.ts">/baz.ts</a>');
+  // Refused after a colon, it stays text: the slash inside `bar/baz.ts` starts no absolute path either.
+  expect(richInline('foo:bar/baz.ts', id)).toBe('foo:bar/baz.ts');
   // Refused at the first dot, the absolute path starting there wins, as before.
-  expect(richInline(':../x.ts', id)).toBe(':<a href="#file" data-file-path="../x.ts">../x.ts</a>');
+  expect(richInline(':../x.ts', id)).toBe(`:${fileChipHtml('../x.ts', '../x.ts', '../x.ts', undefined)}`);
   // Right after another link it still counts: the check reads the text, not what is left of it.
   expect(richInline('<https://a.b>src/c.ts', id)).toContain('data-file-path="src/c.ts"');
 });

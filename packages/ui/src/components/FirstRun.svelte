@@ -41,7 +41,7 @@
           <span class="head now"><span class="number" aria-hidden="true">1</span><span class="ui-label">{strings.firstRun.stepConnect}</span></span>
       <div class="agents" role="group" aria-label={strings.firstRun.agents}>
         {#each agents as agent (agent.id)}
-          <button type="button" class="ghost agent" data-testid="first-run-agent" data-provider={agent.id} onclick={() => store.openConnect(agent.id)}>
+          <button type="button" class="ghost agent" data-testid="first-run-agent" data-preload-view="connect" data-provider={agent.id} onclick={() => store.openConnect(agent.id)}>
             <span class="logo"><ProviderLogo providerId={agent.id} size={22} /></span>
             <span class="text">
               <span class="name">{agent.name}</span>
@@ -52,7 +52,7 @@
           </button>
         {/each}
         <!-- Every other agent: the connect dialog's whole list. -->
-        <button type="button" class="ghost agent" data-testid="first-run-connect" onclick={() => store.openConnect(null)}>
+        <button type="button" class="ghost agent" data-testid="first-run-connect" data-preload-view="connect" onclick={() => store.openConnect(null)}>
           <span class="logo"><Plus size={18} strokeWidth={1.75} aria-hidden="true" /></span>
           <span class="text"><span class="name">{strings.firstRun.others}</span></span>
           <ChevronRight size={16} aria-hidden="true" />

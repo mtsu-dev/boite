@@ -716,12 +716,20 @@ the turn's other events, which no channel holds back.
   file carries that file in its input and again in its diff. The card's line
   reads from the preview; a card with deferred documents stays folded and shows
   its document chip. Opening it retrieves the whole call with
-  `messages.toolPart`, `messages.toolOutput` on older cores. A proposed plan
+  `messages.toolPart`, `messages.toolOutput` on older cores. On a core
+  advertising `features.diffOnlyToolParts`, `messages.toolPart` accepts
+  `diffsOnly: true` to strip non-diff inputs, outputs and attachments before
+  the 16 MiB frame check. `threads.get` and `messages.list` also accept
+  `omitThinking: true` to strip unchecked reasoning text and `omitTools: true`
+  (or `'running'`) to drop tool calls before page and frame limits are
+  measured, while `messages.list` accepts `fullText: true` to re-read complete
+  prose without lifting `compactToolParts`. A proposed plan
   whose input was cut is completed as soon as it is drawn. Running tools remain
-  complete. Older cores that ignore the preview options still return full
-  content; disclosures fall back to their existing history methods if needed.
-  An expanded output refreshes after compact revalidation: matching preview
-  prefixes cannot prove that the omitted text stayed unchanged.
+  complete unless `omitTools` drops them. Older cores that ignore the preview
+  options still return full content; disclosures fall back to their existing
+  history methods if needed. An expanded output refreshes after compact
+  revalidation: matching preview prefixes cannot prove that the omitted text
+  stayed unchanged.
 - File links arrive with their name, MIME type and decoded byte count. Their
   base64 data loads through `messages.attachment` when opened or downloaded.
   Video and audio players ask for a file ticket within 400 px of the screen;

@@ -441,7 +441,7 @@ export class AcpSession {
       else turn.ctx.reportProgress?.('waiting');
       response = await pending;
       if (this.#canLoad) turn.ctx.sessionAccepted?.(sessionId);
-      if (turn.antigravity && response.stopReason === 'end_turn' && !turn.isStopped) await this.#holdForDetached(turn, sessionId);
+      if (turn.antigravity && response.stopReason === 'end_turn' && !turn.isStopped && !turn.hasExecutionError) await this.#holdForDetached(turn, sessionId);
     } catch (error) {
       this.#current = null;
       if (turn.isStopped) {
@@ -554,11 +554,12 @@ export class AcpSession {
         if (this.#ended || turn.settled || turn.isStopped) return;
         const work = await readDetachedWork(home, sessionId, turn.toolCallIds()).catch(() => null);
         if (this.#ended || turn.settled || turn.isStopped) return;
-        // A tool or a question goes quiet while it works: it is no end of the reply.
+        // A wake can leave its transcript pending after an execution error.
+        // Other work still holds the reply open until it finishes.
         const busy = (work !== null && work.atWork > 0)
           || turn.awaitingUser
           || turn.hasRunningTool(prompted)
-          || await readPendingReply(home, sessionId).catch(() => false);
+          || (!turn.hasExecutionError && await readPendingReply(home, sessionId).catch(() => false));
         if (busy) {
           busyAt = Date.now();
           continue;
@@ -805,7 +806,7 @@ export class AcpSession {
       && (update.sessionUpdate === 'agent_message_chunk' || update.sessionUpdate === 'agent_thought_chunk' || update.sessionUpdate === 'tool_call')) {
       turn.ctx.sessionAccepted?.(this.#sessionId);
     }
-    drawUpdate(turn, update);
+    drawUpdate(turn, update, params.sessionId);
   }
 }
 

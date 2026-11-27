@@ -19,4 +19,5 @@ test('free-form titles and unknown types are refused by name', () => {
   expect(titleProblem('fix(UI): normalize spacing')).toContain('type(scope): summary');
   expect(titleProblem('fix:missing space')).toContain('type(scope): summary');
   expect(titleProblem('docs: explain pairing.')).toBe('the summary ends with a period');
+  expect(titleProblem('fix(ui): one footer \u2014 not two')).toContain('em dash');
 });

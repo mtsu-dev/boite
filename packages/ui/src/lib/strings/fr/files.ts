@@ -13,6 +13,8 @@ export const fr: Translation = {
     failed: 'Ce dossier est illisible. {reason}',
     capped: 'Seules les {count} premières entrées de ce dossier sont listées.',
     readFailed: 'Ce fichier est illisible. {reason}',
+    notFound: 'Fichier introuvable',
+    notFoundDetail: 'Boite a cherché {path} dans {folder}.',
     writeFailed: "Ce fichier n'a pas pu être enregistré. {reason}",
     readingFile: 'Lecture de ce fichier',
     noFile: 'Cet onglet ne porte aucun chemin',

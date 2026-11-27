@@ -46,13 +46,16 @@ export type PartRun = { kind: 'part'; index: number } | { kind: 'activity'; indi
 /**
  * A call that produced a diff, a page or an image stands alone: what it made is
  * the point. So does an edit whose input spells out its change, the diff
- * `ToolCard` draws when the driver attaches none. Failed attempts stay in the run.
+ * `ToolCard` draws when the driver attaches none. A read made nothing: the
+ * screenshot it opened stays in its run, on its step's line once the run opens.
+ * Failed attempts stay in the run.
  */
 function standsAlone(part: ToolPart, groupChanges: boolean): boolean {
   if (groupChanges && !(part.documents ?? []).some(doc => doc.kind !== 'diff')) return false;
-  if ((part.documents?.length ?? 0) > 0) return true;
+  const { family, change } = describeTool(part.name, part.input);
+  if ((part.documents?.length ?? 0) > 0) return family !== 'read';
   if (typeof part.inputText === 'string' || part.status === 'error' || part.status === 'denied') return false;
-  return describeTool(part.name, part.input).change !== null;
+  return change !== null;
 }
 
 /**

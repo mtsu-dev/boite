@@ -1,22 +1,12 @@
 import { createWithPreparation, mergeCreationSnapshot } from './thread-creation';
 import { messageCopies, RowIndex, threadCopies } from './thread-lookup';
-import type {
-  Message,
-  MessageId,
-  PermissionMode,
-  ProjectId,
-  ProviderId,
-  RpcParams,
-  Thread,
-  ThreadId,
-  ThreadRewind,
-  ThreadSummary
-} from '@boite/contracts';
+import type { Message, MessageId, PermissionMode, ProjectId, ProviderId, RpcParams, Thread, ThreadId, ThreadRewind, ThreadSummary } from '@boite/contracts';
 import { ReadingCache } from '../reading-cache';
 import { DeviceSnapshots, readingPage } from './device-snapshots';
-import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, unreadInterruptionAt } from '@boite/contracts';
+import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, mergeWorkingChildren, READING_PAGE_BYTES } from '@boite/contracts';
 import { DeferredParts } from './deferred-parts';
-import { askPage, ThreadPreloads } from './thread-preload';
+import { askPage, resumedPage, ThreadPreloads } from './thread-preload';
+import { markThreadOpened, openThreadRequests, paintWhileFetching, retireThreadOpen, showThreadTrace, type PreviewOrigin } from './thread-open';
 import { lightPage, NewerPages, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
 import { LiveWeights } from './live-weights.svelte';
 export type { ReadingPosition } from './reading-pages.svelte';
@@ -61,7 +51,9 @@ export class Threads {
   rewinding = $state<Record<ThreadId, MessageId>>({});
   readonly readingPositions = new Map<string, ReadingPosition>();
   readonly timelineRows = new ThreadTimelineRows(thread => this.ctx.positions.placement(thread.id, thread.messages));
-  readonly readingThreads = new ReadingCache(threadId => this.snapshots.drop(threadId));
+  readonly readingThreads = new ReadingCache(
+    threadId => this.snapshots.drop(threadId), () => this.ctx.store.visible, () => this.openThread?.id
+  );
   readonly readingWeights = new LiveWeights(() => this.openThread?.messages, () => lightPage(this.ctx));
   subscribedThreadId: ThreadId | null = null;
   /** The newest open or navigation, including a quiet revalidation of the current thread. */
@@ -70,6 +62,7 @@ export class Threads {
   navigationGeneration = 0;
   /** What that newest run is opening, so an older one knows what to give back. */
   #openTarget: ThreadId | null = null;
+  #preview: PreviewOrigin | null = null;
   #olderGeneration = 0;
   /** Threads shown as their bare row until their first page arrives; a page that came back empty takes its thread out, and it reopens empty. */
   readonly #unloaded = new Set<ThreadId>();
@@ -78,7 +71,12 @@ export class Threads {
   /** The device's copies of recent threads, for an open after a reload; a visit the reading cache forgets goes there too. */
   readonly snapshots: DeviceSnapshots;
 
-  constructor(private readonly ctx: StoreContext) { this.newer = new NewerPages(ctx); this.preloads = new ThreadPreloads(ctx, this); this.parts = new DeferredParts(ctx, this); this.snapshots = new DeviceSnapshots(ctx, this, this.#unloaded); }
+  constructor(private readonly ctx: StoreContext) { this.newer = new NewerPages(ctx); this.preloads = new ThreadPreloads(ctx, this, this.#unloaded); this.parts = new DeferredParts(ctx, this); this.snapshots = new DeviceSnapshots(ctx, this, this.#unloaded); }
+
+  releaseCaches(machineId: string): void {
+    this.readingThreads.clear();
+    rightPanel.releaseMachine(machineId || null);
+  }
   get openTarget(): ThreadId | null { return this.#openTarget; }
 
   async capabilities(threadId: ThreadId) {
@@ -152,6 +150,7 @@ export class Threads {
   invalidateNavigation(navigate = true): number {
     if (navigate) this.navigationGeneration++;
     this.#openTarget = null;
+    this.#preview = null;
     this.preloads.cancelRepair();
     this.#olderGeneration++;
     this.loadingOlder = false;
@@ -193,7 +192,7 @@ export class Threads {
 
   #workingChildren = $derived(workingChildren(this.threads));
   /** The thread's delegated agents still at work or asking the user; null when none is. */
-  subagents(threadId: ThreadId): WorkingChildren | null { return this.#workingChildren.get(threadId) ?? null; }
+  subagents(threadId: ThreadId): WorkingChildren | null { return mergeWorkingChildren(this.#workingChildren.get(threadId) ?? null, this.rowOf(threadId)?.remoteSubagents ?? null); }
 
   /** The owning core projects local and remote children even when another conversation is open. */
   subagentQuestions(threadId: ThreadId): NonNullable<ThreadSummary['subagentQuestions']> { return this.rowOf(threadId)?.subagentQuestions ?? []; }
@@ -342,78 +341,71 @@ export class Threads {
   }
 
   /**
-   * Two clicks inside one round trip are one thread: the newest run owns the
-   * screen and the subscription, and an older one writes nothing, not even
-   * `subscribedThreadId`. The order is subscribe then unsubscribe, so a
-   * refused subscribe leaves the thread on screen with the socket it had
-   * rather than with none at all. A `listed` open is a load's: the read of
-   * that load's thread list began just before (its call leaves after this
-   * open's `threads.get`) and covers this row too, so the open's read does
-   * not protect the row from it.
+   * The newest visit owns the screen and subscribes before leaving the previous
+   * thread. A `listed` open shares its summary with the startup list read.
    */
   async open(threadId: ThreadId, navigate = true, options: { requests?: boolean; liveCreation?: boolean; listed?: boolean } = {}): Promise<void> {
     const s = this.ctx.store;
     const { delegation } = this.ctx;
     const client = this.ctx.client;
     if (!client) return;
+    const preview = this.#preview && this.#preview.generation === this.openGeneration && this.openThread?.id === this.#preview.threadId ? this.#preview : null;
     const generation = this.invalidateNavigation(navigate);
     this.#openTarget = threadId;
     if (s.connection !== 'ready') { this.loadingThreadId = null; this.#openOffline(threadId, navigate); return; }
     const newest = (): boolean => this.ctx.currentNavigation(client, generation);
-    const retire = async (): Promise<void> => {
-      if (client === this.ctx.client && this.#openTarget === null && this.subscribedThreadId && this.subscribedThreadId !== threadId) {
-        await client.call('threads.subscribe', { threadId: this.subscribedThreadId, ...this.ctx.streams.params(this.subscribedThreadId) }).catch(() => undefined);
-      }
-      if (client !== this.ctx.client || (this.subscribedThreadId !== threadId && delegation.delegationSubscribedThreadId !== threadId && (this.#openTarget !== threadId || newest()))) {
-        await client.call('threads.unsubscribe', { threadId }).catch(() => undefined);
-      }
-    };
-    // Nothing in memory, and no press on its way: the device's snapshot paints the thread and gives the cursor the page asks from.
-    const snapshot = this.openThread?.id === threadId || this.readingThreads.get(threadId) || this.preloads.waitingThreadId === threadId || !this.snapshots.mayHold(threadId) ? undefined : await this.snapshots.read(threadId);
-    if (!newest()) return;
-    const previousThread = this.openThread;
-    let held = this.openThread?.id === threadId ? this.openThread : this.readingThreads.get(threadId) ?? snapshot;
-    // The bare row of an open still on its way holds nothing to paint: clicked again, the thread shows loading, not an empty history.
-    if (held && held.messages.length === 0 && this.#unloaded.has(threadId)) held = undefined;
+    const retire = () => retireThreadOpen(this.ctx, client, threadId, newest);
+    const previousThread = preview ? preview.previous : this.openThread;
+    const memory = this.preloads.held(threadId);
     // A press on this thread already asked for its page (`thread-preload.ts`): the open takes it over.
-    const preloaded = this.preloads.claim(threadId, client, held);
+    const preloaded = this.preloads.claim(threadId, client, memory);
+    let snapshot = !memory ? preloaded?.snapshot?.page : undefined;
+    let held = memory ?? snapshot;
+    const ready = preloaded?.thread;
     const deselect = this.openThread?.id !== threadId && s.delegationSelectedAgentId && s.delegationSelectedAgentId !== threadId;
     // Paint a recent visit in this task. Its revalidation and subscription can
     // take a whole network round trip without holding the reader's text back.
     const row = this.rowOf(threadId);
-    if (held) held = this.#showHeld(held, navigate, row);
+    if (ready && preloaded) {
+      const { opened: _opened, ...preview } = ready;
+      const base = preloaded.base;
+      if (base) resumedPage(base, preview, preloaded.proofFirst);
+      const metadata = preloaded.summaryRead.preview([summaryOf(preview)], this.threads).find(item => item.id === threadId);
+      if (metadata) Object.assign(preview, metadata);
+      this.#unloaded.delete(threadId);
+      this.#show(preview, navigate);
+    } else if (held) held = this.#showHeld(held, navigate, row);
     else if (row) {
       this.#unloaded.add(threadId);
       this.#show({ ...row, messages: [], turns: [], commands: [], messagesBefore: null }, navigate);
     }
-    this.loadingThreadId = held ? null : threadId;
+    const local = !ready && !held ? (preloaded?.snapshot?.read ?? (this.snapshots.mayHold(threadId) ? this.snapshots.read(threadId) : undefined)) : undefined;
+    this.loadingThreadId = ready || held || local ? null : threadId;
+    this.loadingBytes = this.loadingThreadId ? preloaded?.progress ?? null : null;
     const deselected = deselect ? s.selectDelegatedAgent(null) : Promise.resolve();
     let loaded = false;
     const summaryRead = preloaded?.summaryRead ?? this.ctx.threadReads.begin(threadId, !options.listed);
-    let permissionRead: ReturnType<StoreContext['requests']['permissionRead']> | undefined;
-    let questionRead: ReturnType<StoreContext['requests']['questionRead']> | undefined;
-    let secretRead: ReturnType<StoreContext['requests']['secretRead']> | undefined;
+    let requests: ReturnType<typeof openThreadRequests> | undefined;
     try {
       const previous = this.subscribedThreadId;
-      // Everything this open needs leaves in one burst, in the order the core
-      // must run it: on a 150 ms link, five calls awaited one after the other
-      // were three quarters of a second before the last card was right, and the
-      // messages waited behind a subscribe and an unsubscribe they do not need.
+      // Send reads together so the timeline and request cards share one round trip.
       const bundled = s.core?.features?.threadSnapshots === true;
       // A claimed press left the previous thread, the unread mark and the requests to this open.
-      const { subscribed, fetched, around, proofFirst } = preloaded ?? askPage(this.ctx, this, client, threadId, held,
+      const ask = preloaded ?? askPage(this.ctx, this, client, threadId, held,
         { ...(previous && previous !== threadId && previous !== delegation.delegationSubscribedThreadId ? { previous } : {}), ...(options.requests === false ? { requests: false } : {}), markRead: true }, newest);
-      const bundledRequests = bundled && !preloaded;
-      if (options.requests !== false) {
-        permissionRead = this.ctx.requests.permissionRead(client, threadId, bundledRequests ? () => fetched.then(thread => thread.opened?.permissions ?? []) : undefined);
-        questionRead = this.ctx.requests.questionRead(client, threadId, bundledRequests ? () => fetched.then(thread => thread.opened?.questions ?? []) : undefined);
-        secretRead = this.ctx.requests.secretRead(client, threadId, () => fetched.then(thread => this.ctx.requests.secretParts(thread)));
-      }
-      const permissionsAsked = permissionRead?.promise ?? Promise.resolve([]);
-      const questionsAsked = questionRead?.promise ?? Promise.resolve([]);
-      const secretsAsked = secretRead?.promise ?? Promise.resolve([]);
-      // A run that a newer click overtakes returns early and never awaits these.
-      for (const asked of [fetched, permissionsAsked, questionsAsked, secretsAsked]) asked.catch(() => undefined);
+      const { subscribed, fetched } = ask;
+      paintWhileFetching(local, fetched, newest, page => {
+        snapshot = page;
+        this.#unloaded.delete(threadId);
+        held = this.#showHeld(page, navigate, this.rowOf(threadId));
+        this.loadingThreadId = null;
+        this.loadingBytes = null;
+      }, () => {
+        if (loaded) return;
+        this.loadingThreadId = threadId;
+        this.loadingBytes = preloaded?.progress ?? null;
+      });
+      requests = openThreadRequests(this.ctx, client, threadId, fetched, preloaded, bundled, options.requests !== false);
       await (subscribed ?? fetched);
       if (!newest()) {
         // A newer click took over while this one was in flight. Its own thread
@@ -433,47 +425,38 @@ export class Threads {
         ? client.call('threads.unsubscribe', { threadId: previous }).catch(() => undefined)
         : Promise.resolve();
       this.ctx.composer.settle(threadId);
-      const repair = this.preloads.revalidate(client, thread, held, snapshot !== undefined, around, proofFirst, newest, previousThread?.id !== threadId);
+      // The proof only vouches for the base actually sent with the request.
+      const base = preloaded ? preloaded.base : snapshot ? undefined : held;
+      const repair = this.preloads.revalidate(client, thread, base, snapshot !== undefined, ask.around, ask.proofFirst, newest, previousThread?.id !== threadId);
       if (repair && !await repair) { if (!newest()) await retire(); return; }
       // A window that now reaches the end says so, over the cursor a held copy had.
-      if (held && thread.messagesAfter === undefined) delete held.messagesAfter;
+
       if (options.liveCreation && this.openThread?.id === threadId) mergeCreationSnapshot(thread, this.openThread);
       this.#unloaded.delete(threadId);
-      this.#show(held ? reconcileThread(held, thread) : thread, navigate, true);
+      const shown = this.openThread?.id === threadId && (ready || held) ? this.openThread : held;
+      if (shown && thread.messagesAfter === undefined) delete shown.messagesAfter;
+      this.#show(shown ? reconcileThread(shown, thread) : thread, navigate, true);
       this.preloads.done(preloaded);
       loaded = true;
       this.loadingThreadId = null;
       this.loadingBytes = null;
       this.snapshots.schedule(threadId);
-      // The thread may already be waiting on a request this page never saw,
-      // and may have had one settled where this client could not hear it.
-      const permissions = await permissionsAsked;
-      const questions = await questionsAsked;
-      const secrets = await secretsAsked;
-      await unsubscribed;
+      await requests.apply(newest, unsubscribed);
       if (!newest()) return;
-      permissionRead?.apply(permissions);
-      questionRead?.apply(questions);
-      secretRead?.apply(secrets);
-      // Read child requests too, so the sidebar can link to their unanswered questions.
       if (options.requests !== false) this.ctx.requests.readChildren(client, threadId);
-      const interruptionAt = thread.interruptionReadAt === undefined ? undefined : unreadInterruptionAt(thread);
-      if (interruptionAt !== undefined) await client.call('threads.markRead', { threadId, interruptionAt });
-      if (!newest()) return;
-      if (thread.unread) {
-        await client.call('threads.markRead', { threadId });
-        if (!newest()) return;
-        thread.unread = false;
-        this.threads = this.threads.map((t) => (t.id === threadId ? { ...t, unread: false } : t));
-      }
+      await markThreadOpened(client, thread, newest, () => {
+        this.threads = this.threads.map(t => t.id === threadId ? { ...t, unread: false } : t);
+      });
     } catch (error) {
       if (newest()) {
         if (!loaded && error instanceof RpcFailure && (error.code === RpcErrorCode.NotFound || error.code === RpcErrorCode.Refused)) {
-          if (previousThread && previousThread.id !== threadId
-            && summaryRead.changes.get(previousThread.id) !== null) this.#show(previousThread, navigate);
-          else {
+          if (previousThread && previousThread.id !== threadId && summaryRead.changes.get(previousThread.id) !== null) {
+            this.#show(previousThread, preview ? false : navigate);
+            if (preview) s.page = preview.page;
+          } else {
             this.openThread = null;
             if (previousThread) s.startDraft(previousThread.projectId, { refresh: false });
+            else if (preview) { s.draft = preview.draft; s.page = preview.page; }
           }
           // Rollback can remember the rejected target: discard it afterwards.
           this.readingThreads.forget(threadId);
@@ -486,15 +469,34 @@ export class Threads {
     } finally {
       this.preloads.done(preloaded);
       summaryRead.cancel();
-      permissionRead?.cancel();
-      questionRead?.cancel();
-      secretRead?.cancel();
+      requests?.cancel();
       if (newest()) { this.loadingThreadId = null; this.loadingBytes = null; }
       await deselected;
     }
   }
 
   /** A plain visit becomes a new proxy on screen that does not write through to it: later changes go to what this answers. */
+  previewAgentThread(threadId: ThreadId): (() => void) | undefined {
+    const held = this.preloads.held(threadId);
+    const previous = this.openThread;
+    if (!held?.agentSessionId || previous?.id === threadId) return undefined;
+    const s = this.ctx.store;
+    const page = s.page;
+    const draft = s.draft;
+    const generation = this.invalidateNavigation();
+    this.#preview = { threadId, generation, previous, page, draft };
+    const shown = this.#showHeld(held, true, this.rowOf(threadId));
+    this.preloads.replaceHeld(threadId, held, shown);
+    return () => {
+      if (this.openGeneration !== generation || this.openThread?.id !== threadId) return;
+      if (this.#preview?.generation === generation) this.#preview = null;
+      this.rememberReadingThread();
+      if (previous) this.#show(previous, false);
+      else { this.openThread = null; s.draft = draft; }
+      s.page = page;
+    };
+  }
+
   #showHeld(held: Thread, navigate: boolean, row?: ThreadSummary): Thread {
     this.#show(row ? patchFields(held, row) : held, navigate);
     const shown = this.openThread;
@@ -508,6 +510,7 @@ export class Threads {
     const s = this.ctx.store;
     if (this.openThread?.id !== thread.id) this.#leaveFor(thread.id);
     this.openThread = thread;
+    this.readingThreads.visited(thread.id);
     this.timelineRows.prepare(this.openThread);
     if (navigate) {
       s.page = this.pageOf(thread);
@@ -515,7 +518,7 @@ export class Threads {
       if (thread.projectId) this.ctx.projects.rememberProject(thread.projectId);
       if (s.page === 'chat') this.lastChatThreadId = thread.id;
     }
-    this.#traceOf(thread.id, refreshTrace);
+    showThreadTrace(this.ctx, thread.id, refreshTrace);
   }
 
   /** What the thread on screen leaves behind when `next` replaces it, online or not. */
@@ -537,15 +540,6 @@ export class Threads {
     this.ctx.requests.keepRequestsOf(next);
   }
 
-  /** The workbench trace belongs to the thread on screen: another thread's rows go. */
-  #traceOf(threadId: ThreadId, refresh: boolean): void {
-    const s = this.ctx.store;
-    const { workbench } = this.ctx;
-    if (workbench.tracedThreadId !== threadId) s.trace = [];
-    else if (refresh && s.traceWatched) void s.refreshTrace();
-    workbench.tracedThreadId = threadId;
-  }
-
   /**
    * A machine that dropped keeps its rows, and one of them still opens: the
    * timeline this client last read, or the bare row, so a prompt can wait in
@@ -563,7 +557,7 @@ export class Threads {
       if (!held) this.#unloaded.add(threadId);
       this.openThread = held ? { ...held, ...row } : { ...row!, messages: [], turns: [], commands: [], messagesBefore: null };
     }
-    this.#traceOf(threadId, false);
+    showThreadTrace(this.ctx, threadId, false);
     if (navigate) {
       s.page = this.openThread ? this.pageOf(this.openThread) : 'chat';
       s.sidebarOpen = false;
@@ -824,6 +818,7 @@ export class Threads {
 
   async unsubscribe(): Promise<void> {
     this.invalidateNavigation();
+    this.preloads.stop();
     const s = this.ctx.store;
     const delegation = this.ctx.delegation;
     const client = this.ctx.client;

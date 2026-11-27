@@ -5,15 +5,12 @@
  * conversation watches and drives its tabs through `browser.remoteFrame` and
  * `browser.remoteInput`, from this machine or another. See docs/internals/browser.md.
  */
-import { readdirSync } from 'node:fs';
-import { join } from 'node:path';
 import {
   browserActionError,
   browserCookiesError,
   browserProfileIdError,
   browserPresetSize,
   browserProfilesOf,
-  BROWSER_PROFILES_MAX,
   DEFAULT_BROWSER_PROFILE,
   DEFAULT_BROWSER_RECORDING_CODEC,
   DEFAULT_BROWSER_RECORDING_FRAME_RATE,
@@ -40,17 +37,19 @@ import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { refused } from './errors.ts';
 import { machineName } from './paths.ts';
-import { findChromium, RENDER_SCALE } from './browser/chromium.ts';
+import { findChromium } from './browser/chromium.ts';
 import { PageProbes, PROBE_TIMEOUT_MS, type PageProbe, type ViewCheckOptions } from './browser/probe.ts';
 import { TabRecorder } from './browser/recorder.ts';
 import { freshCalls, watchPage } from './browser/page-events.ts';
 import { BrowserHost } from './browser/host.ts';
 import { BrowserEngines } from './browser/engines.ts';
+import { addProfile, profileName, pruneProfiles } from './browser/profiles.ts';
 import { RemoteDrive, type StreamHandle, type StreamPeer } from './browser/remote-drive.ts';
 import { shrunkScreenshot } from './browser/shrink.ts';
 import type { Engine, Tab } from './browser/types.ts';
 import { SETTLED_VIEWPORT_SCRIPT } from './browser/scripts.ts';
 import { screenTurns, takeTurn } from './browser/frames.ts';
+import { setAppearance, setViewport } from './browser/view-settings.ts';
 import { automate, awaitDocument, documentToken, PAGE_ACTIONS, settleLoaded } from './browser/automation.ts';
 import { pageFrames } from './browser/page-frames.ts';
 import { readsConsole } from './browser/page-runtime.ts';
@@ -175,6 +174,7 @@ export class AgentBrowser {
       evaluate: (tab, expression, timeoutMs) => this.#evaluate(tab, expression, timeoutMs),
       send: (tab, method, params) => this.#send(tab, method, params),
       screen: (tab, run, strict) => this.#screen(tab, run, strict),
+      resize: (tab, size) => this.#resize(tab, size),
       use: (tab, run) => this.#sleep.use(tab, run),
     });
   }
@@ -203,12 +203,13 @@ export class AgentBrowser {
     if (this.#watching) return;
     this.#watching = true;
     // Folders of profiles deleted while no browser ran go with the first use after.
-    void this.#pruneProfiles(this.#core.settings.get());
+    const prune = (settings: Settings) => void pruneProfiles(this.#core, this.#engines, dir => this.#probes.holds(dir), settings);
+    prune(this.#core.settings.get());
     this.#off.push(this.#core.bus.onCommitted((name, payload) => {
       if (name === 'turn.finished' && (payload as Turn).startedAt) void this.#discardRunning((payload as Turn).threadId);
       // The agent's turn keeps its pages running, as they ran when it last looked.
       if (name === 'turn.started') this.#wakeThread((payload as Turn).threadId);
-      if (name === 'settings.updated') void this.#pruneProfiles(payload as Settings);
+      if (name === 'settings.updated') prune(payload as Settings);
     }));
   }
 
@@ -232,18 +233,20 @@ export class AgentBrowser {
     if (!state) return [];
     return state.order.flatMap(id => {
       const tab = this.#tabs.get(id);
-      return tab ? [{ tabId: id, url: tab.url, title: tab.title, profile: tab.engine.profile, active: id === state.active, ...(tab.engine.hosted ? { view: tab.targetId } : {}), ...(tab.stuck ? { stuck: { action: tab.stuck.action, since: tab.stuck.since } } : {}) }] : [];
+      if (!tab) return [];
+      const health = tab.health?.();
+      return [{ tabId: id, url: tab.url, title: tab.title, profile: tab.engine.profile, profileName: profileName(this.#core.settings.get(), tab.engine.profile), active: id === state.active, ...(tab.engine.hosted ? { view: tab.targetId } : {}), ...(tab.stuck ? { stuck: { action: tab.stuck.action, since: tab.stuck.since } } : {}), ...(health ? { health } : {}) }];
     });
   }
 
   /** Viewers hear about a change once per burst: a page load renames and moves a tab several times. */
-  #changed(threadId: ThreadId, now = false): void {
+  #changed(threadId: ThreadId, now = false, show = false): void {
     if (this.#closed) return;
     clearTimeout(this.#announce.get(threadId));
     const send = () => {
       this.#announce.delete(threadId);
       const tabs = this.#list(threadId);
-      this.#core.bus.emit('browser.remoteChanged', { threadId, live: tabs.length > 0, tabs });
+      this.#core.bus.emit('browser.remoteChanged', { threadId, live: tabs.length > 0, tabs, ...(show ? { show: true } : {}) });
     };
     if (now) send(); else this.#announce.set(threadId, setTimeout(send, 100));
   }
@@ -282,11 +285,11 @@ export class AgentBrowser {
 
   // ---------- tabs ----------
 
-  async #attach(engine: Engine, threadId: ThreadId, targetId: string, url: string, running: Running | null = null): Promise<Tab> {
+  async #attach(engine: Engine, threadId: ThreadId, targetId: string, url: string, running: Running | null = null, replacing?: Tab): Promise<Tab> {
     const { sessionId } = await engine.cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true });
     const tab: Tab = {
-      id: `browser:${crypto.randomUUID()}`, threadId, engine, targetId, sessionId, url, title: '',
-      preset: null, orientation: 'portrait', colorScheme: 'system', diagnostics: [], dropped: 0, history: [], requests: new Map(), loading: new Map(), network: null,
+      id: replacing?.id ?? `browser:${crypto.randomUUID()}`, threadId, engine, targetId, sessionId, url, title: replacing?.title ?? '',
+      viewport: null, colorScheme: 'system', diagnostics: [], dropped: 0, history: [], requests: new Map(), loading: new Map(), network: null,
       recorder: null, discarded: false, frame: null, screen: screenTurns(), off: [], frames: new Set(), acting: false, actor: null, stuck: null, sleep: sleepState(!engine.hosted),
       page: {
         session: sessionId,
@@ -298,8 +301,12 @@ export class AgentBrowser {
     const on = (method: string, listener: (params: Record<string, unknown>) => void) =>
       tab.off.push(engine.cdp.on(method, (params, session) => { if (session === sessionId || (session && session === frames.runtime?.session)) listener(params); }));
     const frames = tab.page.frames = pageFrames(engine.cdp, sessionId, on, engine.hosted ? null : targetId);
-    watchPage(tab, on, (accept, promptText) => void engine.cdp.send('Page.handleJavaScriptDialog', { accept, ...(promptText === undefined ? {} : { promptText }) }, sessionId).catch(() => {}),
-      url => { tab.url = url; this.#remote.stale(tab); this.#changed(threadId); this.#engines.saveCookiesSoon(engine); });
+    tab.health = watchPage(tab, on, (accept, promptText) => void engine.cdp.send('Page.handleJavaScriptDialog', { accept, ...(promptText === undefined ? {} : { promptText }) }, sessionId).catch(() => {}),
+      url => {
+        tab.url = url;
+        if (this.#tabs.get(tab.id) === tab) { this.#remote.stale(tab); this.#changed(threadId); }
+        this.#engines.saveCookiesSoon(engine);
+      }, () => { if (this.#tabs.get(tab.id) === tab) this.#changed(threadId); });
     watchNetwork(() => tab.network, on);
     on('Page.frameAttached', params => { if (tab.frames.size < 500) tab.frames.add(String(params.frameId)); });
     on('Page.frameNavigated', params => { const frame = params.frame as { id: string }; if (tab.frames.size < 500) tab.frames.add(String(frame.id)); });
@@ -309,28 +316,42 @@ export class AgentBrowser {
     if (engine.identity) await engine.cdp.send('Emulation.setUserAgentOverride', { userAgent: engine.identity.userAgent, userAgentMetadata: engine.identity.metadata }, sessionId).catch(() => {});
     // Only `browser network` reads response bodies (`Network.getResponseBody`): until it starts, Chromium keeps none for this tab.
     await Promise.all([
-      engine.cdp.send('Page.enable', {}, sessionId),
+      engine.cdp.send('Page.enable', {}, sessionId).then(() => engine.cdp.send('Page.setLifecycleEventsEnabled', { enabled: true }, sessionId).catch(() => {})),
       engine.cdp.send('Network.enable', NO_NETWORK_BUFFERS, sessionId),
     ]);
     // A window opened by a page may have navigated before it was attached: its address is read once now.
     const current = await engine.cdp.send<{ targetInfo: { url: string; title: string } }>('Target.getTargetInfo', { targetId }).catch(() => null);
-    if (current) { tab.url = current.targetInfo.url || tab.url; tab.title = current.targetInfo.title.slice(0, 200); }
+    if (current) {
+      tab.url = current.targetInfo.url || tab.url;
+      if (!replacing) tab.title = current.targetInfo.title.slice(0, 200);
+    }
     await frames.runtime?.adopt(tab.url);
     // Every tab counts as focused, so a page waiting for focus or visibility runs.
     await engine.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId).catch(() => {});
     // Given up while it attached: the tab is never the conversation's, and the caller closes its target.
     // Archived while it attached: the same, since the archive closed only the tabs it found.
-    let gone: unknown = null;
-    try { this.#require(threadId); } catch (error) { gone = error; }
-    if (running?.abandoned || gone) {
+    try {
+      if (replacing) {
+        if (replacing.viewport) await this.#resize(tab, replacing.viewport);
+        if (replacing.colorScheme !== 'system') await setAppearance(tab, replacing.colorScheme);
+        await this.#navigate(tab, replacing.url || 'about:blank', true);
+      }
+      this.#require(threadId);
+      if (running?.abandoned) throw abandoned(running);
+      if (replacing && this.#tabs.get(replacing.id) !== replacing) throw refused('the browser tab closed while changing profiles');
+    } catch (error) {
       for (const off of tab.off) off();
-      throw running?.abandoned ? abandoned(running) : gone;
+      throw error;
     }
     this.#tabs.set(tab.id, tab);
+    if (replacing) {
+      this.#detachTab(replacing);
+      this.#remote.replaceTab(tab.id);
+    }
     engine.tabs.add(tab.id); clearTimeout(engine.idle);
     this.#sleep.schedule(tab);
     const state = this.#thread(threadId);
-    state.order.push(tab.id); state.active = tab.id;
+    if (!replacing) { state.order.push(tab.id); state.active = tab.id; }
     this.#changed(threadId, true);
     return tab;
   }
@@ -367,11 +388,7 @@ export class AgentBrowser {
     const tab = this.#tabs.get(id);
     if (!tab) return;
     this.#tabs.delete(id);
-    this.#sleep.drop(tab);
-    for (const off of tab.off) off();
-    void tab.recorder?.dispose();
-    tab.engine.tabs.delete(id);
-    this.#engines.idle(tab.engine);
+    this.#detachTab(tab);
     this.#remote.dropTab(id);
     const state = this.#threads.get(tab.threadId);
     if (state) {
@@ -382,17 +399,25 @@ export class AgentBrowser {
     this.#changed(tab.threadId, true);
   }
 
+  #detachTab(tab: Tab): void {
+    this.#sleep.drop(tab);
+    for (const off of tab.off) off();
+    void tab.recorder?.dispose();
+    tab.engine.tabs.delete(tab.id);
+    this.#engines.idle(tab.engine);
+  }
+
   async #closeTab(tab: Tab): Promise<void> {
     // While the page is still there: what it signed in to is on disk before anything can end the browser.
     await this.#engines.saveCookies(tab.engine);
     // A frozen page runs nothing, its unload handlers included.
     if (!tab.sleep.crashed) await this.#sleep.wake(tab).catch(() => {});
     await tab.engine.cdp.send('Target.closeTarget', { targetId: tab.targetId }).catch(() => {});
-    this.#drop(tab.id);
+    if (this.#tabs.get(tab.id) === tab) this.#drop(tab.id);
   }
 
-  async #navigate(tab: Tab, url: string): Promise<BrowserReply> {
-    const token = await documentToken(tab.page);
+  async #navigate(tab: Tab, url: string, manual = false): Promise<BrowserReply> {
+    const token = manual ? undefined : await documentToken(tab.page);
     const seq = this.#downloads.seq;
     // Off before the navigation starts: the new process of an app webview keeps the runtime it began with (`followHostedPage`).
     if (!readsConsole(url)) await tab.page.frames?.runtime?.follow(url);
@@ -404,6 +429,11 @@ export class AgentBrowser {
       return { tabId: tab.id, url: at, title: tab.title, value: { ok: true, url: at, title: tab.title, note: `${url} is a download; the page did not change` } };
     }
     if (reply.errorText) throw refused(`${url} could not be opened: ${reply.errorText}`);
+    if (manual) {
+      if (tab.url === 'about:blank') tab.url = url;
+      if (this.#tabs.get(tab.id) === tab) this.#changed(tab.threadId, true);
+      return { tabId: tab.id, url: tab.url, title: tab.title, value: { ok: true, navigated: true, loading: !!reply.loaderId } };
+    }
     // A move within the same document has no loader and no new DOM to wait for.
     const { state, loading } = reply.loaderId ? await awaitDocument(tab.page, token, DOM_WAIT_MS) : { state: null, loading: false };
     if (state) { tab.url = state.url; tab.title = state.title.slice(0, 200); }
@@ -537,13 +567,13 @@ export class AgentBrowser {
         const blocking: BrowserBlockingCommand | null = current
           ? { action: current.action, ...(current.tabId ? { tabId: current.tabId } : {}), step: current.step, startedAt: current.startedAt, stepStartedAt: current.stepStartedAt }
           : null;
-        return { value: { available, hosted: this.#host.attached, machine: this.#machine, ...(available ? {} : { reason: found.reason }), tabs: this.#list(threadId).map(tab => ({ ...tab, profileName: this.#profileName(tab.profile) })), ...(blocking ? { blocking } : {}) } };
+        return { value: { available, hosted: this.#host.attached, machine: this.#machine, ...(available ? {} : { reason: found.reason }), tabs: this.#list(threadId), ...(blocking ? { blocking } : {}) } };
       }
       case 'profiles': {
         const { profiles, defaultId } = browserProfilesOf(this.#core.settings.get());
-        return { value: { machine: this.#machine, default: defaultId, profiles: [DEFAULT_BROWSER_PROFILE, ...profiles.map(profile => profile.id), PRIVATE_BROWSER_PROFILE].map(id => ({ id, name: this.#profileName(id), kept: id !== PRIVATE_BROWSER_PROFILE })) } };
+        return { value: { machine: this.#machine, default: defaultId, profiles: [DEFAULT_BROWSER_PROFILE, ...profiles.map(profile => profile.id), PRIVATE_BROWSER_PROFILE].map(id => ({ id, name: profileName(this.#core.settings.get(), id), kept: id !== PRIVATE_BROWSER_PROFILE })) } };
       }
-      case 'profile-add': return { value: this.#addProfile(action.name) };
+      case 'profile-add': return { value: addProfile(this.#core, action.name) };
       // Recipes are kept for the whole machine and need no tab: the agent's CLI runs them.
       case 'recipes': return { value: { recipes: this.#recipes.list() } };
       case 'recipe-get': return { value: this.#recipes.get(action.name) };
@@ -556,14 +586,16 @@ export class AgentBrowser {
         const current = action.reuse && action.profile === undefined ? this.#threads.get(threadId)?.active : null;
         const tab = current ? this.#tabs.get(current) : undefined;
         if (!tab) return this.#open(threadId, action, running);
-        return { ...await this.#command(tab, action, () => this.#navigate(tab, action.url), running), profile: tab.engine.profile };
+        return { ...await this.#command(tab, action, () => this.#navigate(tab, action.url, action.manual), running), profile: tab.engine.profile };
       }
       default: break;
     }
     if (tabId === undefined) await this.#joined(threadId);
     const tab = this.#tabOf(threadId, tabId);
     const state = this.#thread(threadId);
+    if (action.kind === 'profile-switch') return this.#switchProfile(tab, action.profile, running);
     if (state.active !== tab.id) { state.active = tab.id; this.#changed(threadId); }
+    if (action.kind === 'show') { this.#changed(threadId, true, true); return { tabId: tab.id, value: { ok: true } }; }
     return this.#command(tab, action, () => this.#act(tab, action), running);
   }
 
@@ -592,32 +624,6 @@ export class AgentBrowser {
     }, action.kind === 'close');
   }
 
-  #profileName(id: string): string {
-    if (id === DEFAULT_BROWSER_PROFILE) return 'Default';
-    if (id === PRIVATE_BROWSER_PROFILE) return 'Private';
-    return browserProfilesOf(this.#core.settings.get()).profiles.find(profile => profile.id === id)?.name ?? id;
-  }
-
-  /**
-   * An agent signing in a second account needs a profile that outlives its
-   * tabs and the core, which `private` never does. It may add one, never
-   * remove or rename one: that stays in Settings, with the owner. A name
-   * already listed answers that profile, so a repeated command is harmless.
-   */
-  #addProfile(wanted: string): { id: string; name: string; created: boolean } {
-    const name = wanted.trim();
-    const { profiles } = browserProfilesOf(this.#core.settings.get());
-    const known = profiles.find(profile => profile.name.toLowerCase() === name.toLowerCase());
-    if (known) return { ...known, created: false };
-    // `--profile` tries ids before names: a name that is another profile's id would open that one.
-    if (findBrowserProfile(profiles, name) !== null) throw refused(`a browser profile already uses ${name} as its id; pick another name`);
-    if (profiles.length >= BROWSER_PROFILES_MAX) throw refused(`this machine already has ${BROWSER_PROFILES_MAX} browser profiles; the owner removes one in Settings`);
-    // The id the Settings card makes: `p-` and 12 random hexadecimal digits.
-    const id = `p-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
-    this.#core.settings.set({ browserProfiles: [...profiles, { id, name }] });
-    return { id, name, created: true };
-  }
-
   async #open(threadId: ThreadId, action: Extract<BrowserAction, { kind: 'open' }>, running: Running | null): Promise<BrowserReply> {
     const { profiles, defaultId } = browserProfilesOf(this.#core.settings.get());
     const profile = action.profile === undefined ? defaultId : findBrowserProfile(profiles, action.profile);
@@ -625,6 +631,21 @@ export class AgentBrowser {
     const full = this.#full(threadId);
     if (full === 'thread') throw refused(`a conversation has at most ${TABS_PER_THREAD} browser tabs; close one first`);
     if (full === 'machine') throw refused(`this machine's agent browser has ${TABS_MAX} tabs open; close one first`);
+    const tab = await this.#newTarget(threadId, profile, running);
+    return { ...await this.#command(tab, action, () => this.#navigate(tab, action.url, action.manual), running), profile };
+  }
+
+  async #switchProfile(tab: Tab, wanted: string, running: Running | null): Promise<BrowserReply> {
+    const profile = findBrowserProfile(browserProfilesOf(this.#core.settings.get()).profiles, wanted);
+    if (profile === null) throw refused(`no browser profile is named ${wanted}; browser profiles lists them`);
+    if (profile === tab.engine.profile) return { tabId: tab.id, profile };
+    if (tab.recorder) throw refused('stop recording before changing browser profiles');
+    const replacement = await this.#newTarget(tab.threadId, profile, running, tab);
+    void this.#closeTab(tab);
+    return { tabId: replacement.id, profile, url: replacement.url, title: replacement.title };
+  }
+
+  async #newTarget(threadId: ThreadId, profile: string, running: Running | null, replacing?: Tab): Promise<Tab> {
     const release = this.joining.reserve(threadId);
     let tab: Tab;
     try {
@@ -635,10 +656,10 @@ export class AgentBrowser {
       catch (error) { this.#engines.idle(engine); throw error; }
       clearTimeout(engine.idle);
       const { targetId } = await engine.cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' });
-      try { tab = await this.#attach(engine, threadId, targetId, 'about:blank', running); }
+      try { tab = await this.#attach(engine, threadId, targetId, 'about:blank', running, replacing); }
       catch (error) { await engine.cdp.send('Target.closeTarget', { targetId }).catch(() => {}); this.#engines.idle(engine); throw error; }
     } finally { release(); }
-    return { ...await this.#command(tab, action, () => this.#navigate(tab, action.url), running), profile };
+    return tab;
   }
 
   /** Keeps operation names only: typed values and evaluated code can hold passwords. */
@@ -660,6 +681,10 @@ export class AgentBrowser {
   }
 
   #send(tab: Tab, method: string, params: Record<string, unknown> = {}) { return tab.engine.cdp.send(method, params, tab.sessionId); }
+
+  #resize(tab: Tab, size: Tab['viewport']): Promise<void> {
+    return this.#screen(tab, () => setViewport(tab, size), true);
+  }
 
   /** Waits for the page's viewport to hold its size; a page that cannot answer is left as it is. */
   async #settle(tab: Tab): Promise<void> {
@@ -686,21 +711,21 @@ export class AgentBrowser {
       case 'evaluate': return done(await this.#evaluate(tab, action.expression, 30_000));
       // The page takes a few frames to reach a new size: the next command meets it laid out.
       case 'resize':
-        await this.#screen(tab, () => this.#send(tab, 'Emulation.setDeviceMetricsOverride', { width: action.width, height: action.height, deviceScaleFactor: RENDER_SCALE, mobile: false }), true);
-        tab.preset = null; this.#remote.stale(tab); await this.#settle(tab); return done();
+        await this.#resize(tab, { width: action.width, height: action.height });
+        this.#remote.stale(tab); await this.#settle(tab); return done();
       case 'reset-viewport':
-        await this.#screen(tab, () => this.#send(tab, 'Emulation.clearDeviceMetricsOverride'), true);
-        tab.preset = null; this.#remote.stale(tab); await this.#settle(tab); return done();
+        await this.#resize(tab, null);
+        this.#remote.stale(tab); await this.#settle(tab); return done();
       case 'preset': {
         const size = browserPresetSize(action.preset, action.orientation);
-        await this.#screen(tab, () => this.#send(tab, 'Emulation.setDeviceMetricsOverride', { ...size, deviceScaleFactor: RENDER_SCALE, mobile: false }), true);
-        tab.preset = action.preset; tab.orientation = size.width > size.height ? 'landscape' : 'portrait'; this.#remote.stale(tab);
+        await this.#resize(tab, size);
+        this.#remote.stale(tab);
         await this.#settle(tab);
         return done(size);
       }
       case 'appearance':
-        await this.#send(tab, 'Emulation.setEmulatedMedia', { features: action.colorScheme === 'system' ? [] : [{ name: 'prefers-color-scheme', value: action.colorScheme }] });
-        tab.colorScheme = action.colorScheme; this.#remote.stale(tab); return done();
+        await setAppearance(tab, action.colorScheme);
+        this.#remote.stale(tab); return done();
       case 'screenshot': {
         // The core's own browser draws at `RENDER_SCALE`: its picture is given at the page's size (`shrink.ts`).
         // A page that cannot shrink it gets Chromium's own scaled capture; the desktop app's webview is left as its display draws it.
@@ -767,35 +792,6 @@ export class AgentBrowser {
       if (!tab?.recorder?.running) continue;
       const recorder = tab.recorder; tab.recorder = null; tab.discarded = true;
       await recorder.dispose();
-    }
-  }
-
-  /**
-   * A profile deleted in Settings takes its folder, cookies and logins with it:
-   * its browser closes if it runs, and its folder goes whether it ran or not.
-   * Throwaway folders of private tabs that no longer run go too.
-   */
-  async #pruneProfiles(settings: Settings): Promise<void> {
-    try {
-      const kept = new Set([DEFAULT_BROWSER_PROFILE, ...browserProfilesOf(settings).profiles.map(profile => profile.id)]);
-      for (const [key, pending] of [...this.#engines.pending]) {
-        const profile = key.replace(/^host:/, '');
-        if (kept.has(profile) || profile === PRIVATE_BROWSER_PROFILE) continue;
-        const engine = await pending.catch(() => null);
-        if (engine) await this.#engines.shut(engine);
-      }
-      const privateDir = (await this.#engines.pending.get(PRIVATE_BROWSER_PROFILE)?.catch(() => null))?.dir;
-      const root = join(this.#core.dataDir, 'browser');
-      let names: string[];
-      try { names = readdirSync(root); } catch { return; }
-      for (const name of names) {
-        const dir = join(root, name);
-        const throwaway = /^private-[0-9a-f-]{36}$/.test(name);
-        if (throwaway ? dir === privateDir || this.#probes.holds(dir) || this.#engines.holdsIdentityDir(dir) : kept.has(name) || browserProfileIdError(name) !== null) continue;
-        this.#engines.removeDir(dir);
-      }
-    } catch (error) {
-      this.#core.log('warn', `browser profile cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

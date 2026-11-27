@@ -148,6 +148,22 @@ test('calls fold into runs that text, a question or a produced document breaks',
   ]);
 });
 
+test('a read that opened an image folds into its run, a tool that made one stands alone', () => {
+  const image = { kind: 'image' as const, mimeType: 'image/png', data: 'AA==', alt: null };
+  const parts: MessagePart[] = [
+    tool('Bash', { command: 'a' }),
+    tool('Read', { file_path: 'shot.png' }, { documents: [image] }),
+    tool('Bash', { command: 'b' }),
+    tool('screenshot', {}, { documents: [image] }),
+    tool('Bash', { command: 'c' })
+  ];
+  expect(partRuns(parts)).toEqual([
+    { kind: 'activity', indices: [0, 1, 2] },
+    { kind: 'activity', indices: [3] },
+    { kind: 'activity', indices: [4] }
+  ]);
+});
+
 test('runs never read the streaming last text, and keep their objects while parts arrive', () => {
   const streaming = { type: 'text' as const, get text(): string { throw new Error('the last text was read'); } };
   const parts: MessagePart[] = [tool('Read', { file_path: 'a' }), tool('Read', { file_path: 'b' }), streaming];

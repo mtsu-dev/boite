@@ -156,6 +156,8 @@ export function createBrowserFixture() {
       if (path === '/app') return new Response(APP, { headers: { 'content-type': 'text/html' } });
       if (path === '/widgets') return new Response(WIDGETS, { headers: { 'content-type': 'text/html' } });
       if (path === '/late') return new Response(LATE, { headers: { 'content-type': 'text/html' } });
+      if (path === '/page-health') return new Response('<title>Restricted</title><script async src="/unavailable.js"></script>', { status: 403, headers: { 'content-type': 'text/html' } });
+      if (path === '/unavailable.js') return later.response.then(() => new Response('', { status: 503 }));
       // An answer that takes longer than a fixed pause after a click would wait.
       if (path === '/slow') return Bun.sleep(500).then(() => new Response('loaded'));
       if (path === '/api/items') return (request.method === 'POST' ? request.json() as Promise<{ query?: string }> : Promise.resolve({ query: undefined }))

@@ -98,6 +98,8 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   { owns: ([command, action]) => command === 'browser' && action !== undefined, help: true, text: positional => browserText(positional.slice(1)) },
   // Their own filters (logs-cli.ts); a value comes next and is passed the same way.
   { owns: ([command]) => command === 'logs' || command === 'issue', help: true },
+  // transcripts-cli.ts: its own --query, --limit and --session.
+  { owns: ([command]) => command === 'transcripts', help: true },
   // window-cli.ts: its --title names a window, not a thread.
   { owns: ([command, action]) => command === 'window' && action !== undefined, help: true },
   // desktop-cli.ts: `run` and agent-desktop's verbs own every word after them; status, start, stop, env and help take no text, so a global after them stays the CLI's.

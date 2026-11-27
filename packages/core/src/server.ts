@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun';
 import type { Channel, RpcEventName, RpcEvents, ThreadId } from '@boite/contracts';
-import { APP_ORIGIN, FILE_ROUTE, RPC_MAX_FRAME_BYTES, RPC_PATH, RpcCloseCode, VIEW_ROUTE, SUBSCRIBED_EVENTS, agentHearsEvent } from '@boite/contracts';
+import { AGENT_TRIGGER_WEBHOOK_ROUTE, FILE_ROUTE, RPC_MAX_FRAME_BYTES, RPC_PATH, RpcCloseCode, VIEW_ROUTE, SUBSCRIBED_EVENTS, agentHearsEvent } from '@boite/contracts';
 import { timingSafeEqual } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, normalize, resolve, sep } from 'node:path';
@@ -76,18 +76,6 @@ export const UI_DIST = resolveUiDist();
 
 export const PLACEHOLDER_HTML =
   '<!doctype html><meta charset="utf-8"><title>Boite core</title><p>Boite core is running; the UI is not built</p>';
-
-/** The phone app's origin (`APP_ORIGIN`), or the one `BOITE_APP_ORIGIN` names: a page no core serves, accepted by all. */
-export function appOrigin(env: Record<string, string | undefined> = process.env): string {
-  const named = env['BOITE_APP_ORIGIN']?.trim();
-  if (!named) return APP_ORIGIN;
-  try {
-    // Written in any case, with or without `:443` or a trailing slash, it is the same origin.
-    const url = new URL(named);
-    if (url.protocol === 'https:' && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash) return url.origin;
-  } catch { /* falls through */ }
-  throw new Error(`BOITE_APP_ORIGIN: expected an https origin such as ${APP_ORIGIN}, got ${named}`);
-}
 
 export interface ServerOptions {
   core: Core;
@@ -406,8 +394,6 @@ export function startServerOnStickyPort(
   options: ServerOptions & { explicitPort: boolean; previousPort: number | null; preferredPorts?: readonly number[] },
 ): RunningServer {
   const { explicitPort, previousPort, preferredPorts = PREFERRED_PORTS[options.core.channel], ...server } = options;
-  // Before any port is tried: a misspelt app address is no port taken.
-  appOrigin();
   if (explicitPort) return startServer(server);
   const candidates = [...new Set([...(previousPort === null ? [] : [previousPort]), ...preferredPorts])];
   let last: unknown = null;
@@ -437,8 +423,6 @@ export function startServer(options: ServerOptions): RunningServer {
   const core = options.core;
   const host = options.host ?? '127.0.0.1';
   const helloTimeoutMs = options.helloTimeoutMs ?? envTimeout() ?? DEFAULT_HELLO_TIMEOUT_MS;
-  // Read once, before anything is set up: a misspelt override stops the start rather than letting a page nobody meant in.
-  const app = appOrigin();
   const connections = new Set<ServerConnection>();
   const helloTimers = new Map<ServerConnection, ReturnType<typeof setTimeout>>();
   // Owner windows hear when this machine's addresses change, and the group's own addresses and tailnet listener follow at once.
@@ -485,6 +469,25 @@ export function startServer(options: ServerOptions): RunningServer {
     fetch(request, self) {
       if (stopping) return new Response('core stopping', { status: 503 });
       const url = new URL(request.url);
+      if (url.pathname.startsWith(AGENT_TRIGGER_WEBHOOK_ROUTE)) {
+        if (core.stopping) return new Response('core stopping', { status: 503 });
+        const peer = self.requestIP(request)?.address ?? null;
+        const stranger = strangerAddress(peer, request.headers);
+        const answered = stranger === null ? () => undefined : refusals.begin(stranger);
+        if (answered === null) return new Response('too many refused requests from this address', { status: 429 });
+        const response = core.workforce.triggers.http(request, url.pathname.slice(AGENT_TRIGGER_WEBHOOK_ROUTE.length), stranger ?? peer ?? 'unknown').then((answer) => {
+          answered(answer.status === 400 || answer.status === 401 || answer.status === 404 || answer.status === 405 || answer.status === 408 || answer.status === 413
+            ? 403
+            : answer.status === 429 && answer.headers.has('retry-after') ? 200 : answer.status);
+          return answer;
+        }, (error: unknown) => {
+          answered(403);
+          throw error;
+        });
+        peerRequests.add(response);
+        void response.finally(() => peerRequests.delete(response)).catch(() => undefined);
+        return response;
+      }
 
       if (url.pathname === '/agent-messages' || url.pathname === JOIN_ROUTE || url.pathname === CONTACT_JOIN_ROUTE) {
         if (core.stopping) return new Response('core stopping', { status: 503 });
@@ -555,7 +558,7 @@ export function startServer(options: ServerOptions): RunningServer {
       const ownOrigin = (origin: string | null): boolean => isAllowedOrigin(origin, self.port ?? 0, hostname)
         || (origin !== null && (core.settings.get().browserOrigins?.includes(origin) === true || origin === core.settings.get().publicUrl));
       // A page served by one machine of the group opens its socket on the others.
-      const allowedOrigin = (origin: string | null): boolean => ownOrigin(origin) || (origin !== null && (origin === app || core.group.allowsOrigin(origin)));
+      const allowedOrigin = (origin: string | null): boolean => ownOrigin(origin) || (origin !== null && core.group.allowsOrigin(origin));
 
       const relayed = parseRelayPath(url.pathname);
       if (relayed !== null) {

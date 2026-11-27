@@ -112,7 +112,7 @@ test('closing an image and dragging chat text or a thread link preserves the con
       context.fillStyle = style.backgroundColor; context.fillRect(0, 0, 192, 96);
       context.fillStyle = style.color; context.font = '16px sans-serif'; context.fillText('Selection reference', 12, 52);
       const parts = [
-        { type: 'text', text: 'Select these words after closing the reference image. The conversation should stay open. [Launch game](build/game.exe)' },
+        { type: 'text', text: 'Select these words after closing the reference image. The conversation should stay open. [Launch game](game.exe)' },
         { type: 'file', name: 'reference.png', mimeType: 'image/png', data: canvas.toDataURL().split(',')[1] }
       ];
       s.openThread.messages = [
@@ -125,29 +125,34 @@ test('closing an image and dragging chat text or a thread link preserves the con
     await page.waitFor(`document.querySelector('${id('image-viewer')}')`);
     await page.click(id('image-viewer-close'));
     await page.waitFor(`!document.querySelector('${id('image-viewer')}')`);
+    // The fake fixture seeds a pending contact request toast in the top-right corner; dismiss it so it cannot cover line-1 links.
+    await page.evaluate(`document.querySelector('[data-testid="contact-request-dismiss"]')?.click()`);
+    await page.waitFor(`!document.querySelector('[data-testid="contact-request-notice"]')`);
     await capture(page, 'thread-selection-before.png');
     await drag(page, `${id('text-part')} p`);
     await capture(page, 'thread-selection-after.png');
     expect(await page.evaluate('window.getSelection().toString().length > 0')).toBe(true);
     expect(await page.evaluate(`${state}.openThread.id`)).toBe('t-trace');
-    await page.evaluate(`(() => {
+    await page.evaluate(`(async () => {
+      // The program must be in the thread's folder for its link to reach the launch question.
+      await ${state}.client.call('files.write', { threadId: 't-trace', path: 'game.exe', text: 'Inert game fixture' });
       window.__fileOpens = [];
-      window.__TAURI_INTERNALS__ = { invoke: async (command, args) => { if (command === 'open_local_file') window.__fileOpens.push(args); } };
+      window.__TAURI_INTERNALS__ = { invoke: async (command, args) => {
+        if (command === 'open_client_path') window.__fileOpens.push(args);
+        if (command === 'client_path_info') return 'program';
+      } };
       ${state}.localCore = true;
     })()`);
     await page.evaluate('window.getSelection().removeAllRanges()');
-    await drag(page, 'a[data-file-path="build/game.exe"]');
+    await drag(page, 'a[data-file-path="game.exe"]');
     expect(await page.evaluate('window.__fileOpens.length')).toBe(0);
     expect(await page.evaluate(`${state}.openThread.id`)).toBe('t-trace');
-    // The click shows the program's preview; only its Open launches it.
-    await page.click('a[data-file-path="build/game.exe"]');
-    await page.waitFor('document.querySelector("[data-testid=chat-file] [data-testid=artifact-open]")');
+    // A click asks before the program runs; Cancel runs nothing.
+    await page.click('a[data-file-path="game.exe"]');
+    await page.waitFor(`document.querySelector('${id('confirm-cancel')}')`);
+    await page.click(id('confirm-cancel'));
+    await page.waitFor(`!document.querySelector('${id('confirm-cancel')}')`);
     expect(await page.evaluate('window.__fileOpens.length')).toBe(0);
-    await page.click('[data-testid=artifact-open]');
-    await page.waitFor('window.__fileOpens.length === 1');
-    expect(await page.evaluate('window.__fileOpens[0].path')).toBe('build/game.exe');
-    await page.click('[data-testid=chat-file]:has([data-testid=artifact-open]) button[aria-label="Close preview"]');
-    await page.waitFor('!document.querySelector("[data-testid=artifact-open]")');
     await page.evaluate(`delete window.__TAURI_INTERNALS__; ${state}.localCore = false;`);
     await page.evaluate('window.getSelection().removeAllRanges()');
     await drag(page, id('spawn-marker-open'));
@@ -248,6 +253,10 @@ test('projects sink after losing recent threads and the sidebar follows a select
   try {
     await page.waitFor(`${state}.openThread`);
     await page.evaluate(`globalThis.__boiteTest.workspace.view = 'projects'`);
+    // Every project stays an open card, the paused ones included, so their order alone places them.
+    await page.click(id('grouping-options'));
+    await page.click(`${id('grouping-options-menu')} [data-value=other]`);
+    await page.click(id('grouping-options'));
     await page.evaluate(`(async () => {
       const s = ${state}; s.collapsedProjects = s.projects.map(p => p.id);
       for (let i = 0; i < 24; i++) {

@@ -52,6 +52,7 @@
     height: var(--scroll-edge);
     /* Eased, not linear: the ground closes in over the sliver at the very edge, the rest of the line stays legible. */
     --scroll-edge-fill: var(--scroll-edge-ground, var(--color-background));
+    --scroll-edge-gradient: var(--scroll-edge-stops, var(--scroll-edge-fill), color-mix(in oklab, var(--scroll-edge-fill) 45%, transparent) 50%, transparent);
     pointer-events: none;
     opacity: 0;
     animation-duration: auto;
@@ -62,14 +63,14 @@
   :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::before {
     top: calc(-1 * var(--scroll-edge-top, 0px));
     margin-bottom: calc(-1 * var(--scroll-edge));
-    background: linear-gradient(to bottom, var(--scroll-edge-fill), color-mix(in oklab, var(--scroll-edge-fill) 45%, transparent) 50%, transparent);
+    background: linear-gradient(to bottom, var(--scroll-edge-gradient));
     animation-name: scroll-edge-in;
     animation-range: var(--scroll-edge-top, 0px) calc(var(--scroll-edge-top, 0px) + var(--scroll-edge));
   }
   :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::after {
     bottom: calc(-1 * var(--scroll-edge-bottom, 0px));
     margin-top: calc(-1 * var(--scroll-edge));
-    background: linear-gradient(to top, var(--scroll-edge-fill), color-mix(in oklab, var(--scroll-edge-fill) 45%, transparent) 50%, transparent);
+    background: linear-gradient(to top, var(--scroll-edge-gradient));
     animation-name: scroll-edge-out;
     animation-range: calc(100% - var(--scroll-edge-bottom, 0px) - var(--scroll-edge)) calc(100% - var(--scroll-edge-bottom, 0px));
   }

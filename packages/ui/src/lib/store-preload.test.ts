@@ -34,7 +34,11 @@ test('the click takes over the press: no second subscribe or page, and what stre
     // its events reach the page the click will show, not a thread nobody holds.
     await client.call('turns.start', { threadId: 't-descriptors', prompt: 'while the button is down' });
     await client.settled();
-    await store.open('t-descriptors');
+    const opening = store.open('t-descriptors');
+    expect(store.openThread?.id).toBe('t-descriptors');
+    expect(store.openThread?.messages.length).toBeGreaterThan(0);
+    expect(store.loadingThreadId).toBeNull();
+    await opening;
 
     const fresh = await client.call('threads.get', { threadId: 't-descriptors' });
     expect(store.openThread?.id).toBe('t-descriptors');
@@ -44,7 +48,7 @@ test('the click takes over the press: no second subscribe or page, and what stre
     // left the open thread nor marked anything read; the open did, after it.
     expect(pages('t-descriptors')).toHaveLength(1);
     // The fake bundles snapshots like the core: the press subscribes through its page.
-    expect(pages('t-descriptors')[0]!.open).toEqual({ requests: false });
+    expect(pages('t-descriptors')[0]!.open).toEqual({});
     expect(asked()).toContain('threads.unsubscribe t-trace');
     expect(client.coreSubscribers).toEqual(['t-descriptors']);
   } finally { store.detach(); client.close(); }
@@ -125,11 +129,35 @@ test('a press whose page was refused leaves the click to ask again instead of fa
     store.preload('t-descriptors');
     await vi.waitFor(() => expect(refuse).toBe(false));
     await new Promise(resolve => setTimeout(resolve, 0));
-    await store.open('t-descriptors');
+    const opening = store.open('t-descriptors');
+    expect(store.openThread?.id).toBe('t-descriptors');
+    expect(store.loadingThreadId).toBe('t-descriptors');
+    await opening;
     expect(store.error).toBeNull();
     expect(store.openThread?.id).toBe('t-descriptors');
     expect(store.openThread?.messages.length).toBeGreaterThan(0);
     expect(pages('t-descriptors')).toHaveLength(2);
     expect(client.coreSubscribers).toEqual(['t-descriptors']);
+  } finally { store.detach(); client.close(); }
+});
+
+test.each([
+  { threadId: 't-bench', method: 'permissions.list', requestId: 'req-seed-1' },
+  { threadId: 't-scheduler', method: 'questions.list', requestId: 'qst-seed-1' },
+])('a bundled press drops a request resolved before click ($method)', async ({ threadId, requestId }) => {
+  const { store, client, landed, pages } = await ready();
+  const calls = vi.mocked(client.call);
+  try {
+    const read = store.preload(threadId);
+    const stale = await landed(threadId) as { opened: { permissions: { id: string }[]; questions: { id: string }[] } };
+    expect([...stale.opened.permissions, ...stale.opened.questions].some(row => row.id === requestId)).toBe(true);
+    if (threadId === 't-bench') await client.call('permissions.answer', { requestId, decision: 'allow' });
+    else await client.call('questions.skip', { threadId, questionId: requestId });
+    await store.open(threadId);
+    expect([...store.pendingPermissions, ...store.pendingQuestions].some(row => row.id === requestId)).toBe(false);
+    expect(pages(threadId)).toHaveLength(1);
+    expect(calls.mock.calls.filter(([method, params]) =>
+      (method === 'permissions.list' || method === 'questions.list') && (params as { threadId?: string }).threadId === threadId)).toEqual([]);
+    read();
   } finally { store.detach(); client.close(); }
 });

@@ -278,10 +278,10 @@ test("a phone's header is back, the title, one menu of the thread's actions and 
   const rows = values(menu);
   // Find first (a phone has no Ctrl+F), the thread actions, the named group, then Delete.
   expect(menu.querySelectorAll('.section')).toHaveLength(0);
-  expect(rows[0]).toBe('find');
+  expect(rows.slice(0, 2)).toEqual(['find', 'export-thread']);
   // The made-again title beside Rename: both name the thread.
   expect(rows.indexOf('retitle')).toBe(rows.indexOf('rename') + 1);
-  expect(rows.length).toBeLessThanOrEqual(9);
+  expect(rows.length).toBeLessThanOrEqual(10);
   expect(rows.at(-1)).toBe('delete');
   // The phone offers the ID up front and leaves Copy path to the desktop.
   expect(rows).toContain('more');
@@ -300,7 +300,7 @@ test("a phone's header is back, the title, one menu of the thread's actions and 
   expect(store.panelOpen).toBe(!was);
 });
 
-test("a desktop header's menu has find first, nine rows at most and names its group for what it holds, with no panel", async () => {
+test("a desktop header's menu starts with find and export, has ten rows at most and names its group for what it holds, with no panel", async () => {
   await start();
   document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
   const menu = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
@@ -309,9 +309,9 @@ test("a desktop header's menu has find first, nine rows at most and names its gr
   expect(parseFloat(menu.style.maxHeight)).toBeGreaterThan(360);
   // Find first, the thread actions, the named group, then Delete.
   const actions = [...menu.querySelectorAll<HTMLElement>('[data-value]')].map(node => node.dataset['value']);
-  expect(actions[0]).toBe('find');
-  expect(actions.length).toBeLessThanOrEqual(9);
-  for (const id of ['find', 'rename', 'retitle', 'pin', 'copy-thread-id', 'done', 'archive']) expect(menu.querySelector(`[data-value="${id}"]`)).not.toBeNull();
+  expect(actions.slice(0, 2)).toEqual(['find', 'export-thread']);
+  expect(actions.length).toBeLessThanOrEqual(10);
+  for (const id of ['rename', 'retitle', 'pin', 'copy-thread-id', 'done', 'archive']) expect(menu.querySelector(`[data-value="${id}"]`)).not.toBeNull();
   expect(actions.indexOf('retitle')).toBe(actions.indexOf('rename') + 1);
   const group = menu.querySelector<HTMLButtonElement>('[data-value="more"]');
   // Named for what it holds: no bot here, so the move and the folder.

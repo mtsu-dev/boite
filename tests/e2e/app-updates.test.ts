@@ -27,7 +27,7 @@ async function machines() {
 }
 async function updates(phase: string, nightly = false) {
   await page.navigate(`${base}/?fake=1&appUpdate=${phase}${nightly ? '&appUpdateChannel=nightly&appUpdateCurrentChannel=nightly' : ''}`);
-  await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
+  await page.waitFor(`document.querySelector('${id('nav-settings')}, [data-testid="mobile-settings"], [data-testid="mobile-back"]')`);
   await machines();
   await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
 }
@@ -48,6 +48,7 @@ afterEach(async () => { await page?.close(); }, 15_000);
 afterAll(async () => { await server?.close(); }, 30_000);
 
 test('the rail\'s foot button and Machines both reach updates, and the foot fits its controls', async () => {
+  await page.evaluate(`localStorage.setItem('boite.mochi-layout', '1')`);
   await page.navigate(`${base}/?fake=1&open=recent&machines=1&appUpdate=ready&appUpdateChannel=nightly`);
   // The machines, updates, limits and Settings stand in the rail's foot, in that order.
   const foot = ['machine-status', 'nav-updates', 'nav-limits', 'nav-settings'];
@@ -191,7 +192,7 @@ test('a running check remains visible and disabled in Machines', async () => {
 test('ordinary browsers have no native update controls in Machines, including French phone settings', async () => {
   await width(390);
   await page.navigate(`${base}/?fake=1`);
-  await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
+  await page.waitFor(`document.querySelector('[data-testid="mobile-settings"], [data-testid="mobile-back"]')`);
   await machines();
   // A browser has no updater of its own: the card names the machine's Boite, without channels or a cancel.
   await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
@@ -202,7 +203,7 @@ test('ordinary browsers have no native update controls in Machines, including Fr
   await capture('phone');
   await page.evaluate(`localStorage.setItem('boite.locale', 'fr')`);
   await page.reload();
-  await page.waitFor(`document.documentElement.lang === 'fr' && document.querySelector('${id('nav-settings')}')`);
+  await page.waitFor(`document.documentElement.lang === 'fr' && document.querySelector('[data-testid="mobile-settings"], [data-testid="mobile-back"]')`);
   await machines();
   await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
   expect(await absent('app-update-nightly')).toBe(true);

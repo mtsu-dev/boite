@@ -304,7 +304,7 @@ test('a mochi reads its memory, notes facts, keeps its routines and its desk fro
   const elsewhere = await client.call('projects.add', { path: join(harness.dataDir, 'elsewhere'), name: 'Elsewhere' });
   const outside = await client.call('threads.create', { projectId: elsewhere.id, providerId: 'echo', accountId: harness.core.threads.require(worker).accountId, title: 'Outside' });
   expect((await boite(['bot', 'watch', outside.id])).err).toContain('is not in a project entrusted to Ada');
-  expect((await boite(['bot', 'inbox'])).err).toContain('mochi expects memory, remember, routines, schedule, unschedule, watch, unwatch or new-session');
+  expect((await boite(['bot', 'inbox'])).err).toContain('mochi expects memory, remember, routines, triggers, schedule, unschedule, watch, unwatch or new-session');
   // An ordinary thread is no agent's.
   threadId = worker;
   expect((await boite(['bot', 'routines'])).err).toContain("no mochi's thread");
@@ -375,7 +375,7 @@ describe('usage', () => {
     expect(help.err).toContain('projects recoveries');
     expect(help.err).toContain('proof <message-id> <output-line> <unchecked> [capture]');
     expect(help.err).toContain('mochi new-session');
-    expect(Buffer.byteLength(help.err)).toBeLessThanOrEqual(18_922);
+    expect(Buffer.byteLength(help.err)).toBeLessThanOrEqual(18_947);
     expect(help.out).toBe('');
     // Help names bots and threads; the old spellings still run but are not shown.
     for (const shown of ['threads find <words>', 'threads send <thread> <text>', 'mochi remember <fact>', 'settings mochi request', 'threads [list] [--project <p>] [--archived]']) expect(help.err).toContain(shown);

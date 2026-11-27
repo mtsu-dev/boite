@@ -216,7 +216,7 @@
       {onkeydown}
       use:popover.attach
       use:floating={{ anchor: () => trigger ?? null, placement, align: panel ? 'end' : align,
-        side: panel ? 'right' : undefined, sideAnchor: panel ? () => trigger?.closest<HTMLElement>('.app-rail') ?? null : undefined,
+        side: panel ? 'right' : undefined, sideAnchor: panel ? () => trigger?.closest<HTMLElement>('.app-rail, .rail') ?? null : undefined,
         cap: panel ? 460 : cap, dismiss: () => close(false) }}
       onanimationend={popover.end}
       data-testid={popupTestid ?? (testid ? `${testid}-menu` : undefined)}

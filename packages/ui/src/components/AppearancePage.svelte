@@ -35,6 +35,8 @@
    * list, is one row in its own face that opens the others (`ChoiceSelect`).
    */
   let { store, phone = false }: { store: Store; phone?: boolean } = $props();
+  /** `Ctrl+Wheel` once the wheel zoom has a chord (Settings, Keyboard), for the Zoom row's hint. */
+  let zoomWheelKey = $derived(store.keyLabel('zoom-wheel'));
   $effect(() => backdropEntry.need());
 
   // The terminal is the owner's to hide; Add a project is too, unless the device's core lets it add.
@@ -254,7 +256,7 @@
       <span class="sample code" style:font-family="var(--face-mono-{mono})" data-testid="font-mono-sample" aria-hidden="true">{strings.settings.monoSample}</span>
     </SettingField>
     {#if zoomable}
-      <SettingField title={strings.settings.zoom} help={strings.settings.zoomHint} error={zoomError || undefined} errorTestid="zoom-error" field={false}>
+      <SettingField title={strings.settings.zoom} help={zoomWheelKey === null ? strings.settings.zoomHint : fill(strings.settings.zoomHintWheel, { chord: zoomWheelKey })} error={zoomError || undefined} errorTestid="zoom-error" field={false}>
         {#snippet control({ id, 'aria-labelledby': labelledBy, 'aria-describedby': describedBy })}
           <div {id} class="segmented zoom" role="group" aria-labelledby={labelledBy} aria-describedby={describedBy}>
             <button type="button" aria-label={strings.settings.zoomOut} title={strings.settings.zoomOut} disabled={zoom <= smallest} data-testid="zoom-out" onclick={() => zoomTo(stepZoom(wantedZoom(), -1))}><Minus size={14} strokeWidth={2} /></button>

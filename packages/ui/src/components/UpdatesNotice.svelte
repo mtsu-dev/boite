@@ -185,7 +185,7 @@
 {#if card.shown && shown}
   <div class="updates-card" class:closing={card.closing} bind:this={content} role="dialog" tabindex="-1" aria-label={strings.updateAll.heading}
     {onkeydown} data-testid="updates-card" use:card.attach onanimationend={card.end}
-    use:floating={{ anchor: () => trigger?.closest<HTMLElement>('.slot') ?? trigger ?? null, side: 'right', align: 'end', dismiss: close }}>
+    use:floating={{ anchor: () => trigger?.closest<HTMLElement>('.slot') ?? trigger ?? null, side: 'right', sideAnchor: () => trigger?.closest<HTMLElement>('.app-rail, .rail') ?? null, align: 'end', dismiss: close }}>
     <header>
       <span class="glyph" class:busy={underWay} class:done={allDone} aria-hidden="true">
         {#if allDone}<Check size={18} strokeWidth={2} />{:else}<CircleArrowDown size={18} strokeWidth={1.75} />{/if}

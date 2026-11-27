@@ -11,12 +11,10 @@
    * when a thread failed. A minor error with no thread clears itself after
    * five seconds.
    */
-  let { store, pairingScreen, blocked, onopen }: {
+  let { store, pairingScreen, onopen }: {
     store: Store;
     /** The phone's pairing screen is up: it reports a missing or revoked pairing itself. */
     pairingScreen: boolean;
-    /** The recovery screen already says the browser blocks the local network. */
-    blocked: boolean;
     /** Open thread was pressed: the phone shows the chat. */
     onopen: () => void;
   } = $props();
@@ -45,7 +43,7 @@
     const pairingNotice = pairingScreen && (error === strings.errors.unpaired || error === strings.errors.revoked);
     // A machine that may still give way to one that answers has nothing to report yet.
     const held = workspace.waiting && current === workspace.primary;
-    if (!error || current.errorOffline || pairingNotice || held || blocked) {
+    if (!error || current.errorOffline || pairingNotice || held) {
       toast.hide();
       return;
     }

@@ -196,7 +196,7 @@ test('Escape cancels a throw before the lazy rope overlay can load', async () =>
 test('Whip desktop controls animate, release and respect reduced motion', async () => {
   await enableWhip();
   await page.screenshot(join(import.meta.dir, '.artifacts', 'whip-desktop.png'));
-  expect(await page.evaluate(`document.querySelector('${button}').closest('.foot') !== null`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector('${button}').closest('.foot, .sidebar-foot') !== null`)).toBe(true);
   await menuAboveWhip('whip-menu-desktop.png');
   expect(await shake()).toBe(true);
   await verifyRope('whip-rope-desktop.png');

@@ -1,5 +1,5 @@
 import { PLUGIN_ADD_SECTION, parseGroupRelayUrl, type QuotaAlert, type ThreadId } from '@boite/contracts';
-import { appPage } from '../app-origin';
+import { mobileApp } from '../shell-platform';
 import { copyByCommand } from '../clipboard';
 import { servesThisPage } from '../endpoint';
 import {
@@ -114,7 +114,7 @@ export class Layout {
     this.#saveLayout();
   }
 
-  async copy(text: string): Promise<void> {
+  async copy(text: string, options?: { reportFailure?: boolean; within?: HTMLElement }): Promise<boolean> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;
     const navigation = this.ctx.threads.openGeneration;
@@ -122,14 +122,15 @@ export class Layout {
       const clipboard = navigator.clipboard;
       if (clipboard) {
         await clipboard.writeText(text);
-        return;
+        return true;
       }
-      if (copyByCommand(text)) return;
+      if (copyByCommand(text, options?.within)) return true;
     } catch {
       // Report the failure below if the view still owns the action.
     }
-    if (this.ctx.client === client && this.ctx.clientGeneration === clientGeneration && this.ctx.threads.openGeneration === navigation)
+    if (options?.reportFailure !== false && this.ctx.client === client && this.ctx.clientGeneration === clientGeneration && this.ctx.threads.openGeneration === navigation)
       this.ctx.store.reportError(strings.errors.clipboard, 'minor');
+    return false;
   }
 
   // -------------------------------------------------------------------------
@@ -335,11 +336,11 @@ export class Layout {
     }).catch(() => undefined);
   }
 
-  /** The shown machine is one this page subscribes on: the one serving it, or any on the phone app's page. */
+  /** The shown machine is one this page subscribes on: the one serving it, or any on the Android app's page. */
   private mayHoldPush(): boolean {
     const s = this.ctx.store;
     const relay = s.endpointUrl === null ? null : parseGroupRelayUrl(s.endpointUrl);
     if (relay !== null && servesThisPage(relay.member)) return false;
-    return appPage() || !s.endpointUrl || servesThisPage(s.endpointUrl);
+    return mobileApp() || !s.endpointUrl || servesThisPage(s.endpointUrl);
   }
 }

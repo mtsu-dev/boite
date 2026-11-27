@@ -442,10 +442,13 @@ export class BotMoves {
       if (!thread.archived) this.#core.threads.archive(thread.id, true);
     }
     const path = this.#store.resident.brainPath(agent.id);
-    this.#store.records.transaction(() => {
-      for (const routine of this.#store.records.list('routine').filter(r => r.agentId === agent.id)) this.#store.records.remove('routine', routine.id);
-      for (const session of this.#store.records.list('session').filter(s => s.agentId === agent.id)) this.#store.records.remove('session', session.id);
-      this.#store.records.remove('profile', agent.id);
+    this.#core.bus.afterCommit(() => {
+      this.#store.records.transaction(() => {
+        for (const routine of this.#store.records.list('routine').filter(r => r.agentId === agent.id)) this.#store.records.remove('routine', routine.id);
+        for (const session of this.#store.records.list('session').filter(s => s.agentId === agent.id)) this.#store.records.remove('session', session.id);
+        this.#store.triggers.removeForAgent(agent.id);
+        this.#store.records.remove('profile', agent.id);
+      });
     });
     this.#core.agentRuntime.forget(agent.id);
     this.#unqueue(agent.id);

@@ -38,4 +38,7 @@
   .back-title { display: inline-flex; align-items: center; gap: 2px; min-width: 0; height: 32px; padding: 0 6px 0 2px; border-radius: var(--radius-md); font: inherit; letter-spacing: inherit; }
   .back-title .ui-label { color: var(--color-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .actions { display: flex; align-items: center; gap: 4px; flex: none; }
+  @media (min-width: 721px) {
+    .side-head { margin-top: calc(var(--titlebar) / 2 - 18px - 6px); }
+  }
 </style>
