@@ -654,7 +654,12 @@ device reports input. See
 after it, then returns the new thread with the removed prompt, attachments and
 element references for the composer. It refuses a thread with a turn running or
 queued (`reason: 'turn-in-flight'`) and any message that is not a user message
-of that thread (`field: 'messageId'`). The journal keeps a `thread.rewound`
+of that thread (`field: 'messageId'`). The composer sends `images: true` when
+the prompt that replaces the message carries images: the core then checks the
+model the cut leaves the thread on, as the send would, and refuses
+(`field: 'images'`) before it cuts anything or restores a file. For pi that
+model can differ from the current session's: a native cut resumes on the
+model at that point, a new session starts on the folder's. The journal keeps a `thread.rewound`
 event naming every removed message and turn. The projection drops those
 messages, so `threads.get` and `messages.list` no longer return them. The turn
 rows stay, so the usage history still counts what they spent. Every subscribed

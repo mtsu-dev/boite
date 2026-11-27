@@ -571,8 +571,8 @@ export class ThreadStore {
   }
 
   /** Edit a sent message: it and everything after it leave the thread (`threads/branching.ts`). */
-  rewind(threadId: ThreadId, messageId: MessageId): Promise<ThreadRewind> {
-    return this.branching.rewind(threadId, messageId);
+  rewind(threadId: ThreadId, messageId: MessageId, images = false): Promise<ThreadRewind> {
+    return this.branching.rewind(threadId, messageId, images);
   }
 
   /** A new thread with the history up to and including a message (`threads/branching.ts`). */

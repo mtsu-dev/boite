@@ -9,6 +9,7 @@ import type { CoreClient } from '../src/client.ts';
 import type { SharedAccess } from '../src/contacts/access-policy.ts';
 import { forgetProbes, getDriver, probedModelsOf } from '../src/drivers/index.ts';
 import { setPiReadDeadlineForTests, setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
+import { piArgs } from '../src/drivers/pi/args.ts';
 import { piProfileArgs, piProfilePins } from '../src/drivers/pi/models.ts';
 import { folderExtends, folderStartModel, piLaunchChoices } from '../src/drivers/pi/start-model.ts';
 import { forgetSavedCatalog, readSavedCatalog } from '../src/providers/saved-catalogs.ts';
@@ -862,6 +863,12 @@ test.each([
   { args: ['--mode', 'rpc', '--'], expected: 'no --' },
   { args: ['--append-system-prompt', '--provider'], expected: null },
   { args: ['--append-system-prompt', '--api-key'], expected: null },
+  // Boite gives each launch its session: pi exits on --session-id beside these, or loses the transcript.
+  { args: ['--continue'], expected: 'no --continue: Boite opens and resumes each thread\'s session itself' },
+  { args: ['-r'], expected: 'no -r: Boite opens and resumes each thread\'s session itself' },
+  { args: ['--session', 'old.jsonl'], expected: 'no --session: Boite opens and resumes each thread\'s session itself' },
+  { args: ['--no-session'], expected: 'no --no-session: Boite opens and resumes each thread\'s session itself' },
+  { args: ['--append-system-prompt', '--continue'], expected: null },
 ])('a pi profile $args is refused when pi would exit on it or read a Boite argument as its value', async ({ args, expected }) => {
   const client = await startCore();
   const { accountId } = await piAccount(client);
@@ -905,6 +912,19 @@ test('Boite\'s own flags replace the profile\'s model flags; a title pins its pr
   expect(piProfilePins(['--model', 'openai/remote'], 'openai/quick', catalog)).toBe(false);
   expect(piProfilePins([], 'openai/quick', catalog)).toBe(false);
   expect(piProfilePins(['--append-system-prompt', '--provider', 'openai', '--model', 'anthropic/title'], 'openai/quick', catalog)).toBe(false);
+});
+
+// The groups pi 1.6.1's own `parseArgs` (cli/args.js) reads for each case: checked against that parser, so the fake,
+// which reads its flags through the same walk, cannot agree with the driver on a misreading.
+test.each([
+  { args: ['--append-system-prompt', '--model', 'fake-b/plain'], groups: [['--append-system-prompt', '--model'], ['fake-b/plain']] },
+  { args: ['--mode', '--model', 'm'], groups: [['--mode'], ['--model', 'm']] },
+  { args: ['--mode', 'rpc', '--offline', 'x'], groups: [['--mode', 'rpc'], ['--offline'], ['x']] },
+  { args: ['--custom', '@file', '--x', 'v'], groups: [['--custom'], ['@file'], ['--x', 'v']] },
+  { args: ['--name', 'x', '--', '--model', 'm'], groups: [['--name', 'x'], ['--', '--model', 'm']] },
+  { args: ['--append-system-prompt', '--no-session', '--continue'], groups: [['--append-system-prompt', '--no-session'], ['--continue']] },
+])('pi reads $args as its parser does', ({ args, groups }) => {
+  expect(piArgs(args).map(({ words }) => words)).toEqual(groups.map(group => [...group]));
 });
 
 test('pi answers /btw from a disposable session copy and leaves the source intact', async () => {
@@ -979,6 +999,29 @@ test('pi forks and rewinds at a finished turn, keeping only its native ancestors
     expect(text).not.toContain('Discard the cyan release');
     expect(text).not.toContain('Unrelated branch');
   }
+});
+
+test('an edit with images is refused before the cut when the session it leaves runs a text-only model', async () => {
+  const { client, threadId } = await startThread();
+  expect((await (await startTurn(client, threadId, 'Keep the amber release')).finished).status).toBe('done');
+  const { cwd, accountId } = harness!.core.threads.require(threadId);
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+  // The folder now starts a new session on a text-only model; the current one resumes on the model it ran.
+  const agentDir = join(harness!.dataDir, 'pi-agent');
+  process.env['PI_CODING_AGENT_DIR'] = agentDir;
+  mkdirSync(join(cwd, '.pi'), { recursive: true });
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(join(cwd, '..'))]: true }));
+  writeFileSync(join(cwd, '.pi', 'settings.json'), JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' }));
+  expect((await (await startTurn(client, threadId, 'Discard the cyan release')).finished).status).toBe('done');
+  expect((await client.call('threads.capabilities', { threadId })).images.supported).toBe(true);
+  const [first, second] = (await client.call('threads.get', { threadId })).messages.filter(message => message.role === 'user');
+  // Editing the first prompt leaves no session: the new one starts on the folder's model, so nothing is cut.
+  expect((await rejection(client.call('threads.rewind', { threadId, messageId: first!.id, images: true }))).reason)
+    .toMatchObject({ rpc: { message: 'Fake-b / Fake Plain takes no images: send the prompt without them' } });
+  expect((await client.call('threads.get', { threadId })).messages.filter(message => message.role === 'user').map(message => message.id)).toEqual([first!.id, second!.id]);
+  // Editing the second keeps the native session at the cut, on the model it ran.
+  expect((await client.call('threads.rewind', { threadId, messageId: second!.id, images: true })).session).toBe('native');
 });
 
 test('pi takes a thinking level while its turn runs', async () => {

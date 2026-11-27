@@ -1926,7 +1926,12 @@ pi's RPC mode: JSON lines over the stdio of `pi --mode rpc`.
   requires --model"), so every launch left to the profile would fail. So is
   one that ends on an option missing its value, which would take the first
   argument Boite adds, and one that holds `--`, after which pi reads every
-  argument, Boite's own included, as the prompt's text. Boite reads the profile as pi's parser walks it
+  argument, Boite's own included, as the prompt's text. So is one that holds
+  an option that picks, places or drops the session (`--continue`, `-c`,
+  `--resume`, `-r`, `--session`, `--session-id`, `--session-dir`, `--fork`,
+  `--no-session`): Boite gives every launch its session, and pi 1.6.1 exits
+  on `--session-id` beside `--continue`, `--resume` or `--session`.
+  Boite reads the profile as pi's parser walks it
   (`drivers/pi/args.ts`), each option with the value it consumes, here and
   wherever it replaces or drops the profile's model flags: in
   `--append-system-prompt --model`, `--model` is the prompt's text.

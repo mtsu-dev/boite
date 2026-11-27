@@ -190,15 +190,16 @@ export class Threads {
    * core and on screen, and what it held comes back for the composer to fill
    * itself with. The thread must be idle: the caller stops a running turn
    * first, and a refusal is shown like any other and answers null. `threadId`
-   * defaults to the open thread.
+   * defaults to the open thread. `images` says the prompt replacing it carries
+   * some, which the core refuses before cutting when the model left cannot read them.
    */
-  async rewind(messageId: MessageId, threadId: ThreadId | undefined = this.openThread?.id): Promise<RewoundMessage | null> {
+  async rewind(messageId: MessageId, threadId: ThreadId | undefined = this.openThread?.id, images = false): Promise<RewoundMessage | null> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;
     if (!client || !threadId) return null;
     this.rewinding[threadId] = messageId;
     try {
-      const { thread, ...rewound } = await client.call('threads.rewind', { threadId, messageId });
+      const { thread, ...rewound } = await client.call('threads.rewind', { threadId, messageId, ...(images ? { images } : {}) });
       if (!this.ctx.currentClient(client, clientGeneration)) return null;
       this.applyRewound(thread);
       if (rewound.files?.status === 'unavailable') this.ctx.store.error = rewound.files.busy ? strings.composer.filesBusy : strings.composer.filesUnavailable;

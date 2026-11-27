@@ -8,7 +8,7 @@ import { agentDoneMethods } from './agent-done';
 import { assertIdleFamily } from './completion';
 import { isThreadTerminal, protectedThreadIdsError, threadActive } from '@boite/contracts';
 /** Threads and their messages: create, read, select, archive, and the turn entry points. */
-import { DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, attachmentError, previewReferencesError, MESSAGE_PAGE, MESSAGE_PAGE_MAX, MESSAGE_PAGE_MAX_BYTES, RPC_MAX_FRAME_BYTES, RpcErrorCode, type AgentProfile, type AgentWhere, type Attachment, type Message, type MessageId, type MoveEnd, type PreviewReference, type RpcParams, type Thread } from '@boite/contracts';
+import { DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, attachmentError, imageAttachmentBlocker, previewReferencesError, MESSAGE_PAGE, MESSAGE_PAGE_MAX, MESSAGE_PAGE_MAX_BYTES, RPC_MAX_FRAME_BYTES, RpcErrorCode, type AgentProfile, type AgentWhere, type Attachment, type Message, type MessageId, type MoveEnd, type PreviewReference, type RpcParams, type Thread } from '@boite/contracts';
 import { steerUser } from './user-steering';
 import { recoverTurn, resumeTurn } from './recovery';
 import { RpcFailure } from '../client';
@@ -789,6 +789,13 @@ export function threadMethods(ctx: FakeContext) {
       const message = thread.messages[at];
       if (!message) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `message ${params.messageId} is not a message of thread ${thread.id}`, data: { threadId: thread.id, field: 'messageId', messageId: params.messageId, expected: 'a user message of this thread' } });
       if (message.role !== 'user') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `message ${params.messageId} is a ${message.role} message; only a message the user sent can be edited`, data: { threadId: thread.id, field: 'messageId', messageId: params.messageId, role: message.role, expected: 'user' } });
+      // As the core: a replacing prompt with images the model left after the cut cannot read cuts nothing.
+      const provider = ctx.providers.find((p) => p.id === thread.providerId);
+      const blocker = params.images && provider ? imageAttachmentBlocker(provider, threadModel(ctx, thread)) : null;
+      if (blocker) {
+        throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${blocker.name} takes no images: send the prompt without them`,
+          data: { threadId: thread.id, field: 'images', providerId: thread.providerId, ...(blocker.modelId === undefined ? {} : { model: blocker.modelId }), expected: 'a prompt without images' } });
+      }
       const removed = thread.messages.splice(at);
       // The notes to the agent went with removed messages: the next one says it
       // again, from where the kept history left the agent to where the thread is now.

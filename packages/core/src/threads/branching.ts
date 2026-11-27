@@ -13,7 +13,7 @@ import type {
   Turn,
   TurnId,
 } from '@boite/contracts';
-import { threadActive } from '@boite/contracts';
+import { imageAttachmentBlocker, threadActive } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { getDriver } from '../drivers/index.ts';
 import { NativeForkUnsupported } from '../drivers/native-fork.ts';
@@ -24,6 +24,7 @@ import { newId } from '../ids.ts';
 import type { ThreadStore } from '../threads.ts';
 import { MOVE_NOTE_PREFIX, moveNote } from './move.ts';
 import { withLoad } from './records.ts';
+import { imageInputModel } from './selection.ts';
 
 type SessionPlan = Pick<ThreadSummary, 'sessionId' | 'sessionResumeAt'> & { session: ThreadRewind['session'] };
 /** What a fork needs of a source message to place its copy. */
@@ -49,7 +50,7 @@ export class ThreadBranching {
 
   constructor(core: Core, threads: ThreadStore) { this.#core = core; this.#threads = threads;}
 
-  async rewind(threadId: ThreadId, messageId: MessageId): Promise<ThreadRewind> {
+  async rewind(threadId: ThreadId, messageId: MessageId, images = false): Promise<ThreadRewind> {
     const thread = requireAgent(this.#threads, threadId);
     if (thread.archived) throw refused('cannot rewind an archived thread', { threadId, field: 'threadId', expected: 'a thread that is not archived' });
     if (this.#threads.isBusy(threadId)) {
@@ -98,6 +99,20 @@ export class ThreadBranching {
           || this.#lastTurnMessage(threadId, kept!.turnId)?.id !== kept!.id
           || JSON.stringify(this.#nativeForkCheckpoint(current, kept!.turnId)) !== JSON.stringify(checkpoint)) {
           throw refused('the source thread changed while preparing its rewind; retry the edit', { threadId, expected: 'the unchanged source boundary' });
+        }
+      }
+      // The prompt that replaces the message carries images: the session the cut leaves reads them, as its send would
+      // check, or nothing is cut and no file restored. A pi session resumes on its model at the cut, a new one on the
+      // folder's, either of which can differ from the model the current session runs.
+      if (images) {
+        const provider = this.#core.providers.require(thread.providerId);
+        const sessionId = native ? native.sessionId
+          : kept === null || movedBeforeSetup !== null ? null : this.#resumable(thread, kept.turnId, thread.cwd)?.sessionId ?? null;
+        const blocker = imageAttachmentBlocker(provider, imageInputModel(this.#core, provider, { ...thread, sessionId }));
+        if (blocker) {
+          throw refused(`${blocker.name} takes no images: send the prompt without them`, {
+            threadId, field: 'images', providerId: provider.id, ...(blocker.modelId === undefined ? {} : { model: blocker.modelId }), expected: 'a prompt without images',
+          });
         }
       }
       const result = await this.#threads.codeCheckpoints.rewind(thread, removed.turnIds, messageId, files => {

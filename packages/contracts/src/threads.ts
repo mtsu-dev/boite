@@ -776,8 +776,12 @@ export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
    * persistent agent session, each naming the field and what it expected.
    * Every client subscribed to the thread gets `message.truncated`. The journal
    * keeps the removed messages' events; the removed turns keep their usage.
+   * `images: true` says the prompt that replaces the message carries images:
+   * when the session the cut leaves runs a model that reads none (pi's own
+   * model at that point, or the folder's for a new session), the rewind is
+   * refused with the send's message before anything is cut or restored.
    */
-  'threads.rewind': { params: { threadId: ThreadId; messageId: MessageId }; result: ThreadRewind };
+  'threads.rewind': { params: { threadId: ThreadId; messageId: MessageId; images?: boolean }; result: ThreadRewind };
   /**
    * A new thread holding a copy of this thread's history up to and including
    * `messageId`, whose next turn continues from there; the original thread is

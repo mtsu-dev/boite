@@ -1,6 +1,6 @@
 // OS profiles and protocol-specific executable checks.
 import type { OsProfile, Protocol, ProviderDescriptor } from '@boite/contracts';
-import { piArgs, PI_VALUED } from '../drivers/pi/args.ts';
+import { piArgs, PI_SESSION_OPTIONS, PI_VALUED } from '../drivers/pi/args.ts';
 import { OS_KEYS } from './expand.ts';
 import { reject, asObject, asString, asArray, checkKeys, checkStringMap } from './validate-primitives.ts';
 import { checkCandidate, checkInstall, checkUpdate } from './validate-install.ts';
@@ -79,6 +79,13 @@ export function checkProfiles(value: unknown, file: string, protocol: Protocol):
       const key = read.find(({ words }) => words[0] === '--api-key');
       if (key) {
         reject(file, `profiles.${os}.launch.args[${key.at}]`, "no --api-key: the provider's own variable in env (ANTHROPIC_API_KEY, OPENAI_API_KEY) or a pi /login", 'pi binds --api-key to whichever provider it starts on, so Boite cannot keep it on one provider');
+      }
+      // Boite gives every launch its session: `--session-id` and `--session-dir`, a side question's `--session` copy, a
+      // probe's or one-shot's `--no-session`. pi 1.6.1 exits on `--session-id` beside `--continue`, `--resume` or
+      // `--session`, `--no-session` would keep the transcript in memory only, and `--fork` would start another each time.
+      const session = read.find(({ words }) => PI_SESSION_OPTIONS.has(words[0]!));
+      if (session) {
+        reject(file, `profiles.${os}.launch.args[${session.at}]`, `no ${session.words[0]}: Boite opens and resumes each thread's session itself`, `pi would exit on ${session.words[0]} beside the session Boite gives it, or lose that session`);
       }
       // pi 1.6.1 exits on a `--provider` without a `--model` ("--provider requires --model"), so every launch Boite
       // leaves to the profile, a fallback title or side question included, would fail.

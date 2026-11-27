@@ -154,7 +154,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     await requireCwd(core, params.threadId);
     return core.threads.compact(params.threadId, params.expectedSelectionVersion);
   });
-  core.router.register('threads.rewind', (params) => core.threads.rewind(params.threadId, params.messageId));
+  core.router.register('threads.rewind', (params) => core.threads.rewind(params.threadId, params.messageId, params.images === true));
   core.router.register('threads.mergeBack', params => core.threads.branching.mergeBack(params));
   core.router.register('threads.fork', (params) => core.threads.fork(params.threadId, params.messageId, params.worktree === true));
   core.router.register('threads.list', (params) => core.threads.list(params));

@@ -27,7 +27,8 @@ export async function rewindComposerEdit(
   state.editing = null;
   state.sending = true;
   try {
-    if (await store.rewind(editing, key)) return { local };
+    // With images, the core checks the model the cut leaves reads them before it cuts anything.
+    if (await store.rewind(editing, key, attachments.some(item => item.kind === 'image'))) return { local };
     if (local) store.unstageSend(local);
     returnPrompt(state, prompt, attachments, previewReferences);
     // Back in the box it is still an edit; behind text typed since, it waits in the queue as a plain prompt.
@@ -48,7 +49,7 @@ export async function retryTurn(store: Store, threadId: string, prompt: Message)
   if (store.openThread?.id !== threadId || store.openThread.archived) return;
   const again = sentPrompt(prompt);
   const local = store.stageSend(threadId, again.text, again.attachments, again.previewReferences);
-  const rewound = await store.rewind(prompt.id, threadId);
+  const rewound = await store.rewind(prompt.id, threadId, again.attachments.some(item => item.kind === 'image'));
   const sent = rewound ? await store.send(rewound.prompt, threadId, rewound.attachments, rewound.previewReferences) : false;
   if (sent) return;
   if (local) store.unstageSend(local);

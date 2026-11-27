@@ -18,7 +18,7 @@
  */
 import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { piArgValue } from '../../src/drivers/pi/args.ts';
+import { piArgs, piArgValue } from '../../src/drivers/pi/args.ts';
 import { instructionsOf } from './history.ts';
 
 const DIRECTIVE = /\[(agents|tool|thought|usage|slow|crash|splitcrash|ask|select|input|editor|retry|giveup|deaf|noclear|notify|timeout|compacted|swapped|taken)\]/g;
@@ -119,11 +119,16 @@ function flag(name: string): string {
   return piArgValue(process.argv.slice(2), name) ?? '';
 }
 
+/** Whether pi reads the switch `name` itself, not as another option's value. */
+function has(name: string): boolean {
+  return piArgs(process.argv.slice(2)).some(({ words }) => words.length === 1 && words[0] === name);
+}
+
 const sessionId = flag('--session-id');
 const sessionDir = flag('--session-dir');
 const model = flag('--model');
 const sideCopy = flag('--session');
-const oneShot = process.argv.includes('--no-session') || Boolean(sideCopy);
+const oneShot = has('--no-session') || Boolean(sideCopy);
 const sessionFile = sideCopy || (sessionId && join(sessionDir,
   readdirSync(sessionDir).find(name => name.endsWith(`_${sessionId}.jsonl`)) ?? `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`));
 const saved = sessionFile && existsSync(sessionFile)
@@ -139,7 +144,7 @@ if (flag('--provider') && !model) {
 }
 // `PI_FAKE_EXTENSION_PROVIDER` is a provider an extension registers: pi launched without extensions does not know it.
 const extensionProvider = process.env['PI_FAKE_EXTENSION_PROVIDER'];
-if (extensionProvider && process.argv.includes('--no-extensions') && (flag('--provider') === extensionProvider || model.startsWith(`${extensionProvider}/`))) {
+if (extensionProvider && has('--no-extensions') && (flag('--provider') === extensionProvider || model.startsWith(`${extensionProvider}/`))) {
   process.stderr.write(`Error: Unknown provider "${extensionProvider}". Use --list-models to see available providers/models.\n`);
   process.exit(1);
 }
