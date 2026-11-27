@@ -18,6 +18,9 @@ export class DraftStartup {
   #prepared: Prepared | null = null;
   #sendingDraft: Draft | null = null;
   #hidden = $state(false);
+  /** The preparation whose new worktree exists now: a worktree draft's images are read there. */
+  #worktree = $state<string | null>(null);
+  get preparedWorktree(): string | null { return this.#worktree; }
   constructor(private readonly ctx: StoreContext) { this.uploads = new AttachmentUploads(ctx); }
 
   watch(): () => void {
@@ -71,6 +74,7 @@ export class DraftStartup {
         return;
       }
       made.ready = true;
+      if (made.draft.worktree) this.#worktree = made.id;
     } catch { /* Send validates and creates normally when speculation fails. */ }
   }
 
@@ -108,6 +112,7 @@ export class DraftStartup {
   release(): void {
     const held = this.#prepared;
     this.#prepared = null;
+    this.#worktree = null;
     if (held && !held.claimed) void held.client.call('drafts.release', { preparationId: held.id }).catch(() => undefined);
   }
   reset(): void { this.#sendingDraft = null; this.release(); this.uploads.reset(); }

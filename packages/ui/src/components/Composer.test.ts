@@ -2260,6 +2260,29 @@ test('a pi draft on its own model asks the core, which reads the project folder'
   store.draftChoice = { ...store.draftChoice!, model: 'pi-demo' };
   await waitFor(() => asked.mock.calls.length > calls);
   expect(asked.mock.calls.at(-1)![0]).toEqual({ projectId: store.draft!.projectId, providerId: 'pi', accountId: account.id, model: 'pi-demo' });
+  // A new worktree holds none of the project's untracked pi settings: the request says so, and asks again once the
+  // draft's preparation (started by the pasted picture) reserved that worktree, which the core then reads.
+  const reserved: (string | null)[] = [];
+  asked.mockImplementation(async () => { reserved.push(store.preparedWorktree); return { supported: true }; });
+  const call = store.client!.call.bind(store.client!);
+  let open = () => {};
+  const gate = new Promise<void>(resolve => { open = resolve; });
+  // The worktree is made at once; only its answer waits, so nothing else the preparation changes asks again after it.
+  vi.spyOn(store.client!, 'call').mockImplementation(((method: string, params: unknown) => {
+    const answer = call(method as never, params as never);
+    return method === 'drafts.prepare' ? answer.then(async value => { await gate; return value; }) : answer;
+  }) as typeof call);
+  const folder = asked.mock.calls.length;
+  store.setDraftWorktree(true);
+  await waitFor(() => asked.mock.calls.length > folder);
+  expect(asked.mock.calls.at(-1)![0]).toEqual({ projectId: store.draft!.projectId, providerId: 'pi', accountId: account.id, model: 'pi-demo', worktree: true });
+  await new Promise(resolve => setTimeout(resolve, 100));
+  expect(reserved.every(id => id === null)).toBe(true);
+  const unreserved = asked.mock.calls.length;
+  open();
+  await waitFor(() => store.preparedWorktree !== null && asked.mock.calls.length > unreserved);
+  expect(reserved.at(-1)).toBe(store.preparedWorktree);
+  expect(asked.mock.calls.at(-1)![0]).toMatchObject({ model: 'pi-demo', worktree: true });
 });
 
 test('a picture pasted while the core reads pi\'s own model is held, and Send waits for that answer', async ({ app: _app }) => {

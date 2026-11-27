@@ -96,15 +96,20 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return { ok: true };
   });
   core.router.register('threads.capabilities', params => threadCapabilities(core, params.threadId));
-  core.router.register('drafts.images', params => {
+  core.router.register('drafts.images', (params, ctx) => {
     const project = core.projects.require(params.projectId);
     const provider = core.providers.require(params.providerId);
     const account = core.accounts.require(params.accountId);
     if (account.providerId !== provider.id) throw invalidParams(`drafts.images.accountId: ${account.id} is an account of ${account.providerId}, not ${provider.id}`, { field: 'accountId', expected: provider.id });
     const thread = params.threadId === undefined ? null : core.threads.require(params.threadId);
     if (thread && thread.projectId !== project.id) throw invalidParams(`drafts.images.threadId: ${thread.id} is a thread of project ${thread.projectId}, not ${project.id}`, { field: 'threadId', expected: project.id });
-    // A pick for a thread's next prompt goes to the thread's folder, which may be a worktree of the project.
-    const model = imageInputModel(core, provider, { accountId: account.id, model: params.model, cwd: thread?.cwd ?? project.path });
+    if (thread && params.worktree) throw invalidParams(`drafts.images.worktree: ${thread.id} already runs in ${thread.cwd}`, { field: 'worktree', expected: 'absent with threadId' });
+    // A pick for a thread's next prompt goes to the thread's folder, which may be a worktree of the project. A new
+    // worktree holds none of the project folder's untracked pi settings: until this connection reserved it, only
+    // the first turn's admission there can tell.
+    const cwd = thread?.cwd ?? (params.worktree ? core.drafts.reservedWorktree(ctx.connection.id, project.id) : project.path);
+    if (cwd === undefined) return { supported: provider.capabilities.images };
+    const model = imageInputModel(core, provider, { accountId: account.id, model: params.model, cwd });
     return { supported: provider.capabilities.images && model?.images !== false };
   });
   core.router.register('threads.previewAccountSwitch', params => {

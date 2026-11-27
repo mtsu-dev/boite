@@ -9,7 +9,7 @@ import type { Choice, Store } from './store.svelte';
  * reads (`threads.capabilities`, `drafts.images` for a draft or a pick). So is a
  * named model the catalog lists text-only, which the folder's own extensions may
  * give images. The key changes when that can:
- * another session, folder, selection or turn, a new catalog for the account (the core reads
+ * another session, folder, selection or turn, a draft's worktree switch or the worktree its preparation reserved, a new catalog for the account (the core reads
  * the session's model in it, and a name change can put another pi pair behind an id), a reconnection.
  */
 function resumedImagesKey(store: Store, thread: Thread | null, choice: Choice | null): string | null {
@@ -21,7 +21,9 @@ function resumedImagesKey(store: Store, thread: Thread | null, choice: Choice | 
   if (!thread) {
     const projectId = store.draft?.projectId;
     if (!projectId || !asks(choice.model)) return null;
-    return ['draft', projectId, choice.providerId, choice.accountId, choice.model ?? '', store.connection, catalog(choice.providerId, choice.accountId)].join('\n');
+    // A new worktree lacks the project's untracked files: the core reads it once this draft's preparation made it.
+    const worktree = store.draft?.worktree ? `worktree:${store.preparedWorktree ?? ''}` : '';
+    return ['draft', projectId, choice.providerId, choice.accountId, choice.model ?? '', store.connection, catalog(choice.providerId, choice.accountId), worktree].join('\n');
   }
   if (choice.providerId !== thread.providerId || choice.accountId !== thread.accountId) return null;
   if (own(choice.model) ? !own(thread.model) : choice.model !== chipChoice(store, thread)?.model) {
@@ -35,9 +37,10 @@ function resumedImagesKey(store: Store, thread: Thread | null, choice: Choice | 
 }
 
 function askCore(store: Store, key: string): Promise<boolean | null> {
-  const [kind, id, providerId, accountId, model, , , threadId] = key.split('\n');
+  const [kind, id, providerId, accountId, model, , , last] = key.split('\n');
   if (kind === 'thread') return store.threadCapabilities(id!).then(value => value ? value.images.supported : null);
-  return store.draftImages({ projectId: id!, providerId: providerId!, accountId: accountId!, model: model || null, ...(kind === 'pick' ? { threadId: threadId! } : {}) }).then(value => value ? value.supported : null);
+  const target = kind === 'pick' ? { threadId: last! } : last ? { worktree: true } : {};
+  return store.draftImages({ projectId: id!, providerId: providerId!, accountId: accountId!, model: model || null, ...target }).then(value => value ? value.supported : null);
 }
 
 /**

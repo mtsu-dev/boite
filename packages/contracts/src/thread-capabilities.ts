@@ -8,8 +8,11 @@ export interface ThreadControlsRpcMethods {
    * Whether a draft's first prompt may carry images on this choice, before any thread exists, or with `threadId`
    * a prompt of that thread of the project on a model picked for it. pi's own model starts where the folder's pi
    * settings say, and the folder's extensions may give a model images, which only the core reads. Starts nothing.
+   * `worktree` is a draft that starts in a new worktree, which holds none of the project's untracked files: the core
+   * reads the worktree this connection's `drafts.prepare` reserved, and before it exists leaves the images to the
+   * first turn's admission there. Refused with `threadId`, whose thread has its folder.
    */
-  'drafts.images': { params: { projectId: ProjectId; providerId: ProviderId; accountId: AccountId; model: string | null; threadId?: ThreadId }; result: { supported: boolean } };
+  'drafts.images': { params: { projectId: ProjectId; providerId: ProviderId; accountId: AccountId; model: string | null; threadId?: ThreadId; worktree?: boolean }; result: { supported: boolean } };
   /** Forecasts the native session after an account switch, without starting an agent or changing the thread. */
   'threads.previewAccountSwitch': { params: { threadId: ThreadId; accountId: AccountId }; result: { session: 'unchanged' | 'resume' | 'fresh' } };
 }

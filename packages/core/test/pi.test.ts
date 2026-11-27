@@ -133,6 +133,39 @@ test('pi default refuses images while pi itself runs a text-only model', async (
   expect(await images()).toBe(true);
 });
 
+test('a worktree draft reads pi settings in the worktree its preparation reserved, not the project folder', async () => {
+  const client = await startCore();
+  const { dataDir, accountId } = await piAccount(client);
+  await client.call('providers.probe', { providerId: 'pi-fake', accountId });
+  const repo = join(dataDir, 'repo');
+  mkdirSync(join(repo, '.pi'), { recursive: true });
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'boite test', GIT_AUTHOR_EMAIL: 'test@boite.invalid', GIT_COMMITTER_NAME: 'boite test', GIT_COMMITTER_EMAIL: 'test@boite.invalid' };
+  for (const args of [['init', '-q'], ['commit', '-q', '--allow-empty', '-m', 'fixture']]) expect(Bun.spawnSync({ cmd: ['git', ...args], cwd: repo, env }).success).toBe(true);
+  // Untracked, so the project folder starts pi on a text-only model and a new worktree of it on the account's.
+  const textOnly = JSON.stringify({ defaultProvider: 'fake-b', defaultModel: 'plain' });
+  writeFileSync(join(repo, '.pi', 'settings.json'), textOnly);
+  const agentDir = join(dataDir, 'pi-agent');
+  process.env['PI_CODING_AGENT_DIR'] = agentDir;
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, 'trust.json'), JSON.stringify({ [realpathSync(repo)]: true }));
+  const project = await client.call('projects.add', { path: repo, name: 'repo' });
+  const choice = { projectId: project.id, providerId: 'pi-fake', accountId };
+  const images = async (worktree?: boolean) => (await client.call('drafts.images', { ...choice, model: null, ...(worktree ? { worktree } : {}) })).supported;
+  expect(await images()).toBe(false);
+  // Before the worktree exists only the first turn's admission there can tell.
+  expect(await images(true)).toBe(true);
+  const { threadId } = await client.call('drafts.prepare', { ...choice, worktree: {}, preparationId: 'draft_pi_worktree' });
+  const reserved = harness!.core.drafts.threads().find(thread => thread.id === threadId)!.cwd;
+  expect(reserved.startsWith(repo)).toBe(true);
+  expect(existsSync(join(reserved, '.pi', 'settings.json'))).toBe(false);
+  expect(await images(true)).toBe(true);
+  mkdirSync(join(reserved, '.pi'), { recursive: true });
+  writeFileSync(join(reserved, '.pi', 'settings.json'), textOnly);
+  expect(await images(true)).toBe(false);
+  await client.call('drafts.release', { preparationId: 'draft_pi_worktree' });
+  expect(await images(true)).toBe(true);
+});
+
 test('pi leaves the start model to pi where the folder\'s extensions or an extension\'s trust decide it, and images wherever an extension loads', () => {
   const root = join(tmpdir(), `pi-folder-extensions-${process.pid}-${Date.now()}`);
   const agentDir = join(root, 'agent'), cwd = join(root, 'project');

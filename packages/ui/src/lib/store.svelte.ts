@@ -139,6 +139,8 @@ export class Store {
   get navigationGeneration(): number { return this.#ctx.threads.navigationGeneration; }
   get shared() { return this.#ctx.shared; }
   get serverUpdater() { return this.#ctx.serverUpdater; }
+  /** The draft preparation whose new worktree exists now, or null. */
+  get preparedWorktree(): string | null { return this.#ctx.draftStartup.preparedWorktree; }
 
   // -------------------------------------------------------------------------
   // Wiring

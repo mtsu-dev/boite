@@ -464,6 +464,11 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   open thread the composer asks the core (`threads.capabilities`), again when
   the session, the folder, the selection, the account's catalog, the turn or the
   connection changes; a draft asks `drafts.images` with its project's folder.
+  A draft that starts in a new worktree asks with `worktree`: that worktree holds
+  none of the project's untracked files, its `.pi/settings.json` included, so
+  the core reads the worktree the draft's preparation reserved, asked again
+  once it exists, and before then lets the image through to the first turn's
+  admission, which reads the worktree.
   Until that answer comes, a picture is held and Send waits for it, asked again
   after a reconnection; another agent, account or model picked meanwhile cancels
   the waiting Send, and an answer that never comes leaves the account's catalog

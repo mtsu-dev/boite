@@ -7,7 +7,7 @@ import { threadModel } from './provider-catalog';
 export function capabilityMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.capabilities' | 'drafts.images'> {
   return {
     // The fixture has no folders of pi settings: the account's catalog answers, as the core's does for a folder that changes nothing.
-    'drafts.images': async ({ projectId, providerId, accountId, model, threadId }) => {
+    'drafts.images': async ({ projectId, providerId, accountId, model, threadId, worktree }) => {
       if (!ctx.projects.some(project => project.id === projectId)) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `unknown project ${projectId}` });
       if (threadId !== undefined && ctx.thread(threadId).projectId !== projectId) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `drafts.images.threadId: ${threadId} is a thread of project ${ctx.thread(threadId).projectId}, not ${projectId}`, data: { field: 'threadId', expected: projectId } });
       const provider = ctx.providers.find(item => item.id === providerId);
@@ -15,6 +15,9 @@ export function capabilityMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.
       const account = ctx.accounts.find(item => item.id === accountId);
       if (!account) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `unknown account ${accountId}`, data: { accountId } });
       if (account.providerId !== providerId) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `drafts.images.accountId: ${accountId} is an account of ${account.providerId}, not ${providerId}`, data: { field: 'accountId', expected: providerId } });
+      if (threadId !== undefined && worktree) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `drafts.images.worktree: ${threadId} already runs in ${ctx.thread(threadId).cwd}`, data: { field: 'worktree', expected: 'absent with threadId' } });
+      // No preparation here reserves a worktree: the first turn's admission there decides, as the core's does before it exists.
+      if (worktree) return { supported: provider.capabilities.images };
       return { supported: provider.capabilities.images && threadModel(ctx, { providerId, accountId, model: model ?? (provider.protocol === 'pi' ? 'default' : null) })?.images !== false };
     },
     'threads.capabilities': async ({ threadId }) => {
