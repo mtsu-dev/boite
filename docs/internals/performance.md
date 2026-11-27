@@ -470,28 +470,31 @@ half the thread ranking, which still sums the turns themselves.
 Schema 54 adds `message_search_keys` and two FTS5 indexes, `messages_fts` (word
 and prefix) and `messages_fts_infix` (trigram). On SQLite 3.43+, both tables use
 `content='', contentless_delete=1` so message bodies are not stored twice; on
-older system SQLite builds (such as macOS 13 with SQLite 3.39.5), `messages_fts`
-falls back to a standard FTS5 table so startup migration still succeeds, and
-`messages_fts_infix` is skipped when the build lacks `trigram remove_diacritics 1`
-(SQLite 3.45+). `threads.search` runs in a worker on a read-only connection,
-ranks at most four candidates per thread (`position <= 4`) in one bounded query
-(`LIMIT` 400 to 1,600) per pass without `OFFSET` rescans or nested `MATCH`
-joins, overlays `streaming_parts` by `part_index` on top of `messages.parts`,
-and skips the prefix and infix passes once the exact pass fills the page with
-higher-scoring matches. Very long threads with many matches for a common word
-may stop inspecting candidates beyond their top four BM25 hits per pass. While a
-response streams, `refreshStreamMessageSearch` updates the message's FTS rows
-only on flushes where a text part changed, skipping tool and thinking deltas.
+older system SQLite builds (such as macOS 13 with SQLite 3.39.5), both fall back
+to standard FTS5 tables so startup migration still succeeds. For
+`messages_fts_infix`, builds lacking `trigram remove_diacritics 1` (SQLite
+3.34 to 3.44, including macOS 13 to 15) fall back to plain `tokenize='trigram'`
+so substring search remains active, and the table is skipped only if the
+`trigram` tokenizer itself is unavailable. `threads.search` runs in a worker on
+a read-only connection, ranks at most four candidates per thread
+(`position <= 4`) in one bounded query (`LIMIT` 400 to 1,600) per pass without
+`OFFSET` rescans or nested `MATCH` joins, overlays `streaming_parts` by
+`part_index` on top of `messages.parts`, and skips the prefix and infix passes
+once the exact pass fills the page with higher-scoring matches. Very long
+threads with many matches for a common word may stop inspecting candidates
+beyond their top four BM25 hits per pass. While a response streams,
+`refreshStreamMessageSearch` updates the message's FTS rows only on flushes
+where a text part changed, skipping tool and thinking deltas.
 
-On 2026-11-27, Linux, Bun 1.4.2 (SQLite 3.53.2), measured directly against
-`createMessageSearch` and `searchThreadMessages` on synthetic 120,000-message
-journals of ~900-byte messages (`125.2 MB` before migration 54, WAL truncated
-before and after; most of the +271.5 MB growth is the trigram index):
+`bun bench/message-search.ts` builds synthetic 120,000-message journals of
+~900-byte messages (`125.3 MB` before migration 54, WAL truncated before and
+after; most of the +272 MB growth is the trigram index) and times migration 54
+plus representative queries. On 2026-11-27, Linux, Bun 1.4.2 (SQLite 3.53.2):
 
-| Journal shape | Size after migration 54 | Migration 54 (blocking startup tx) | Common word (`deploy`) | Short + word (`the error`) | Substring (`ploy`) | Worst-case 3-pass (`test the build`) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 120,000 messages, 20 threads | 396.7 MB | 10.01 s | 168 ms | 190 ms | 170 ms | 163 ms (4 threads) |
-| 120,000 messages, 500 threads | 396.9 MB | 10.01 s | 165 ms | 206 ms | 182 ms | 69 ms (20 threads) |
+| Journal shape | Size after migration 54 | Migration 54 (blocking startup tx) | Common word (`deploy`) | Short + word (`the error`) | Substring (`ploy`) | Worst-case 3-pass (`test the build`) | Miss (`xyzzynotfound`) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 120,000 messages, 20 threads | 397.2 MB | 11.92 s | 162.5 ms | 188.4 ms | 170.9 ms | 170.9 ms (4 hits) | 0.8 ms |
+| 120,000 messages, 500 threads | 397.4 MB | 10.58 s | 203.9 ms | 368.5 ms | 325.0 ms | 123.3 ms (20 hits) | 1.6 ms |
 
 ## Local and remote connections
 

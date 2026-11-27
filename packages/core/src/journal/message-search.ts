@@ -66,14 +66,19 @@ export function createMessageSearch(db: Database): void {
     contentless = false;
     db.exec(`CREATE VIRTUAL TABLE messages_fts USING fts5(body, tokenize='unicode61 remove_diacritics 2')`);
   }
-  // Some system SQLite versions support trigram but lack its diacritic option (3.45+).
+  // Some system SQLite versions support trigram (3.34+) but lack its diacritic option (3.45+).
   let infix = true;
+  const mode = contentless ? "content='', contentless_delete=1, " : '';
   try {
-    const mode = contentless ? "content='', contentless_delete=1, " : '';
     db.exec(`CREATE VIRTUAL TABLE messages_fts_infix USING fts5(body, ${mode}tokenize='trigram remove_diacritics 1')`);
   } catch (error) {
     if (!(error instanceof Error) || !/tokenizer|contentless_delete|unrecognized option|unknown option/i.test(error.message)) throw error;
-    infix = false;
+    try {
+      db.exec(`CREATE VIRTUAL TABLE messages_fts_infix USING fts5(body, ${mode}tokenize='trigram')`);
+    } catch (fallback) {
+      if (!(fallback instanceof Error) || !/tokenizer|contentless_delete|unrecognized option|unknown option/i.test(fallback.message)) throw fallback;
+      infix = false;
+    }
   }
   db.exec(`
     INSERT INTO message_search_keys(message_id, thread_id, role, created_at)

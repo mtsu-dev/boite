@@ -638,6 +638,9 @@
   .mention-place { max-width: 30%; }
   time { flex: none; }
   .speaker { color: var(--color-subtle); }
+  @media (max-width: 600px) {
+    .mention-snippet { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
+  }
   mark { color: var(--color-foreground); background: var(--color-accent-soft); border-radius: var(--radius-sm); }
   .row.selected mark { background: color-mix(in oklch, var(--color-accent) 28%, transparent); }
 

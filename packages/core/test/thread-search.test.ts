@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RpcErrorCode, type Message } from '@boite/contracts';
 import { Journal } from '../src/journal.ts';
-import { searchThreadMessages } from '../src/journal/message-search.ts';
+import { createMessageSearch, refreshStreamMessageSearch, searchThreadMessages } from '../src/journal/message-search.ts';
 import { copyStoredParts } from '../src/journal/stream-buffer.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 
@@ -208,4 +208,58 @@ test('threads.search keeps exact whole words ahead of many prefix hits and scans
   // Replacing a visible message with a system role removes its FTS rows and search key.
   journal.putMessage({ ...message('exact-planet', exactThread, 'System replacement', 99), role: 'system' });
   expect(journal.db.query("SELECT 1 FROM message_search_keys WHERE message_id = 'exact-planet'").get()).toBeNull();
+});
+
+test('createMessageSearch falls back cleanly when SQLite lacks contentless_delete or trigram options', () => {
+  const runFallback = (rejectPlainTrigram: boolean) => {
+    const dir = mkdtempSync(join(tmpdir(), 'boite-search-fallback-'));
+    const journal = new Journal(join(dir, 'journal.db'));
+    try {
+      journal.db.exec(`
+        DROP TRIGGER message_search_insert;
+        DROP TRIGGER message_search_update;
+        DROP TRIGGER message_search_delete;
+        DROP TABLE IF EXISTS messages_fts_infix;
+        DROP TABLE messages_fts;
+        DROP TABLE message_search_keys;
+        INSERT INTO threads (id, title, provider_id, account_id, cwd, permission_mode, status, unread, archived, created_at, updated_at, incognito)
+          VALUES ('t1', 'Legacy SQLite', 'echo', 'echo', '.', 'default', 'idle', 0, 0, 1, 1, 0);
+      `);
+      journal.putMessage(message('m1', 't1', 'PrefixAlphaSuffix baseline', 1));
+      const realExec = journal.db.exec.bind(journal.db);
+      journal.db.exec = ((sql: string) => {
+        if (sql.includes('contentless_delete')) throw new Error('unrecognized option: "contentless_delete"');
+        if (sql.includes('trigram remove_diacritics')) throw new Error('error in tokenizer constructor');
+        if (rejectPlainTrigram && sql.includes("tokenize='trigram'")) throw new Error('no such tokenizer: trigram');
+        return realExec(sql);
+      }) as typeof journal.db.exec;
+      try {
+        journal.db.transaction(() => createMessageSearch(journal.db))();
+      } finally {
+        journal.db.exec = realExec;
+      }
+      const ftsSql = journal.db.query<{ sql: string }, []>("SELECT sql FROM sqlite_schema WHERE name = 'messages_fts'").get()?.sql ?? '';
+      expect(ftsSql).not.toContain('contentless_delete');
+      const infixRow = journal.db.query<{ sql: string }, []>("SELECT sql FROM sqlite_schema WHERE name = 'messages_fts_infix'").get();
+      if (rejectPlainTrigram) {
+        expect(infixRow).toBeNull();
+      } else {
+        expect(infixRow?.sql).toContain("tokenize='trigram'");
+        expect(infixRow?.sql).not.toContain('contentless_delete');
+        expect(searchThreadMessages(journal.db, 'alpha').map(hit => hit.messageId)).toEqual(['m1']);
+      }
+      expect(searchThreadMessages(journal.db, 'prefixalpha').map(hit => hit.messageId)).toEqual(['m1']);
+      refreshStreamMessageSearch(journal.db, 'm1', 'UpdatedStreamToken');
+      journal.db.query("UPDATE messages SET parts = ? WHERE id = 'm1'").run(JSON.stringify([{ type: 'text', text: 'UpdatedStreamToken' }]));
+      expect(searchThreadMessages(journal.db, 'updatedstream').map(hit => hit.messageId)).toEqual(['m1']);
+      journal.db.query("DELETE FROM messages WHERE id = 'm1'").run();
+      expect(searchThreadMessages(journal.db, 'updatedstream')).toEqual([]);
+      expect(journal.db.query<{ integrity_check: string }, []>('PRAGMA integrity_check').get()?.integrity_check).toBe('ok');
+    } finally {
+      journal.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  runFallback(false);
+  runFallback(true);
 });
