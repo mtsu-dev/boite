@@ -4,7 +4,8 @@
   import { onDestroy } from 'svelte';
   import { Check, ChevronDown, Copy, ExternalLink } from '@lucide/svelte';
   import type { ModelTier } from '@boite/contracts';
-  import { copyText, type ContactsView } from '../../lib/contacts.svelte';
+  import type { ContactsView } from '../../lib/contacts.svelte';
+  import { copyText } from '../../lib/clipboard';
   import { fill, strings } from '../../lib/strings';
   import InfoTip from '../InfoTip.svelte';
 

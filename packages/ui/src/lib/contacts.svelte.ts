@@ -362,20 +362,4 @@ export function fingerprintWords(fingerprint: string): string[] {
   return fingerprint.split(/[\s-]+/).filter(Boolean);
 }
 
-/**
- * Copies `text`. A page served over plain HTTP has no clipboard API: the field
- * holding it is selected and copied the older way, and stays selected to copy
- * by hand. True once something reached the clipboard.
- */
-export async function copyText(text: string, field?: HTMLInputElement | HTMLTextAreaElement | null): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    field?.focus();
-    field?.select();
-    return !!field && !!document.execCommand?.('copy');
-  }
-}
-
 markFeature('boite-feature:contacts');
