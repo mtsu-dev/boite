@@ -31,7 +31,8 @@ import { OPENCODE_V2 } from '../../providers/opencode.ts';
 import { noteCompactionModel, wantedCompactionBuffer, type CompactionCaches } from './opencode-compaction.ts';
 import type { protectedAcp } from './protected.ts';
 import { discoveredControls, newConversation, probeControls } from './control-probe.ts';
-import { loadConversation } from './conversation.ts';
+import { acpMcpServers, loadConversation } from './conversation.ts';
+import { sessionMcp } from '../mcp.ts';
 import { connectTransport, initializeTransport, spawnTransport } from './transport.ts';
 import { isAntigravity } from '../antigravity.ts';
 
@@ -144,6 +145,7 @@ export class AcpSession {
   #warmMs: number;
   readonly #deps: AcpDeps;
   readonly #memory: AcpMemory;
+  #mcp: ReturnType<typeof sessionMcp> = null;
   readonly #onEnded: (session: AcpSession) => void;
   readonly #onOptions: (options: SessionConfigOption[], ownModel?: string | null) => void;
 
@@ -611,7 +613,8 @@ export class AcpSession {
     const sdk = await this.#deps.loadSdk();
     if (this.#ended) throw Object.assign(new Error('the acp session was closed before it started'), { abandoned: true });
     const current = () => this.#current;
-    const transport = spawnTransport(ctx, this.#deps, this.#memory, current);
+    this.#mcp = sessionMcp(ctx);
+    const transport = spawnTransport(ctx, this.#deps, this.#memory, current, this.#mcp);
     const child = transport.child;
     this.#geminiHome = isAntigravity(ctx.provider) ? transport.env['GEMINI_HOME'] ?? null : null;
     this.#child = child;
@@ -628,12 +631,14 @@ export class AcpSession {
     this.#canLoad = init.canLoad;
     this.#canDelete = init.canDelete;
     this.#imagesSupported = init.imagesSupported;
-    await this.#openConversation(ctx, connection.agent, child);
+    if (!transport.native && !init.canMcpHttp) { this.#mcp?.release(); this.#mcp = null; }
+    await this.#openConversation(ctx, connection.agent, child, !transport.native && init.canMcpHttp);
   }
 
-  async #openConversation(ctx: SessionContext, agent: ClientContext, child: SpawnedChild): Promise<void> {
+  async #openConversation(ctx: SessionContext, agent: ClientContext, child: SpawnedChild, useMcp: boolean): Promise<void> {
+    const servers = useMcp ? acpMcpServers(this.#mcp) : [];
     if (ctx.sessionId !== null && this.#canLoad) {
-      const loaded = await loadConversation(ctx, ctx.sessionId, agent, child, this.#sessionMeta, this.#memory.refusedLoads, () => this.#ended);
+      const loaded = await loadConversation(ctx, ctx.sessionId, agent, child, this.#sessionMeta, this.#memory.refusedLoads, () => this.#ended, servers);
       this.#sessionId = ctx.sessionId;
       this.#loaded = true;
       this.#controls.noteSession(loaded.modes, loaded.configOptions ?? null, loaded, false);
@@ -657,7 +662,7 @@ export class AcpSession {
       this.#replaces = ctx.sessionId;
     }
 
-    const created = await newConversation(agent, this.#protection?.cwd ?? ctx.thread.cwd, this.#sessionMeta);
+    const created = await newConversation(agent, this.#protection?.cwd ?? ctx.thread.cwd, this.#sessionMeta, servers);
     this.#sessionId = created.sessionId;
     this.#controls.noteSession(created.modes, created.configOptions ?? null, created, true);
     this.#controls.noteOwnModel(created.configOptions ?? null);
@@ -725,6 +730,7 @@ export class AcpSession {
       else current.fail(reason, diagnostic);
       current.settle();
     }
+    this.#mcp?.release();
     this.#protection?.close(this.#exited ?? Promise.resolve());
     this.#protection = null;
     this.#idle.clear();
@@ -815,6 +821,7 @@ export class AcpSession {
  */
 export function sessionKey(ctx: SessionContext): string {
   return JSON.stringify({
+    mcp: ctx.thread.contextMode?.mcp === false ? false : ctx.mcpRevision,
     protection: ctx.protectedExecution?.fingerprint ?? null,
     permissionMode: isGrok(ctx.provider) ? ctx.thread.permissionMode : null,
     cwd: ctx.thread.cwd,

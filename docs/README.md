@@ -44,6 +44,7 @@ the feature is for.
 - [Coordination](coordination.md): messages between agents.
 - [The brain](brain.md): instructions and skills shared by every agent.
 - [Plugins](plugins.md): add features to Boite.
+- [MCP servers](mcp.md): connect tools once and make them available to your agents.
 
 ## Phones, machines and servers
 
