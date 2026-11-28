@@ -61,6 +61,7 @@ the OpenCode server, protected bridges, health checks).
 | 46 | Worktree default branch lookup | The selected Git remote of the project | Making a worktree that starts from the project's default branch | Git HEAD lookup and, if the commit is missing, a fetch using the repository's Git configuration | Only for repositories with a remote | Use a project without a remote to work locally | None: initiated by creating a worktree in a project with a configured remote |
 | 47 | Model prices | `models.dev/api.json` | The first price lookup when the cached rates are missing or a day old; a lookup of an unknown model, at most once an hour and once per model; an hour after a failure | GET with the user agent `boite` and the stored ETag, IP | On | None | `modelPrices: false` |
 | 48 | Boite-managed MCP servers | The configured HTTP endpoint or the destinations opened by a configured stdio server | A connection test or an enabled server's first handshake, then tool requests | MCP messages and configured credentials; stdio launchers such as `npx` can download packages | No, install a server first | Disable or remove it in MCP Servers | `mcp: false` |
+| 49 | Anonymized log download | The core selected in desktop Diagnostics, directly or through a group relay | Export anonymized logs | Short-lived file ticket; the core returns its anonymized report | No | Do not click | The export requires owner access; the connection follows the core's network policy |
 
 ## Flows with no user switch
 
@@ -81,5 +82,5 @@ Each one is either blocked by a policy key or started by the user:
   `providers.allow` or in `providers.deny`; for an allowed provider they run
   only on the user's click, since choosing the agent is the administrator's
   decision and installing it is the user's.
-- Rows 31, 37, 44 and 46: user-initiated toward a destination the user chose, as
+- Rows 31, 37, 44, 46 and 49: user-initiated toward a destination the user chose, as
   the table says.

@@ -53,8 +53,13 @@ The page is for the owner, on the desktop and on a phone connected as owner
   export and the report instead of failing on each press.
 - Export anonymized logs: `diagnostics.export` writes the file in
   `logs/exports/` on the core's machine and returns its text. The desktop app
-  saves a copy in Downloads; a phone offers the share sheet when it can, and a
-  browser downloads it.
+  calls `diagnostics.exportFile` to stream that file to Downloads through a
+  short-lived file ticket. If the core cannot write the file, the ticket serves
+  the anonymized report from memory and disables HTTP caching. The core retains
+  at most 512 MiB across these reports and evicts the oldest when it needs room.
+  An older core sends the report as text. The desktop saves texts up to 5 MiB
+  and prompts for a core update on larger reports. A phone offers the share
+  sheet when it can, and a browser downloads the report.
 - Report a problem: a title, a description and the "include anonymized logs"
   switch. The preview is the body `diagnostics.issue` drafts with `submit:
   false`. When the core's machine has `gh` signed in, the issue is created on
@@ -97,6 +102,7 @@ keeps at most 300 records a minute per connection and stores them with
 | `diagnostics.logs` | owner, agents | anonymized records about no thread, plus every thread for the owner or the agent's own family |
 | `diagnostics.summary` | owner, agents | environment, grouped problems, threads, log files, counts |
 | `diagnostics.export` | owner, agents | the anonymized export text and where it was saved |
+| `diagnostics.exportFile` | owner | a file ticket for the newly generated report on disk or in memory |
 | `diagnostics.issue` | owner, agents | an issue draft; only the owner's `submit: true` creates it through `gh`, an agent always gets the draft and its prefilled link |
 | `diagnostics.report` | owner, paired devices | up to 50 records a client sends about itself |
 

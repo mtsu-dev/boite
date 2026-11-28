@@ -642,6 +642,11 @@ export interface DiagnosticsExport {
   summary: DiagnosticSummary;
 }
 
+/** A desktop download uses a short-lived file route. The in-memory client returns the text directly. */
+export type DiagnosticsFileExport = Pick<DiagnosticsExport, 'name' | 'bytes'> & (
+  { url: string; text?: never } | { url?: never; text: string }
+);
+
 export const ISSUE_REPOSITORY = 'mtsu-dev/boite';
 /** Why an agent's submit publishes nothing: an injected or wrong agent must not post publicly as the owner. */
 export const AGENT_SUBMIT_REFUSED = 'an agent cannot publish the issue: the user opens the prefilled link and submits it with their GitHub account, or submits it from Settings > Diagnostics';
@@ -694,6 +699,7 @@ const REPORT_RECORD_KEYS = ['level', 'at', 'source', 'event', 'message', 'thread
 export const DIAGNOSTICS_PARAMS = {
   'diagnostics.summary': ['threadId', 'since'],
   'diagnostics.export': ['threadId', 'since', 'focusThreadId', 'limit'],
+  'diagnostics.exportFile': [],
   'diagnostics.issue': ['threadId', 'title', 'description', 'includeLogs', 'submit'],
 } as const;
 
@@ -744,6 +750,8 @@ export interface DiagnosticsRpcMethods {
   'diagnostics.summary': { params: { threadId?: ThreadId; since?: Timestamp }; result: DiagnosticSummary };
   /** Agent and owner. A readable anonymized file a developer can solve from. */
   'diagnostics.export': { params: DiagnosticsExportParams; result: DiagnosticsExport };
+  /** Owner only. A bearer ticket for the report just generated for the desktop download. */
+  'diagnostics.exportFile': { params: Record<string, never>; result: DiagnosticsFileExport };
   /** Agent and owner. A draft GitHub issue for Boite, created through `gh` only when `submit` is true. */
   'diagnostics.issue': { params: DiagnosticsIssueParams; result: DiagnosticsIssue };
   /** Owner and paired devices: a client's own errors, stored as `origin: "ui"`. */
