@@ -4,9 +4,10 @@ An experiment is unfinished work behind a switch in Settings > Experiments.
 Every feature has a tag, `release`, `nightly` or `dev`, and exists only in the
 builds at or above it: a Release has none of the unfinished ones.
 
-Seven experiments exist today, all tagged `nightly`: a Nightly and a Dev
+Eight experiments exist today, all tagged `nightly`: a Nightly and a Dev
 build list their switches, a Release has no Experiments page. They are the
-[new thread background](#new-thread-background) (`draft-backdrop`) and six
+[new thread background](#new-thread-background) (`draft-backdrop`), the
+[Discord rich presence](presence.md) (`discord-presence`) and six
 features released on 2026-11-20 (#1176) before they had run in real use and
 tagged `nightly` again on 2026-11-26: `contacts`, `teams`, `auto-goal`,
 `session-import`, `background-compaction` and `device-stream`.
@@ -19,7 +20,7 @@ Every feature has one tag, in `EXPERIMENT_STAGES`
 | Tag | Meaning | Ids |
 | --- | --- | --- |
 | `release` | Finished. On in every build, with no switch on the Experiments page. | `resident-agents` (Mochis) |
-| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `draft-backdrop` (New thread background), `contacts`, `teams`, `auto-goal`, `session-import`, `background-compaction`, `device-stream` |
+| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `draft-backdrop` (New thread background), `contacts`, `teams`, `auto-goal`, `session-import`, `background-compaction`, `device-stream`, `discord-presence` (Discord rich presence) |
 | `dev` | Being built. A switch in a Dev build only, absent from a Nightly and from a Release. | none today |
 
 The six finished ids `theme-grain`, `prompt-cache`, `recording-indicators`,
@@ -166,18 +167,18 @@ page it belongs to, as [chat files and previews](chat-files.md),
 ## Out of the build
 
 `FEATURE_CUTS` names the cuts in Release bundles. The UI loses
-the new thread background, Contacts screens, Teams screens and the automatic
-goal threshold control. The core loses the Teams runtime and the automatic
-goal implementation. The Contacts core, session import, background compaction
-and device stream are gated at run time. The Whip, the Council and Mochis
-ship in every build.
+the new thread background, Contacts screens, Teams screens, the automatic
+goal threshold control and the Discord rich presence. The core loses the Teams
+runtime, the automatic goal implementation and the Discord rich presence. The
+Contacts core, session import, background compaction and device stream are
+gated at run time. The Whip, the Council and Mochis ship in every build.
 
 A packaged build knows its kind when it is compiled. `featureDefines(version)`
 turns the stamped version into `__BOITE_BUILD_KIND__` and one boolean per
 feature tagged `nightly` or `dev`, derived from `EXPERIMENT_STAGES`. The cuts
 use `__BOITE_HAS_DRAFT_BACKDROP__`, `__BOITE_HAS_CONTACTS__`,
-`__BOITE_HAS_TEAMS__` and `__BOITE_HAS_AUTO_GOAL__`. Three builds receive the
-kind and flags:
+`__BOITE_HAS_TEAMS__`, `__BOITE_HAS_AUTO_GOAL__` and
+`__BOITE_HAS_DISCORD_PRESENCE__`. Three builds receive the kind and flags:
 
 - the UI, through Vite's `define` (`packages/ui/vite.config.ts`), from the
   root `package.json`;
@@ -207,13 +208,15 @@ the feature's modules. Nothing else may import those modules: one static
 import elsewhere puts them back in every build.
 
 The UI entries are `lib/backdrop-entry.svelte.ts`, `lib/contacts-entry.ts`,
-`lib/teams-entry.ts` and `lib/auto-goal-entry.ts`. Shared project rows and the
+`lib/teams-entry.ts`, `lib/auto-goal-entry.ts` and
+`lib/presence-entry.svelte.ts`. Shared project rows and the
 Team card also use their flags in `lib/deferred-parts.ts`. The Whip and
 Council keep their lazy entries without build flags.
 
 The core builds the Teams store in its constructor and admits a prompt
-synchronously. `teams-entry.ts` and `auto-goal-entry.ts` put the flag before
-`require`, which Bun can drop the same way. `teams-entry.ts` also gates the
+synchronously. `teams-entry.ts`, `auto-goal-entry.ts` and `presence-entry.ts`
+put the flag before `require`, which Bun can drop the same way; without the
+presence the core has no `presence.set` method, as in a core from before it. `teams-entry.ts` also gates the
 dynamic import of `team-cli.ts`. The team tables and the code for reading and
 removing stored records ship in every build.
 

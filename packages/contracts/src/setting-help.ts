@@ -49,4 +49,5 @@ export const SETTING_HELP: Readonly<Record<string, string>> = {
   "experiment.session-import": "Open a Claude Code or Codex session started outside Boite as a thread, from the command palette. Not ready for everyday use.",
   "experiment.background-compaction": "Automatic compactions run on a copy of the conversation while the agent keeps working, and the thread moves to it when it is ready. Applies to this machine. Not ready for everyday use.",
   "experiment.device-stream": "The Device panel plays an Android phone plugged into this machine as live video through scrcpy, and sends touches, keys, text and the clipboard through it. Applies to this machine. Not ready for everyday use.",
+  "experiment.discord-presence": "Shows Playing Boite in your Discord profile, with what your agents are doing: their number, their models and how long they have been working. Works with Discord, Vesktop, Legcord and the other clients that read rich presence, and with any app that reads the same socket, such as the bridges to Fluxer. Desktop app only.",
 };

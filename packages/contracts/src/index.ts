@@ -63,6 +63,7 @@ import type { UsageRpcMethods } from './usage';
 import type { PolicyRpcEvents, PolicyRpcMethods } from './policy';
 import type { TeamsRpcEvents, TeamsRpcMethods } from './teams';
 import type { CouncilRpcEvents, CouncilRpcMethods } from './council';
+import type { PresenceRpcEvents, PresenceRpcMethods } from './presence';
 export * from './ids';
 export * from './providers';
 export * from './local-acp';
@@ -116,6 +117,7 @@ export * from './wire';
 export * from './policy';
 export * from './teams';
 export * from './council';
+export * from './presence';
 
 /**
  * Boite 2 wire contract: the JSON-RPC methods and events between the core
@@ -189,6 +191,7 @@ export interface RpcMethods extends
   TerminalsRpcMethods,
   TeamsRpcMethods,
   CouncilRpcMethods,
+  PresenceRpcMethods,
   PolicyRpcMethods {}
 
 export type RpcMethodName = keyof RpcMethods;
@@ -234,6 +237,7 @@ export interface RpcEvents extends
   TerminalsRpcEvents,
   TeamsRpcEvents,
   CouncilRpcEvents,
+  PresenceRpcEvents,
   PolicyRpcEvents {}
 
 export type RpcEventName = keyof RpcEvents;

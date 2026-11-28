@@ -192,7 +192,7 @@ test('the app tells its core its language, and only an experiment with a switch 
     await vi.waitFor(async () => expect((await client.call('agent.settings', { threadId: 't-trace' })).app).toEqual({ language: 'en', device: null, client: null }));
     const read = await client.call('agent.settings', { threadId: 't-trace' });
     // A finished feature is not a setting any more: it has no reading and no card, an old switch left in storage too.
-    expect(read.settings.filter((reading) => reading.key.startsWith('experiment.')).map((reading) => [reading.key, reading.value])).toEqual([['experiment.draft-backdrop', false], ['experiment.teams', false], ['experiment.session-import', false]]);
+    expect(read.settings.filter((reading) => reading.key.startsWith('experiment.')).map((reading) => [reading.key, reading.value])).toEqual([['experiment.draft-backdrop', false], ['experiment.teams', false], ['experiment.session-import', false], ['experiment.discord-presence', false]]);
     await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.resident-agents', value: true })).rejects.toThrow('no longer an experiment');
     // An id that left the registry is no setting at all.
     await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.whip', value: true })).rejects.toThrow('is not a setting an agent may ask about');

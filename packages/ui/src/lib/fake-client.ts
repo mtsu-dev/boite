@@ -87,6 +87,7 @@ import { workdirMethods } from './fake-client/workdir';
 import { browserMethods } from './fake-client/browser';
 import { devicesMethods } from './fake-client/devices';
 import { seedWindowsDemo, windowsMethods } from './fake-client/windows';
+import { presenceMethods } from './fake-client/presence';
 import { desktopMethods } from './fake-client/desktop';
 import { pullRequestMethods } from './fake-client/pull-requests';
 import { transcriptMethods } from './fake-client/transcripts';
@@ -713,6 +714,7 @@ export class FakeClient implements ObservableClient {
       ...browserMethods(ctx),
       ...devicesMethods(ctx),
       ...windowsMethods(ctx),
+      ...presenceMethods(ctx),
       ...desktopMethods(ctx),
       ...pullRequestMethods(ctx),
       ...transcriptMethods(ctx),

@@ -36,6 +36,7 @@ import { registerResidentMethods } from './agents/projects.ts';
 import { registerGroupMethods } from './group/rpc.ts';
 import { registerTeamMethods } from './teams-entry.ts';
 import { registerCouncilMethods } from './council-entry.ts';
+import { registerPresenceMethods } from './presence-entry.ts';
 import { registerTerminalMethods } from './terminals.ts';
 import { registerWorkflowMethods } from './workflows.ts';
 import { registerWorktreeMethods } from './worktree-sweep.ts';
@@ -167,6 +168,7 @@ export function registerModules(core: Core): void {
   registerTranscriptMethods(core);
   registerTerminalMethods(core);
   registerWorktreeMethods(core);
+  registerPresenceMethods(core);
   // The agent's own door, and the thread surfaces a client shares with it.
   registerAgentMethods(core);
 }

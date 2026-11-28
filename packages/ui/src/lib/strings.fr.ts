@@ -85,6 +85,7 @@ import { fr as controls } from './strings/fr/controls';
 import { fr as settings } from './strings/fr/settings';
 import { fr as keyboard } from './strings/fr/keyboard';
 import { fr as experiments } from './strings/fr/experiments';
+import { fr as presence } from './strings/fr/presence';
 import { fr as features } from './strings/fr/features';
 import { fr as quotas } from './strings/fr/quotas';
 import { fr as harnessUpdates } from './strings/fr/harnessUpdates';
@@ -187,6 +188,7 @@ export const fr: Translation = {
   ...settings,
   ...keyboard,
   ...experiments,
+  ...presence,
   ...features,
   ...quotas,
   ...harnessUpdates,

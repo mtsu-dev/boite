@@ -5,6 +5,7 @@
   import { EXPERIMENT_SETTINGS, EXPERIMENT_STAGES, buildKindOf, featureRuns, isSettingExperiment, type SettingExperimentId } from '@boite/contracts';
   import { canFollowDesktop, desktopExperiments, experimentsBuild, followsDesktop, listedSwitches, readExperiments, setExperiment, setFollowDesktop, subscribeExperiments, type ExperimentId } from '../lib/experiments';
   import { experimentCopy } from '../lib/experiment-copy';
+  import { presenceEntry } from '../lib/presence-entry.svelte';
   import { loadAutoGoalSetting } from '../lib/auto-goal-entry';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -43,6 +44,9 @@
     } finally { saving = false; }
   }
 
+  // The rich presence's settings and preview sit under its switch while it is on (lib/presence-entry.svelte.ts).
+  $effect(() => { if (enabled.includes('discord-presence')) presenceEntry.need(); });
+
   // The desktop app can change them while the page is open.
   $effect(() => subscribeExperiments((next) => {
     enabled = next;
@@ -78,6 +82,9 @@
           <input id="{uid}-{id}" aria-labelledby="{uid}-{id}-name" type="checkbox" role="switch" data-testid="experiment-{id}"
             checked={enabled.includes(id)} onchange={(event) => setExperiment(id, event.currentTarget.checked)} />
         </label>
+        {#if id === 'discord-presence' && enabled.includes(id) && presenceEntry.feature}{@const PresenceSettings = presenceEntry.feature.PresenceSettings}
+          <PresenceSettings />
+        {/if}
       {/each}
     </section>
   {/if}

@@ -86,6 +86,7 @@ test('every feature declared cut has one lazy entry that writes its flag in full
     'auto-goal': { ui: 'packages/ui/src/lib/auto-goal-entry.ts', core: 'packages/core/src/auto-goal-entry.ts' },
     contacts: { ui: 'packages/ui/src/lib/contacts-entry.ts' },
     teams: { ui: 'packages/ui/src/lib/teams-entry.ts', core: 'packages/core/src/teams-entry.ts' },
+    'discord-presence': { ui: 'packages/ui/src/lib/presence-entry.svelte.ts', core: 'packages/core/src/presence-entry.ts' },
   };
   expect(Object.keys(entries).sort()).toEqual(Object.keys(FEATURE_CUTS).sort());
   for (const [id, cut] of Object.entries(FEATURE_CUTS) as [ExperimentId, { ui: boolean; core: boolean }][]) {

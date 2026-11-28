@@ -107,7 +107,7 @@ afterEach(() => {
 
 test('a finished feature is on in every build and experiments have their switches from a Nightly up', async () => {
   expect(readExperiments()).toEqual(FINISHED);
-  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["goal2","whip","draft-backdrop"]');
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["goal2","whip","draft-backdrop","discord-presence"]');
   primarySays(RELEASE);
   expect(readExperiments()).toEqual(FINISHED);
   expect(experimentsShown()).toBe(false);
@@ -117,17 +117,17 @@ test('a finished feature is on in every build and experiments have their switche
   expect(phonePage('experiments', null, true)).toBe('home');
   // A Release has no switch to flip: the stored choice stays as it was.
   setExperiment('draft-backdrop', false);
-  expect(chosenExperiments()).toEqual(['draft-backdrop']);
+  expect(chosenExperiments()).toEqual(['draft-backdrop', 'discord-presence']);
 
   // The same device on a Nightly finds its switch as it left it.
   primarySays(NIGHTLY);
-  expect(readExperiments()).toEqual([...FINISHED, 'draft-backdrop']);
+  expect(readExperiments()).toEqual([...FINISHED, 'draft-backdrop', 'discord-presence']);
   expect(experimentsShown()).toBe(true);
   expect(navOf('advanced', true)).toContain('experiments');
   expect(desktopPage('experiments', true)).toBe('experiments');
   // A finished feature has no switch, on any build.
   setExperiment('resident-agents', false);
-  expect(readExperiments()).toEqual([...FINISHED, 'draft-backdrop']);
+  expect(readExperiments()).toEqual([...FINISHED, 'draft-backdrop', 'discord-presence']);
 
   running = mount(ExperimentsPage, { target: document.body, props: { store: new Store() } });
   flushSync();
@@ -137,11 +137,13 @@ test('a finished feature is on in every build and experiments have their switche
   const backdrop = () => document.querySelector<HTMLInputElement>('input[data-testid=experiment-draft-backdrop]')!;
   expect(backdrop().checked).toBe(true);
   expect(backdrop().closest('label')?.textContent).toContain(strings.experiments['draft-backdrop'].title);
+  // The rich presence's switch, on, has its preview under it, fetched on demand: idle with no agent at work.
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=presence-details]')?.textContent).toBe(strings.presence.idle));
   backdrop().click();
   flushSync();
   await tick();
   expect(backdrop().checked).toBe(false);
-  expect(readExperiments()).toEqual(FINISHED);
+  expect(readExperiments()).toEqual([...FINISHED, 'discord-presence']);
 });
 
 test('a phone keeps the list its desktop app chose, and has the experiment of it once its core runs experiments', async () => {

@@ -11,7 +11,7 @@ const NIGHTLY = '2.0.1-nightly.20261113.1';
 const DEV = '2.0.0-beta.1';
 /** The experiments finished and removed from the list since, as an older app still reports them. */
 const GRADUATED = ['whip', 'debates'] as unknown as ExperimentId[];
-const NIGHTLY_SWITCHES: ExperimentId[] = ['draft-backdrop', 'contacts', 'teams', 'auto-goal', 'session-import', 'background-compaction', 'device-stream'];
+const NIGHTLY_SWITCHES: ExperimentId[] = ['draft-backdrop', 'contacts', 'teams', 'auto-goal', 'session-import', 'background-compaction', 'device-stream', 'discord-presence'];
 /** The finished features: on in every build, with no switch. */
 const FINISHED = EXPERIMENT_IDS.filter(id => EXPERIMENT_STAGES[id] === 'release');
 const report = (experiments: ExperimentId[]): ClientPreferences => ({ app: 'app-desktop-0001', language: 'en', experiments, labels: {} });
@@ -167,7 +167,7 @@ test('a Nightly core keeps the experiment an app chose beside the finished featu
   expect(await owner.call('client.preferences', report([]))).toEqual({ ok: true, desktop: withFinished(FINISHED), desktopChosen: withFinished([]) });
   const read = await owner.call('agent.settings', { threadId });
   expect(read.settings.filter(setting => setting.key.startsWith('experiment.')).map(setting => [setting.key, setting.value])).toEqual([
-    ['experiment.draft-backdrop', false], ['experiment.teams', false], ['experiment.session-import', false],
+    ['experiment.draft-backdrop', false], ['experiment.teams', false], ['experiment.session-import', false], ['experiment.discord-presence', false],
   ]);
   const { setting } = await owner.call('settings.request', { threadId, reason: 'Try the background', key: 'experiment.draft-backdrop', value: true });
   expect(setting).toMatchObject({ kind: 'change', key: 'experiment.draft-backdrop', value: true, previous: false });

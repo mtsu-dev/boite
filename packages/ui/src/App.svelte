@@ -46,6 +46,8 @@
   import { featureOn } from './lib/features.svelte';
   import { contactsShown, contactsViews } from './lib/contacts-views.svelte';
   import { whipEntry } from './lib/whip-entry.svelte';
+  import { presenceEntry } from './lib/presence-entry.svelte';
+  import { sendTrayLabels } from './lib/tray-labels';
   import { rightPanel } from './lib/right-panel.svelte';
   import type { Page } from './lib/store.svelte';
   import { workspace } from './lib/workspace.svelte';
@@ -224,9 +226,10 @@
   });
   // With the first open thread, so the corner is there before a stop lands in it; a stop elsewhere asks for it too.
   $effect(() => { if (store.openThread || store.memoryStop) need('MemoryCorner'); });
-  // The Whip's control, then its rope, the first time its switch in Appearance is on (lib/whip-entry.svelte.ts).
+  // The Whip's control, then its rope, and the rich presence of this computer, the first time their switches are on (lib/whip-entry.svelte.ts, lib/presence-entry.svelte.ts).
   $effect(() => {
     if (store.booted && featureOn('whip')) whipEntry.need(error => { store.error = String(error); });
+    if (store.booted && inShell) presenceEntry.need();
   });
   // Browser profiles live on this computer, whichever machine is in view: they
   // are kept by the core this shell started (lib/browser-profiles.svelte.ts).
@@ -387,17 +390,8 @@
     if (panelSlot.open) return mobileOverlay(() => store.panel.hide());
   });
 
-  // The tray menu is native: it speaks the UI's language only when told, at
-  // start and whenever the language changes.
-  $effect(() => {
-    if (!inShell) return;
-    const labels = { show: strings.quotas.trayShow, quit: strings.quotas.trayQuit };
-    void import('@tauri-apps/api/core')
-      .then(({ invoke }) => invoke('tray_labels', labels))
-      .catch(() => {
-        // An older shell without the command keeps its English menu.
-      });
-  });
+  // The native tray menu, in the UI's language at start and after each change (lib/tray-labels.ts).
+  $effect(() => { if (inShell) sendTrayLabels(); });
 
   // The same for a push: the service worker shows the core's generic notices
   // in the words this page left it, written again when the language changes.

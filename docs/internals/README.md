@@ -28,6 +28,7 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [The agent's browser](browser.md): headless browser commands and watching a page from any device.
 - [Devices](devices.md): simulators, emulators and connected Android devices; live video is an owner setting, off by default.
 - [Windows](windows.md): desktop-window captures and the Window panel, with the owner's consent.
+- [Discord rich presence](presence.md): "Playing Boite" in Discord and the clients that read its socket, an experiment.
 - [Virtual desktop](desktop.md): a private Linux desktop in memory where an agent runs GUI apps and drives them through their accessibility tree.
 - [Chat files and previews](chat-files.md): attachments, file links, inline previews and pages drawn in an answer.
 - [Diagrams and formulas](diagrams-and-formulas.md): Mermaid and LaTeX in messages.
