@@ -254,9 +254,13 @@ test.each([
   ['core restart after switching away again', 'completed with terminal persistence unavailable'],
   ['core restart of a subagent', 'acknowledged'],
   ['core restart of a subagent followed by Stop', 'acknowledged'],
+  ['core restart of a subagent followed by Stop while its team is paused', 'acknowledged'],
+  ['core restart of a subagent followed by team Stop while paused', 'acknowledged'],
   ['core restart while delivering the subagent Stop result', 'acknowledged'],
   ['core restart while delivering the subagent Stop result to a paused team', 'acknowledged'],
   ['targeted subagent Stop', 'acknowledged after persistence rollback'],
+  ['targeted subagent Stop before restart', 'acknowledged after persistence rollback'],
+  ['targeted subagent Stop before restart', 'acknowledged with terminal persistence unavailable'],
   ['core restart of a subagent', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart of a workflow step', 'acknowledged'],
   ['core restart of a workflow step followed by a queued goal', 'acknowledged'],
@@ -265,6 +269,7 @@ test.each([
   ['core restart of a workflow step after loop admission', 'acknowledged'],
   ['workflow step completion with a clean checkout', 'completed'],
   ['workflow step completion during checkout removal', 'completed'],
+  ['workflow step completion during checkout removal followed by discard', 'completed'],
   ['core restart of a workflow step', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart of a workflow step', 'completed with terminal persistence unavailable'],
   ['core restart of a paused workflow step', 'completed with terminal persistence unavailable'],
@@ -282,13 +287,17 @@ test.each([
   const switchBack = interruption === 'core restart after switching back' || switchAgain;
   const restartAfterStop = interruption.startsWith('core restart while delivering the subagent Stop result');
   const restartPausedTeam = interruption === 'core restart while delivering the subagent Stop result to a paused team';
-  const targetedStop = interruption === 'targeted subagent Stop';
+  const targetedStop = interruption.startsWith('targeted subagent Stop');
+  const restartTargetedStop = interruption === 'targeted subagent Stop before restart';
   const subagent = interruption.startsWith('core restart of a subagent') || restartAfterStop || targetedStop;
-  const stopFollowUp = interruption === 'core restart of a subagent followed by Stop' || restartAfterStop;
+  const stopPausedTeam = interruption === 'core restart of a subagent followed by team Stop while paused';
+  const stopWhilePaused = stopPausedTeam || interruption === 'core restart of a subagent followed by Stop while its team is paused';
+  const stopFollowUp = interruption.startsWith('core restart of a subagent followed by Stop') || restartAfterStop || stopPausedTeam;
   const restartGoal = interruption === 'core restart of a workflow step after goal admission';
   const restartLoop = interruption === 'core restart of a workflow step after loop admission';
   const restartPrompt = interruption === 'core restart of a workflow step after prompt admission' || restartLoop;
-  const removingCheckout = interruption === 'workflow step completion during checkout removal';
+  const removingCheckout = interruption.startsWith('workflow step completion during checkout removal');
+  const discardDuringRemoval = interruption.endsWith('checkout removal followed by discard');
   const checkout = interruption === 'workflow step completion with a clean checkout' || removingCheckout;
   const queuedGoal = interruption === 'core restart of a workflow step followed by a queued goal' || restartGoal;
   const pausedWorkflow = interruption === 'core restart of a paused workflow step';
@@ -383,7 +392,7 @@ test.each([
     spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
     expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
     await waitFor(() => stop.mock.calls.length > 0);
-  } else if (retrySettlement && !targetedStop || blockedFolderCheck) {
+  } else if ((retrySettlement && !targetedStop) || blockedFolderCheck) {
     const restart = async () => {
       if (switchAway || switchBack) await client.call('threads.update', { threadId, accountId: otherAccountId });
       if (switchBack) expect(await client.call('threads.update', { threadId, accountId, requireSavedSession: true })).toMatchObject({ sessionId: originalSession });
@@ -417,12 +426,35 @@ test.each([
     if (targetedStop) {
       await rolledBack.promise;
       const rootId = core.threads.require(threadId).parentThreadId!;
-      expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
-      await waitFor(() => core.journal.getTurn(id)?.finishedAt != null);
+      const settling = Promise.withResolvers<void>();
+      const settle = restartTargetedStop && !unavailable
+        ? spyOn(core.delegation.worktrees, 'settle').mockReturnValueOnce(settling.promise) : undefined;
+      try {
+        expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
+        if (!unavailable) await waitFor(() => core.journal.getTurn(id)?.finishedAt != null);
+        if (restartTargetedStop) {
+          const draining = core.drain(0);
+          if (unavailable) core.journal.db.query("UPDATE delegation_messages SET status = 'received', data = json_set(data, '$.status', 'received') WHERE root_id = ? AND sender_id = ?").run(rootId, threadId);
+          await draining;
+          await first.server.stop();
+          const closing = first.core.close();
+          try { await waitFor(() => core.stopping); }
+          finally { settling.resolve(); await closing; }
+          last = await startTestCore({ dataDir: first.dataDir });
+          core = last.core;
+          if (unavailable) {
+            expect(core.delegation.config(rootId)).toMatchObject({ paused: true, pausedBy: 'restart' });
+            client = await last.connect();
+            await client.call('delegation.configure', { threadId: rootId, config: { ...core.delegation.config(rootId), paused: false } });
+          }
+        }
+      } finally { settling.resolve(); settle?.mockRestore(); }
+      const letters = () => core.journal.db.query('SELECT request_id FROM delegation_messages WHERE sender_id = ? AND request_id = ?').all(threadId, `result:${id}`);
       expect(core.journal.getTurn(id)).toMatchObject({ status: 'stopped' });
       expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBeUndefined();
       expect(core.delegation.get(rootId).settlement).toBe('settled');
-      expect(core.journal.db.query("SELECT request_id FROM delegation_messages WHERE sender_id = ? AND request_id = ?").all(threadId, `result:${id}`)).toHaveLength(1);
+      if (restartTargetedStop) await waitFor(() => letters().length > 0);
+      expect(letters()).toHaveLength(1);
       return;
     }
     if (restartCore !== undefined) {
@@ -471,8 +503,17 @@ test.each([
         const off = core.bus.onCommitted((name, payload) => {
           if (name === 'composer.updated' && (payload as ComposerRecord).id === threadId && (payload as ComposerRecord).value?.input.paused) checked.resolve();
         });
-        try { await Promise.race([checked.promise, Bun.sleep(100)]); }
-        finally { off(); releaseCheckout.resolve(); }
+        try {
+          await Promise.race([checked.promise, Bun.sleep(100)]);
+          expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
+          if (discardDuringRemoval) await setPaused(false, []);
+        } finally { off(); releaseCheckout.resolve(); }
+        if (discardDuringRemoval) {
+          await core.delegation.worktrees.settle(threadId);
+          expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+          expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
+          return;
+        }
       } else {
         await waitFor(() => core.delegation.worktrees.get(threadId)?.state === 'removed');
         expect(existsSync(worktree.path)).toBe(false);
@@ -562,10 +603,19 @@ test.each([
           await client.call('delegation.configure', { threadId: rootId, config: { ...core.delegation.config(rootId), paused: false } });
         }
         await waitFor(() => letters().length > 0);
-      } else expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
-      expect(letters()).toEqual([expect.objectContaining({ origin: 'result', to: { coreId: 'local', threadId: rootId } })]);
+      } else {
+        const config = core.delegation.config(rootId);
+        if (stopWhilePaused) core.journal.setSetting(`delegation:${rootId}`, { ...config, paused: true, pausedBy: 'restart' });
+        expect(await client.call('delegation.stop', { threadId: rootId, ...(!stopPausedTeam ? { agentId: threadId } : {}) })).toEqual({ stopped: 1 });
+        if (stopWhilePaused) {
+          expect(letters()).toEqual([]);
+          await client.call('delegation.configure', { threadId: rootId, config });
+          if (!stopPausedTeam) await waitFor(() => letters().length > 0);
+        }
+      }
+      expect(letters()).toEqual(stopPausedTeam ? [] : [expect.objectContaining({ origin: 'result', to: { coreId: 'local', threadId: rootId } })]);
       await setPaused(true, []);
-      expect(letters()).toHaveLength(1);
+      expect(letters()).toHaveLength(stopPausedTeam ? 0 : 1);
       expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
       return;
     }

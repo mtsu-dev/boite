@@ -59,9 +59,11 @@ server listens, each eligible entry is handled separately:
   first turn, the step still waits for it, and the activity requires an explicit
   resume. An already queued loop turn keeps its iteration until it finishes.
   The composer waits for worktree cleanup before admitting a follow-up there.
-  A targeted Stop's pending result waits for worktree settlement and for the
-  parent team to resume if startup paused it. Usage and session data can
-  still be recorded if the provider reports them after Stop.
+  The owner can pause or discard that input while cleanup runs. A targeted
+  Stop records its pending result before terminal persistence and keeps it
+  through cleanup and automatic team pause. A remote final result also waits
+  in the paused parent's inbox until the team resumes. Usage and session data
+  can still be recorded if the provider reports them after Stop.
   Older cores that support interrupted queued input read a completed outcome as
   an interruption and can still recover the other turns in the handoff.
 

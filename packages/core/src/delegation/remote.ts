@@ -572,8 +572,8 @@ export class RemoteDelegation {
     if (this.#core.journal.db.query('SELECT 1 FROM delegation_messages WHERE sender_id = ? AND request_id = ?').get(sender, requestId)) return;
     const root = this.#core.journal.getThread(rootId);
     const config = this.#core.delegation.config(rootId);
-    // An off, paused or archived team hears no result, as with a child here.
-    if (!root || root.archived || !config.enabled || config.paused) return;
+    const finalResultHeldByRestart = config.pausedBy === 'restart' && letter.origin === 'result' && letter.checkpoint !== true;
+    if (!root || root.archived || !config.enabled || (config.paused && !finalResultHeldByRestart)) return;
     const fromCore = letter.origin !== 'agent';
     const now = Date.now();
     const filed: AgentLetter = {

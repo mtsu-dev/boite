@@ -310,6 +310,44 @@ test('a result the member could not send waits there, and arrives once the calle
   expect(desk.core.delegation.remote.child(threadId, child.thread.id)?.state?.result).toBe('Done in notes');
 });
 
+test('a remote Stop result arrives while the parent team is paused after restart', async () => {
+  const { held, wakes } = answering();
+  const { desk, pc, pcOwner, threadId, deskId, pcId, spawn } = await setup();
+  const past = await spawn('Finish one task', '--project', 'notes', '--request-id', 'past');
+  await waitFor(() => wakes(threadId) === 1);
+  const child = await spawn('Read HOLD-ON', '--project', 'notes', '--title', 'Stopped reader', '--request-id', 'stopped-away');
+  await waitFor(() => held.has(child.thread.id));
+  const cut = pc.core.journal.runningTurn(child.thread.id)!;
+
+  const report = pc.core.coordination.request.bind(pc.core.coordination);
+  let away = true;
+  pc.core.coordination.request = ((peer, operation, payload) => operation === 'delegation.report' && away
+    ? Promise.reject(new Error('parent offline')) : report(peer, operation, payload)) as typeof pc.core.coordination.request;
+  await pcOwner.call('turns.stop', { threadId: child.thread.id });
+  await waitFor(() => pc.core.journal.getTurn(cut.id)?.status === 'stopped' && pc.core.delegation.remote.waiting(deskId).reports > 0);
+
+  const draining = desk.core.drain(0);
+  desk.core.journal.db.query("UPDATE delegation_messages SET status = 'received', data = json_set(data, '$.status', 'received') WHERE sender_id = ?").run(`${pcId}:${past.thread.id}`);
+  await draining;
+  await desk.server.stop();
+  await desk.core.close();
+  const resumed = await startTestCore({ dataDir: desk.dataDir, port: Number(new URL(desk.url).port) });
+  cores.unshift(resumed);
+  expect(resumed.core.delegation.config(threadId)).toMatchObject({ paused: true, pausedBy: 'restart' });
+
+  away = false;
+  await pc.core.delegation.remote.flush(deskId);
+  await waitFor(() => pc.core.delegation.remote.waiting(deskId).reports === 0);
+  const letters = () => resumed.core.journal.db.query('SELECT status FROM delegation_messages WHERE sender_id = ? AND request_id = ?').all(`${pcId}:${child.thread.id}`, `result:${cut.id}`) as { status: string }[];
+  expect(letters()).toEqual([{ status: 'received' }]);
+  expect(wakes(threadId)).toBe(1);
+  const owner = await resumed.connect();
+  await owner.call('delegation.configure', { threadId, config: { ...resumed.core.delegation.config(threadId), paused: false } });
+  await waitFor(() => letters()[0]?.status === 'delivered');
+  expect(wakes(threadId)).toBe(2);
+  expect(letters()).toEqual([{ status: 'delivered' }]);
+});
+
 test('delegation.get and delegate list show the child on the other machine with that machine and its last result', async () => {
   answering();
   const { desk, pc, owner, threadId, pcId, pcName, cli, spawn } = await setup();

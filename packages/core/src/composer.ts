@@ -343,7 +343,8 @@ export class Composer {
         const worktrees = this.#core.delegation.worktrees;
         const managed = worktrees.get(id)?.path === current.cwd;
         if (managed && worktrees.isSettling(id)) {
-          // Settlement can reserve the checkout before the scheduler admits a turn.
+          // Nothing has been submitted. Leave the queued input editable during checkout cleanup.
+          this.#captured.delete(key);
           await Promise.race([this.#stopped, worktrees.settle(id)]);
           continue;
         }

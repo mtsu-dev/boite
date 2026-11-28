@@ -27,7 +27,7 @@ import { sentBack } from './workflows/follow-up.ts';
 import type { Connection } from './router.ts';
 import { pendingMail } from './delegation/pending-mail.ts';
 import { composerOwnsFollowUp } from './threads/stopped-input.ts';
-import { stageComposerResult, clearComposerResult } from './delegation/composer-results.ts';
+import { stageComposerResult, clearComposerResult, recordChildStop } from './delegation/composer-results.ts';
 
 interface AgentRow { thread_id: string; root_id: string; request_id: string; fingerprint: string; profile_id: string; task: string }
 interface LetterRow { data: string; fingerprint: string }
@@ -733,7 +733,8 @@ export class Delegation {
     const workflow = this.#core.workflows.active(root.id);
     this.#core.logs.info(`Stopping ${ids.length > 0 ? `${ids.length} subagents` : 'the workflows'} of ${root.id}${pausing ? `; the team is paused (${this.config(root.id).pausedBy})` : ''}`, { source: 'delegation', event: 'delegation.stopped', threadId: root.id, data: { agents: ids.length, workflow, paused: pausing, by: agentId ? 'agent' : thread.parentThreadId ? 'self' : 'parent', pausedBy: pausing ? by : null } });
     let stopped = councils;
-    for (const id of ids) if (this.#halt(id)) stopped++;
+    const targeted = Boolean(thread.parentThreadId || agentId);
+    for (const id of ids) if (this.#halt(id, targeted)) stopped++;
     if (!thread.parentThreadId && !agentId) {
       stopped += this.remote.stopAll(root.id);
       const turn = this.#lastTurn(root.id);
@@ -743,16 +744,16 @@ export class Delegation {
     return stopped;
   }
   /** Stops one child: final until an explicit new instruction, so no restart continues it, and a parent elsewhere hears so. True when it was at work. */
-  #halt(id: string): boolean {
+  #halt(id: string, reportResult = true): boolean {
     const running = this.#core.journal.runningTurn(id);
-    if (running) this.#core.threads.handoff.recordUserStop(running.id);
+    if (running) recordChildStop(this.#core, running, reportResult && !this.#stepOwned(id));
     this.remote.halted(id);
     endRestart(this.#core, id);
     // A child at rest on its own background work is at work too: stopping it ends that work.
     const waiting = withLoad(this.#core, this.#core.threads.require(id)).backgroundWait?.state === 'waiting';
     const last = this.#core.composer.hasQueuedInput(id) || this.#core.activity.composerFollowUp(id) ? this.#lastTurn(id) : null;
     const queuedFollowUp = last !== null && pendingComposerFollowUp(this.#core, last);
-    if (queuedFollowUp) stageComposerResult(this.#core, last);
+    if (queuedFollowUp) stageComposerResult(this.#core, last, reportResult);
     this.#stopped.add(id);
     this.#core.pullRequestWatches.endThread(id);
     this.#core.activity.pauseAll(id);

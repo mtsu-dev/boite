@@ -82,24 +82,37 @@ export function sendChildResult(core: Core, turn: Turn, child: ThreadSummary, pa
   } catch (error) { core.log('warn', `delegation result ${child.id}: ${messageOf(error)}`); }
 }
 
+/** Resolve the current recipient, dropping obligations for teams that can no longer receive them. */
+function composerResultRoute(core: Core, turn: Turn, rootId?: string) {
+  const child = core.journal.getThread(turn.threadId);
+  if (rootId !== undefined && child?.parentThreadId !== rootId) return null;
+  const parent = child?.parentThreadId ? core.journal.getThread(child.parentThreadId) : null;
+  const link = child && !child.parentThreadId ? core.delegation.remote.parentOf(child.id) : undefined;
+  const config = parent ? core.delegation.config(parent.id) : null;
+  if (!child || child.archived || (parent ? parent.archived || !config?.enabled : !link)) {
+    clearComposerResult(core, turn.id);
+    return null;
+  }
+  return config?.paused ? null : { child, parentId: parent?.id ?? link!.parentId, remote: link !== undefined };
+}
+
 /** Finish pending result deliveries without stopping or settling any newer turn. */
 export async function recoverComposerResults(core: Core, rootId?: string): Promise<void> {
   const recover = async (turn: Turn): Promise<void> => {
-    const child = core.journal.getThread(turn.threadId);
-    if (rootId !== undefined && child?.parentThreadId !== rootId) return;
+    let route = composerResultRoute(core, turn, rootId);
+    if (!route) return;
+    const { child } = route;
     const delegation = core.delegation;
-    const parent = child?.parentThreadId ? core.journal.getThread(child.parentThreadId) : null;
-    const link = child && !child.parentThreadId ? delegation.remote.parentOf(child.id) : undefined;
-    const config = parent ? delegation.config(parent.id) : null;
-    if (!child || child.archived || (parent ? parent.archived || !config?.enabled : !link)) {
-      clearComposerResult(core, turn.id);
-      return;
+    if ((child.status === 'idle' || child.status === 'error') && !delegation.hasMail(child.id) && taskTurn(core, child.id)?.id === turn.id) {
+      await delegation.worktrees.settle(child.id);
+      if (core.stopping || core.journal.isClosed()) return;
+      route = composerResultRoute(core, turn, rootId);
     }
-    if (config?.paused) return;
-    if (taskTurn(core, child.id)?.id === turn.id) await delegation.worktrees.settle(child.id);
-    if (core.stopping || core.journal.isClosed() || !hasComposerResult(core, turn.id)) return;
-    sendChildResult(core, turn, child, parent?.id ?? link!.parentId, link !== undefined, [], sentBack(core, child.id, turn));
+    if (route && hasComposerResult(core, turn.id)) sendChildResult(core, turn, route.child, route.parentId, route.remote, [], sentBack(core, child.id, turn));
   };
+  // Resume may enqueue an explicit continuation before returning to the event loop.
+  await Promise.resolve();
+  if (core.stopping || core.journal.isClosed()) return;
   try { await Promise.all(pendingComposerResults(core).map(recover)); }
   catch (error) {
     if (!core.stopping && !core.journal.isClosed()) core.log('warn', `delegation results recovery failed: ${messageOf(error)}`);
