@@ -1,9 +1,14 @@
-import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type ImageAttachment, type Message, type MessagePart, type TurnId } from '@boite/contracts';
+import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type ImageAttachment, type Message, type MessagePart, type Turn, type TurnId } from '@boite/contracts';
 import type { HistoryInput, PartPlace } from '../continuation.ts';
 import type { Journal } from '../journal.ts';
 import { nativeCommandPrompt } from './operations.ts';
 
 type FilePart = Extract<MessagePart, { type: 'file' }>;
+
+/** A queued-input outcome leaves the next admission to the composer. */
+export function composerOwnsFollowUp(turn: Turn): boolean {
+  return turn.execution?.queuedInputSession !== undefined || turn.execution?.queuedInputInterrupted === true;
+}
 
 /**
  * Stop can win before a provider saves the prompt, even when an older native

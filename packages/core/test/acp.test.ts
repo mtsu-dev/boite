@@ -18,7 +18,7 @@ import { stderrLines } from '../src/drivers/lines.ts';
 import { forgetProbes, getDriver, setDriver } from '../src/drivers/index.ts';
 import * as threadCwd from '../src/threads/cwd.ts';
 import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY, STOP_DEADLINE } from '../src/threads/turn-attempts.ts';
-import { startTestCore, startTurn, waitFor } from './harness.ts';
+import { echoThread, startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
 import { thrown } from './settle.ts';
@@ -247,7 +247,11 @@ test.each([
   ['core restart without session/load', 'completed with terminal persistence unavailable'],
   ['core restart without session/load', 'acknowledged with terminal persistence unavailable'],
   ['core restart with late Stop', 'completed with terminal persistence unavailable'],
+  ['core restart', 'explicit stop before acknowledgement with terminal persistence unavailable'],
   ['core restart after switching away', 'completed with terminal persistence unavailable'],
+  ['core restart after switching back', 'completed with terminal persistence unavailable'],
+  ['core restart of a subagent', 'acknowledged'],
+  ['core restart of a subagent', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart', 'rejected with terminal persistence unavailable'],
   ['core restart', 'rejected with a blocked working-folder check'],
   ['direct Stop', 'explicit stop before acknowledgement'],
@@ -257,19 +261,21 @@ test.each([
   const noLoad = interruption === 'core restart without session/load';
   const lateStop = interruption === 'core restart with late Stop';
   const switchAway = interruption === 'core restart after switching away';
+  const switchBack = interruption === 'core restart after switching back';
+  const subagent = interruption === 'core restart of a subagent';
   if (noLoad) process.env['ACP_FAKE_NO_LOAD'] = '1';
-  const threadId = await acpThread(client);
+  const threadId = await (subagent ? acpSubagent(client) : acpThread(client));
   const first = harness!;
   let { core } = first;
   const capacity = outcome === 'capacity';
   const completed = outcome.startsWith('completed');
   const rejected = outcome.startsWith('rejected');
   const unavailable = outcome.endsWith('terminal persistence unavailable');
-  const reportsUsage = completed || (unavailable && outcome.startsWith('acknowledged'));
-  const explicitStop = outcome === 'explicit stop' || outcome === 'explicit stop before acknowledgement';
+  const reportsUsage = completed || (unavailable && !rejected);
+  const explicitStop = outcome.startsWith('explicit stop');
   const { accountId } = core.threads.require(threadId);
   const otherAccountId = 'second-account';
-  if (switchAway) {
+  if (switchAway || switchBack) {
     core.journal.putAccount({ ...core.accounts.require(accountId), id: otherAccountId, label: 'Other ACP' });
     await (await startTurn(client, threadId, 'Earlier answer on the original account')).finished;
   }
@@ -296,7 +302,7 @@ test.each([
   if (noLoad) expect(core.threads.require(threadId).sessionId).toBeNull();
   await setPaused(true);
   const stop = spyOn(core.threads.runner.handles.get(threadId)!, 'stop');
-  const duringHandoff = outcome === 'acknowledged during handoff with terminal persistence unavailable';
+  const duringHandoff = outcome === 'acknowledged during handoff with terminal persistence unavailable' || (explicitStop && unavailable);
   const blockedFolderCheck = outcome === 'rejected with a blocked working-folder check';
   const retrySettlement = unavailable || outcome === 'acknowledged after persistence rollback';
   const rolledBack = Promise.withResolvers<void>();
@@ -332,7 +338,8 @@ test.each([
     await waitFor(() => stop.mock.calls.length > 0);
   } else if (retrySettlement || blockedFolderCheck) {
     const restart = async () => {
-      if (switchAway) await client.call('threads.update', { threadId, accountId: otherAccountId });
+      if (switchAway || switchBack) await client.call('threads.update', { threadId, accountId: otherAccountId });
+      if (switchBack) expect(await client.call('threads.update', { threadId, accountId, requireSavedSession: true })).toMatchObject({ sessionId: originalSession });
       const deadline = { ...STOP_DEADLINE };
       try {
         // An agent still answering over stdio needs time to report cancellation.
@@ -347,11 +354,12 @@ test.each([
       await closeForHandoff(first);
     };
     restartCore = duringHandoff ? restart() : (blockedFolderCheck ? checkingFolder.promise : rolledBack.promise).then(restart);
-  } else if (interruption === 'core restart') {
+  } else if (interruption === 'core restart' || subagent) {
     restartCore = closeForHandoff(first);
     await waitFor(() => stop.mock.calls.length > 0);
     if (explicitStop) expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
   } else expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+  if (explicitStop && unavailable) expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
   writeFileSync(`${logFile}.end`, 'ready');
   let next: TestCore | undefined;
   try {
@@ -370,7 +378,7 @@ test.each([
     expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
     expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
     const execution = core.journal.getTurn(id)?.execution;
-    expect(execution?.queuedInputSession).toEqual(outcome === 'acknowledged' || (retrySettlement && !rejected && !completed) ? expect.any(String) : undefined);
+    expect(execution?.queuedInputSession).toEqual(outcome.startsWith('acknowledged') ? expect.any(String) : undefined);
     expect(execution?.queuedInputInterrupted).toBe(rejected || capacity ? true : undefined);
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(previousTurns + 1);
     expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
@@ -382,7 +390,7 @@ test.each([
       });
     }
     // Older cores understand interruption and can still read the rest of the handoff.
-    if (lateStop) expect(handoff).toMatchObject({ turns: [] });
+    if (lateStop || (explicitStop && unavailable)) expect(handoff).toMatchObject({ turns: [] });
     else if (completed && unavailable) expect(handoff).toMatchObject({
       turns: [expect.objectContaining({ turnId: id, queuedInput: expect.objectContaining({ queuedInputInterrupted: true }) })],
     });
@@ -407,7 +415,7 @@ test.each([
       expect(text).toContain('Original request before the restart');
     }
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(previousTurns + 2);
-    if (switchAway) expect(fakeLog()).not.toContain('account catch-up');
+    if (switchAway || switchBack) expect(fakeLog()).not.toContain('account catch-up');
     expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(noLoad || (completed && !lateStop) ? 0 : 1);
     expect(setModeCount('plan')).toBe(interruption === 'permission restart' ? 1 : 0);
   } finally {
@@ -1073,6 +1081,18 @@ async function acpThread(client: CoreClient, model?: string, permissionMode?: Pe
     ...(permissionMode === undefined ? {} : { permissionMode }),
   });
   await client.call('threads.subscribe', { threadId: thread.id });
+  return thread.id;
+}
+
+async function acpSubagent(client: CoreClient): Promise<string> {
+  const { accountId } = await acpAccount(client);
+  const { threadId } = await echoThread(harness!, client, 'Parent');
+  await client.call('delegation.configure', { threadId, config: {
+    ...harness!.core.delegation.config(threadId),
+    profiles: [{ id: 'acp', name: 'ACP', providerId: 'acp-fake', accountId, model: 'default', effort: null }],
+  } });
+  const { thread } = await client.call('delegation.spawn', { threadId, profileId: 'acp', task: 'First delegated turn', requestId: 'acp-subagent' });
+  await waitFor(() => harness!.core.threads.require(thread.id).archived);
   return thread.id;
 }
 

@@ -48,11 +48,13 @@ server listens, each eligible entry is handled separately:
   handoff keeps the outcome when the terminal write misses the deadline.
   Recovery records the reported usage and restores the session if the thread
   still owns it. A completed answer also updates the saved history of its
-  original account if the thread switched away. An acknowledged cancellation,
+  original account if the thread switched away, or its catch-up boundary if the
+  thread already switched back to that session. An acknowledged cancellation,
   interruption, or explicit Stop recovers the turn as stopped. The composer owns
-  the follow-up and respects its pause. Older cores that support interrupted queued
-  input read a completed outcome as an interruption and can still recover the
-  other turns in the handoff.
+  the follow-up, including in a subagent thread, and respects its pause. Usage
+  and session data can still be recorded if the provider reports them after Stop.
+  Older cores that support interrupted queued input read a completed outcome as
+  an interruption and can still recover the other turns in the handoff.
 
 A core that dies without a handoff (a crash, a kill, the shell's Quit) leaves
 its work to [automatic resumes](#turns-that-stop-before-their-answer).

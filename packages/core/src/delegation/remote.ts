@@ -633,7 +633,7 @@ export class RemoteDelegation {
     const state = this.#host.snapshot(childId);
     const project = state.thread.projectId ? this.#core.journal.getProject(state.thread.projectId)?.name : undefined;
     const turn = state.lastTurn;
-    const restarting = turn?.status === 'stopped' && restartContinues(this.#core, childId, turn.id);
+    const restarting = turn?.status === 'stopped' && restartContinues(this.#core, turn);
     const workflowStop = workflowStopReceipt(this.#parents.get(childId)?.workflowStop, turn, id => this.#core.journal.getTurn(id));
     return { ...state, ...(project === undefined ? {} : { project }), ...(restarting ? { restarting: true as const } : {}), ...(workflowStop ? { workflowStop } : {}) };
   }

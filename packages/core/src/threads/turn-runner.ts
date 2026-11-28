@@ -167,11 +167,11 @@ export class TurnRunner {
       : result.queuedInputInterrupted ? { queuedInputInterrupted: true as const } : undefined;
     const outcome = result.status === 'done' && result.queuedInputCompleted
       ? { queuedInputInterrupted: true as const, queuedInputCompleted: true as const } : queuedInput;
-    const handoffOutcome: QueuedInputOutcome | undefined = outcome && {
-      ...outcome, usage: result.usage, sessionId: result.sessionId ?? undefined, cwd: thread.cwd,
-    };
+    const accounting = { usage: result.usage, sessionId: result.sessionId ?? undefined, cwd: thread.cwd };
+    const handoffOutcome: QueuedInputOutcome | undefined = outcome && { ...outcome, ...accounting };
     // The handoff can expire while a filesystem check or checkpoint is still pending.
     if (running.execution && handoffOutcome) this.threads.handoff.recordQueuedInputOutcome(turnId, handoffOutcome);
+    if (result.status === 'stopped') this.threads.handoff.recordStoppedResult(running, accounting);
 
     // Read after the failure, so a turn that starts well never waits on the disk.
     if (result.status === 'error' && !result.refusal && !(await folderPresent(state.thread.cwd))) {

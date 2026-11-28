@@ -19,7 +19,7 @@ import { ChildWorktrees } from './delegation/worktrees.ts';
 import { checkConfig, createChild, readConfig, type ChildRequest } from './delegation/children.ts';
 import { Retirements } from './delegation/retirement.ts';
 import { pauseHold, pauseOver } from './delegation/pauses.ts';
-import { dropRestartCuts, endRestart, recordRestartCut, resumeRestartCuts } from './delegation/restart.ts';
+import { carryChildTurn, dropRestartCuts, endRestart, resumeRestartCuts } from './delegation/restart.ts';
 import { delegationPrompt, mailOrigin, subagentRole, teamInstructions } from './delegation/guide.ts';
 import { RemoteDelegation, type ChildState } from './delegation/remote.ts';
 import { sentBack } from './workflows/follow-up.ts';
@@ -582,9 +582,8 @@ export class Delegation {
     if (!thread.parentThreadId && !link) return;
     // A restart handoff stopped it on purpose: the next core continues it, so this is no result,
     // and its worktree is still in use. A child the user or its parent stopped is in `stopped` first.
-    if (turn.status === 'stopped' && this.#core.threads.handoff.active && !this.#stopped.has(thread.id) && (link || followUp || this.delegated(thread.id))) {
-      // The handoff resumes a remote child's own turns, not those its parent's letters opened.
-      if (!this.#core.threads.handoff.carries(turn.id)) recordRestartCut(this.#core, turn);
+    if (turn.status === 'stopped' && !this.#stopped.has(thread.id) && (link || followUp || this.delegated(thread.id))
+      && carryChildTurn(this.#core, turn)) {
       if (link) this.remote.state(thread.id);
       return;
     }
