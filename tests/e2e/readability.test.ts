@@ -23,6 +23,24 @@ beforeAll(async () => {
 }, 90000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
+test('chat renders archive pictographs with a bundled fallback font', async () => {
+  const prompt = 'Archived files 🗄 and card boxes 🗃';
+  const bubble = '.user-text';
+  await update(`thread.messages[0].parts = [{ type: 'text', text: ${JSON.stringify(prompt)} }];`);
+  await page.waitFor(`(() => {
+    const message = document.querySelector('${bubble}');
+    return message?.textContent === ${JSON.stringify(prompt)} && message.getBoundingClientRect().width > 0;
+  })()`);
+  await page.evaluate('document.fonts.ready');
+  await page.send('DOM.enable', {});
+  await page.send('CSS.enable', {});
+  const { root } = await page.send('DOM.getDocument', {}) as { root: { nodeId: number } };
+  const { nodeId } = await page.send('DOM.querySelector', { nodeId: root.nodeId, selector: bubble }) as { nodeId: number };
+  const { fonts } = await page.send('CSS.getPlatformFontsForNode', { nodeId }) as { fonts: unknown[] };
+  expect(fonts).toContainEqual(expect.objectContaining({ familyName: 'Noto Sans Symbols 2', isCustomFont: true, glyphCount: 2 }));
+  expect(fonts).toContainEqual(expect.objectContaining({ familyName: 'Inter', isCustomFont: true }));
+});
+
 test('connecting another machine keeps thread rows at their single-machine height', async () => {
   await page.waitFor(`document.querySelectorAll('${id('thread-pr')}').length === 2`);
   const height = () => page.evaluate<number>(`document.querySelector('[data-thread-id="t-descriptors"]').getBoundingClientRect().height`);

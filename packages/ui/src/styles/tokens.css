@@ -252,7 +252,8 @@
   --primary-hover: var(--color-control-primary-hover);
   --shadow-control: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
-  --font-fallback: ui-sans-serif, system-ui, 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
+  --font-symbols: 'Noto Sans Symbols 2';
+  --font-fallback: var(--font-symbols), ui-sans-serif, system-ui, 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
   --font-mono-fallback: 'Cascadia Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
   /* Every face Settings, Appearance offers, one stack each: the pick swaps
      `--font-sans` or `--font-mono` below, and each tile of the picker is drawn
@@ -264,7 +265,7 @@
   /* Each OS's own interface face by name, then the sans faces any Linux ships:
      `system-ui` always matches, and a Linux without font aliases resolves it,
      and `sans-serif`, to its first face, often a monospace one. */
-  --face-system: 'Segoe UI Variable Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Adwaita Sans', Cantarell, Ubuntu, 'Noto Sans', Roboto, 'DejaVu Sans', 'Liberation Sans', Arial, sans-serif;
+  --face-system: 'Segoe UI Variable Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Adwaita Sans', Cantarell, Ubuntu, 'Noto Sans', Roboto, 'DejaVu Sans', 'Liberation Sans', Arial, var(--font-symbols), sans-serif;
   --face-mono-geist: 'Geist Mono', var(--font-mono-fallback);
   --face-mono-jetbrains: 'JetBrains Mono', var(--font-mono-fallback);
   --face-mono-system: var(--font-mono-fallback);
