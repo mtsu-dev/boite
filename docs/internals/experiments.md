@@ -208,13 +208,15 @@ the feature's modules. Nothing else may import those modules: one static
 import elsewhere puts them back in every build.
 
 The UI entries are `lib/backdrop-entry.svelte.ts`, `lib/contacts-entry.ts`,
-`lib/teams-entry.ts` and `lib/auto-goal-entry.ts`. Shared project rows and the
+`lib/teams-entry.ts`, `lib/auto-goal-entry.ts` and
+`lib/presence-entry.svelte.ts`. Shared project rows and the
 Team card also use their flags in `lib/deferred-parts.ts`. The Whip and
 Council keep their lazy entries without build flags.
 
 The core builds the Teams store in its constructor and admits a prompt
-synchronously. `teams-entry.ts` and `auto-goal-entry.ts` put the flag before
-`require`, which Bun can drop the same way. `teams-entry.ts` also gates the
+synchronously. `teams-entry.ts`, `auto-goal-entry.ts` and `presence-entry.ts`
+put the flag before `require`, which Bun can drop the same way; without the
+presence the core has no `presence.set` method, as in a core from before it. `teams-entry.ts` also gates the
 dynamic import of `team-cli.ts`. The team tables and the code for reading and
 removing stored records ship in every build.
 
