@@ -116,6 +116,8 @@ export class Composer {
   /** Retry requested input once the native turn can accept it, before any tool output. */
   inputReady(threadId: string): void { this.#schedule([{ section: 'inputs', id: threadId }]); }
 
+  hasQueuedInput(threadId: string): boolean { return this.storage.queued.has(recordKey('inputs', threadId)); }
+
   async enqueue(params: RpcParams<'composer.enqueue'>, connection: Connection) {
     if (typeof params?.threadId !== 'string' || typeof params.prompt !== 'string' || !params.prompt.trim() || typeof params.clientRequestId !== 'string') {
       throw invalidParams('composer.enqueue: expected threadId, a non-empty prompt and clientRequestId');

@@ -8,13 +8,23 @@ import { BACKGROUND_WAKE_GRACE_MS, delegationAnswerable as answerable } from '@b
 import type { BackgroundTask, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
+import { composerOwnsFollowUp } from '../threads/stopped-input.ts';
 
 export type ChildEnd =
   /** A compaction or cache keepalive: no step of the task. */
   | { kind: 'maintenance' }
   /** Ended to wait on its own background work: not done, and its worktree is still in use. */
   | { kind: 'checkpoint'; live: BackgroundTask[] }
+  | { kind: 'composer' }
   | { kind: 'final' };
+
+export const followUpEndKey = (threadId: string): string => `delegation-follow-up-end:${threadId}`;
+
+/** An advisory cancellation leaves the child waiting for its queued user instruction. */
+export function pendingComposerFollowUp(core: Core, turn: Turn): boolean {
+  return (turn.status === 'stopped' || turn.status === 'error') && composerOwnsFollowUp(turn)
+    && core.composer.hasQueuedInput(turn.threadId) && core.journal.getSetting(followUpEndKey(turn.threadId)) !== turn.id;
+}
 
 /** A child's last turn of its task, past compactions and cache keepalives. */
 export function taskTurn(core: Core, threadId: string): Turn | null {
@@ -24,6 +34,7 @@ export function taskTurn(core: Core, threadId: string): Turn | null {
 
 export function childEnd(core: Core, turn: Turn): ChildEnd {
   if (turn.execution?.operation === 'compact' || turn.execution?.operation === 'keepalive') return { kind: 'maintenance' };
+  if (pendingComposerFollowUp(core, turn)) return { kind: 'composer' };
   const live = turn.status === 'done' ? core.threads.agentState.background.get(turn.threadId) ?? [] : [];
   return live.length > 0 ? { kind: 'checkpoint', live } : { kind: 'final' };
 }

@@ -20,13 +20,15 @@ import { mayResume, resumeTeam, running } from './workflows/resume.ts';
 import { listTemplates, removeTemplate, saveTemplate } from './workflows/templates.ts';
 import { planError, text } from './workflows/validation.ts';
 import { NOT_STARTED, clip, failureNotice, runSummary, tooLong, unnoticed } from './workflows/notices.ts';
-import { askFinal, childEnd, unwoken } from './delegation/completion.ts';
+import { askFinal, childEnd, taskTurn, unwoken } from './delegation/completion.ts';
 import { announceWorkflow, workflowUsage } from './workflows/usage.ts';
 import { SharedWorkflowCompute } from './workflows/shared-compute.ts';
 import { MachineWorkflowSteps } from './workflows/machine-steps.ts';
 import { loopPrompt, stepPrompt, stepRole } from './workflows/prompt.ts';
 import { sentBack } from './workflows/follow-up.ts';
 import { delivered, endLeftovers, shapedOutput, stepAnswer } from './workflows/step-result.ts';
+import { composerOwnsFollowUp } from './threads/stopped-input.ts';
+import { userStopKey } from './threads/turn-settlement.ts';
 export { registerWorkflowMethods } from './workflows/register.ts';
 
 interface DataRow { data: string }
@@ -61,6 +63,8 @@ export class Workflows {
   readonly #again = new Set<string>();
   readonly #off: () => void;
   #closed = false;
+  #recovering = true;
+  readonly #interruptedInputs: Turn[] = [];
   readonly #compute: SharedWorkflowCompute;
   /** Steps that name `machine`, run on another machine of the group. */
   readonly #machines: MachineWorkflowSteps;
@@ -83,7 +87,18 @@ export class Workflows {
     for (const run of this.#runsWhere("status IN ('running', 'paused')")) {
       let interrupted = false;
       for (const node of run.nodes) for (const inst of node.instances) {
-        if (inst.status === 'running') { Object.assign(inst, { status: 'waiting', error: INTERRUPTED, finishedAt: null }); interrupted = true; }
+        if (inst.status !== 'running') continue;
+        const turn = inst.threadId && !inst.machine && !inst.compute ? taskTurn(core, inst.threadId) : null;
+        if (turn && composerOwnsFollowUp(turn)) {
+          // Recover a queue removal committed just before shutdown as well.
+          this.#interruptedInputs.push(turn);
+          continue;
+        }
+        // Let recovery settle the result or leave the next turn to the composer.
+        if (turn?.status === 'running' && (core.threads.handoff.inheritedQueuedInputOutcome(turn.id)
+          || core.journal.getSetting(userStopKey(turn.id)) === true)) continue;
+        Object.assign(inst, { status: 'waiting', error: INTERRUPTED, finishedAt: null });
+        interrupted = true;
       }
       if (run.status === 'running' && !handedOver) this.#save({ ...run, status: 'paused', error: 'The core restarted. Resume to continue.', pausedBy: 'restart', pausedAt: Date.now() });
       else if (interrupted) this.#save(run);
@@ -98,6 +113,14 @@ export class Workflows {
         if (thread.archived && !thread.parentThreadId) this.stopRoot(thread.id, 'The thread was archived.');
       } else if (name === 'thread.removed' && !(payload as { undoable?: boolean }).undoable) this.#forget((payload as { threadId: string }).threadId);
     });
+  }
+
+  /** Close steps whose queue removal committed before the previous core could settle them. */
+  finishRecovery(): void {
+    for (const turn of this.#interruptedInputs.splice(0)) {
+      if (taskTurn(this.#core, turn.threadId)?.id === turn.id) this.#turnFinished(turn);
+    }
+    this.#recovering = false;
   }
 
   owns(threadId: string): boolean { return this.#stepOf.has(threadId); }
@@ -449,7 +472,7 @@ export class Workflows {
     }
     if (sentBack(this.#core, turn.threadId, turn)) return this.#core.delegation.followUpFinished(turn);
     const end = childEnd(this.#core, turn);
-    if (end.kind === 'maintenance') return;
+    if (end.kind === 'maintenance' || end.kind === 'composer') return;
     let correction = false, cut = false, leftovers = false, checkpoint = false;
     this.#mutate(entry.runId, run => {
       const inst = workflowInstance(run, entry.key);
@@ -465,7 +488,8 @@ export class Workflows {
       }
       // A restart handoff stopped it on purpose: the step waits, and the next core runs it again.
       // A Stop of the run or its conversation recorded the run stopped before stopping the turn.
-      if (turn.status === 'stopped' && this.#core.threads.handoff.active && (run.status === 'running' || run.status === 'paused')) {
+      if (turn.status === 'stopped' && this.#core.threads.handoff.active && (run.status === 'running' || run.status === 'paused')
+        && !composerOwnsFollowUp(turn) && !this.#core.delegation.childStopped(turn.threadId)) {
         Object.assign(inst, { status: 'waiting', error: INTERRUPTED, finishedAt: null });
         cut = true;
         return;
@@ -498,8 +522,11 @@ export class Workflows {
     if (!cut) this.#ended(entry, turn.threadId, correction);
   }
 
+  finishComposerTurn(turn: Turn): void { this.#turnFinished(turn); }
+
   /** A step's execution is over: its worktree is kept or removed, so the summary names what to merge, then the run goes on. */
   #ended(entry: { runId: string; key: string }, threadId: string, correction = false): void {
+    const recovering = this.#recovering;
     const settling = correction ? null : this.#core.delegation.worktrees.settle(threadId);
     const next = () => {
       const worktree = this.#core.delegation.worktrees.get(threadId);
@@ -508,7 +535,7 @@ export class Workflows {
         if (!inst || inst.threadId !== threadId) return false;
         inst.worktree = worktree;
       });
-      this.#advance(entry.runId);
+      if (!recovering || this.#core.boundEndpoint().port !== 0) this.#advance(entry.runId);
     };
     if (settling) void settling.then(() => { if (!this.#closed) next(); });
     // Admission rereads the durable run after the previous turn becomes idle.

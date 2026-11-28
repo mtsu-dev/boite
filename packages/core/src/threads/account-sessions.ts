@@ -227,18 +227,15 @@ export class AccountSessions {
     if (sameAccount) {
       const resumed = this.#resumed(current, stored);
       if (!resumed?.after || !resumed.earlier.includes(execution.sessionGeneration)) return;
-      // Use admission time first because terminal writes replace the turn row.
-      const advances = this.#core.journal.db.query(`SELECT 1 FROM turns a JOIN turns b ON b.thread_id = a.thread_id
-        WHERE a.id = ? AND b.id = ? AND (a.queued_at, a.rowid) <= (b.queued_at, b.rowid)`)
-        .get(resumed.after.turnId, finished.id);
-      if (advances === null) return;
+      if (!this.#advances(resumed.after, finished)) return;
       stored.resumed = { ...resumed, after };
       this.#write(finished.threadId, stored);
       return;
     }
     const saved = stored.saved[execution.accountId];
-    // A later session of that account replaced the one this turn ran on.
-    if (saved !== undefined && saved.generations[0] !== execution.sessionGeneration) return;
+    if (saved && (saved.providerId !== execution.providerId || !this.#advances(saved.after, finished)
+      || (saved.generations[0] !== execution.sessionGeneration
+        && (saved.sessionId !== sessionId || !saved.generations.includes(execution.sessionGeneration))))) return;
     const cwd = saved?.cwd ?? ranIn;
     if (cwd === undefined) return;
     stored.saved[execution.accountId] = {
@@ -246,5 +243,12 @@ export class AccountSessions {
       cwd, generations: saved?.generations ?? [execution.sessionGeneration], context: saved?.context ?? null, savedAt: Date.now(),
     };
     this.#write(finished.threadId, stored);
+  }
+
+  #advances(previous: TailAnchor, finished: Turn): boolean {
+    // Use admission time first because terminal writes replace the turn row.
+    return this.#core.journal.db.query(`SELECT 1 FROM turns a JOIN turns b ON b.thread_id = a.thread_id
+      WHERE a.id = ? AND b.id = ? AND (a.queued_at, a.rowid) <= (b.queued_at, b.rowid)`)
+      .get(previous.turnId, finished.id) !== null;
   }
 }

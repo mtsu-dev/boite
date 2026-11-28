@@ -5,6 +5,7 @@ import { invalidParams, messageOf, refused } from '../errors.ts';
 import { spoken } from '../coordination-lookup.ts';
 import { usageGroups } from '../journal/usage-sums.ts';
 import { usageTotal } from '../usage.ts';
+import { pendingComposerFollowUp } from './completion.ts';
 
 const DELEGATION_WAIT_DEFAULT_MS = 600_000;
 const DELEGATION_WAIT_MAX_MS = 3_600_000;
@@ -190,7 +191,11 @@ export class DelegationWaits {
           directChildren(this.#core, params.threadId, params.agentId);
           const agents = this.#agents(params.threadId).filter(agent => params.agentId === undefined || agent.thread.id === params.agentId);
           // A child that ended its turn to wait on its background work has not answered yet.
-          const waiting = (params.agentId === undefined && this.#core.council.running(params.threadId)) || agents.some(agent => (agent.machine !== undefined && this.#core.delegation.remote.child(params.threadId, agent.thread.id)?.state?.restarting === true) || (agent.lastTurn !== null && ['queued', 'running'].includes(agent.lastTurn.status)) || agent.thread.backgroundWait?.state === 'waiting' || this.#settling(agent.thread.id));
+          const waiting = (params.agentId === undefined && this.#core.council.running(params.threadId)) || agents.some(agent =>
+            (agent.machine !== undefined && this.#core.delegation.remote.child(params.threadId, agent.thread.id)?.state?.restarting === true)
+            || (agent.lastTurn !== null && (['queued', 'running'].includes(agent.lastTurn.status)
+              || (!agent.machine && !agent.thread.archived && pendingComposerFollowUp(this.#core, agent.lastTurn))))
+            || agent.thread.backgroundWait?.state === 'waiting' || this.#settling(agent.thread.id));
           // A child stopped on a question or an approval waits on someone: its running turn would hold the wait to its timeout.
           const asks = agents.some(agent => agent.needsInput?.some(need => need.kind === 'permission' || need.blocking));
           if (waiting && !asks && !timedOut) return;

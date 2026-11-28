@@ -250,8 +250,13 @@ test.each([
   ['core restart', 'explicit stop before acknowledgement with terminal persistence unavailable'],
   ['core restart after switching away', 'completed with terminal persistence unavailable'],
   ['core restart after switching back', 'completed with terminal persistence unavailable'],
+  ['core restart after switching away again', 'completed with terminal persistence unavailable'],
   ['core restart of a subagent', 'acknowledged'],
   ['core restart of a subagent', 'acknowledged during handoff with terminal persistence unavailable'],
+  ['core restart of a workflow step', 'acknowledged'],
+  ['core restart of a workflow step', 'acknowledged during handoff with terminal persistence unavailable'],
+  ['core restart of a workflow step', 'completed with terminal persistence unavailable'],
+  ['core restart of a workflow step', 'explicit stop before acknowledgement with terminal persistence unavailable'],
   ['core restart', 'rejected with terminal persistence unavailable'],
   ['core restart', 'rejected with a blocked working-folder check'],
   ['direct Stop', 'explicit stop before acknowledgement'],
@@ -260,11 +265,13 @@ test.each([
   let client = await startCore({ warmProcessMinutes: 0 }, shutdown.resolve);
   const noLoad = interruption === 'core restart without session/load';
   const lateStop = interruption === 'core restart with late Stop';
-  const switchAway = interruption === 'core restart after switching away';
-  const switchBack = interruption === 'core restart after switching back';
+  const switchAgain = interruption === 'core restart after switching away again';
+  const switchAway = interruption === 'core restart after switching away' || switchAgain;
+  const switchBack = interruption === 'core restart after switching back' || switchAgain;
   const subagent = interruption === 'core restart of a subagent';
+  const workflow = interruption === 'core restart of a workflow step' ? await acpWorkflowStep(client) : undefined;
   if (noLoad) process.env['ACP_FAKE_NO_LOAD'] = '1';
-  const threadId = await (subagent ? acpSubagent(client) : acpThread(client));
+  const threadId = workflow?.threadId ?? await (subagent ? acpSubagent(client) : acpThread(client));
   const first = harness!;
   let { core } = first;
   const capacity = outcome === 'capacity';
@@ -287,6 +294,7 @@ test.each([
     : outcome === 'explicit stop' ? ' [ignore-cancel] [finish-on-gate]' : '';
   const prompt = `[parallel-tools] [confirm-on-gate]${directive}${reportsUsage ? ' [usage]' : ''} Original request before the restart`;
   const { id } = await client.call('turns.start', { threadId, prompt });
+  if (workflow) expect(core.workflows.get(workflow.rootId, workflow.runId).status).toBe('running');
   if (!noLoad) await waitFor(() => core.threads.require(threadId).sessionId !== null);
   const queued = [{ id: 'permission-race-follow-up', text: reportsUsage ? 'Queued after the mode change [usage]' : 'Queued after the mode change', attachments: [] }];
   const setPaused = async (paused: boolean) => {
@@ -340,6 +348,7 @@ test.each([
     const restart = async () => {
       if (switchAway || switchBack) await client.call('threads.update', { threadId, accountId: otherAccountId });
       if (switchBack) expect(await client.call('threads.update', { threadId, accountId, requireSavedSession: true })).toMatchObject({ sessionId: originalSession });
+      if (switchAgain) await client.call('threads.update', { threadId, accountId: otherAccountId });
       const deadline = { ...STOP_DEADLINE };
       try {
         // An agent still answering over stdio needs time to report cancellation.
@@ -354,7 +363,7 @@ test.each([
       await closeForHandoff(first);
     };
     restartCore = duringHandoff ? restart() : (blockedFolderCheck ? checkingFolder.promise : rolledBack.promise).then(restart);
-  } else if (interruption === 'core restart' || subagent) {
+  } else if (interruption === 'core restart' || subagent || workflow) {
     restartCore = closeForHandoff(first);
     await waitFor(() => stop.mock.calls.length > 0);
     if (explicitStop) expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
@@ -376,6 +385,7 @@ test.each([
     if (retrySettlement || blockedFolderCheck) await waitFor(() => !core.journal.getSetting('restart-handoff'));
     expect(core.journal.getTurn(id)?.status).toBe(completed && !lateStop ? 'done' : capacity ? 'error' : 'stopped');
     expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
+    if (workflow) expect(core.workflows.get(workflow.rootId, workflow.runId).nodes[0]?.instances[0]?.status).toBe(completed ? 'done' : explicitStop ? 'stopped' : 'running');
     expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
     const execution = core.journal.getTurn(id)?.execution;
     expect(execution?.queuedInputSession).toEqual(outcome.startsWith('acknowledged') ? expect.any(String) : undefined);
@@ -406,6 +416,7 @@ test.each([
     }
     await setPaused(false);
     await waitFor(() => core.journal.listTurns(threadId)[previousTurns + 1]?.status === 'done');
+    if (workflow) await waitFor(() => core.workflows.get(workflow.rootId, workflow.runId).status === 'done');
     if (reportsUsage) expect(core.journal.listTurns(threadId)[previousTurns + 1]?.usage?.costUsdEquivalent).toBeCloseTo(0.0042, 10);
     if (noLoad) {
       const thread = await client.call('threads.get', { threadId });
@@ -1094,6 +1105,21 @@ async function acpSubagent(client: CoreClient): Promise<string> {
   const { thread } = await client.call('delegation.spawn', { threadId, profileId: 'acp', task: 'First delegated turn', requestId: 'acp-subagent' });
   await waitFor(() => harness!.core.threads.require(thread.id).archived);
   return thread.id;
+}
+
+async function acpWorkflowStep(client: CoreClient): Promise<{ rootId: string; runId: string; threadId: string }> {
+  const h = harness!;
+  const { accountId } = await acpAccount(client);
+  const { threadId: rootId } = await echoThread(h, client, 'Workflow parent');
+  await client.call('delegation.configure', { threadId: rootId, config: {
+    ...h.core.delegation.config(rootId),
+    profiles: [{ id: 'acp', name: 'ACP', providerId: 'acp-fake', accountId, model: 'default', effort: null }],
+  } });
+  const run = await client.call('workflows.start', { threadId: rootId, requestId: 'acp-workflow', plan: {
+    name: 'ACP workflow', steps: [{ id: 'step', profile: 'acp', task: 'First attempt [internal]' }],
+  } });
+  await waitFor(() => h.core.workflows.get(rootId, run.id).status === 'failed');
+  return { rootId, runId: run.id, threadId: h.core.workflows.get(rootId, run.id).nodes[0]!.instances[0]!.threadId! };
 }
 
 /** A fresh core with one ACP thread on it, the opening of most tests here. */

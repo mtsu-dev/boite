@@ -144,7 +144,13 @@ export class ComposerStorage {
     if (privateOwner) {
       if (privateOwner.id !== excludeConnection) privateOwner.sendEvent('composer.updated', structuredClone(record));
     } else this.#core.bus.emit('composer.updated', structuredClone(record), { excludeConnection, composerRevision: composerRevision(record, previous, () => bytes) });
+    if (previous.value?.input.queued.length && !value?.input.queued.length) this.#queueEmptied(record);
     return record;
+  }
+
+  #queueEmptied({ section, id }: Pick<ComposerRecord, 'section' | 'id'>): void {
+    if (section !== 'inputs' || composerInputThreadId(id) !== id) return;
+    this.#core.bus.whenCommitted(() => this.#core.delegation.composerQueueEmptied(id));
   }
 
   putAsset(attachment: Attachment, incognito: boolean, owner: Connection): { assetId: string } {
@@ -231,7 +237,9 @@ export class ComposerStorage {
       for (const [key, owner] of this.#privateOwners) if (owner.id === connection.id) {
         const value = this.#privateRecords.get(key)?.value;
         if (value) for (const reference of this.references(value)) assets.add(reference.assetId);
+        const queued = this.queued.get(key);
         this.#privateRecords.delete(key); this.#privateOwners.delete(key); this.queued.delete(key); records.add(key);
+        if (queued) this.#queueEmptied(queued);
       }
       // Consumed ids stay in memory until their thread is forgotten or the core exits.
       // A reconnect can bring an unacknowledged copy plus new input: discarding these

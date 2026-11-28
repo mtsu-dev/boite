@@ -48,10 +48,13 @@ server listens, each eligible entry is handled separately:
   handoff keeps the outcome when the terminal write misses the deadline.
   Recovery records the reported usage and restores the session if the thread
   still owns it. A completed answer also updates the saved history of its
-  original account if the thread switched away, or its catch-up boundary if the
-  thread already switched back to that session. An acknowledged cancellation,
-  interruption, or explicit Stop recovers the turn as stopped. The composer owns
-  the follow-up, including in a subagent thread, and respects its pause. Usage
+  original account across repeated switches if it still refers to that native
+  session. An acknowledged cancellation, interruption, or explicit Stop
+  recovers the turn as stopped. The composer owns
+  the follow-up and respects its pause. A delegated child or workflow step
+  waiting for that follow-up stays open, and its parent receives no final result
+  for the interrupted turn until the user sends or discards the follow-up or
+  stops the child. Usage
   and session data can still be recorded if the provider reports them after Stop.
   Older cores that support interrupted queued input read a completed outcome as
   an interruption and can still recover the other turns in the handoff.

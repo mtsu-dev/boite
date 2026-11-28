@@ -11,8 +11,7 @@ interface RestartCut { childId: string; turnId: string }
 /** A stopped child has more work after the handoff, so its parent receives no final result. */
 export function carryChildTurn(core: Core, turn: Turn): boolean {
   const handoff = core.threads.handoff;
-  if (composerOwnsFollowUp(turn)) return handoff.active || handoff.inheritedTurns().has(turn.id);
-  if (!handoff.active) return false;
+  if (!handoff.active || composerOwnsFollowUp(turn)) return false;
   if (!handoff.carries(turn.id)) {
     // The handoff already carries a remote child's own turns without its parent's letters.
     const cut = (core.journal.getSetting(RESTART_CUT) as RestartCut[] | undefined) ?? [];

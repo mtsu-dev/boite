@@ -30,7 +30,7 @@ export interface ChildState {
   worktree?: DelegationWorktree;
   /** Its project's name on the member. */
   project?: string;
-  /** Its last turn was cut by a restart of the member, whose next core continues it: no result yet. Absent once that stop is final. */
+  /** Its cut turn will continue or is waiting for a queued follow-up. Absent once that stop is final. */
   restarting?: true;
   /** The turn targeted by this workflow stop, even after a new turn starts. */
   workflowStop?: { seq: number; turn: Pick<Turn, 'id' | 'finishedAt' | 'usage'> };
