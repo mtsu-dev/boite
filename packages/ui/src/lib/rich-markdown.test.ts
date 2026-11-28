@@ -219,16 +219,66 @@ describe('richMarkdown', () => {
     range.selectNodeContents(host);
     expect(selectedSource(range)).toBe('Plan.\n\n```steps\n1. Read | the brief\n* 2. Build\n```\n\n```bars\nA | fast\nB | 2 s\n```');
 
-    // A tilde-fenced block containing triple backticks copies back with tildes, and selecting inside nested math takes the whole native block.
+    // A tilde-fenced block containing triple backticks copies back with tildes; a formula selected inside one copies as the formula alone.
     mounted?.destroy();
     document.body.replaceChildren();
-    const nested = show('~~~steps\n1. Use \\(x^2\\) | ```\n~~~', undefined, true);
+    const nested = show('Then.\n\n~~~steps\n1. Use \\(x^2\\) | ```\n~~~', undefined, true);
     await vi.waitFor(() => {
       if (!nested.querySelector('.md-native.md-drawn .md-math.md-drawn math')) throw new Error('not drawn yet');
     });
+    const whole = document.createRange();
+    whole.selectNodeContents(nested);
+    expect(selectedSource(whole)).toBe('Then.\n\n~~~steps\n1. Use \\(x^2\\) | ```\n~~~');
     const insideMath = document.createRange();
     insideMath.setStart(nested.querySelector('math')!, 0);
     insideMath.setEnd(nested.querySelector('math')!, 1);
-    expect(selectedSource(insideMath)).toBe('~~~steps\n1. Use \\(x^2\\) | ```\n~~~');
+    expect(selectedSource(insideMath)).toBe('\\(x^2\\)');
+  });
+
+  test('a native block selected in part copies the text selected, not its whole fence', async () => {
+    const host = show('Prices.\n\n```bars\n* ASUS XG32UCWMG (32") | 729 | 789 € chez EasyLounge\nLG 32GS95UV-B (32") | 760\n```\n\nEnd.', undefined, true);
+    const block = await vi.waitFor(() => {
+      const found = host.querySelector<HTMLElement>('.md-native.md-drawn');
+      if (!found) throw new Error('not drawn yet');
+      return found;
+    });
+    const [first, second] = [...block.querySelectorAll('.md-bar-label')];
+
+    // A word inside one label: the word.
+    const word = document.createRange();
+    word.setStart(first!.firstChild!, 0);
+    word.setEnd(first!.firstChild!, 'ASUS XG32UCWMG'.length);
+    expect(selectedSource(word)).toBe('ASUS XG32UCWMG');
+
+    // Across rows: the rows as drawn, fields split by tabs, without the hidden cue, the bar's buttons or the hidden code.
+    const rows = document.createRange();
+    rows.setStart(first!.firstChild!, 0);
+    rows.setEnd(second!.firstChild!, 'LG 32GS95UV-B'.length);
+    expect(selectedSource(rows)).toBe('ASUS XG32UCWMG (32")\t729\t789 € chez EasyLounge\nLG 32GS95UV-B');
+
+    // Within one row, its row is not copied: its fields are still split.
+    const fields = document.createRange();
+    fields.setStart(first!.firstChild!, 5);
+    fields.setEnd(block.querySelector('.md-bar-value')!.firstChild!, 2);
+    expect(selectedSource(fields)).toBe('XG32UCWMG (32")\t72');
+
+    // All of the block's contents is the whole block: its fence.
+    const contents = document.createRange();
+    contents.selectNodeContents(block);
+    expect(selectedSource(contents)).toBe('```bars\n* ASUS XG32UCWMG (32") | 729 | 789 € chez EasyLounge\nLG 32GS95UV-B (32") | 760\n```');
+
+    // From the text before into the block: that text, then the part of the block selected.
+    const into = document.createRange();
+    into.setStart(host.querySelector('p')!.firstChild!, 0);
+    into.setEnd(first!.firstChild!, 'ASUS'.length);
+    expect(selectedSource(into)).toBe('Prices.\n\nASUS');
+
+    // A block in its Code view copies the part of the source selected, spaces included.
+    block.querySelector<HTMLButtonElement>('[data-testid="diagram-toggle"]')!.click();
+    const code = block.querySelector(':scope > pre code')!.firstChild!;
+    const line = document.createRange();
+    line.setStart(code, 1);
+    line.setEnd(code, 2 + 'ASUS XG32UCWMG'.length + 1);
+    expect(selectedSource(line)).toBe(' ASUS XG32UCWMG ');
   });
 });

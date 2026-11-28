@@ -173,9 +173,13 @@ not compare, the block is not drawn: it stays code with its copy button and no
 error line, since a misleading chart is worse than none. A drawn block has Copy
 and a switch between Block and Code in its own slim top row above the figure
 (fading in on pointer hover or keyboard focus, always visible on touch), so it
-overlaps neither the preceding block nor the first bar or card; a copied
-selection gives back its original fence delimiter (`data-fence` when not three
-backticks). A bubble or a run of text that holds a block takes the column's
+overlaps neither the preceding block nor the first bar or card. A copied
+selection that holds the whole block gives it back as its fence, with its
+original delimiter (`data-fence` when not three backticks); one that holds
+only part of it copies the part as it reads, from the view shown (the drawing
+or its Code), with a row's fields split by tabs and without the bar's buttons
+or the hidden highlight cue (`selectedSource` in `lib/selection-copy.ts`). A
+formula inside a block still copies whole, as its TeX. A bubble or a run of text that holds a block takes the column's
 width. Options and stats are cards that wrap on their own (an auto-fit grid);
 under 720px a bar's track goes below its label and value, and a value is drawn at
 most 14 characters wide, cut with an ellipsis, its whole text in a tooltip.

@@ -117,6 +117,8 @@ Answers, plans and Markdown previews draw these blocks:
 - A diagram wider than the column shrinks to fit, then scrolls. A wide formula
   scrolls sideways.
 - Copying a selection that holds a diagram or a formula copies its source.
+  A `steps`, `options`, `bars` or `stats` block copies its source only when
+  the whole block is selected; a part of it copies the text you selected.
 - A diagram that cannot be read shows its code and the reason. A formula that
   cannot be read stays underlined, with the reason as a tooltip.
 - `steps`, `options`, `bars` and `stats` are built from one line per item in
