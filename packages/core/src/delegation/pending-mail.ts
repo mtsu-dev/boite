@@ -1,5 +1,13 @@
 import type { Database } from 'bun:sqlite';
-import { DEFAULT_DELEGATION_CONFIG } from '@boite/contracts';
+import { DEFAULT_DELEGATION_CONFIG, type AgentLetter } from '@boite/contracts';
+
+/** A turn's delivery marker must match before the inbox page limit applies. */
+export function delegationLetters(db: Database, threadId: string, status: AgentLetter['status'], { limit = 100, error }: { limit?: number; error?: string } = {}): AgentLetter[] {
+  const rows = db.query(`SELECT data FROM delegation_messages WHERE recipient_id = ?1 AND status = ?2
+    AND (?3 IS NULL OR json_extract(data, '$.error') = ?3) ORDER BY created_at, rowid LIMIT ?4`)
+    .all(threadId, status, error ?? null, limit) as { data: string }[];
+  return rows.map(row => JSON.parse(row.data) as AgentLetter);
+}
 
 /** Ordinary letters must still expire while paused; results wait without being materialized. */
 export function pendingMail(db: Database): { root_id: string; recipient_id: string; data: string | null }[] {

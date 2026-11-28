@@ -25,7 +25,7 @@ import { RemoteDelegation } from './delegation/remote.ts';
 import { childBusy, childQuestions, childSnapshot, localMember, teamState } from './delegation/members.ts';
 import { sentBack } from './workflows/follow-up.ts';
 import type { Connection } from './router.ts';
-import { pendingMail } from './delegation/pending-mail.ts';
+import { delegationLetters, pendingMail } from './delegation/pending-mail.ts';
 import { composerOwnsFollowUp } from './threads/stopped-input.ts';
 import { stageComposerResult, clearComposerResult, composerResultSuppressed, stageChildStop } from './delegation/composer-results.ts';
 
@@ -392,7 +392,8 @@ export class Delegation {
     const root = this.#root(thread.id), config = this.config(root.id);
     const workflow = thread.parentThreadId ? this.#stepOwned(thread.id) : true;
     if (this.#closed || root.archived || thread.archived || this.#held(config, workflow) || this.#stopped.has(thread.id)) return false;
-    for (const letter of this.#letters(thread.id, 'uncertain')) if (letter.error === `Queued for provider turn ${turn.id}`) this.#update(letter, 'uncertain', `Awaiting provider turn ${turn.id}`);
+    const letters = delegationLetters(this.#core.journal.db, thread.id, 'uncertain', { error: `Queued for provider turn ${turn.id}` });
+    for (const letter of letters) this.#update(letter, 'uncertain', `Awaiting provider turn ${turn.id}`);
     return true;
   }
   #contact(thread: ThreadSummary): AgentLetter['from'] {
@@ -440,9 +441,6 @@ export class Delegation {
     if (!marks.quiet) this.#kick(recipient.id);
     return letter;
   }
-  #letters(threadId: string, status: AgentLetter['status'], limit = 100): AgentLetter[] {
-    return (this.#core.journal.db.query('SELECT data FROM delegation_messages WHERE recipient_id = ? AND status = ? ORDER BY created_at, rowid LIMIT ?').all(threadId, status, limit) as LetterRow[]).map(row => JSON.parse(row.data) as AgentLetter);
-  }
   #update(letter: AgentLetter, status: AgentLetter['status'], error: string | null = null): void {
     this.#core.journal.append({ type: 'delegation.delivery', threadId: letter.to.threadId, version: 1, payload: { id: letter.id, status, error } }, () => {
       this.#core.journal.db.query('UPDATE delegation_messages SET status = ?, data = ? WHERE id = ?').run(status, JSON.stringify({ ...letter, status, error }), letter.id);
@@ -469,7 +467,7 @@ export class Delegation {
   #inbox(threadId: string): AgentLetter[] {
     const root = this.#root(threadId), config = this.config(root.id);
     if (this.#closed || root.archived || !config.enabled || config.paused || this.#stopped.has(threadId)) return [];
-    return this.#letters(threadId, 'received').filter(letter => letter.expiresAt > Date.now() && !this.retirements.silent(letter.from.threadId)).slice(0, 4);
+    return delegationLetters(this.#core.journal.db, threadId, 'received').filter(letter => letter.expiresAt > Date.now() && !this.retirements.silent(letter.from.threadId)).slice(0, 4);
   }
   take(threadId: string, turnId: string): string | null {
     if (this.#delivering.has(threadId)) return null;
@@ -491,8 +489,9 @@ export class Delegation {
     return `\n${prompt}`;
   }
   submitted(threadId: string, turnId: string, success: boolean): void {
-    for (const letter of this.#letters(threadId, 'uncertain')) {
-      if (letter.error === `Awaiting provider turn ${turnId}`) this.#update(letter, success ? 'delivered' : 'uncertain', success ? null : 'Provider turn did not complete; not retried automatically');
+    const letters = delegationLetters(this.#core.journal.db, threadId, 'uncertain', { error: `Awaiting provider turn ${turnId}` });
+    for (const letter of letters) {
+      this.#update(letter, success ? 'delivered' : 'uncertain', success ? null : 'Provider turn did not complete; not retried automatically');
     }
   }
   /** Whether results wait in the thread's inbox, about to open its next turn. */
@@ -749,8 +748,8 @@ export class Delegation {
   #prepareStop(id: string, reportResult: boolean): () => boolean {
     const followUp = stageChildStop(this.#core, id, reportResult, this.#stepOwned(id));
     // Reject all mail waiting when the Stop commits (SQLite LIMIT -1), even if live cleanup later yields to a new turn.
-    for (const letter of this.#letters(id, 'received', -1)) this.#update(letter, 'rejected', 'Agent stopped');
-    for (const letter of this.#letters(id, 'uncertain', -1)) {
+    for (const letter of delegationLetters(this.#core.journal.db, id, 'received', { limit: -1 })) this.#update(letter, 'rejected', 'Agent stopped');
+    for (const letter of delegationLetters(this.#core.journal.db, id, 'uncertain', { limit: -1 })) {
       if (letter.error?.startsWith('Queued for provider turn ')) this.#update(letter, 'rejected', 'Agent stopped before provider delivery');
     }
     return () => this.#finishStop(id, followUp);

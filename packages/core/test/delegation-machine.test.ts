@@ -666,6 +666,39 @@ test('a retried remote Stop cancels old mail and leaves later questions open', a
   expect(await pcOwner.call('questions.list', { threadId: child.id })).toEqual([expect.objectContaining({ id: questionId, turnId: later.id })]);
 });
 
+test('Stop preserves a delivered instruction behind old uncertain mail', async () => {
+  const { held } = answering();
+  const { desk, pc, owner, threadId, pcId, spawn } = await setup();
+  const { thread: child } = await spawn('Read the index', '--project', 'notes');
+  await waitFor(() => pc.core.threads.require(child.id).status === 'idle');
+  let hold = true;
+  const updating = spyOn(pc.core.updates, 'holds').mockImplementation(() => hold);
+  restores.push(() => updating.mockRestore());
+  const letter = await owner.call('delegation.send', { threadId, toThreadId: child.id, requestId: 'current-instruction', text: 'Review HOLD-ON' });
+  const current = () => pc.core.journal.lastTurn(child.id);
+  await waitFor(() => current()?.status === 'queued');
+  const turnId = current()!.id;
+  const db = pc.core.journal.db;
+  const stored = () => db.query("SELECT status, json_extract(data, '$.error') AS error FROM delegation_messages WHERE id = ?").get(letter.id);
+  expect(stored()).toEqual({ status: 'uncertain', error: `Queued for provider turn ${turnId}` });
+
+  // Earlier failed turns leave uncertain letters in history, ahead of this turn's letter.
+  const seed = db.query(`INSERT INTO delegation_messages
+    SELECT ?1, root_id, sender_id, recipient_id, ?1, fingerprint, status, created_at - 1,
+      json_set(data, '$.id', ?1, '$.createdAt', created_at - 1, '$.error', 'Provider turn did not complete; not retried automatically')
+    FROM delegation_messages WHERE id = ?2`);
+  db.transaction(() => { for (let i = 0; i < 100; i++) seed.run(`failed-instruction-${i}`, letter.id); })();
+
+  hold = false;
+  pc.core.scheduler.retry();
+  await waitFor(() => held.has(child.id));
+  held.get(child.id)!();
+  await waitFor(() => pc.core.journal.getTurn(turnId)?.status === 'done');
+  await owner.call('delegation.stop', { threadId, agentId: child.id });
+  await desk.core.delegation.remote.flush(pcId);
+  expect(stored()).toEqual({ status: 'delivered', error: null });
+});
+
 test('an outbox retries pending mail after the acknowledgement write fails', async () => {
   const { pc, deskId } = await setup();
   const acknowledged = Promise.withResolvers<void>();
