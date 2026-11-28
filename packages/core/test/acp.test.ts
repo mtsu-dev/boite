@@ -243,7 +243,9 @@ test.each([
   ['core restart', 'acknowledged after persistence rollback'],
   ['core restart', 'acknowledged with terminal persistence unavailable'],
   ['core restart', 'acknowledged during handoff with terminal persistence unavailable'],
+  ['core restart', 'completed with terminal persistence unavailable'],
   ['core restart', 'rejected with terminal persistence unavailable'],
+  ['core restart', 'rejected with a blocked working-folder check'],
   ['direct Stop', 'explicit stop before acknowledgement'],
 ] as const)('ACP leaves the queue paused after cancellation during %s (%s)', async (interruption, outcome) => {
   const shutdown = Promise.withResolvers<void>();
@@ -252,16 +254,18 @@ test.each([
   const first = harness!;
   let { core } = first;
   const capacity = outcome === 'capacity';
-  const completed = outcome === 'completed';
+  const completed = outcome.startsWith('completed');
   const rejected = outcome.startsWith('rejected');
+  const unavailable = outcome.endsWith('terminal persistence unavailable');
   const explicitStop = outcome === 'explicit stop' || outcome === 'explicit stop before acknowledgement';
   if (capacity) Object.assign(core.providers.require('acp-fake'), { quirks: ['antigravity'] });
   const directive = capacity ? ' [capacity-on-cancel]' : rejected ? ' [error-on-cancel]'
-    : completed || outcome === 'explicit stop' ? ' [ignore-cancel] [finish-on-gate]' : '';
+    : completed ? ' [ignore-cancel] [finish-on-gate] [usage]'
+    : outcome === 'explicit stop' ? ' [ignore-cancel] [finish-on-gate]' : '';
   const prompt = `[parallel-tools] [confirm-on-gate]${directive}`;
   const { id } = await client.call('turns.start', { threadId, prompt });
   await waitFor(() => core.threads.require(threadId).sessionId !== null);
-  const queued = [{ id: 'permission-race-follow-up', text: 'Queued after the mode change', attachments: [] }];
+  const queued = [{ id: 'permission-race-follow-up', text: completed ? 'Queued after the mode change [usage]' : 'Queued after the mode change', attachments: [] }];
   const setPaused = async (paused: boolean) => {
     const current = core.composer.storage.get('inputs', threadId);
     const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: current.revision,
@@ -275,15 +279,22 @@ test.each([
   await setPaused(true);
   const stop = spyOn(core.threads.runner.handles.get(threadId)!, 'stop');
   const duringHandoff = outcome === 'acknowledged during handoff with terminal persistence unavailable';
-  const unavailable = outcome.endsWith('terminal persistence unavailable');
+  const blockedFolderCheck = outcome === 'rejected with a blocked working-folder check';
   const retrySettlement = unavailable || outcome === 'acknowledged after persistence rollback';
   const rolledBack = Promise.withResolvers<void>();
+  const checkingFolder = Promise.withResolvers<void>();
+  const folder = Promise.withResolvers<boolean>();
+  const check = blockedFolderCheck ? spyOn(threadCwd, 'folderPresent').mockImplementationOnce(() => {
+    checkingFolder.resolve();
+    return folder.promise;
+  }) : undefined;
   const putTurn = core.journal.putTurn.bind(core.journal);
+  let handoff: unknown;
   let terminalWrites = 0;
-  const persist = retrySettlement ? spyOn(core.journal, 'putTurn').mockImplementation(turn => {
-    if (turn.id === id && (turn.status === 'stopped' || turn.status === 'error')) {
+  const persist = retrySettlement || blockedFolderCheck ? spyOn(core.journal, 'putTurn').mockImplementation(turn => {
+    if (turn.id === id && (turn.status === 'stopped' || turn.status === 'error' || turn.status === 'done')) {
       terminalWrites += 1;
-      if (terminalWrites === 1 || unavailable) {
+      if (retrySettlement && (terminalWrites === 1 || unavailable)) {
         rolledBack.resolve();
         throw new Error('injected terminal write failure');
       }
@@ -301,19 +312,21 @@ test.each([
     spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
     expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
     await waitFor(() => stop.mock.calls.length > 0);
-  } else if (retrySettlement) {
+  } else if (retrySettlement || blockedFolderCheck) {
     const restart = async () => {
       const deadline = { ...STOP_DEADLINE };
       try {
         // An agent still answering over stdio needs time to report cancellation.
-        if (unavailable) Object.assign(STOP_DEADLINE, { ms: duringHandoff ? 2_000 : 20, forceMs: 20 });
+        if (unavailable || blockedFolderCheck) Object.assign(STOP_DEADLINE, { ms: duringHandoff ? 2_000 : 20, forceMs: 20 });
         expect(core.requestHandoffShutdown(0)).toBe('accepted');
       } finally { Object.assign(STOP_DEADLINE, deadline); }
       await shutdown.promise;
-      if (unavailable) expect(core.journal.getTurn(id)?.status).toBe('running');
+      if (unavailable || blockedFolderCheck) expect(core.journal.getTurn(id)?.status).toBe('running');
+      handoff = core.journal.getSetting('restart-handoff');
+      if (blockedFolderCheck) await core.drain(0);
       await closeForHandoff(first);
     };
-    restartCore = duringHandoff ? restart() : rolledBack.promise.then(restart);
+    restartCore = duringHandoff ? restart() : (blockedFolderCheck ? checkingFolder.promise : rolledBack.promise).then(restart);
   } else if (interruption === 'core restart') {
     restartCore = closeForHandoff(first);
     await waitFor(() => stop.mock.calls.length > 0);
@@ -324,29 +337,47 @@ test.each([
   try {
     if (restartCore !== undefined) {
       await restartCore;
+      if (blockedFolderCheck) {
+        folder.resolve(true);
+        await waitFor(() => first.core.scheduler.state().running.length === 0);
+      }
       next = await startTestCore({ dataDir: first.dataDir });
       core = next.core;
       client = await next.connect();
     } else await waitFor(() => countLogLines(fakeLog(), 'session/prompt') > 1 || core.journal.getTurn(id)?.finishedAt != null);
-    if (retrySettlement) await waitFor(() => !core.journal.getSetting('restart-handoff'));
+    if (retrySettlement || blockedFolderCheck) await waitFor(() => !core.journal.getSetting('restart-handoff'));
     expect(core.journal.getTurn(id)?.status).toBe(completed ? 'done' : capacity ? 'error' : 'stopped');
     expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
     expect(core.journal.listTurns(threadId)).toHaveLength(1);
     const execution = core.journal.getTurn(id)?.execution;
-    expect(execution?.queuedInputSession).toEqual(outcome === 'acknowledged' || (retrySettlement && !rejected) ? expect.any(String) : undefined);
+    expect(execution?.queuedInputSession).toEqual(outcome === 'acknowledged' || (retrySettlement && !rejected && !completed) ? expect.any(String) : undefined);
     expect(execution?.queuedInputInterrupted).toBe(rejected || capacity ? true : undefined);
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(1);
     expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
     expect(core.threads.runner.retryOf(threadId)).toBeNull();
+    if (completed && unavailable) {
+      // Older cores understand interruption and can still read the rest of the handoff.
+      expect({ usage: core.journal.getTurn(id)?.usage, handoff }).toMatchObject({
+        usage: { inputTokens: 8, outputTokens: 4, cacheReadTokens: 2, cacheWriteTokens: 0, buckets: 1, costUsdEquivalent: 0.0042 },
+        handoff: { turns: [expect.objectContaining({ turnId: id, queuedInput: expect.objectContaining({ queuedInputInterrupted: true }) })] },
+      });
+    }
     if (unavailable) expect(terminalWrites).toBeGreaterThan(1);
     else if (retrySettlement) expect(terminalWrites).toBe(2);
+    else if (blockedFolderCheck) expect(terminalWrites).toBe(0);
 
     await setPaused(false);
     await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
+    if (completed) expect(core.journal.listTurns(threadId)[1]?.usage?.costUsdEquivalent).toBeCloseTo(0.0042, 10);
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(2);
     expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(completed ? 0 : 1);
     expect(setModeCount('plan')).toBe(interruption === 'permission restart' ? 1 : 0);
-  } finally { persist?.mockRestore(); await next?.stop(); }
+  } finally {
+    folder.resolve(true);
+    check?.mockRestore();
+    persist?.mockRestore();
+    await next?.stop();
+  }
 }, 20_000);
 
 test.each([

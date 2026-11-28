@@ -1,4 +1,4 @@
-import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type RpcEventName, type RpcEvents, type ThreadId, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
+import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type RpcEventName, type RpcEvents, type ThreadId, type ThreadSummary, type Turn, type TurnId, type Usage } from '@boite/contracts';
 import { messageExcerpt } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
@@ -25,7 +25,9 @@ const KEY = 'restart-handoff';
 const REQUEST_START = '\n\nThe request that turn was answering, as conversation history:\n\n<interrupted-user-messages>\n';
 const REQUEST_END = '\n</interrupted-user-messages>';
 
-export type QueuedInputOutcome = { queuedInputSession: string } | { queuedInputInterrupted: true };
+export type QueuedInputOutcome = { queuedInputSession: string } | { queuedInputInterrupted: true }
+  // Older cores understand the interruption flag and can still open the handoff.
+  | { queuedInputInterrupted: true; queuedInputCompleted: true; usage: Usage | null };
 
 interface Entry {
   turnId: TurnId;
@@ -36,10 +38,25 @@ interface Entry {
 }
 interface HandoffRecord { at: number; turns: Entry[] }
 
+function readCompletedUsage(value: unknown): Usage | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const usage = value as Partial<Usage>;
+  const tokens = [usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.cacheWriteTokens];
+  if (!tokens.every(Number.isFinite) || (usage.cacheWriteHourTokens !== undefined && !Number.isFinite(usage.cacheWriteHourTokens))
+    || (usage.costUsdEquivalent !== null && !Number.isFinite(usage.costUsdEquivalent))
+    || (usage.buckets !== undefined && usage.buckets !== 1)) return null;
+  return usage as Usage;
+}
+
 function readQueuedInputOutcome(value: unknown): QueuedInputOutcome | undefined {
   if (typeof value !== 'object' || value === null) return;
   if ('queuedInputSession' in value && typeof value.queuedInputSession === 'string') return { queuedInputSession: value.queuedInputSession };
-  if ('queuedInputInterrupted' in value && value.queuedInputInterrupted === true) return { queuedInputInterrupted: true };
+  if ('queuedInputInterrupted' in value && value.queuedInputInterrupted === true) {
+    if ('queuedInputCompleted' in value && value.queuedInputCompleted === true) {
+      return { queuedInputInterrupted: true, queuedInputCompleted: true, usage: readCompletedUsage('usage' in value ? value.usage : null) };
+    }
+    return { queuedInputInterrupted: true };
+  }
 }
 
 function isRecord(value: unknown): value is HandoffRecord {

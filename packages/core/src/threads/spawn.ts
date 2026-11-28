@@ -470,7 +470,7 @@ export class ThreadSpawns {
     return saved !== undefined && !saved.reported && !saved.pending;
   }
 
-  /** Stage the first result in the runner's settlement transaction. */
+  /** Stage the first provider result in the turn's settlement transaction. */
   stageResult(turn: Turn): void {
     if (turn.execution?.operation === 'compact' || turn.execution?.operation === 'keepalive') return;
     const key = `${ORIGIN}${turn.threadId}`;
@@ -515,7 +515,7 @@ export class ThreadSpawns {
     }
   }
 
-  /** Only the runner stages results. Recovery can close a turn without an answer. */
+  /** Send any committed results the previous core did not deliver. */
   async recoverResults(): Promise<void> {
     const journal = this.#core.journal;
     const rows = journal.db.query(`SELECT key FROM settings WHERE key >= ? AND key < ? AND json_type(value, '$.pending') = 'object'`)

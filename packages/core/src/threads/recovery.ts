@@ -7,7 +7,7 @@ import { requireAgent } from './agentless.ts';
 import { HANDOFF } from './handoff.ts';
 import { markQueued, settleStatus } from './lifecycle.ts';
 import { checkStoredEffort, checkStoredSpeed } from './selection.ts';
-import { announceFinished, finishTurn, userStopKey } from './turn-settlement.ts';
+import { announceFinished, finishProviderTurn, finishTurn, userStopKey } from './turn-settlement.ts';
 import { addErrorPart, closeAsError, openTurnMessage } from './turn-error.ts';
 
 /** What a turn a dead core left behind says, once the next core has closed it. */
@@ -47,11 +47,11 @@ export class ThreadRecovery {
     for (const turn of stuck) {
       const previous = turn.status;
       if (previous === 'running' && this.#core.journal.getSetting(userStopKey(turn.id)) === true) {
-        this.#core.journal.db.transaction(() => {
+        this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
           handoff.forget(turn.threadId);
           this.#core.threads.resumes.forget(turn.threadId);
-          this.#closeStopped(turn, 'user-stop');
-        })();
+          this.#closeTurn(turn, 'stopped', 'user-stop');
+        })());
         counts.stopped += 1;
         continue;
       }
@@ -100,13 +100,14 @@ export class ThreadRecovery {
       }
       if (previous === 'running' && inherited.get(turn.id) === 'running') {
         const queuedInput = handoff.inheritedQueuedInputOutcome(turn.id);
-        const recovered = turn.execution && queuedInput
-          ? { ...turn, execution: { ...turn.execution, ...queuedInput } }
-          : turn;
-        this.#core.journal.db.transaction(() => this.#closeStopped(recovered, 'handed-over'))();
+        const completed = queuedInput !== undefined && 'queuedInputCompleted' in queuedInput;
+        const recovered = completed ? { ...turn, usage: turn.usage ?? queuedInput.usage }
+          : turn.execution && queuedInput ? { ...turn, execution: { ...turn.execution, ...queuedInput } } : turn;
+        const status = completed ? 'done' : 'stopped';
+        this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => this.#closeTurn(recovered, status, 'handed-over'))());
         counts.handedOver += 1;
         const next = queuedInput ? 'the composer queue owns the follow-up' : "the thread's next turn resumes it";
-        this.#core.logs.info(`Turn ${turn.id} was stopped by a restart handoff; ${next}`, { source: 'turns', event: 'turn.recovery.handed-over', threadId: turn.threadId, turnId: turn.id });
+        this.#core.logs.info(`Turn ${turn.id} was recovered as ${status} after a restart handoff. ${next}`, { source: 'turns', event: 'turn.recovery.handed-over', threadId: turn.threadId, turnId: turn.id });
         continue;
       }
       const blocker = previous === 'running' ? this.#core.threads.autoContinue.crashBlocker(turn) : null;
@@ -173,8 +174,8 @@ export class ThreadRecovery {
     return resumed;
   }
 
-  /** The previous core was stopping this turn when it was killed. */
-  #closeStopped(turn: Turn, cause: 'handed-over' | 'user-stop'): void {
+  /** The previous core did not commit the end of this turn. */
+  #closeTurn(turn: Turn, status: 'done' | 'stopped', cause: 'handed-over' | 'user-stop'): void {
     const threadId = turn.threadId;
     for (const message of this.#core.journal.walkTurnMessages(threadId, turn.id, { blobs: false })) {
       if (message.state !== 'streaming') continue;
@@ -186,8 +187,11 @@ export class ThreadRecovery {
       );
       this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
     }
-    const stopped: Turn = { ...turn, status: 'stopped', finishedAt: Date.now() };
-    announceFinished(this.#core, stopped, finishTurn(this.#core, stopped, cause));
+    const finished: Turn = { ...turn, status, finishedAt: Date.now() };
+    const settled = status === 'done'
+      ? finishProviderTurn(this.#core, finished, 'handed-over')
+      : finishTurn(this.#core, finished, cause);
+    announceFinished(this.#core, finished, settled);
   }
 
   #failStuckTurn(turn: Turn, reason: string): void {

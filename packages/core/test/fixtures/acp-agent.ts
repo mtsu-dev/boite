@@ -449,6 +449,11 @@ const app = agent({ name: 'acp-fake' })
     if (instructions.includes('[tasks]')) await send({ sessionUpdate: 'plan', entries: [{ content: 'Inspect source', priority: 'medium', status: 'completed' }, { content: 'Run checks', priority: 'medium', status: 'in_progress' }] });
     const say = (chunk: string): Promise<void> =>
       send({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: chunk } });
+    const reportUsage = async (): Promise<Usage> => {
+      const total = spend(sessionId);
+      await send({ sessionUpdate: 'usage_update', used: 12, size: 200, cost: { amount: total, currency: 'USD' } });
+      return { totalTokens: 12, inputTokens: 8, outputTokens: 4, cachedReadTokens: 2 };
+    };
 
     if (instructions.includes('[parallel-tools]')) {
       const detached = instructions.includes('[detached-delegation]');
@@ -538,6 +543,7 @@ const app = agent({ name: 'acp-fake' })
           if (compaction) {
             await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'completed' });
           }
+          if (instructions.includes('[usage]')) return { stopReason: 'end_turn', usage: await reportUsage() };
           return { stopReason: 'end_turn' };
         }
         await stopped.promise;
@@ -679,12 +685,9 @@ const app = agent({ name: 'acp-fake' })
         case 'noise':
           // Already sent above, before the answer.
           break;
-        case 'usage': {
-          const total = spend(sessionId);
-          await send({ sessionUpdate: 'usage_update', used: 12, size: 200, cost: { amount: total, currency: 'USD' } });
-          usage = { totalTokens: 12, inputTokens: 8, outputTokens: 4, cachedReadTokens: 2 };
+        case 'usage':
+          usage = await reportUsage();
           break;
-        }
         case 'huge-tool':
           await send({
             sessionUpdate: 'tool_call',

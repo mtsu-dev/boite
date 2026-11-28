@@ -161,24 +161,29 @@ export class TurnRunner {
       this.answerAfter.delete(turnId);
     }
 
+    const { thread, running } = state;
+    const queuedInput = result.queuedInputCancelled && result.sessionId !== null
+      ? { queuedInputSession: result.sessionId }
+      : result.queuedInputInterrupted ? { queuedInputInterrupted: true as const } : undefined;
+    const handoffOutcome: QueuedInputOutcome | undefined = result.status === 'done' && result.queuedInputCompleted
+      ? { queuedInputInterrupted: true, queuedInputCompleted: true, usage: result.usage } : queuedInput;
+    // The handoff can expire while a filesystem check or checkpoint is still pending.
+    if (running.execution && handoffOutcome) this.threads.handoff.recordQueuedInputOutcome(turnId, handoffOutcome);
+
     // Read after the failure, so a turn that starts well never waits on the disk.
     if (result.status === 'error' && !result.refusal && !(await folderPresent(state.thread.cwd))) {
       const gone = new ThreadCwdGone(threadId, state.thread.cwd);
       result = { ...result, error: gone.message, diagnosticError: `${gone.message}; the agent said: ${result.diagnosticError ?? result.error ?? 'nothing'}`, cwdGone: true };
     }
-    // A failure no driver wrote (route check, worktree, checkpoint, preparation) still says why, else the turn only reads "failed". A gone folder has its own notice.
-    if (started && result.status === 'error' && !result.cwdGone && !this.#saidWhy(threadId, turnId)) {
-      try { writeTurnError(this.#core, state.running, result.error ?? 'unknown error'); }
-      catch (error) { reportSettlementError(this.#core, threadId, turnId, 'error message', error); }
+    if (!this.#core.journal.isClosed()) {
+      // A failure no driver wrote (route check, worktree, checkpoint, preparation) still says why, else the turn only reads "failed". A gone folder has its own notice.
+      if (started && result.status === 'error' && !result.cwdGone && !this.#saidWhy(threadId, turnId)) {
+        try { writeTurnError(this.#core, running, result.error ?? 'unknown error'); }
+        catch (error) { reportSettlementError(this.#core, threadId, turnId, 'error message', error); }
+      }
+      try { await this.#finishCheckpoint(state); }
+      catch (error) { reportSettlementError(this.#core, threadId, turnId, 'checkpoint', error); }
     }
-
-    const { thread, running } = state;
-    const queuedInput: QueuedInputOutcome | undefined = result.queuedInputCancelled && result.sessionId !== null
-      ? { queuedInputSession: result.sessionId }
-      : result.queuedInputInterrupted ? { queuedInputInterrupted: true } : undefined;
-    if (running.execution && queuedInput) this.threads.handoff.recordQueuedInputOutcome(turnId, queuedInput);
-    try { await this.#finishCheckpoint(state); }
-    catch (error) { reportSettlementError(this.#core, threadId, turnId, 'checkpoint', error); }
     const finished: Turn = {
       ...running,
       status: result.status === 'done' ? 'done' : result.status,
@@ -191,7 +196,7 @@ export class TurnRunner {
     };
     const settlement = { queued, running, thread, result, started, finished };
     const completion = await settleTurn(this.#core, settlement).finally(() => {
-      if (queuedInput) this.threads.handoff.releaseQueuedInputOutcome(turnId);
+      if (handoffOutcome) this.threads.handoff.releaseQueuedInputOutcome(turnId);
       this.#attempts.close(threadId);
     });
     // No in-memory events or after-finish effects run before the transaction

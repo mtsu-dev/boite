@@ -56,6 +56,19 @@ export function finishTurn(core: Core, finished: Turn, cause: TurnClose, patch?:
   return { thread: next, owned: true, toolsClosed };
 }
 
+/** Commit a provider result and its linked deliveries in the caller's transaction. */
+export function finishProviderTurn(core: Core, finished: Turn, cause: 'settled' | 'handed-over', patch?: (current: ThreadSummary) => ThreadSummary): Finished {
+  // Recompute after a rollback in case an explicit Stop superseded the answer.
+  finished.quiet = quietTurn(core, finished) || undefined;
+  const done = finishTurn(core, finished, cause, current => ({
+    ...(patch ? patch(current) : current),
+    unread: current.unread || (turnIsNews(finished) && !core.subscribers.hasSubscribers(finished.threadId)),
+  }));
+  core.delegation.submitted(finished.threadId, finished.id, finished.status === 'done');
+  core.threads.spawns.stageResult(finished);
+  return done;
+}
+
 /** Tells every client a turn closed outside a runner, once its transaction committed. */
 export function announceFinished(core: Core, finished: Turn, { thread, owned }: Finished): void {
   core.bus.emit('turn.finished', finished);
@@ -116,17 +129,14 @@ function finishThread(core: Core, { thread, finished, result }: Settlement): Com
   // A turn of the account the thread left: the session it saved there now ends with this turn.
   core.threads.accountSessions.settledElsewhere(finished, result, thread.cwd);
   let sameSession = false;
-  const done = finishTurn(core, finished, 'settled', current => {
+  const done = finishProviderTurn(core, finished, 'settled', current => {
     // Changing the next picker does not grant this result access to the new session.
     sameSession = (current.sessionGeneration ?? 0) === (thread.sessionGeneration ?? 0)
       && current.sessionId === thread.sessionId && current.providerId === thread.providerId && current.accountId === thread.accountId;
     const sessionId = sameSession ? result.sessionId ?? current.sessionId : current.sessionId;
-    // A compaction, a keepalive, a quiet wake or a stop says nothing new: the thread stays as read as it was.
-    const news = turnIsNews(finished);
     return {
       ...current, sessionId,
       sessionResumeAt: !sameSession ? current.sessionResumeAt : current.sessionResumeAt && sessionId === current.sessionId && sessionId === thread.sessionId ? current.sessionResumeAt : null,
-      unread: news ? current.unread || !core.subscribers.hasSubscribers(thread.id) : current.unread,
       promptCache: sameSession ? promptCacheOf(result, thread, finished.finishedAt ?? Date.now(), current.promptCache ?? null) ?? current.promptCache ?? null : current.promptCache ?? null,
     };
   });
@@ -178,11 +188,7 @@ export async function settleTurn(core: Core, state: Settlement): Promise<Complet
         }
         // A driver can revise its usage after returning while the same execution is still settling.
         finished.usage = owned!.usage ?? finished.usage;
-        // Read once the answer is written: the flag rides on the turn every listener of `turn.finished` gets.
-        finished.quiet = quietTurn(core, finished) || undefined;
         const { toolsClosed, ...completion } = finishThread(core, state);
-        core.delegation.submitted(running.threadId, running.id, finished.status === 'done');
-        core.threads.spawns.stageResult(finished);
         if (toolsClosed > 0) notes.push(() => core.logs.info(`${toolsClosed} tool calls still running were marked failed because the turn ended ${state.result.status}`, { source: 'turns', event: 'turn.tools-closed', threadId: running.threadId, turnId: running.id, data: { tools: toolsClosed, status: state.result.status } }));
         const attempts = retry;
         if (attempts > 0) notes.push(() => core.logs.info(`Turn settled after ${attempts} failed persistence attempts`, { source: 'turns', event: 'turn.settlement.recovered', threadId: running.threadId, turnId: running.id, durationMs: performance.now() - settleAt, data: { retries: attempts } }));
