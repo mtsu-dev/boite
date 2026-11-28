@@ -8,6 +8,7 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import type { SessionNotification } from '@agentclientprotocol/sdk/unstable';
 import type { ComposerRecord, ImageAttachment, MessagePart, PermissionMode, RpcEvents, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
+import { hasComposerResult } from '../src/delegation/composer-results.ts';
 import { createAcpDriver } from '../src/drivers/acp.ts';
 import { runAcpLogin } from '../src/drivers/acp/login.ts';
 import type { AcpSdk } from '../src/drivers/acp/protocol.ts';
@@ -608,6 +609,7 @@ test.each([
         if (stopWhilePaused) core.journal.setSetting(`delegation:${rootId}`, { ...config, paused: true, pausedBy: 'restart' });
         expect(await client.call('delegation.stop', { threadId: rootId, ...(!stopPausedTeam ? { agentId: threadId } : {}) })).toEqual({ stopped: 1 });
         if (stopWhilePaused) {
+          expect(hasComposerResult(core, id)).toBe(!stopPausedTeam);
           expect(letters()).toEqual([]);
           await client.call('delegation.configure', { threadId: rootId, config });
           if (!stopPausedTeam) await waitFor(() => letters().length > 0);
