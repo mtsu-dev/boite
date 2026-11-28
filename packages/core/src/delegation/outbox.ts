@@ -2,7 +2,7 @@
 import type { CoordinationPeer } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { MAX_BODY, PeerRefusal } from '../coordination-wire.ts';
-import { messageOf } from '../errors.ts';
+import { messageOf, RpcFailure } from '../errors.ts';
 
 const FLUSH_MS = 300;
 /** A machine away is tried again after these waits, the last one repeating. */
@@ -27,6 +27,19 @@ function batchOf<T>(entries: T[]): T[] {
     size += bytes;
   }
   return batch;
+}
+
+/** Complete the other entries even if one write fails. An idempotent batch can be replayed. */
+export function receiveOutboxBatch<T>(entries: T[], receive: (entry: T) => void, warn: (error: unknown) => void): boolean {
+  let retry = false;
+  for (const entry of entries) {
+    try { receive(entry); }
+    catch (error) {
+      warn(error);
+      if (!(error instanceof RpcFailure)) retry = true;
+    }
+  }
+  return retry;
 }
 
 /**

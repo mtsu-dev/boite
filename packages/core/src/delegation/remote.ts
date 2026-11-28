@@ -35,11 +35,11 @@ import type { ProviderProbe } from '../providers/probe.ts';
 import { GROUP_THREADS_OFF, machineArg, memberModels, memberNamed, peerRefusal } from '../threads/group-spawn.ts';
 import { selectionFor } from '../threads/selection.ts';
 import { catalog, checkModelAllowed, chooseModel, discover, loggedInAccount } from './routes.ts';
-import { Outbox, risingClock } from './outbox.ts';
+import { Outbox, receiveOutboxBatch, risingClock } from './outbox.ts';
 import { restartContinues } from './restart.ts';
 import { subagentRole } from './guide.ts';
 import { resultPageOf, resultPageParams } from './results.ts';
-import { checkStart, readableState, trackWorkflowStop, workflowStopReceipt, type ChildState, type ParentLink, type RemoteChild, type Report, type Start, type Started, type Stop, type WireRoute } from './remote-wire.ts';
+import { appliedStop, attachedStop, checkStart, readableState, stopSequence, trackWorkflowStop, workflowStopReceipt, type ChildState, type ParentLink, type RemoteChild, type Report, type Start, type Started, type Stop, type StopIntent, type WireRoute } from './remote-wire.ts';
 
 export type { ChildState, ParentLink, RemoteChild } from './remote-wire.ts';
 
@@ -54,21 +54,14 @@ const READ_MS = 3000;
 const LETTER_MS = 15 * 60_000;
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const seqOf = (value: unknown, field: string): number => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) throw invalidParams(`${field}: expected the stop's number`);
-  return value;
-};
-/** The number of the last stop applied to a child here, 0 when none was. */
-const applied = (link: ParentLink | undefined): number => (typeof link?.stop === 'number' ? link.stop : 0);
-
 /** What the delegation module lends this one: its private state and its mail. */
 export interface RemoteHost {
   available(root: ThreadSummary): DelegationConfig;
   changed(rootId: string): void;
   kick(threadId: string): void;
   snapshot(threadId: string): Omit<ChildState, 'project'>;
-  /** Stops one child here, as `delegate stop` does; true when it was at work. */
-  halt(threadId: string): boolean;
+  /** Stores the Stop in the caller's transaction and returns the action to run after commit. */
+  prepareStop(threadId: string, reportResult: boolean): () => boolean;
   /** An explicit new instruction: a stopped child takes mail again. */
   instructed(threadId: string): void;
   file(letter: AgentLetter, rootId: string, senderId: string, recipientId: string, requestId: string, fingerprint: string): void;
@@ -332,7 +325,7 @@ export class RemoteDelegation {
     const index = records.findIndex(record => record.requestId === ask.requestId);
     // Deleted while the request was out: the child there is retired with it.
     if (index < 0) {
-      this.#stopThere(peer.coreId, parent.id, started.childId, true);
+      this.#stopThere(peer.coreId, parent.id, started.childId, { retire: true });
       this.#orphaned(peer.coreId, parent.id, ask.requestId, null);
       throw refused(`this thread was deleted while ${peer.name} started its subagent; that subagent is stopped`);
     }
@@ -382,7 +375,9 @@ export class RemoteDelegation {
     // Numbered among the stops: one asked after it cancels it there, even when taken first.
     const seq = this.#stopSeq();
     let answer: unknown;
-    try { answer = await this.#core.coordination.request(peer, 'delegation.letter', { parentId: root.id, childId, requestId, text: body, origin, seq, ...(stop ? { stop: stop.seq, ...(stop.workflow ? { workflowStop: true } : {}) } : {}) }); }
+    try { answer = await this.#core.coordination.request(peer, 'delegation.letter', { parentId: root.id, childId, requestId, text: body, origin, seq,
+      ...(stop ? { stop: stop.seq, workflowStop: stop.workflow, silentStop: stop.silent } : {}),
+    }); }
     catch (error) {
       if (error instanceof PeerRefusal) throw peerRefusal(this.#core, peer, error, 'steer subagents for another machine');
       throw unavailable(`${peer.name} did not answer: ${messageOf(error)}; the same --request-id sends it once`, { field: 'machine' });
@@ -419,10 +414,10 @@ export class RemoteDelegation {
   }
 
   /** `delegate stop <id>` for a child on another machine: true when it was at work as last reported. The stop goes once that machine takes it. */
-  stop(rootId: string, childId: string): boolean {
+  stop(rootId: string, childId: string, silent?: true): boolean {
     const record = this.child(rootId, childId);
     if (!record) return false;
-    this.#stopThere(record.coreId, rootId, childId, false);
+    this.#stopThere(record.coreId, rootId, childId, { silent });
     return this.#atWork(rootId, record);
   }
 
@@ -438,13 +433,13 @@ export class RemoteDelegation {
     const seq = trackWorkflowStop(record, this.#stopSeq);
     if (record.childId === null) record.stopping = true;
     this.#save(rootId, records);
-    if (record.childId !== null) this.#stopThere(record.coreId, rootId, record.childId, false, seq);
+    if (record.childId !== null) this.#stopThere(record.coreId, rootId, record.childId, { workflowStop: seq });
     return true;
   }
 
   /** Every child of this parent on another machine; how many were at work. */
   stopAll(rootId: string): number {
-    return this.childIds(rootId).filter(childId => this.stop(rootId, childId)).length;
+    return this.childIds(rootId).filter(childId => this.stop(rootId, childId, true)).length;
   }
 
   /**
@@ -458,7 +453,7 @@ export class RemoteDelegation {
     if (records.every(record => record.retired)) return;
     for (const record of records) {
       if (record.retired) continue;
-      if (record.childId !== null) this.#stopThere(record.coreId, rootId, record.childId, true);
+      if (record.childId !== null) this.#stopThere(record.coreId, rootId, record.childId, { retire: true });
       record.retired = true;
     }
     this.#save(rootId, records);
@@ -467,13 +462,13 @@ export class RemoteDelegation {
   /** A record now names its child; one stopped or retired before that is stopped or retired there now. */
   #named(rootId: string, record: RemoteChild, childId: string): RemoteChild {
     if (record.childId !== null) return { ...record, childId };
-    if (record.retired || record.stopping) this.#stopThere(record.coreId, rootId, childId, record.retired === true, record.retired ? undefined : record.workflowStop);
+    if (record.retired || record.stopping) this.#stopThere(record.coreId, rootId, childId, record.retired ? { retire: true } : { workflowStop: record.workflowStop });
     const { stopping: _asked, ...named } = record;
     return { ...named, childId };
   }
 
-  #stopThere(coreId: string, parentId: string, childId: string, retire: boolean, workflowStop?: number): void {
-    this.#stops.push(coreId, { key: `child:${childId}`, seq: workflowStop ?? this.#stopSeq(), parentId, childId, ...(retire ? { retire: true as const } : {}), ...(workflowStop === undefined ? {} : { workflow: true as const }) });
+  #stopThere(coreId: string, parentId: string, childId: string, { retire, silent, workflowStop }: Pick<Stop, 'retire' | 'silent'> & { workflowStop?: number }): void {
+    this.#stops.push(coreId, { key: `child:${childId}`, seq: workflowStop ?? this.#stopSeq(), parentId, childId, retire, silent, workflow: workflowStop === undefined ? undefined : true });
   }
 
   /**
@@ -494,7 +489,7 @@ export class RemoteDelegation {
     const kept = (this.#core.journal.getSetting(`${RETIRING}${parentId}`) as { coreId: string; requestId: string }[] | undefined) ?? [];
     const rest = kept.filter(entry => entry.coreId !== coreId || entry.requestId !== requestId);
     if (rest.length === kept.length) return;
-    if (childId !== null) this.#stopThere(coreId, parentId, childId, true);
+    if (childId !== null) this.#stopThere(coreId, parentId, childId, { retire: true });
     if (rest.length) this.#core.journal.setSetting(`${RETIRING}${parentId}`, rest);
     else this.#core.journal.deleteSetting(`${RETIRING}${parentId}`);
   }
@@ -503,23 +498,22 @@ export class RemoteDelegation {
     return { coreId: 'local', threadId: thread.id, title: thread.title, project: thread.projectId ? this.#core.journal.getProject(thread.projectId)?.name : undefined, machine: 'Boite', resources: '', status: thread.status, mode: 'team' };
   }
 
-  /** `delegation.report`: what a member says of the children it runs for parents here. A bad entry is skipped, never the batch. */
+  /** `delegation.report`: invalid entries are skipped; a failed write leaves the batch for the outbox to retry. */
   #received(peer: CoordinationPeer, payload: unknown): { ok: true } {
     const reports = (payload as { reports?: unknown } | null)?.reports;
     if (!Array.isArray(reports)) throw invalidParams('delegation.report.reports: expected a list');
     const touched = new Set<string>();
-    for (const report of reports) {
-      try {
-        const rootId = this.#receive(peer, report as Report);
-        if (rootId !== null) touched.add(rootId);
-      } catch (error) { this.#core.log('warn', `delegation report from ${peer.name}: ${messageOf(error)}`); }
-    }
+    const retry = receiveOutboxBatch(reports as Report[], report => {
+      const rootId = this.#receive(peer, report);
+      if (rootId !== null) touched.add(rootId);
+    }, error => this.#core.log('warn', `delegation report from ${peer.name}: ${messageOf(error)}`));
     for (const rootId of touched) {
       this.#host.changed(rootId);
       for (const listener of this.#watchers) {
         try { listener(rootId); } catch (error) { this.#core.log('warn', `delegation report from ${peer.name}: ${messageOf(error)}`); }
       }
     }
+    if (retry) throw new Error('Could not store delegation reports');
     return { ok: true };
   }
 
@@ -813,8 +807,8 @@ export class RemoteDelegation {
     if (raw.origin !== 'agent' && raw.origin !== 'user') throw invalidParams('delegation.letter.origin: expected agent or user');
     const origin = raw.origin;
     // A stop of the parent's that left before this letter and has not arrived yet ends the turn it meant first.
-    if (raw.stop !== undefined) this.#applyStop(childId, link, seqOf(raw.stop, 'delegation.letter.stop'), false, raw.workflowStop === true);
-    const known = raw.seq !== undefined ? seqOf(raw.seq, 'delegation.letter.seq') : applied(this.#parents.get(childId));
+    if (raw.stop !== undefined) this.#applyStop(childId, link, attachedStop(raw));
+    const known = raw.seq !== undefined ? stopSequence(raw.seq, 'delegation.letter.seq') : appliedStop(this.#parents.get(childId));
     const generation = this.#stopGenerations.get(childId) ?? 0;
     // Filed once the turn a stop ended is over: that turn's end would take this instruction for the stop.
     await this.#ending.get(childId);
@@ -830,7 +824,7 @@ export class RemoteDelegation {
       const filed = JSON.parse(existing.data) as AgentLetter;
       return { id: filed.id, status: filed.status, ...(filed.answered === undefined ? {} : { answered: filed.answered }) };
     }
-    if (applied(current) > known || (this.#stopGenerations.get(childId) ?? 0) !== generation) throw refused('delegation.letter: a stop asked after this instruction ended it; send it again to resume the subagent', { field: 'requestId' });
+    if (appliedStop(current) > known || (this.#stopGenerations.get(childId) ?? 0) !== generation) throw refused('delegation.letter: a stop asked after this instruction ended it; send it again to resume the subagent', { field: 'requestId' });
     const child = this.#core.threads.require(childId);
     if (child.archived) throw refused('delegation messages require unarchived threads');
     // A parent writing to a child that waits on a question answers that question.
@@ -867,12 +861,11 @@ export class RemoteDelegation {
     const stops = (payload as { stops?: unknown } | null)?.stops;
     if (!Array.isArray(stops)) throw invalidParams('delegation.stop.stops: expected a list');
     let stopped = 0;
-    for (const entry of stops as Stop[]) {
-      try {
-        const { link, childId } = this.#linked(peer, entry?.parentId, entry?.childId, 'delegation.stop');
-        if (this.#applyStop(childId, link, seqOf(entry.seq, 'delegation.stop.seq'), entry.retire === true, entry.workflow === true)) stopped++;
-      } catch (error) { this.#core.log('info', `delegation stop from ${peer.name}: ${messageOf(error)}`); }
-    }
+    const retry = receiveOutboxBatch(stops as Stop[], entry => {
+      const { link, childId } = this.#linked(peer, entry?.parentId, entry?.childId, 'delegation.stop');
+      if (this.#applyStop(childId, link, { ...entry, seq: stopSequence(entry.seq, 'delegation.stop.seq') })) stopped++;
+    }, error => this.#core.log('info', `delegation stop from ${peer.name}: ${messageOf(error)}`));
+    if (retry) throw new Error('Could not apply delegation stops');
     return { stopped };
   }
 
@@ -881,20 +874,24 @@ export class RemoteDelegation {
    * later one, would end an instruction that followed it. A retirement
    * archives the child whatever its number. True when the child was at work.
    */
-  #applyStop(childId: string, link: ParentLink, seq: number, retire: boolean, workflow: boolean): boolean {
+  #applyStop(childId: string, link: ParentLink, { seq, retire, workflow, silent }: StopIntent): boolean {
     let busy = false;
-    if (seq > applied(link)) {
-      const turnId = workflow ? this.#host.snapshot(childId).lastTurn?.id : undefined;
+    if (seq > appliedStop(link)) {
+      const turnId = workflow === true ? this.#host.snapshot(childId).lastTurn?.id : undefined;
       const next = { ...link, stop: seq, ...(turnId ? { workflowStop: { seq, turnId } } : {}) };
+      const stop = this.#core.journal.db.transaction(() => {
+        const perform = this.#host.prepareStop(childId, silent !== true);
+        this.#core.journal.setSetting(`${PARENT}${childId}`, next);
+        return perform;
+      })();
       this.#parents.set(childId, next);
-      this.#core.journal.setSetting(`${PARENT}${childId}`, next);
-      busy = this.#host.halt(childId);
+      busy = stop();
       if (busy) {
         const ended: Promise<void> = this.#core.scheduler.stopAndWait(childId).catch(() => undefined).finally(() => { if (this.#ending.get(childId) === ended) this.#ending.delete(childId); });
         this.#ending.set(childId, ended);
       }
     }
-    if (retire && !this.#core.threads.require(childId).archived) this.#core.threads.archive(childId, true);
+    if (retire === true && !this.#core.threads.require(childId).archived) this.#core.threads.archive(childId, true);
     return busy;
   }
 }

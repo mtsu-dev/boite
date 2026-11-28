@@ -20,6 +20,10 @@ export type ChildEnd =
 
 export const followUpEndKey = (threadId: string): string => `delegation-follow-up-end:${threadId}`;
 
+export function maintenanceTurn(turn: Turn): boolean {
+  return turn.execution?.operation === 'compact' || turn.execution?.operation === 'keepalive';
+}
+
 /** An advisory cancellation leaves the child waiting for its queued user instruction. */
 export function pendingComposerFollowUp(core: Core, turn: Turn): boolean {
   return (turn.status === 'stopped' || turn.status === 'error') && composerOwnsFollowUp(turn)
@@ -34,7 +38,7 @@ export function taskTurn(core: Core, threadId: string): Turn | null {
 }
 
 export function childEnd(core: Core, turn: Turn): ChildEnd {
-  if (turn.execution?.operation === 'compact' || turn.execution?.operation === 'keepalive') return { kind: 'maintenance' };
+  if (maintenanceTurn(turn)) return { kind: 'maintenance' };
   if (pendingComposerFollowUp(core, turn)) return { kind: 'composer' };
   const live = turn.status === 'done' ? core.threads.agentState.background.get(turn.threadId) ?? [] : [];
   return live.length > 0 ? { kind: 'checkpoint', live } : { kind: 'final' };

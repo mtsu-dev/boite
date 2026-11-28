@@ -46,7 +46,7 @@ export class ThreadRecovery {
     const counts = { requeued: 0, held: 0, handedOver: 0, stopped: 0, failed: 0 };
     for (const turn of stuck) {
       const previous = turn.status;
-      if (previous === 'running' && this.#core.journal.getSetting(userStopKey(turn.id)) === true) {
+      if (this.#core.journal.getSetting(userStopKey(turn.id)) === true) {
         const result = handoff.stoppedResult(turn.id);
         this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
           handoff.forget(turn.threadId);

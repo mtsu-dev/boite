@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { mergeWorkingChildren, RpcErrorCode, threadState, workingChildren, type DelegatedAgent, type ModelInfo, type RpcParams, type ThreadSummary } from '@boite/contracts';
@@ -7,6 +7,7 @@ import { connect, type CoreClient } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { invalidParams } from '../src/errors.ts';
+import { userStopKey } from '../src/threads/turn-settlement.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
 
@@ -335,10 +336,17 @@ test('a remote Stop result arrives while the parent team is paused after restart
   cores.unshift(resumed);
   expect(resumed.core.delegation.config(threadId)).toMatchObject({ paused: true, pausedBy: 'restart' });
 
+  const letters = () => resumed.core.journal.db.query('SELECT status FROM delegation_messages WHERE sender_id = ? AND request_id = ?').all(`${pcId}:${child.thread.id}`, `result:${cut.id}`) as { status: string }[];
+  resumed.core.journal.db.exec(`CREATE TEMP TRIGGER reject_stop_result BEFORE INSERT ON delegation_messages
+    WHEN NEW.request_id = 'result:${cut.id}' BEGIN SELECT RAISE(ABORT, 'injected result write failure'); END`);
   away = false;
+  try {
+    await pc.core.delegation.remote.flush(deskId);
+    expect(letters()).toEqual([]);
+    expect(pc.core.delegation.remote.waiting(deskId).reports).toBeGreaterThan(0);
+  } finally { resumed.core.journal.db.exec('DROP TRIGGER reject_stop_result'); }
   await pc.core.delegation.remote.flush(deskId);
   await waitFor(() => pc.core.delegation.remote.waiting(deskId).reports === 0);
-  const letters = () => resumed.core.journal.db.query('SELECT status FROM delegation_messages WHERE sender_id = ? AND request_id = ?').all(`${pcId}:${child.thread.id}`, `result:${cut.id}`) as { status: string }[];
   expect(letters()).toEqual([{ status: 'received' }]);
   expect(wakes(threadId)).toBe(1);
   const owner = await resumed.connect();
@@ -570,6 +578,58 @@ test('archiving a parent or removing its project retires an unnamed remote child
 
   expect(await owner.call('projects.add', { path: project.path })).toMatchObject({ id: project.id });
   expect(await owner.call('threads.get', { threadId: other.id })).toMatchObject({ id: other.id, archived: false });
+});
+
+test('a remote Stop is retried when its intent could not be stored', async () => {
+  const { held } = answering();
+  const { desk, pc, owner, threadId, pcId, spawn } = await setup();
+  const { thread: child } = await spawn('Read HOLD-ON', '--project', 'notes');
+  await waitFor(() => held.has(child.id));
+  const turn = pc.core.journal.runningTurn(child.id)!;
+  const rootLink = pc.core.delegation.remote.parentOf(child.id)!;
+  pc.core.journal.db.exec(`CREATE TEMP TRIGGER reject_stop BEFORE INSERT ON settings
+    WHEN NEW.key = '${userStopKey(turn.id)}' BEGIN SELECT RAISE(ABORT, 'injected Stop write failure'); END`);
+  try {
+    await owner.call('delegation.stop', { threadId, agentId: child.id });
+    await desk.core.delegation.remote.flush(pcId);
+    expect(desk.core.delegation.remote.waiting(pcId).stops).toBe(1);
+    expect(pc.core.delegation.remote.parentOf(child.id)).toEqual(rootLink);
+    expect(pc.core.journal.getSetting(`remote-parent:${child.id}`)).toEqual(rootLink);
+    expect(pc.core.journal.getSetting(userStopKey(turn.id))).toBeUndefined();
+    expect(held.has(child.id)).toBe(true);
+  } finally { pc.core.journal.db.exec('DROP TRIGGER reject_stop'); }
+  await desk.core.delegation.remote.flush(pcId);
+  await waitFor(() => pc.core.journal.getTurn(turn.id)?.status === 'stopped');
+  expect(desk.core.delegation.remote.waiting(pcId).stops).toBe(0);
+  expect(pc.core.delegation.remote.parentOf(child.id)?.stop).toBeGreaterThan(0);
+});
+
+test.each(['running', 'queued'] as const)('a remote team Stop of a %s turn sends no result when the parent resumes before reports arrive', async status => {
+  const { held } = answering();
+  const { desk, pc, owner, threadId, deskId, pcId, spawn } = await setup();
+  if (status === 'queued') {
+    const updating = spyOn(pc.core.updates, 'holds').mockReturnValue(true);
+    restores.push(() => updating.mockRestore());
+  }
+  const { thread: child } = await spawn('Read HOLD-ON', '--project', 'notes');
+  const current = () => pc.core.journal.listTurns(child.id).at(-1);
+  await waitFor(() => current()?.status === status && (status === 'queued' || held.has(child.id)));
+  const turn = current()!;
+  const config = desk.core.delegation.config(threadId);
+  const report = pc.core.coordination.request.bind(pc.core.coordination);
+  let away = true;
+  pc.core.coordination.request = (peer, operation, payload) => operation === 'delegation.report' && away
+    ? Promise.reject(new Error('parent offline')) : report(peer, operation, payload);
+
+  expect(await owner.call('delegation.stop', { threadId })).toEqual({ stopped: 1 });
+  await desk.core.delegation.remote.flush(pcId);
+  await waitFor(() => pc.core.journal.getTurn(turn.id)?.status === 'stopped');
+  await owner.call('delegation.configure', { threadId, config });
+  away = false;
+  await pc.core.delegation.remote.flush(deskId);
+  await waitFor(() => desk.core.delegation.remote.child(threadId, child.id)?.state?.lastTurn?.status === 'stopped');
+  expect(desk.core.journal.db.query('SELECT 1 FROM delegation_messages WHERE sender_id = ? AND request_id = ?')
+    .get(`${pcId}:${child.id}`, `result:${turn.id}`)).toBeNull();
 });
 
 test('a stop sent again because its answer was lost does not stop the instruction that follows it', async () => {

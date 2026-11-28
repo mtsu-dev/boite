@@ -41,10 +41,8 @@ export function finishTurn(core: Core, finished: Turn, cause: TurnClose, patch?:
   const toolsClosed = finished.status !== 'done' ? closeTools(core, threadId, finished.id) : 0;
   const type = cause !== 'settled' && finished.status === 'stopped' ? 'turn.stopped' : 'turn.finished';
   core.journal.append({ type, threadId, version: 1, payload: finished }, () => core.journal.putTurn(finished));
-  if (finished.startedAt !== null) {
-    core.journal.deleteSetting(userStopKey(finished.id));
-    if (finished.status === 'stopped') core.journal.deleteSetting(userStopResultKey(finished.id));
-  }
+  core.journal.deleteSetting(userStopKey(finished.id));
+  if (finished.status === 'stopped' && finished.startedAt !== null) core.journal.deleteSetting(userStopResultKey(finished.id));
   // In the same transaction: the next turn knows whether the brain's instructions go again.
   brainContextEnded(core, finished);
   coordinationGuideEnded(core, finished);

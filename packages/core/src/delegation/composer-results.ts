@@ -1,9 +1,23 @@
 import type { Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { followUpEndKey } from './completion.ts';
+import { followUpEndKey, maintenanceTurn, pendingComposerFollowUp, taskTurn } from './completion.ts';
 import { sentBack } from '../workflows/follow-up.ts';
 
 const PREFIX = 'delegation-composer-result:';
+
+/** Record the Stop and its result policy before its caller ends any live work. */
+export function stageChildStop(core: Core, threadId: string, reportResult: boolean, coreOwned: boolean): Turn | null {
+  const target = core.scheduler.stopTarget(threadId);
+  const turn = core.journal.runningTurn(threadId) ?? (target ? core.journal.getTurn(target) : null);
+  if (turn?.status === 'running' || turn?.status === 'queued') {
+    core.threads.handoff.recordUserStop(turn.id);
+    if (!maintenanceTurn(turn) && (!coreOwned || sentBack(core, threadId, turn))) stageComposerResult(core, turn, reportResult);
+  }
+  const last = core.composer.hasQueuedInput(threadId) || core.activity.composerFollowUp(threadId) ? taskTurn(core, threadId) : null;
+  if (!last || !pendingComposerFollowUp(core, last)) return null;
+  stageComposerResult(core, last, reportResult);
+  return last;
+}
 
 /** Mark the wait ended and keep the result deliverable across worktree cleanup and shutdown. */
 export function stageComposerResult(core: Core, turn: Turn, reportResult = true): void {
@@ -12,15 +26,11 @@ export function stageComposerResult(core: Core, turn: Turn, reportResult = true)
   const workflow = core.workflows.owns(turn.threadId);
   core.journal.db.transaction(() => {
     core.journal.setSetting(followUpEndKey(turn.threadId), turn.id);
-    if (reportResult && (!config || config.enabled) && (!workflow || sentBack(core, turn.threadId, turn))) core.journal.setSetting(`${PREFIX}${turn.id}`, true);
-  })();
-}
-
-/** A Stop and its result obligation survive together, even before the turn can close. */
-export function recordChildStop(core: Core, turn: Turn, reportsResult: boolean): void {
-  core.journal.db.transaction(() => {
-    core.threads.handoff.recordUserStop(turn.id);
-    if (reportsResult && !turn.execution?.operation) stageComposerResult(core, turn);
+    if ((!config || config.enabled) && (!workflow || sentBack(core, turn.threadId, turn))) {
+      const key = `${PREFIX}${turn.id}`;
+      // A team Stop suppresses new results and preserves a result already owed.
+      if (reportResult || core.journal.getSetting(key) !== true) core.journal.setSetting(key, reportResult);
+    }
   })();
 }
 
@@ -28,16 +38,20 @@ export function hasComposerResult(core: Core, turnId: string): boolean {
   return core.journal.getSetting(`${PREFIX}${turnId}`) === true;
 }
 
+export function composerResultSuppressed(core: Core, turnId: string): boolean {
+  return core.journal.getSetting(`${PREFIX}${turnId}`) === false;
+}
+
 export function clearComposerResult(core: Core, turnId: string): void {
-  if (hasComposerResult(core, turnId)) core.journal.deleteSetting(`${PREFIX}${turnId}`);
+  core.journal.deleteSetting(`${PREFIX}${turnId}`);
 }
 
 export function pendingComposerResults(core: Core): Turn[] {
-  const rows = core.journal.db.query('SELECT key FROM settings WHERE key GLOB ?').all(`${PREFIX}*`) as { key: string }[];
-  return rows.flatMap(({ key }) => {
+  const rows = core.journal.db.query('SELECT key, value FROM settings WHERE key GLOB ?').all(`${PREFIX}*`) as { key: string; value: string }[];
+  return rows.flatMap(({ key, value }) => {
     const turn = core.journal.getTurn(key.slice(PREFIX.length));
-    if (turn) return turn.finishedAt !== null ? [turn] : [];
-    core.journal.deleteSetting(key);
+    if (!turn || (value === 'false' && turn.finishedAt !== null)) core.journal.deleteSetting(key);
+    else if (value === 'true' && turn.finishedAt !== null) return [turn];
     return [];
   });
 }

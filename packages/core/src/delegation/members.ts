@@ -5,6 +5,12 @@ import { pendingComposerFollowUp, taskTurn } from './completion.ts';
 import type { ChildState } from './remote-wire.ts';
 import { turnResult } from './results.ts';
 
+/** Load and the derived live fields arrive in thread.updated without changing team history. */
+export function teamState(thread: ThreadSummary): string {
+  const { load, progress, runningSince, requestSince, backgroundWork, backgroundWait, pendingMove, moveNote, pendingAnswers, openQuestions, subagentQuestions, remoteSubagents, retry, recovery, pullRequestWatches, wake, ...stored } = thread;
+  return JSON.stringify(Object.fromEntries(Object.entries(stored).sort(([left], [right]) => left.localeCompare(right))));
+}
+
 /** The status of a child here, also reported to a parent on another machine. */
 export function childSnapshot(core: Core, threadId: string): Omit<ChildState, 'project'> {
   const thread = withLoad(core, core.threads.require(threadId));

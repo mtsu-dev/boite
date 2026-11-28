@@ -22,23 +22,18 @@ import { pauseHold, pauseOver } from './delegation/pauses.ts';
 import { carryChildTurn, dropRestartCuts, endRestart, resumeRestartCuts } from './delegation/restart.ts';
 import { delegationPrompt, mailOrigin, subagentRole, teamInstructions } from './delegation/guide.ts';
 import { RemoteDelegation } from './delegation/remote.ts';
-import { childBusy, childQuestions, childSnapshot, localMember } from './delegation/members.ts';
+import { childBusy, childQuestions, childSnapshot, localMember, teamState } from './delegation/members.ts';
 import { sentBack } from './workflows/follow-up.ts';
 import type { Connection } from './router.ts';
 import { pendingMail } from './delegation/pending-mail.ts';
 import { composerOwnsFollowUp } from './threads/stopped-input.ts';
-import { stageComposerResult, clearComposerResult, recordChildStop } from './delegation/composer-results.ts';
+import { stageComposerResult, clearComposerResult, composerResultSuppressed, stageChildStop } from './delegation/composer-results.ts';
 
 interface AgentRow { thread_id: string; root_id: string; request_id: string; fingerprint: string; profile_id: string; task: string }
 interface LetterRow { data: string; fingerprint: string }
 /** A permission the user answers within this time, watching the child, does not wake its parent. */
 export const PERMISSION_WAKE_MS = 30_000;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-/** Load and the derived live fields arrive in thread.updated without changing team history. */
-function teamState(thread: ThreadSummary): string {
-  const { load, progress, runningSince, requestSince, backgroundWork, backgroundWait, pendingMove, moveNote, pendingAnswers, openQuestions, subagentQuestions, remoteSubagents, retry, recovery, pullRequestWatches, wake, ...stored } = thread;
-  return JSON.stringify(Object.fromEntries(Object.entries(stored).sort(([left], [right]) => left.localeCompare(right))));
-}
 /** A family of ordinary threads. No extra orchestrator model or provider process. */
 export class Delegation {
   readonly waits: DelegationWaits;
@@ -77,7 +72,7 @@ export class Delegation {
       changed: rootId => this.#changed(rootId),
       kick: threadId => this.#kick(threadId),
       snapshot: threadId => childSnapshot(core, threadId),
-      halt: threadId => this.#halt(threadId),
+      prepareStop: (threadId, reportResult) => this.#prepareStop(threadId, reportResult),
       instructed: threadId => { this.#stopped.delete(threadId); },
       file: (letter, rootId, senderId, recipientId, requestId, fingerprint) => this.#core.journal.append({ type: 'delegation.sent', threadId: rootId, version: 1, payload: letter }, () => {
         this.#core.journal.db.query('INSERT OR IGNORE INTO delegation_messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(letter.id, rootId, senderId, recipientId, requestId, fingerprint, letter.status, letter.createdAt, JSON.stringify(letter));
@@ -585,6 +580,7 @@ export class Delegation {
     if (turn.status !== 'done') { this.#stopped.add(thread.id); this.#core.pullRequestWatches.endThread(thread.id); }
     // A child that is over leaves no question behind for its parent to find.
     if (live.length === 0) closeQuestions(this.#core, thread.id, `the core, since the subagent's turn ended ${turn.status}`);
+    if (composerResultSuppressed(this.#core, turn.id)) return clearComposerResult(this.#core, turn.id);
     if (root) {
       const config = this.config(root.id);
       if (!config.enabled || root.archived) return clearComposerResult(this.#core, turn.id);
@@ -745,26 +741,32 @@ export class Delegation {
   }
   /** Stops one child: final until an explicit new instruction, so no restart continues it, and a parent elsewhere hears so. True when it was at work. */
   #halt(id: string, reportResult = true): boolean {
-    const running = this.#core.journal.runningTurn(id);
-    if (running) recordChildStop(this.#core, running, reportResult && !this.#stepOwned(id));
+    const stop = this.#core.journal.db.transaction(() => this.#prepareStop(id, reportResult))();
+    return stop();
+  }
+
+  /** Persists Stop and its result policy in the caller's transaction before it ends any live work. */
+  #prepareStop(id: string, reportResult: boolean): () => boolean {
+    const followUp = stageChildStop(this.#core, id, reportResult, this.#stepOwned(id));
+    return () => this.#finishStop(id, followUp);
+  }
+
+  #finishStop(id: string, followUp: Turn | null): boolean {
     this.remote.halted(id);
     endRestart(this.#core, id);
     // A child at rest on its own background work is at work too: stopping it ends that work.
     const waiting = withLoad(this.#core, this.#core.threads.require(id)).backgroundWait?.state === 'waiting';
-    const last = this.#core.composer.hasQueuedInput(id) || this.#core.activity.composerFollowUp(id) ? this.#lastTurn(id) : null;
-    const queuedFollowUp = last !== null && pendingComposerFollowUp(this.#core, last);
-    if (queuedFollowUp) stageComposerResult(this.#core, last, reportResult);
     this.#stopped.add(id);
     this.#core.pullRequestWatches.endThread(id);
     this.#core.activity.pauseAll(id);
     this.#core.coordination.pause(id);
-    const turn = this.#core.scheduler.stop(id), busy = turn || waiting || queuedFollowUp;
+    const turn = this.#core.scheduler.stop(id), busy = turn || waiting || followUp !== null;
     closeQuestions(this.#core, id, 'the core, since the subagent was stopped');
     this.#core.threads.releaseAgent(id);
     // Turn completion and workflows settle their own worktrees.
-    if (!turn && !queuedFollowUp && !this.#core.workflows.owns(id)) void this.worktrees.settle(id);
-    if (!queuedFollowUp) this.#core.workflows.stepStopped(id);
-    else this.#finishComposerFollowUp(last);
+    if (!turn && !followUp && !this.#core.workflows.owns(id)) void this.worktrees.settle(id);
+    if (followUp) this.#finishComposerFollowUp(followUp);
+    else this.#core.workflows.stepStopped(id);
     for (const letter of this.#letters(id, 'received')) this.#update(letter, 'rejected', 'Agent stopped');
     for (const letter of this.#letters(id, 'uncertain')) {
       if (letter.error?.startsWith('Queued for provider turn ')) this.#update(letter, 'rejected', 'Agent stopped before provider delivery');
