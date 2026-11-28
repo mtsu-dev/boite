@@ -195,12 +195,13 @@ export async function settleTurn(core: Core, state: Settlement): Promise<Complet
       return settled;
     } catch (error) {
       reportSettlementError(core, running.threadId, running.id, `persistence attempt ${++retry}`, error);
-      if (core.stopping || core.journal.isClosed()) return null;
+      // A restart handoff closes admission before it waits for terminal writes.
+      if (core.draining || core.journal.isClosed()) return null;
       const delay = Math.min(100 * 2 ** Math.min(retry - 1, 6), 5000);
       const until = Date.now() + delay;
       while (Date.now() < until) {
         await new Promise<void>(resolve => setTimeout(resolve, Math.min(100, until - Date.now())));
-        if (core.stopping || core.journal.isClosed()) return null;
+        if (core.draining || core.journal.isClosed()) return null;
       }
     }
   }

@@ -240,11 +240,12 @@ test.each([
 test.each([
   ['permission restart', 'acknowledged'], ['permission restart', 'rejected'], ['permission restart', 'capacity'], ['agent update', 'capacity'],
   ['core restart', 'acknowledged'], ['core restart', 'completed'], ['core restart', 'explicit stop'], ['core restart', 'explicit stop before acknowledgement'],
+  ['core restart', 'acknowledged after persistence rollback'],
   ['direct Stop', 'explicit stop before acknowledgement'],
 ] as const)('ACP leaves the queue paused after cancellation during %s (%s)', async (interruption, outcome) => {
-  const started = await startThread({ warmProcessMinutes: 0 });
-  const { threadId } = started;
-  let { client } = started;
+  const shutdown = Promise.withResolvers<void>();
+  let client = await startCore({ warmProcessMinutes: 0 }, shutdown.resolve);
+  const threadId = await acpThread(client);
   const first = harness!;
   let { core } = first;
   const capacity = outcome === 'capacity';
@@ -269,6 +270,20 @@ test.each([
   await waitFor(() => fakeLog().includes('session/cancel'));
   await setPaused(true);
   const stop = spyOn(core.threads.runner.handles.get(threadId)!, 'stop');
+  const retrySettlement = outcome === 'acknowledged after persistence rollback';
+  const rolledBack = Promise.withResolvers<void>();
+  const putTurn = core.journal.putTurn.bind(core.journal);
+  let terminalWrites = 0;
+  const persist = retrySettlement ? spyOn(core.journal, 'putTurn').mockImplementation(turn => {
+    if (turn.id === id && turn.status === 'stopped') {
+      terminalWrites += 1;
+      if (terminalWrites === 1) {
+        rolledBack.resolve();
+        throw new Error('injected terminal write failure');
+      }
+    }
+    putTurn(turn);
+  }) : undefined;
   let restartCore: Promise<void> | undefined;
   if (interruption === 'permission restart') {
     const refusal = `${logFile}.refuse-mode`;
@@ -280,6 +295,12 @@ test.each([
     spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
     expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
     await waitFor(() => stop.mock.calls.length > 0);
+  } else if (retrySettlement) {
+    restartCore = rolledBack.promise.then(async () => {
+      expect(core.requestHandoffShutdown(0)).toBe('accepted');
+      await shutdown.promise;
+      await closeForHandoff(first);
+    });
   } else if (interruption === 'core restart') {
     restartCore = closeForHandoff(first);
     await waitFor(() => stop.mock.calls.length > 0);
@@ -294,22 +315,24 @@ test.each([
       core = next.core;
       client = await next.connect();
     } else await waitFor(() => countLogLines(fakeLog(), 'session/prompt') > 1 || core.journal.getTurn(id)?.finishedAt != null);
+    if (retrySettlement) await waitFor(() => !core.journal.getSetting('restart-handoff'));
     expect(core.journal.getTurn(id)?.status).toBe(completed ? 'done' : capacity ? 'error' : 'stopped');
-    const execution = core.journal.getTurn(id)?.execution;
-    expect(execution?.queuedInputSession).toEqual(outcome === 'acknowledged' ? expect.any(String) : undefined);
-    expect(execution?.queuedInputInterrupted).toBe(outcome === 'rejected' || capacity ? true : undefined);
+    expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
     expect(core.journal.listTurns(threadId)).toHaveLength(1);
+    const execution = core.journal.getTurn(id)?.execution;
+    expect(execution?.queuedInputSession).toEqual(outcome === 'acknowledged' || retrySettlement ? expect.any(String) : undefined);
+    expect(execution?.queuedInputInterrupted).toBe(outcome === 'rejected' || capacity ? true : undefined);
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(1);
     expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
     expect(core.threads.runner.retryOf(threadId)).toBeNull();
-    expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
+    if (retrySettlement) expect(terminalWrites).toBe(2);
 
     await setPaused(false);
     await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(2);
     expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(completed ? 0 : 1);
     expect(setModeCount('plan')).toBe(interruption === 'permission restart' ? 1 : 0);
-  } finally { await next?.stop(); }
+  } finally { persist?.mockRestore(); await next?.stop(); }
 }, 20_000);
 
 test.each([
@@ -895,8 +918,8 @@ async function sdkWithUpdateSeam(): Promise<{ sdk: AcpSdk; send: (notification: 
   };
 }
 
-async function startCore(settings?: Partial<Settings>): Promise<CoreClient> {
-  const started = await startTestCore(settings === undefined ? {} : { settings });
+async function startCore(settings?: Partial<Settings>, onShutdown?: () => void): Promise<CoreClient> {
+  const started = await startTestCore({ settings, onShutdown });
   harness = started;
   logFile = join(started.dataDir, 'acp-fake.log');
   // `spawnChild` gets `process.env` plus the account environment, so this is

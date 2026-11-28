@@ -670,6 +670,9 @@ export class Core {
 
   get stopping(): boolean { return this.#stopping; }
 
+  /** True once shutdown begins draining work, after any restart handoff grace. */
+  get draining(): boolean { return this.#drainPromise !== null; }
+
   async close(): Promise<void> {
     this.composer.stop();
     const closingAt = performance.now();
