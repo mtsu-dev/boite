@@ -67,7 +67,7 @@ export const strings = {
     /** Switching model inside a live conversation, the composer's picker. */
     agents: {
       title: 'A conversation that follows your work',
-      body: 'Switch agents, dictate a message, inspect the result. Stay in the same thread.',
+      body: 'Hand the task to another agent midway. It picks up the same thread and its history.',
     },
 
     /** Dictation: what it does, and where this core stands on setting it up. */
