@@ -624,6 +624,40 @@ test('a remote Stop resumes applying its committed intent after cleanup fails', 
   await waitFor(() => pc.core.journal.getTurn(turn.id)?.status === 'stopped');
 });
 
+test('a retried remote Stop leaves questions open after a later local turn', async () => {
+  const { held } = answering();
+  const { desk, pc, owner, pcOwner, threadId, pcId, spawn } = await setup();
+  const { thread: child } = await spawn('Read HOLD-ON', '--project', 'notes');
+  await waitFor(() => held.has(child.id));
+  const turn = pc.core.journal.runningTurn(child.id)!;
+  const pause = pc.core.coordination.pause.bind(pc.core.coordination);
+  pc.core.coordination.pause = () => {
+    pc.core.coordination.pause = pause;
+    throw new Error('injected coordination pause failure');
+  };
+  await owner.call('delegation.stop', { threadId, agentId: child.id });
+  await desk.core.delegation.remote.flush(pcId);
+  expect(desk.core.delegation.remote.waiting(pcId).stops).toBe(1);
+
+  const request = desk.core.coordination.request.bind(desk.core.coordination);
+  desk.core.coordination.request = (peer, operation, payload) => operation === 'delegation.stop'
+    ? Promise.reject(new Error('Stop retry delayed')) : request(peer, operation, payload);
+  held.get(child.id)!();
+  await waitFor(() => !pc.core.threads.isBusy(child.id));
+  expect(pc.core.journal.getTurn(turn.id)?.status).toBe('stopped');
+  const later = await pcOwner.call('turns.start', { threadId: child.id, prompt: 'Read a new page HOLD-ON' });
+  await waitFor(() => held.has(child.id));
+  held.get(child.id)!();
+  await waitFor(() => pc.core.scheduler.stopTarget(child.id) === undefined);
+  expect(pc.core.journal.getTurn(later.id)?.status).toBe('done');
+  const { questionId } = await pcOwner.call('questions.ask', { threadId: child.id, text: 'Which index?', options: [] });
+
+  desk.core.coordination.request = request;
+  await desk.core.delegation.remote.flush(pcId);
+  expect(desk.core.delegation.remote.waiting(pcId).stops).toBe(0);
+  expect(await pcOwner.call('questions.list', { threadId: child.id })).toEqual([expect.objectContaining({ id: questionId, turnId: later.id })]);
+});
+
 test.each(['before delivery', 'after delivery', 'with a write retry', 'between two targeted Stops of a queued turn'] as const)('an owed remote result survives team Stop %s', async when => {
   const { held, wakes } = answering();
   const { desk, pc, owner, threadId, deskId, pcId, spawn } = await setup();

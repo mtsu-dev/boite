@@ -78,7 +78,7 @@ export class RemoteDelegation {
   readonly #spawning = new Map<string, { fingerprint: string; result: Promise<DelegatedAgent> }>();
   readonly #starting = new Map<string, { fingerprint: string; result: Promise<Started> }>();
   /** Committed Stops whose live effects still need applying in this process. */
-  readonly #committedStops = new Map<string, { target: string | undefined; perform: () => boolean }>();
+  readonly #committedStops = new Map<string, { target: string | undefined; lastTurnId: string | undefined; perform: () => boolean }>();
   /** Children here whose turn a stop of their parent elsewhere ended, until that turn is over. */
   readonly #ending = new Map<string, Promise<void>>();
   /** Stops on this machine invalidate instructions already waiting for a preceding turn to end. */
@@ -868,13 +868,14 @@ export class RemoteDelegation {
       const turnId = workflow === true ? this.#host.snapshot(childId).lastTurn?.id : undefined;
       const next = { ...link, stop: seq, ...(turnId ? { workflowStop: { seq, turnId } } : {}) };
       const target = this.#core.scheduler.stopTarget(childId);
+      const lastTurnId = this.#core.journal.lastTurn(childId)?.id;
       const perform = this.#core.journal.db.transaction(() => {
         const perform = this.#host.prepareStop(childId, silent !== true);
         this.#core.journal.setSetting(`${PARENT}${childId}`, next);
         return perform;
       })();
       this.#parents.set(childId, next);
-      this.#committedStops.set(childId, { target, perform });
+      this.#committedStops.set(childId, { target, lastTurnId, perform });
       busy = this.#finishCommittedStop(childId) || busy;
     }
     if (retire === true && !this.#core.threads.require(childId).archived) this.#core.threads.archive(childId, true);
@@ -886,7 +887,9 @@ export class RemoteDelegation {
     if (!stop) return false;
     const scheduler = this.#core.scheduler;
     const current = scheduler.stopTarget(childId);
-    const busy = (current === undefined || current === stop.target) && stop.perform();
+    // An idle child may already have finished another turn since this Stop was committed.
+    const sameWork = current === undefined ? this.#core.journal.lastTurn(childId)?.id === stop.lastTurnId : current === stop.target;
+    const busy = sameWork && stop.perform();
     this.#committedStops.delete(childId);
     if (busy && current !== undefined && scheduler.stopTarget(childId) === current) {
       const ended = scheduler.stopAndWait(childId).catch(() => undefined).finally(() => { if (this.#ending.get(childId) === ended) this.#ending.delete(childId); });
