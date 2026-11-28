@@ -311,6 +311,58 @@ test.each([
   } finally { await next?.stop(); }
 }, 20_000);
 
+test.each(['the final checkpoint', 'a persistence retry'] as const)('an explicit Stop during %s overrides an acknowledged ACP queued cancellation', async phase => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const { core } = harness!;
+  const { id } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] [confirm-on-gate]' });
+  const queued = [{ id: 'late-stop-follow-up', text: 'Queued before Stop', attachments: [] }];
+  const setPaused = async (paused: boolean) => {
+    const current = core.composer.storage.get('inputs', threadId);
+    const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: current.revision,
+      value: { input: { text: '', attachments: [], paused, queued } } });
+    expect(saved.accepted).toBe(true);
+  };
+  await setPaused(false);
+  writeFileSync(`${logFile}.first`, 'ready');
+  writeFileSync(`${logFile}.second`, 'ready');
+  await waitFor(() => fakeLog().includes('session/cancel'));
+  await setPaused(true);
+
+  const checkpoint = Promise.withResolvers<void>();
+  const end = phase === 'the final checkpoint' ? spyOn(core.threads.codeCheckpoints, 'end').mockReturnValueOnce(checkpoint.promise) : undefined;
+  const putTurn = core.journal.putTurn.bind(core.journal);
+  let writeFailed = false;
+  const persist = phase === 'a persistence retry' ? spyOn(core.journal, 'putTurn').mockImplementation(turn => {
+    if (turn.id === id && turn.status === 'stopped') {
+      writeFailed = true;
+      throw new Error('terminal write unavailable');
+    }
+    putTurn(turn);
+  }) : undefined;
+  try {
+    writeFileSync(`${logFile}.end`, 'ready');
+    if (end) await waitFor(() => end.mock.calls.some(([turnId]) => turnId === id));
+    else await waitFor(() => writeFailed);
+    expect(core.threads.runner.handles.has(threadId)).toBe(false);
+    expect(core.journal.getTurn(id)?.status).toBe('running');
+    expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+  } finally {
+    checkpoint.resolve();
+    end?.mockRestore();
+    persist?.mockRestore();
+  }
+  await waitFor(() => core.journal.getTurn(id)?.status === 'stopped');
+  expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBeUndefined();
+  expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
+
+  await setPaused(false);
+  await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
+  expect(countLogLines(fakeLog(), 'initialize')).toBe(1);
+  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+  expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+  expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+}, 20_000);
+
 test.each(['restart', 'agent update on the warm process', 'manual recovery', 'manual recovery with an agent update before dispatch', 'manual recovery with an agent update after dispatch'])('ACP %s during a queued follow-up recovers both requests on the loaded session', async method => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const first = harness!;

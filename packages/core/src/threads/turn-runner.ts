@@ -4,7 +4,7 @@ import { assertDriverRunnable, getDriver, releaseThread } from '../drivers/index
 import type { TurnHandle, TurnResult } from '../drivers/types.ts';
 import { messageOf, refused, RpcFailure } from '../errors.ts';
 import { logMessageOf } from '../log-errors.ts';
-import { reportSettlementError, settleTurn, userStopKey } from './turn-settlement.ts';
+import { reportSettlementError, settleTurn } from './turn-settlement.ts';
 import type { ThreadStore } from '../threads.ts';
 import { withLoad } from './records.ts';
 import { markRunning } from './lifecycle.ts';
@@ -174,15 +174,7 @@ export class TurnRunner {
     const { thread, running } = state;
     try { await this.#finishCheckpoint(state); }
     catch (error) { reportSettlementError(this.#core, threadId, turnId, 'checkpoint', error); }
-    finally { this.#attempts.close(threadId); }
-    if (this.#core.journal.isClosed()) return;
-    if (state.stop.signal.aborted && result.status !== 'stopped' && this.#core.journal.getSetting(userStopKey(turnId)) === true) {
-      result = { ...result, status: 'stopped', error: undefined };
-    }
-    try { this.#core.delegation.submitted(threadId, turnId, result.status === 'done'); }
-    catch (error) { reportSettlementError(this.#core, threadId, turnId, 'delegation submission', error); }
     const queuedInputSession = result.queuedInputCancelled ? result.sessionId : null;
-    const queuedInputInterrupted = result.queuedInputInterrupted === true;
     const finished: Turn = {
       ...running,
       status: result.status === 'done' ? 'done' : result.status,
@@ -191,12 +183,13 @@ export class TurnRunner {
       error: result.error ?? null,
       ...(running.execution && queuedInputSession !== null
         ? { execution: { ...running.execution, queuedInputSession } } : {}),
-      ...(running.execution && queuedInputInterrupted
+      ...(running.execution && result.queuedInputInterrupted
         ? { execution: { ...running.execution, queuedInputInterrupted: true } } : {}),
       ...(result.checkpoint ? { checkpoint: result.checkpoint } : {}),
       ...(result.agentTotals ? { agentTotals: result.agentTotals } : {}),
     };
-    const completion = await settleTurn(this.#core, { queued, running, thread, result, started, finished });
+    const settlement = { queued, running, thread, result, started, finished };
+    const completion = await settleTurn(this.#core, settlement).finally(() => this.#attempts.close(threadId));
     // No in-memory events or after-finish effects run before the transaction
     // commits. Even a failure in the thread write cannot publish completion twice.
     if (completion === null) {
@@ -204,6 +197,9 @@ export class TurnRunner {
       if (!this.#core.journal.isClosed()) this.threads.progress.end(threadId, turnId);
       return;
     }
+    result = settlement.result;
+    try { this.#core.delegation.submitted(threadId, turnId, result.status === 'done'); }
+    catch (error) { reportSettlementError(this.#core, threadId, turnId, 'delegation submission', error); }
     const { next, sameSession, threadOwned } = completion;
     this.threads.progress.end(threadId, turnId);
     if (threadOwned) {
@@ -242,6 +238,7 @@ export class TurnRunner {
     // A Stop pauses coordination until the user's next message. Failures and queued follow-ups leave it available.
     // A keepalive was only waiting.
     const keepalive = queued.execution?.operation === 'keepalive';
+    const queuedInputInterrupted = result.queuedInputInterrupted === true;
     if (result.status === 'stopped' && !keepalive && !result.queuedInputCancelled && !queuedInputInterrupted) this.#core.coordination.pause(threadId);
     // A spent subscription window: the thread may resume by itself once it resets (`threads/limit-resume.ts`).
     if (result.status === 'error' && !queuedInputInterrupted && result.refusal?.kind === 'usage-limit' && !next.archived && !keepalive) this.threads.limitResumes.turnFailed(next, finished, result.refusal.resetsAt);

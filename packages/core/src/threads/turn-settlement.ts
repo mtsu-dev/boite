@@ -162,6 +162,21 @@ export async function settleTurn(core: Core, state: Settlement): Promise<Complet
           }));
           return null;
         }
+        // Stop can arrive after the driver has returned, even between persistence attempts.
+        if (core.journal.getSetting(userStopKey(running.id)) === true) {
+          const error = state.result.status === 'stopped' ? state.result.error : undefined;
+          state.result = {
+            ...state.result,
+            status: 'stopped',
+            error,
+            queuedInputCancelled: undefined,
+            queuedInputInterrupted: undefined,
+            queuedInputCompleted: undefined,
+          };
+          finished.status = 'stopped';
+          finished.error = error ?? null;
+          finished.execution = running.execution;
+        }
         // A driver can revise its usage after returning while the same execution is still settling.
         finished.usage = owned!.usage ?? finished.usage;
         // Read once the answer is written: the flag rides on the turn every listener of `turn.finished` gets.

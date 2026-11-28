@@ -786,38 +786,6 @@ descriptor uses additional fields available to other providers:
   same port and same path, so the fetch lands on the agent's listener and
   nowhere else on the machine. [accounts.md](accounts.md) has the flow.
 
-### Queued input on ACP
-
-Grok and OpenCode 2's native server steer the running prompt. On other ACP
-transports, Boite can ask the agent to cancel its prompt when the last active
-tool finishes. The queued message starts through the normal turn queue. After
-an acknowledged cancellation, it reuses the running process without replaying
-the original input or the older stopped messages that prompt carried. A fresh
-process that loads the same session gets those messages again, since its
-saved history may predate the cancellation. A reported missing session uses
-the normal reload and history recovery path. A restart leaves a turn whose
-cancellation was acknowledged to the normal queued delivery path.
-If the agent ignores cancellation, the message waits for the prompt to end.
-Before cancellation, Boite checks that the working folder exists and runs the
-same synchronous input and execution checks as turn admission. It rechecks the
-tool boundary and queue after reading the filesystem. The composer processes
-the latest completion even when several arrive together. New tool completions
-and Send now can proceed while the folder check is pending. If the agent resumes
-streaming its answer or reasoning, the queue waits for the next tool completion
-or the end of the turn. Compaction progress reported during the active prompt
-keeps the queue waiting until the compaction ends and another tool finishes,
-or the turn ends. A missing folder or a choice that needs model discovery
-waits for the active turn to end. A pause accepted before admission keeps the
-message queued. The ACP process also checks its negotiated image support.
-The next turn checks the input again at admission. Pending cards, selection
-changes and active goals leave the message queued, as do prompts carrying
-history from an account switch or compaction and the first result owed to
-a thread's starter. A permission request arriving during cancellation can
-still open a card while the agent runs. A Hermes delegation or an
-Antigravity child launch can prevent automatic cancellation on later prompts
-in the same process, where children can still be active. Explicit Send now
-can still interrupt.
-
 `quirks` turns on a dialect the ACP driver knows, and there are three.
 `quirks: ["antigravity"]` folds a tool call's command, working directory and
 output under one spelling and draws an `interaction_` permission request as the
@@ -928,6 +896,38 @@ fails with its exit code and the last line it wrote to stderr. Stderr is read in
 whole lines, a line cut at 64 KB. A tool's text output and a markdown document
 are cut at 64K characters with a note saying where, and a diff whose two sides
 pass that size is drawn as a sentence giving its size.
+
+### Queued input on ACP
+
+Grok and OpenCode 2's native server steer the running prompt. On other ACP
+transports, Boite can ask the agent to cancel its prompt when the last active
+tool finishes. The queued message starts through the normal turn queue. After
+an acknowledged cancellation, it reuses the running process without replaying
+the original input or the older stopped messages that prompt carried. A fresh
+process that loads the same session gets those messages again, since its
+saved history may predate the cancellation. A reported missing session uses
+the normal reload and history recovery path. A restart leaves a turn whose
+cancellation was acknowledged to the normal queued delivery path.
+If the agent ignores cancellation, the message waits for the prompt to end.
+Before cancellation, Boite checks that the working folder exists and runs the
+same synchronous input and execution checks as turn admission. It rechecks the
+tool boundary and queue after reading the filesystem. The composer processes
+the latest completion even when several arrive together. New tool completions
+and Send now can proceed while the folder check is pending. If the agent resumes
+streaming its answer or reasoning, the queue waits for the next tool completion
+or the end of the turn. Compaction progress reported during the active prompt
+keeps the queue waiting until the compaction ends and another tool finishes,
+or the turn ends. A missing folder or a choice that needs model discovery
+waits for the active turn to end. A pause accepted before admission keeps the
+message queued. The ACP process also checks its negotiated image support.
+The next turn checks the input again at admission. Pending cards, selection
+changes and active goals leave the message queued, as do prompts carrying
+history from an account switch or compaction and the first result owed to
+a thread's starter. A permission request arriving during cancellation can
+still open a card while the agent runs. A Hermes delegation or an
+Antigravity child launch can prevent automatic cancellation on later prompts
+in the same process, where children can still be active. Explicit Send now
+can still interrupt.
 
 ## OpenCode 2
 
