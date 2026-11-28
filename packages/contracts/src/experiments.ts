@@ -1,3 +1,5 @@
+import type { Settings } from './settings.ts';
+
 /*
  * Feature tags and the builds a feature exists in. Every feature has one tag,
  * written here and nowhere else:
@@ -24,7 +26,7 @@
  * feature leaves this list once nothing reads its id: an app or a core that
  * hears an id it does not know drops it.
  */
-export const EXPERIMENT_IDS = ['resident-agents', 'draft-backdrop', 'discord-presence'] as const;
+export const EXPERIMENT_IDS = ['resident-agents', 'draft-backdrop', 'contacts', 'teams', 'auto-goal', 'session-import', 'background-compaction', 'device-stream', 'discord-presence'] as const;
 export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
 
 /**
@@ -34,7 +36,7 @@ export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
  * removal did, so a phone that has not updated yet keeps showing them; a
  * current app drops them as unknown ids.
  */
-export const FINISHED_EXPERIMENT_IDS = ['whip', 'contacts', 'auto-goal', 'teams', 'debates', 'theme-grain', 'session-import', 'prompt-cache', 'recording-indicators', 'pinned-quotas'] as const;
+export const FINISHED_EXPERIMENT_IDS = ['whip', 'debates', 'theme-grain', 'prompt-cache', 'recording-indicators', 'pinned-quotas'] as const;
 export type FinishedExperimentId = (typeof FINISHED_EXPERIMENT_IDS)[number];
 
 /** A desktop app's list as the core hands it to apps: these ids plus every finished one (`FINISHED_EXPERIMENT_IDS`). */
@@ -54,8 +56,45 @@ export type FeatureStage = BuildKind;
 export const EXPERIMENT_STAGES: Record<ExperimentId, FeatureStage> = {
   'resident-agents': 'release',
   'draft-backdrop': 'nightly',
+  // Released on 2026-11-20 (#1176) before they had run for real, back to nightly on 2026-11-26.
+  contacts: 'nightly',
+  teams: 'nightly',
+  'auto-goal': 'nightly',
+  'session-import': 'nightly',
+  'background-compaction': 'nightly',
+  'device-stream': 'nightly',
   'discord-presence': 'nightly',
 };
+
+/**
+ * Experiments whose switch is a machine setting the core stores, not a choice
+ * an app reports: the core reads them itself, so a restart or an app that has
+ * not connected yet changes nothing. Each names its setting and the value it
+ * reads as in a build below its tag (`holdExperimentalSettings`). The
+ * Experiments page shows them beside the app's switches and writes the
+ * setting. The others (`teams`, `session-import`, `draft-backdrop`, `discord-presence`) are an
+ * app's choice, and the core gates its side of them on its own version
+ * (`featureRuns`), whatever an app reports.
+ */
+export const EXPERIMENT_SETTINGS = {
+  contacts: 'contacts',
+  'auto-goal': 'autoGoals',
+  'background-compaction': 'backgroundCompaction',
+  'device-stream': 'deviceStream',
+} as const satisfies Partial<Record<ExperimentId, keyof Settings>>;
+export type SettingExperimentId = keyof typeof EXPERIMENT_SETTINGS;
+export type ExperimentalSetting = (typeof EXPERIMENT_SETTINGS)[SettingExperimentId];
+
+/** Whether `id` is switched by a machine setting (`EXPERIMENT_SETTINGS`) rather than by an app. */
+export function isSettingExperiment(id: string): id is SettingExperimentId {
+  return Object.hasOwn(EXPERIMENT_SETTINGS, id);
+}
+
+/** The experiment a machine setting switches, or null for an ordinary setting. */
+export function experimentOfSetting(key: string): SettingExperimentId | null {
+  for (const [id, setting] of Object.entries(EXPERIMENT_SETTINGS) as [SettingExperimentId, ExperimentalSetting][]) if (setting === key) return id;
+  return null;
+}
 
 /**
  * The kind of the build with this version, the one rule both sides read:
@@ -114,6 +153,9 @@ function refusalTail(stage: FeatureStage, version: string | null | undefined): s
 declare global {
   const __BOITE_BUILD_KIND__: BuildKind | undefined;
   const __BOITE_HAS_DRAFT_BACKDROP__: boolean | undefined;
+  const __BOITE_HAS_AUTO_GOAL__: boolean | undefined;
+  const __BOITE_HAS_CONTACTS__: boolean | undefined;
+  const __BOITE_HAS_TEAMS__: boolean | undefined;
   const __BOITE_HAS_DISCORD_PRESENCE__: boolean | undefined;
 }
 
@@ -151,6 +193,9 @@ export function featureDefines(version: string | null | undefined, stages: Recor
  */
 export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boolean }>> = {
   'draft-backdrop': { ui: true, core: false },
+  'auto-goal': { ui: true, core: true },
+  contacts: { ui: true, core: false },
+  teams: { ui: true, core: true },
   'discord-presence': { ui: true, core: true },
 };
 
@@ -214,4 +259,54 @@ export function experimentRefusal(id: ExperimentId, version: string | null | und
 /** Why the build with this version starts nothing new in the experiment `id`, or null where experiments run. What exists can still be read and removed. */
 export function experimentStartRefusal(id: ExperimentId, version: string | null | undefined, stages: Record<ExperimentId, FeatureStage> = EXPERIMENT_STAGES): string | null {
   return stages[id] === 'release' ? null : experimentRefusal(id, version, stages);
+}
+
+/**
+ * The settings in force in the build with this version: a setting that
+ * switches an experiment the build lacks reads as off (`false`), the
+ * per-type `backgroundCompaction` too. The stored choice is left alone, so a
+ * machine that goes back to a Nightly finds it again.
+ */
+export function holdExperimentalSettings<T extends Partial<Settings>>(settings: T, version: string | null | undefined): T {
+  let held: T | null = null;
+  for (const [id, key] of Object.entries(EXPERIMENT_SETTINGS) as [SettingExperimentId, ExperimentalSetting][]) {
+    if (featureRuns(id, version) || settings[key] === undefined) continue;
+    held ??= { ...settings };
+    held[key] = false as T[typeof key];
+  }
+  if (settings.compactionByType !== undefined && !featureRuns('background-compaction', version)) {
+    held ??= { ...settings };
+    held.compactionByType = Object.fromEntries(Object.entries(settings.compactionByType).map(([target, policy]) => [target, policy === undefined ? policy : { ...policy, backgroundCompaction: false }])) as NonNullable<Settings['compactionByType']>;
+  }
+  return held ?? settings;
+}
+
+/** Why a settings patch is refused in the build with this version: it turns on a setting whose experiment the build lacks. Turning one off is always accepted. */
+export function experimentalSettingRefusal(patch: Partial<Settings>, version: string | null | undefined): { key: ExperimentalSetting; message: string } | null {
+  for (const [id, key] of Object.entries(EXPERIMENT_SETTINGS) as [SettingExperimentId, ExperimentalSetting][]) {
+    if (featureRuns(id, version)) continue;
+    const on = patch[key] === true || (key === 'backgroundCompaction' && Object.values(patch.compactionByType ?? {}).some(policy => policy?.backgroundCompaction === true));
+    if (on) return { key, message: `${key} is an experiment: it ${refusalTail(EXPERIMENT_STAGES[id], version).split(': ')[0]}` };
+  }
+  return null;
+}
+
+/**
+ * The patch a save stores in the build with this version. Where an
+ * experiment does not run, the app only knows the value
+ * `holdExperimentalSettings` reads as off, and a save hands it back: its
+ * setting stays as `stored` has it, so no Release writes "off" over a
+ * Nightly's choice. A compaction type customized for the first time takes the
+ * common stored choice, the one it followed until then.
+ */
+export function keepStoredExperimentalSettings(stored: Partial<Settings>, patch: Partial<Settings>, version: string | null | undefined): Partial<Settings> {
+  const kept = { ...patch };
+  for (const [id, key] of Object.entries(EXPERIMENT_SETTINGS) as [SettingExperimentId, ExperimentalSetting][]) {
+    if (!featureRuns(id, version)) Reflect.deleteProperty(kept, key);
+  }
+  if (patch.compactionByType !== undefined && !featureRuns('background-compaction', version)) {
+    kept.compactionByType = Object.fromEntries(Object.entries(patch.compactionByType).map(([target, policy]) => [target, policy === undefined ? policy
+      : { ...policy, backgroundCompaction: stored.compactionByType?.[target as keyof NonNullable<Settings['compactionByType']>]?.backgroundCompaction ?? stored.backgroundCompaction === true }])) as NonNullable<Settings['compactionByType']>;
+  }
+  return kept;
 }

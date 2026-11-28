@@ -44,6 +44,28 @@ server listens, each eligible entry is handled separately:
   provider's capabilities and the usual per-turn limits.
 - A turn left running when the old core was killed is closed as stopped, without
   an error part, then gets the same continuation.
+- If an ACP attempt ended after a queued-input cancellation was requested, the
+  handoff keeps the outcome when the terminal write misses the deadline.
+  Recovery records the reported usage and restores the session if the thread
+  still owns it. A completed answer also updates the saved history of its
+  original account across repeated switches if it still refers to that native
+  session. An acknowledged cancellation, interruption, or explicit Stop
+  recovers the turn as stopped. The composer owns
+  the follow-up and respects its pause. A delegated child or workflow step
+  waiting for that follow-up stays open, and its parent receives no final result
+  for the interrupted turn until the user sends or discards the follow-up or
+  stops the child. A prompt already admitted by the composer keeps its queued
+  turn on a delegated thread. If a queued goal or loop was admitted before its
+  first turn, the step still waits for it, and the activity requires an explicit
+  resume. An already queued loop turn keeps its iteration until it finishes.
+  The composer waits for worktree cleanup before admitting a follow-up there.
+  The owner can pause or discard that input while cleanup runs. A targeted
+  Stop records its pending result before terminal persistence and keeps it
+  through cleanup and automatic team pause. A remote final result also waits
+  in the paused parent's inbox until the team resumes. Usage and session data
+  can still be recorded if the provider reports them after Stop.
+  Older cores that support interrupted queued input read a completed outcome as
+  an interruption and can still recover the other turns in the handoff.
 
 A core that dies without a handoff (a crash, a kill, the shell's Quit) leaves
 its work to [automatic resumes](#turns-that-stop-before-their-answer).

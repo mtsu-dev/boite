@@ -3,8 +3,15 @@
 Experiments are features that are not finished yet. They can change or
 disappear, so each one has a switch in Settings, Experiments.
 
-Two experiments exist today: the [new thread background](#new-thread-background)
-and the [Discord rich presence](#discord-rich-presence).
+Eight experiments exist today: the [new thread background](#new-thread-background),
+[Contacts](contacts.md), [Teams](mochis.md#teams),
+[automatic goals](goals.md#automatic-goals), session import,
+[background compaction](context.md), the
+[live device stream](devices.md#live-device-stream) and the
+[Discord rich presence](#discord-rich-presence). Contacts, Teams, automatic
+goals, session import, background compaction and the live device stream were
+on in every build for a few days from 2026-11-20 and came back here on
+2026-11-26: they had not been tried enough in real use.
 
 ## Where they exist
 
@@ -29,12 +36,18 @@ Dev only.
 
 ## How the switches work
 
-- A switch belongs to the device you flip it on. It starts off and does not
-  change another computer or phone.
-- A phone or a browser starts with the switches of the desktop app on its
-  computer, and follows it when they change. Settings on a phone has its own
-  Experiments row. Flipping a switch there keeps the phone's own set; Same as
-  the computer, at the top, follows the desktop app again.
+- Contacts, automatic goals, background compaction and the live device
+  stream run on a machine, not in a window: their switch belongs to the
+  machine picked at the top of the page, like the settings in System, and
+  every window connected to it sees the same state.
+- The other switches belong to the device you flip them on. They start off
+  and do not change another computer or phone.
+- For the switches of the device, a phone or a browser starts with those of
+  the desktop app on its computer, and follows it when they change. Settings
+  on a phone has its own Experiments row. Flipping one of them there keeps the
+  phone's own set; Same as the computer, at the top, follows the desktop app
+  again. A machine's switch flipped on a phone changes that machine for every
+  window, as it does from the computer.
 
 ## New thread background
 
@@ -78,15 +91,10 @@ the same time. Only the desktop app sets it, on the computer it runs on.
 
 | Feature | Where it is now |
 | --- | --- |
-| Mochis, the Grain theme, Claude Code session import, the prompt cache timer, pinned model quotas, actions shown in recordings | On, with no switch |
+| Mochis, the Grain theme, the prompt cache timer, pinned model quotas, actions shown in recordings | On, with no switch |
 | Whip | On, with a switch in Settings, Appearance ([first steps](first-steps.md#the-whip)) |
-| Contacts | On, in the app rail ([contacts](contacts.md)) |
-| Automatic goals | On, with a switch in Settings, General ([goals](goals.md#automatic-goals)) |
-| Teams | On, on the Mochis page ([mochis](mochis.md#teams)) |
 | Council | On ([council](council.md)) |
 | Keep the prompt cache warm | Off by default, in Settings, System ([usage](usage.md)) |
-| Background compaction | Off by default, in Settings, System ([context](context.md)) |
-| Live device stream | Off by default, in Settings, System ([devices](devices.md#live-device-stream)) |
 
 ## Going further
 

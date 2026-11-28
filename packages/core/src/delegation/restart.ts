@@ -2,15 +2,22 @@
 import type { Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
+import { composerOwnsFollowUp } from '../threads/stopped-input.ts';
 
 /** Children a restart handoff cut, by the turn it cut: the next core sends each a continuation. */
 const RESTART_CUT = 'delegation-restart-cut';
 interface RestartCut { childId: string; turnId: string }
 
-/** The handoff stopped this child turn on purpose: it is kept for the next core, never reported as stopped. */
-export function recordRestartCut(core: Core, turn: Turn): void {
-  const cut = (core.journal.getSetting(RESTART_CUT) as RestartCut[] | undefined) ?? [];
-  core.journal.setSetting(RESTART_CUT, [...cut.filter(entry => entry.childId !== turn.threadId), { childId: turn.threadId, turnId: turn.id }]);
+/** A stopped child has more work after the handoff, so its parent receives no final result. */
+export function carryChildTurn(core: Core, turn: Turn): boolean {
+  const handoff = core.threads.handoff;
+  if (!handoff.active || composerOwnsFollowUp(turn)) return false;
+  if (!handoff.carries(turn.id)) {
+    // The handoff already carries a remote child's own turns without its parent's letters.
+    const cut = (core.journal.getSetting(RESTART_CUT) as RestartCut[] | undefined) ?? [];
+    core.journal.setSetting(RESTART_CUT, [...cut.filter(entry => entry.childId !== turn.threadId), { childId: turn.threadId, turnId: turn.id }]);
+  }
+  return true;
 }
 
 /** A child stopped for good: no restart continues its cut turn, from this core's handoff, the previous one's or a cut kept here. */
@@ -24,10 +31,11 @@ export function endRestart(core: Core, childId: string): void {
 }
 
 /** Whether a restart continues this cut turn: this core hands it on, or the next one has yet to continue it. */
-export function restartContinues(core: Core, childId: string, turnId: string): boolean {
+export function restartContinues(core: Core, turn: Turn): boolean {
+  if (composerOwnsFollowUp(turn)) return false;
   const handoff = core.threads.handoff;
-  if (handoff.carries(turnId) || handoff.inheritedTurns().has(turnId)) return true;
-  return ((core.journal.getSetting(RESTART_CUT) as RestartCut[] | undefined) ?? []).some(cut => cut.childId === childId && cut.turnId === turnId);
+  if (handoff.carries(turn.id) || handoff.inheritedTurns().has(turn.id)) return true;
+  return ((core.journal.getSetting(RESTART_CUT) as RestartCut[] | undefined) ?? []).some(cut => cut.childId === turn.threadId && cut.turnId === turn.id);
 }
 
 /**
@@ -57,7 +65,7 @@ export function resumeRestartCuts(core: Core): number {
     const child = core.journal.getThread(childId);
     const last = core.journal.db.query('SELECT id FROM turns WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1').get(childId) as { id: string } | null;
     const turn = last ? core.journal.getTurn(last.id) : null;
-    if (!child || child.archived || turn?.id !== turnId || turn.status !== 'stopped') continue;
+    if (!child || child.archived || turn?.id !== turnId || turn.status !== 'stopped' || composerOwnsFollowUp(turn)) continue;
     if (!child.parentThreadId) {
       // A child for a parent on another machine: that machine holds its team, and a Stop or an archive there reaches it as a stop.
       if (!core.delegation.remote.parentOf(childId)) continue;

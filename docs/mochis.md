@@ -232,6 +232,10 @@ and the threads it started are done. Its `skills/` folder stays behind.
 
 ## Teams
 
+In Nightly and Dev, turn on Teams in Settings > Experiments. In a Release,
+existing team chats can still be read, and the teams stay saved for when you
+return to Nightly or Dev.
+
 1. Press the `+` under the mochis in the app rail and pick a new team.
 2. Give it a name, an optional brief that every member reads, and its members:
    up to 12 mochis, at least one of this machine.

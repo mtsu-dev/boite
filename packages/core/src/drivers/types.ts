@@ -4,6 +4,7 @@ import type {
   AgentTotals,
   CoreLogContext,
   AgentCommand,
+  Attachment,
   ImageAttachment,
   Message,
   MessageId,
@@ -191,6 +192,11 @@ export interface TurnContext {
    * turns; a driver hands each one to its agent in that protocol's shape.
    */
   attachments: ImageAttachment[];
+  /**
+   * Prepares interrupted user input once ACP knows which process will receive it.
+   * A freshly loaded process cannot confirm receipt, even on the same session ID.
+   */
+  prepareSessionPrompt?(receivedTurns?: ReadonlySet<TurnId>): Promise<{ prompt: string; attachments: ImageAttachment[] }>;
   sessionId: string | null;
   /**
    * Resume `sessionId` only up to this entry of its transcript and fork the
@@ -364,6 +370,12 @@ interface DiagnosticContext { event: string; durationMs?: number; data?: Record<
 export interface TurnResult {
   status: 'done' | 'stopped' | 'error';
   sessionId: string | null;
+  /** The agent acknowledged cancellation at a tool boundary to accept queued input. */
+  queuedInputCancelled?: true;
+  /** The prompt ended after advisory cancellation without a receipt, so its input is still needed. */
+  queuedInputInterrupted?: true;
+  /** The prompt finished successfully after the composer asked to cancel it. */
+  queuedInputCompleted?: true;
   usage: Usage | null;
   error?: string;
   /** Safe technical failure for diagnostics when error includes raw provider output. */
@@ -432,7 +444,8 @@ export interface LiveTurnSettings {
 
 export interface TurnHandle {
   done: Promise<TurnResult>;
-  stop(): void;
+  /** An internal restart can stop a native attempt while preserving a pending queued-input cancellation. */
+  stop(reason?: 'restart'): void;
   /**
    * Change the effort or the speed of the active native turn, for the model
    * requests it has not sent yet. Only the named fields changed. The answer
@@ -449,6 +462,10 @@ export interface TurnHandle {
   steer?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean>;
   /** Native user input, when system coordination uses a separate tool-boundary hook. */
   steerUser?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean>;
+  /** Advances when the agent streams more text or reasoning after a tool boundary. */
+  readonly outputRevision?: number;
+  /** Ask the agent to finish its prompt at a tool boundary, keeping its session alive. */
+  cancelForQueuedInput?(attachments: Attachment[]): boolean;
 }
 
 /**

@@ -99,13 +99,14 @@ client, the panel opens on the Device tab (`lib/device-watch.ts`).
 
 ## Live stream
 
-The `deviceStream` setting (Settings › System, owner only, off by default) plays an
-Android emulator or phone as H.264 video through
+The `deviceStream` setting (Settings › Experiments, owner only, off by
+default) plays an Android emulator or phone as H.264 video through
 [scrcpy](https://github.com/Genymobile/scrcpy). Off, nothing below runs and the
-panel behaves as described above. An agent asks for it with
+panel behaves as described above. The machine switch runs in Nightly and Dev
+builds. A Release reads it as off and keeps the stored choice. An agent asks for it with
 `boite settings request deviceStream true --why "..."`; `boite device list`
 prints that command once when a phone is plugged in and the setting is off,
-and `boite device help` names it.
+and `boite device help` names it, on builds that can run the experiment.
 
 **The server.** `packages/core/vendor/scrcpy/` holds the scrcpy 5.0.1 server
 jar, its SHA-256 and its Apache 2.0 licence. The core checks the hash, copies

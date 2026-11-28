@@ -17,23 +17,12 @@ const query = <T extends Element>(selector: string): T => {
   return node;
 };
 
-test('automatic goals are off by default; the threshold row sits under the switch, saves a valid length, and goes with the switch', async () => {
+test('the prompt length saves only within the allowed range', async () => {
   const saved: unknown[] = [];
-  const store = $state({ owner: true, settings: {} as Record<string, unknown>, saveSettings: async (patch: Record<string, unknown>) => { saved.push(patch); store.settings = { ...store.settings, ...patch }; return true; } });
+  const store = $state({ owner: true, settings: { autoGoals: true } as Record<string, unknown>, saveSettings: async (patch: Record<string, unknown>) => { saved.push(patch); store.settings = { ...store.settings, ...patch }; return true; } });
   running = mount(AutoGoalSetting, { target: document.body, props: { store: store as unknown as Store } });
   await settle();
-  const toggle = query<HTMLInputElement>('[data-testid=setting-auto-goals]');
-  expect(toggle.checked).toBe(false);
-  expect(toggle.closest('label')?.textContent).toContain('Automatic goals');
-  // A missing key is off: no threshold to set until the owner turns them on.
-  expect(document.querySelector('[data-testid=auto-goal-settings]')).toBeNull();
-  toggle.click();
-  await settle();
-  expect(saved).toEqual([{ autoGoals: true }]);
-  expect(toggle.checked).toBe(true);
-  saved.length = 0;
   const row = query('[data-testid=auto-goal-settings]');
-  expect(toggle.closest('label')!.nextElementSibling).toBe(row);
   const field = query<HTMLInputElement>('[data-testid=auto-goal-min-chars]');
   expect(field.value).toBe('1500');
   expect(row.textContent).toContain('Prompt length');
@@ -50,26 +39,11 @@ test('automatic goals are off by default; the threshold row sits under the switc
   field.dispatchEvent(new Event('change', { bubbles: true }));
   await settle();
   expect(saved).toEqual([{ autoGoalMinChars: 800 }]);
-
-  // Off, the machine starts no automatic goal and the threshold has nothing to say.
-  toggle.click();
-  await settle();
-  expect(saved.at(-1)).toEqual({ autoGoals: false });
-  expect(document.querySelector('[data-testid=auto-goal-settings]')).toBeNull();
 });
 
-test('a refused switch goes back, and a paired device sees neither the switch nor the threshold', async () => {
-  const store = { owner: true, settings: { autoGoals: true }, saveSettings: async () => false };
-  running = mount(AutoGoalSetting, { target: document.body, props: { store: store as unknown as Store } });
+test('a paired device cannot edit the prompt length', async () => {
+  const store = { owner: false, settings: { autoGoals: true } } as unknown as Store;
+  running = mount(AutoGoalSetting, { target: document.body, props: { store } });
   await settle();
-  const toggle = query<HTMLInputElement>('[data-testid=setting-auto-goals]');
-  expect(toggle.checked).toBe(true);
-  toggle.click();
-  await settle();
-  expect(toggle.checked).toBe(true);
-  unmount(running, { outro: false });
-  running = mount(AutoGoalSetting, { target: document.body, props: { store: { ...store, owner: false } as unknown as Store } });
-  await settle();
-  expect(document.querySelector('[data-testid=setting-auto-goals]')).toBeNull();
   expect(document.querySelector('[data-testid=auto-goal-settings]')).toBeNull();
 });

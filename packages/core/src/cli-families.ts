@@ -9,7 +9,7 @@ export { controlCommand, ownerThreadNew, spawnedLines } from './control-cli.ts';
 export { BROWSER_HELP, browserCommand } from './browser-cli.ts';
 export { browserRun } from './browser-run.ts';
 export { browserRecipe } from './browser-recipe.ts';
-export { DEVICE_HELP, deviceCommand } from './device-cli.ts';
+export { deviceCommand, deviceHelp } from './device-cli.ts';
 export { WINDOW_HELP, WINDOW_REQUEST_TIMEOUT_MS, windowCommand } from './window-cli.ts';
 export { SECRET_HELP, secretCommand } from './secret-cli.ts';
 export { teamCli } from './teams-entry.ts';

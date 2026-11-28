@@ -3,7 +3,8 @@
  * or go away, turned on per machine from Settings, Experiments. The ids this
  * device chose live in `localStorage` under `boite.experiments` as a JSON array
  * of strings, the way the theme lives under `boite.theme` and the window
- * material under `boite.glass`. These are client preferences, not core settings.
+ * material under `boite.glass`. Machine experiments read the settings in
+ * force on the primary core instead.
  *
  * Every id has a stage (`EXPERIMENT_STAGES` in contracts). A finished one is
  * on in every build and has no switch; an experimental one has a switch in a
@@ -29,7 +30,7 @@
  * the dedicated Agents interface.
  */
 
-import { EXPERIMENT_IDS, effectiveExperiments, experimentListed, experimentsRun, listedExperiments, type ExperimentId } from '@boite/contracts';
+import { EXPERIMENT_IDS, EXPERIMENT_SETTINGS, effectiveExperiments, experimentListed, experimentsRun, isSettingExperiment, listedExperiments, type ExperimentId, type Settings } from '@boite/contracts';
 import { RELEASE_VERSION } from './release';
 import { desktopShell } from './shell-platform';
 
@@ -143,7 +144,13 @@ export function listedSwitches(): ExperimentId[] {
  */
 export function chosenExperiments(): ExperimentId[] {
   const desktop = followsDesktop() ? desktopExperiments() : null;
-  return desktop ?? parse(stored(EXPERIMENTS_STORAGE_KEY)) ?? [];
+  return (desktop ?? parse(stored(EXPERIMENTS_STORAGE_KEY)) ?? []).filter(id => !isSettingExperiment(id));
+}
+
+let machineExperiments: ExperimentId[] = [];
+
+function enabledExperiments(chosen: readonly ExperimentId[]): ExperimentId[] {
+  return effectiveExperiments([...chosen.filter(id => !isSettingExperiment(id)), ...machineExperiments], experimentsBuild());
 }
 
 /**
@@ -151,7 +158,7 @@ export function chosenExperiments(): ExperimentId[] {
  * the build that decides runs them. On a Release none is, whatever storage holds.
  */
 export function readExperiments(): ExperimentId[] {
-  return effectiveExperiments(chosenExperiments(), experimentsBuild());
+  return enabledExperiments(chosenExperiments());
 }
 
 export function isExperimentEnabled(id: ExperimentId): boolean {
@@ -160,10 +167,10 @@ export function isExperimentEnabled(id: ExperimentId): boolean {
 
 /** Stores this device's own set and tells whoever is listening, storage refused or not. */
 export function writeExperiments(enabled: ExperimentId[]): void {
-  const kept = EXPERIMENT_IDS.filter((id) => enabled.includes(id));
+  const kept = EXPERIMENT_IDS.filter((id) => !isSettingExperiment(id) && enabled.includes(id));
   store(EXPERIMENTS_STORAGE_KEY, JSON.stringify(kept));
   // Storage refused, the set still holds for this session's listeners.
-  tell(followsDesktop() && desktopExperiments() !== null ? readExperiments() : effectiveExperiments(kept, experimentsBuild()));
+  tell(followsDesktop() && desktopExperiments() !== null ? readExperiments() : enabledExperiments(kept));
 }
 
 /**
@@ -173,7 +180,7 @@ export function writeExperiments(enabled: ExperimentId[]): void {
  * or any experiment on a Release) is refused: nothing is stored.
  */
 export function setExperiment(id: ExperimentId, on: boolean): void {
-  if (!experimentListed(id, experimentsBuild())) return;
+  if (isSettingExperiment(id) || !experimentListed(id, experimentsBuild())) return;
   const enabled = new Set<ExperimentId>(chosenExperiments());
   if (on) enabled.add(id);
   else enabled.delete(id);
@@ -198,7 +205,20 @@ let leader: object | null = null;
 
 /** The Store whose machine's desktop app this device follows: the primary one, so a second machine's never takes turns with it. */
 export function followDesktopOf(owner: object | null): void {
+  if (owner === leader) return;
   leader = owner;
+  if (machineExperiments.length === 0) return;
+  machineExperiments = [];
+  tell();
+}
+
+/** The primary machine's settings, read after the core applied its build and policy. */
+export function heardSettings(owner: object, settings: Settings | null): void {
+  if (owner !== leader) return;
+  const next = EXPERIMENT_IDS.filter(id => isSettingExperiment(id) && settings?.[EXPERIMENT_SETTINGS[id]] === true);
+  if (next.join() === machineExperiments.join()) return;
+  machineExperiments = next;
+  tell();
 }
 
 /**

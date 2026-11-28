@@ -2,7 +2,7 @@
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import type { CompactionTarget } from '@boite/contracts';
-  import { CompactionWrites, compactionPolicy } from '../lib/compaction-settings';
+  import { compactionPolicy, type CompactionWrites } from '../lib/compaction-settings';
   import InfoTip from './InfoTip.svelte';
 
   /**
@@ -12,28 +12,25 @@
    * Common background compaction stays local; per-type policies follow the
    * group's compaction defaults when the machine inherits its settings.
    */
-  let { store, target, embedded = false, writes }: { store: Store; target?: CompactionTarget; embedded?: boolean; writes?: CompactionWrites } = $props();
+  let { store, target, writes }: { store: Store; target: CompactionTarget; writes: CompactionWrites } = $props();
   const uid = $props.id();
-  /** The card's queue, shared with the automatic compaction beside it; a card of its own when alone. */
-  const own = new CompactionWrites();
-  const queue = () => writes ?? own;
 
   /** A switch saves when it flips; a refusal puts it back. */
   let saving = $state(false);
   export function flush() {
-    return queue().idle();
+    return writes.idle();
   }
   async function save(input: HTMLInputElement) {
     saving = true;
     try {
-      if (!await queue().save(store, target, { backgroundCompaction: input.checked }).catch(() => false)) input.checked = !input.checked;
+      if (!await writes.save(store, target, { backgroundCompaction: input.checked }).catch(() => false)) input.checked = !input.checked;
     } finally { saving = false; }
   }
 </script>
 
 <!-- The copies run on the core's machine and spend its accounts, so only the owner turns it on; an agent asks through a settings card. -->
 {#if store.owner}
-  <section class:card={!embedded} id="settings-background-compaction" data-testid="background-compaction-settings">
+  <section data-testid="background-compaction-settings">
     <label for="{uid}-on" class="master">
       <span class="words">
         <h2 class="ui-label-box"><span class="ui-label" id="{uid}-on-name">{strings.settings.backgroundCompaction}</span><InfoTip topic={strings.settings.backgroundCompaction} text={strings.settings.backgroundCompactionHint} /></h2>

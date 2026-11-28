@@ -24,7 +24,6 @@ import { threadActive, type AccountId, type ContextUse, type ProviderId, type Th
 import { plannedFileReference } from '../attachments.ts';
 import { switchGapFits, type TailAnchor } from '../continuation.ts';
 import type { Core } from '../core.ts';
-import type { TurnResult } from '../drivers/types.ts';
 import { compactionTail } from './background-compact.ts';
 
 /** The journal setting holding a thread's saved sessions, erased with the thread (`Journal.deleteThreads`). */
@@ -211,23 +210,45 @@ export class AccountSessions {
 
   /**
    * A turn accepted before the thread changed account settled after it, on
-   * the session the thread left: that saved session now ends with it. Runs
-   * in the transaction that settles the turn.
+   * the session the thread left: that session now ends with it, even if the
+   * thread has already switched back. Runs in the transaction that settles the turn.
    */
-  settledElsewhere(finished: Turn, result: TurnResult, ranIn: string): void {
+  settledElsewhere(finished: Turn, sessionId: string | null, ranIn?: string): void {
     const execution = finished.execution;
     // Only an answered turn is sure to be in the session; the saved end stays before any other.
-    if (!execution || result.sessionId === null || finished.status !== 'done') return;
+    if (!execution || sessionId === null || finished.status !== 'done') return;
     const current = this.#core.journal.getThread(finished.threadId);
-    if (current === null || current.accountId === execution.accountId) return;
+    if (current === null) return;
+    const sameAccount = current.accountId === execution.accountId;
+    if (sameAccount && ((current.sessionGeneration ?? 0) === execution.sessionGeneration
+      || current.providerId !== execution.providerId || current.sessionId !== sessionId)) return;
     const stored = this.#read(finished.threadId);
+    const after: TailAnchor = { turnId: finished.id, afterPart: null };
+    if (sameAccount) {
+      const resumed = this.#resumed(current, stored);
+      if (!resumed?.after || !resumed.earlier.includes(execution.sessionGeneration)) return;
+      if (!this.#advances(resumed.after, finished)) return;
+      stored.resumed = { ...resumed, after };
+      this.#write(finished.threadId, stored);
+      return;
+    }
     const saved = stored.saved[execution.accountId];
-    // A later session of that account replaced the one this turn ran on.
-    if (saved !== undefined && saved.generations[0] !== execution.sessionGeneration) return;
+    if (saved && (saved.providerId !== execution.providerId || !this.#advances(saved.after, finished)
+      || (saved.generations[0] !== execution.sessionGeneration
+        && (saved.sessionId !== sessionId || !saved.generations.includes(execution.sessionGeneration))))) return;
+    const cwd = saved?.cwd ?? ranIn;
+    if (cwd === undefined) return;
     stored.saved[execution.accountId] = {
-      providerId: execution.providerId, sessionId: result.sessionId, resumeAt: null, after: { turnId: finished.id, afterPart: null },
-      cwd: saved?.cwd ?? ranIn, generations: saved?.generations ?? [execution.sessionGeneration], context: saved?.context ?? null, savedAt: Date.now(),
+      providerId: execution.providerId, sessionId, resumeAt: null, after,
+      cwd, generations: saved?.generations ?? [execution.sessionGeneration], context: saved?.context ?? null, savedAt: Date.now(),
     };
     this.#write(finished.threadId, stored);
+  }
+
+  #advances(previous: TailAnchor, finished: Turn): boolean {
+    // Use admission time first because terminal writes replace the turn row.
+    return this.#core.journal.db.query(`SELECT 1 FROM turns a JOIN turns b ON b.thread_id = a.thread_id
+      WHERE a.id = ? AND b.id = ? AND (a.queued_at, a.rowid) <= (b.queued_at, b.rowid)`)
+      .get(previous.turnId, finished.id) !== null;
   }
 }

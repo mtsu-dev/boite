@@ -1,3 +1,4 @@
+import { experimentOn } from '../lib/experiments.svelte';
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { type RpcMethodName } from '@boite/contracts';
@@ -83,24 +84,25 @@ test('the default machine is followed outside settings, and a follower names it 
 });
 
 test('background compaction turns on for the machine picked above it, not the window\'s', async () => {
-  // Flipped from the desktop app, the switch only ever reached the PC's core, never the server running the thread.
   await mountOnFake('/?fake=1&machines=1');
   await waitFor(() => workspace.machines.length === 2);
   const remote = workspace.machines.find(machine => machine.store !== store)!;
-  store.showSettings('advanced');
-  await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null && document.querySelector('[data-testid=background-compaction-on]') !== null);
-  // The switch sits on System: the page's one bar names the machine of the cards below it.
+  store.showSettings('experiments');
+  await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null && document.querySelector('[data-testid=experiment-background-compaction]') !== null);
   const bar = query('[data-testid=settings-machine-bar]');
   expect(document.querySelectorAll('[data-testid=settings-machine-bar]')).toHaveLength(1);
-  expect(bar.compareDocumentPosition(query('[data-testid=background-compaction-on]')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(bar.compareDocumentPosition(query('[data-testid=experiment-background-compaction]')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   query<HTMLButtonElement>('[data-testid=settings-machine]').click();
   flushSync();
   query<HTMLElement>(`[data-testid=settings-machine-menu] [data-value="${remote.id}"]`).click();
   await waitFor(() => query('[data-testid=settings-machine]').textContent?.includes(remote.label) === true);
-  query<HTMLInputElement>('[data-testid=background-compaction-on]').click();
+  query<HTMLInputElement>('[data-testid=experiment-background-compaction]').click();
   await waitFor(() => remote.store.settings?.backgroundCompaction === true);
   expect(store.settings?.backgroundCompaction ?? false).toBe(false);
   expect(workspace.active).toBe(store);
+  expect(experimentOn('background-compaction')).toBe(false);
+  await store.saveSettings({ backgroundCompaction: true });
+  await waitFor(() => experimentOn('background-compaction'));
 });
 
 // One project's archive used to list every machine's threads: another machine has no such project to narrow to.

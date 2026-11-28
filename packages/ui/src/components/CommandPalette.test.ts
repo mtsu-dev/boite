@@ -4,8 +4,9 @@ import { MESSAGE_SEARCH_QUERY_LIMIT, RpcErrorCode } from '@boite/contracts';
 import CommandPalette from './CommandPalette.svelte';
 import { RpcFailure } from '../lib/client';
 import { FakeClient } from '../lib/fake-client';
-import { Store } from '../lib/store.svelte';
+import { Store, store as primaryStore } from '../lib/store.svelte';
 import * as palette from '../lib/palette';
+import { followDesktopOf, setExperiment } from '../lib/experiments';
 
 let running: Record<string, unknown> | null = null;
 let store: Store;
@@ -14,6 +15,7 @@ let client: FakeClient;
 beforeEach(async () => {
   window.localStorage.clear();
   store = new Store();
+  followDesktopOf(store);
   client = new FakeClient({ delayMs: 0 });
   store.attach(client);
   await store.connect();
@@ -27,6 +29,7 @@ afterEach(async () => {
   running = null;
   store.detach();
   client.close();
+  followDesktopOf(primaryStore);
   vi.useRealTimers();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
@@ -58,6 +61,21 @@ function key(name: string): void {
   input.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
   flushSync();
 }
+
+test.each([['2.0.0', false], ['2.0.0-test.0', true]])('session import in the palette on %s', async (version, visible) => {
+  store.detach();
+  client.close();
+  client = new FakeClient({ delayMs: 0, version });
+  store.attach(client);
+  await store.connect();
+  setExperiment('session-import', true);
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  await type('transcript history resume');
+  expect(rows().includes('import-session')).toBe(visible);
+  setExperiment('session-import', false);
+});
 
 test('closed until asked, then the recents come first and the commands after them', async () => {
   expect(document.querySelector('[data-testid=palette]')).toBeNull();

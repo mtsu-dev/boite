@@ -20,6 +20,12 @@ export type TurnExecution = Pick<ThreadSummary,
   selectionVersion: number;
   /** A server-owned queued prompt keeps its captured effort and speed while the next picker changes. */
   frozenSelection?: true;
+  /** The live native session acknowledged cancellation for queued input. A later load may predate it. */
+  queuedInputSession?: string;
+  /** The turn ended after a queued-input cancellation without a native receipt. */
+  queuedInputInterrupted?: true;
+  /** The original user turn whose request the resume note already includes. */
+  resumeSourceTurnId?: TurnId;
   /**
    * `background`: the agent resumed on its own after background work it
    * started finished; the turn carries no prompt of the user's.

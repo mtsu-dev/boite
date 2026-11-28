@@ -6,6 +6,7 @@
  */
 import {
   deviceBound,
+  experimentStartRefusal,
   isAdbText,
   LOCAL_DEVICE_HOST,
   MOBILE_PLATFORMS,
@@ -59,7 +60,7 @@ const SESSIONS_MAX = 4;
 /** Sizes and qualities remembered per device for `previous`: a desktop and a phone each ask their own. */
 const FRAME_KINDS_MAX = 8;
 /** Where `boite device` and the panel send someone whose stream is off. */
-export const STREAM_OFF = 'the live stream is off: the owner turns it on in Settings > System, or an agent asks with `boite settings request deviceStream true --why "..."`';
+export const STREAM_OFF = 'the live stream is off: the owner turns it on in Settings > Experiments, or an agent asks with `boite settings request deviceStream true --why "..."`';
 
 
 /** What a listed device needs to be driven: its adb serial or simulator UDID. */
@@ -239,7 +240,7 @@ export class MobileDevices {
     const streamOnly = input.kind === 'touch' ? 'a touch' : input.kind === 'scroll' ? 'a scroll' : input.kind === 'clipboard' ? 'the device clipboard'
       : input.kind === 'text' && !isAdbText(input.text) ? 'text beyond printable ASCII' : undefined;
     if (streamOnly) {
-      throw refused(`${streamOnly} needs the device's live stream (adb input cannot send it): ${this.#streaming() ? 'show the device in the Device panel to start it' : STREAM_OFF}`, { deviceId: target.id });
+      throw refused(`${streamOnly} needs the device's live stream (adb input cannot send it): ${this.#streaming() ? 'show the device in the Device panel to start it' : this.#streamOff()}`, { deviceId: target.id });
     }
     const args = this.#inputArgs(target, input);
     const run = await this.#run(this.#adb().adb, ['-s', target.serial, ...args], COMMAND_TIMEOUT_MS);
@@ -261,11 +262,11 @@ export class MobileDevices {
       throw refused('device stream after must be the id and seq of a chunk this device sent');
     }
     const target = this.#ready(threadId, deviceId, connection);
-    if (!this.#streaming()) return { deviceId, state: 'off', reason: STREAM_OFF, chunks: [] };
+    if (!this.#streaming()) return { deviceId, state: 'off', reason: this.#streamOff(), chunks: [] };
     if (target.platform !== 'android' || !target.serial) return { deviceId, state: 'unavailable', reason: 'iOS Simulators have no live stream; the panel shows their screenshots', chunks: [] };
     const streams = await this.#loadStreams();
     // The setting may have gone off while stream.ts loaded.
-    if (this.#closed || !this.#streaming()) return { deviceId, state: 'off', reason: STREAM_OFF, chunks: [] };
+    if (this.#closed || !this.#streaming()) return { deviceId, state: 'off', reason: this.#streamOff(), chunks: [] };
     // The panel may also have closed while the stream module was awaited.
     this.#ready(threadId, deviceId, connection);
     return streams.stream({ id: target.id, serial: target.serial, name: target.name }, connection?.id ?? 'core', { maxSize, after }, connection?.onClose?.bind(connection));
@@ -276,7 +277,7 @@ export class MobileDevices {
     const target = this.#ready(params.threadId, params.deviceId, connection);
     if (target.platform !== 'android' || !target.serial) throw refused('the device clipboard needs an Android device: iOS Simulators have no live stream', { deviceId: target.id });
     if (!this.#live?.live(target.id)) {
-      throw refused(`the device clipboard needs the live stream: ${this.#streaming() ? 'show the device in the Device panel to start it' : STREAM_OFF}`, { deviceId: target.id });
+      throw refused(`the device clipboard needs the live stream: ${this.#streaming() ? 'show the device in the Device panel to start it' : this.#streamOff()}`, { deviceId: target.id });
     }
     return { text: await this.#live.clipboard(target.id, params.copy) };
   }
@@ -540,6 +541,10 @@ export class MobileDevices {
   }
 
   // --- live stream ---
+
+  #streamOff(): string {
+    return experimentStartRefusal('device-stream', this.#core.version) ?? STREAM_OFF;
+  }
 
   #streaming(): boolean {
     return this.#core.settings.get().deviceStream === true;

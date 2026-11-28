@@ -47,6 +47,7 @@
   import { contactsShown, contactsViews } from './lib/contacts-views.svelte';
   import { whipEntry } from './lib/whip-entry.svelte';
   import { presenceEntry } from './lib/presence-entry.svelte';
+  import { sendTrayLabels } from './lib/tray-labels';
   import { rightPanel } from './lib/right-panel.svelte';
   import type { Page } from './lib/store.svelte';
   import { workspace } from './lib/workspace.svelte';
@@ -228,7 +229,7 @@
   // The Whip's control, then its rope, and the rich presence of this computer, the first time their switches are on (lib/whip-entry.svelte.ts, lib/presence-entry.svelte.ts).
   $effect(() => {
     if (store.booted && featureOn('whip')) whipEntry.need(error => { store.error = String(error); });
-    if (store.booted && desktopShell()) presenceEntry.need();
+    if (store.booted && inShell) presenceEntry.need();
   });
   // Browser profiles live on this computer, whichever machine is in view: they
   // are kept by the core this shell started (lib/browser-profiles.svelte.ts).
@@ -265,7 +266,7 @@
     if (boardShown) need('BoardDrawer');
     if (store.paletteOpen) need('CommandPalette');
     if (store.projectPickerOpen) need('ProjectPicker');
-    if (store.imports) need('ImportDialog');
+    if (store.imports) { if (experimentOn('session-import')) need('ImportDialog'); else store.closeImports(); } // turned off from the desktop: closed, no key held
     if (threadExport.request) need('ExportThreadDialog');
     if (store.connectDialog) need('ConnectFlow');
     if (tour) need('Onboarding');
@@ -389,17 +390,8 @@
     if (panelSlot.open) return mobileOverlay(() => store.panel.hide());
   });
 
-  // The tray menu is native: it speaks the UI's language only when told, at
-  // start and whenever the language changes.
-  $effect(() => {
-    if (!inShell) return;
-    const labels = { show: strings.quotas.trayShow, quit: strings.quotas.trayQuit };
-    void import('@tauri-apps/api/core')
-      .then(({ invoke }) => invoke('tray_labels', labels))
-      .catch(() => {
-        // An older shell without the command keeps its English menu.
-      });
-  });
+  // The native tray menu, in the UI's language at start and after each change (lib/tray-labels.ts).
+  $effect(() => { if (inShell) sendTrayLabels(); });
 
   // The same for a push: the service worker shows the core's generic notices
   // in the words this page left it, written again when the language changes.
@@ -535,7 +527,7 @@
   let contactsAnywhere = $derived(contactsShownAnywhere(store));
   let ContactRequestNotice = $state<typeof import('./components/home/ContactRequestNotice.svelte').default>();
   $effect(() => {
-    if (!noRailDesktop || !contactsAnywhere || ContactRequestNotice) return;
+    if (!contactsParts || !noRailDesktop || !contactsAnywhere || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
   let agentsRailShown = $derived(store.page === 'agents' && experimentOn('resident-agents') && !(store.connection === 'closed' && !store.core));
@@ -556,7 +548,7 @@
    * it. The tour counts once it is drawn: offline with a cold cache it never is,
    * and the keyboard must not stay held for it.
    */
-  let modal = $derived((tour && appViews.Onboarding.current !== undefined) || confirm.current !== null || store.imports !== null || threadExport.request !== null || store.projectPickerOpen || (store.connectDialog !== null && appViews.ConnectFlow.current !== undefined));
+  let modal = $derived((tour && appViews.Onboarding.current !== undefined) || confirm.current !== null || (store.imports !== null && experimentOn('session-import')) || threadExport.request !== null || store.projectPickerOpen || (store.connectDialog !== null && appViews.ConnectFlow.current !== undefined));
 
   /**
    * Every app chord goes through the keyboard table (`lib/keybindings.ts`,
@@ -737,7 +729,9 @@
 {#if appViews.PluginUiHost.current}{@const PluginUiHost = appViews.PluginUiHost.current}<PluginUiHost />{/if}
 {#if appViews.ProjectPicker.current}{@const ProjectPicker = appViews.ProjectPicker.current}<ProjectPicker {store} />{:else if store.projectPickerOpen}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
 <ConfirmDialog />
-{#if appViews.ImportDialog.current}{@const ImportDialog = appViews.ImportDialog.current}<ImportDialog {store} />{:else if store.imports}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
+{#if store.imports && experimentOn('session-import')}
+  {#if appViews.ImportDialog.current}{@const ImportDialog = appViews.ImportDialog.current}<ImportDialog {store} />{:else}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
+{/if}
 {#if threadExport.request && appViews.ExportThreadDialog.current}
   {@const ExportThreadDialog = appViews.ExportThreadDialog.current}
   {#key threadExport.request}<ExportThreadDialog {...threadExport.request} onclose={closeThreadExport} />{/key}

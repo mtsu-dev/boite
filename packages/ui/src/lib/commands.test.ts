@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect } from 'vitest';
 import { test } from '../test/fake-client';
 import { appCommands, isAgentCommand, runCommand, slashName } from './commands.svelte';
-import { writeExperiments } from './experiments';
+import { followDesktopOf, heardBuild, setExperiment, writeExperiments } from './experiments';
 import type { Store } from './store.svelte';
 import { THEME_STORAGE_KEY } from './theme';
 import { work } from './work-prefs.svelte';
@@ -14,6 +14,7 @@ import { work } from './work-prefs.svelte';
 beforeEach(() => window.localStorage.clear());
 
 afterEach(() => {
+  followDesktopOf(null);
   writeExperiments([]);
   window.localStorage.clear();
   delete document.documentElement.dataset['theme'];
@@ -30,7 +31,9 @@ function ids(store: Store): string[] {
 }
 
 test('the list carries every app command, the thread ones only while one is open', async ({ store }) => {
-  // Session import is in the palette with nothing stored; persistent agents only have their launcher.
+  followDesktopOf(store);
+  heardBuild(store, '2.0.0-test.0');
+  setExperiment('session-import', true);
   expect(ids(store)).not.toContain('agents');
   expect(ids(store)).toEqual([
     'new-thread',

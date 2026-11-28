@@ -178,7 +178,7 @@ test('light theme and a short phone viewport keep consent and navigation reachab
   await page.waitFor(`!document.querySelector('[data-testid=onboarding]')`);
 }, 15_000);
 
-test('demo selectors look actionable and animations pause, resume and replay', async () => {
+test('the demo parts are its progress, play in a row and hold on pause', async () => {
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   await page.evaluate(`localStorage.removeItem('boite.onboarding')`);
   // The seven screens open at a computer's width; a page that boots phone-wide gets the two-screen tour.
@@ -187,14 +187,29 @@ test('demo selectors look actionable and animations pause, resume and replay', a
   await page.waitFor(`document.querySelector('[data-testid=onboarding]')`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 640, deviceScaleFactor: 1, mobile: true });
   await page.click('[data-testid=onboarding-dot-agents]');
+  // One demo in three parts: the parts are segments under the scene, not cards to pick, and a finger can still jump to one.
+  expect(await page.evaluate(`document.querySelector('[data-testid=onboarding-scene] .chapters [data-testid=onboarding-example-voice]') !== null`)).toBe(true);
   for (const demo of ['voice', 'panel', 'agents']) {
     await page.click(`[data-testid=onboarding-example-${demo}]`);
-    expect(await page.evaluate(`document.querySelector('[data-testid=onboarding-example-${demo}]').getAttribute('aria-pressed')`)).toBe('true');
-    const button = await page.evaluate<{ height: number; border: number; cursor: string }>(`(() => { const el = document.querySelector('[data-testid=onboarding-example-${demo}]'); const css = getComputedStyle(el); return {height: el.getBoundingClientRect().height, border: parseFloat(css.borderWidth), cursor: css.cursor}; })()`);
+    expect(await page.evaluate(`document.querySelector('[data-testid=onboarding-scene]').dataset.scene`)).toBe(demo);
+    expect(await page.evaluate(`document.querySelector('[data-testid=onboarding-example-${demo}]').getAttribute('aria-current')`)).toBe('step');
+    const button = await page.evaluate<{ height: number; cursor: string; opacity: string }>(`(() => { const el = document.querySelector('[data-testid=onboarding-example-${demo}]'); const css = getComputedStyle(el); return {height: el.getBoundingClientRect().height, cursor: css.cursor, opacity: getComputedStyle(el.closest('.controls')).opacity}; })()`);
     expect(button.height).toBeGreaterThanOrEqual(44);
-    expect(button.border).toBeGreaterThan(0);
     expect(button.cursor).toBe('pointer');
+    expect(button.opacity).toBe('1');
   }
+  // The unseen parts that hold the height never hide the playback buttons.
+  expect(await page.evaluate(`['pause', 'replay'].map(name => getComputedStyle(document.querySelector('[data-testid=onboarding-animation-' + name + ']')).visibility).join()`)).toBe('visible,visible');
+  // The segments stay where they are from one part to the next. Measured from the title, so a click that scrolls the page does not count.
+  const rows: number[] = [];
+  const row = `Math.round(document.querySelector('[data-testid=onboarding-scene] .chapters').getBoundingClientRect().top - document.querySelector('#onboarding-title').getBoundingClientRect().top)`;
+  for (const demo of ['agents', 'voice', 'panel']) {
+    await page.click(`[data-testid=onboarding-example-${demo}]`);
+    rows.push(await page.evaluate<number>(row));
+  }
+  await page.click('[data-testid=onboarding-example-agents]');
+  rows.push(await page.evaluate<number>(row));
+  expect(new Set(rows).size, rows.join(',')).toBe(1);
   await page.click('[data-testid=onboarding-example-voice]');
   await page.click('[data-testid=onboarding-animation-pause]');
   await page.waitFor(`document.querySelector('[data-testid=onboarding-animation]').getAnimations({subtree:true}).every(a => a.playState === 'paused')`);
@@ -206,9 +221,20 @@ test('demo selectors look actionable and animations pause, resume and replay', a
   await page.waitFor(`!document.querySelector('[data-testid=onboarding-animation]').dataset.previous`);
   expect(await page.evaluate(`document.querySelector('[data-testid=onboarding-animation]').getAnimations({subtree:true}).some(a => a.playState === 'running')`)).toBe(true);
 
-  // Played to its end, the scene rests on its last frame and starts again by itself.
+  // Played to its end, a part rests on its last frame, then the next part plays by itself, its segment filling.
   await page.evaluate(`(() => { const stage = document.querySelector('[data-testid=onboarding-animation]'); for (const a of stage.getAnimations({subtree:true})) a.finish(); stage.dataset.previous = 'yes'; })()`);
-  await page.waitFor(`!document.querySelector('[data-testid=onboarding-animation]').dataset.previous && document.querySelector('[data-testid=onboarding-animation]').getAnimations({subtree:true}).some(a => a.playState === 'running')`, 8_000);
+  await page.waitFor(`document.querySelector('[data-testid=onboarding-scene]').dataset.scene === 'panel' && document.querySelector('[data-testid=onboarding-animation]').getAnimations({subtree:true}).some(a => a.playState === 'running')`, 8_000);
+  expect(await page.evaluate(`document.querySelector('[data-testid=onboarding-example-voice]').classList.contains('past')`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector('[data-testid=onboarding-example-panel] .fill').getAnimations().some(a => a.playState === 'running')`)).toBe(true);
+  // The last part leads back to the first.
+  await page.evaluate(`(() => { const stage = document.querySelector('[data-testid=onboarding-animation]'); for (const a of stage.getAnimations({subtree:true})) a.finish(); })()`);
+  await page.waitFor(`document.querySelector('[data-testid=onboarding-scene]').dataset.scene === 'agents'`, 8_000);
+  // Paused at its end, a part stays: the reader holds the demo.
+  await page.click('[data-testid=onboarding-animation-pause]');
+  await page.evaluate(`(() => { const stage = document.querySelector('[data-testid=onboarding-animation]'); for (const a of stage.getAnimations({subtree:true})) a.finish(); })()`);
+  await new Promise(resolve => setTimeout(resolve, 2_000));
+  expect(await page.evaluate(`document.querySelector('[data-testid=onboarding-scene]').dataset.scene`)).toBe('agents');
+  await page.click('[data-testid=onboarding-animation-pause]');
   // A hidden window holds it where it is.
   await page.evaluate(`Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); document.dispatchEvent(new Event('visibilitychange'))`);
   await page.waitFor(`document.querySelector('[data-testid=onboarding-animation]').getAnimations({subtree:true}).every(a => a.playState !== 'running')`);

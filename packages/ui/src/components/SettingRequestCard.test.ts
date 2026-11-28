@@ -152,10 +152,13 @@ test('Show in Settings opens the card it names without answering, and Refuse tel
 });
 
 test.each([
-  ['cacheKeepalive', 'cache-keepalive', 'System › Keep the prompt cache warm'],
-  ['backgroundCompaction', 'background-compaction', 'System › Background compaction'],
-  ['deviceStream', 'device-stream', 'System › Live device stream'],
-] as const)('a card asked when %s was an experiment leads to System, where its switch is now', async (key, section, place) => {
+  ['cacheKeepalive', 'experiments', 'cache-keepalive', 'advanced', 'System › Keep the prompt cache warm'],
+  ['backgroundCompaction', 'advanced', 'background-compaction', 'experiments', 'Experiments › Background compaction'],
+  ['deviceStream', 'advanced', 'device-stream', 'experiments', 'Experiments › Live device stream'],
+  ['autoGoals', 'general', 'agent-replies', 'experiments', 'Experiments › Automatic goals'],
+  ['contacts', 'general', 'agents-alone', 'experiments', 'Experiments › Contacts'],
+  ['experiment.contacts', 'experiments', 'contacts', 'experiments', 'Experiments › Contacts'],
+] as const)('a card about %s follows its switch from %s to the current page', async (key, page, section, tab, place) => {
   const { client, store } = await setup();
   try {
     mounted = mount(SettingRequestCard, {
@@ -163,7 +166,7 @@ test.each([
       props: {
         store,
         text: 'Turn it on',
-        setting: { kind: 'change', key, value: true, previous: false, page: 'experiments', section, sensitive: false },
+        setting: { kind: 'change', key, value: true, previous: false, page, section, sensitive: false },
         answer: null,
         pending: true,
         respond: async () => undefined
@@ -173,8 +176,9 @@ test.each([
     expect(query('[data-testid=setting-place]').textContent).toBe(place);
     query<HTMLButtonElement>('[data-testid=setting-show]').click();
     flushSync();
-    expect(store.settingsTab).toBe('advanced');
-    expect(store.settingsSection).toMatchObject({ id: section, flash: true });
+    expect(store.settingsTab).toBe(tab);
+    const anchor = key === 'autoGoals' ? 'auto-goal' : key === 'contacts' ? 'contacts' : section;
+    expect(store.settingsSection).toMatchObject({ id: anchor, flash: true });
   } finally {
     store.detach();
     client.close();
@@ -188,12 +192,10 @@ test('the app tells its core its language, and only an experiment with a switch 
     await vi.waitFor(async () => expect((await client.call('agent.settings', { threadId: 't-trace' })).app).toEqual({ language: 'en', device: null, client: null }));
     const read = await client.call('agent.settings', { threadId: 't-trace' });
     // A finished feature is not a setting any more: it has no reading and no card, an old switch left in storage too.
-    expect(read.settings.filter((reading) => reading.key.startsWith('experiment.')).map((reading) => [reading.key, reading.value])).toEqual([['experiment.draft-backdrop', false], ['experiment.discord-presence', false]]);
+    expect(read.settings.filter((reading) => reading.key.startsWith('experiment.')).map((reading) => [reading.key, reading.value])).toEqual([['experiment.draft-backdrop', false], ['experiment.teams', false], ['experiment.session-import', false], ['experiment.discord-presence', false]]);
     await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.resident-agents', value: true })).rejects.toThrow('no longer an experiment');
     // An id that left the registry is no setting at all.
-    for (const key of ['experiment.whip', 'experiment.teams'] as const) {
-      await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key, value: true }), key).rejects.toThrow('is not a setting an agent may ask about');
-    }
+    await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.whip', value: true })).rejects.toThrow('is not a setting an agent may ask about');
   } finally {
     localStorage.removeItem('boite.experiments');
     store.detach();

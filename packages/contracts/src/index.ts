@@ -250,17 +250,18 @@ export { ChangeLog, LIST_CHANGES_IDS, listCursorProblem, THREAD_LIST_PAGE_BYTES,
 export { GOAL_TRACKER_DEFAULTS, GOAL_CHECKLIST_MAX_ITEMS, GOAL_CHECKLIST_SOURCE_MAX, GOAL_CHECKLIST_TEXT_MAX, defaultTrackerModel, trackerEffort } from './goal-tracker.ts';
 export { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_SECRET_DIRS, DEVICE_SECRET_FILE, DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, deviceBound, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, type Caller } from './access.ts';
 export {
-  APP_LANGUAGES, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTINGS_PAGES, botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isSettingsPage, readSettings,
+  APP_LANGUAGES, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTINGS_PAGES, botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isSettingsPage, readSettings, settingExperimentKey,
   sameClientPreferences, settingAnswerText, settledMachineSetting, settledSetting,
   type BotAsk, type ClientPreferences, type MachineSetting, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk,
   type SettingMachine, type SettingReading, type SettingRequestParams, type SettingsPage,
   type SettingsReading,
 } from './setting-requests.ts';
 export {
-  BUILD_KINDS, FEATURE_CUTS, buildKindOf, featureCompiled, featureDefines, featureFlag, featureMarker, markFeature, stageRuns,
+  BUILD_KINDS, FEATURE_CUTS, buildKindOf, featureCompiled, featureDefines, featureFlag, featureMarker, featureRuns, isExperimentId, markFeature, stageRuns,
   EXPERIMENT_IDS, EXPERIMENT_STAGES, FINISHED_EXPERIMENT_IDS, withFinished, effectiveExperiments, experimentListed, experimentRefusal, experimentStartRefusal, experimentsRun,
   isReleaseVersion, listedExperiments,
-  type BuildKind, type ExperimentId, type FeatureStage, type FinishedExperimentId,
+  EXPERIMENT_SETTINGS, experimentOfSetting, experimentalSettingRefusal, holdExperimentalSettings, isSettingExperiment, keepStoredExperimentalSettings,
+  type BuildKind, type ExperimentId, type ExperimentalSetting, type FeatureStage, type FinishedExperimentId, type SettingExperimentId,
 } from './experiments.ts';
 export {
   AGENT_DAILY_BUDGET, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES,

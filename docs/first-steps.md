@@ -13,7 +13,7 @@ stays editable in Settings afterwards.
 | --- | --- | --- |
 | Welcome | One conversation per task, agents working in the background | Language and theme |
 | First, which one are you? | Two plain answers | A preset of settings (below) |
-| Conversation | Switching agent, dictating, reviewing changes | Optional local dictation download |
+| Conversation | One short demo in three parts: switching agent, dictating, reviewing changes | Optional local dictation download |
 | Usage | A subscription limit and when it resets | Nothing |
 | Reach | Following a conversation from your phone | Nothing |
 | Quiet | Agents that do not take over the screen or speakers | Notifications, close to tray, focus guard, mute |

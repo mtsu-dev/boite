@@ -72,7 +72,7 @@ describe('exists', () => {
 
   test('a Contacts page is no place to return to on a client that is not the owner, or once contacts are off', () => {
     // Class instances, as Stores are: a plain object would come back from the workspace as a proxy.
-    const client = (owner: boolean, contacts = true) => new (class { owner = owner; settings = { contacts }; })() as unknown as Store;
+    const client = (owner: boolean, contacts = true) => new (class { owner = owner; core = { version: '2.0.0-test.0' }; settings = { contacts }; })() as unknown as Store;
     const owner = client(true);
     workspace.active = owner;
     const page: View = { store: owner, page: 'home', contact: 'core-chris' };

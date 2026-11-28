@@ -482,6 +482,7 @@ export class Core {
     this.sharedCompute = new SharedCompute(this);
     this.sharedAccess = new SharedAccess(this);
     this.sharedReview = new SharedReview(this);
+    this.composer = new Composer(this);
     this.workflows = new Workflows(this);
     this.brain = new BrainStore(this);
     this.hooks = new HookLedger(this);
@@ -498,7 +499,6 @@ export class Core {
     this.linkedPullRequests = new LinkedPullRequests(this, (threadId, url, refresh) => this.pullRequests.detail(threadId, url, refresh));
     this.pullRequestWatches = new PullRequestWatches(this, (threadId, args) => this.pullRequests.gh(threadId, args), options.pullRequestWatches);
     registerModules(this);
-    this.composer = new Composer(this);
     phase('startup.stores-ready', 'Stores and RPC handlers ready', { methods: this.router.methods().length });
     this.#onShutdown = options.onShutdown;
     this.router.register('core.shutdown', () => {
@@ -525,6 +525,7 @@ export class Core {
     // left running or queued is closed here, or nothing ever would.
     const interrupted = this.threads.agentState.backgroundHistory.interruptLive();
     const recovered = this.threads.recoverStuckTurns();
+    this.workflows.finishRecovery();
     // Then what a stopped core left between a team post and its letters, or a team wake and its answer.
     try { this.teams.recover(); } catch (error) { this.log('warn', `teams recovery failed: ${String(error)}`); }
     // After recovery: a resume planned before the previous core stopped, a usage limit's among them, goes on.
@@ -667,10 +668,15 @@ export class Core {
   /** Share both an active wait and its completion across shutdown phases. */
   #drainPromise: Promise<void> | null = null;
   #stopping = false;
+  #closing = false;
 
   get stopping(): boolean { return this.#stopping; }
 
+  /** True once shutdown starts draining work or closing subsystems. */
+  get draining(): boolean { return this.#drainPromise !== null || this.#closing; }
+
   async close(): Promise<void> {
+    this.#closing = true;
     this.composer.stop();
     const closingAt = performance.now();
     await this.browser.close();

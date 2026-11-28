@@ -4,7 +4,7 @@
   import { triggerWebhookUrl } from '../../lib/agent-trigger';
   import type { AgentsView } from '../../lib/agents.svelte';
   import { confirm } from '../../lib/confirm.svelte';
-  import { copyText } from '../../lib/contacts.svelte';
+  import { copyText } from '../../lib/clipboard';
   import { dateTime } from '../../lib/schedule';
   import { secureId } from '../../lib/secure-id';
   import { fill, strings } from '../../lib/strings';

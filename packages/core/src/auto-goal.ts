@@ -5,7 +5,7 @@
  * machine's `autoGoals` setting turns both on; they are off without it. The goal it starts is an
  * ordinary one: running and reviewing it is `activity.ts`.
  */
-import { AUTO_GOAL_MIN_CHARS, isComposerActivity } from '@boite/contracts';
+import { AUTO_GOAL_MIN_CHARS, isComposerActivity, markFeature } from '@boite/contracts';
 import type { ComposerChoice, Settings, ThreadActivity } from '@boite/contracts';
 import type { ActivityStore } from './activity.ts';
 import type { Core } from './core.ts';
@@ -54,7 +54,7 @@ export function autoGoal(core: Core, activity: ActivityStore, threadId: string, 
 export function track(core: Core, activity: ActivityStore, threadId: string): ThreadActivity {
   const thread = core.journal.getThread(threadId);
   if (!thread || thread.archived) throw refused('goal track needs an existing, unarchived conversation');
-  if (core.settings.get().autoGoals !== true) throw refused('goal track needs automatic goals, which are off on this machine (Settings, General, Agent replies)', { reason: 'auto-goals-off' });
+  if (core.settings.get().autoGoals !== true) throw refused('goal track needs automatic goals, which are off on this machine (Settings > Experiments)', { reason: 'auto-goals-off' });
   if (activity.busy(threadId)) throw refused('this conversation already has a goal or a loop; it must finish or be removed first', { reason: 'busy' });
   const last = lastPrompt(core, threadId);
   if (!last) throw refused('this conversation has no prompt of the user to track', { reason: 'no-prompt' });
@@ -63,6 +63,8 @@ export function track(core: Core, activity: ActivityStore, threadId: string): Th
   if (!autoGoal(core, activity, threadId, last.turnId, last.messageId, last.text)) throw refused('a reviewed goal starts reviewer conversations; start it in a top-level conversation', { reason: 'subthread' });
   return activity.get(threadId);
 }
+
+markFeature('boite-feature:auto-goal');
 
 /** The user's newest prompt, a steer included: no operation, no goal or loop turn, no native command. */
 function lastPrompt(core: Core, threadId: string): { turnId: string; messageId: string; text: string } | null {

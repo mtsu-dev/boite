@@ -11,14 +11,16 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
-  TEAM_BRIEF_MAX, TEAM_MEMBERS_MAX, TEAM_NAME_MAX, TEAM_POST_MAX,
-  type CoordinationPeer, type RequestId, type RpcParams, type Team, type TeamAudience, type TeamMember, type TeamMemberKey, type TeamPost, type TeamReading,
+  markFeature, TEAM_BRIEF_MAX, TEAM_MEMBERS_MAX, TEAM_NAME_MAX, TEAM_POST_MAX,
+  type CoordinationPeer, type RequestId, type RpcParams, type Team, type TeamAudience, type TeamMember, type TeamMemberKey, type TeamPost,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { MAX_BODY, PeerGone, PeerRefusal, type TeamOperation } from '../coordination-wire.ts';
-import { invalidParams, messageOf, refused, unavailable, type RpcFailure } from '../errors.ts';
+import { invalidParams, messageOf, refused, unavailable } from '../errors.ts';
 import { foldMachine, memberNamed } from '../threads/group-spawn.ts';
 import { TeamMirror } from './mirror.ts';
+import { TeamRecordPeers, fields, OK, teamPeerFailure, teamsHeld, tooOld, type Fields } from './record-peers.ts';
+import type { TeamPeerReport } from './records.ts';
 import type { TeamBot, TeamStore } from './store.ts';
 
 const RETRY_MS = [5_000, 15_000, 60_000, 300_000];
@@ -29,19 +31,9 @@ const OUTBOX_DAYS = 30;
 /** A post on its way to a member's machine, and the members there it still wakes. */
 export interface TeamPeerPost { post: TeamPost; wake: TeamMemberKey[] }
 /** What became of a post's letter on a member's machine. */
-export interface TeamPeerReport { postId: string; member: TeamMemberKey; state: 'delivered' | 'rejected' | 'expired'; reason: string | null }
 
 type MachineRow = { team_id: string; core_id: string; sent_seq: number; sent_version: number };
 type OutboxRow = { id: number; core_id: string; operation: TeamOperation; payload: string; at: number };
-type Fields = Record<string, unknown>;
-
-const OK = { ok: true };
-
-function fields(value: unknown, field: string): Fields {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw invalidParams(`${field}: expected an object`);
-  return value as Fields;
-}
-
 function text(value: unknown, field: string, max: number, min = 1): string {
   if (typeof value !== 'string' || value.length < min || value.length > max) throw invalidParams(`${field}: expected ${min} to ${max} characters`);
   return value;
@@ -125,13 +117,11 @@ function reportsOf(value: unknown): TeamPeerReport[] {
   });
 }
 
-/** A core that does not know the operation refuses it by name: it knows once it is updated. */
-const tooOld = (error: unknown): boolean => error instanceof PeerRefusal && error.message.startsWith('operation: expected');
-
 export class TeamPeers {
   readonly #core: Core;
   readonly #store: TeamStore;
   readonly #mirror: TeamMirror;
+  readonly #records: TeamRecordPeers;
   readonly #timers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #attempts = new Map<string, number>();
   readonly #sending = new Set<string>();
@@ -142,6 +132,7 @@ export class TeamPeers {
     this.#core = core;
     this.#store = store;
     this.#mirror = new TeamMirror(core, store);
+    this.#records = new TeamRecordPeers(core, store);
   }
 
   get #db() { return this.#core.journal.db; }
@@ -171,7 +162,7 @@ export class TeamPeers {
 
   /** Something another machine must hear, whenever it is back. It may run inside the transaction that decided it. */
   queue(coreId: string, operation: TeamOperation, payload: unknown): void {
-    this.#db.query('INSERT INTO team_outbox (core_id, operation, payload, at) VALUES (?, ?, ?, ?)').run(coreId, operation, JSON.stringify(payload), Date.now());
+    this.#store.queuePeer(coreId, operation, payload);
     this.#schedule(coreId, 0);
   }
 
@@ -233,10 +224,12 @@ export class TeamPeers {
         return;
       }
       if (error instanceof PeerRefusal) {
-        // It answers and says no: trying sooner would only ask the same again. Hearing from it changes nothing, so no attempt is kept.
+        // It answers and says no: trying sooner would only ask the same again. Hearing from it changes nothing, so no attempt is kept,
+        // unless its build held Teams off: speaking again, it may run a Nightly.
         this.#core.log('warn', `teams toward ${peer.name}: ${error.message}`);
         this.#mirror.unreachable(coreId, `${peer.name} refused: ${error.message}`);
-        this.#attempts.delete(coreId);
+        if (teamsHeld(error)) this.#attempts.set(coreId, RETRY_MS.length - 1);
+        else this.#attempts.delete(coreId);
         this.#schedule(coreId, LAST_RETRY_MS);
         return;
       }
@@ -250,7 +243,7 @@ export class TeamPeers {
     }
   }
 
-  /** Oldest first, one at a time, each kept until taken. A refusal is final for that row; a core too old for it may yet be updated. */
+  /** Oldest first, one at a time, each kept until taken. A refusal is final for that row; a core too old for it, or holding Teams off, may yet be updated. */
   async #sendOutbox(peer: CoordinationPeer): Promise<void> {
     for (;;) {
       const row = this.#db.query('SELECT * FROM team_outbox WHERE core_id = ? ORDER BY id LIMIT 1').get(peer.coreId) as OutboxRow | null;
@@ -258,7 +251,7 @@ export class TeamPeers {
       try {
         await this.#core.coordination.request(peer, row.operation, JSON.parse(row.payload));
       } catch (error) {
-        if (!(error instanceof PeerRefusal) || tooOld(error)) throw error;
+        if (!(error instanceof PeerRefusal) || tooOld(error) || teamsHeld(error)) throw error;
         this.#core.log('warn', `teams: ${peer.name} refused ${row.operation}: ${error.message}`);
       }
       if (this.#stopped) return;
@@ -306,30 +299,12 @@ export class TeamPeers {
       }
       case 'team.sync': return this.#took(peer, raw);
       case 'team.post': return this.#posted(peer, raw);
-      case 'team.read': {
-        const team = this.#hosted(raw.teamId);
-        const member = this.#speaker(team, peer, raw.botId);
-        return this.#store.page(team, member.key, { before: raw.before as number | undefined, limit: raw.limit as number | undefined });
-      }
+      case 'team.read': return this.#records.readFromPeer(peer, raw);
       case 'team.report': return this.#reported(peer, raw);
       case 'team.moved': return this.#moved(peer, raw);
       case 'team.owner': return this.#forOwner(peer, raw);
       default: throw invalidParams(`operation: expected a team operation, not ${String(operation)}`);
     }
-  }
-
-  /** A team held here, by what another machine named. */
-  #hosted(teamId: unknown): Team {
-    const team = typeof teamId === 'string' ? this.#store.get(teamId) : null;
-    if (team === null || team.host !== this.#self) throw refused(`teamId: this machine holds no team ${JSON.stringify(teamId)}`, { field: 'teamId' });
-    return team;
-  }
-
-  /** The member a machine speaks for: the team says where the bot runs, and the group says who asks. What the payload claims decides nothing else. */
-  #speaker(team: Team, peer: CoordinationPeer, botId: unknown): TeamMember {
-    const member = team.members.find(entry => entry.botId === botId && entry.coreId === peer.coreId);
-    if (member === undefined) throw refused(`botId: ${JSON.stringify(botId)} is no member of ${team.name} on ${peer.name}`, { field: 'botId', reason: 'not-your-bot' });
-    return member;
   }
 
   /** A batch from the machine holding a team. Nobody else speaks for it. */
@@ -345,8 +320,8 @@ export class TeamPeers {
   }
 
   #posted(peer: CoordinationPeer, raw: Fields): TeamPost {
-    const team = this.#hosted(raw.teamId);
-    const member = this.#speaker(team, peer, raw.botId);
+    const team = this.#records.hosted(raw.teamId);
+    const member = this.#records.speaker(team, peer, raw.botId);
     const audience = audienceOf(raw.audience, 'audience');
     const to = audience === 'private' ? [this.#store.recipient(team, Array.isArray(raw.to) ? raw.to[0] : undefined)] : undefined;
     return this.#store.postAs(team, { id: raw.id, author: member.key, text: raw.text, audience, to, inReplyTo: raw.inReplyTo, turnId: textOrNull(raw.turnId, 'turnId', 100) });
@@ -376,19 +351,12 @@ export class TeamPeers {
 
   /** The owner answered a card on a member's machine: the change happens here. Only a machine with a bot in the team asks, and it takes out only its own. */
   async #forOwner(peer: CoordinationPeer, raw: Fields): Promise<unknown> {
-    const team = this.#hosted(raw.teamId);
-    if (!team.members.some(member => member.coreId === peer.coreId)) throw refused(`teamId: ${peer.name} has no mochi in ${team.name}`, { field: 'teamId', reason: 'not-your-bot' });
+    if (raw.action === 'remove') return this.#records.removeFromPeer(peer, raw);
+    const team = this.#records.ownerTeam(peer, raw.teamId);
     if (raw.action === 'add') {
       const bot = await this.bot(raw.bot, 'bot');
       if (!team.members.some(member => member.botId === bot.botId)) this.#store.addMember({ teamId: team.id, botId: bot.botId }, bot);
       return { ok: true, name: bot.name };
-    }
-    if (raw.action === 'remove') {
-      const member = team.members.find(entry => entry.botId === raw.botId);
-      if (member === undefined) return OK;
-      if (member.coreId !== peer.coreId) throw refused(`botId: ${member.name} runs on another machine`, { field: 'botId', reason: 'not-your-bot' });
-      this.#store.removeMember({ teamId: team.id, botId: member.botId });
-      return OK;
     }
     throw invalidParams('action: expected add or remove');
   }
@@ -415,7 +383,7 @@ export class TeamPeers {
       const answer = fields(await this.#core.coordination.request(peer, 'team.bot', { ref: name }), 'answer');
       return { coreId: peer.coreId, botId: text(answer.botId, 'answer.botId', 100), name: text(answer.name, 'answer.name', 200) };
     } catch (error) {
-      throw this.#failure(peer, error, 'its mochis can join once it answers');
+      throw teamPeerFailure(peer, error, 'its mochis can join once it answers');
     }
   }
 
@@ -452,32 +420,17 @@ export class TeamPeers {
     if (team === null || team.host === this.#self) {
       return this.#store.addMember(params, this.#distant(params.botId) ? await this.bot(params.botId, 'botId') : undefined);
     }
-    const card = this.#heldElsewhere(team, params.card);
+    const card = this.#records.heldElsewhere(team, params.card);
     const ask = this.#store.card(card, 'invite');
     if (ask.kind === 'invite' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
     const ref = this.#distant(params.botId) ? params.botId : `${this.#self}/${params.botId}`;
-    const done = await this.#ask(team, 'team.owner', { action: 'add', teamId: team.id, bot: ref }) as { name?: unknown };
+    const done = await this.#records.ask(team, 'team.owner', { action: 'add', teamId: team.id, bot: ref }) as { name?: unknown };
     this.#store.settle(card, `applied: ${typeof done?.name === 'string' ? done.name : 'the mochi'} joined ${team.name}`);
     return this.#store.get(team.id) ?? team;
   }
 
-  async removeMember(params: RpcParams<'teams.members.remove'>): Promise<Team> {
-    const team = typeof params.teamId === 'string' ? this.#store.get(params.teamId) : null;
-    if (team === null || team.host === this.#self) return this.#store.removeMember(params);
-    const card = this.#heldElsewhere(team, params.card);
-    const ask = this.#store.card(card, 'leave');
-    if (ask.kind === 'leave' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
-    const member = this.#store.member(team, params.botId, 'botId');
-    await this.#ask(team, 'team.owner', { action: 'remove', teamId: team.id, botId: member.botId });
-    this.#store.settle(card, `applied: ${member.name} left ${team.name}`);
-    return this.#store.get(team.id) ?? team;
-  }
-
-  /** Only a card of the owner's changes a team from another machine than the one holding it. */
-  #heldElsewhere(team: Team, card: RequestId | undefined): RequestId {
-    if (card === undefined) throw refused(`teamId: ${team.name} is held by ${this.#store.machineName(team.host)}; change it there`, { field: 'teamId' });
-    return card;
-  }
+  removeMember(params: RpcParams<'teams.members.remove'>) { return this.#records.removeMember(params); }
+  read(params: RpcParams<'teams.read'>) { return this.#records.read(params); }
 
   async say(params: RpcParams<'teams.say'>): Promise<TeamPost> {
     const { team, bot } = this.#store.mine(params.threadId, params.team);
@@ -502,36 +455,12 @@ export class TeamPeers {
     return { id, text: body };
   }
 
-  async read(params: RpcParams<'teams.read'>): Promise<TeamReading> {
-    if (params.threadId === undefined) return this.#store.read(params);
-    const { team, bot, key } = this.#store.mine(params.threadId, params.team);
-    if (team.host === this.#self) return this.#store.page(team, key, params);
-    // Only the holder has every post this bot may read: a mirror leaves out the private ones it wrote.
-    const reading = await this.#ask(team, 'team.read', { teamId: team.id, botId: bot.id, before: params.before, limit: params.limit }) as TeamReading;
-    return { ...reading, team };
-  }
-
-  #holder(team: Team): CoordinationPeer {
-    const peer = this.#core.group.peers().find(entry => entry.coreId === team.host);
-    if (peer === undefined) throw refused(`${team.name} is held by ${this.#store.machineName(team.host)}, which is no longer in this machine's group`, { field: 'team', reason: 'host-gone' });
-    return peer;
-  }
-
-  async #ask(team: Team, operation: TeamOperation, payload: unknown): Promise<unknown> {
-    const peer = this.#holder(team);
-    try {
-      return await this.#core.coordination.request(peer, operation, payload);
-    } catch (error) {
-      throw this.#failure(peer, error, 'try again once it is back');
-    }
-  }
-
   async #remotePost(team: Team, botId: string, threadId: string, post: { id: string; text: string; audience: TeamAudience; to?: string[]; inReplyTo: unknown }): Promise<TeamPost> {
-    const peer = this.#holder(team);
+    const peer = this.#records.holder(team);
     try {
       return await this.#core.coordination.request(peer, 'team.post', { ...post, teamId: team.id, botId, turnId: this.#core.journal.runningTurn(threadId)?.id ?? null }) as TeamPost;
     } catch (error) {
-      if (error instanceof PeerRefusal || error instanceof PeerGone) throw this.#failure(peer, error, '');
+      if (error instanceof PeerRefusal || error instanceof PeerGone) throw teamPeerFailure(peer, error, '');
       throw unavailable(
         `${peer.name} holds the team ${team.name} and did not answer (${messageOf(error)}); nothing is lost: send the same command again with --request-id ${post.id}; it posts once even if this try got through`,
         { reason: 'host-unreachable', requestId: post.id },
@@ -539,10 +468,6 @@ export class TeamPeers {
     }
   }
 
-  #failure(peer: CoordinationPeer, error: unknown, away: string): RpcFailure {
-    if (error instanceof PeerGone) return refused(`${peer.name} removed this machine from its group`, { reason: 'removed' });
-    if (tooOld(error)) return refused(`Boite on ${peer.name} is too old for teams across machines; update it first`, { reason: 'peer-too-old' });
-    if (error instanceof PeerRefusal) return refused(`${peer.name}: ${error.message}`, error.message.includes('Teams experiment') ? { reason: 'experiment-off' } : { reason: 'peer-refused' });
-    return unavailable(`${peer.name} did not answer (${messageOf(error)}); ${away}`, { reason: 'unreachable' });
-  }
 }
+
+markFeature('boite-feature:teams');

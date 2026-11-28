@@ -19,6 +19,38 @@ const clipped = (selector: string) => `(() => {
   }).map(span => span.textContent);
 })()`;
 
+test('a Release hides Contacts on desktop and phone even with the switch saved on', async () => {
+  const page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1280, height: 900 } });
+  const store = 'globalThis.__boiteTest.workspace.active';
+  const desktop = id('rail-contacts');
+  const column = id('contacts-rail');
+  const phone = id('mobile-contacts');
+  const home = id('home-page');
+  try {
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('boite.contacts-rail-folded', '0');` });
+    await page.navigate(`http://127.0.0.1:${port}/?fake=1&open=recent&version=2.0.0`);
+    await page.waitFor(`${store}.settings?.contacts === false && document.querySelector('${id('nav-settings')}')`);
+    expect(await page.evaluate(`${store}.client.call('settings.get', { stored: true }).then(settings => settings.contacts)`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('${desktop}, ${column}') === null`)).toBe(true);
+
+    // An older Release still reports the saved setting as-is. A Nightly app must hide its Contacts too.
+    await page.evaluate(`${store}.settings = { ...${store}.settings, contacts: true }; ${store}.showHome()`);
+    expect(await page.evaluate(`${store}.page`)).not.toBe('home');
+    expect(await page.evaluate(`document.querySelector('${desktop}, ${column}, ${home}') === null`)).toBe(true);
+    await page.settleAnimations();
+    await page.screenshot(join(import.meta.dir, '.artifacts/contacts-release-desktop.png'));
+
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await page.waitFor(`document.querySelector('${id('mobile-back')}, ${id('mobile-conversations')}')`);
+    if (await page.evaluate(`!!document.querySelector('${id('mobile-back')}')`)) await page.click(id('mobile-back'));
+    await page.waitFor(`document.querySelector('${id('mobile-conversations')}')?.getBoundingClientRect().width > 0`);
+    expect(await page.evaluate(`document.querySelector('${phone}, ${home}') === null`)).toBe(true);
+    await page.settleAnimations();
+    await page.screenshot(join(import.meta.dir, '.artifacts/contacts-release-phone.png'));
+    expect(page.errors()).toEqual([]);
+  } finally { await page.close(); }
+}, 30_000);
+
 test('the contacts column\'s rows hold their text: the empty row\'s wrapped tip grows it instead of spilling over the title', async () => {
   const page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1280, height: 900 } });
   try {

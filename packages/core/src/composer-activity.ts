@@ -13,5 +13,5 @@ export function composerActivity(text: string) {
  * (`auto-goal.ts`, through its lazy entry), with the machine's settings.
  */
 export function startsAutoGoal(text: string, settings: Pick<Settings, 'autoGoals' | 'autoGoalMinChars'>): boolean {
-  return autoGoalCode().startsAutoGoal(text, settings);
+  return settings.autoGoals === true && (autoGoalCode()?.startsAutoGoal(text, settings) ?? false);
 }

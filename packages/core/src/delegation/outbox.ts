@@ -2,7 +2,7 @@
 import type { CoordinationPeer } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { MAX_BODY, PeerRefusal } from '../coordination-wire.ts';
-import { messageOf } from '../errors.ts';
+import { messageOf, RpcFailure } from '../errors.ts';
 
 const FLUSH_MS = 300;
 /** A machine away is tried again after these waits, the last one repeating. */
@@ -29,6 +29,25 @@ function batchOf<T>(entries: T[]): T[] {
   return batch;
 }
 
+/** Replay on failed writes, leaving later entries for the same ordered key until the retry. */
+export function receiveOutboxBatch<T>(entries: T[], receive: (entry: T) => void, warn: (error: unknown) => void, orderedBy?: (entry: T) => string | undefined): boolean {
+  const blocked = new Set<string>();
+  let retry = false;
+  for (const entry of entries) {
+    const key = orderedBy?.(entry);
+    if (key !== undefined && blocked.has(key)) continue;
+    try { receive(entry); }
+    catch (error) {
+      warn(error);
+      if (!(error instanceof RpcFailure)) {
+        retry = true;
+        if (key !== undefined) blocked.add(key);
+      }
+    }
+  }
+  return retry;
+}
+
 /**
  * What waits in the journal for one machine of the group: kept until that
  * machine took it, tried again later while it is away and at once when it
@@ -43,14 +62,12 @@ export class Outbox<T extends { key: string }> {
   readonly #core: Core;
   readonly #prefix: string;
   readonly #deliver: (peer: CoordinationPeer, entries: T[]) => Promise<unknown>;
-  readonly #merge: (kept: T, next: T) => T;
-
-  constructor(core: Core, prefix: string, deliver: (peer: CoordinationPeer, entries: T[]) => Promise<unknown>,
-    merge: (kept: T, next: T) => T = (_kept, next) => next) {
+  readonly #replace?: (pending: T, entry: T) => T;
+  constructor(core: Core, prefix: string, deliver: (peer: CoordinationPeer, entries: T[]) => Promise<unknown>, replace?: (pending: T, entry: T) => T) {
     this.#core = core;
     this.#prefix = prefix;
     this.#deliver = deliver;
-    this.#merge = merge;
+    this.#replace = replace;
   }
 
   entries(coreId: string): T[] { return (this.#core.journal.getSetting(`${this.#prefix}${coreId}`) as T[] | undefined) ?? []; }
@@ -58,8 +75,8 @@ export class Outbox<T extends { key: string }> {
   /** An entry replaces the one waiting under its key. */
   push(coreId: string, entry: T): void {
     const entries = this.entries(coreId);
-    const kept = entries.find(waiting => waiting.key === entry.key);
-    this.#save(coreId, [...entries.filter(waiting => waiting.key !== entry.key), kept ? this.#merge(kept, entry) : entry]);
+    const pending = entries.find(waiting => waiting.key === entry.key);
+    this.#save(coreId, [...entries.filter(waiting => waiting.key !== entry.key), pending && this.#replace ? this.#replace(pending, entry) : entry]);
     this.#schedule(coreId, FLUSH_MS);
   }
 
@@ -98,17 +115,19 @@ export class Outbox<T extends { key: string }> {
       if (!away) this.#core.log('warn', `${this.#prefix}${peer.name} refused ${batch.length} entries: ${messageOf(error)}`);
     } finally { this.#sending.delete(coreId); }
     if (this.#closed || this.#core.journal.isClosed()) return;
-    if (away) {
-      const attempt = this.#attempts.get(coreId) ?? 0;
-      this.#attempts.set(coreId, attempt + 1);
-      this.#schedule(coreId, RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]!);
-      return;
-    }
-    this.#attempts.delete(coreId);
+    if (away) return this.#retry(coreId);
     // An entry replaced while it was on its way stays, and goes next.
     const sent = new Map(batch.map(entry => [entry.key, JSON.stringify(entry)]));
-    this.#save(coreId, this.entries(coreId).filter(entry => sent.get(entry.key) !== JSON.stringify(entry)));
-    if (this.entries(coreId).length) this.#schedule(coreId, FLUSH_MS);
+    let pending: T[];
+    try {
+      pending = this.entries(coreId).filter(entry => sent.get(entry.key) !== JSON.stringify(entry));
+      this.#save(coreId, pending);
+    } catch (error) {
+      this.#retry(coreId);
+      throw error;
+    }
+    this.#attempts.delete(coreId);
+    if (pending.length) this.#schedule(coreId, FLUSH_MS);
   }
 
   close(): void {
@@ -120,6 +139,12 @@ export class Outbox<T extends { key: string }> {
   #save(coreId: string, entries: T[]): void {
     if (entries.length) this.#core.journal.setSetting(`${this.#prefix}${coreId}`, entries);
     else this.#core.journal.deleteSetting(`${this.#prefix}${coreId}`);
+  }
+
+  #retry(coreId: string): void {
+    const attempt = this.#attempts.get(coreId) ?? 0;
+    this.#attempts.set(coreId, attempt + 1);
+    this.#schedule(coreId, RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]!);
   }
 
   #schedule(coreId: string, delay: number): void {

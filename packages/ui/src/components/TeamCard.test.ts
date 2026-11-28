@@ -2,7 +2,8 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import type { Message, QuestionRequest } from '@boite/contracts';
 import { FakeClient } from '../lib/fake-client';
-import { Store } from '../lib/store.svelte';
+import { Store, store as primaryStore } from '../lib/store.svelte';
+import { followDesktopOf, setExperiment, writeExperiments } from '../lib/experiments';
 import AssistantMessage from './AssistantMessage.svelte';
 import ThreadDecision from './ThreadDecision.svelte';
 
@@ -12,6 +13,9 @@ const closers: (() => void)[] = [];
 afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component);
   for (const close of closers.splice(0)) close();
+  followDesktopOf(primaryStore);
+  writeExperiments([]);
+  localStorage.clear();
   document.body.innerHTML = '';
 });
 
@@ -33,10 +37,11 @@ function query<T extends Element>(selector: string): T {
 async function proposed() {
   const client = new FakeClient({ delayMs: 0 });
   const store = new Store();
+  followDesktopOf(store);
   store.attach(client);
   closers.push(() => { store.detach(); client.close(); });
   await store.connect();
-  client.reportDesktopExperiments([]);
+  setExperiment('teams', true);
   const bot = (name: string) => client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
     selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } });
   const huginn = await bot('Huginn (Réseaux)');

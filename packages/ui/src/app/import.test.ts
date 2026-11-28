@@ -1,10 +1,12 @@
 import { expect, vi } from 'vitest';
 import { store } from '../lib/store.svelte';
+import { followsDesktop, isExperimentEnabled, setExperiment } from '../lib/experiments';
+import type { FakeClient } from '../lib/fake-client';
 import { mountOnFake, press, query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
-test('the project menu carries the import with nothing stored: session import is on in every build', async () => {
+test('the project menu hides session import until the experiment is enabled', async () => {
   store.draft = null;
   expect(window.localStorage.getItem('boite.experiments')).toBeNull();
   await mountOnFake();
@@ -14,12 +16,15 @@ test('the project menu carries the import with nothing stored: session import is
   head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=manage]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
-  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=import]') !== null);
+  // The submenu is open once its Secrets entry, always there, shows.
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=secrets]') !== null);
+  expect(document.querySelector('[data-testid=context-menu] [data-value=import]')).toBeNull();
 });
 
 test('Import a session in the project menu lists the transcripts and opens the imported thread', async () => {
   store.draft = null;
   await mountOnFake();
+  setExperiment('session-import', true);
   await waitFor(() => document.querySelector('[data-testid=project-row][data-project-id="p-boite"]') !== null);
 
   const head = query<HTMLElement>('[data-testid=project-row][data-project-id="p-boite"]');
@@ -65,6 +70,7 @@ test('Import a session in the project menu lists the transcripts and opens the i
 
 test('a shared transcript asks for its account, supports menu keys, and imports with the alternative', async () => {
   await mountOnFake();
+  setExperiment('session-import', true);
   const alternative = await store.client!.call('accounts.add', { providerId: 'claude', label: 'Alternative login', useDefaultLocation: true });
   await waitFor(() => store.accounts.some(account => account.id === alternative.id));
   const imported = vi.spyOn(store, 'importSession');
@@ -96,4 +102,47 @@ test('a shared transcript asks for its account, supports menu keys, and imports 
   } finally {
     imported.mockRestore();
   }
+});
+
+test('the desktop turning session import off closes its dialog, which then holds no key', async () => {
+  await mountOnFake();
+  const palette = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', ctrlKey: true, cancelable: true }));
+  expect(followsDesktop()).toBe(true);
+  const client = store.client as FakeClient;
+  client.reportDesktopExperiments(['session-import']);
+  await waitFor(() => isExperimentEnabled('session-import'));
+  await store.openImports('p-boite');
+  await waitFor(() => document.querySelectorAll('[data-testid=import-row]').length === 3);
+  palette();
+  expect(store.paletteOpen).toBe(false);
+
+  client.reportDesktopExperiments([]);
+  await waitFor(() => document.querySelector('[data-testid=import-dialog]') === null);
+  expect(store.imports).toBeNull();
+  palette();
+  expect(store.paletteOpen).toBe(true);
+  store.paletteOpen = false;
+
+  // Turned off while an import runs: the dialog stays until the core answers, hidden, and holds no key meanwhile.
+  client.reportDesktopExperiments(['session-import']);
+  await waitFor(() => isExperimentEnabled('session-import'));
+  await store.openImports('p-boite');
+  await waitFor(() => document.querySelectorAll('[data-testid=import-row]').length === 3);
+  let answer!: () => void;
+  const call = client.call.bind(client);
+  const held = vi.spyOn(client, 'call').mockImplementation((async (method: string, params: unknown) => {
+    if (method === 'imports.run') await new Promise<void>((resolve) => { answer = resolve; });
+    return call(method as never, params as never);
+  }) as typeof client.call);
+  query<HTMLButtonElement>('[data-testid=import-row]:not(:disabled)').click();
+  await waitFor(() => store.imports?.running !== null && answer !== undefined);
+  client.reportDesktopExperiments([]);
+  await waitFor(() => document.querySelector('[data-testid=import-dialog]') === null);
+  expect(store.imports?.running).toBeTruthy();
+  palette();
+  expect(store.paletteOpen).toBe(true);
+  store.paletteOpen = false;
+  answer();
+  await waitFor(() => store.imports === null);
+  held.mockRestore();
 });

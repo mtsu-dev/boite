@@ -20,7 +20,7 @@ import { agentEnvOf } from '../agent.ts';
 import { agentGuide, SHORT_ANSWERS } from '../agent-guide.ts';
 import { nativeSkillFiles } from '../brain.ts';
 import { takesSystemGuide } from '../drivers/index.ts';
-import { effectiveCompaction, contextRulesBlock, type CompactionPolicy } from '@boite/contracts';
+import { effectiveCompaction, contextRulesBlock, featureRuns, type CompactionPolicy } from '@boite/contracts';
 import { prepareAttachments, prepareHistoryImages, FileReferences } from '../attachments.ts';
 import { continuationInput, switchBackInput, tailInput, type HistoryInput, type PartPlace } from '../continuation.ts';
 import { recordHandover } from './switch-notice.ts';
@@ -51,6 +51,12 @@ export interface CarriedInput {
   memory?: string;
   deferred?: string;
   letters?: string;
+}
+
+/** The text and journal boundary of an in-place continuation, including a retry on a fresh session. */
+export interface TurnContinuation {
+  prompt: string;
+  before?: number;
 }
 
 /**
@@ -92,7 +98,7 @@ export class TurnContexts {
     const member = !!thread.parentThreadId && this.#core.council?.owns(thread.id) === true;
     const skills = member ? written.filter(skill => skill.name !== COUNCIL_SKILL.name && skill.name !== PROVE_IT_SKILL.name) : written;
     const plugins = pluginGuideLines(this.#core.plugins.installedPlugins(), message => { try { this.#core.logs.warn(message, { source: 'plugins', event: 'plugins.skill-write-failed' }); } catch { /* The guide is built without that skill. */ } });
-    return agentGuide(provider.protocol !== 'echo' && settings.asyncQuestions !== false, logAccess, skills, !!thread.agentSessionId, goalTrack, plugins, !thread.parentThreadId && !thread.agentSessionId);
+    return agentGuide(provider.protocol !== 'echo' && settings.asyncQuestions !== false, logAccess, skills, !!thread.agentSessionId, goalTrack, plugins, !thread.parentThreadId && !thread.agentSessionId, featureRuns('teams', this.#core.version));
   }
 
   /**
@@ -187,8 +193,9 @@ export class TurnContexts {
     account: Account,
     turn: Turn,
     carried: CarriedInput = {},
-    resumePrompt?: string,
+    resume?: TurnContinuation,
     signal?: AbortSignal,
+    { deferInterruptedInput = true, interrupted }: { deferInterruptedInput?: boolean; interrupted?: { received?: TurnId } } = {},
   ): TurnContext | Promise<TurnContext> {
     const hostContextMode = thread.contextMode;
     thread = this.#core.sharedAccess.contextThread(thread);
@@ -391,48 +398,62 @@ export class TurnContexts {
     // prompt is the resume note, and a fresh session reads this turn's work too.
     // No closure of this context may reach `input` or `prepared`: they share one
     // scope, and a driver keeps the callbacks of its session between turns.
+    const resumePrompt = resume?.prompt;
     const input = resumePrompt !== undefined ? { prompt: resumePrompt, attachments: [] } : this.#lastUserInput(threadId, turn.id);
     const kind = turn.execution?.operation;
     // A resume's attachments were copied from the interrupted turn. A fresh
     // session gets them from that history, including after a failed native load.
     const carryInput = kind === 'resume' ? { ...input, attachments: [] } : input;
-    const carry = carrier(this.#core, this.#files, threadId, resumePrompt !== undefined ? null : turn.id, carryInput, provider, turn);
+    if (resume && resume.before === undefined) {
+      // Pin the history before the resume note lands, even if the native load fails.
+      const last = this.#core.journal.db.query('SELECT rowid FROM messages WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1').get(threadId) as { rowid: number } | null;
+      resume.before = (last?.rowid ?? 0) + 1;
+    }
+    const carry = carrier(this.#core, this.#files, threadId, resume?.before ?? turn.id, carryInput, provider, turn);
     const fresh = thread.sessionId === null && ((thread.sessionGeneration ?? 0) > 0 || kind === 'resume' || resumePrompt !== undefined);
     // A session resumed by a switch back to its account: what it missed goes with its first prompt (`threads/account-sessions.ts`).
     // A resume carries it too, since the cut turn may have stopped before the session saved its prompt, but not a restart inside the turn that carried it.
     const missed = fresh || kind === 'compact' || kind === 'keepalive' || kind === 'background' || nativeCommandPrompt(input.prompt)
       || (resumePrompt !== undefined && this.#threads.accountSessions.carrying(threadId) === turn.id)
       ? null : this.#threads.accountSessions.gap(thread);
-    let continued: HistoryInput = kind === 'resume' ? {
+    const request: HistoryInput = kind === 'resume' ? {
       ...input, historicalImages: input.attachments.filter(file => file.kind === 'image'),
     } : input;
-    if (fresh) continued = carry();
-    // After a switch back, the prompts a stop cut before the resumed session's last turn: the missed exchanges hold the later ones.
-    else if (resumePrompt === undefined && !turn.execution?.operation && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt)) {
-      const interrupted = stoppedInput(this.#core.journal, threadId, missed?.turnId ?? turn.id, input, (part, place) => {
-        this.#core.sharedAccess.uploads(threadId, [part]);
-        return this.#files.of(threadId, part, place);
-      }, missed !== null);
-      // The first stopped prompt may never have created a native session or
-      // advanced its generation. That fresh start still needs journal history.
-      continued = thread.sessionId === null && interrupted !== input ? carry() : interrupted;
-    }
-    // A session swapped in by a background compaction summarizes up to its fork:
-    // the turns since then go with the next prompt the agent reads as such.
+    let continued = request;
     const fileReference = (part: Extract<MessagePart, { type: 'file' }>, place: PartPlace): string => {
       this.#core.sharedAccess.uploads(threadId, [part]);
       return this.#files.of(threadId, part, place);
     };
-    if (!fresh && resumePrompt === undefined && thread.sessionId !== null && kind !== 'compact' && kind !== 'keepalive' && kind !== 'background' && kind !== 'resume'
-      && !nativeCommandPrompt(input.prompt)) {
-      const tail = compactionTail(this.#core, thread);
-      if (tail !== null) {
-        continued = tailInput(this.#core.journal, threadId, { turnId: tail.after, afterPart: tail.afterPart ?? null }, turn.id, continued, provider, fileReference);
-        this.#threads.backgroundCompact.carried(threadId, turn.id);
-      }
+    const tail = !fresh && resumePrompt === undefined && thread.sessionId !== null && kind !== 'compact' && kind !== 'keepalive'
+      && kind !== 'background' && kind !== 'resume' && !nativeCommandPrompt(input.prompt) ? compactionTail(this.#core, thread) : null;
+    const resumeSource = provider.protocol === 'acp' ? turn.execution?.resumeSourceTurnId : undefined;
+    // A continuation note can leave out the previous prompt. It still owes
+    // the interrupted history that prompt skipped on the receiving process.
+    const through = resumePrompt !== undefined ? interrupted?.received : undefined;
+    const carryStopped = resumePrompt !== undefined ? through !== undefined : resumeSource !== undefined
+      || (!kind && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt));
+    // ACP chooses the stopped-input cutoff once it has the receiving process.
+    const livePrompt = (deferInterruptedInput || through !== undefined) && provider.protocol === 'acp' && carryStopped && thread.sessionId !== null
+      && thread.sessionResumeAt == null && missed === null && tail === null;
+    const interruptedInput = (receivedTurns?: ReadonlySet<TurnId>) =>
+      stoppedInput(this.#core.journal, threadId, through ?? missed?.turnId ?? resumeSource ?? turn.id,
+        request, fileReference, through !== undefined || missed !== null, receivedTurns);
+    if (fresh) continued = carry();
+    // After a switch back, the prompts a stop cut before the resumed session's last turn: the missed exchanges hold the later ones.
+    else if (carryStopped && !livePrompt) {
+      const { input: stopped } = interruptedInput();
+      // The first stopped prompt may never have created a native session or
+      // advanced its generation. That fresh start still needs journal history.
+      continued = thread.sessionId === null && stopped !== request ? carry() : stopped;
+    }
+    // A session swapped in by a background compaction summarizes up to its fork:
+    // the turns since then go with the next prompt the agent reads as such.
+    if (tail !== null) {
+      continued = tailInput(this.#core.journal, threadId, { turnId: tail.after, afterPart: tail.afterPart ?? null }, turn.id, continued, provider, fileReference);
+      this.#threads.backgroundCompact.carried(threadId, turn.id);
     }
     if (missed !== null) {
-      continued = switchBackInput(this.#core.journal, threadId, missed, turn.id, continued, provider, fileReference);
+      continued = switchBackInput(this.#core.journal, threadId, missed, resumeSource ?? turn.id, continued, provider, fileReference);
       this.#threads.accountSessions.carried(threadId, turn.id);
       recordHandover(this.#core, turn, 'resumed', continued.carried ?? { full: 0, cut: 0, omitted: 0, chars: 0 });
     }
@@ -458,7 +479,7 @@ export class TurnContexts {
       const systemGuide = this.#systemGuide(thread, provider);
       // Skills the harness already names to its model stay out of the brain's catalog.
       const listedSkills = nativeSkillFiles(provider.protocol, env, { cwd: thread.cwd, skillTool: !mode?.tools || mode.tools.includes('Skill') });
-      const compose = (body: string, sessionId: string | null): string => {
+      const compose = (body: string, sessionId: string | null, requestBody = preparedPrompt): string => {
         const inject = !((operation && sessionId !== null) || nativeCommandPrompt(body));
         // Echo treats "question" as a test directive, including in injected help.
         const guideEnabled = !noGuides && this.#core.brain.config().boiteGuide !== false;
@@ -468,7 +489,7 @@ export class TurnContexts {
           ? sentFromNote(origin.from) : '';
         // The coordination guide and an entrusted thread's instructions: whole on a fresh session or once they changed, else nothing (`coordination-context.ts`).
         const coordinationGuide = inject && !bare && guideEnabled ? coordinationGuideFor(this.#core, thread, sessionId, turn.id, this.#core.coordination.instructions(threadId) + this.#core.workforce.entrusted.instructions(threadId)) : '';
-        const request = operation ? '' : preparedPrompt;
+        const request = operation ? '' : requestBody;
         const delegationText = inject && !bare && !noGuides ? this.#core.delegation.instructions(threadId, request, guideEnabled, sessionId) : '';
         const delegationGuide = coordinationGuideFor(this.#core, thread, sessionId, turn.id, delegationText, 'delegation');
         const reminder = delegationText && !delegationGuide && !thread.parentThreadId && !this.#core.delegation.remote.parentOf(threadId) ? delegationReminder(request) : '';
@@ -492,6 +513,19 @@ export class TurnContexts {
         const roleInBody = role && input.prompt.startsWith(role) && body.includes(role);
         return prefix + (prefix ? 'User request:\n' : '') + said + deferred + body + coordinationGuide + (roleInBody ? '' : delegationGuide) + reminder + carried.letters + this.#threads.cards.askInstructions({ ...thread, sessionId }, provider, turn, body);
       };
+      let prompt = livePrompt ? undefined : compose(preparedPrompt, thread.sessionId);
+      let received: TurnId | undefined;
+      const prepareSessionPrompt: TurnContext['prepareSessionPrompt'] = livePrompt ? async receivedTurns => {
+        let { input: stopped, received: receipt } = interruptedInput(receivedTurns);
+        received = receipt;
+        if (stopped === request) return { prompt: prompt ??= compose(preparedPrompt, thread.sessionId), attachments: prepared.attachments };
+        this.#core.sharedAccess.uploads(threadId, stopped.attachments);
+        if (stopped.historicalImages?.length) stopped = await prepareHistoryImages(this.#core.dataDir, stopped);
+        signal?.throwIfAborted();
+        const next = prepareAttachments(this.#core.dataDir, stopped, provider);
+        prompt = compose(next.prompt, thread.sessionId, next.prompt);
+        return { prompt, attachments: next.attachments };
+      } : undefined;
       let sessionBefore: AgentTotals | undefined;
       const readSessionBefore = () => this.#sessionBefore(thread, turn.id);
       return {
@@ -501,7 +535,9 @@ export class TurnContexts {
         account,
         provider,
         turn,
-        prompt: compose(preparedPrompt, thread.sessionId),
+        get prompt() { return prompt ??= compose(preparedPrompt, thread.sessionId); },
+        set prompt(value) { prompt = value; },
+        prepareSessionPrompt,
         systemGuide,
         continuation: freshStart(this.#core.dataDir, carry, compose, provider),
         // At each step boundary, the core may move the thread to a session compacted in the background.
@@ -536,6 +572,7 @@ export class TurnContexts {
         emit,
         reportProgress: progress,
         inputReady: () => {
+          if (interrupted && (carryStopped || fresh)) interrupted.received = received;
           this.#core.composer.inputReady(threadId);
           if (!bare) void this.#threads.deferred.flushRunning(threadId);
         },
@@ -731,19 +768,14 @@ type TurnInput = Parameters<typeof continuationInput>[3];
  * `makeContext`, so that only the context's `continuation` holds the input,
  * not every callback of the context.
  */
-function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: TurnId | null, input: TurnInput, provider: ProviderDescriptor, turn: Turn): () => HistoryInput {
-  const history = (): HistoryInput => {
-    const result = continuationInput(core.journal, threadId, turnId, input, provider, (part, place) => {
+function carrier(core: Core, files: FileReferences, threadId: ThreadId, upTo: TurnId | number, input: TurnInput, provider: ProviderDescriptor, turn: Turn): () => HistoryInput {
+  return () => {
+    const result = continuationInput(core.journal, threadId, upTo, input, provider, (part, place) => {
       core.sharedAccess.uploads(threadId, [part]);
       return files.of(threadId, part, place);
     }, turn.id);
     core.sharedAccess.uploads(threadId, result.attachments);
-    return result;
-  };
-  // Read once for a resume, before its note lands: a later fresh start would otherwise carry the note twice.
-  const resumedHistory = turnId === null ? history() : null;
-  return () => {
-    const { carried, ...fresh } = resumedHistory ?? history();
+    const { carried, ...fresh } = result;
     // Said on the turn's divider when the session is new because the account changed (`threads/switch-notice.ts`).
     recordHandover(core, turn, 'fresh', carried ?? { full: 0, cut: 0, omitted: 0, chars: 0 });
     return fresh;

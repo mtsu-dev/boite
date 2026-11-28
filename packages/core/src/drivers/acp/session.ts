@@ -6,8 +6,9 @@ import type {
   SessionConfigOption,
   SessionNotification,
 } from '@agentclientprotocol/sdk/unstable';
-import type { PermissionMode, ProviderId, ModelInfo } from '@boite/contracts';
-import { messageOf } from '../../errors.ts';
+import type { Attachment, PermissionMode, ProviderId, ModelInfo, TurnId } from '@boite/contracts';
+import { nativeImage } from '../../attachments.ts';
+import { messageOf, refused } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { profileFor } from '../../providers/resolve.ts';
 import { stderrLines } from '../lines.ts';
@@ -18,7 +19,7 @@ import type { LiveTurnSettings, ProbeContext, ProbeFilter, SessionContext } from
 import { OpenCommands } from './commands.ts';
 import { readDetachedWork, readPendingReply } from './detached.ts';
 import { ModelRefused, SessionControls } from './controls.ts';
-import { failureText, LoadRefused, rpcReason, rpcRefusal } from './load.ts';
+import { failureText, loadRefusal, LoadRefused, rpcReason, rpcRefusal } from './load.ts';
 import { AGENT_OWN_MODEL, agentModelsOf } from './models.ts';
 import { EXIT_GRACE_MS, isGrok, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
 import { commandsOf, imageBlocksOf, usdCostOf, type AcpTurn } from './turn.ts';
@@ -116,7 +117,7 @@ export class AcpSession {
   #diedAlone = false;
   readonly #idle = new IdleTimer(() => this.#drop());
   readonly #retention = new SessionRetention();
-  /** The turn whose `session/prompt` is in flight; updates outside one are dropped. */
+  /** The turn receiving updates, including Antigravity's reply after the prompt. */
   #current: AcpTurn | null = null;
   /** The turn the queue is running, from its start to its end, prompt or not. */
   #active: AcpTurn | null = null;
@@ -133,6 +134,10 @@ export class AcpSession {
   #geminiHome: string | null = null;
   /** The turn kept open after its prompt for the children it launched. */
   #holding: AcpTurn | null = null;
+  /** Earlier prompts can leave native workers in this process. */
+  #hasDetachedWork = false;
+  /** Prompts this process acknowledged cancelling for queued input. */
+  readonly #queuedInputReceipts = new Set<TurnId>();
   /** When this session last sent an update, to tell a reply that ended from one still streaming. */
   #lastUpdateAt = 0;
   /** Grok answered `_x.ai/interject` with an error once: this process has no mid-turn input. */
@@ -287,8 +292,10 @@ export class AcpSession {
    * not answered yet can be cancelled. Closing the connection rejects the
    * pending request, and the turn settles as stopped.
    */
-  stopTurn(turn: AcpTurn): void {
+  stopTurn(turn: AcpTurn, reason?: 'restart'): void {
     if (turn.settled) return;
+    const queuedCancelSent = turn.stoppedForQueuedInput;
+    if (reason !== 'restart') turn.stoppedForQueuedInput = false;
     turn.markStopped();
     // Not begun: `runTurn` settles it the moment the queue reaches it.
     if (this.#active !== turn) return;
@@ -297,13 +304,25 @@ export class AcpSession {
       this.#drop();
       return;
     }
-    this.#cancel();
     if (this.#stopTimer !== null) return;
+    if (!queuedCancelSent) this.#cancel();
     this.#stopTimer = setTimeout(() => {
       this.#stopTimer = null;
       if (!turn.settled) this.#drop();
     }, STOP_GRACE_MS);
     this.#stopTimer.unref?.();
+  }
+
+  cancelForQueuedInput(turn: AcpTurn, attachments: Attachment[]): boolean {
+    if (this.#current !== turn || turn.isStopped || turn.stoppedForQueuedInput || turn.awaitingUser || turn.hasUnannouncedTools || turn.hasExecutionError || turn.activeCompactions.size > 0
+      || this.#holding === turn || this.#commands.outlived() || this.#hasDetachedWork || turn.mayHaveDetachedChildren()) return false;
+    if (!this.#imagesSupported && attachments.some(attachment => nativeImage(turn.ctx.provider, attachment))) {
+      throw refused(`${turn.ctx.provider.name} takes no images`);
+    }
+    turn.stoppedForQueuedInput = true;
+    // A queued follow-up can wait if the agent ignores cancellation.
+    this.#cancel();
+    return true;
   }
 
   /**
@@ -393,7 +412,11 @@ export class AcpSession {
       this.#endTurn(turn, true);
       return;
     }
-    const input = this.#replaces !== null && this.#replaces === turn.ctx.sessionId ? await this.#carryPrompt(turn) : turn.ctx;
+    const prepareSessionPrompt = turn.ctx.prepareSessionPrompt;
+    turn.ctx.prepareSessionPrompt = undefined;
+    const replaces = this.#replaces !== null && this.#replaces === turn.ctx.sessionId;
+    const receipts = turn.ctx.sessionId === sessionId ? this.#queuedInputReceipts : undefined;
+    const input = replaces ? await this.#carryPrompt(turn) : await prepareSessionPrompt?.(receipts) ?? turn.ctx;
     if (input === null || this.#stopBeforePrompt(turn)) return;
     const { prompt, attachments } = input;
 
@@ -450,7 +473,12 @@ export class AcpSession {
       } else {
         await this.#fail(turn, error);
       }
-      this.#endTurn(turn, true);
+      // A live agent may answer cancellation with an error. Keep its process
+      // unless the session went away, so the next prompt can recover on load.
+      const retain = !turn.isStopped && !this.#closing && turn.stoppedForQueuedInput
+        && rpcRefusal(error) && loadRefusal(error, rpcReason(error)) !== 'gone';
+      if (retain) this.#retention.prepare(true);
+      this.#endTurn(turn, !retain);
       return;
     }
     this.#current = null;
@@ -462,6 +490,11 @@ export class AcpSession {
     // The turn may have moved the thread to another model.
     this.#noteCompactionWindow(turn.ctx);
     turn.finish(response);
+    // Keep this session for the queued follow-up even with zero warm time.
+    if (turn.stoppedForQueuedInput && response.stopReason === 'cancelled') {
+      this.#queuedInputReceipts.add(turn.ctx.turn.id);
+      this.#retention.prepare(true);
+    }
     // A resumed session whose first total came in below what the session
     // already cost: this agent counts each process from zero.
     const total = turn.costUsdEquivalent;
@@ -542,13 +575,13 @@ export class AcpSession {
     if (home === null) return;
     // Before any await: a tool the reply starts while the records are read is the reply's.
     const prompted = turn.toolCallIds();
-    const first = await readDetachedWork(home, sessionId, prompted).catch(() => null);
-    if (first === null || first.launched === 0) return;
-    turn.ctx.log('info', `acp: the prompt ended with ${first.atWork} of the ${first.launched} children it launched at work; the turn waits for their reports and the agent's reply`);
     this.#holding = turn;
     // The quiet counts from the last update or the last poll that found work.
     let busyAt = Date.now();
     try {
+      const first = await readDetachedWork(home, sessionId, prompted).catch(() => null);
+      if (first === null || first.launched === 0) return;
+      turn.ctx.log('info', `acp: the prompt ended with ${first.atWork} of the ${first.launched} children it launched at work; the turn waits for their reports and the agent's reply`);
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, DETACHED_POLL_MS));
         if (this.#ended || turn.settled || turn.isStopped) return;
@@ -577,6 +610,7 @@ export class AcpSession {
       this.#stopTimer = null;
     }
     if (this.#active === turn) this.#active = null;
+    this.#hasDetachedWork ||= turn.mayHaveDetachedChildren();
     // A command the prompt left running keeps the process: closing it would
     // end the command, which Stop on the idle thread does when asked.
     const outlived = !drop && !this.#closing && turn.antigravity && this.#commands.promote(turn.ctx);

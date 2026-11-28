@@ -5,7 +5,7 @@ import type { Store } from './store.svelte';
 /** A machine as `operatorHost` reads it: its owner, its link, its client and its place in the group. */
 function machine(self: string, group: { id?: string; settingsHome?: string; botsHome?: string } = {}, connected = true, call: (method: string) => unknown = () => ({})): Store {
   const cores = ['core-a', 'core-b', 'core-c'].map(coreId => ({ coreId, name: coreId.toUpperCase() }));
-  return { owner: true, connection: connected ? 'ready' : 'closed', groupKnown: true, client: { call: vi.fn(async (method: string) => call(method)) }, group: { id: 'grp', self, cores, ...group } } as unknown as Store;
+  return { owner: true, core: { version: '2.0.0-test.0' }, settings: { contacts: true }, connection: connected ? 'ready' : 'closed', groupKnown: true, client: { call: vi.fn(async (method: string) => call(method)) }, group: { id: 'grp', self, cores, ...group } } as unknown as Store;
 }
 
 test('the Operator goes to the Mochis machine and only there, else the Settings machine, else this window', () => {

@@ -1,6 +1,8 @@
 <script lang="ts" module>
   import { SvelteMap } from 'svelte/reactivity';
-  import type { TeamMemberKey, TeamParty } from '@boite/contracts';
+  import { markFeature, type TeamMemberKey, type TeamParty } from '@boite/contracts';
+
+  markFeature('boite-feature:teams');
 
   /** The post the owner answers: its id, its author and its first words. */
   export interface TeamReply { id: string; author: TeamParty; excerpt: string }

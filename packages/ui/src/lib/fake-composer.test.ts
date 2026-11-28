@@ -152,6 +152,30 @@ const queuedIds = async (client: FakeClient, id: string) => (await client.call('
 const userTexts = async (client: FakeClient, id: string) => (await client.call('threads.get', { threadId: id })).messages.filter(message => message.role === 'user')
   .flatMap(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : []));
 
+test.each([false, true])('the fake ACP queue validates its input before stopping between tools (image=%s)', async image => {
+  const client = await ready(20);
+  const source = await client.call('threads.get', { threadId: 't-trace' });
+  const thread = await client.call('threads.create', { projectId: source.projectId!, providerId: 'opencode', accountId: 'a-opencode' });
+  const input = value('');
+  const item = { id: 'acp-follow-up', text: 'Use the new instructions', choice: choiceOf(thread), attachments: [] as ComposerValue['input']['queued'][number]['attachments'] };
+  if (image) {
+    const { assetId } = await client.call('composer.asset.put', { attachment: {
+      kind: 'image', mimeType: 'image/png', name: 'shot.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    } });
+    item.attachments.push({ kind: 'image', mimeType: 'image/png', name: 'shot.png', assetId });
+  }
+  input.input.queued.push(item);
+  await client.call('turns.start', { threadId: thread.id, prompt: '[tool] Review the workspace' });
+  await client.call('composer.put', { section: 'inputs', id: thread.id, expectedRevision: 0, value: input });
+  await vi.waitFor(async () => {
+    const current = await client.call('threads.get', { threadId: thread.id });
+    expect(current.turns.map(turn => turn.status)).toEqual(image ? ['done'] : ['stopped', 'done']);
+  });
+  const record = (await client.call('composer.list', {})).find(row => row.id === thread.id)!;
+  expect(record.value?.input.paused).toBe(image);
+  expect(record.value?.input.queued.map(entry => entry.id)).toEqual(image ? [item.id] : []);
+});
+
 test('Send now outlasts a permission the turn waits on, and a queue emptied meanwhile leaves no Send now behind', async () => {
   const client = await ready();
   const thread = await client.call('threads.get', { threadId: 't-trace' });

@@ -1,27 +1,33 @@
 # Contacts
 
-In every build, with no experiment switch ([experiments](experiments.md#contacts)),
-behind the owner's own switch below. A full security pass and a network pass
-are still to come.
+Contacts are a [Nightly experiment](experiments.md#contacts). The core keeps
+the owner's switch off in a Release, and the Release UI omits the Contacts
+screens.
 
 ## The owner's switch
 
-The machine setting `contacts` is off unless `true`. A first start writes
+Settings > Experiments writes the machine setting `contacts`, off unless
+`true` in Nightly and Dev builds. A Release reads it as off without rewriting
+the saved value. A first start writes
 `false`, or `true` where the journal already keeps a contact: its own, or a
 copy another member relays or holds for the group under an admission still
 current, read once the group is restored. An install that linked someone
 before the setting existed keeps its links; a stored choice never moves. Off, contacts stop where the policy's `network.contacts:
 false` stops them (`contacts/switch.ts`): no invitation, join, grant, trust given, accepted
 request, human reply or `collaboration.ask`, refused with the reason
-`contacts-off` and the `boite settings request contacts true` way to ask;
+`contacts-off` and the `boite settings request contacts true` way to ask. A
+Release reads the setting as off and refuses that request too, since its core
+does not run the experiment ([experiments](experiments.md));
 kept links close and are not dialed, the agents' guide leaves the contacts
-section out, and `collaboration.contacts` answers an empty list. What is kept
+section out, and `collaboration.contacts` answers an empty list. It also holds
+creation and reset of the Operator. The owner's RPCs can still read, revoke
+and remove existing contacts. What is kept
 (contacts, opened projects, letters) waits: a request, letter or answer queued
 for a member or a contact whose own switch is off is tried again, never
 refused, and a join the inviter already answered is kept on both sides. Turned
 on, the links are dialed again at once, past any wait earned before. Unlike the policy, the switch leaves Funnel routes mounted: they
 answer only a contact's signed hello, which the switch refuses. The app shows
-the Contacts button and column only while it is on.
+the Contacts screens only while the owning machine's build and switch allow them.
 
 A contact is another owner's Boite. Your agents and theirs work together on the
 projects each side opens to the other, and on nothing else. A contact never

@@ -88,6 +88,53 @@ test('a child spawned with worktree works on its own branch from the parent HEAD
   expect(s.h.core.delegation.worktrees.get(child.thread.id)).toMatchObject({ state: 'removed', base: git(s.repo, 'rev-parse', 'HEAD') });
 }, 90_000);
 
+test.each(['resume the child', 'disable the team'] as const)('recovering a Stop result can %s during worktree recovery', async action => {
+  const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const s = await setup(async () => { started.resolve(); await release.promise; });
+  const child = await s.client.call('delegation.spawn', { threadId: s.threadId, task: 'Read the files.', worktree: true, requestId: 'paused-reader' });
+  const threadId = child.thread.id, core = s.h.core;
+  const settled = Promise.withResolvers<void>(), finishCleanup = Promise.withResolvers<void>();
+  try {
+    await started.promise;
+    const turn = core.journal.runningTurn(threadId)!;
+    const config = core.delegation.config(s.threadId);
+    core.journal.setSetting(`delegation:${s.threadId}`, { ...config, paused: true, pausedBy: 'restart' });
+    const settle = spyOn(core.delegation.worktrees, 'settle').mockReturnValue(null);
+    try {
+      await s.client.call('delegation.stop', { threadId: s.threadId, agentId: threadId });
+      await waitFor(() => core.journal.getTurn(turn.id)?.status === 'stopped');
+    } finally { settle.mockRestore(); }
+
+    // The restart kept the already owed result while the team was paused.
+    const pending = `delegation-composer-result:${turn.id}`;
+    core.journal.setSetting(pending, true);
+    const changes = core.worktrees.changes.bind(core.worktrees);
+    const inspect = spyOn(core.worktrees, 'changes').mockImplementationOnce(async (...args) => {
+      settled.resolve();
+      await finishCleanup.promise;
+      return changes(...args);
+    });
+    try {
+      if (action === 'resume the child') {
+        expect((await s.client.call('delegation.resume', { threadId: s.threadId })).agents).toEqual([threadId]);
+        await waitFor(() => core.journal.runningTurn(threadId)?.id !== undefined);
+        finishCleanup.resolve();
+        await waitFor(() => s.results().length === 1, SLOW_GIT_MS);
+        expect(inspect).not.toHaveBeenCalled();
+        expect(core.delegation.worktrees.get(threadId)).toMatchObject({ state: 'active' });
+      } else {
+        await s.client.call('delegation.configure', { threadId: s.threadId, config });
+        await settled.promise;
+        await s.client.call('delegation.configure', { threadId: s.threadId, config: { ...config, enabled: false } });
+        finishCleanup.resolve();
+        await core.delegation.worktrees.settle(threadId);
+        expect(core.journal.getSetting(pending)).toBeUndefined();
+        expect(s.results()).toEqual([]);
+      }
+    } finally { inspect.mockRestore(); }
+  } finally { finishCleanup.resolve(); release.resolve(); }
+}, 30_000);
+
 test('a child that commits keeps its worktree, and its result names the branch to merge', async () => {
   const s = await setup(ctx => {
     writeFileSync(join(ctx.thread.cwd, 'fix.txt'), 'fixed\n');

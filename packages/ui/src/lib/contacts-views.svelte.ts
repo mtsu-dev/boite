@@ -15,19 +15,19 @@ export { contactsShown };
 /**
  * Loads the page while a machine shows it and the column on a desktop-wide
  * window, gives the group its Operator the first time either opens
- * (`operatorOnOpen`), and sends a machine whose contacts went away (a paired
- * device) from their page back to the chat. Call it while the component
+ * (`operatorOnOpen`), and sends a machine whose contacts went away
+ * from their page back to the chat. Call it while the component
  * starts: its effects live as long as the component.
  */
 export function contactsViews(current: () => Store, machines: () => readonly { store: Store }[], narrow: () => boolean) {
   let homeError = $state('');
   $effect(() => {
-    if (current().page !== 'home' || !contactsShown(current()) || lazyHomePage.current) return;
+    if (!lazyHomePage || current().page !== 'home' || !contactsShown(current()) || lazyHomePage.current) return;
     homeError = '';
     void lazyHomePage.load().catch(() => { homeError = strings.contacts.loadFailed; });
   });
   $effect(() => {
-    if (!contactsShown(current()) || narrow() || lazyContactsRail.current) return;
+    if (!lazyContactsRail || !contactsShown(current()) || narrow() || lazyContactsRail.current) return;
     void lazyContactsRail.load().catch(() => undefined);
   });
   // Waits for the group's answer, which names the machine that holds the
@@ -40,7 +40,8 @@ export function contactsViews(current: () => Store, machines: () => readonly { s
     const stores = machines().map(machine => machine.store);
     // A machine whose group is still loading may hold the Operator: wait for it, then ask.
     if (groupLoading(store, stores)) return;
-    if (operatorHost(store, stores)) untrack(() => operatorOnOpen(store, stores));
+    const host = operatorHost(store, stores);
+    if (host && contactsShown(host)) untrack(() => operatorOnOpen(store, stores));
   });
   $effect(() => {
     for (const machine of machines()) if (machine.store.page === 'home' && !contactsShown(machine.store)) machine.store.showChat();
@@ -48,8 +49,8 @@ export function contactsViews(current: () => Store, machines: () => readonly { s
     if (store.page === 'home' && !contactsShown(store)) store.showChat();
   });
   return {
-    get HomePage() { return lazyHomePage.current; },
-    get ContactsRail() { return lazyContactsRail.current; },
+    get HomePage() { return lazyHomePage?.current; },
+    get ContactsRail() { return lazyContactsRail?.current; },
     get homeError() { return homeError; }
   };
 }

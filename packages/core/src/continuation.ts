@@ -209,7 +209,7 @@ export interface PartPlace { messageId: string; partIndex: number }
 export function continuationInput(
   journal: Journal,
   threadId: string,
-  upTo: string | null,
+  upTo: string | number | null,
   input: { prompt: string; attachments: Attachment[]; moved?: true },
   provider: ProviderDescriptor,
   fileReference: (file: Extract<MessagePart, { type: 'file' }>, place: PartPlace) => string = file => `[File: ${file.name ?? 'attachment'}]`,
@@ -220,10 +220,11 @@ export function continuationInput(
   let imageCount = 0;
   let moved = input.moved === true;
   let entries = 0;
-  let end: number | undefined;
+  // A resume note can pin the history to an exclusive rowid before it is written.
+  let end = typeof upTo === 'number' ? upTo : undefined;
   const start = historyStart(journal, threadId);
-  for (const message of journal.walkMessages(threadId, { after: start.after, blobs: false })) {
-    if (upTo !== null && message.turnId === upTo) { end = journal.messageRowid(threadId, message.id)!; break; }
+  for (const message of journal.walkMessages(threadId, { after: start.after, before: end, blobs: false })) {
+    if (message.turnId === upTo) { end = journal.messageRowid(threadId, message.id)!; break; }
     if (start.before(message)) continue;
     if (message.parts.some((part) => part.type === 'text' && part.moved !== undefined)) moved = true;
     message.parts.forEach((part, partIndex) => {

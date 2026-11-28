@@ -843,7 +843,7 @@ describe('harness updates', () => {
     // An agent with no session to resume: the history is the whole context.
     const thread = { ...core.threads.require(threadId), sessionId: null };
     const note = 'Boite paused this turn between two tool calls (test note).';
-    const context = await core.threads.contexts.makeContext(thread, core.providers.require(thread.providerId), core.accounts.require(thread.accountId), core.journal.getTurn(turn.id)!, { memory: '', deferred: '', letters: '' }, note);
+    const context = await core.threads.contexts.makeContext(thread, core.providers.require(thread.providerId), core.accounts.require(thread.accountId), core.journal.getTurn(turn.id)!, { memory: '', deferred: '', letters: '' }, { prompt: note });
     core.threads.noteSystem(threadId, turn.id, note, 'Resumed', 'turn.resumedAfterUpdate');
     const times = (text: string): number => text.split(note).length - 1;
     expect(context.prompt).toContain('build the release');

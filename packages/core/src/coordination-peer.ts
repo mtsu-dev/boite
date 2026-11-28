@@ -18,7 +18,7 @@ import { receiveProject } from './contacts/project-relay.ts';
 import { redactSharedText, redactSharedContact } from './contacts/file-policy.ts';
 import { machineSettingChanged, readMachineSetting } from './threads/group-spawn.ts';
 import { policedRoutes } from './coordination-group.ts';
-import { assertContacts } from './contacts/switch.ts';
+import { assertContacts, contactsPeerRefusal } from './contacts/switch.ts';
 
 /** What the desk reads of the coordination it answers for. */
 export interface PeerSide {
@@ -186,7 +186,7 @@ export class PeerDesk {
       } catch (reason) {
         result = undefined;
         status = reason instanceof RpcFailure ? 400 : 500;
-        error = reason instanceof RpcFailure ? reason.message : 'Machine could not process the request';
+        error = reason instanceof RpcFailure ? contactsPeerRefusal(reason) : 'Machine could not process the request';
       }
       return this.#signed({ nonce: envelope.nonce, result, error }, status, sealing);
     });

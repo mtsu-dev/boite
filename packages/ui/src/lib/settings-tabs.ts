@@ -1,4 +1,5 @@
 import { experimentsShown } from './experiments.svelte';
+import { isSettingExperiment } from '@boite/contracts';
 import { desktopShell } from './shell-platform';
 
 /** Every Settings page, so a value read from a link can be checked before it opens one. */
@@ -43,9 +44,9 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   'task-manager': { phone: 'page' },
   resources: { owner: true, machine: true, phone: 'page', phoneCards: ['limits', 'tasks'] },
   machines: { phone: 'page', phoneCards: ['machines', 'group'] },
-  advanced: { machine: true, phone: 'sections', phoneCards: ['auto-compact', 'background-compaction', 'cache-keepalive', 'device-stream'] },
+  advanced: { machine: true, phone: 'sections', phoneCards: ['auto-compact', 'cache-keepalive'] },
   diagnostics: { owner: true, machine: true, phone: 'page' },
-  experiments: { device: true, phone: 'page' }
+  experiments: { machine: true, phone: 'page' }
 };
 
 /** The cards of a long desktop page that a phone shows on a page of their own, and that page. */
@@ -67,7 +68,7 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
 export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees';
 
 /** Cards on shared pages that write to the owner's machine. */
-const OWNER_CARDS = new Set(['privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction', 'cache-keepalive']);
+const OWNER_CARDS = new Set(['privacy', 'execution', 'origins', 'auto-compact', 'cache-keepalive']);
 
 /**
  * The families Settings lists, desktop nav and phone list alike, each page a
@@ -112,7 +113,8 @@ const MERGED: Partial<Record<SettingsTab, SettingsTab>> = {
 const MOVED: Partial<Record<SettingsTab, Record<string, SettingsTab>>> = {
   appearance: { workspace: 'general' },
   resources: { quiet: 'general' },
-  experiments: { 'background-compaction': 'advanced', 'cache-keepalive': 'advanced', 'device-stream': 'advanced' },
+  advanced: { 'background-compaction': 'experiments', 'device-stream': 'experiments' },
+  experiments: { 'cache-keepalive': 'advanced' },
   // The browser has its own entry, out of Providers: its profiles are not a provider's.
   accounts: { 'browser-profiles': 'browser' },
   general: { secrets: 'accounts', 'browser-profiles': 'browser', windows: 'machines', 'window-exclusions': 'machines' }
@@ -208,7 +210,7 @@ export function phonePage(route: SettingsTab, section: string | null | undefined
 export function settingsDestination(route: SettingsTab, section: string | null, { owner, phone }: { owner: boolean; phone: boolean }): boolean {
   const tab = movedTo(route, section) ?? route;
   const card = section ? SECTION_PAGES[tab]?.[section] : undefined;
-  if (!pageAvailable(tab, owner) || (!owner && (card?.owner || (section && OWNER_CARDS.has(section))))) return false;
+  if (!pageAvailable(tab, owner) || (!owner && (card?.owner || (section && (OWNER_CARDS.has(section) || (tab === 'experiments' && isSettingExperiment(section))))))) return false;
   if (!phone) return desktopPage(tab, owner) !== 'home';
   if (phonePage(tab, section, owner) === 'home') return false;
   if (section === null || card) return true;

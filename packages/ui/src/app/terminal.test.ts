@@ -7,6 +7,7 @@ import type { FakeClient } from '../lib/fake-client';
 import { AgentsView } from '../lib/agents.svelte';
 import { showTeam } from '../lib/agents-view.svelte';
 import { appCommands } from '../lib/commands.svelte';
+import { setExperiment } from '../lib/experiments';
 import { mountOnFake, openProviderDetails, press, query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
@@ -29,7 +30,10 @@ test.each(['mochi', 'team'])('Ctrl+J leaves the %s conversation open', async (ki
   await view.refresh();
   const agent = view.snapshot!.profiles[0]!;
   if (kind === 'mochi') store.showAgents(agent.id);
-  else showTeam(store, await store.client!.call('teams.create', { name: 'Release crew', members: [agent.id] }));
+  else {
+    setExperiment('teams', true);
+    showTeam(store, await store.client!.call('teams.create', { name: 'Release crew', members: [agent.id] }));
+  }
   await waitFor(() => Boolean(kind === 'mochi' ? store.openThread?.agentSessionId : store.openThread?.teamId));
   const current = store.openThread!.id;
   expect(current).not.toBe(previous);

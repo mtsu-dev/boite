@@ -1,6 +1,7 @@
 <script lang="ts">
   import { lockedBy } from '../lib/policy';
   import type { TelemetryState } from '@boite/contracts';
+  import type { Snippet } from 'svelte';
   import tradeOffer from '../assets/onboarding/trade-offer.webm';
   import noThanks from '../assets/onboarding/no-thanks.webm';
   import InfoTip from './InfoTip.svelte';
@@ -14,7 +15,7 @@
    * picking a row ends the tour. "Enough" keeps the anonymous counters, so the
    * note under both rows carries the full opt-out, one click like the rows.
    */
-  let { store, onchosen }: { store: Store; onchosen: () => void } = $props();
+  let { store, onchosen, heading }: { store: Store; onchosen: () => void; heading?: Snippet } = $props();
 
   const DOC_URL = 'https://github.com/mtsu-dev/boite/blob/main/docs/privacy.md';
   /** How long the refusal clip plays before the tour closes. */
@@ -103,45 +104,57 @@
   }
 </script>
 
+<!--
+  Wide: the meme and what it means on the left, the offer on the right, title
+  first. Narrow: one column, the title still first.
+-->
 <div class="deal" data-testid="telemetry-deal">
-  <div class="pitch">
-    {#key refusing}
-      <video class="clip" bind:this={clip} src={refusing ? noThanks : tradeOffer} aria-label={strings.onboarding.privacy.video}
-        autoplay loop muted playsinline disablepictureinpicture preload="auto" style={clipSize || undefined}></video>
-    {/key}
-    <p class="intro">{strings.onboarding.privacy.intro}</p>
+  <div class="layout">
+    {#if heading}<div class="heading">{@render heading()}</div>{/if}
+    <div class="pitch">
+      {#key refusing}
+        <video class="clip" bind:this={clip} src={refusing ? noThanks : tradeOffer} aria-label={strings.onboarding.privacy.video}
+          autoplay loop muted playsinline disablepictureinpicture preload="auto" style={clipSize || undefined}></video>
+      {/key}
+      <p class="intro">{strings.onboarding.privacy.intro}</p>
+    </div>
+    <div class="offer">
+      <p class="question">{strings.onboarding.privacy.question}<InfoTip topic={strings.onboarding.privacy.doc} text={strings.onboarding.privacy.details} testid="onboarding-telemetry-details" /></p>
+      <div class="rows">
+        <button class="row no" class:refused={refusing} disabled={busy || refusing || !consent || ceiling === 'off'} data-testid="onboarding-telemetry-basic" onclick={() => void enough()}>
+          <span class="label">{strings.onboarding.privacy.basic}<small>{strings.onboarding.privacy.basicDefault}</small></span>
+          <span class="hint">{strings.onboarding.privacy.basicHint}</span>
+        </button>
+        <button class="row yes" disabled={busy || refusing || ceiling !== null} data-testid="onboarding-telemetry-enhanced" onclick={() => void deal()}>
+          <span class="label">{strings.onboarding.privacy.deal}</span>
+          <span class="hint">{strings.onboarding.privacy.dealHint}</span>
+        </button>
+      </div>
+      {#if consent?.configured !== false}
+        <p class="fine" data-testid="telemetry-choice-notice">{strings.telemetry.choiceNotice}</p>
+      {/if}
+      {#if ceiling !== null}<p class="note managed" data-testid="onboarding-telemetry-managed">{strings.policy.managed}<PolicyLock {store} keys={['analytics']} /></p>{/if}
+      <p class="note">{strings.onboarding.privacy.optOut}
+        <button class="link" disabled={busy || refusing} data-testid="onboarding-telemetry-off" onclick={() => void off()}><span class="ui-label">{strings.onboarding.privacy.offLabel}</span></button></p>
+      <button class="link doc" disabled={refusing} onclick={() => void openExternal(DOC_URL)}><span class="ui-label">{strings.onboarding.privacy.doc}</span></button>
+      {#if error}<p role="alert">{error}</p>{/if}
+    </div>
   </div>
-  <p class="question">{strings.onboarding.privacy.question}<InfoTip topic={strings.onboarding.privacy.doc} text={strings.onboarding.privacy.details} testid="onboarding-telemetry-details" /></p>
-  {#if consent?.configured !== false}
-    <p class="intro" data-testid="telemetry-choice-notice">{strings.telemetry.choiceNotice}</p>
-  {/if}
-  <div class="rows">
-    <button class="row no" class:refused={refusing} disabled={busy || refusing || !consent || ceiling === 'off'} data-testid="onboarding-telemetry-basic" onclick={() => void enough()}>
-      <span class="label">{strings.onboarding.privacy.basic}<small>{strings.onboarding.privacy.basicDefault}</small></span>
-      <span class="hint">{strings.onboarding.privacy.basicHint}</span>
-    </button>
-    <button class="row yes" disabled={busy || refusing || ceiling !== null} data-testid="onboarding-telemetry-enhanced" onclick={() => void deal()}>
-      <span class="label">{strings.onboarding.privacy.deal}</span>
-      <span class="hint">{strings.onboarding.privacy.dealHint}</span>
-    </button>
-  </div>
-  {#if ceiling !== null}<p class="note managed" data-testid="onboarding-telemetry-managed">{strings.policy.managed}<PolicyLock {store} keys={['analytics']} /></p>{/if}
-  <p class="note">{strings.onboarding.privacy.optOut}
-    <button class="link" disabled={busy || refusing} data-testid="onboarding-telemetry-off" onclick={() => void off()}><span class="ui-label">{strings.onboarding.privacy.offLabel}</span></button></p>
-  <button class="link" disabled={refusing} onclick={() => void openExternal(DOC_URL)}><span class="ui-label">{strings.onboarding.privacy.doc}</span></button>
-  {#if error}<p role="alert">{error}</p>{/if}
 </div>
 
 <style>
-  .deal { flex: 1; min-height: min-content; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; margin-top: 12px; container-type: inline-size; }
-  .pitch { display: flex; align-items: center; gap: 16px; }
+  .deal { flex: 1; min-height: min-content; display: flex; flex-direction: column; justify-content: center; margin-top: 8px; container-type: inline-size; }
+  /* Narrow: one column in reading order, the title first and centred like a meme's caption. */
+  .layout { display: flex; flex-direction: column; gap: 12px; }
+  .heading { text-align: center; }
+  .pitch { display: flex; align-items: center; gap: 14px; }
+  .offer { display: flex; flex-direction: column; gap: 10px; }
   p { margin: 0; }
-  .clip { display: block; flex: none; max-width: 30%; max-height: min(18vh, 112px); border-radius: var(--radius-lg); animation: swap var(--dur-3) var(--ease-out-quint); }
-  .intro { max-width: 52ch; margin: 0 auto; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.6; text-align: center; }
-  .pitch .intro { flex: 1; min-width: 0; max-width: none; margin: 0; text-align: left; }
-  .question { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 2px 0 0; font-size: var(--text-lg); font-weight: 800; }
+  .clip { display: block; flex: none; max-width: 34%; max-height: min(18vh, 120px); border-radius: var(--radius-lg); animation: swap var(--dur-3) var(--ease-out-quint); }
+  .intro { flex: 1; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.6; }
+  .question { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: var(--text-lg); font-weight: 800; }
   .rows { display: grid; gap: 8px; }
-  .row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; height: auto; padding: 8px 14px; white-space: normal; text-align: left; border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface-2) 88%, var(--color-foreground) 12%); color: var(--color-foreground); cursor: pointer; transition: transform var(--dur-1) ease-out, border-color var(--dur-2) ease-out, background var(--dur-2) ease-out, color var(--dur-2) ease-out, box-shadow var(--dur-2) ease-out; }
+  .row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; height: auto; padding: 10px 14px; white-space: normal; text-align: left; border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface-2) 88%, var(--color-foreground) 12%); color: var(--color-foreground); cursor: pointer; transition: transform var(--dur-1) ease-out, border-color var(--dur-2) ease-out, background var(--dur-2) ease-out, color var(--dur-2) ease-out, box-shadow var(--dur-2) ease-out; }
   .row:hover:not(:disabled) { transform: translateY(-1px); border-color: color-mix(in srgb, var(--color-foreground) 45%, var(--color-border)); }
   .row:disabled { opacity: .5; cursor: not-allowed; }
   .label { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6px; font-size: var(--text-base); font-weight: 700; }
@@ -154,16 +167,26 @@
   .yes { border-color: color-mix(in srgb, var(--color-foreground) 65%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 18%, transparent), 0 6px 22px color-mix(in srgb, var(--color-foreground) 8%, transparent); }
   .yes .label { letter-spacing: .04em; }
   .yes:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--color-foreground); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 45%, transparent), 0 14px 32px color-mix(in srgb, var(--color-foreground) 16%, transparent); }
+  /* What the choice itself sends: shown, never hidden behind the tip, at the size of fine print. */
+  .fine { color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.5; text-align: center; text-wrap: pretty; }
   .note { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; text-align: center; }
   .link { align-self: center; height: auto; padding: 0; border: 0; background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); text-decoration: underline; cursor: pointer; }
   .link:hover:not(:disabled) { color: var(--color-foreground); }
   [role=alert] { color: var(--color-danger); overflow-wrap: anywhere; }
-  /* Wide panels compare the tiers side by side; phones keep full-width choices. */
-  @container (min-width: 480px) {
-    .clip { max-width: 34%; max-height: min(22vh, 160px); }
-    .intro { max-width: none; }
-    .rows { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .row { padding: 14px; gap: 6px; }
+  /*
+   * Wide: two columns. The meme, at the size it was made, with the sentence
+   * that explains it as its caption; beside it the title, the question, the two
+   * offers stacked and the way out, all on one left edge.
+   */
+  @container (min-width: 520px) {
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 24px; row-gap: 12px; align-items: start; }
+    .heading { grid-column: 2; grid-row: 1; text-align: left; }
+    .pitch { grid-column: 1; grid-row: 1 / span 2; flex-direction: column; align-items: stretch; gap: 12px; align-self: center; }
+    .offer { grid-column: 2; grid-row: 2; }
+    .clip { width: 100%; max-width: 100%; height: auto; max-height: none; aspect-ratio: 350 / 373; object-fit: cover; }
+    .question { justify-content: flex-start; }
+    .fine, .note { text-align: left; }
+    .link { align-self: flex-start; }
   }
   @keyframes swap { from { opacity: 0; transform: scale(.96); } }
   /* A short window shrinks the clip, never the line that says what is counted. */

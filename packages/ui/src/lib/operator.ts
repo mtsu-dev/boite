@@ -1,4 +1,5 @@
 import { errorText } from './errors';
+import { contactsShown } from './contacts-rail.svelte';
 import { strings } from './strings';
 import type { Store } from './store.svelte';
 
@@ -64,6 +65,7 @@ export async function ensureOperator(home: Store, stores: readonly Store[]): Pro
     try { return !!(await store.client!.call('contacts.get', {})).bot; } catch { return false; }
   }));
   if (found.some(Boolean)) return true;
+  if (!contactsShown(host)) return false;
   try {
     await host.client!.call('agents.builtin.ensure', { kind: 'contacts', name: strings.agents.builtin.name.contacts });
     return true;

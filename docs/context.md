@@ -59,9 +59,10 @@ left it.
 - On a phone connected as the owner, Automatic compaction is a row in the
   machine's settings.
 
-Background compaction is off by default. Turn it on in Settings, System,
-under Automatic compaction, for each type or for all. Every automatic
-compaction then runs on a copy of the session:
+Background compaction is available in Nightly and Dev builds and is off by
+default. Turn it on for a machine in Settings, Experiments. Customize it for
+each conversation type under Settings, System, Automatic compaction. Every
+automatic compaction then runs on a copy of the session:
 no compaction shows in the conversation, which stays free and takes the
 summary once it is ready, behind a small divider. With a token limit, the copy
 also starts once the conversation reaches 85% of it, while you keep working. It works with Claude and Codex; OpenCode 2 uses its
@@ -81,8 +82,11 @@ named files, or raise the token limit, then write to the thread.
 
 1. Press Enter while a turn runs. The message waits above the box with a
    dashed outline.
-2. The agent receives it after its next tool, when the agent supports that,
-   or when the turn ends.
+2. The agent receives it after its next tool when it supports live input.
+   For Antigravity and other ACP agents without live input, Boite waits for
+   the tools in progress to finish, then starts a new turn in the same
+   conversation. When the current turn needs to finish first, the message
+   goes out at its end.
 3. To change it, press Up in the empty box or click it.
 4. To send it now, press Send now or Enter in the empty box. This stops the
    current turn.

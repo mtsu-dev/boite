@@ -1,10 +1,14 @@
-import type { AgentLetter, DelegatedAgent, MessagePart, DelegationResultPage, DelegationWaitResult, RpcParams, ThreadId, Turn, Usage } from '@boite/contracts';
+import type { AgentLetter, BackgroundTask, DelegatedAgent, ThreadSummary, MessagePart, DelegationResultPage, DelegationWaitResult, RpcParams, ThreadId, Turn, Usage } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import type { Connection } from '../router.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { spoken } from '../coordination-lookup.ts';
 import { usageGroups } from '../journal/usage-sums.ts';
 import { usageTotal } from '../usage.ts';
+import { pendingComposerFollowUp, taskTurn } from './completion.ts';
+import { clearComposerResult, hasComposerResult, pendingComposerResults } from './composer-results.ts';
+import { worktreeLine } from './messages.ts';
+import { sentBack } from '../workflows/follow-up.ts';
 
 const DELEGATION_WAIT_DEFAULT_MS = 600_000;
 const DELEGATION_WAIT_MAX_MS = 3_600_000;
@@ -49,6 +53,71 @@ const QUIET_OPERATIONS = new Set<string>(['pull-request', 'background']);
  */
 export function quietResult(core: Core, childId: ThreadId, turn: Turn): boolean {
   return turn.status === 'done' && QUIET_OPERATIONS.has(turn.execution?.operation ?? '') && core.pullRequestWatches.of(childId).length > 0;
+}
+
+/** Send the result once the worktree outcome is known, keeping the branch note intact. */
+export function sendChildResult(core: Core, turn: Turn, child: ThreadSummary, parentId: string, remote: boolean, live: BackgroundTask[], followUp: boolean): void {
+  const delegation = core.delegation;
+  const checkpoint = live.length > 0;
+  const head = checkpoint
+    ? `${child.title}: waiting on its background work (${[...new Set(live.map(task => task.description.trim() || task.kind))].join(', ').slice(0, 600)})\nCheckpoint, not its final result: that work wakes it and its final result follows.`
+    : `${child.title}: ${turn.status}`;
+  const worktree = checkpoint ? undefined : delegation.worktrees.get(child.id);
+  const tail = worktree ? `\n${worktreeLine(worktree)}${remote ? ` It is on ${core.coordination.identity().name}, where the branch stays.` : ''}` : '';
+  const result = delegation.result(turn, followUp && !delegation.delegated(child.id) ? 'thread' : 'delegate', RESULT_TEXT - head.length - 1 - tail.length);
+  const text = `${`${head}\n${result ?? 'No text result was returned.'}`.slice(0, RESULT_TEXT - tail.length)}${tail}`;
+  const requestId = `result:${turn.id}`;
+  const owed = hasComposerResult(core, turn.id);
+  const send = () => {
+    if (remote) delegation.remote.letter(child.id, { origin: 'result', requestId, text, ...(checkpoint ? { checkpoint: true } : owed ? { owed: true } : {}) });
+    else delegation.send({ threadId: child.id, toThreadId: parentId, requestId, text }, 'result', {
+      ...(checkpoint ? { checkpoint: true } : {}), ...(quietResult(core, child.id, turn) ? { quiet: true } : {}),
+    });
+  };
+  try {
+    if (owed) core.bus.afterCommit(() => core.journal.db.transaction(() => {
+      send();
+      clearComposerResult(core, turn.id);
+    })());
+    else send();
+  } catch (error) { core.log('warn', `delegation result ${child.id}: ${messageOf(error)}`); }
+}
+
+/** Resolve the current recipient, dropping obligations for teams that can no longer receive them. */
+function composerResultRoute(core: Core, turn: Turn, rootId?: string) {
+  const child = core.journal.getThread(turn.threadId);
+  if (rootId !== undefined && child?.parentThreadId !== rootId) return null;
+  const parent = child?.parentThreadId ? core.journal.getThread(child.parentThreadId) : null;
+  const link = child && !child.parentThreadId ? core.delegation.remote.parentOf(child.id) : undefined;
+  const config = parent ? core.delegation.config(parent.id) : null;
+  if (!child || child.archived || (parent ? parent.archived || !config?.enabled : !link)) {
+    clearComposerResult(core, turn.id);
+    return null;
+  }
+  return config?.paused ? null : { child, parentId: parent?.id ?? link!.parentId, remote: link !== undefined };
+}
+
+/** Finish pending result deliveries without stopping or settling any newer turn. */
+export async function recoverComposerResults(core: Core, rootId?: string): Promise<void> {
+  const recover = async (turn: Turn): Promise<void> => {
+    let route = composerResultRoute(core, turn, rootId);
+    if (!route) return;
+    const { child } = route;
+    const delegation = core.delegation;
+    if ((child.status === 'idle' || child.status === 'error') && !delegation.hasMail(child.id) && taskTurn(core, child.id)?.id === turn.id) {
+      await delegation.worktrees.settle(child.id);
+      if (core.stopping || core.journal.isClosed()) return;
+      route = composerResultRoute(core, turn, rootId);
+    }
+    if (route && hasComposerResult(core, turn.id)) sendChildResult(core, turn, route.child, route.parentId, route.remote, [], sentBack(core, child.id, turn));
+  };
+  // Resume may enqueue an explicit continuation before returning to the event loop.
+  await Promise.resolve();
+  if (core.stopping || core.journal.isClosed()) return;
+  try { await Promise.all(pendingComposerResults(core).map(recover)); }
+  catch (error) {
+    if (!core.stopping && !core.journal.isClosed()) core.log('warn', `delegation results recovery failed: ${messageOf(error)}`);
+  }
 }
 
 /**
@@ -190,7 +259,11 @@ export class DelegationWaits {
           directChildren(this.#core, params.threadId, params.agentId);
           const agents = this.#agents(params.threadId).filter(agent => params.agentId === undefined || agent.thread.id === params.agentId);
           // A child that ended its turn to wait on its background work has not answered yet.
-          const waiting = (params.agentId === undefined && this.#core.council.running(params.threadId)) || agents.some(agent => (agent.machine !== undefined && this.#core.delegation.remote.child(params.threadId, agent.thread.id)?.state?.restarting === true) || (agent.lastTurn !== null && ['queued', 'running'].includes(agent.lastTurn.status)) || agent.thread.backgroundWait?.state === 'waiting' || this.#settling(agent.thread.id));
+          const waiting = (params.agentId === undefined && this.#core.council.running(params.threadId)) || agents.some(agent =>
+            (agent.machine !== undefined && this.#core.delegation.remote.child(params.threadId, agent.thread.id)?.state?.restarting === true)
+            || (agent.lastTurn !== null && (['queued', 'running'].includes(agent.lastTurn.status)
+              || (!agent.machine && !agent.thread.archived && pendingComposerFollowUp(this.#core, agent.lastTurn))))
+            || agent.thread.backgroundWait?.state === 'waiting' || this.#settling(agent.thread.id));
           // A child stopped on a question or an approval waits on someone: its running turn would hold the wait to its timeout.
           const asks = agents.some(agent => agent.needsInput?.some(need => need.kind === 'permission' || need.blocking));
           if (waiting && !asks && !timedOut) return;

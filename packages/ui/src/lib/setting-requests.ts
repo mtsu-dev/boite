@@ -5,7 +5,7 @@
  * are in `packages/contracts/src/setting-requests.ts`, the core's cards in
  * `packages/core/src/threads/cards.ts`.
  */
-import { COORDINATION_REACH, EXPERIMENT_STAGES, TRANSCRIPT_MODES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk } from '@boite/contracts';
+import { COORDINATION_REACH, EXPERIMENT_STAGES, REQUESTABLE_SETTINGS, TRANSCRIPT_MODES, experimentOf, experimentOfSetting, isExperimentId, settingExperimentKey, type AutoCompactMoment, type ExperimentalSetting, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk } from '@boite/contracts';
 import { experimentCopy } from './experiment-copy';
 import { movedTo, settingsDestination, type SettingsTab } from './settings-tabs';
 import { formatLocale } from './i18n.svelte';
@@ -32,17 +32,13 @@ function graduated(key: string): { title: string; switched: boolean } | null {
   if (id === 'preview-comments') return { title: strings.features.previewComments.title, switched: true };
   if (id === 'edge-scrollbars') return { title: strings.features.edgeScrollbars.title, switched: true };
   if (id === 'whip') return { title: strings.features.whip.title, switched: true };
-  if (id === 'auto-goal') return { title: strings.settings.autoGoals, switched: true };
   if (id === 'press-preload') return { title: strings.settingRequest.loadOnPress, switched: false };
   // Finished since: on in every build, with no switch (`EXPERIMENT_STAGES`).
   if (id === 'resident-agents') return { title: strings.agents.heading, switched: false };
   if (id === 'theme-grain') return { title: strings.settings.themeGrain, switched: false };
-  if (id === 'session-import') return { title: strings.palette.importSession, switched: false };
   if (id === 'pinned-quotas') return { title: strings.quotas.pin, switched: false };
   if (id === 'prompt-cache') return { title: strings.settingRequest.promptCacheTimer, switched: false };
   if (id === 'recording-indicators') return { title: strings.settingRequest.recordingActions, switched: false };
-  if (id === 'contacts') return { title: strings.contacts.heading, switched: false };
-  if (id === 'teams') return { title: strings.teamChat.heading, switched: false };
   if (id === 'debates') return { title: strings.council.salon, switched: false };
   const known = experimentOf(key);
   if (known !== null && EXPERIMENT_STAGES[known] === 'release') return { title: strings.settingRequest.formerExperiment, switched: false };
@@ -53,7 +49,7 @@ function graduated(key: string): { title: string; switched: boolean } | null {
 export function retiredHint(key: string): string {
   const former = graduated(key);
   // Still an experiment, on a machine whose build runs none.
-  if (former === null && experimentOf(key) !== null) return strings.settingRequest.retiredRelease;
+  if (former === null && (experimentOf(key) !== null || experimentOfSetting(key) !== null)) return strings.settingRequest.retiredRelease;
   return former?.switched === false ? strings.settingRequest.retiredAlwaysOn : strings.settingRequest.retired;
 }
 
@@ -66,7 +62,7 @@ export function settingHeading(setting: SettingCardAsk): string {
 }
 
 export function settingLabel(key: RequestableKey): string {
-  const experiment = experimentOf(key);
+  const experiment = experimentOf(key) ?? experimentOfSetting(key);
   const former = graduated(key);
   if (former !== null) return former.title;
   if (experiment !== null) return experimentCopy()[experiment]?.title ?? key;
@@ -75,7 +71,7 @@ export function settingLabel(key: RequestableKey): string {
 
 /** What the setting does, as the Settings page explains it; null where the card's name says enough. */
 export function settingHint(key: RequestableKey): string | null {
-  const experiment = experimentOf(key);
+  const experiment = experimentOf(key) ?? experimentOfSetting(key);
   return experiment === null ? null : experimentCopy()[experiment]?.hint ?? null;
 }
 
@@ -87,19 +83,18 @@ export function settingHint(key: RequestableKey): string | null {
  * the two the same).
  */
 export function settingHelp(key: RequestableKey): string | null {
-  const experiment = experimentOf(key);
+  const experiment = experimentOf(key) ?? experimentOfSetting(key);
   const hint = experiment === null ? null : experimentCopy()[experiment]?.hint;
   if (experiment !== null) return hint ? sentences([hint]) : null;
   const s = strings.settings;
   const effects = s.effects;
   const worktrees = s.worktrees, alone = strings.agentsAlone;
   // Every setting an agent reads has its page's words: a new one fails to compile until it has them.
-  const parts: Record<RequestableSetting, readonly string[]> = {
+  const parts: Record<Exclude<RequestableSetting, ExperimentalSetting>, readonly string[]> = {
     asyncQuestions: [effects.asyncQuestions],
     shortAnswers: [effects.shortAnswers, s.shortAnswersHint],
     toolSummaries: [effects.toolSummaries, s.toolSummariesHint],
     titleModel: [s.titleModelHint],
-    autoGoals: [effects.autoGoals, s.autoGoalsHint],
     threadDoneRetentionDays: [s.archived.doneRetentionHint],
     threadDeletionRetentionDays: [s.deleted.retentionHint],
     transcriptStorage: [s.transcripts.help],
@@ -123,15 +118,12 @@ export function settingHelp(key: RequestableKey): string | null {
     compactionSummary: [s.compactionSummaryHint],
     autoResumeLimitedThreads: [effects.autoResume, strings.quotas.autoResumeHint],
     cacheKeepalive: [effects.cacheKeepalive, s.cacheKeepaliveHint],
-    backgroundCompaction: [effects.backgroundCompaction, s.backgroundCompactionHint],
-    deviceStream: [effects.deviceStream, s.deviceStreamHint],
     groupThreads: [strings.machines.groupThreadsHint],
     groupBots: [strings.machines.groupBotsHint],
     agentBotCreation: [`${alone.bots}: ${alone.botsEffect}`],
-    contacts: [alone.contactsEffect],
     coordinationReach: COORDINATION_REACH.map(step => `${alone.steps[step]}: ${alone.effects[step]}`),
   };
-  const text = parts[key as RequestableSetting];
+  const text = parts[key as keyof typeof parts];
   return text === undefined || text.length === 0 ? null : sentences(text);
 }
 
@@ -208,6 +200,7 @@ export function settingsPageLabel(page: SettingsTab): string {
 /** A card's name on its page, when the app names it; a provider's card by the provider's name. */
 export function settingsSectionLabel(section: string, providers: readonly ProviderSummary[] = []): string | null {
   if (section.startsWith('provider-')) return providers.find((provider) => provider.id === section.slice('provider-'.length))?.name ?? null;
+  if (isExperimentId(section)) return experimentCopy()[section]?.title ?? null;
   const settings = strings.settings;
   const labels: Record<string, string> = {
     'thread-list': settings.threadList,
@@ -237,19 +230,19 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
     origins: strings.machines.browserOrigins,
     'auto-compact': settings.autoCompact,
     'cache-keepalive': settings.cacheKeepalive,
-    'device-stream': settings.deviceStream,
-    'background-compaction': settings.backgroundCompaction,
   };
   return labels[section] ?? null;
 }
 
 /** Whether Settings draws the page or card a request names. */
-export function settingsReachable({ page, section }: Pick<SettingAsk, 'page' | 'section'>, client: { owner: boolean; phone: boolean }): boolean {
+export function settingsReachable({ page, section }: ReturnType<typeof settingPlace>, client: { owner: boolean; phone: boolean }): boolean {
   return settingsDestination(page, section, client);
 }
 
 /** The current Settings location of a card that may name an older route. */
-export function settingPlace({ page, section }: SettingAsk): { page: SettingsTab; section: SettingAsk['section'] } {
+export function settingPlace(asked: SettingAsk): { page: SettingsTab; section: SettingAsk['section'] } {
+  const key = asked.kind === 'change' ? settingExperimentKey(asked.key) : null;
+  const { page, section } = key === null ? asked : REQUESTABLE_SETTINGS[key];
   return { page: movedTo(page, section) ?? page, section };
 }
 

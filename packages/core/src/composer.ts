@@ -1,21 +1,26 @@
-import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
+import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcEvents, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
 import { composerInputThreadId, isComposerKey, privateTerminalComposerId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
 import { invalidParams, messageOf, notFound, refused } from './errors.ts';
-import { ComposerStorage, digest, recordKey } from './composer-storage.ts';
+import { ADMITTED_COMPOSER_TURN, ComposerStorage, digest, recordKey } from './composer-storage.ts';
+import type { TurnHandle } from './drivers/types.ts';
 import { steerUser, userSteeringUnavailable } from './threads/user-steering.ts';
 import { DraftReservationLedger, type DraftOwnership } from './threads/draft-reservation-ledger.ts';
 import { needsModelDiscovery } from './threads/selection.ts';
-import { admissionRefusal } from './threads/admission.ts';
+import { admissionRefusal, checkTurnInput, prepareTurnExecution } from './threads/admission.ts';
 import { composerActivity, isComposerActivity, startsAutoGoal } from './composer-activity.ts';
 import { composerBatch } from './composer-batch.ts';
 import { checkTurnRequest } from './threads/inputs.ts';
-import { ensureThreadCwd } from './threads/cwd.ts';
+import { ensureThreadCwd, folderPresent } from './threads/cwd.ts';
+import { pendingComposerFollowUp, taskTurn } from './delegation/completion.ts';
 
 const choiceOf = (thread: ThreadSummary): ComposerChoice => ({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, permissionMode: thread.permissionMode });
 const sameChoice = (a: ComposerChoice, b: ComposerChoice): boolean => a.providerId === b.providerId && a.accountId === b.accountId && a.model === b.model && a.effort === b.effort && (a.speed ?? null) === (b.speed ?? null);
+type ToolBoundary = RpcEvents['turn.toolCompleted'] & {
+  cancel?: { handle: TurnHandle; outputRevision: number; folder?: { cwd: string; revision: number } };
+};
 
 /** Durable owner outbox. No browser or subscription participates in execution. */
 export class Composer {
@@ -26,7 +31,7 @@ export class Composer {
   readonly #pending = new Map<string, Pick<ComposerRecord, 'section' | 'id'>>();
   readonly #dirty = new Set<string>();
   readonly #captured = new Map<string, ComposerQueuedPrompt[]>();
-  readonly #boundaries = new Map<string, string>();
+  readonly #boundaries = new Map<string, ToolBoundary>();
   readonly #forced = new Map<string, string>();
   #stopWaiting!: () => void;
   readonly #stopped = new Promise<null>(resolve => { this.#stopWaiting = () => resolve(null); });
@@ -39,9 +44,12 @@ export class Composer {
     this.storage = new ComposerStorage(core);
     this.#unsubscribe = core.bus.onCommitted((name, payload) => {
       if (name === 'turn.toolCompleted') {
-        const boundary = payload as { threadId: string; boundary: string };
+        const boundary: ToolBoundary = { ...payload as RpcEvents['turn.toolCompleted'] };
         if (!this.storage.queued.has(recordKey('inputs', boundary.threadId))) return;
-        this.#boundaries.set(boundary.threadId, boundary.boundary);
+        const handle = core.threads.runner.handles.get(boundary.threadId);
+        const outputRevision = handle?.outputRevision;
+        if (handle && outputRevision !== undefined) boundary.cancel = { handle, outputRevision };
+        this.#boundaries.set(boundary.threadId, boundary);
         this.#schedule([{ section: 'inputs', id: boundary.threadId }]);
       } else if (['turn.finished', 'thread.updated', 'permission.resolved', 'question.answered'].includes(name)) {
         const thread = payload as { threadId?: string; id?: string };
@@ -93,9 +101,7 @@ export class Composer {
     // Existing recovery holds every never-started turn. Server-owned accepted
     // queues may resume those safe rows; legacy client queues remain held.
     const held = this.#core.journal.db.query(`SELECT t.id, t.thread_id FROM turns t
-      WHERE t.status = 'queued' AND t.started_at IS NULL AND t.queue_hold IS NOT NULL AND EXISTS (
-        SELECT 1 FROM turn_requests r JOIN composer_deliveries d ON d.thread_id = r.thread_id AND d.request_id = r.request_id
-        WHERE r.thread_id = t.thread_id AND r.turn_id = t.id AND d.status = 'delivered')`).all() as { id: string; thread_id: string }[];
+      WHERE t.status = 'queued' AND t.started_at IS NULL AND t.queue_hold IS NOT NULL AND EXISTS (${ADMITTED_COMPOSER_TURN})`).all() as { id: string; thread_id: string }[];
     for (const { id, thread_id } of held) {
       const thread = this.#core.journal.getThread(thread_id);
       const project = thread?.projectId ? this.#core.journal.getProject(thread.projectId) : null;
@@ -108,6 +114,8 @@ export class Composer {
 
   /** Retry requested input once the native turn can accept it, before any tool output. */
   inputReady(threadId: string): void { this.#schedule([{ section: 'inputs', id: threadId }]); }
+
+  hasQueuedInput(threadId: string): boolean { return this.storage.queued.has(recordKey('inputs', threadId)); }
 
   async enqueue(params: RpcParams<'composer.enqueue'>, connection: Connection) {
     if (typeof params?.threadId !== 'string' || typeof params.prompt !== 'string' || !params.prompt.trim() || typeof params.clientRequestId !== 'string') {
@@ -241,9 +249,13 @@ export class Composer {
     const key = recordKey(section, recordId);
     const id = section === 'inputs' ? composerInputThreadId(recordId) : recordId;
     while (!this.#closed && !this.#core.stopping) {
+      const boundary = section === 'inputs' ? this.#boundaries.get(recordId) : undefined;
       const record = this.storage.get(section, recordId), value = record.value;
       if (!value || !value.input.queued.length) { this.storage.queued.delete(key); if (section === 'inputs') { this.#boundaries.delete(recordId); this.#forced.delete(recordId); } return; }
-      if (value.input.paused) return;
+      if (value.input.paused) {
+        if (boundary) delete boundary.cancel;
+        return;
+      }
       const item = value.input.queued[0]!;
       const delivery = this.storage.delivery(item.id);
       if (delivery?.status === 'delivered') { this.#complete(section, recordId, item.id); continue; }
@@ -253,6 +265,9 @@ export class Composer {
       // a late copy of the first request; a pending one stays held.
       const receipt = section === 'inputs' && item.request?.sent && !item.request.failed ? this.#core.journal.turnRequest(id, item.request.id) : null;
       if (receipt && !/^(start|steer):pending:/.test(receipt.fingerprint)) { this.#complete(section, recordId, item.id); continue; }
+      // Consume the completion once, even when its queue is still busy processing an earlier wake.
+      const cancel = boundary?.cancel;
+      if (boundary) delete boundary.cancel;
       if (delivery?.status === 'uncertain' || item.request?.failed || (item.request?.sent && (section !== 'inputs' || receipt))) {
         this.#hold(section, recordId, item.id, item.request?.failed ?? 'Delivery is unconfirmed; review before sending a new request.'); return;
       }
@@ -262,7 +277,6 @@ export class Composer {
         const thread = this.#core.journal.getThread(id);
         if (!thread || thread.archived || (thread.projectId && this.#core.projects.require(thread.projectId).archived)) return;
         if (this.#core.threads.listPermissions(id).length || this.#core.threads.listQuestions(id).some(question => !question.async)) return;
-        const boundary = this.#boundaries.get(recordId);
         const followsThread = item.id.startsWith('cli_');
         const choice = followsThread ? undefined : item.choice;
         if (!followsThread && !choice) throw refused('No agent selection was saved for this queued prompt. Choose an agent and enqueue it again.');
@@ -280,14 +294,39 @@ export class Composer {
           await Promise.race([this.#stopped, this.#core.scheduler.stopAndWait(id)]);
           continue;
         }
-        const running = active ? this.#core.journal.runningTurn(id) : null;
-        if (active && (!boundary || boundary === item.afterBoundary || item.request || isComposerActivity(item.text) || !choice || !sameChoice(choice, choiceOf({ ...thread, ...running?.execution })) || userSteeringUnavailable(this.#core, this.#core.threads, id, running) !== null)) return;
+        const turn = active ? this.#core.journal.runningTurn(id) : null;
+        if (active && (!turn || boundary?.turnId !== turn.id || boundary.boundary === item.afterBoundary || item.request || isComposerActivity(item.text)
+          || !choice || !sameChoice(choice, choiceOf({ ...thread, ...turn.execution })))) return;
+        const steeringReason = turn ? userSteeringUnavailable(this.#core, this.#core.threads, id, turn) : null;
+        const handle = turn && cancel && steeringReason === 'unsupported' && runner.handles.get(id) === cancel.handle
+          && cancel.handle.outputRevision === cancel.outputRevision && this.#canCancelForQueuedInput(turn) ? cancel.handle : undefined;
+        if (steeringReason !== null && !handle?.cancelForQueuedInput) return;
+        if (boundary && cancel && handle?.cancelForQueuedInput) {
+          if (!cancel.folder) {
+            const folder = { cwd: thread.cwd, revision: record.revision };
+            // A slow share must leave the pump free to handle newer tools and Send now.
+            void folderPresent(folder.cwd).then(present => {
+              if (!present || this.#boundaries.get(recordId) !== boundary) return;
+              boundary.cancel = { ...cancel, folder };
+              this.#schedule([{ section, id: recordId }]);
+            });
+            return;
+          }
+          if (cancel.folder.cwd !== thread.cwd || cancel.folder.revision !== record.revision) return;
+        }
         const batch = composerBatch(value.input.queued, this.storage);
         const attachments = batch.attachments;
         this.#captured.set(key, batch.entries);
-        if (active) {
-          const turn = running;
-          if (!turn) return;
+        if (choice && handle?.cancelForQueuedInput) {
+          // Discovery can yield past this tool boundary. The idle pump can discover and start the turn.
+          if (this.#providerNeedingDiscovery(choice)) return;
+          // Share the synchronous admission checks. Settlement wakes the queue to recheck and admit the input.
+          const target = checkTurnInput(this.#core, id, batch.text, attachments, batch.previewReferences);
+          prepareTurnExecution(this.#core, target, attachments, choice);
+          if (handle.cancelForQueuedInput(attachments)) this.#boundaries.delete(recordId);
+          return;
+        }
+        if (turn) {
           for (const entry of batch.entries) this.#reserve(record, entry, id, batch.requestId);
           const accepted = await Promise.race([this.#stopped, steerUser(this.#core, this.#core.threads, { threadId: id, turnId: turn.id, prompt: batch.text, attachments, previewReferences: batch.previewReferences, clientRequestId: batch.requestId, expectedSelectionVersion: thread.selectionVersion ?? 0 }, batch.entries[0]!.sentFrom ?? null)]);
           if (!accepted || this.#closed) return;
@@ -295,22 +334,42 @@ export class Composer {
           this.#complete(section, recordId, batch.entries.map(entry => entry.id)); continue;
         }
         this.#boundaries.delete(recordId);
-        if (choice) await this.#discover(choice);
+        const discoveryFailure = choice ? await this.#discover(choice).catch((error: unknown) => ({ error })) : undefined;
         // A discovery RPC can yield while the user archives the target or stops the core.
         const current = this.#core.journal.getThread(id);
         if (this.#closed || this.#core.stopping || !current || current.archived || (current.projectId && this.#core.projects.require(current.projectId).archived)) return;
         // As `turns.start`: the project's folder is only reported (a shared worktree outlives it); the turn's own cwd decides.
-        if (current.projectId) void this.#core.projects.requireFolder(current.projectId).catch(() => undefined);
-        await ensureThreadCwd(this.#core, current);
+        if (!discoveryFailure && current.projectId) void this.#core.projects.requireFolder(current.projectId).catch(() => undefined);
+        const worktrees = this.#core.delegation.worktrees;
+        const managed = worktrees.get(id)?.path === current.cwd;
+        if (managed && worktrees.isSettling(id)) {
+          // Nothing has been submitted. Leave the queued input editable during checkout cleanup.
+          this.#captured.delete(key);
+          await Promise.race([this.#stopped, worktrees.settle(id)]);
+          continue;
+        }
+        const admissionFailure = discoveryFailure ?? await ensureThreadCwd(this.#core, current).catch((error: unknown) => {
+          // The runner opens its managed checkout again if cleanup removed it.
+          const worktree = worktrees.get(id);
+          if (worktree?.path === current.cwd && worktree.state === 'removed') return undefined;
+          return { error };
+        });
+        if (managed && worktrees.isSettling(id)) continue;
         const activity = composerActivity(item.text);
         this.#atomic(() => {
           const target = this.#core.journal.getThread(id);
           if (this.#core.stopping || this.#closed || !this.storage.queued.has(key) || !target || target.archived || target.cwd !== current.cwd || this.#core.threads.isBusy(id)
             || (target.projectId && this.#core.projects.require(target.projectId).archived)) return;
+          // An accepted pause or queue edit during discovery or the folder check takes effect before admission.
+          if (this.storage.get(section, recordId).revision !== record.revision) return;
+          if (admissionFailure) throw admissionFailure.error;
           for (const entry of batch.entries) this.#reserve(record, entry, id, batch.requestId);
           if (activity) {
             if (item.previewReferences?.length) throw refused('Activity commands do not accept page references.');
-            this.#core.activity.set({ threadId: id, ...activity, attachments }, undefined, choice);
+            const child = target.parentThreadId || this.#core.delegation.remote.parentOf(id);
+            const last = child ? taskTurn(this.#core, id) : null;
+            const followUp = last && pendingComposerFollowUp(this.#core, last) ? { turnId: last.id, requestId: batch.requestId } : undefined;
+            this.#core.activity.set({ threadId: id, ...activity, attachments }, undefined, choice, false, followUp);
           } else this.#core.threads.startTurn(id, { prompt: batch.text, attachments, previews: batch.previewReferences }, { kind: 'user', requestId: batch.requestId, sentFrom: batch.entries[0]!.sentFrom ?? null }, { expectedSelectionVersion: (followsThread ? target : current).selectionVersion ?? 0, choice,
             autoGoal: startsAutoGoal(batch.text, this.#core.settings.get()) ? batch.text : undefined });
           this.#complete(section, recordId, batch.entries.map(entry => entry.id));
@@ -329,10 +388,26 @@ export class Composer {
     }
   }
 
+  #canCancelForQueuedInput(turn: Turn): boolean {
+    const { threadId } = turn;
+    const { threads, activity, scheduler } = this.#core;
+    if (turn.execution?.operation || scheduler.stopTarget(threadId) !== turn.id || threads.handoff.toolsRunning(threadId) > 0) return false;
+    // These prompts must finish to acknowledge their history or report their first result.
+    if (threads.accountSessions.carrying(threadId) === turn.id || threads.backgroundCompact.carrying(threadId) === turn.id
+      || threads.spawns.awaitingFirstResult(threadId)) return false;
+    const { goal, loop } = activity.get(threadId);
+    return goal?.status !== 'active' && loop?.status !== 'active' && !activity.ownsReviewer(threadId) && !activity.ownsTracker(threadId);
+  }
+
+  #providerNeedingDiscovery(choice: ComposerChoice) {
+    const provider = this.#core.providers.require(choice.providerId);
+    return needsModelDiscovery(provider, choice.accountId, choice.model, choice.effort, choice.speed ?? null) ? provider : null;
+  }
+
   /** Reads the agent's models once when the queued selection names one Boite has not seen yet. */
   async #discover(choice: ComposerChoice): Promise<void> {
-    const provider = this.#core.providers.require(choice.providerId);
-    if (!needsModelDiscovery(provider, choice.accountId, choice.model, choice.effort, choice.speed ?? null)) return;
+    const provider = this.#providerNeedingDiscovery(choice);
+    if (!provider) return;
     await this.#core.router.dispatch('providers.probe', { providerId: choice.providerId, accountId: choice.accountId, ...(provider.protocol === 'acp' && choice.model !== null && choice.effort !== null ? { model: choice.model } : {}) }, { connection: this.#connection });
   }
 

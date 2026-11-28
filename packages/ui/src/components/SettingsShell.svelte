@@ -50,8 +50,7 @@
   /**
    * The pages that change one machine (`machinePage`) take it from the bar
    * above them; the others are this window's (appearance), the whole group's (machines) or
-   * pick their own (usage, which also reads every machine). Experiments holds
-   * this device's switches alone.
+   * pick their own (usage, which also reads every machine).
    */
   /** Machines this window controls, and the window's own whatever its role there. */
   let choices = $derived(workspace.machines.filter((machine) => machine.store === store || machine.store === pinned || (machine.store.connection === 'ready' && machine.store.owner)));
@@ -194,7 +193,6 @@
     advanced: [
       ...(store.owner ? [
         { id: 'execution', label: strings.settings.execution }, { id: 'cache-keepalive', label: strings.settings.cacheKeepalive },
-        { id: 'background-compaction', label: strings.settings.backgroundCompaction }, { id: 'device-stream', label: strings.settings.deviceStream },
         { id: 'phone', label: strings.phone.heading }, { id: 'origins', label: strings.machines.browserOrigins }
       ] : []),
       ...(desktopSettings(narrow.current) ? [{ id: 'details', label: strings.settings.terminalAndScrollbars }] : []),
@@ -271,7 +269,6 @@
     ['general', 'agent-replies', strings.settings.promptSuggestions],
     ['general', 'agent-replies', strings.settings.titleModel],
     ['general', 'agent-replies', strings.settings.goalTrackerModel],
-    ['general', 'agent-replies', strings.settings.autoGoals],
     ['general', 'conversations', strings.features.chatArtifacts.title],
     ...(inShell ? [['general', 'conversations', strings.features.openChatLinks.title] as [SettingsTab, string, string]] : []),
     ['general', 'conversations', strings.features.previewComments.title],
@@ -311,7 +308,6 @@
     ['general', 'quiet', strings.settings.muteAgents],
     ['general', 'agents-alone', strings.agentsAlone.reach],
     ['general', 'agents-alone', strings.agentsAlone.bots],
-    ['general', 'agents-alone', strings.agentsAlone.contacts],
     ['resources', 'limits', strings.settings.memoryProtection],
     ['resources', 'tasks', strings.settings.reapOrphans],
     ['resources', 'tasks', strings.settings.keepAwake],
@@ -567,7 +563,7 @@
       {:else if page === 'mcp'}
         <McpPage store={target} />
       {:else if page === 'experiments'}
-        <ExperimentsPage />
+        <ExperimentsPage store={target} />
       {:else if page === 'diagnostics'}
         <DiagnosticsPage store={target} {onopenthread} />
       {:else if page === 'resources'}

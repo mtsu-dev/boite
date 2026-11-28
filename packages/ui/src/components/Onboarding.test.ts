@@ -213,13 +213,21 @@ test('the panel example shows changes beside chat instead of a keybinding list',
   expect(readOnboarding()).toBeNull();
 });
 
-test('demo choices are labelled buttons and dictation keeps word spacing', async () => {
+test('the demo parts mark the playing one as the current step, say what it shows, and dictation keeps word spacing', async () => {
   await open();
   await click('onboarding-dot-agents');
   for (const demo of ['agents', 'voice', 'panel']) {
-    expect(query(`[data-testid=onboarding-example-${demo}]`).tagName).toBe('BUTTON');
+    const part = query(`[data-testid=onboarding-example-${demo}]`);
+    expect(part.tagName).toBe('BUTTON');
+    // A part of one demo, not an answer: nothing in it reads as a toggle to pick.
+    expect(part.hasAttribute('aria-pressed')).toBe(false);
+    expect(part.getAttribute('aria-current')).toBe(demo === 'agents' ? 'step' : null);
   }
+  expect(query('[data-testid=onboarding-example-lead]').textContent).toContain('another agent');
   await click('onboarding-example-voice');
+  expect(query('[data-testid=onboarding-example-voice]').getAttribute('aria-current')).toBe('step');
+  expect(query('[data-testid=onboarding-example-agents]').classList.contains('past')).toBe(true);
+  expect(query('[data-testid=onboarding-example-lead]').textContent).toContain('microphone');
   expect(query('[data-testid=onboarding-scene]').textContent).toContain('Make the buttons easier to read');
   expect(query('[data-testid=onboarding-scene]').textContent).not.toContain('Illustration');
   expect(query('[data-testid=onboarding-animation-replay]').getAttribute('aria-label')).toBe('Replay');
@@ -382,6 +390,35 @@ test('voice setup failures stay in the tour and preserve their message across st
   await click('onboarding-next');
   expect(step()).toBe('usage');
 });
+
+test('a finished demo part moves on by itself, except while the dictation row holds the focus', async () => {
+  const client = store.client!;
+  const call = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation((async (method: string, params: never) => {
+    if (method === 'speech.status') return { ready: false, localReady: false, installing: false, canInstallRuntime: true, engine: 'local' };
+    return call(method as never, params);
+  }) as typeof client.call);
+  // jsdom runs no animation: an empty list lets the scene's end event count as its end.
+  Object.defineProperty(Element.prototype, 'getAnimations', { configurable: true, value: () => [] });
+  try {
+    await open();
+    await click('onboarding-dot-agents');
+    await click('onboarding-example-voice');
+    await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
+    const scene = () => query<HTMLElement>('[data-testid=onboarding-scene]').dataset.scene;
+    const end = async () => { query('[data-testid=onboarding-animation]').dispatchEvent(new Event('animationend', { bubbles: true })); flushSync(); await new Promise(resolve => setTimeout(resolve, 1_700)); flushSync(); };
+    // Moving on would take the focused Install button away from under the keyboard.
+    query<HTMLButtonElement>('[data-testid=onboarding-voice-install]').focus();
+    flushSync();
+    await end();
+    expect(scene()).toBe('voice');
+    expect(document.activeElement).toBe(query('[data-testid=onboarding-voice-install]'));
+    query<HTMLElement>('h1').focus();
+    flushSync();
+    await end();
+    expect(scene()).toBe('panel');
+  } finally { delete (Element.prototype as { getAnimations?: unknown }).getAnimations; }
+}, 10_000);
 
 test('focus stays in the dialog and navigation focuses its new heading', async () => {
   await open();

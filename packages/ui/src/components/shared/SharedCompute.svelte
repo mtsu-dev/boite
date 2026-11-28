@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { untrack } from 'svelte';
   import { Plus } from '@lucide/svelte';
   import type { SharedComputeJob, SharedComputeRoute, SharedProjectScope, SharedProjectView } from '@boite/contracts';
@@ -67,6 +68,7 @@
     catch (e) { error = errorText(e); }
     finally { busy = false; }
   }
+  markFeature('boite-feature:contacts');
 </script>
 
 <section class="compute" data-testid="shared-compute">

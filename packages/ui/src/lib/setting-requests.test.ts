@@ -11,12 +11,12 @@ test('Show and Open are offered only where this client draws the target card', (
   expect(settingsReachable(open('resources', 'limits'), { owner: false, phone: false })).toBe(false);
   expect(settingsReachable(open('general', 'worktrees'), { owner: false, phone: false })).toBe(false);
   expect(settingsReachable(open('appearance', 'theme'), { owner: false, phone: false })).toBe(true);
-  // The live device stream runs on the owner's machine: only the owner's System draws its card, on a phone too.
+  // The live device stream runs on the owner's machine: the owner reaches its new Experiments row, on a phone too.
   expect(settingsReachable(open('advanced', 'device-stream'), { owner: false, phone: false })).toBe(false);
   expect(settingsReachable(open('advanced', 'device-stream'), { owner: true, phone: true })).toBe(true);
   // This build lists an experiment, so a card that points at Experiments lands on its page.
   expect(settingsReachable(open('experiments', null), { owner: true, phone: false })).toBe(true);
-  // Except a card asked while the keepalive, background compaction or the stream was an experiment: it leads to System now.
+  // Except the keepalive moved to System. Background compaction and the stream stay under Experiments.
   for (const section of ['cache-keepalive', 'background-compaction', 'device-stream']) {
     expect(settingsReachable(open('experiments', section), { owner: true, phone: true }), section).toBe(true);
     expect(settingsReachable(open('experiments', section), { owner: true, phone: false }), section).toBe(true);

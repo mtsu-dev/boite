@@ -274,6 +274,10 @@ test('the gear opens Settings on its home: a tile per page under its family, the
   field.value = 'delete done threads';
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Delete done threads after')));
+  // A machine experiment is found by its title on the Experiments page, like an app one.
+  field.value = 'background compaction';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Background compaction')));
   field.value = 'font';
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);

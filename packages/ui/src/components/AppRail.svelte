@@ -61,7 +61,7 @@
   /** A bot's name card says its machine once there are two. */
   const several = $derived(machines.length > 1);
   const botsOn = $derived(experimentOn('resident-agents'));
-  const teamsOn = $derived(botsOn);
+  const teamsOn = $derived(botsOn && experimentOn('teams'));
   const contactsOn = $derived(contactsShown(store));
   /** A request waits on the machine that holds the contact, which may not be the one in view. */
   const contactsAnywhere = $derived(contactsShownAnywhere(store));
@@ -201,6 +201,7 @@
    * before it waits for it, unless a newer click, key or menu takes over meanwhile.
    */
   function teamMenu(event: MouseEvent, row: TeamRow) {
+    if (!teamsParts) return;
     const ask = ++teamMenuAsk;
     if (teamMenuModule) { contextMenu.open(event, teamMenuItemsOf(teamMenuModule, row), action => pickTeam(teamMenuModule!, row, action)); return; }
     event.preventDefault();
@@ -227,7 +228,7 @@
   /** The last team menu asked for: an older one still loading gives way. */
   let teamMenuAsk = 0;
   $effect(() => {
-    if (teams.length && !teamMenuModule) void teamsParts.teamMenu().then(module => { teamMenuModule = module; }).catch(() => {});
+    if (teams.length && !teamMenuModule && teamsParts) void teamsParts.teamMenu().then(module => { teamMenuModule = module; }).catch(() => {});
   });
   function teamMenuItemsOf(module: TeamMenuModule, row: TeamRow): MenuItem[] {
     return [{ id: 'open', label: strings.common.open, glyph: MessageSquare }, separator('sep-open'), ...module.teamMenuItems(row.machine.store, row.team)];
@@ -329,7 +330,7 @@
 
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
-    if (!contactsAnywhere || ContactRequestNotice) return;
+    if (!contactsParts || !contactsAnywhere || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
 </script>
@@ -436,7 +437,7 @@
         {/if}
       {/each}
     </div>
-    <div class="slot">
+    <div class="slot" class:tucked={entries.length > 0}>
       <button type="button" class="rail-button add" class:tucked={entries.length > 0} aria-label={strings.app.rail.add} aria-haspopup="menu"
         aria-expanded={contextMenu.current !== null && contextMenu.anchor === addButton} bind:this={addButton}
         data-testid="rail-add" onclick={(event) => addMenu(event.currentTarget)}><Plus size={19} strokeWidth={1.75} /></button>
@@ -514,11 +515,17 @@
   .rail-button.add:hover:not(:disabled) { background: var(--color-hover); }
   /* Under a mouse, Add waits out of sight until the pointer comes to the rail and fades in and out on the edge
      scrollbars' thumbs' duration and curve; its open menu and the keyboard in the rail keep it shown. Hidden, it keeps
-     its place and its name for a screen reader. A touch screen, high contrast and a rail with no mochi yet always
+     its name for a screen reader and leaves its room to the mochis: its slot's margin takes back its height and the
+     rail's gap under it, so a rail too short for them is not cut above an empty place. Shown, it takes its room
+     again on the same duration and curve. Where the rail has room nothing moves, Add fades where it stands. While
+     the pointer or the keyboard is on the mochis it stays hidden: taking its room there would pull the list's end,
+     and the mochi under the pointer, behind it. A touch screen, high contrast and a rail with no mochi yet always
      show it, under the edge scrollbars' own gate (lib/edge-scrollbars.ts). */
   @media (hover: hover) and (pointer: fine) and (forced-colors: none) {
     .rail-button.add.tucked { opacity: 0; transition: background var(--dur-2) var(--ease-out-quint), opacity var(--dur-2) var(--ease-out-quint); }
-    .app-rail:hover .rail-button.add.tucked, .app-rail:has(:global(:focus-visible)) .rail-button.add.tucked, .rail-button.add.tucked[aria-expanded='true'] { opacity: 1; }
+    .app-rail:hover:not(:has(.bots:hover)) .rail-button.add.tucked, .app-rail:has(:global(:focus-visible)):not(:has(.bots :global(:focus-visible))) .rail-button.add.tucked, .rail-button.add.tucked[aria-expanded='true'] { opacity: 1; }
+    .slot.tucked { margin-bottom: calc(-1 * var(--rail-button) - 8px); transition: margin-bottom var(--dur-2) var(--ease-out-quint); }
+    .app-rail:hover:not(:has(.bots:hover)) .slot.tucked, .app-rail:has(:global(:focus-visible)):not(:has(.bots :global(:focus-visible))) .slot.tucked, .slot.tucked:has(.rail-button.add[aria-expanded='true']) { margin-bottom: 0; }
   }
   /* A circle, as the bots it stands under: ringed at rest, filled where you are. */
 

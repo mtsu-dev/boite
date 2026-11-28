@@ -5,6 +5,7 @@ import { DEFAULT_DELEGATION_CONFIG, extractJson, RpcErrorCode } from '@boite/con
 import type { DelegationConfig, RpcEvents, Turn, WorkflowPlan, WorkflowRun } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
+import { hasComposerResult } from '../src/delegation/composer-results.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { runCli } from '../src/cli.ts';
@@ -635,6 +636,35 @@ test('a step sent back to work in its own conversation counts for its run, which
   expect((await settled(h, threadId, run.id)).status).toBe('done');
   // The root hears of the finished run too, not only of the failure.
   await waitFor(() => h.core.workflows.get(threadId, run.id).delivered);
+});
+
+test.each(['delegated turn', 'finished workflow step'] as const)('a targeted Stop on a %s keeps its result until the team resumes', async kind => {
+  const { held } = scripted(ctx => ctx.prompt.includes('Hold for Stop') ? { hold: true } : 'Done.');
+  const { h, owner, threadId, config } = await setup();
+  let childId: string;
+  if (kind === 'delegated turn') {
+    const child = await owner.call('delegation.spawn', { threadId, task: 'Hold for Stop', requestId: 'hold-for-stop' });
+    childId = child.thread.id;
+  } else {
+    const run = await owner.call('workflows.start', { threadId, requestId: 'follow-up-stop', plan: {
+      name: 'Follow-up', steps: [{ id: 'read', task: 'Read.' }],
+    } });
+    childId = (await settled(h, threadId, run.id)).nodes[0]!.instances[0]!.threadId!;
+    await waitFor(() => h.core.workflows.get(threadId, run.id).delivered);
+    await owner.call('turns.start', { threadId: childId, prompt: 'Hold for Stop' });
+  }
+  await waitFor(() => held.has(childId));
+  const turn = h.core.journal.runningTurn(childId)!;
+  h.core.journal.setSetting(`delegation:${threadId}`, { ...config, paused: true, pausedBy: 'restart' });
+  expect(await owner.call('delegation.stop', { threadId, agentId: childId })).toEqual({ stopped: 1 });
+  await waitFor(() => h.core.journal.getTurn(turn.id)?.status === 'stopped');
+  expect(hasComposerResult(h.core, turn.id)).toBe(true);
+  const letters = () => h.core.journal.db.query('SELECT request_id FROM delegation_messages WHERE sender_id = ? AND request_id = ?')
+    .all(childId, `result:${turn.id}`);
+  expect(letters()).toEqual([]);
+  await owner.call('delegation.configure', { threadId, config });
+  await waitFor(() => letters().length === 1);
+  expect(hasComposerResult(h.core, turn.id)).toBe(false);
 });
 
 test('a step the parent sends more work after its run finished answers the parent, across a restart handoff too', async () => {
