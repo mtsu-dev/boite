@@ -523,6 +523,9 @@ const app = agent({ name: 'acp-fake' })
           if (instructions.includes('[image-answer]')) {
             await send({ sessionUpdate: 'agent_message_chunk', content: { type: 'image', data: TINY_PNG, mimeType: 'image/png' } });
             await send({ sessionUpdate: 'plan', entries: [{ content: 'Send image', priority: 'medium', status: 'completed' }] });
+          } else if (instructions.includes('[foreign-answer]')) {
+            await client.notify('session/update', { sessionId: 'foreign-session',
+              update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'The answer is already streaming' } } });
           } else await say('The answer is already streaming');
         }
         if (detached || instructions.includes('[finish-on-gate]')) {

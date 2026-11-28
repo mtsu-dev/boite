@@ -13,6 +13,7 @@ import { RESUME_TEXT, modeRestartPrompt } from './resume-text.ts';
 import { forgetBrainContext } from './brain-context.ts';
 import { coordinationGuideUnsent } from './coordination-context.ts';
 import type { CarriedInput, TurnContinuation } from './turn-context.ts';
+import { userStopKey } from './turn-settlement.ts';
 import { TurnSteering } from './steering.ts';
 import { abortable } from '../abortable.ts';
 
@@ -695,7 +696,15 @@ export class TurnAttempts {
   stopRunning(threadId: ThreadId, reason?: 'restart'): boolean {
     const state = this.#turns.get(threadId);
     if (!state) return false;
-    if (state.stop.signal.aborted) return true;
+    if (state.stop.signal.aborted) {
+      // Shutdown can also stop an already aborted turn. Only the user's Stop overrides the handoff.
+      if (state.stopReason === 'restart' && reason === undefined && this.#core.journal.getSetting(userStopKey(state.turnId)) === true) {
+        state.stopReason = undefined;
+        const handle = this.handles.get(threadId);
+        if (handle?.cancelForQueuedInput) handle.stop();
+      }
+      return true;
+    }
     state.stopReason = reason;
     state.stop.abort(new Error('the turn was stopped'));
     void this.#core.sharedAccess.execution.revoke(threadId).catch(() => {});

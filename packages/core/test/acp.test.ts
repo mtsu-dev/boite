@@ -239,7 +239,7 @@ test.each([
 
 test.each([
   ['permission', 'acknowledged'], ['permission', 'rejected'], ['permission', 'capacity'], ['update', 'capacity'],
-  ['core', 'acknowledged'], ['core', 'completed'], ['core', 'explicit stop'],
+  ['core', 'acknowledged'], ['core', 'completed'], ['core', 'explicit stop'], ['core', 'explicit stop before acknowledgement'],
 ] as const)('an ACP %s restart leaves the queue paused after cancellation (%s)', async (restart, outcome) => {
   const started = await startThread({ warmProcessMinutes: 0 });
   const { threadId } = started;
@@ -248,10 +248,10 @@ test.each([
   let { core } = first;
   const capacity = outcome === 'capacity';
   const completed = outcome === 'completed';
-  const explicitStop = outcome === 'explicit stop';
+  const explicitStop = outcome === 'explicit stop' || outcome === 'explicit stop before acknowledgement';
   if (capacity) Object.assign(core.providers.require('acp-fake'), { quirks: ['antigravity'] });
   const directive = capacity ? ' [capacity-on-cancel]' : outcome === 'rejected' ? ' [error-on-cancel]'
-    : completed || explicitStop ? ' [ignore-cancel] [finish-on-gate]' : '';
+    : completed || outcome === 'explicit stop' ? ' [ignore-cancel] [finish-on-gate]' : '';
   const prompt = `[parallel-tools] [confirm-on-gate]${directive}`;
   const { id } = await client.call('turns.start', { threadId, prompt });
   await waitFor(() => core.threads.require(threadId).sessionId !== null);
@@ -584,8 +584,9 @@ test('ACP delivers queued input after two completed tools arrive in one write', 
 
 test.each([
   ['text', '[answer-on-gate]'], ['image', '[answer-on-gate] [image-answer]'],
+  ['foreign text', '[answer-on-gate] [foreign-answer]'],
   ['native compaction', '[compacting]'], ['native compaction followed by another tool', '[compacting] [third-tool]'],
-])('ACP finishes %s before delivering queued input', async (output, directives) => {
+])('ACP handles %s at the queued-input boundary', async (output, directives) => {
   const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
   const core = harness!.core;
   const { id: turnId } = await client.call('turns.start', { threadId, prompt: `[parallel-tools] [finish-on-gate] ${directives}` });
@@ -600,10 +601,11 @@ test.each([
     await first;
     writeFileSync(`${logFile}.second`, 'ready');
     await waitFor(() => check.mock.calls.length === 1);
-    if (output === 'text' || output === 'image') {
-      const answer = output === 'text'
-        ? client.next('message.delta', event => event.threadId === threadId && event.text.includes('already streaming'), 10_000)
-        : client.next('thread.activity', event => event.threadId === threadId && event.activity.tasks.some(task => task.text === 'Send image'), 10_000);
+    const foreign = output === 'foreign text';
+    if (output === 'text' || output === 'image' || foreign) {
+      const answer = output === 'image'
+        ? client.next('thread.activity', event => event.threadId === threadId && event.activity.tasks.some(task => task.text === 'Send image'), 10_000)
+        : client.next('message.delta', event => event.threadId === threadId && event.text.includes('already streaming'), 10_000);
       writeFileSync(`${logFile}.answer`, 'ready');
       await answer;
     }
@@ -614,10 +616,10 @@ test.each([
       const completed = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
       writeFileSync(`${logFile}.third`, 'ready');
       await completed;
-    } else writeFileSync(`${logFile}.end`, 'ready');
+    } else if (!foreign) writeFileSync(`${logFile}.end`, 'ready');
     await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
-    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual([anotherTool ? 'stopped' : 'done', 'done']);
-    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(anotherTool ? 1 : 0);
+    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual([anotherTool || foreign ? 'stopped' : 'done', 'done']);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(anotherTool || foreign ? 1 : 0);
   } finally {
     folder.resolve(true);
     check.mockRestore();

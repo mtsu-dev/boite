@@ -163,7 +163,7 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId = turn.sessi
       const { content } = update;
       if (content.type === 'text' && content.text.length === 0) break;
       // An output block can invalidate the tool boundary even when Boite has no renderer for it.
-      turn.outputRevision += 1;
+      if (ownSession) turn.outputRevision += 1;
       if (content.type !== 'text') break;
       if (ownSession) turn.flushExecutionError();
       if (update.sessionUpdate === 'agent_thought_chunk') turn.writeThinking(content.text);

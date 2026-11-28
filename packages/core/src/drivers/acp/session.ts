@@ -303,8 +303,8 @@ export class AcpSession {
       this.#drop();
       return;
     }
-    if (!turn.stoppedForQueuedInput) this.#cancel();
     if (this.#stopTimer !== null) return;
+    if (!turn.stoppedForQueuedInput) this.#cancel();
     this.#stopTimer = setTimeout(() => {
       this.#stopTimer = null;
       if (!turn.settled) this.#drop();
