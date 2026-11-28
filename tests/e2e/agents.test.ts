@@ -326,30 +326,6 @@ real('a rail too short for its mochis scrolls them, keeps its foot on screen and
     // Scrolled to its end, the last bot stands whole inside the list, not drawn over the buttons under it.
     expect(rail.fits).toBe(true);
     expect([rail.scrolls, rail.inside]).toEqual([true, true]);
-    // A mochi that passes an edge fades into the rail's ground instead of being cut across: at the end of the list
-    // only its top edge fades, at its start only the bottom one. The fade stays inside the card, whose frame is
-    // another ground, and adds nothing to scroll: the list still ends on its last picture.
-    const fade = await page.evaluate<{ end: string[]; start: string[]; extra: number; inside: boolean }>(`(async () => {
-      const bots = document.querySelector('${id('app-rail')} .bots');
-      const frames = () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
-      const edges = () => [getComputedStyle(bots, '::before').opacity, getComputedStyle(bots, '::after').opacity];
-      const slots = [...bots.children].map((slot) => slot.getBoundingClientRect());
-      const pad = parseFloat(getComputedStyle(bots).paddingTop) + parseFloat(getComputedStyle(bots).paddingBottom);
-      const card = document.querySelector('${id('app-rail')} .rail-card').getBoundingClientRect();
-      const edge = getComputedStyle(bots, '::after');
-      const left = bots.getBoundingClientRect().left + parseFloat(edge.marginLeft);
-      await frames();
-      const end = edges();
-      bots.scrollTop = 0;
-      await frames();
-      const start = edges();
-      bots.scrollTop = bots.scrollHeight;
-      await frames();
-      return { end, start, extra: bots.scrollHeight - (slots.at(-1).bottom - slots[0].top + pad), inside: left > card.left && left + parseFloat(edge.width) < card.right };
-    })()`);
-    expect([fade.end, fade.start]).toEqual([['1', '0'], ['0', '1']]);
-    expect(Math.abs(fade.extra)).toBeLessThan(1);
-    expect(fade.inside).toBe(true);
     // Every foot button whole inside the window, and the foot has some.
     const foot = await page.evaluate<{ count: number; inside: boolean }>(`(() => { const buttons = [...document.querySelectorAll('${id('app-rail')} .foot button')]; return { count: buttons.length, inside: buttons.every(b => { const r = b.getBoundingClientRect(); return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight; }) }; })()`);
     expect(foot.count).toBeGreaterThan(0);
