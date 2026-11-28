@@ -165,8 +165,11 @@ export class TurnRunner {
     const queuedInput = result.queuedInputCancelled && result.sessionId !== null
       ? { queuedInputSession: result.sessionId }
       : result.queuedInputInterrupted ? { queuedInputInterrupted: true as const } : undefined;
-    const handoffOutcome: QueuedInputOutcome | undefined = result.status === 'done' && result.queuedInputCompleted
-      ? { queuedInputInterrupted: true, queuedInputCompleted: true, usage: result.usage, sessionId: result.sessionId ?? undefined } : queuedInput;
+    const outcome = result.status === 'done' && result.queuedInputCompleted
+      ? { queuedInputInterrupted: true as const, queuedInputCompleted: true as const } : queuedInput;
+    const handoffOutcome: QueuedInputOutcome | undefined = outcome && {
+      ...outcome, usage: result.usage, sessionId: result.sessionId ?? undefined, cwd: thread.cwd,
+    };
     // The handoff can expire while a filesystem check or checkpoint is still pending.
     if (running.execution && handoffOutcome) this.threads.handoff.recordQueuedInputOutcome(turnId, handoffOutcome);
 

@@ -4,7 +4,7 @@ import type { Core } from '../core.ts';
 import { assertDriverRunnable } from '../drivers/index.ts';
 import { notFound, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
-import { HANDOFF } from './handoff.ts';
+import { HANDOFF, type QueuedInputOutcome } from './handoff.ts';
 import { markQueued, settleStatus } from './lifecycle.ts';
 import { checkStoredEffort, checkStoredSpeed } from './selection.ts';
 import { announceFinished, finishProviderTurn, finishTurn, matchesProviderSession, userStopKey } from './turn-settlement.ts';
@@ -48,11 +48,10 @@ export class ThreadRecovery {
       const previous = turn.status;
       if (previous === 'running' && this.#core.journal.getSetting(userStopKey(turn.id)) === true) {
         const result = handoff.stoppedQueuedInputResult(turn.id);
-        const stopped = { ...turn, usage: turn.usage ?? result?.usage ?? null };
         this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
           handoff.forget(turn.threadId);
           this.#core.threads.resumes.forget(turn.threadId);
-          this.#closeTurn(stopped, 'stopped', 'user-stop', result?.sessionId);
+          this.#closeTurn(turn, 'stopped', 'user-stop', result);
         })());
         counts.stopped += 1;
         continue;
@@ -103,11 +102,12 @@ export class ThreadRecovery {
       if (previous === 'running' && inherited.get(turn.id) === 'running') {
         const queuedInput = handoff.inheritedQueuedInputOutcome(turn.id);
         const completed = queuedInput?.queuedInputCompleted === true;
-        const recovered = completed ? { ...turn, usage: turn.usage ?? queuedInput.usage }
-          : turn.execution && queuedInput ? { ...turn, execution: { ...turn.execution, ...queuedInput } } : turn;
+        const recovered: Turn = !completed && turn.execution && queuedInput ? { ...turn, execution: {
+          ...turn.execution,
+          ...('queuedInputSession' in queuedInput ? { queuedInputSession: queuedInput.queuedInputSession } : { queuedInputInterrupted: true }),
+        } } : turn;
         const status = completed ? 'done' : 'stopped';
-        const sessionId = completed ? queuedInput.sessionId : undefined;
-        this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => this.#closeTurn(recovered, status, 'handed-over', sessionId))());
+        this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => this.#closeTurn(recovered, status, 'handed-over', queuedInput))());
         counts.handedOver += 1;
         const next = queuedInput ? 'the composer queue owns the follow-up' : "the thread's next turn resumes it";
         this.#core.logs.info(`Turn ${turn.id} was recovered as ${status} after a restart handoff. ${next}`, { source: 'turns', event: 'turn.recovery.handed-over', threadId: turn.threadId, turnId: turn.id });
@@ -178,7 +178,7 @@ export class ThreadRecovery {
   }
 
   /** The previous core did not commit the end of this turn. */
-  #closeTurn(turn: Turn, status: 'done' | 'stopped', cause: 'handed-over' | 'user-stop', sessionId?: string): void {
+  #closeTurn(turn: Turn, status: 'done' | 'stopped', cause: 'handed-over' | 'user-stop', result?: QueuedInputOutcome): void {
     const threadId = turn.threadId;
     for (const message of this.#core.journal.walkTurnMessages(threadId, turn.id, { blobs: false })) {
       if (message.state !== 'streaming') continue;
@@ -190,10 +190,12 @@ export class ThreadRecovery {
       );
       this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
     }
-    const finished: Turn = { ...turn, status, finishedAt: Date.now() };
+    const finished: Turn = { ...turn, status, finishedAt: Date.now(), usage: turn.usage ?? result?.usage ?? null };
     const { execution } = finished;
+    const sessionId = result?.sessionId ?? (result && 'queuedInputSession' in result ? result.queuedInputSession : undefined);
     const patch = sessionId === undefined || execution === undefined ? undefined : (current: ThreadSummary) =>
       current.sessionId !== sessionId && matchesProviderSession(current, execution) ? { ...current, sessionId, sessionResumeAt: null } : current;
+    if (status === 'done') this.#core.threads.accountSessions.settledElsewhere(finished, sessionId ?? null, result?.cwd);
     const settled = status === 'done'
       ? finishProviderTurn(this.#core, finished, 'handed-over', patch)
       : finishTurn(this.#core, finished, cause, patch);

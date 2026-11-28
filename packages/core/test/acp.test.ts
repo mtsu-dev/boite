@@ -245,7 +245,9 @@ test.each([
   ['core restart', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart', 'completed with terminal persistence unavailable'],
   ['core restart without session/load', 'completed with terminal persistence unavailable'],
+  ['core restart without session/load', 'acknowledged with terminal persistence unavailable'],
   ['core restart with late Stop', 'completed with terminal persistence unavailable'],
+  ['core restart after switching away', 'completed with terminal persistence unavailable'],
   ['core restart', 'rejected with terminal persistence unavailable'],
   ['core restart', 'rejected with a blocked working-folder check'],
   ['direct Stop', 'explicit stop before acknowledgement'],
@@ -254,6 +256,7 @@ test.each([
   let client = await startCore({ warmProcessMinutes: 0 }, shutdown.resolve);
   const noLoad = interruption === 'core restart without session/load';
   const lateStop = interruption === 'core restart with late Stop';
+  const switchAway = interruption === 'core restart after switching away';
   if (noLoad) process.env['ACP_FAKE_NO_LOAD'] = '1';
   const threadId = await acpThread(client);
   const first = harness!;
@@ -262,15 +265,24 @@ test.each([
   const completed = outcome.startsWith('completed');
   const rejected = outcome.startsWith('rejected');
   const unavailable = outcome.endsWith('terminal persistence unavailable');
+  const reportsUsage = completed || (unavailable && outcome.startsWith('acknowledged'));
   const explicitStop = outcome === 'explicit stop' || outcome === 'explicit stop before acknowledgement';
+  const { accountId } = core.threads.require(threadId);
+  const otherAccountId = 'second-account';
+  if (switchAway) {
+    core.journal.putAccount({ ...core.accounts.require(accountId), id: otherAccountId, label: 'Other ACP' });
+    await (await startTurn(client, threadId, 'Earlier answer on the original account')).finished;
+  }
+  const previousTurns = core.journal.listTurns(threadId).length;
+  const originalSession = core.threads.require(threadId).sessionId;
   if (capacity) Object.assign(core.providers.require('acp-fake'), { quirks: ['antigravity'] });
   const directive = capacity ? ' [capacity-on-cancel]' : rejected ? ' [error-on-cancel]'
-    : completed ? ' [ignore-cancel] [finish-on-gate] [usage]'
+    : completed ? ' [ignore-cancel] [finish-on-gate]'
     : outcome === 'explicit stop' ? ' [ignore-cancel] [finish-on-gate]' : '';
-  const prompt = `[parallel-tools] [confirm-on-gate]${directive} Original request before the restart`;
+  const prompt = `[parallel-tools] [confirm-on-gate]${directive}${reportsUsage ? ' [usage]' : ''} Original request before the restart`;
   const { id } = await client.call('turns.start', { threadId, prompt });
   if (!noLoad) await waitFor(() => core.threads.require(threadId).sessionId !== null);
-  const queued = [{ id: 'permission-race-follow-up', text: completed ? 'Queued after the mode change [usage]' : 'Queued after the mode change', attachments: [] }];
+  const queued = [{ id: 'permission-race-follow-up', text: reportsUsage ? 'Queued after the mode change [usage]' : 'Queued after the mode change', attachments: [] }];
   const setPaused = async (paused: boolean) => {
     const current = core.composer.storage.get('inputs', threadId);
     const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: current.revision,
@@ -320,6 +332,7 @@ test.each([
     await waitFor(() => stop.mock.calls.length > 0);
   } else if (retrySettlement || blockedFolderCheck) {
     const restart = async () => {
+      if (switchAway) await client.call('threads.update', { threadId, accountId: otherAccountId });
       const deadline = { ...STOP_DEADLINE };
       try {
         // An agent still answering over stdio needs time to report cancellation.
@@ -355,28 +368,37 @@ test.each([
     if (retrySettlement || blockedFolderCheck) await waitFor(() => !core.journal.getSetting('restart-handoff'));
     expect(core.journal.getTurn(id)?.status).toBe(completed && !lateStop ? 'done' : capacity ? 'error' : 'stopped');
     expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
-    expect(core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
     const execution = core.journal.getTurn(id)?.execution;
     expect(execution?.queuedInputSession).toEqual(outcome === 'acknowledged' || (retrySettlement && !rejected && !completed) ? expect.any(String) : undefined);
     expect(execution?.queuedInputInterrupted).toBe(rejected || capacity ? true : undefined);
-    expect(countLogLines(fakeLog(), 'session/prompt')).toBe(1);
+    expect(countLogLines(fakeLog(), 'session/prompt')).toBe(previousTurns + 1);
     expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
     expect(core.threads.runner.retryOf(threadId)).toBeNull();
-    if (completed && unavailable) {
+    if (noLoad && !completed) expect(core.threads.require(threadId)).toMatchObject({ sessionId: execution?.queuedInputSession });
+    if (reportsUsage && unavailable) {
       expect(core.journal.getTurn(id)?.usage).toMatchObject({
         inputTokens: 8, outputTokens: 4, cacheReadTokens: 2, cacheWriteTokens: 0, buckets: 1, costUsdEquivalent: 0.0042,
       });
-      // Older cores understand interruption and can still read the rest of the handoff.
-      if (lateStop) expect(handoff).toMatchObject({ turns: [] });
-      else expect(handoff).toMatchObject({ turns: [expect.objectContaining({ turnId: id, queuedInput: expect.objectContaining({ queuedInputInterrupted: true }) })] });
     }
+    // Older cores understand interruption and can still read the rest of the handoff.
+    if (lateStop) expect(handoff).toMatchObject({ turns: [] });
+    else if (completed && unavailable) expect(handoff).toMatchObject({
+      turns: [expect.objectContaining({ turnId: id, queuedInput: expect.objectContaining({ queuedInputInterrupted: true }) })],
+    });
     if (unavailable) expect(terminalWrites).toBeGreaterThan(1);
     else if (retrySettlement) expect(terminalWrites).toBe(2);
     else if (blockedFolderCheck) expect(terminalWrites).toBe(0);
 
+    if (switchAway) {
+      expect(core.threads.require(threadId)).toMatchObject({ accountId: otherAccountId, sessionId: null });
+      expect(core.threads.accountSessions.saved(threadId, accountId)?.after.turnId).toBe(id);
+      const restored = await client.call('threads.update', { threadId, accountId, requireSavedSession: true });
+      expect(restored.sessionId).toBe(originalSession);
+    }
     await setPaused(false);
-    await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
-    if (completed) expect(core.journal.listTurns(threadId)[1]?.usage?.costUsdEquivalent).toBeCloseTo(0.0042, 10);
+    await waitFor(() => core.journal.listTurns(threadId)[previousTurns + 1]?.status === 'done');
+    if (reportsUsage) expect(core.journal.listTurns(threadId)[previousTurns + 1]?.usage?.costUsdEquivalent).toBeCloseTo(0.0042, 10);
     if (noLoad) {
       const thread = await client.call('threads.get', { threadId });
       const answer = thread.messages.at(-1)?.parts.find(part => part.type === 'text');
@@ -384,8 +406,9 @@ test.each([
       expect(text).toContain('<conversation-history>');
       expect(text).toContain('Original request before the restart');
     }
-    expect(countLogLines(fakeLog(), 'session/prompt')).toBe(2);
-    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(completed && !lateStop ? 0 : 1);
+    expect(countLogLines(fakeLog(), 'session/prompt')).toBe(previousTurns + 2);
+    if (switchAway) expect(fakeLog()).not.toContain('account catch-up');
+    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(noLoad || (completed && !lateStop) ? 0 : 1);
     expect(setModeCount('plan')).toBe(interruption === 'permission restart' ? 1 : 0);
   } finally {
     folder.resolve(true);

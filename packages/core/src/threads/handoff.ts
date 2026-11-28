@@ -25,11 +25,15 @@ const KEY = 'restart-handoff';
 const REQUEST_START = '\n\nThe request that turn was answering, as conversation history:\n\n<interrupted-user-messages>\n';
 const REQUEST_END = '\n</interrupted-user-messages>';
 
-// Older cores understand the interruption flag and can still open the handoff.
-type CompletedQueuedInputOutcome = { queuedInputInterrupted: true; queuedInputCompleted: true; usage: Usage | null; sessionId?: string };
-export type QueuedInputOutcome =
-  | (({ queuedInputSession: string } | { queuedInputInterrupted: true }) & { queuedInputCompleted?: never })
-  | CompletedQueuedInputOutcome;
+export type QueuedInputOutcome = {
+  usage: Usage | null;
+  sessionId?: string;
+  cwd?: string;
+} & (
+  | { queuedInputSession: string; queuedInputCompleted?: never }
+  // Older cores understand the interruption flag and can still open the handoff.
+  | { queuedInputInterrupted: true; queuedInputCompleted?: true }
+);
 
 interface Entry {
   turnId: TurnId;
@@ -40,7 +44,7 @@ interface Entry {
 }
 interface HandoffRecord { at: number; turns: Entry[] }
 
-function readCompletedUsage(value: unknown): Usage | null {
+function readUsage(value: unknown): Usage | null {
   if (typeof value !== 'object' || value === null) return null;
   const usage = value as Partial<Usage>;
   const tokens = [usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.cacheWriteTokens];
@@ -52,17 +56,18 @@ function readCompletedUsage(value: unknown): Usage | null {
 
 function readQueuedInputOutcome(value: unknown): QueuedInputOutcome | undefined {
   if (typeof value !== 'object' || value === null) return;
-  if ('queuedInputSession' in value && typeof value.queuedInputSession === 'string') return { queuedInputSession: value.queuedInputSession };
+  const metadata = {
+    usage: readUsage('usage' in value ? value.usage : null),
+    sessionId: 'sessionId' in value && typeof value.sessionId === 'string' ? value.sessionId : undefined,
+    cwd: 'cwd' in value && typeof value.cwd === 'string' ? value.cwd : undefined,
+  };
+  if ('queuedInputSession' in value && typeof value.queuedInputSession === 'string') return { ...metadata, queuedInputSession: value.queuedInputSession };
   if ('queuedInputInterrupted' in value && value.queuedInputInterrupted === true) {
-    if ('queuedInputCompleted' in value && value.queuedInputCompleted === true) {
-      return {
-        queuedInputInterrupted: true,
-        queuedInputCompleted: true,
-        usage: readCompletedUsage('usage' in value ? value.usage : null),
-        sessionId: 'sessionId' in value && typeof value.sessionId === 'string' ? value.sessionId : undefined,
-      };
-    }
-    return { queuedInputInterrupted: true };
+    return {
+      ...metadata,
+      queuedInputInterrupted: true,
+      queuedInputCompleted: 'queuedInputCompleted' in value && value.queuedInputCompleted === true ? true : undefined,
+    };
   }
 }
 
@@ -161,20 +166,19 @@ export class RestartHandoff {
     this.#queuedInputOutcomes.delete(turnId);
   }
 
-  /** Cancel the continuation without losing the completed result's session or accounting. */
+  /** Cancel the continuation while preserving a known result's session and accounting. */
   recordUserStop(turnId: TurnId): void {
     const { journal } = this.#core;
     const outcome = this.#queuedInputOutcomes.get(turnId) ?? this.#entries?.get(turnId)?.queuedInput;
     journal.db.transaction(() => {
       journal.setSetting(userStopKey(turnId), true);
-      if (outcome?.queuedInputCompleted === true) journal.setSetting(userStopResultKey(turnId), outcome);
+      if (outcome) journal.setSetting(userStopResultKey(turnId), outcome);
     })();
   }
 
-  stoppedQueuedInputResult(turnId: TurnId): CompletedQueuedInputOutcome | undefined {
-    const outcome = readQueuedInputOutcome(this.#core.journal.getSetting(userStopResultKey(turnId)))
+  stoppedQueuedInputResult(turnId: TurnId): QueuedInputOutcome | undefined {
+    return readQueuedInputOutcome(this.#core.journal.getSetting(userStopResultKey(turnId)))
       ?? this.inheritedQueuedInputOutcome(turnId);
-    if (outcome?.queuedInputCompleted === true) return outcome;
   }
 
   #saveQueuedInputOutcome(turnId: TurnId, outcome: QueuedInputOutcome): void {

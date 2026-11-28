@@ -24,7 +24,6 @@ import { threadActive, type AccountId, type ContextUse, type ProviderId, type Th
 import { plannedFileReference } from '../attachments.ts';
 import { switchGapFits, type TailAnchor } from '../continuation.ts';
 import type { Core } from '../core.ts';
-import type { TurnResult } from '../drivers/types.ts';
 import { compactionTail } from './background-compact.ts';
 
 /** The journal setting holding a thread's saved sessions, erased with the thread (`Journal.deleteThreads`). */
@@ -214,19 +213,21 @@ export class AccountSessions {
    * the session the thread left: that saved session now ends with it. Runs
    * in the transaction that settles the turn.
    */
-  settledElsewhere(finished: Turn, result: TurnResult, ranIn: string): void {
+  settledElsewhere(finished: Turn, sessionId: string | null, ranIn?: string): void {
     const execution = finished.execution;
     // Only an answered turn is sure to be in the session; the saved end stays before any other.
-    if (!execution || result.sessionId === null || finished.status !== 'done') return;
+    if (!execution || sessionId === null || finished.status !== 'done') return;
     const current = this.#core.journal.getThread(finished.threadId);
     if (current === null || current.accountId === execution.accountId) return;
     const stored = this.#read(finished.threadId);
     const saved = stored.saved[execution.accountId];
     // A later session of that account replaced the one this turn ran on.
     if (saved !== undefined && saved.generations[0] !== execution.sessionGeneration) return;
+    const cwd = saved?.cwd ?? ranIn;
+    if (cwd === undefined) return;
     stored.saved[execution.accountId] = {
-      providerId: execution.providerId, sessionId: result.sessionId, resumeAt: null, after: { turnId: finished.id, afterPart: null },
-      cwd: saved?.cwd ?? ranIn, generations: saved?.generations ?? [execution.sessionGeneration], context: saved?.context ?? null, savedAt: Date.now(),
+      providerId: execution.providerId, sessionId, resumeAt: null, after: { turnId: finished.id, afterPart: null },
+      cwd, generations: saved?.generations ?? [execution.sessionGeneration], context: saved?.context ?? null, savedAt: Date.now(),
     };
     this.#write(finished.threadId, stored);
   }

@@ -559,6 +559,7 @@ const app = agent({ name: 'acp-fake' })
           return { stopReason: 'end_turn' };
         }
         if (instructions.includes('[error-on-cancel]')) throw RequestError.internalError({ details: 'Prompt aborted' });
+        if (instructions.includes('[usage]')) return { stopReason: 'cancelled', usage: await reportUsage() };
         return { stopReason: 'cancelled' };
       } finally { cancels.delete(sessionId); }
     }

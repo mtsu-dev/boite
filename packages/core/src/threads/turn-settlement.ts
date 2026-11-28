@@ -137,7 +137,7 @@ export function matchesProviderSession(current: ThreadSummary, previous: Pick<Th
 /** The settled turn's row and its thread's: the session and the prompt cache it ended with. */
 function finishThread(core: Core, { thread, finished, result }: Settlement): Completion & { toolsClosed: number } {
   // A turn of the account the thread left: the session it saved there now ends with this turn.
-  core.threads.accountSessions.settledElsewhere(finished, result, thread.cwd);
+  core.threads.accountSessions.settledElsewhere(finished, result.sessionId, thread.cwd);
   let sameSession = false;
   const done = finishProviderTurn(core, finished, 'settled', current => {
     // Changing the next picker does not grant this result access to the new session.
