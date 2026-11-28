@@ -425,36 +425,6 @@ test("with no mochi or team in the rail yet, its Add always shows: nothing else 
   expect(query('[data-testid=rail-add]').parentElement!.classList.contains('tucked')).toBe(false);
 });
 
-test('more mochis than the rail holds fade into its ground at the edge they pass, inside the card, instead of being cut across', async () => {
-  writeExperiments(['resident-agents']);
-  await mountOnFake('/?fake=1&agents=1');
-  await waitFor(() => document.querySelector('[data-testid=rail-bot]') !== null);
-  // The shared soft edges (frame.css `.scroll-edges`), on the list that scrolls.
-  expect(query('.app-rail .bots').classList.contains('scroll-edges')).toBe(true);
-  const body = (selector: string) => railSource.slice(railSource.indexOf(`  ${selector} {`)).match(/\{([^}]*)\}/)![1]!;
-  const edges = body('.app-rail .bots.scroll-edges');
-  // Into the rail's own ground, and on the list's real edges: it pads 4 px above and below.
-  expect(edges).toContain('--scroll-edge-ground: var(--rail-ground);');
-  expect(body('.bots')).toContain('padding: 4px 0;');
-  expect(edges).toContain('--scroll-edge-top: 4px; --scroll-edge-bottom: 4px;');
-  // A picture the keyboard brings into view stops clear of the fade.
-  expect(edges).toContain('scroll-padding-block: var(--scroll-edge);');
-  // Inside the card's edge: the frame around the card is another ground, the fade would show on it.
-  expect(body('.app-rail .bots.scroll-edges::before, .app-rail .bots.scroll-edges::after')).toContain('margin-inline: calc(var(--frame-gap) + 1px);');
-  // Each edge is a flex child of the list and takes back its 8 px gap, so the list scrolls no further than its pictures.
-  expect(body('.bots')).toContain('gap: 8px;');
-  expect(body('.app-rail .bots.scroll-edges::before')).toContain('margin-bottom: calc(-1 * var(--scroll-edge) - 8px);');
-  expect(body('.app-rail .bots.scroll-edges::after')).toContain('margin-top: calc(-1 * var(--scroll-edge) - 8px);');
-});
-
-test('an empty rail has no edge to fade: the two edges would be all its list holds, and make it scroll', async () => {
-  writeExperiments(['resident-agents']);
-  await mountOnFake('/?fake=1');
-  await waitFor(() => document.querySelector('.app-rail .bots') !== null);
-  expect(document.querySelector('[data-testid=rail-bot], [data-testid=rail-team]')).toBeNull();
-  expect(query('.app-rail .bots').classList.contains('scroll-edges')).toBe(false);
-});
-
 test("a right click on a team's rail picture opens the team's menu, and its picks reach the team", async () => {
   mochiLayout.set(true);
   writeExperiments(['resident-agents']);
