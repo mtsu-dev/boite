@@ -13,6 +13,11 @@ export interface Delivery {
   status: 'creating' | 'submitting' | 'delivered' | 'uncertain'; thread_id: string | null; request_id: string; fingerprint: string;
 }
 
+export const ADMITTED_COMPOSER_TURN = `SELECT 1 FROM turn_requests r
+  JOIN composer_deliveries d ON d.thread_id = r.thread_id AND d.request_id = r.request_id
+  WHERE r.thread_id = t.thread_id AND r.turn_id = t.id AND d.status = 'delivered'
+    AND instr(r.fingerprint, ':pending:') = 0`;
+
 export const digest = (value: unknown): string => createHash('sha256').update(stableComposerValue(value)).digest('hex');
 export const recordKey = (section: string, id: string): string => JSON.stringify([section, id]);
 const wireBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
@@ -21,6 +26,12 @@ type PendingPrivateAsset = { ownerId: string; bytes: number; expiresAt: number }
 
 /** Composer data has its own rows: typing never rewrites a message or an attachment. */
 export class ComposerStorage {
+  /** The outbox already removed this input after committing its durable turn. */
+  admittedTurn(threadId: string, turnId: string): boolean {
+    return this.#core.journal.db.query(`SELECT 1 FROM turns t WHERE t.id = ? AND t.thread_id = ?
+      AND EXISTS (${ADMITTED_COMPOSER_TURN})`).get(turnId, threadId) !== null;
+  }
+
   readonly #privateRecords = new Map<string, ComposerRecord>();
   readonly #privateAssets = new Map<string, Attachment>();
   readonly #privateDeliveries = new Map<string, Delivery>();

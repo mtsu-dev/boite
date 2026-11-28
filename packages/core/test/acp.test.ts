@@ -1,12 +1,12 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import type { SessionNotification } from '@agentclientprotocol/sdk/unstable';
-import type { ImageAttachment, MessagePart, PermissionMode, RpcEvents, Settings } from '@boite/contracts';
+import type { ComposerRecord, ImageAttachment, MessagePart, PermissionMode, RpcEvents, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { createAcpDriver } from '../src/drivers/acp.ts';
 import { runAcpLogin } from '../src/drivers/acp/login.ts';
@@ -253,9 +253,13 @@ test.each([
   ['core restart after switching away again', 'completed with terminal persistence unavailable'],
   ['core restart of a subagent', 'acknowledged'],
   ['core restart of a subagent followed by Stop', 'acknowledged'],
+  ['core restart while delivering the subagent Stop result', 'acknowledged'],
   ['core restart of a subagent', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart of a workflow step', 'acknowledged'],
   ['core restart of a workflow step followed by a queued goal', 'acknowledged'],
+  ['core restart of a workflow step after goal admission', 'acknowledged'],
+  ['core restart of a workflow step after prompt admission', 'acknowledged'],
+  ['workflow step completion with a clean checkout', 'completed'],
   ['core restart of a workflow step', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart of a workflow step', 'completed with terminal persistence unavailable'],
   ['core restart of a paused workflow step', 'completed with terminal persistence unavailable'],
@@ -271,11 +275,15 @@ test.each([
   const switchAgain = interruption === 'core restart after switching away again';
   const switchAway = interruption === 'core restart after switching away' || switchAgain;
   const switchBack = interruption === 'core restart after switching back' || switchAgain;
-  const subagent = interruption.startsWith('core restart of a subagent');
-  const stopFollowUp = interruption === 'core restart of a subagent followed by Stop';
-  const queuedGoal = interruption === 'core restart of a workflow step followed by a queued goal';
+  const restartAfterStop = interruption === 'core restart while delivering the subagent Stop result';
+  const subagent = interruption.startsWith('core restart of a subagent') || restartAfterStop;
+  const stopFollowUp = interruption === 'core restart of a subagent followed by Stop' || restartAfterStop;
+  const restartGoal = interruption === 'core restart of a workflow step after goal admission';
+  const restartPrompt = interruption === 'core restart of a workflow step after prompt admission';
+  const checkout = interruption === 'workflow step completion with a clean checkout';
+  const queuedGoal = interruption === 'core restart of a workflow step followed by a queued goal' || restartGoal;
   const pausedWorkflow = interruption === 'core restart of a paused workflow step';
-  const workflow = interruption.startsWith('core restart of a workflow step') || pausedWorkflow ? await acpWorkflowStep(client) : undefined;
+  const workflow = interruption.startsWith('core restart of a workflow step') || pausedWorkflow || checkout ? await acpWorkflowStep(client, checkout) : undefined;
   if (noLoad) process.env['ACP_FAKE_NO_LOAD'] = '1';
   const threadId = workflow?.threadId ?? await (subagent ? acpSubagent(client) : acpThread(client));
   const first = harness!;
@@ -374,6 +382,8 @@ test.each([
       await closeForHandoff(first);
     };
     restartCore = duringHandoff ? restart() : (blockedFolderCheck ? checkingFolder.promise : rolledBack.promise).then(restart);
+  } else if (checkout) {
+    // Let the turn finish on its own while the composer is paused.
   } else if (interruption === 'core restart' || subagent || workflow) {
     restartCore = closeForHandoff(first);
     await waitFor(() => stop.mock.calls.length > 0);
@@ -382,6 +392,7 @@ test.each([
   if (explicitStop && unavailable) expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
   writeFileSync(`${logFile}.end`, 'ready');
   let next: TestCore | undefined;
+  let last: TestCore | undefined;
   try {
     if (restartCore !== undefined) {
       await restartCore;
@@ -392,7 +403,7 @@ test.each([
       next = await startTestCore({ dataDir: first.dataDir });
       core = next.core;
       client = await next.connect();
-    } else await waitFor(() => countLogLines(fakeLog(), 'session/prompt') > 1 || core.journal.getTurn(id)?.finishedAt != null);
+    } else await waitFor(() => core.journal.getTurn(id)?.finishedAt != null);
     if (retrySettlement || blockedFolderCheck) await waitFor(() => !core.journal.getSetting('restart-handoff'));
     expect(core.journal.getTurn(id)?.status).toBe(completed && !lateStop ? 'done' : capacity ? 'error' : 'stopped');
     expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
@@ -419,12 +430,81 @@ test.each([
     else if (retrySettlement) expect(terminalWrites).toBe(2);
     else if (blockedFolderCheck) expect(terminalWrites).toBe(0);
 
+    if (checkout) {
+      const worktree = core.delegation.worktrees.get(threadId)!;
+      await waitFor(() => core.delegation.worktrees.get(threadId)?.state === 'removed');
+      expect(existsSync(worktree.path)).toBe(false);
+      await setPaused(false);
+      await waitFor(() => core.journal.listTurns(threadId)[previousTurns + 1]?.status === 'done'
+        || core.composer.storage.get('inputs', threadId).value?.input.paused === true);
+      expect(core.journal.listTurns(threadId)[previousTurns + 1]?.status).toBe('done');
+      return;
+    }
+    if (workflow && restartPrompt) {
+      const hold = spyOn(core.updates, 'holds').mockImplementation(provider => provider === 'acp-fake');
+      try {
+        await setPaused(false);
+        await waitFor(() => core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
+        const admitted = core.journal.listTurns(threadId).at(-1)!;
+        expect(admitted).toMatchObject({ status: 'queued', startedAt: null });
+        await closeForHandoff(next!);
+        last = await startTestCore({ dataDir: first.dataDir });
+        core = last.core;
+        await waitFor(() => ['done', 'error', 'stopped'].includes(core.journal.getTurn(admitted.id)?.status ?? ''));
+        expect(core.journal.getTurn(admitted.id)?.status).toBe('done');
+        expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 2);
+        const messages = [...core.journal.walkTurnMessages(threadId, admitted.id)];
+        expect(messages.find(message => message.role === 'user')?.parts).toEqual([
+          expect.objectContaining({ type: 'text', text: expect.stringContaining(queued[0]!.text) }),
+        ]);
+        expect(core.workflows.get(workflow.rootId, workflow.runId).status).toBe('done');
+      } finally { hold.mockRestore(); }
+      return;
+    }
+    if (workflow && restartGoal) {
+      const closing = Promise.withResolvers<Promise<void>>();
+      const off = core.bus.onCommitted((name, payload) => {
+        const record = payload as ComposerRecord;
+        if (name === 'composer.updated' && record.id === threadId && record.value?.input.queued.length === 0) {
+          off();
+          closing.resolve(closeForHandoff(next!));
+        }
+      });
+      try {
+        await setPaused(false);
+        await closing.promise;
+      } finally { off(); }
+      last = await startTestCore({ dataDir: first.dataDir });
+      core = last.core;
+      expect(core.activity.get(threadId).goal).toMatchObject({ status: 'paused', iterations: 0 });
+      expect(core.workflows.get(workflow.rootId, workflow.runId)).toMatchObject({ status: 'running', nodes: [{ instances: [{ status: 'running' }] }] });
+      expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
+      client = await last.connect();
+      await client.call('threads.activity.control', { threadId, kind: 'goal', action: 'resume' });
+      await waitFor(() => core.workflows.get(workflow.rootId, workflow.runId).status === 'done');
+      return;
+    }
     if (stopFollowUp) {
       const rootId = core.threads.require(threadId).parentThreadId!;
       const letters = () => (core.journal.db.query('SELECT data FROM delegation_messages WHERE sender_id = ? AND request_id = ?').all(threadId, `result:${id}`) as { data: string }[])
         .map(row => JSON.parse(row.data));
       expect(letters()).toEqual([]);
-      expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
+      if (restartAfterStop) {
+        const settling = Promise.withResolvers<void>();
+        const settle = spyOn(core.delegation.worktrees, 'settle').mockReturnValueOnce(settling.promise);
+        try {
+          expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
+          expect(letters()).toEqual([]);
+          const closing = closeForHandoff(next!);
+          await waitFor(() => core.stopping);
+          settling.resolve();
+          await closing;
+        } finally { settling.resolve(); settle.mockRestore(); }
+        last = await startTestCore({ dataDir: first.dataDir });
+        core = last.core;
+        client = await last.connect();
+        await waitFor(() => letters().length > 0);
+      } else expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
       expect(letters()).toEqual([expect.objectContaining({ origin: 'result', to: { coreId: 'local', threadId: rootId } })]);
       await setPaused(true, []);
       expect(letters()).toHaveLength(1);
@@ -475,6 +555,7 @@ test.each([
     folder.resolve(true);
     check?.mockRestore();
     persist?.mockRestore();
+    await last?.stop();
     await next?.stop();
   }
 }, 20_000);
@@ -1149,19 +1230,35 @@ async function acpSubagent(client: CoreClient): Promise<string> {
   return thread.id;
 }
 
-async function acpWorkflowStep(client: CoreClient): Promise<{ rootId: string; runId: string; threadId: string }> {
+async function acpWorkflowStep(client: CoreClient, worktree = false): Promise<{ rootId: string; runId: string; threadId: string }> {
   const h = harness!;
-  const { accountId } = await acpAccount(client);
-  const { threadId: rootId } = await echoThread(h, client, 'Workflow parent');
+  const path = worktree ? join(h.dataDir, 'git-project') : undefined;
+  if (path) {
+    mkdirSync(path);
+    for (const args of [['init', '-q'], ['-c', 'user.name=Boite test', '-c', 'user.email=test@boite.invalid', 'commit', '-q', '--allow-empty', '-m', 'fixture']]) {
+      const git = Bun.spawnSync(['git', ...args], { cwd: path, stderr: 'pipe' });
+      if (!git.success) throw new Error(git.stderr.toString());
+    }
+  }
+  const { accountId, projectId } = await acpAccount(client, path);
+  const rootId = worktree ? (await client.call('threads.create', {
+    projectId, providerId: 'echo', accountId: (await client.call('accounts.list', {})).find(account => account.providerId === 'echo')!.id,
+    title: 'Workflow parent',
+  })).id : (await echoThread(h, client, 'Workflow parent')).threadId;
   await client.call('delegation.configure', { threadId: rootId, config: {
     ...h.core.delegation.config(rootId),
     profiles: [{ id: 'acp', name: 'ACP', providerId: 'acp-fake', accountId, model: 'default', effort: null }],
   } });
   const run = await client.call('workflows.start', { threadId: rootId, requestId: 'acp-workflow', plan: {
-    name: 'ACP workflow', steps: [{ id: 'step', profile: 'acp', task: 'First attempt [internal]' }],
+    name: 'ACP workflow', steps: [{ id: 'step', profile: 'acp', task: 'First attempt [internal]', worktree }],
   } });
   await waitFor(() => h.core.workflows.get(rootId, run.id).status === 'failed');
-  return { rootId, runId: run.id, threadId: h.core.workflows.get(rootId, run.id).nodes[0]!.instances[0]!.threadId! };
+  const threadId = h.core.workflows.get(rootId, run.id).nodes[0]!.instances[0]!.threadId!;
+  if (worktree) {
+    // An explicit follow-up opens the managed checkout before starting ACP.
+    await h.core.delegation.worktrees.enter(threadId);
+  }
+  return { rootId, runId: run.id, threadId };
 }
 
 /** A fresh core with one ACP thread on it, the opening of most tests here. */

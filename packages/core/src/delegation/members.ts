@@ -39,7 +39,7 @@ export function childQuestions(core: Core, rootId: string): NonNullable<ThreadSu
 /** An unfinished turn or a child between turns with work still pending. */
 export function childBusy(core: Core, thread: ThreadSummary): boolean {
   if (threadBusy(thread) || (core.threads.agentState.background.get(thread.id)?.length ?? 0) > 0) return true;
-  if (thread.archived || !core.composer.hasQueuedInput(thread.id)) return false;
+  if (thread.archived || (!core.composer.hasQueuedInput(thread.id) && !core.activity.composerFollowUp(thread.id))) return false;
   const last = taskTurn(core, thread.id);
   return last !== null && pendingComposerFollowUp(core, last);
 }

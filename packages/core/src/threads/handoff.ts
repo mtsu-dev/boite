@@ -459,7 +459,11 @@ export class RestartHandoff {
     if (turn === null || thread === null || thread.archived) return null;
     if (was === 'running' && this.#core.journal.getSetting(userStopKey(turnId)) === true) return null;
     const operation = turn.execution?.operation;
-    if (thread.parentThreadId) return was === 'running' && operation === undefined ? 'composer' : null;
+    if (thread.parentThreadId) {
+      if (operation !== undefined) return null;
+      if (was === 'running') return 'composer';
+      return this.#core.composer.storage.admittedTurn(threadId, turnId) ? 'resume' : null;
+    }
     return operation === undefined || operation === 'resume' || (was === 'running' && operation === 'background') ? 'resume' : null;
   }
 

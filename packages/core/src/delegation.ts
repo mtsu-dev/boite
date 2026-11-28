@@ -11,10 +11,10 @@ import type { ProviderProbe } from './providers/probe.ts';
 import { assertDriverRunnable } from './drivers/index.ts';
 import { withLoad } from './threads/records.ts';
 import { nativeAgents } from './native-agents.ts';
-import { delegatedResultPage, DelegationWaits, quietResult, RESULT_TEXT, teamUsage, turnResult, type ResultRest } from './delegation/results.ts';
+import { delegatedResultPage, DelegationWaits, recoverComposerResults, sendChildResult, teamUsage, turnResult, type ResultRest } from './delegation/results.ts';
 import { INTERRUPTION_TEXT, parentListens, tellInterrupted } from './delegation/interruption.ts';
 import { askFinal, childEnd, closeQuestions, followUpEndKey, pendingComposerFollowUp, taskTurn, unwoken } from './delegation/completion.ts';
-import { permissionWake, questionWake, worktreeLine } from './delegation/messages.ts';
+import { permissionWake, questionWake } from './delegation/messages.ts';
 import { ChildWorktrees } from './delegation/worktrees.ts';
 import { checkConfig, createChild, readConfig, type ChildRequest } from './delegation/children.ts';
 import { Retirements } from './delegation/retirement.ts';
@@ -27,6 +27,7 @@ import { sentBack } from './workflows/follow-up.ts';
 import type { Connection } from './router.ts';
 import { pendingMail } from './delegation/pending-mail.ts';
 import { composerOwnsFollowUp } from './threads/stopped-input.ts';
+import { stageComposerResult, clearComposerResult } from './delegation/composer-results.ts';
 
 interface AgentRow { thread_id: string; root_id: string; request_id: string; fingerprint: string; profile_id: string; task: string }
 interface LetterRow { data: string; fingerprint: string }
@@ -571,7 +572,7 @@ export class Delegation {
     // A workflow owns its step's result and checkout. Other core-owned steps report to their own listeners.
     if (!followUp && this.#stepOwned(thread.id)) return;
     const root = link ? undefined : this.#core.journal.getThread(thread.parentThreadId!);
-    if (!link && !root) return;
+    if (!link && !root) return clearComposerResult(this.#core, turn.id);
     const parentId = root?.id ?? link!.parentId;
     if (root) this.#changed(root.id);
     // A stopped turn is someone's Stop, not a problem to group.
@@ -585,24 +586,11 @@ export class Delegation {
     if (live.length === 0) closeQuestions(this.#core, thread.id, `the core, since the subagent's turn ended ${turn.status}`);
     if (root) {
       const config = this.config(root.id);
-      if (!config.enabled || config.paused || root.archived) return;
+      if (!config.enabled || config.paused || root.archived) return clearComposerResult(this.#core, turn.id);
     }
     // Ended to wait on its own background work: what it says is a checkpoint, the result follows.
     if (live.length > 0) this.#wakeDeadlines.delete(thread.id);
-    const head = live.length > 0
-      ? `${thread.title}: waiting on its background work (${[...new Set(live.map(task => task.description.trim() || task.kind))].join(', ').slice(0, 600)})\nCheckpoint, not its final result: that work wakes it and its final result follows.`
-      : `${thread.title}: ${turn.status}`;
-    const deliver = () => {
-      // The worktree line is never cut (the parent needs the branch to merge); the answer fits beside it and the bounded head, so its note on the rest survives. A followed-up step is read as a thread.
-      const worktree = live.length > 0 ? undefined : this.worktrees.get(thread.id);
-      const tail = worktree ? `\n${worktreeLine(worktree)}${link ? ` It is on ${this.#core.coordination.identity().name}, where the branch stays.` : ''}` : '';
-      const result = this.result(turn, followUp && !this.delegated(thread.id) ? 'thread' : 'delegate', RESULT_TEXT - head.length - 1 - tail.length);
-      const body = `${`${head}\n${result ?? 'No text result was returned.'}`.slice(0, RESULT_TEXT - tail.length)}${tail}`;
-      if (link) { this.remote.letter(thread.id, { origin: 'result', requestId: `result:${turn.id}`, text: body, ...(live.length > 0 ? { checkpoint: true as const } : {}) }); return; }
-      try {
-        this.send({ threadId: thread.id, toThreadId: parentId, requestId: `result:${turn.id}`, text: body }, 'result', { ...(live.length > 0 ? { checkpoint: true } : {}), ...(quietResult(this.#core, thread.id, turn) ? { quiet: true as const } : {}) });
-      } catch (error) { this.#core.log('warn', `delegation result ${thread.id}: ${messageOf(error)}`); }
-    };
+    const deliver = () => sendChildResult(this.#core, turn, thread, parentId, link !== undefined, live, followUp);
     if (settling) this.#track(settling.then(() => { if (!this.#closed) deliver(); }));
     else deliver();
   }
@@ -613,13 +601,17 @@ export class Delegation {
     const thread = this.#core.journal.getThread(threadId);
     if (!thread || thread.archived || (!thread.parentThreadId && !this.remote.parentOf(threadId))) return;
     const turn = this.#lastTurn(threadId);
-    if (turn && composerOwnsFollowUp(turn) && this.#core.journal.getSetting(followUpEndKey(threadId)) !== turn.id) {
-      this.#core.journal.setSetting(followUpEndKey(threadId), turn.id);
-      if (this.#core.workflows.owns(threadId)) this.#core.workflows.finishComposerTurn(turn);
-      else this.#finished(turn);
+    if (turn && composerOwnsFollowUp(turn) && !pendingComposerFollowUp(this.#core, turn) && this.#core.journal.getSetting(followUpEndKey(threadId)) !== turn.id) {
+      stageComposerResult(this.#core, turn);
+      this.#finishComposerFollowUp(turn);
       this.remote.state(threadId);
     }
     this.retirements.check(threadId);
+  }
+
+  #finishComposerFollowUp(turn: Turn): void {
+    if (this.#core.workflows.owns(turn.threadId)) this.#core.workflows.finishComposerTurn(turn);
+    else this.#finished(turn);
   }
 
   childStopped(threadId: string): boolean { return this.#stopped.has(threadId); }
@@ -754,9 +746,9 @@ export class Delegation {
     endRestart(this.#core, id);
     // A child at rest on its own background work is at work too: stopping it ends that work.
     const waiting = withLoad(this.#core, this.#core.threads.require(id)).backgroundWait?.state === 'waiting';
-    const last = this.#core.composer.hasQueuedInput(id) ? this.#lastTurn(id) : null;
+    const last = this.#core.composer.hasQueuedInput(id) || this.#core.activity.composerFollowUp(id) ? this.#lastTurn(id) : null;
     const queuedFollowUp = last !== null && pendingComposerFollowUp(this.#core, last);
-    if (queuedFollowUp) this.#core.journal.setSetting(followUpEndKey(id), last.id);
+    if (queuedFollowUp) stageComposerResult(this.#core, last);
     this.#stopped.add(id);
     this.#core.pullRequestWatches.endThread(id);
     this.#core.activity.pauseAll(id);
@@ -767,8 +759,7 @@ export class Delegation {
     // Turn completion and workflows settle their own worktrees.
     if (!turn && !queuedFollowUp && !this.#core.workflows.owns(id)) void this.worktrees.settle(id);
     if (!queuedFollowUp) this.#core.workflows.stepStopped(id);
-    else if (this.#core.workflows.owns(id)) this.#core.workflows.finishComposerTurn(last);
-    else this.#finished(last);
+    else this.#finishComposerFollowUp(last);
     for (const letter of this.#letters(id, 'received')) this.#update(letter, 'rejected', 'Agent stopped');
     for (const letter of this.#letters(id, 'uncertain')) {
       if (letter.error?.startsWith('Queued for provider turn ')) this.#update(letter, 'rejected', 'Agent stopped before provider delivery');
@@ -827,6 +818,9 @@ export class Delegation {
   /** Once the server listens after a restart handoff: the children it cut go on (`delegation/restart.ts`). */
   resumeAfterRestart(): number {
     if (this.#closed || this.#core.journal.isClosed()) return 0;
+    this.#track(recoverComposerResults(this.#core).catch(error => {
+      if (this.#live()) this.#core.log('warn', `delegation results recovery failed: ${messageOf(error)}`);
+    }));
     const resumed = resumeRestartCuts(this.#core);
     // Children whose background work the restart cut: their parents or runs hear of it, as when it ends without waking them.
     for (const threadId of this.#core.threads.agentState.backgroundHistory.takeInterrupted()) this.#backgroundChanged(threadId);

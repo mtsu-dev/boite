@@ -23,7 +23,8 @@ export const followUpEndKey = (threadId: string): string => `delegation-follow-u
 /** An advisory cancellation leaves the child waiting for its queued user instruction. */
 export function pendingComposerFollowUp(core: Core, turn: Turn): boolean {
   return (turn.status === 'stopped' || turn.status === 'error') && composerOwnsFollowUp(turn)
-    && core.composer.hasQueuedInput(turn.threadId) && core.journal.getSetting(followUpEndKey(turn.threadId)) !== turn.id;
+    && (core.composer.hasQueuedInput(turn.threadId) || core.activity.composerFollowUp(turn.threadId)?.turnId === turn.id)
+    && core.journal.getSetting(followUpEndKey(turn.threadId)) !== turn.id;
 }
 
 /** A child's last turn of its task, past compactions and cache keepalives. */

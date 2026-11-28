@@ -89,6 +89,7 @@ export class Workflows {
       for (const node of run.nodes) for (const inst of node.instances) {
         if (inst.status !== 'running') continue;
         const turn = inst.threadId && !inst.machine && !inst.compute ? taskTurn(core, inst.threadId) : null;
+        if (turn && core.threads.handoff.requeues(turn)) continue;
         if (turn && composerOwnsFollowUp(turn)) {
           // Recover a queue removal committed just before shutdown as well.
           this.#interruptedInputs.push(turn);
@@ -118,7 +119,8 @@ export class Workflows {
   /** Close steps whose queue removal committed before the previous core could settle them. */
   finishRecovery(): void {
     for (const turn of this.#interruptedInputs.splice(0)) {
-      if (taskTurn(this.#core, turn.threadId)?.id === turn.id) this.#turnFinished(turn);
+      const current = taskTurn(this.#core, turn.threadId);
+      if (current?.id === turn.id) this.#turnFinished(current);
     }
     this.#recovering = false;
   }

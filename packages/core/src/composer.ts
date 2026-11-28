@@ -4,7 +4,7 @@ import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
 import { invalidParams, messageOf, notFound, refused } from './errors.ts';
-import { ComposerStorage, digest, recordKey } from './composer-storage.ts';
+import { ADMITTED_COMPOSER_TURN, ComposerStorage, digest, recordKey } from './composer-storage.ts';
 import type { TurnHandle } from './drivers/types.ts';
 import { steerUser, userSteeringUnavailable } from './threads/user-steering.ts';
 import { DraftReservationLedger, type DraftOwnership } from './threads/draft-reservation-ledger.ts';
@@ -14,6 +14,7 @@ import { composerActivity, isComposerActivity, startsAutoGoal } from './composer
 import { composerBatch } from './composer-batch.ts';
 import { checkTurnRequest } from './threads/inputs.ts';
 import { ensureThreadCwd, folderPresent } from './threads/cwd.ts';
+import { pendingComposerFollowUp, taskTurn } from './delegation/completion.ts';
 
 const choiceOf = (thread: ThreadSummary): ComposerChoice => ({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, permissionMode: thread.permissionMode });
 const sameChoice = (a: ComposerChoice, b: ComposerChoice): boolean => a.providerId === b.providerId && a.accountId === b.accountId && a.model === b.model && a.effort === b.effort && (a.speed ?? null) === (b.speed ?? null);
@@ -100,9 +101,7 @@ export class Composer {
     // Existing recovery holds every never-started turn. Server-owned accepted
     // queues may resume those safe rows; legacy client queues remain held.
     const held = this.#core.journal.db.query(`SELECT t.id, t.thread_id FROM turns t
-      WHERE t.status = 'queued' AND t.started_at IS NULL AND t.queue_hold IS NOT NULL AND EXISTS (
-        SELECT 1 FROM turn_requests r JOIN composer_deliveries d ON d.thread_id = r.thread_id AND d.request_id = r.request_id
-        WHERE r.thread_id = t.thread_id AND r.turn_id = t.id AND d.status = 'delivered')`).all() as { id: string; thread_id: string }[];
+      WHERE t.status = 'queued' AND t.started_at IS NULL AND t.queue_hold IS NOT NULL AND EXISTS (${ADMITTED_COMPOSER_TURN})`).all() as { id: string; thread_id: string }[];
     for (const { id, thread_id } of held) {
       const thread = this.#core.journal.getThread(thread_id);
       const project = thread?.projectId ? this.#core.journal.getProject(thread.projectId) : null;
@@ -341,7 +340,13 @@ export class Composer {
         if (this.#closed || this.#core.stopping || !current || current.archived || (current.projectId && this.#core.projects.require(current.projectId).archived)) return;
         // As `turns.start`: the project's folder is only reported (a shared worktree outlives it); the turn's own cwd decides.
         if (!discoveryFailure && current.projectId) void this.#core.projects.requireFolder(current.projectId).catch(() => undefined);
-        const admissionFailure = discoveryFailure ?? await ensureThreadCwd(this.#core, current).catch((error: unknown) => ({ error }));
+        const worktrees = this.#core.delegation.worktrees;
+        const admissionFailure = discoveryFailure ?? await ensureThreadCwd(this.#core, current).catch((error: unknown) => {
+          // The runner waits for settlement and opens its managed checkout again if needed.
+          const worktree = worktrees.get(id);
+          if (worktree?.path === current.cwd && (worktree.state === 'removed' || worktrees.isSettling(id))) return undefined;
+          return { error };
+        });
         const activity = composerActivity(item.text);
         this.#atomic(() => {
           const target = this.#core.journal.getThread(id);
@@ -353,7 +358,10 @@ export class Composer {
           for (const entry of batch.entries) this.#reserve(record, entry, id, batch.requestId);
           if (activity) {
             if (item.previewReferences?.length) throw refused('Activity commands do not accept page references.');
-            this.#core.activity.set({ threadId: id, ...activity, attachments }, undefined, choice);
+            const child = target.parentThreadId || this.#core.delegation.remote.parentOf(id);
+            const last = child ? taskTurn(this.#core, id) : null;
+            const followUp = last && pendingComposerFollowUp(this.#core, last) ? { turnId: last.id, requestId: batch.requestId } : undefined;
+            this.#core.activity.set({ threadId: id, ...activity, attachments }, undefined, choice, false, followUp);
           } else this.#core.threads.startTurn(id, { prompt: batch.text, attachments, previews: batch.previewReferences }, { kind: 'user', requestId: batch.requestId, sentFrom: batch.entries[0]!.sentFrom ?? null }, { expectedSelectionVersion: (followsThread ? target : current).selectionVersion ?? 0, choice,
             autoGoal: startsAutoGoal(batch.text, this.#core.settings.get()) ? batch.text : undefined });
           this.#complete(section, recordId, batch.entries.map(entry => entry.id));
