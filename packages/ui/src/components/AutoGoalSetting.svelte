@@ -1,16 +1,13 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { TextQuote } from '@lucide/svelte';
-  import { AUTO_GOAL_MIN_CHARS } from '@boite/contracts';
+  import { AUTO_GOAL_MIN_CHARS, markFeature } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import InfoTip from './InfoTip.svelte';
 
   /**
-   * The `autoGoals` switch of the machine, off unless turned on, and under it
-   * while on the `autoGoalMinChars` setting: how long a prompt must be before
-   * it starts a reviewed goal (`docs/internals/goals.md`). A row of the card
-   * How agents answer (`AgentRepliesSettings.svelte`).
+   * The prompt length under the Automatic goals experiment switch.
    */
   let { store }: { store: Store } = $props();
   const uid = $props.id();
@@ -25,15 +22,6 @@
   });
   let valid = $derived(typeof chars === 'number' && Number.isInteger(chars) && chars >= AUTO_GOAL_MIN_CHARS.min && chars <= AUTO_GOAL_MIN_CHARS.max);
 
-  let on = $derived(store.settings?.autoGoals === true);
-  /** A switch saves when it flips; a refusal puts it back. */
-  let switching = $state(false);
-  async function toggle(input: HTMLInputElement) {
-    switching = true;
-    const ok = await store.saveSettings({ autoGoals: input.checked }).finally(() => { switching = false; });
-    if (!ok) input.checked = !input.checked;
-  }
-
   let saving = $state(false);
   async function save() {
     if (!valid) return;
@@ -42,20 +30,10 @@
     const ok = await store.saveSettings({ autoGoalMinChars: chars as number }).finally(() => { saving = false; });
     if (ok) dirty = false;
   }
+  markFeature('boite-feature:auto-goal');
 </script>
 
-<!-- The core decides on the owner's machine, so a paired device does not see the switch or the threshold. -->
-{#if store.owner && store.settings}
-  <label for="{uid}-on" class="switch-row" id="settings-auto-goals">
-    <span class="text">
-      <span class="ui-label-box"><span class="ui-label" id="{uid}-on-name">{strings.settings.autoGoals}</span><InfoTip topic={strings.settings.autoGoals} text={strings.settings.autoGoalsHint} /></span>
-      <span class="hint" id="{uid}-on-effect">{strings.settings.effects.autoGoals}</span>
-    </span>
-    <input id="{uid}-on" aria-labelledby="{uid}-on-name" aria-describedby="{uid}-on-effect" type="checkbox" role="switch" data-testid="setting-auto-goals"
-      checked={on} disabled={switching} onchange={(event) => void toggle(event.currentTarget)} />
-  </label>
-{/if}
-{#if store.owner && store.settings && on}
+{#if store.owner && store.settings?.autoGoals === true}
   <div class="option" data-testid="auto-goal-settings">
     <span class="icon"><TextQuote size={18} strokeWidth={1.75} /></span>
     <label for="{uid}-chars" class="name"><span class="ui-label">{strings.settings.autoGoalMinChars}</span><InfoTip topic={strings.settings.autoGoalMinChars} text={strings.settings.autoGoalMinCharsHint} /></label>

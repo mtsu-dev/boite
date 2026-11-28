@@ -1,6 +1,7 @@
 <script lang="ts">
   import { appMark } from '../lib/app-update.svelte';
   import { teamChat as lazyTeamChat, councilSalon as lazyCouncilSalon } from '../lib/chat-views';
+  import { experimentOn } from '../lib/experiments.svelte';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { pinnedQuotas, PINNED_QUOTA_WIDTH } from '../lib/pinned-quotas.svelte';
@@ -121,7 +122,7 @@
     <h1>{strings.thread.none}</h1>
     <p class="muted">{strings.thread.noneBody}</p>
   </div>
-{:else if thread?.teamId}
+{:else if thread?.teamId && experimentOn('teams') && lazyTeamChat}
   <Deferred part={lazyTeamChat}>{#snippet children(TeamChat)}{#key thread.id}<TeamChat {store} {thread} />{/key}{/snippet}</Deferred>
 {:else if !thread && !sending && needsAnAI(store)}
   <!-- Nothing to start a thread on yet: one action first, the folder and the composer after it. -->
@@ -206,7 +207,7 @@
     {:else if thread?.archived}
       {#if store.openProject?.missing === true && !thread.agentSessionId}<FolderGoneNotice {store} project={store.openProject} replaces={false} />{/if}
       <DoneThreadNotice {store} threadId={thread.id} removal={thread.worktreeRemoved ?? null} />
-    {:else}<Composer {store} centered={!thread && !sending} notice={stopNotice} />{/if}
+    {:else if !thread?.teamId}<Composer {store} centered={!thread && !sending} notice={stopNotice} />{/if}
 
     <!-- The draft's heading and composer are one block in the middle of the
          column: the body above and this tail below share the free space. -->

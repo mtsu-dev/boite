@@ -10,6 +10,7 @@
 import { join } from 'node:path';
 import { AGENT_BUILTINS, type Account, type AgentBuiltin, type AgentProfile, type AgentSelection, type AgentSession, type RpcParams } from '@boite/contracts';
 import type { Core } from '../core.ts';
+import { assertContacts } from '../contacts/switch.ts';
 import { refused } from '../errors.ts';
 import { loggedInAccount } from '../delegation/routes.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
@@ -126,6 +127,7 @@ export class BuiltinBots {
   async ensure(params: RpcParams<'agents.builtin.ensure'>): Promise<AgentProfile> {
     object(params, 'params');
     const kind = oneOf(params.kind, 'kind', AGENT_BUILTINS);
+    if (kind === 'contacts') assertContacts(this.#core);
     const name = params.name === undefined ? undefined : text(params.name, 'name', 100);
     if (params.selection !== undefined) object(params.selection, 'selection');
     // Only a new bot takes this route, chosen once so the save runs on the account the read listed; one made before keeps its own.
@@ -137,6 +139,7 @@ export class BuiltinBots {
 
   /** `selection` is the new bot's route, null when one existed before the wait for its models. */
   #ensure(kind: AgentBuiltin, name: string | undefined, selection: AgentSelection | null): AgentProfile {
+    if (kind === 'contacts') assertContacts(this.#core);
     const existing = this.#store.records.list('profile').find(agent => agent.builtin === kind);
     if (existing !== undefined) {
       if (existing.status !== 'archived') {
@@ -163,6 +166,7 @@ export class BuiltinBots {
   async reset(params: RpcParams<'agents.builtin.reset'>): Promise<AgentProfile> {
     object(params, 'params');
     const { builtin } = this.#builtin(params.agentId);
+    if (builtin === 'contacts') assertContacts(this.#core);
     const name = params.name === undefined ? undefined : text(params.name, 'name', 100);
     if (params.selection !== undefined) object(params.selection, 'selection');
     const selection = params.selection ?? this.#defaultSelection(builtin, 'reset');
@@ -179,6 +183,7 @@ export class BuiltinBots {
 
   #reset(agentId: string, named: string | undefined, selection: AgentSelection): AgentProfile {
     const agent = this.#builtin(agentId);
+    if (agent.builtin === 'contacts') assertContacts(this.#core);
     const shipped = BUILTIN_TEXT[agent.builtin];
     const name = named ?? shipped.name;
     const { id, revision, createdAt: _createdAt, updatedAt: _updatedAt, ...value } = agent;

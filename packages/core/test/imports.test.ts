@@ -40,6 +40,18 @@ test('the folder name is the working directory with every other character turned
   expect(claudeProjectFolder('/home/me/my app')).toBe('-home-me-my-app');
 });
 
+test('a Release refuses an import start by experiment id', async () => {
+  await harness.stop();
+  harness = await startTestCore({ version: '2.0.0', agentDefaults: 'boot' });
+  const client = await harness.connect();
+  const { projectId, account } = await seeded(client);
+  const listing = await client.call('imports.list', { projectId }).catch(error => error);
+  expect(listing).toMatchObject({ rpc: { message: expect.stringContaining('experiment.session-import'), data: { reason: 'experiment-off' } } });
+  const result = await client.call('imports.run', { projectId, accountId: account.id, sessionId: FIXTURE_SESSION_ID }).catch(error => error);
+  expect(result).toMatchObject({ rpc: { message: expect.stringContaining('experiment.session-import'), data: { reason: 'experiment-off' } } });
+  expect(await client.call('threads.list', { projectId })).toEqual([]);
+});
+
 test('a transcript is listed from its head, imported whole, and never twice', async () => {
   const client = await harness.connect();
   const { projectId, account, file } = await seeded(client);

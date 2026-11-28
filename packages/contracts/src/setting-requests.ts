@@ -1,7 +1,7 @@
 import type { AgentCreation } from './agent-create.ts';
 import type { QuestionAnswer, QuestionOption, Settings, ThreadId } from './index.ts';
 import { readPluginSource, sameRepository, type PluginSourceInput } from './plugin-source.ts';
-import { EXPERIMENT_IDS, experimentRefusal, isExperimentId, listedExperiments, type ExperimentId } from './experiments.ts';
+import { EXPERIMENT_IDS, EXPERIMENT_SETTINGS, experimentOfSetting, experimentRefusal, experimentStartRefusal, featureRuns, isExperimentId, isSettingExperiment, listedExperiments, type ExperimentId, type ExperimentalSetting } from './experiments.ts';
 
 /*
  * An agent helping the user set Boite up: it reads the settings, then asks for
@@ -9,9 +9,9 @@ import { EXPERIMENT_IDS, experimentRefusal, isExperimentId, listedExperiments, t
  * points at a Settings page (`boite settings open`). The card never writes
  * anything itself. Apply calls `settings.set`, which only the owner reaches,
  * and the core settles the card when the value it asked about changes, from
- * the card or from the page. An experiment is a device's own switch: the app
- * reports which are on (`client.preferences`), the card flips it there, and
- * the core settles the card on the next report. See docs/internals/cli.md.
+ * the card or from the page. This also covers experiments switched by a
+ * machine setting. For an app experiment, the device reports its flip in
+ * `client.preferences` and the core settles the card on that report.
  */
 
 /** The languages the app speaks (`docs/internals/language.md`). */
@@ -105,7 +105,7 @@ export const REQUESTABLE_SETTINGS = {
   shortAnswers: { page: 'general', section: 'conversations', sensitive: false },
   toolSummaries: { page: 'general', section: 'conversations', sensitive: false },
   titleModel: { page: 'general', section: 'conversations', sensitive: false },
-  autoGoals: { page: 'general', section: 'agent-replies', sensitive: false },
+  autoGoals: { page: 'experiments', section: 'auto-goal', sensitive: false },
   threadDoneRetentionDays: { page: 'general', section: 'archived', sensitive: true },
   threadDeletionRetentionDays: { page: 'general', section: 'archived', sensitive: true },
   transcriptStorage: { page: 'general', section: 'transcripts', sensitive: true },
@@ -129,14 +129,14 @@ export const REQUESTABLE_SETTINGS = {
   compactionSummary: { page: 'advanced', section: 'auto-compact', sensitive: false },
   autoResumeLimitedThreads: { page: 'limits', section: 'limit-resume', sensitive: false },
   cacheKeepalive: { page: 'advanced', section: 'cache-keepalive', sensitive: false },
-  backgroundCompaction: { page: 'advanced', section: 'background-compaction', sensitive: false },
-  deviceStream: { page: 'advanced', section: 'device-stream', sensitive: false },
+  backgroundCompaction: { page: 'experiments', section: 'background-compaction', sensitive: false },
+  deviceStream: { page: 'experiments', section: 'device-stream', sensitive: false },
   groupThreads: { page: 'machines', section: 'machines', sensitive: false },
   groupBots: { page: 'machines', section: 'machines', sensitive: false },
   agentBotCreation: { page: 'general', section: AGENTS_ALONE_SECTION, sensitive: false },
   coordinationReach: { page: 'general', section: AGENTS_ALONE_SECTION, sensitive: false },
   // It opens this machine to other people's Boites: the card opens the page, where the switch sits beside its explanation.
-  contacts: { page: 'general', section: AGENTS_ALONE_SECTION, sensitive: true },
+  contacts: { page: 'experiments', section: 'contacts', sensitive: true },
 } as const satisfies Partial<Record<keyof Settings, SettingPlace>>;
 
 export type RequestableSetting = keyof typeof REQUESTABLE_SETTINGS;
@@ -177,6 +177,12 @@ export type RequestableKey = RequestableSetting | ExperimentSettingKey;
 export function experimentOf(key: string): ExperimentId | null {
   const id = key.startsWith('experiment.') ? key.slice('experiment.'.length) : null;
   return isExperimentId(id) ? id : null;
+}
+
+/** The machine switch a request names, including cards saved with the older experiment key. */
+export function settingExperimentKey(key: string): ExperimentalSetting | null {
+  const id = experimentOf(key) ?? experimentOfSetting(key);
+  return id !== null && isSettingExperiment(id) ? EXPERIMENT_SETTINGS[id] : null;
 }
 
 /**
@@ -309,6 +315,8 @@ export function effectiveSetting(settings: Settings, key: RequestableSetting): u
 
 /** A key's value in effect: a core setting, or whether the app has the experiment on; null when no app reported. */
 export function currentSetting(key: RequestableKey, settings: Settings, client: ClientPreferences | null): unknown {
+  const machine = settingExperimentKey(key);
+  if (machine !== null) return effectiveSetting(settings, machine);
   const experiment = experimentOf(key);
   if (experiment === null) return effectiveSetting(settings, key as RequestableSetting);
   return client === null ? null : client.experiments.includes(experiment);
@@ -318,13 +326,25 @@ function experimentPlace(id: ExperimentId): SettingPlace {
   return { page: 'experiments', section: id, sensitive: false };
 }
 
+/** The requestable keys visible on a machine's build, before any app reports. */
+function machineSettingKeys(version?: string): RequestableSetting[] {
+  return REQUESTABLE_SETTING_KEYS.filter(key => {
+    const id = experimentOfSetting(key);
+    return id === null || version === undefined || featureRuns(id, version);
+  });
+}
+
+function appExperimentIds(version?: string): ExperimentId[] {
+  return (version === undefined ? EXPERIMENT_IDS : listedExperiments(version)).filter(id => !isSettingExperiment(id));
+}
+
 /** Every readable setting, an app's experiments after the core's settings once an app reported them. */
 export function readSettings(settings: Settings, client: ClientPreferences | null = null, version?: string): SettingReading[] {
   const labelled = (key: RequestableKey): { label?: string } => (client?.labels[key] === undefined ? {} : { label: client.labels[key] });
-  const core: SettingReading[] = REQUESTABLE_SETTING_KEYS.map(key => ({ key, value: effectiveSetting(settings, key), ...REQUESTABLE_SETTINGS[key], ...labelled(key) }));
+  const core: SettingReading[] = machineSettingKeys(version).map(key => ({ key, value: effectiveSetting(settings, key), ...REQUESTABLE_SETTINGS[key], ...labelled(key) }));
   if (client === null) return core;
   // With the build's version, only the switches that build shows: a finished feature or one a Release lacks is not a setting.
-  return [...core, ...(version === undefined ? EXPERIMENT_IDS : listedExperiments(version)).map(id => {
+  return [...core, ...appExperimentIds(version).map(id => {
     const key: ExperimentSettingKey = `experiment.${id}`;
     return { key, value: client.experiments.includes(id), ...experimentPlace(id), ...labelled(key) };
   })];
@@ -376,13 +396,14 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
       options: [{ id: 'open', label: 'Open Settings' }, { id: 'refuse', label: 'Dismiss' }],
     };
   }
-  const { key, value } = params;
+  const { key: requested, value } = params;
+  const key = typeof requested === 'string' ? settingExperimentKey(requested) ?? requested : requested;
   if (machine !== null && !isMachineSetting(key)) {
     return { ok: false, message: `${String(key)} is this machine's own; a card for another machine asks about ${MACHINE_SETTINGS.join(', ')}`, data: { field: 'key', expected: MACHINE_SETTINGS } };
   }
   const experiment = typeof key === 'string' ? experimentOf(key) : null;
   if (!isRequestableSetting(key) && experiment === null) {
-    const keys = [...REQUESTABLE_SETTING_KEYS, ...(version === undefined ? EXPERIMENT_IDS : listedExperiments(version)).map(id => `experiment.${id}`)];
+    const keys = [...machineSettingKeys(version), ...appExperimentIds(version).map(id => `experiment.${id}`)];
     return { ok: false, message: `${String(key)} is not a setting an agent may ask about; the keys are ${keys.join(', ')}`, data: { field: 'key', expected: keys } };
   }
   if (value === undefined) return { ok: false, message: 'a change needs a value', data: { field: 'value' } };
@@ -397,6 +418,9 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
     proposed = value;
     place = experimentPlace(experiment);
   } else {
+    const id = experimentOfSetting(key as RequestableSetting);
+    const unavailable = id === null || version === undefined ? null : experimentStartRefusal(id, version);
+    if (unavailable !== null) return { ok: false, message: unavailable, data: { field: 'key', key, reason: 'experiment-off' } };
     const normalized = normalize({ [key]: value } as Partial<Settings>);
     if (!normalized.ok) return { ok: false, message: normalized.message, data: { field: 'value', setting: normalized.field } };
     proposed = normalized.patch[key as RequestableSetting] ?? null;
@@ -406,7 +430,7 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
   const previous = currentSetting(settingKey, settings, client);
   const where = machine === null ? '' : ` on ${machine.name}`;
   if (sameSetting(proposed, previous)) return { ok: false, message: `${key} is already ${JSON.stringify(previous)}${where}`, data: { field: 'value', key } };
-  if (open.some(card => card.kind === 'change' && card.key === key && (card.machine?.coreId ?? null) === (machine?.coreId ?? null))) {
+  if (open.some(card => card.kind === 'change' && (settingExperimentKey(card.key) ?? card.key) === key && (card.machine?.coreId ?? null) === (machine?.coreId ?? null))) {
     return { ok: false, message: `a card asking about ${key}${where} is already open in this thread`, data: { field: 'key', key } };
   }
   return {
@@ -441,12 +465,15 @@ function pluginCard(params: Extract<SettingRequestParams, { page: string }>, rea
 /**
  * The answer a change card about a core setting settles with once the
  * settings changed, or null while its setting still holds the value it was
- * asked from. An experiment's card never settles here: a core setting moving
- * flips no switch (`settledExperiment`).
+ * asked from. App experiment cards settle separately (`settledExperiment`).
  */
-export function settledSetting(setting: SettingCardAsk, settings: Settings): QuestionAnswer | null {
-  if (setting.kind !== 'change' || isExperimentKey(setting.key) || setting.machine !== undefined) return null;
-  const now = effectiveSetting(settings, setting.key as RequestableSetting);
+export function settledSetting(setting: SettingCardAsk, settings: Settings, version?: string): QuestionAnswer | null {
+  if (setting.kind !== 'change' || setting.machine !== undefined) return null;
+  const key = settingExperimentKey(setting.key) ?? setting.key;
+  if (!isRequestableSetting(key)) return null;
+  const id = experimentOfSetting(key);
+  if (id !== null && version !== undefined && !featureRuns(id, version)) return null;
+  const now = effectiveSetting(settings, key);
   if (sameSetting(now, setting.previous)) return null;
   return { optionIds: [sameSetting(now, setting.value) ? 'applied' : 'changed'], value: now };
 }
@@ -473,7 +500,7 @@ export function settledMachineSetting(setting: SettingCardAsk, coreId: string, k
 export function settledExperiment(setting: SettingCardAsk, report: ClientPreferences, before: readonly ExperimentId[] | null): QuestionAnswer | null {
   if (setting.kind !== 'change') return null;
   const id = experimentOf(setting.key);
-  if (id === null) return null;
+  if (id === null || isSettingExperiment(id)) return null;
   const on = report.experiments.includes(id);
   const flipped = before !== null && before.includes(id) !== on;
   const fromAsker = setting.app === report.app && on !== setting.previous;

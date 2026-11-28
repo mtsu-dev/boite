@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { tick, untrack } from 'svelte';
   import { Eye, Pencil, Plus, SquareKanban, Trash2, X } from '@lucide/svelte';
   import type { Contact, Project, ProjectId } from '@boite/contracts';
@@ -154,6 +155,7 @@
     // Gone from the list, so the page goes back to the one that adds a contact.
     if (!view.state?.contacts.some(entry => entry.coreId === contact.coreId)) view.store.showHome();
   }
+  markFeature('boite-feature:contacts');
 </script>
 
 <div class="who" data-link={contact.link} data-testid="contact-{contact.coreId}">

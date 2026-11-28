@@ -1,5 +1,5 @@
 /** Projects, their files and the Claude Code and Codex sessions they can import. */
-import { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_SECRET_DIRS, PROJECT_NAME_MAX, RpcErrorCode, type ImportableSession, type Project, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_SECRET_DIRS, PROJECT_NAME_MAX, RpcErrorCode, experimentStartRefusal, type ImportableSession, type Project, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { missingFolder, pathKey } from './checks';
 import { FAKE_FILES, scoreFakeFile } from './files';
@@ -15,6 +15,11 @@ function importAccounts(ctx: FakeContext, session: ImportableSession): string[] 
   const owner = ctx.accounts.find(account => account.id === session.accountId);
   if (!owner) return [session.accountId];
   return ctx.accounts.filter(account => account.providerId === owner.providerId && account.isolationDir === owner.isolationDir).map(account => account.id);
+}
+
+function allowImport(ctx: FakeContext): void {
+  const message = experimentStartRefusal('session-import', ctx.core.version);
+  if (message !== null) throw new RpcFailure({ code: RpcErrorCode.Refused, message, data: { reason: 'experiment-off' } });
 }
 
 const ABSOLUTE = /^([A-Za-z]:[\\/]|[\\/])/;
@@ -242,6 +247,7 @@ export function projectMethods(ctx: FakeContext) {
       return { files: scored.slice(0, limit).map((entry) => entry.path), total: scored.length, capped: false };
     },
     'imports.list': async (params) => {
+      allowImport(ctx);
       if (!ctx.projects.some((p) => p.id === params.projectId)) throw ctx.notFound('project', params.projectId);
       await new Promise((resolve) => setTimeout(resolve, IMPORT_LIST_MS));
       // Newest first, the core's order.
@@ -253,6 +259,7 @@ export function projectMethods(ctx: FakeContext) {
       );
     },
     'imports.run': async (params) => {
+      allowImport(ctx);
       const project = ctx.projects.find((p) => p.id === params.projectId);
       if (!project) throw ctx.notFound('project', params.projectId);
       const session = ctx.importable.find((entry) => entry.projectId === params.projectId && entry.sessionId === params.sessionId && importAccounts(ctx, entry).includes(params.accountId));

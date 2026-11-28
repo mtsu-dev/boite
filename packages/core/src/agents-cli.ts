@@ -255,7 +255,7 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
   } else if (action === 'contacts') {
     const contacts = await client.call('collaboration.contacts', { threadId });
     const lines = contacts.map(contact => `${contact.name}  (${contact.link}${contact.projects.length ? `, opened to you: ${contact.projects.join(', ')}` : ''})`);
-    if (lines.length === 0) lines.push("no contact; the user links other owners' Boites in Contacts");
+    if (lines.length === 0) lines.push('no contact available; in Nightly and Dev builds the owner can turn on Contacts in Settings > Experiments');
     else lines.push('Ask with boite threads ask <what you need> [--contact <name>] [--to <contact>/<thread-id>] [--new]: name the contact and it goes straight to its Contacts mochi, which finds the thread or starts one, after its owner\'s Accept when they do not trust this owner; the answer names the thread to write to with threads send.');
     print(lines, contacts);
   } else if (action === 'ask') {

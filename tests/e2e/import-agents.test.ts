@@ -8,7 +8,7 @@ let page: BrowserPage;
 beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
-  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1`, windowSize: { width: 1300, height: 850 } });
+  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1`, experiments: ['session-import'], windowSize: { width: 1300, height: 850 } });
   await page.waitFor(`document.querySelector('[data-testid=project-row]')`);
 }, 90000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);

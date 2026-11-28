@@ -10,7 +10,8 @@
   import { settingHeading } from '../lib/setting-requests';
   import { teamHeading } from '../lib/team-requests';
   import Deferred from './Deferred.svelte';
-  import { parts } from '../lib/deferred-parts';
+  import { lazyTeamCard, parts } from '../lib/deferred-parts';
+  import { experimentOn } from '../lib/experiments.svelte';
   import InfoTip from './InfoTip.svelte';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
   import AgentSettingCard from './AgentSettingCardLoader.svelte';
@@ -62,7 +63,7 @@
   });
   /** A plain question draws its own head (`QuestionCard`): the fold sits in it, the pager on its own row over it. */
   // A build without the Teams has no team card (lib/teams-entry.ts): a request a Nightly left is a plain question there, so it can still be answered or refused.
-  const plain = (question: Asked) => !question.secret && !question.setting && !question.agentSetting && !question.team;
+  const plain = (question: Asked) => !question.secret && !question.setting && !question.agentSetting && !(question.team && lazyTeamCard && experimentOn('teams'));
   // A card's "Answer in writing" brings that question up.
   $effect(() => {
     const chosen = repliesOf(store).chosen;
@@ -193,9 +194,9 @@
           {:else if question.agentSetting}
           <AgentSettingCard {store} threadId={question.threadId} questionId={question.id} text={question.text} setting={question.agentSetting} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />
-          {:else if question.team}
+          {:else if question.team && lazyTeamCard && experimentOn('teams')}
           {@const team = question.team}
-          <Deferred part={parts.TeamCard}>{#snippet children(TeamCard)}<TeamCard {store} questionId={question.id} text={question.text} {team} answer={null} pending docked
+          <Deferred part={lazyTeamCard}>{#snippet children(TeamCard)}<TeamCard {store} questionId={question.id} text={question.text} {team} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />{/snippet}</Deferred>
           {:else if question.setting?.kind === 'bot'}
           <BotRequestCard {store} threadId={question.threadId} questionId={question.id} setting={question.setting} answer={null} pending docked

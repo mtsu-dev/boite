@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import type { ContactRequest, HeldContactLetter } from '@boite/contracts';
   import { untrack } from 'svelte';
   import { ArrowRight, Bell, Check, Mail, X } from '@lucide/svelte';
@@ -65,6 +66,7 @@
     // The toast may show another letter by now: an answer only marks its own.
     if (untrack(() => displayed?.key) === row.key) failed = done ? '' : row.view.error;
   }
+  markFeature('boite-feature:contacts');
 </script>
 
 {#if displayed && toast.shown}

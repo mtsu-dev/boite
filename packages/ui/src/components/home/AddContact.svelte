@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { lockedBy } from '../../lib/policy';
   import { onDestroy, tick, untrack } from 'svelte';
   import { Check, Copy, ExternalLink, Globe, Link2, Share2, TriangleAlert } from '@lucide/svelte';
   import { inviteShare, readInvite } from '../../lib/contact-link';
-  import { copyText, type ContactsView, type InviteReach } from '../../lib/contacts.svelte';
+  import { type ContactsView, type InviteReach } from '../../lib/contacts.svelte';
+  import { copyText } from '../../lib/clipboard';
   import { clockTime } from '../../lib/format';
   import { fill, strings } from '../../lib/strings';
   import InfoTip from '../InfoTip.svelte';
@@ -67,6 +69,7 @@
     if (!link) return;
     if (await view.join(link)) pasted = '';
   }
+  markFeature('boite-feature:contacts');
 </script>
 
 <div class="switch-row invite-row">

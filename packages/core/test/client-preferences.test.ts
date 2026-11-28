@@ -42,19 +42,21 @@ test('phones follow the desktop app on this machine before one reached from else
   expect(book.desktopExperiments()).toEqual(withFinished(on()));
 });
 
-test('a Release core keeps every finished feature, whatever an app reports, and still names removed ids to an older phone', () => {
+test('a Release core keeps every finished feature and no experiment, whatever an app reports, and still names removed ids to an older phone', () => {
   const moves: { experiments: Told[]; chosen: Told[] }[] = [];
   const book = new ClientPreferencesBook(() => {}, moved => moves.push(moved), '2.0.0');
   const here = { id: 'c0', subscriptions: new Set(), identity: { principal: 'owner', sessionId: null, threadId: null }, sentFrom: { client: 'shell', device: 'pc' }, remote: false, sendEvent() {} } as unknown as Connection;
-  // An older app still reports the five experiments that were finished and left the list.
+  // An older app still reports two finished ids that left the list, and three that are experiments again.
   book.report(here, { ...report([]), experiments: ['whip', 'teams', 'debates', 'auto-goal', 'contacts'] });
-  // The core's own reading keeps only the ids it knows.
+  // The core's own reading keeps the finished features only: a Release runs no experiment.
   expect(book.current()!.experiments).toEqual(['resident-agents']);
-  // A phone older than this core still gates Contacts and Teams on their ids, in both lists it reads: they stay named.
+  // In force, a phone hears no experiment; as chosen, it hears what the app picked and the removed ids an older phone gates on.
   const kept = book.desktopExperiments()!;
   expect(kept).toEqual(withFinished(['resident-agents']));
-  expect(book.desktopChosen()).toEqual(expect.arrayContaining(['contacts', 'teams', 'debates', 'whip', 'auto-goal']));
-  expect(moves).toEqual([{ experiments: kept, chosen: withFinished([]) }]);
+  expect(kept).not.toContain('contacts');
+  expect(kept).not.toContain('teams');
+  expect(book.desktopChosen()).toEqual(withFinished(['contacts', 'teams', 'auto-goal']));
+  expect(moves).toEqual([{ experiments: kept, chosen: withFinished(['contacts', 'teams', 'auto-goal']) }]);
 });
 
 let h: TestCore;

@@ -27,7 +27,7 @@ async function capture(name: string) {
 
 const DOCKED = '[data-testid="activity-question"] [data-testid="setting-card"][data-state="pending"]';
 
-test('an agent reads the app\'s language and its one experiment, and a sensitive card shows its switch in the chat', async () => {
+test('an agent reads the app\'s language and this device\'s experiments, and a sensitive card shows its switch in the chat', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
   const thread = await page.evaluate(`(async () => {
     const store = window.__boiteTest.workspace.active;
@@ -35,11 +35,15 @@ test('an agent reads the app\'s language and its one experiment, and a sensitive
     await window.__boiteTest.workspace.select(store, thread.id);
     return thread.id;
   })()`) as string;
-  // What \`boite settings\` reads: French, and the one experiment this build lists, as the app has it.
+  // What \`boite settings\` reads: French, and the device experiments this build lists, as the app has it.
   const read = await page.evaluate(`window.__boiteTest.workspace.active.client.call('agent.settings', { threadId: ${JSON.stringify(thread)} })`) as { app: { language: string }; settings: { key: string; value: unknown; label?: string }[] };
   expect(read.app.language).toBe('fr');
   // A finished feature is on in every build: it is not a setting an agent reads or asks for.
-  expect(read.settings.filter(reading => reading.key.startsWith('experiment')).map(reading => [reading.key, reading.value, reading.label])).toEqual([['experiment.draft-backdrop', false, 'Fond des nouvelles conversations']]);
+  expect(read.settings.filter(reading => reading.key.startsWith('experiment')).map(reading => [reading.key, reading.value, reading.label])).toEqual([
+    ['experiment.draft-backdrop', false, 'Fond des nouvelles conversations'],
+    ['experiment.teams', false, 'Équipes'],
+    ['experiment.session-import', false, 'Import de sessions'],
+  ]);
   expect(read.settings.find(reading => reading.key === 'experiments')).toBeUndefined();
 
   // A sensitive switch shows in the card too, beside its warning, once the agent has read the card's report.

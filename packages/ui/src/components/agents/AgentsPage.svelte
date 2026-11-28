@@ -29,6 +29,7 @@
   import AgentEditor from './AgentEditor.svelte';
   import AgentEngineSettings from './AgentEngineSettings.svelte';
   import { teamsParts } from '../../lib/teams-entry';
+  import { experimentOn } from '../../lib/experiments.svelte';
   import './agents.css';
 
   /**
@@ -71,13 +72,14 @@
   /** The agent thread on screen: an ordinary thread left open from the chat is not drawn here. */
   const thread = $derived(store.openThread?.agentSessionId ? store.openThread : null);
   /** A team's chat on screen, while Teams is on (`docs/internals/teams.md`): the rail lists the teams above the bots. */
-  const teamThread = $derived(!thread && store.openThread?.teamId ? store.openThread : null);
+  const teamsOn = $derived(experimentOn('teams'));
+  const teamThread = $derived(teamsOn && !thread && store.openThread?.teamId ? store.openThread : null);
   const team = $derived(teamThread ? teamsOf(store).ofThread(teamThread.id) : null);
   // The team's dialog and header load through their entry (lib/teams-entry.ts).
   let TeamDialog = $state.raw<typeof import('../teams/TeamDialog.svelte').default>();
   let TeamHeader = $state.raw<typeof import('../teams/TeamHeader.svelte').default>();
   $effect(() => {
-    if (TeamDialog) return;
+    if (!teamsOn || TeamDialog || !teamsParts) return;
     void Promise.all([teamsParts.TeamDialog(), teamsParts.TeamHeader()]).then(([dialog, header]) => { TeamDialog = dialog.default; TeamHeader = header.default; }).catch(() => {});
   });
   /** The dialog that creates a team by hand is open (`docs/internals/teams.md`, In the app). */
@@ -159,8 +161,8 @@
       const intent = takeAgentsIntent(store);
       if (intent?.kind === 'new-bot') focus = { kind: 'new' };
       else if (intent?.kind === 'engine') focus = { kind: 'engine' };
-      else if (intent?.kind === 'new-team' && store.owner) creatingTeam = true;
-      else if (intent?.kind === 'team') {
+      else if (intent?.kind === 'new-team' && teamsOn && store.owner) creatingTeam = true;
+      else if (intent?.kind === 'team' && teamsOn) {
         // Asked from the rail, which stopped any load in flight: select again even when this thread was already asked for.
         showTeamChat(intent.threadId, true);
         if (intent.edit && store.owner) editingTeam = intent.teamId;
@@ -297,13 +299,13 @@
 
 <AgentsRail {view} {lists} active={focus ? null : (agent?.id ?? openingAgentId)} activeTeam={focus ? null : teamThread?.id ?? null}
   agent={thread ? agent : pendingAgent} status={thread ? status : pendingStatus} {thread} team={teamThread ? team : null} conversation={!focus && !pane && !!(thread || teamThread || pendingAgent)}
-  onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onnewteam={() => { creatingTeam = true; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }}
+  onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onnewteam={teamsOn ? () => { creatingTeam = true; } : undefined} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }}
   onpane={next => { focus = null; pane = pane === next ? null : next; }} />
 
-{#if teamToEdit && TeamDialog}
+{#if teamsOn && teamToEdit && TeamDialog}
   <TeamDialog {view} {others} team={teamToEdit} onclose={() => { editingTeam = null; }} ondone={() => {}} />
 {/if}
-{#if creatingTeam && TeamDialog}
+{#if teamsOn && creatingTeam && TeamDialog}
   <TeamDialog {view} {others} onclose={() => { creatingTeam = false; }} ondone={created => { if (here) openTeam(here, created); }} />
 {/if}
 

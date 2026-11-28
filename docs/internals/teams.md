@@ -6,11 +6,11 @@ live context of its work; the team only carries posts between them. A post
 wakes the mochis it names, and a mochi answers either in the group, which every
 member reads, or privately to one member or the owner.
 
-Teams are finished ([experiments](experiments.md#teams)): the `teams.*`
-methods and `boite team` commands answer in every build, whatever an app
-reports, so a core restart or a headless machine turns nothing off.
-[Across machines](#across-machines) says what an older machine still running
-the Teams switch decides.
+Teams are a Nightly experiment ([experiments](experiments.md#teams)). Nightly
+and Dev cores run teams according to their version, including after a restart
+or while headless. A Release core still lists, reads and archives existing
+teams and accepts member removals. Operations that start team work refuse
+with `experiment-off`. Release bundles omit the code that runs team work.
 
 Contracts: `packages/contracts/src/teams.ts`; core:
 `packages/core/src/teams/` (store, journal tables, prompt, RPC, what goes
@@ -206,14 +206,16 @@ answer. A final answer waits in the member machine's durable outbox and posts
 once, under the id derived from its turn. Outbox rows older than 30 days are
 dropped at the next start.
 
-**An older machine with the switch.** A machine of the group that still runs
-a build where Teams were an experiment filters on its own switch while it is
-off: as the holder it refuses `say`, `dm`, `read` and the owner's changes,
-with its name; asked for one of its mochis (`team.bot`) it refuses, and the
-command says `<machine>: teams need the Teams experiment` (reason
-`experiment-off`), so the team is not created or the mochi not added. Final
-answers of turns under way, letters already flowing, reports and moves
-continue. Updating that machine removes the switch.
+**A Release core.** A Release core refuses new team work from peers with
+`experiment-off`. This includes resolving one of its mochis to add them to a
+team. Authenticated peers can still read already stored posts and remove their
+own members. What a peer's outbox sends there and gets `experiment-off` for
+stays in that outbox, and goes once the machine runs a Nightly again and
+answers. A mochi moved off a machine while it ran a Release stays in its teams
+there; the next Nightly start of that machine moves each team after it, the one
+it holds and, through its holder, the others. It goes where the newest move
+receipt says, and a machine the team reaches after the mochi left it again
+passes it on the same way.
 
 **Versions.** Every machine of a team needs a version with this feature. An
 older machine answers that it does not know the operation, and the command says
@@ -273,8 +275,8 @@ and an update of the app.
 
 ### In the app
 
-Teams, like Mochis which they build on, are on in every build. A Teams section heads the
-Mochis page's list, above the mochis, on the desktop and on the phone
+Turn on Teams in Settings > Experiments in Nightly or Dev. A Teams section
+then heads the Mochis page's list, above the mochis, on the desktop and on the phone
 (`components/agents/AgentsRail.svelte`). The heading stays while there is no
 team yet, with one line under it, "No team yet: put a few mochis in one chat.",
 and beside it the New team button; a search shows the section only over the
@@ -286,7 +288,8 @@ the mochis. A row opens the team chat in the page's main pane
 (`components/agents/AgentsPage.svelte`); on a phone the chat takes the screen
 and its back arrow returns to the list. The chat is no thread row of the
 Conversations lists, because the core refuses an agent's composer there, and
-a thread with `teamId` opens on the Mochis page.
+a thread with `teamId` opens on the Mochis page while Teams is on. With Teams
+off, an existing thread opens in the regular chat without a composer.
 
 New team opens a dialog (`components/teams/TeamDialog.svelte`, the checks
 and calls in `lib/team-draft.ts`): a name, an optional brief, and the members,
@@ -400,7 +403,7 @@ created it answers them ([across machines](#across-machines)). When it does not
 answer, the refusal says so: send the same command with the same
 `--request-id` to post once.
 
-The mochis' guide has three lines for teams: answer
+When the core's version runs Teams, the mochis' guide has three lines for teams: answer
 `[quiet]` when nothing needs saying, group or private, and when to propose,
 invite or leave.
 

@@ -44,7 +44,7 @@
   let contactNotice = $derived(store.page === 'settings' && contactsShownAnywhere(store) && inShell && mobile.current);
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
-    if (!contactNotice || ContactRequestNotice) return;
+    if (!contactsParts || !contactNotice || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
   let foldable = $derived(store.booted && !listless && (store.page === 'chat' || store.page === 'home' || (store.page === 'agents' && !mobile.current)));

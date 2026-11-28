@@ -3,10 +3,13 @@
  * the machine holding it sends a member's machine and hears back, and the
  * mirror kept there. `peers.ts` carries them.
  */
-import type { Team, TeamMember, TeamParty, TeamPost } from '@boite/contracts';
+import { markFeature, type Team, type TeamMember, type TeamParty, type TeamPost } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import type { TeamPeerPost, TeamPeerReport } from './peers.ts';
-import type { PostRow, TeamStore } from './store.ts';
+import type { TeamPeerPost } from './peers.ts';
+import type { PostRow, TeamPeerReport } from './records.ts';
+import type { TeamStore } from './store.ts';
+
+markFeature('boite-feature:teams');
 
 /** How long a post waits to wake a bot on a machine that is away; older, it stays readable and wakes nobody. */
 export const TEAM_WAKE_MAX_MS = 7 * 24 * 3_600_000;
@@ -153,6 +156,7 @@ export class TeamMirror {
     }
     for (const { post, wake } of posts) if (wake.length > 0) this.#store.repair(post.id);
     if (stays.length === 0) this.#forget(incoming.id);
+    else this.#store.followMoves([this.#store.get(incoming.id) ?? current]);
   }
 
   #forget(teamId: string): void {

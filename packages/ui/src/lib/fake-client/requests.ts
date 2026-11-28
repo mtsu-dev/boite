@@ -1,5 +1,5 @@
 /** Permission requests and questions: asked by a turn, answered by the user. */
-import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, withFinished, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingCardAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, withFinished, experimentalSettingRefusal, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingCardAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { fakeCore } from './coordination';
 import { checkAnswer, checkAsk } from './checks';
@@ -153,7 +153,7 @@ function agentSettingText(ctx: FakeContext, setting: AgentSettingAsk, answer: Qu
  * experiment's once an app flipped its switch.
  */
 export function settleSettings(ctx: FakeContext, settings: Settings, report?: { preferences: ClientPreferences; before: readonly ExperimentId[] | null }): void {
-  settleWith(ctx, setting => (report ? settledExperiment(setting, report.preferences, report.before) : settledSetting(setting, settings)));
+  settleWith(ctx, setting => (report ? settledExperiment(setting, report.preferences, report.before) : settledSetting(setting, settings, ctx.core.version)));
 }
 
 /** As the core's `setting.changed`: the cards of `ctx` about that machine's setting settle. */
@@ -203,6 +203,8 @@ export function requestSetting(ctx: FakeContext, thread: Thread, turn: Turn, par
   }
   const checked = checkSettingRequest(params, settings, (patch) => {
     const result = checkSettingsPatch(patch);
+    const experiment = result.ok ? experimentalSettingRefusal(result.patch, ctx.core.version) : null;
+    if (experiment !== null) return { ok: false, message: experiment.message, field: experiment.key };
     return result.ok ? { ok: true, patch: result.patch } : { ok: false, message: result.message, field: result.field };
   }, open, ctx.clientPreferences, machine, ctx.core.version);
   if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.Refused, message: checked.message, data: checked.data });

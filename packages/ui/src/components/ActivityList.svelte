@@ -35,7 +35,7 @@
 
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
-    if (!contactsShownAnywhere(store) || ContactInboxRows) return;
+    if (!contactsParts || !contactsShownAnywhere(store) || ContactInboxRows) return;
     void contactsParts.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
 

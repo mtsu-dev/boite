@@ -1,4 +1,5 @@
 import type { ImportableSession, ProjectId } from '@boite/contracts';
+import { experimentOn } from '../experiments.svelte';
 import type { StoreContext } from './context';
 
 /** The import dialog: agent sessions found on disk, brought in as threads. */
@@ -14,7 +15,7 @@ export class Imports {
    */
   async openImports(projectId: ProjectId): Promise<void> {
     const client = this.ctx.client;
-    if (!client) return;
+    if (!client || !experimentOn('session-import')) return;
     this.imports = { projectId, sessions: [], loading: true, running: null };
     try {
       const sessions = await client.call('imports.list', { projectId });
@@ -33,7 +34,7 @@ export class Imports {
   async importSession(accountId: string, sessionId: string): Promise<void> {
     const client = this.ctx.client;
     const dialog = this.imports;
-    if (!client || !dialog || dialog.running !== null) return;
+    if (!client || !dialog || dialog.running !== null || !experimentOn('session-import')) return;
     this.imports = { ...dialog, running: sessionId };
     try {
       const summary = await client.call('imports.run', { projectId: dialog.projectId, accountId, sessionId });

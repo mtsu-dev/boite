@@ -29,6 +29,8 @@ type AgentHandlers = {
 
 /** What the fake core around the agents does for them: their threads and the turns started there. */
 export interface AgentRunner {
+  /** Whether this core may start or reset a Contacts mochi. */
+  assertContacts?: () => void;
   /** Makes the agent's own thread, projectless, and returns its id. */
   create: (agent: AgentProfile, sessionId: string) => string;
   /** Starts a wake on the agent's thread: a turn the core opens by itself, labelled in the conversation. */
@@ -577,6 +579,7 @@ export class FakeAgents {
   private ensureBuiltin(p: RpcParams<'agents.builtin.ensure'>): AgentProfile {
     const shipped = Object.hasOwn(BUILTIN_BOTS, p.kind) ? BUILTIN_BOTS[p.kind] : undefined;
     if (!shipped) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `kind: expected one of ${Object.keys(BUILTIN_BOTS).join(', ')}`, data: { field: 'kind' } });
+    if (p.kind === 'contacts') this.runner?.assertContacts?.();
     const name = this.builtinName(p.name, shipped.name);
     const live = this.builtin(p.kind);
     if (live) return live;
@@ -600,6 +603,7 @@ export class FakeAgents {
   private resetBuiltin(p: RpcParams<'agents.builtin.reset'>): AgentProfile {
     const previous = this.profile(p.agentId);
     if (!previous.builtin) this.refuse(`agentId: ${previous.name} is not a built-in mochi; only a built-in mochi is reset`);
+    if (previous.builtin === 'contacts') this.runner?.assertContacts?.();
     const shipped = BUILTIN_BOTS[previous.builtin];
     const name = this.builtinName(p.name, shipped.name);
     // Its default settings come back too: the machine's default route, unless the client named one.

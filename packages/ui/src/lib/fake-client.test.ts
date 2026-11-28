@@ -1825,13 +1825,13 @@ test('a paired device lists its own session, marked current, and not the owner d
   expect((await phone.call('sessions.list', {})).map(row => [row.id, row.current])).toEqual([['ses-phone', true]]);
 });
 
-test('a fake Release core saves and reads the three machine settings and starts new things in Contacts, as the real one', async ({ createClient }) => {
+test('a fake Release core refuses the machine experiment settings and retains cache keepalive', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0, version: '2.0.0' });
-  for (const patch of [{ deviceStream: true }, { backgroundCompaction: true }, { cacheKeepalive: { hours: 2 } }]) await client.call('settings.set', patch);
-  expect(await client.call('settings.get', {})).toMatchObject({ deviceStream: true, backgroundCompaction: true, cacheKeepalive: { hours: 2 } });
-  // An agent may propose them, as any setting.
-  await expect(client.call('settings.request', { threadId: 't-trace', reason: 'No live screen', key: 'deviceStream', value: false })).resolves.toBeDefined();
-  await expect(client.call('contacts.invite', {})).resolves.toBeDefined();
+  for (const patch of [{ deviceStream: true }, { backgroundCompaction: true }]) {
+    await expect(client.call('settings.set', patch)).rejects.toMatchObject({ message: expect.stringContaining('runs in Nightly and Dev builds only') });
+  }
+  expect(await client.call('settings.set', { cacheKeepalive: { hours: 2 } })).toMatchObject({ cacheKeepalive: { hours: 2 } });
+  await expect(client.call('settings.request', { threadId: 't-trace', reason: 'Show the phone', key: 'deviceStream', value: true })).rejects.toMatchObject({ data: { reason: 'experiment-off' } });
 });
 
 test('a fake Release core names no build when it answers a shared project or the Contacts mochi', async ({ createClient }) => {

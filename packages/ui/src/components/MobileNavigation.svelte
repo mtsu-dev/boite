@@ -110,12 +110,12 @@
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
-    if (!contactsShown(store) || SidebarContacts) return;
+    if (!contactsParts || !contactsShown(store) || SidebarContacts) return;
     void contactsParts.SidebarContacts().then(module => { SidebarContacts = module.default; }).catch(() => {});
   });
   // What contacts ask arrives on the machine that holds them, which may not be the one in view.
   $effect(() => {
-    if (!contactsShownAnywhere(store) || ContactRequestNotice) return;
+    if (!contactsParts || !contactsShownAnywhere(store) || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
     void contactsParts.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });

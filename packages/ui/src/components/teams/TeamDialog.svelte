@@ -1,3 +1,8 @@
+<script module lang="ts">
+  import { markFeature } from '@boite/contracts';
+  markFeature('boite-feature:teams');
+</script>
+
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { Check, X } from '@lucide/svelte';

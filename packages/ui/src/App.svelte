@@ -263,7 +263,7 @@
     if (boardShown) need('BoardDrawer');
     if (store.paletteOpen) need('CommandPalette');
     if (store.projectPickerOpen) need('ProjectPicker');
-    if (store.imports) need('ImportDialog');
+    if (store.imports) { if (experimentOn('session-import')) need('ImportDialog'); else store.closeImports(); } // turned off from the desktop: closed, no key held
     if (threadExport.request) need('ExportThreadDialog');
     if (store.connectDialog) need('ConnectFlow');
     if (tour) need('Onboarding');
@@ -533,7 +533,7 @@
   let contactsAnywhere = $derived(contactsShownAnywhere(store));
   let ContactRequestNotice = $state<typeof import('./components/home/ContactRequestNotice.svelte').default>();
   $effect(() => {
-    if (!noRailDesktop || !contactsAnywhere || ContactRequestNotice) return;
+    if (!contactsParts || !noRailDesktop || !contactsAnywhere || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
   let agentsRailShown = $derived(store.page === 'agents' && experimentOn('resident-agents') && !(store.connection === 'closed' && !store.core));
@@ -554,7 +554,7 @@
    * it. The tour counts once it is drawn: offline with a cold cache it never is,
    * and the keyboard must not stay held for it.
    */
-  let modal = $derived((tour && appViews.Onboarding.current !== undefined) || confirm.current !== null || store.imports !== null || threadExport.request !== null || store.projectPickerOpen || (store.connectDialog !== null && appViews.ConnectFlow.current !== undefined));
+  let modal = $derived((tour && appViews.Onboarding.current !== undefined) || confirm.current !== null || (store.imports !== null && experimentOn('session-import')) || threadExport.request !== null || store.projectPickerOpen || (store.connectDialog !== null && appViews.ConnectFlow.current !== undefined));
 
   /**
    * Every app chord goes through the keyboard table (`lib/keybindings.ts`,
@@ -735,7 +735,9 @@
 {#if appViews.PluginUiHost.current}{@const PluginUiHost = appViews.PluginUiHost.current}<PluginUiHost />{/if}
 {#if appViews.ProjectPicker.current}{@const ProjectPicker = appViews.ProjectPicker.current}<ProjectPicker {store} />{:else if store.projectPickerOpen}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
 <ConfirmDialog />
-{#if appViews.ImportDialog.current}{@const ImportDialog = appViews.ImportDialog.current}<ImportDialog {store} />{:else if store.imports}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
+{#if store.imports && experimentOn('session-import')}
+  {#if appViews.ImportDialog.current}{@const ImportDialog = appViews.ImportDialog.current}<ImportDialog {store} />{:else}<div class="cold-overlay">{@render loadingFrame()}</div>{/if}
+{/if}
 {#if threadExport.request && appViews.ExportThreadDialog.current}
   {@const ExportThreadDialog = appViews.ExportThreadDialog.current}
   {#key threadExport.request}<ExportThreadDialog {...threadExport.request} onclose={closeThreadExport} />{/key}

@@ -17,7 +17,7 @@
  * settings, and a thread that wrote to it in the last 7 days.
  */
 import { randomUUID } from 'node:crypto';
-import type { AgentContact, AgentLetter, Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, CoordinationPeer, ModelTier, RpcParams, RpcResult, Settings } from '@boite/contracts';
+import type { AgentContact, AgentLetter, Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, CoordinationPeer, ModelTier, RpcParams, RpcResult } from '@boite/contracts';
 import { text } from '../coordination-letter.ts';
 import { PeerRefusal, ROUTE } from '../coordination-wire.ts';
 import type { Core } from '../core.ts';
@@ -134,9 +134,9 @@ export class ContactStore implements LinkedContacts {
     // The owner's switch (`switch.ts`): off, the links drop; on again, the stored contacts are dialed.
     // The policy holds them off too: both events move the one state the links follow.
     let off = contactsOff(core);
-    core.bus.onAny((name, payload) => {
+    core.bus.onAny(name => {
       if (name !== 'settings.updated' && name !== 'policy.changed') return;
-      const now = name === 'settings.updated' ? contactsOff(core, payload as Settings) : contactsOff(core);
+      const now = contactsOff(core);
       if (now === off) return;
       off = now;
       this.#switched(now);

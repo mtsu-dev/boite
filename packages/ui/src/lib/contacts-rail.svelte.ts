@@ -1,4 +1,5 @@
-import { contactsOn, type Settings } from '@boite/contracts';
+import { contactsOn, featureRuns } from '@boite/contracts';
+import type { Store } from './store.svelte';
 
 /*
  * The contacts column on the window's right edge: whether it is folded, kept
@@ -7,12 +8,11 @@ import { contactsOn, type Settings } from '@boite/contracts';
  */
 
 /**
- * The rail is available to the owner of a machine whose contacts are on
- * (`contacts` in its settings, off unless turned on). A paired device can send
- * a human reply from a shared conversation.
+ * The navigation follows this machine's build and effective Contacts switch.
+ * A paired device can send a human reply from a shared conversation.
  */
-export function contactsShown(store: { owner: boolean; settings: Pick<Settings, 'contacts'> | null }): boolean {
-  return store.owner && contactsOn(store.settings ?? {});
+export function contactsShown(store: Pick<Store, 'core' | 'owner' | 'settings'>): boolean {
+  return store.owner && featureRuns('contacts', store.core?.version) && contactsOn(store.settings ?? {});
 }
 
 /** The column's width; the right panel leaves it this much room. */

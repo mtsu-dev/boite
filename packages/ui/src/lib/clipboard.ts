@@ -20,3 +20,19 @@ export function copyByCommand(text: string, within?: HTMLElement): boolean {
     before?.focus({ preventScroll: true });
   }
 }
+
+/**
+ * Copies `text`. A page served over plain HTTP has no clipboard API: the field
+ * holding it is selected and copied the older way, and stays selected to copy
+ * by hand. True once something reached the clipboard.
+ */
+export async function copyText(text: string, field?: HTMLInputElement | HTMLTextAreaElement | null): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    field?.focus();
+    field?.select();
+    return !!field && !!document.execCommand?.('copy');
+  }
+}

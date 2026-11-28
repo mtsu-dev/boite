@@ -255,8 +255,8 @@ panel, waits until it is ready and prints the `adb -s <serial>` or
 `key` and `close [--shutdown]` act on it. While the user's Device panel plays
 the device's live stream (the `deviceStream` setting), `tap`, `swipe`, `type`
 and `key` go through scrcpy and `type` accepts any text; `screenshot` stays
-an `adb screencap` PNG. With a phone plugged in and the setting off, `list`
-ends with one line that gives the `boite settings request deviceStream true`
+an `adb screencap` PNG. On Nightly and Dev, with a phone plugged in and the
+setting off, `list` gives the `boite settings request deviceStream true`
 command. Details and limits are in [devices.md](devices.md).
 
 ## Desktop windows
@@ -588,6 +588,11 @@ flags apply when starting a new thread. `settings mochi` reads settings or
 proposes changes from a conversation. Use the app's mochi menu to pause, resume
 or archive it as the owner.
 
+`threads contacts` lists contacts available to the calling thread. With
+Contacts off, including in a Release, the list is empty and `threads ask`
+returns `contacts-off`. In Nightly and Dev builds, the owner turns Contacts on
+in Settings > Experiments.
+
 `threads ask "<what you need>"` sends a request to a contact's Contacts mochi
 ([contacts](contacts.md#the-contacts-mochi)), or, naming no contact, hands it
 to this machine's mochi, which picks one: `--to
@@ -877,9 +882,10 @@ in the Tasks surface and on the project board ([board.md](board.md)). An agent's
 or claimed cards, with the count in the refusal; the user's adds have no limit.
 
 `goal track` starts a reviewed goal on the agent's own thread whose objective is
-the user's last prompt (a steer included), verbatim, and, on a project thread that is not incognito, a linked card on the project board. It is
-refused while automatic goals are off on this machine (`autoGoals`, off unless
-`true`, reason `auto-goals-off`), while a goal or a loop is under way, and when that prompt already started a goal
+the user's last prompt (a steer included), verbatim, and a linked card on the
+project board for a project thread outside incognito. A Release refuses with
+reason `experiment-off`. Nightly and Dev refuse if automatic goals are off
+(`auto-goals-off`), a goal or loop is under way, or that prompt already started a goal
 ([automatic goals](goals.md#automatic-goals)).
 
 `ask` draws a question card in the thread without stopping the agent: the
@@ -930,8 +936,10 @@ turn and a restart. The value is JSON when it parses (`60`, `false`, `null`,
 key is not in the list (the refusal lists them), when `settings.set` would
 refuse the value, when the setting already holds it (`deviceStream
 is already true`: the agent learns the state before the user has to say it),
-when a card on that key is already open in the thread, and for an experiment
-when the value is not true or false or no app has reported yet.
+when a card on that key is already open in the thread, and when the core
+build does not run the requested experiment. App experiment requests also
+require a boolean value and an app report. Machine experiment requests use the
+core's setting and link to Settings, Experiments.
 
 `--machine <name>` asks about another machine of the group, for the settings
 that machine holds about the others: `groupThreads` and `groupBots`. The card reads the
