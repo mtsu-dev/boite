@@ -198,8 +198,6 @@ export class TurnRunner {
       return;
     }
     result = settlement.result;
-    try { this.#core.delegation.submitted(threadId, turnId, result.status === 'done'); }
-    catch (error) { reportSettlementError(this.#core, threadId, turnId, 'delegation submission', error); }
     const { next, sameSession, threadOwned } = completion;
     this.threads.progress.end(threadId, turnId);
     if (threadOwned) {

@@ -1,4 +1,5 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
+import { Database } from 'bun:sqlite';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_DELEGATION_CONFIG, queueOrder } from '@boite/contracts';
@@ -487,6 +488,34 @@ test('completion forwards bounded text without tools, paid summaries or duplicat
   await waitFor(() => h.core.threads.require(threadId).status === 'idle');
   expect(h.core.delegation.get(threadId).messages[0]!.status).toBe('delivered');
   expect(h.core.delegation.get(threadId).messages).toHaveLength(1);
+});
+
+test('a delegated letter settles in the same commit as the turn that received it', async () => {
+  const runs = scripted();
+  const { h, threadId, spawn } = await setup();
+  const child = await spawn('settle-letter');
+  runs.get(child.thread.id)!.finish('Result for the parent');
+  await waitFor(() => runs.has(threadId));
+  const turnId = runs.get(threadId)!.ctx.turn.id;
+  const letter = h.core.delegation.get(threadId).messages.find(message => message.origin === 'result')!;
+  expect(letter.status).toBe('uncertain');
+
+  const reader = new Database(join(h.dataDir, 'journal.db'), { readonly: true });
+  const committed = Promise.withResolvers<unknown>();
+  const stageResult = h.core.threads.spawns.stageResult.bind(h.core.threads.spawns);
+  const stage = spyOn(h.core.threads.spawns, 'stageResult').mockImplementation(turn => {
+    stageResult(turn);
+    if (turn.id === turnId) queueMicrotask(() => {
+      // Read the first committed state of the turn, before the runner resumes.
+      committed.resolve(reader.query(
+        'SELECT turns.status AS turn, delegation_messages.status AS letter FROM turns, delegation_messages WHERE turns.id = ? AND delegation_messages.id = ?',
+      ).get(turnId, letter.id));
+    });
+  });
+  try {
+    runs.get(threadId)!.finish('Result incorporated');
+    expect(await committed.promise).toEqual({ turn: 'done', letter: 'delivered' });
+  } finally { stage.mockRestore(); reader.close(); }
 });
 
 test('live steering preserves sender identity and uncertain acknowledgement is never resent', async () => {

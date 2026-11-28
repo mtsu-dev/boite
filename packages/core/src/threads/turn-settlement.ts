@@ -150,11 +150,10 @@ export async function settleTurn(core: Core, state: Settlement): Promise<Complet
       // releaseTurn drops its buffer after writing. Commit it independently so
       // a later terminal rollback cannot lose the streamed answer.
       core.journal.releaseTurn(running.id);
-      core.bus.flush();
       // Logged once the transaction commits: a rollback must not leave a record of what did not
       // happen, and a diagnostic storage failure must not abort or retry the settlement.
       const notes: (() => void)[] = [];
-      const settled = core.journal.db.transaction(() => {
+      const settled = core.bus.afterCommit(() => core.journal.db.transaction(() => {
         const owned = core.journal.getTurn(running.id);
         if (!ownsTurn(owned, state)) {
           notes.push(() => core.logs.warn(`Turn result ${state.result.status} discarded: the journal holds the turn as ${owned?.status ?? 'missing'} with another execution, so a newer run owns it`, {
@@ -182,13 +181,14 @@ export async function settleTurn(core: Core, state: Settlement): Promise<Complet
         // Read once the answer is written: the flag rides on the turn every listener of `turn.finished` gets.
         if (quietTurn(core, finished)) finished.quiet = true;
         const { toolsClosed, ...completion } = finishThread(core, state);
+        core.delegation.submitted(running.threadId, running.id, finished.status === 'done');
         core.threads.spawns.stageResult(finished);
         if (toolsClosed > 0) notes.push(() => core.logs.info(`${toolsClosed} tool calls still running were marked failed because the turn ended ${state.result.status}`, { source: 'turns', event: 'turn.tools-closed', threadId: running.threadId, turnId: running.id, data: { tools: toolsClosed, status: state.result.status } }));
         const attempts = retry;
         if (attempts > 0) notes.push(() => core.logs.info(`Turn settled after ${attempts} failed persistence attempts`, { source: 'turns', event: 'turn.settlement.recovered', threadId: running.threadId, turnId: running.id, durationMs: performance.now() - settleAt, data: { retries: attempts } }));
         if (!completion.threadOwned) notes.push(() => core.logs.debug('Turn settled, but a newer turn owns the thread status', { source: 'turns', event: 'turn.settlement.not-owner', threadId: running.threadId, turnId: running.id }));
         return completion;
-      })();
+      })());
       for (const note of notes) {
         try { note(); } catch { /* A diagnostic storage failure must not break a committed settlement. */ }
       }

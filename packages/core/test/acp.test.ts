@@ -311,9 +311,16 @@ test.each([
   } finally { await next?.stop(); }
 }, 20_000);
 
-test.each(['the final checkpoint', 'a persistence retry'] as const)('an explicit Stop during %s overrides an acknowledged ACP queued cancellation', async phase => {
-  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
-  const { core } = harness!;
+test.each([
+  'the final checkpoint', 'a persistence retry', 'the final checkpoint before restart', 'the final checkpoint before a post-settlement restart',
+] as const)('an explicit Stop during %s overrides an acknowledged ACP queued cancellation', async phase => {
+  const started = await startThread({ warmProcessMinutes: 0 });
+  const { threadId } = started;
+  const first = harness!;
+  let { client } = started;
+  let { core } = first;
+  const afterSettlement = phase === 'the final checkpoint before a post-settlement restart';
+  const restart = phase === 'the final checkpoint before restart' || afterSettlement;
   const { id } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] [confirm-on-gate]' });
   const queued = [{ id: 'late-stop-follow-up', text: 'Queued before Stop', attachments: [] }];
   const setPaused = async (paused: boolean) => {
@@ -329,7 +336,9 @@ test.each(['the final checkpoint', 'a persistence retry'] as const)('an explicit
   await setPaused(true);
 
   const checkpoint = Promise.withResolvers<void>();
-  const end = phase === 'the final checkpoint' ? spyOn(core.threads.codeCheckpoints, 'end').mockReturnValueOnce(checkpoint.promise) : undefined;
+  const end = phase !== 'a persistence retry' ? spyOn(core.threads.codeCheckpoints, 'end').mockReturnValueOnce(checkpoint.promise) : undefined;
+  const moveFinished = Promise.withResolvers<void>();
+  const move = afterSettlement ? spyOn(core.threads.moves, 'applyWaiting').mockReturnValueOnce(moveFinished.promise) : undefined;
   const putTurn = core.journal.putTurn.bind(core.journal);
   let writeFailed = false;
   const persist = phase === 'a persistence retry' ? spyOn(core.journal, 'putTurn').mockImplementation(turn => {
@@ -346,21 +355,42 @@ test.each(['the final checkpoint', 'a persistence retry'] as const)('an explicit
     expect(core.threads.runner.handles.has(threadId)).toBe(false);
     expect(core.journal.getTurn(id)?.status).toBe('running');
     expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    if (move) {
+      checkpoint.resolve();
+      await waitFor(() => move.mock.calls.some(([thread]) => thread === threadId));
+      expect(core.journal.getTurn(id)?.status).toBe('stopped');
+      expect(core.scheduler.state().running.some(run => run.turnId === id)).toBe(true);
+      const handoff = core.threads.handoff.begin(0);
+      expect(core.journal.getSetting('restart-handoff')).toMatchObject({ turns: [] });
+      await handoff;
+    } else if (restart) void core.threads.handoff.begin(0);
   } finally {
     checkpoint.resolve();
+    moveFinished.resolve();
+    move?.mockRestore();
     end?.mockRestore();
     persist?.mockRestore();
   }
-  await waitFor(() => core.journal.getTurn(id)?.status === 'stopped');
-  expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBeUndefined();
-  expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
+  let next: TestCore | undefined;
+  try {
+    if (restart) {
+      await closeForHandoff(first);
+      next = await startTestCore({ dataDir: first.dataDir });
+      core = next.core;
+      client = await next.connect();
+    }
+    await waitFor(() => core.journal.getTurn(id)?.status === 'stopped');
+    expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBeUndefined();
+    expect(core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
 
-  await setPaused(false);
-  await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
-  expect(countLogLines(fakeLog(), 'initialize')).toBe(1);
-  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
-  expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
-  expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+    await setPaused(false);
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
+    expect(countLogLines(fakeLog(), 'initialize')).toBe(restart ? 2 : 1);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+  } finally { await next?.stop(); }
 }, 20_000);
 
 test.each(['restart', 'agent update on the warm process', 'manual recovery', 'manual recovery with an agent update before dispatch', 'manual recovery with an agent update after dispatch'])('ACP %s during a queued follow-up recovers both requests on the loaded session', async method => {

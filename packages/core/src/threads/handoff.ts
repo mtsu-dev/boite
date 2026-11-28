@@ -7,6 +7,7 @@ import type { ThreadStore } from '../threads.ts';
 import { RESUME_TEXT } from './resume-text.ts';
 import type { TurnInput } from './turn-origin.ts';
 import { STOP_DEADLINE } from './turn-runner.ts';
+import { userStopKey } from './turn-settlement.ts';
 
 /**
  * `graceMs`: how long a running tool call may take to finish before its turn is
@@ -134,6 +135,8 @@ export class RestartHandoff {
     const state = this.#core.scheduler.state();
     this.#entries = new Map();
     for (const run of state.running) {
+      // Post-turn work can hold the scheduler slot after the turn has settled.
+      if (this.#core.journal.getTurn(run.turnId)?.status !== 'running') continue;
       this.#pending.set(run.turnId, run.threadId);
       if (this.#resumable(run.turnId, run.threadId, 'running')) this.#entries.set(run.turnId, { turnId: run.turnId, threadId: run.threadId, was: 'running' });
     }
@@ -334,6 +337,7 @@ export class RestartHandoff {
     const turn = this.#core.journal.getTurn(turnId);
     const thread: ThreadSummary | null = this.#core.journal.getThread(threadId);
     if (turn === null || thread === null || thread.archived || thread.parentThreadId) return false;
+    if (was === 'running' && this.#core.journal.getSetting(userStopKey(turnId)) === true) return false;
     const operation = turn.execution?.operation;
     return operation === undefined || operation === 'resume' || (was === 'running' && operation === 'background');
   }

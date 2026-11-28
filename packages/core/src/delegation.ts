@@ -472,13 +472,14 @@ export class Delegation {
     return (this.#core.journal.db.query('SELECT data FROM delegation_messages WHERE recipient_id = ? AND status = ? ORDER BY created_at, rowid LIMIT 100').all(threadId, status) as LetterRow[]).map(row => JSON.parse(row.data) as AgentLetter);
   }
   #update(letter: AgentLetter, status: AgentLetter['status'], error: string | null = null): void {
-    const next = { ...letter, status, error };
     this.#core.journal.append({ type: 'delegation.delivery', threadId: letter.to.threadId, version: 1, payload: { id: letter.id, status, error } }, () => {
-      this.#core.journal.db.query('UPDATE delegation_messages SET status = ?, data = ? WHERE id = ?').run(status, JSON.stringify(next), letter.id);
+      this.#core.journal.db.query('UPDATE delegation_messages SET status = ?, data = ? WHERE id = ?').run(status, JSON.stringify({ ...letter, status, error }), letter.id);
     });
-    const thread = this.#core.journal.getThread(letter.to.threadId);
-    if (thread) this.#changed(thread.parentThreadId ?? thread.id);
-    this.retirements.check(letter.from.threadId);
+    this.#core.bus.whenCommitted(() => {
+      const thread = this.#core.journal.getThread(letter.to.threadId);
+      if (thread) this.#changed(thread.parentThreadId ?? thread.id);
+      this.retirements.check(letter.from.threadId);
+    });
   }
   /** Who wrote a letter, from the side of the thread that reads it. */
   #relationTo(threadId: string): (letter: AgentLetter) => string | undefined {
