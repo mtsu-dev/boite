@@ -1,5 +1,20 @@
 import type { Database } from 'bun:sqlite';
 import { DEFAULT_DELEGATION_CONFIG, type AgentLetter } from '@boite/contracts';
+import type { Journal } from '../journal.ts';
+
+export const INCOMPLETE_PROVIDER_DELIVERY = 'Provider turn did not complete; not retried automatically';
+
+/** Older journals can retain a queued marker after the turn has already run. */
+export function stoppedQueuedLetter(journal: Journal, letter: AgentLetter): Pick<AgentLetter, 'status' | 'error'> | undefined {
+  const prefix = 'Queued for provider turn ';
+  if (!letter.error?.startsWith(prefix)) return undefined;
+  const turn = journal.getTurn(letter.error.slice(prefix.length));
+  if (turn?.threadId === letter.to.threadId) {
+    if (turn.status === 'done') return { status: 'delivered', error: null };
+    if (turn.startedAt !== null) return { status: 'uncertain', error: INCOMPLETE_PROVIDER_DELIVERY };
+  }
+  return { status: 'rejected', error: 'Agent stopped before provider delivery' };
+}
 
 /** A turn's delivery marker must match before the inbox page limit applies. */
 export function delegationLetters(db: Database, threadId: string, status: AgentLetter['status'], { limit = 100, error }: { limit?: number; error?: string } = {}): AgentLetter[] {

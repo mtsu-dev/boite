@@ -25,7 +25,7 @@ import { RemoteDelegation } from './delegation/remote.ts';
 import { childBusy, childQuestions, childSnapshot, localMember, teamState } from './delegation/members.ts';
 import { sentBack } from './workflows/follow-up.ts';
 import type { Connection } from './router.ts';
-import { delegationLetters, pendingMail } from './delegation/pending-mail.ts';
+import { delegationLetters, INCOMPLETE_PROVIDER_DELIVERY, pendingMail, stoppedQueuedLetter } from './delegation/pending-mail.ts';
 import { composerOwnsFollowUp } from './threads/stopped-input.ts';
 import { stageComposerResult, clearComposerResult, composerResultSuppressed, stageChildStop } from './delegation/composer-results.ts';
 
@@ -491,7 +491,7 @@ export class Delegation {
   submitted(threadId: string, turnId: string, success: boolean): void {
     const letters = delegationLetters(this.#core.journal.db, threadId, 'uncertain', { error: `Awaiting provider turn ${turnId}` });
     for (const letter of letters) {
-      this.#update(letter, success ? 'delivered' : 'uncertain', success ? null : 'Provider turn did not complete; not retried automatically');
+      this.#update(letter, success ? 'delivered' : 'uncertain', success ? null : INCOMPLETE_PROVIDER_DELIVERY);
     }
   }
   /** Whether results wait in the thread's inbox, about to open its next turn. */
@@ -750,7 +750,8 @@ export class Delegation {
     // Reject all mail waiting when the Stop commits (SQLite LIMIT -1), even if live cleanup later yields to a new turn.
     for (const letter of delegationLetters(this.#core.journal.db, id, 'received', { limit: -1 })) this.#update(letter, 'rejected', 'Agent stopped');
     for (const letter of delegationLetters(this.#core.journal.db, id, 'uncertain', { limit: -1 })) {
-      if (letter.error?.startsWith('Queued for provider turn ')) this.#update(letter, 'rejected', 'Agent stopped before provider delivery');
+      const delivery = stoppedQueuedLetter(this.#core.journal, letter);
+      if (delivery) this.#update(letter, delivery.status, delivery.error);
     }
     return () => this.#finishStop(id, followUp);
   }

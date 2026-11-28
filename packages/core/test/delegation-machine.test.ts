@@ -666,7 +666,12 @@ test('a retried remote Stop cancels old mail and leaves later questions open', a
   expect(await pcOwner.call('questions.list', { threadId: child.id })).toEqual([expect.objectContaining({ id: questionId, turnId: later.id })]);
 });
 
-test('Stop preserves a delivered instruction behind old uncertain mail', async () => {
+test.each([
+  ['a completed turn', { outcome: 'done', legacy: false, status: 'delivered', error: null }],
+  ['a saved marker for a completed turn', { outcome: 'done', legacy: true, status: 'delivered', error: null }],
+  ['a saved marker for a failed turn', { outcome: 'error', legacy: true, status: 'uncertain', error: 'Provider turn did not complete; not retried automatically' }],
+  ['a turn still in the queue', { outcome: 'queued', legacy: false, status: 'rejected', error: 'Agent stopped before provider delivery' }],
+] as const)('Stop records delivery after %s behind old uncertain mail', async (_scenario, { outcome, legacy, status, error }) => {
   const { held } = answering();
   const { desk, pc, owner, threadId, pcId, spawn } = await setup();
   const { thread: child } = await spawn('Read the index', '--project', 'notes');
@@ -689,14 +694,18 @@ test('Stop preserves a delivered instruction behind old uncertain mail', async (
     FROM delegation_messages WHERE id = ?2`);
   db.transaction(() => { for (let i = 0; i < 100; i++) seed.run(`failed-instruction-${i}`, letter.id); })();
 
-  hold = false;
-  pc.core.scheduler.retry();
-  await waitFor(() => held.has(child.id));
-  held.get(child.id)!();
-  await waitFor(() => pc.core.journal.getTurn(turnId)?.status === 'done');
+  if (outcome !== 'queued') {
+    hold = false;
+    pc.core.scheduler.retry();
+    await waitFor(() => held.has(child.id));
+    held.get(child.id)!({ status: outcome, sessionId: null, usage: null });
+    await waitFor(() => pc.core.journal.getTurn(turnId)?.status === outcome);
+  }
+  if (legacy) db.query("UPDATE delegation_messages SET status = 'uncertain', data = json_set(data, '$.status', 'uncertain', '$.error', ?) WHERE id = ?")
+    .run(`Queued for provider turn ${turnId}`, letter.id);
   await owner.call('delegation.stop', { threadId, agentId: child.id });
   await desk.core.delegation.remote.flush(pcId);
-  expect(stored()).toEqual({ status: 'delivered', error: null });
+  expect(stored()).toEqual({ status, error });
 });
 
 test('an outbox retries pending mail after the acknowledgement write fails', async () => {
