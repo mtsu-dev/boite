@@ -73,7 +73,7 @@ function gitRepo(path: string): void {
 }
 
 /** Turns of the step `bus`'s subagent, and every later turn of it, wait for `finish`; any other turn answers at once. */
-function heldBus() {
+function heldBus(acknowledgeCancellation = false) {
   const runs = new Map<string, { ctx: TurnContext; finish: (text: string) => void }>();
   const prompts: string[] = [];
   restores.push(setDriver('echo', { protocol: 'echo', startTurn(ctx) {
@@ -87,7 +87,10 @@ function heldBus() {
     };
     if (ctx.prompt.includes('step bus') || runs.has(ctx.thread.id)) runs.set(ctx.thread.id, { ctx, finish });
     else finish('Summary read.');
-    return { done: done.promise, stop() { done.resolve({ status: 'stopped', sessionId: null, usage: null }); } };
+    return { done: done.promise, stop() {
+      done.resolve({ status: 'stopped', sessionId: acknowledgeCancellation ? `session:${ctx.thread.id}` : null,
+        usage: null, queuedInputCancelled: acknowledgeCancellation || undefined });
+    } };
   } }));
   return { runs, prompts };
 }
@@ -344,6 +347,56 @@ test('a restart of the other machine keeps its step at work, and the turn it res
   await waitFor(() => run(started.id).status === 'done', 10_000);
   expect(prompts.get(childId)!.at(-1)).toContain(`${restartLead} Verify interrupted commands and resume where you stopped.`);
   expect(run(started.id).nodes[0]!.instances[0]).toMatchObject({ status: 'done', result: 'Read after the restart.' });
+});
+
+test.each(['send', 'discard', 'stop'] as const)('a remote workflow waits on its paused composer through restart until the user chooses to %s', async action => {
+  const { runs, prompts } = heldBus(true);
+  const pcDir = restartable();
+  const { desk, pc, owner, threadId, machine, onPc, run } = await setup(true, { pc: pcDir });
+  const started = await owner.call('workflows.start', { threadId, requestId: 'member-composer-restart', plan: {
+    name: 'Restart', steps: [{ id: 'bus', machine, project: 'notes', task: 'Read.' }],
+  } });
+  await waitFor(() => onPc().length === 1 && runs.has(onPc()[0]!.id));
+  const childId = onPc()[0]!.id;
+  const step = () => run(started.id).nodes[0]!.instances[0]!;
+  const state = () => desk.core.delegation.remote.record(threadId, step().machine!.requestId)?.state;
+  const first = runs.get(childId)!;
+  first.ctx.background!([{ ...WATCHER, startedAt: Date.now() }]);
+  first.finish('Waiting for the watcher.');
+  await waitFor(() => state()?.thread.backgroundWait?.state === 'waiting');
+
+  const member = await pc.connect();
+  const interrupted = await member.call('turns.start', { threadId: childId, prompt: 'Read the latest output.' });
+  await waitFor(() => runs.get(childId) !== first);
+  const queued = [{ id: 'remote-workflow-follow-up', text: 'Read the follow-up.', attachments: [] }];
+  expect((await member.call('composer.put', { section: 'inputs', id: childId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: true, queued } } })).accepted).toBe(true);
+  await pc.core.threads.handoff.begin(0);
+  await waitFor(() => state()?.lastTurn?.id === interrupted.id && state()?.lastTurn?.status === 'stopped');
+  expect(step().status).toBe('running');
+  expect(state()?.restarting).toBe(true);
+
+  const port = Number(new URL(pc.url).port);
+  await pc.stop();
+  const next = await startTestCore({ dataDir: pcDir, port });
+  cores.push(next);
+  const reconnected = await next.connect();
+  const afterRestart = next.core.composer.storage.get('inputs', childId);
+  expect(afterRestart.value?.input).toMatchObject({ paused: true, queued });
+  expect(next.core.journal.listTurns(childId)).toHaveLength(2);
+  expect(state()?.restarting).toBe(true);
+  if (action === 'stop') expect(await reconnected.call('turns.stop', { threadId: childId })).toEqual({ stopped: true });
+  else expect((await reconnected.call('composer.put', { section: 'inputs', id: childId, expectedRevision: afterRestart.revision,
+    value: { input: { text: '', attachments: [], paused: false, queued: action === 'send' ? queued : [] } } })).accepted).toBe(true);
+  if (action === 'send') {
+    await waitFor(() => prompts.at(-1)?.includes('Read the follow-up.') === true);
+    runs.get(childId)!.finish('Read the follow-up.');
+    await waitFor(() => step().status === 'done');
+    expect(next.core.journal.listTurns(childId)).toHaveLength(3);
+  } else {
+    await waitFor(() => step().status === 'stopped');
+    expect(next.core.journal.listTurns(childId)).toHaveLength(2);
+  }
 });
 
 test('a restart here sends again an output correction decided before that machine took it, and its answer settles the step once', async () => {

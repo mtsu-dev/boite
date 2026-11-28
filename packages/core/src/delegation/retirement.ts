@@ -45,7 +45,7 @@ export class Retirements {
     const marked = this.#core.journal.getSetting(KEY + threadId) !== undefined;
     const thread = this.#core.journal.getThread(threadId);
     if (!thread?.parentThreadId || thread.archived) { if (marked) this.#core.journal.deleteSetting(KEY + threadId); return; }
-    if (this.#working(thread) || this.#core.pullRequestWatches.of(threadId).length) return;
+    if (this.#core.composer.hasQueuedInput(threadId) || this.#working(thread) || this.#core.pullRequestWatches.of(threadId).length) return;
     // Its background work just ended and it gets a moment to wake on it, an answer
     // waits for its turn to end, a question waits for the user, or a retry is due.
     const load = withLoad(this.#core, thread);

@@ -581,6 +581,49 @@ test('queued input reaches a projectless persistent agent thread', async () => {
   expect(h.core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
 });
 
+test('a paused queue discards a model discovery failure and retries on resume', async () => {
+  h = await startTestCore();
+  const client = await h.connect();
+  const { threadId, accountId } = await echoThread(h, client);
+  const started = Promise.withResolvers<void>();
+  const discovery = Promise.withResolvers<void>();
+  let attempts = 0;
+  const cache = new ModelProbes(async () => {
+    if (++attempts === 1) {
+      started.resolve();
+      await discovery.promise;
+    }
+    return [{ id: 'discovered', name: 'Discovered' }];
+  });
+  h.core.providers.require('echo').protocol = 'acp';
+  restore = setDriver('acp', { ...echoDriver, protocol: 'acp', probe: ctx => cache.probe(ctx),
+    probedModels: (providerId, account) => cache.models(providerId, account) });
+  const choice = { providerId: 'echo', accountId, model: 'discovered', effort: null, permissionMode: 'default' as const };
+  const key = { section: 'inputs' as const, id: threadId };
+  const queued = [{ id: 'probe-retry', text: 'send after discovery', attachments: [], choice }];
+  const setPaused = async (paused: boolean) => {
+    const { revision, value: current } = h.core.composer.storage.get(key.section, key.id);
+    const result = await client.call('composer.put', { ...key, expectedRevision: revision,
+      value: { ...current, input: { ...(current?.input ?? { ...value('').input, queued }), paused } } });
+    expect(result.accepted).toBe(true);
+  };
+  try {
+    await setPaused(false);
+    await started.promise;
+    await setPaused(true);
+    discovery.reject(new Error('model discovery failed'));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(h.core.composer.storage.get(key.section, key.id).value?.input).toMatchObject({ paused: true, queued });
+    expect(h.core.composer.storage.get(key.section, key.id).value?.input.queued[0]?.request?.failed).toBeUndefined();
+    expect(h.core.journal.listTurns(threadId)).toEqual([]);
+    await setPaused(false);
+    await waitFor(() => h.core.journal.listTurns(threadId)[0]?.status === 'done');
+    expect(attempts).toBe(2);
+    expect(h.core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(h.core.composer.storage.get(key.section, key.id).value?.input.queued).toEqual([]);
+  } finally { discovery.resolve(); }
+});
+
 test.each([['goal', 'supported'], ['loop', 'supported'], ['goal', 'unsupported'], ['loop', 'unsupported']] as const)('a captured %s discovers model-specific ACP effort after restart: %s', async (kind, support) => {
   const supported = support === 'supported';
   restartDir = mkdtempSync(join(tmpdir(), 'composer-activity-model-'));

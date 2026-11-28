@@ -302,7 +302,8 @@ function chunksOf(text: string): string[] {
 }
 
 const app = agent({ name: 'acp-fake' })
-  .onRequest('initialize', async () => {
+  .onRequest('initialize', async ({ params }) => {
+    if (params.clientCapabilities?.session?.compaction != null) log('client advertises compaction summaries');
     log('initialize');
     if (process.env['ACP_FAKE_ARGV'] === '1') log(`argv ${JSON.stringify(process.argv.slice(2))}`);
     if (process.env['ACP_FAKE_HANG_INIT'] === '1') await new Promise<void>(() => undefined);
@@ -330,9 +331,9 @@ const app = agent({ name: 'acp-fake' })
     });
     return { sessionId, configOptions, modes: modeState() };
   })
-  .onRequest('session/load', ({ params }) => {
+  .onRequest('session/load', async ({ params, client }) => {
     if (process.env['ACP_FAKE_HTTP_MCP'] === '1') log(`mcp:load ${JSON.stringify(params.mcpServers)}`);
-    if (process.env['ACP_FAKE_FORGET'] === '1') {
+    if (process.env['ACP_FAKE_FORGET'] === '1' || existsSync(`${process.env['ACP_FAKE_LOG']}.forget-load`)) {
       log(`load-refused:${params.sessionId}`);
       // A plain throw, like OpenCode's: the SDK answers it with -32603.
       throw new Error(`Session not found: ${params.sessionId}`);
@@ -347,6 +348,14 @@ const app = agent({ name: 'acp-fake' })
     }
     known.add(params.sessionId);
     log(`loaded:${params.sessionId}`);
+    if (existsSync(`${process.env['ACP_FAKE_LOG']}.hold-load`)) {
+      log('holding session/load');
+      await new Promise<void>(() => undefined);
+    }
+    if (existsSync(`${process.env['ACP_FAKE_LOG']}.replay-compaction`)) {
+      await client.notify('session/update', { sessionId: params.sessionId,
+        update: { sessionUpdate: 'compaction_update', compactionId: 'old', status: 'in_progress' } });
+    }
     // A conforming load may omit configOptions. The probe still supplied them.
     return opencode2 ? { modes: modeState(), configOptions } : { modes: modeState() };
   })
@@ -404,7 +413,7 @@ const app = agent({ name: 'acp-fake' })
   .onRequest('session/set_mode', ({ params }) => {
     // A mode nobody listed is refused, so a wrong mapping fails loudly instead
     // of passing as a call that went out.
-    if (process.env['ACP_FAKE_REFUSE_MODES'] === '1' || !MODES.some((mode) => mode.id === params.modeId)) {
+    if (process.env['ACP_FAKE_REFUSE_MODES'] === '1' || existsSync(`${process.env['ACP_FAKE_LOG']}.refuse-mode`) || !MODES.some((mode) => mode.id === params.modeId)) {
       log(`set_mode:refused ${params.modeId}`);
       throw RequestError.invalidParams({ modeId: params.modeId }, `unknown mode ${params.modeId}`);
     }
@@ -418,7 +427,15 @@ const app = agent({ name: 'acp-fake' })
   .onRequest('session/prompt', async ({ params, client }) => {
     log('session/prompt');
     const sessionId = params.sessionId;
+    if (!known.has(sessionId)) {
+      log(`prompt-refused:${sessionId}`);
+      throw RequestError.resourceNotFound(sessionId);
+    }
     const text = promptText(params.prompt);
+    const interrupted = /<interrupted-user-messages>\n([\s\S]*?)\n<\/interrupted-user-messages>/.exec(text)?.[1];
+    if (interrupted?.includes('[parallel-tools]')) log('replayed interrupted prompt');
+    if (interrupted?.includes('Previously stopped manual request')) log('manual request catch-up');
+    if (text.includes('It then went on with another agent')) log('account catch-up');
     // Historical test directives are context, never another request to execute.
     const instructions = instructionsOf(text);
     for (const block of params.prompt) {
@@ -432,6 +449,120 @@ const app = agent({ name: 'acp-fake' })
     if (instructions.includes('[tasks]')) await send({ sessionUpdate: 'plan', entries: [{ content: 'Inspect source', priority: 'medium', status: 'completed' }, { content: 'Run checks', priority: 'medium', status: 'in_progress' }] });
     const say = (chunk: string): Promise<void> =>
       send({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: chunk } });
+    const reportUsage = async (): Promise<Usage> => {
+      const total = spend(sessionId);
+      await send({ sessionUpdate: 'usage_update', used: 12, size: 200, cost: { amount: total, currency: 'USD' } });
+      return { totalTokens: 12, inputTokens: 8, outputTokens: 4, cachedReadTokens: 2 };
+    };
+
+    if (instructions.includes('[parallel-tools]')) {
+      const detached = instructions.includes('[detached-delegation]');
+      const compaction = instructions.includes('[compacting]');
+      const stopped = Promise.withResolvers<void>();
+      cancels.set(sessionId, () => {
+        log('session/cancel');
+        if (!instructions.includes('[ignore-cancel]')) stopped.resolve();
+      });
+      try {
+        if (instructions.includes('[batched-tool-ends]')) {
+          log('waiting for batched tools');
+          while (!existsSync(`${process.env['ACP_FAKE_LOG']}.batch`)) {
+            if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+          }
+          const lines = ['first', 'second'].map(id => JSON.stringify({ jsonrpc: '2.0', method: 'session/update',
+            params: { sessionId, update: { sessionUpdate: 'tool_call', toolCallId: id, title: id, status: 'completed' } } }));
+          process.stdout.write(`${lines.join('\n')}\n`);
+        } else {
+          for (const id of ['first', 'second']) {
+            await send({ sessionUpdate: 'tool_call', toolCallId: id, title: detached && id === 'second' ? 'delegate_task: Review the parser' : id, status: 'in_progress' });
+          }
+          const gates = ['first', 'second'];
+          if (instructions.includes('[third-tool-permission]')) {
+            gates.splice(instructions.includes('[permission-before-second]') ? 1 : 2, 0, 'permission');
+          }
+          for (const id of gates) {
+            const gate = `${process.env['ACP_FAKE_LOG']}.${id}`;
+            while (!existsSync(gate)) {
+              if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+            }
+            if (id === 'permission') {
+              const answer = await client.request('session/request_permission', {
+                sessionId,
+                toolCall: { toolCallId: 'third', title: 'third' },
+                options: [{ optionId: 'yes', name: 'Allow once', kind: 'allow_once' }],
+              });
+              if (answer.outcome.outcome !== 'selected') return { stopReason: 'end_turn' };
+              log('third tool allowed');
+              continue;
+            }
+            if (id === 'second' && compaction) {
+              await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'in_progress' });
+            }
+            if (id === 'first' && instructions.includes('[foreign-tools]')) {
+              await client.notify('session/update', { sessionId: 'foreign-session',
+                update: { sessionUpdate: 'tool_call', toolCallId: 'foreign-tool', title: 'Unrelated tool', status: 'completed' } });
+              await client.notify('session/update', { sessionId: 'foreign-session',
+                update: { sessionUpdate: 'tool_call_update', toolCallId: 'second', status: 'completed' } });
+            }
+            await send({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed',
+              ...(detached && id === 'second' ? { title: 'Parser review' } : {}),
+            });
+          }
+        }
+        if (instructions.includes('[third-tool]')) {
+          while (!existsSync(`${process.env['ACP_FAKE_LOG']}.third`)) {
+            if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+          }
+          if (compaction) {
+            await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'completed' });
+          }
+          if (!instructions.includes('[permission-before-second]')) {
+            await send({ sessionUpdate: 'tool_call', toolCallId: 'third', title: 'third', status: 'in_progress' });
+          }
+          await send({ sessionUpdate: 'tool_call_update', toolCallId: 'third', status: 'completed' });
+        }
+        if (instructions.includes('[answer-on-gate]')) {
+          while (!existsSync(`${process.env['ACP_FAKE_LOG']}.answer`)) {
+            if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+          }
+          if (instructions.includes('[image-answer]')) {
+            await send({ sessionUpdate: 'agent_message_chunk', content: { type: 'image', data: TINY_PNG, mimeType: 'image/png' } });
+            await send({ sessionUpdate: 'plan', entries: [{ content: 'Send image', priority: 'medium', status: 'completed' }] });
+          } else if (instructions.includes('[foreign-answer]')) {
+            await client.notify('session/update', { sessionId: 'foreign-session',
+              update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'The answer is already streaming' } } });
+          } else await say('The answer is already streaming');
+        }
+        if (detached || instructions.includes('[finish-on-gate]')) {
+          while (!existsSync(`${process.env['ACP_FAKE_LOG']}.end`)) {
+            if (await Promise.race([stopped.promise.then(() => true), Bun.sleep(10).then(() => false)])) return { stopReason: 'cancelled' };
+          }
+          if (detached) await send({ sessionUpdate: 'tool_call_update', toolCallId: 'second',
+            content: [{ type: 'content', content: { type: 'text', text: '{"mode": "background", "status": "dispatched", "delegation_id": "fixture-child"}' } }],
+          });
+          if (compaction) {
+            await send({ sessionUpdate: 'compaction_update', compactionId: 'fixture-compaction', status: 'completed' });
+          }
+          if (instructions.includes('[usage]')) return { stopReason: 'end_turn', usage: await reportUsage() };
+          return { stopReason: 'end_turn' };
+        }
+        await stopped.promise;
+        if (instructions.includes('[confirm-on-gate]')) {
+          while (!existsSync(`${process.env['ACP_FAKE_LOG']}.end`)) await Bun.sleep(10);
+        }
+        if (instructions.includes('[expire-on-cancel]')) {
+          known.delete(sessionId);
+          throw RequestError.resourceNotFound(sessionId);
+        }
+        if (instructions.includes('[capacity-on-cancel]')) {
+          await say('Agent execution error: Error 0, Message: the Antigravity account that signed this conversation is temporarily unavailable; retry after Retry-After, Status: ');
+          return { stopReason: 'end_turn' };
+        }
+        if (instructions.includes('[error-on-cancel]')) throw RequestError.internalError({ details: 'Prompt aborted' });
+        if (instructions.includes('[usage]')) return { stopReason: 'cancelled', usage: await reportUsage() };
+        return { stopReason: 'cancelled' };
+      } finally { cancels.delete(sessionId); }
+    }
 
     // The agent switching on its own, before anything else it says.
     const switched = modeSwitchIn(instructions);
@@ -448,6 +579,7 @@ const app = agent({ name: 'acp-fake' })
     }
 
     const directives = directivesOf(instructions);
+    if (existsSync(`${process.env['ACP_FAKE_LOG']}.hold-prompt`)) directives.push('slow');
     // A real agent reasons before it answers, so the thought chunks go first.
     for (const directive of directives) {
       if (directive !== 'thought') continue;
@@ -461,6 +593,10 @@ const app = agent({ name: 'acp-fake' })
 
     const plain = plainOf(text);
     for (const chunk of chunksOf(plain)) await say(chunk);
+    if (instructions.includes('[capacity-after-text]')) {
+      await say('Agent execution error: Error 0, Message: the Antigravity account that signed this conversation is temporarily unavailable; retry after Retry-After, Status: ');
+      return { stopReason: 'end_turn' };
+    }
 
     let usage: Usage | null = null;
     for (const directive of directives) {
@@ -550,12 +686,9 @@ const app = agent({ name: 'acp-fake' })
         case 'noise':
           // Already sent above, before the answer.
           break;
-        case 'usage': {
-          const total = spend(sessionId);
-          await send({ sessionUpdate: 'usage_update', used: 12, size: 200, cost: { amount: total, currency: 'USD' } });
-          usage = { totalTokens: 12, inputTokens: 8, outputTokens: 4, cachedReadTokens: 2 };
+        case 'usage':
+          usage = await reportUsage();
           break;
-        }
         case 'huge-tool':
           await send({
             sessionUpdate: 'tool_call',

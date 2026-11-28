@@ -1,4 +1,4 @@
-import type { ActivityTurn, Attachment, ComposerChoice, PreviewReference, PluginActor, SentFrom, ThreadLink, Turn } from '@boite/contracts';
+import type { ActivityTurn, Attachment, ComposerChoice, PreviewReference, PluginActor, SentFrom, ThreadLink, Turn, TurnId } from '@boite/contracts';
 import type { AutonomousSource } from '../agents/runtime.ts';
 
 /** What a turn opens with. `display` replaces the prompt in the conversation. */
@@ -7,6 +7,8 @@ export interface TurnInput {
   attachments?: Attachment[];
   previews?: PreviewReference[];
   display?: string;
+  /** The original user turn whose request a continuation already carries. */
+  resumeSourceTurnId?: TurnId;
 }
 
 /**

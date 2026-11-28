@@ -24,6 +24,7 @@ export type TurnClose = 'settled' | 'never-started' | 'crashed' | 'handed-over' 
 
 /** Explicit Stop survives the gap between its acknowledgement and native settlement. */
 export function userStopKey(turnId: TurnId): string { return `turn-user-stop:${turnId}`; }
+export function userStopResultKey(turnId: TurnId): string { return `turn-user-stop-result:${turnId}`; }
 
 interface Finished { thread: ThreadSummary | null; owned: boolean; toolsClosed: number }
 
@@ -40,7 +41,8 @@ export function finishTurn(core: Core, finished: Turn, cause: TurnClose, patch?:
   const toolsClosed = finished.status !== 'done' ? closeTools(core, threadId, finished.id) : 0;
   const type = cause !== 'settled' && finished.status === 'stopped' ? 'turn.stopped' : 'turn.finished';
   core.journal.append({ type, threadId, version: 1, payload: finished }, () => core.journal.putTurn(finished));
-  if (finished.startedAt !== null) core.journal.deleteSetting(userStopKey(finished.id));
+  core.journal.deleteSetting(userStopKey(finished.id));
+  if (finished.status === 'stopped' && finished.startedAt !== null) core.journal.deleteSetting(userStopResultKey(finished.id));
   // In the same transaction: the next turn knows whether the brain's instructions go again.
   brainContextEnded(core, finished);
   coordinationGuideEnded(core, finished);
@@ -54,6 +56,19 @@ export function finishTurn(core: Core, finished: Turn, cause: TurnClose, patch?:
   const next: ThreadSummary = { ...(patch ? patch(current) : current), status: restingStatus(finished), updatedAt: Date.now() };
   core.journal.append({ type: 'thread.finished', threadId, version: 1, payload: next }, () => core.journal.putThread(next));
   return { thread: next, owned: true, toolsClosed };
+}
+
+/** Commit a provider result and its linked deliveries in the caller's transaction. */
+export function finishProviderTurn(core: Core, finished: Turn, cause: 'settled' | 'handed-over', patch?: (current: ThreadSummary) => ThreadSummary): Finished {
+  // Recompute after a rollback in case an explicit Stop superseded the answer.
+  finished.quiet = quietTurn(core, finished) || undefined;
+  const done = finishTurn(core, finished, cause, current => ({
+    ...(patch ? patch(current) : current),
+    unread: current.unread || (turnIsNews(finished) && !core.subscribers.hasSubscribers(finished.threadId)),
+  }));
+  core.delegation.submitted(finished.threadId, finished.id, finished.status === 'done');
+  core.threads.spawns.stageResult(finished);
+  return done;
 }
 
 /** Tells every client a turn closed outside a runner, once its transaction committed. */
@@ -111,22 +126,24 @@ function ownsTurn(owned: Turn | null, { queued, running, started }: Settlement):
     .every(field => owned.execution?.[field] === running.execution?.[field]);
 }
 
+/** A change of session or account prevents a late result from replacing it. */
+export function matchesProviderSession(current: ThreadSummary, previous: Pick<ThreadSummary, 'sessionGeneration' | 'sessionId' | 'providerId' | 'accountId'>): boolean {
+  return (current.sessionGeneration ?? 0) === (previous.sessionGeneration ?? 0)
+    && current.sessionId === previous.sessionId && current.providerId === previous.providerId && current.accountId === previous.accountId;
+}
+
 /** The settled turn's row and its thread's: the session and the prompt cache it ended with. */
 function finishThread(core: Core, { thread, finished, result }: Settlement): Completion & { toolsClosed: number } {
   // A turn of the account the thread left: the session it saved there now ends with this turn.
-  core.threads.accountSessions.settledElsewhere(finished, result, thread.cwd);
+  core.threads.accountSessions.settledElsewhere(finished, result.sessionId, thread.cwd);
   let sameSession = false;
-  const done = finishTurn(core, finished, 'settled', current => {
+  const done = finishProviderTurn(core, finished, 'settled', current => {
     // Changing the next picker does not grant this result access to the new session.
-    sameSession = (current.sessionGeneration ?? 0) === (thread.sessionGeneration ?? 0)
-      && current.sessionId === thread.sessionId && current.providerId === thread.providerId && current.accountId === thread.accountId;
+    sameSession = matchesProviderSession(current, thread);
     const sessionId = sameSession ? result.sessionId ?? current.sessionId : current.sessionId;
-    // A compaction, a keepalive, a quiet wake or a stop says nothing new: the thread stays as read as it was.
-    const news = turnIsNews(finished);
     return {
       ...current, sessionId,
       sessionResumeAt: !sameSession ? current.sessionResumeAt : current.sessionResumeAt && sessionId === current.sessionId && sessionId === thread.sessionId ? current.sessionResumeAt : null,
-      unread: news ? current.unread || !core.subscribers.hasSubscribers(thread.id) : current.unread,
       promptCache: sameSession ? promptCacheOf(result, thread, finished.finishedAt ?? Date.now(), current.promptCache ?? null) ?? current.promptCache ?? null : current.promptCache ?? null,
     };
   });
@@ -150,11 +167,10 @@ export async function settleTurn(core: Core, state: Settlement): Promise<Complet
       // releaseTurn drops its buffer after writing. Commit it independently so
       // a later terminal rollback cannot lose the streamed answer.
       core.journal.releaseTurn(running.id);
-      core.bus.flush();
       // Logged once the transaction commits: a rollback must not leave a record of what did not
       // happen, and a diagnostic storage failure must not abort or retry the settlement.
       const notes: (() => void)[] = [];
-      const settled = core.journal.db.transaction(() => {
+      const settled = core.bus.afterCommit(() => core.journal.db.transaction(() => {
         const owned = core.journal.getTurn(running.id);
         if (!ownsTurn(owned, state)) {
           notes.push(() => core.logs.warn(`Turn result ${state.result.status} discarded: the journal holds the turn as ${owned?.status ?? 'missing'} with another execution, so a newer run owns it`, {
@@ -162,30 +178,43 @@ export async function settleTurn(core: Core, state: Settlement): Promise<Complet
           }));
           return null;
         }
+        // Stop can arrive after the driver has returned, even between persistence attempts.
+        if (core.journal.getSetting(userStopKey(running.id)) === true) {
+          const error = state.result.status === 'stopped' ? state.result.error : undefined;
+          state.result = {
+            ...state.result,
+            status: 'stopped',
+            error,
+            queuedInputCancelled: undefined,
+            queuedInputInterrupted: undefined,
+            queuedInputCompleted: undefined,
+          };
+          finished.status = 'stopped';
+          finished.error = error ?? null;
+          finished.execution = running.execution;
+        }
         // A driver can revise its usage after returning while the same execution is still settling.
         finished.usage = owned!.usage ?? finished.usage;
-        // Read once the answer is written: the flag rides on the turn every listener of `turn.finished` gets.
-        if (quietTurn(core, finished)) finished.quiet = true;
         const { toolsClosed, ...completion } = finishThread(core, state);
-        core.threads.spawns.stageResult(finished);
         if (toolsClosed > 0) notes.push(() => core.logs.info(`${toolsClosed} tool calls still running were marked failed because the turn ended ${state.result.status}`, { source: 'turns', event: 'turn.tools-closed', threadId: running.threadId, turnId: running.id, data: { tools: toolsClosed, status: state.result.status } }));
         const attempts = retry;
         if (attempts > 0) notes.push(() => core.logs.info(`Turn settled after ${attempts} failed persistence attempts`, { source: 'turns', event: 'turn.settlement.recovered', threadId: running.threadId, turnId: running.id, durationMs: performance.now() - settleAt, data: { retries: attempts } }));
         if (!completion.threadOwned) notes.push(() => core.logs.debug('Turn settled, but a newer turn owns the thread status', { source: 'turns', event: 'turn.settlement.not-owner', threadId: running.threadId, turnId: running.id }));
         return completion;
-      })();
+      })());
       for (const note of notes) {
         try { note(); } catch { /* A diagnostic storage failure must not break a committed settlement. */ }
       }
       return settled;
     } catch (error) {
       reportSettlementError(core, running.threadId, running.id, `persistence attempt ${++retry}`, error);
-      if (core.stopping || core.journal.isClosed()) return null;
+      // A restart handoff closes admission before it waits for terminal writes.
+      if (core.draining || core.journal.isClosed()) return null;
       const delay = Math.min(100 * 2 ** Math.min(retry - 1, 6), 5000);
       const until = Date.now() + delay;
       while (Date.now() < until) {
         await new Promise<void>(resolve => setTimeout(resolve, Math.min(100, until - Date.now())));
-        if (core.stopping || core.journal.isClosed()) return null;
+        if (core.draining || core.journal.isClosed()) return null;
       }
     }
   }

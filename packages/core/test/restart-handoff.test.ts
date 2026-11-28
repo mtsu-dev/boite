@@ -72,7 +72,7 @@ function textOf(message: Message | undefined): string {
   return (message?.parts ?? []).map(part => part.type === 'text' ? part.text : '').join('');
 }
 
-async function stoppedHandoff(count = 1) {
+async function stoppedHandoff(count = 1, queuedInputSession?: string) {
   const h = await startTestCore();
   const client = await h.connect();
   const turns: Turn[] = [];
@@ -84,9 +84,33 @@ async function stoppedHandoff(count = 1) {
     turns.push(h.core.journal.getTurn(turn.id)!);
   }
   h.core.journal.setSetting('restart-handoff', { at: Date.now(), turns: turns.map(turn => ({ turnId: turn.id, threadId: turn.threadId, was: 'running' })) });
+  if (queuedInputSession !== undefined) {
+    // The planned turn settled after the snapshot, while the queued input was still waiting.
+    for (const turn of turns) {
+      h.core.journal.putTurn({ ...turn, execution: { ...turn.execution!, queuedInputSession } });
+      h.core.composer.storage.save('inputs', turn.threadId, {
+        input: { text: '', attachments: [], paused: false, queued: [{ id: `cli_${turn.id}`, text: 'Queued follow-up', attachments: [] }] },
+      });
+    }
+  }
   await exit(h);
   return { h, turns };
 }
+
+test('a handoff delivers queued input once after the planned turn acknowledged cancellation', async () => {
+  const { h, turns: [source] } = await stoppedHandoff(1, 'acp-saved-session');
+  const next = startNext(h);
+  try {
+    const { core } = next;
+    const { id, threadId } = source!;
+    await waitFor(() => core.journal.lastTurn(threadId)?.status === 'done');
+    expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBe('acp-saved-session');
+    expect(core.journal.listTurns(threadId).map(turn => [turn.status, turn.execution?.operation])).toEqual([['stopped', undefined], ['done', undefined]]);
+    expect(core.journal.listMessages(threadId).filter(message => message.role === 'user').map(textOf)).toEqual(['Continue request 0', 'Queued follow-up']);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+    expect(core.journal.getSetting('restart-handoff')).toBeFalsy();
+  } finally { await next.stop(); await h.stop().catch(() => undefined); }
+});
 
 test('constructing and losing a replacement core before listening keeps the handoff durable', async () => {
   const { h, turns } = await stoppedHandoff();

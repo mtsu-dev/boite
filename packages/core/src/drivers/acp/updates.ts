@@ -10,7 +10,7 @@ import type {
   RequestPermissionResponse,
   SessionNotification,
 } from '@agentclientprotocol/sdk/unstable';
-import { antigravitySubagentKind, isAntigravityAccountUnavailable, isAntigravityQuestion } from '../antigravity.ts';
+import { antigravityLaunchKind, isAntigravityAccountUnavailable, isAntigravityQuestion } from '../antigravity.ts';
 import { usdCostOf, type AcpTurn } from './turn.ts';
 
 type Update = SessionNotification['update'];
@@ -155,28 +155,27 @@ export function sessionNotificationOf(params: unknown): SessionNotification | nu
 }
 
 /** One `session/update` of the prompt in flight. */
-export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): void {
+export function drawUpdate(turn: AcpTurn, update: Update, sessionId = turn.sessionId): void {
   const ownSession = sessionId === turn.sessionId;
   switch (update.sessionUpdate) {
-    case 'agent_message_chunk': {
-      if (update.content.type !== 'text') break;
-      const { text } = update.content;
-      if (text.length === 0) break;
+    case 'agent_message_chunk':
+    case 'agent_thought_chunk': {
+      const { content } = update;
+      if (content.type === 'text' && content.text.length === 0) break;
+      // An output block can invalidate the tool boundary even when Boite has no renderer for it.
+      if (ownSession) turn.outputRevision += 1;
+      if (content.type !== 'text') break;
       if (ownSession) turn.flushExecutionError();
-      // Antigravity sends this execution failure as a text update, then returns end_turn.
-      if (turn.antigravity && ownSession && isAntigravityAccountUnavailable(text)) {
-        turn.noteExecutionError(text);
-      } else turn.writeText(text);
+      if (update.sessionUpdate === 'agent_thought_chunk') turn.writeThinking(content.text);
+      else if (turn.antigravity && ownSession && isAntigravityAccountUnavailable(content.text)) {
+        // Antigravity sends this execution failure as a text update, then returns end_turn.
+        turn.noteExecutionError(content.text);
+      } else turn.writeText(content.text);
       break;
     }
-    case 'agent_thought_chunk':
-      if (update.content.type === 'text' && update.content.text.length > 0) {
-        if (ownSession) turn.flushExecutionError();
-        turn.writeThinking(update.content.text);
-      }
-      break;
     case 'tool_call':
-      if (ownSession) turn.flushExecutionError();
+      if (!ownSession) break;
+      turn.flushExecutionError();
       turn.upsertTool(
         update.toolCallId,
         update.name ?? update.title,
@@ -184,10 +183,11 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): v
         update.rawOutput,
         update.status,
         update.content,
-        turn.antigravity ? antigravitySubagentKind(update) : null,
+        turn.antigravity ? antigravityLaunchKind(update) : null,
       );
       break;
     case 'tool_call_update':
+      if (!ownSession) break;
       turn.upsertTool(
         update.toolCallId,
         update.name ?? (turn.ctx.provider.id === 'opencode-v2' ? null : update.title ?? null),
@@ -195,7 +195,7 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): v
         update.rawOutput,
         update.status,
         update.content,
-        turn.antigravity ? antigravitySubagentKind(update) : null,
+        turn.antigravity ? antigravityLaunchKind(update) : null,
         update.title ?? null,
       );
       break;
@@ -208,13 +208,20 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): v
     case 'plan':
       turn.ctx.tasks?.(update.entries.map((entry, index) => ({ id: String(index), text: entry.content, status: entry.status })));
       break;
-    case 'compaction_update':
-      turn.ctx.reportProgress?.(update.status === 'in_progress' ? 'compacting' : 'working', update.error ?? null);
+    case 'compaction_update': {
+      if (!ownSession) break;
+      const { compactionId, status, error } = update;
+      if (status === 'in_progress') turn.activeCompactions.add(compactionId);
+      else if (status === 'completed' || status === 'failed' || status === 'cancelled') turn.activeCompactions.delete(compactionId);
+      else break;
+      turn.outputRevision += 1;
+      turn.ctx.reportProgress?.(turn.activeCompactions.size > 0 ? 'compacting' : 'working', error ?? null);
       break;
+    }
     default:
-      // user_message_chunk, plan, plan_update, plan_removed,
-      // config_option_update, session_info_update and the compaction
-      // updates have no MessagePart in the contract, so they are dropped.
+      // user_message_chunk, plan_update, plan_removed,
+      // config_option_update and session_info_update have no MessagePart in
+      // the contract, so they are dropped here.
       break;
   }
 }
@@ -223,7 +230,12 @@ export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): v
 export async function answerPermission(turn: AcpTurn | null, params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
   // `RequestPermissionResponse.outcome` is itself the tagged outcome object.
   if (turn === null || turn.isStopped) return { outcome: { outcome: 'cancelled' } };
-  if (params.sessionId === turn.sessionId) turn.flushExecutionError();
+  const ownSession = params.sessionId === turn.sessionId;
+  if (ownSession) {
+    // The agent can request permission for its next tool before announcing the tool call.
+    turn.outputRevision += 1;
+    turn.flushExecutionError();
+  }
   const call = params.toolCall;
   // Antigravity carries questions on this method, using its own option ids.
   const question = turn.antigravity && isAntigravityQuestion(params);
@@ -243,20 +255,23 @@ export async function answerPermission(turn: AcpTurn | null, params: RequestPerm
     if (!params.options.some((option) => option.optionId === optionId)) return { outcome: { outcome: 'cancelled' } };
     return { outcome: { outcome: 'selected', optionId: optionId! } };
   }
+  const respond = (decision: 'allow' | 'deny'): RequestPermissionResponse => {
+    const optionId = pickOption(params.options, decision);
+    if (optionId === null) return { outcome: { outcome: 'cancelled' } };
+    if (ownSession && decision === 'allow') turn.expectPermittedTool(call.toolCallId);
+    return { outcome: { outcome: 'selected', optionId } };
+  };
+  if (turn.ctx.thread.permissionMode === 'yolo') return respond('allow');
   const toolName = call.name ?? call.title ?? call.toolCallId;
-  if (turn.ctx.thread.permissionMode === 'yolo') {
-    const optionId = pickOption(params.options, 'allow');
-    return optionId === null ? { outcome: { outcome: 'cancelled' } } : { outcome: { outcome: 'selected', optionId } };
-  }
   const ticket = turn.ctx.requestPermission(toolName, call.rawInput ?? null, call.title ?? null);
   const index = turn.takeIndex();
   turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: null });
-  const answer = await turn.awaitUser(Promise.race([ticket, turn.stopped.then(() => 'cancelled' as const)]));
-  if (answer === 'cancelled') return { outcome: { outcome: 'cancelled' } };
-  turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: answer });
-  const optionId = pickOption(params.options, answer);
-  if (optionId === null) return { outcome: { outcome: 'cancelled' } };
-  return { outcome: { outcome: 'selected', optionId } };
+  // Keep the user wait active until the permitted tool is tracked.
+  return turn.awaitUser(Promise.race([ticket, turn.stopped.then(() => 'cancelled' as const)]).then(answer => {
+    if (answer === 'cancelled') return { outcome: { outcome: 'cancelled' } };
+    turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: answer });
+    return respond(answer);
+  }));
 }
 
 function pickOption(options: PermissionOption[], decision: 'allow' | 'deny'): string | null {

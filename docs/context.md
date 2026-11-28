@@ -81,8 +81,11 @@ named files, or raise the token limit, then write to the thread.
 
 1. Press Enter while a turn runs. The message waits above the box with a
    dashed outline.
-2. The agent receives it after its next tool, when the agent supports that,
-   or when the turn ends.
+2. The agent receives it after its next tool when it supports live input.
+   For Antigravity and other ACP agents without live input, Boite waits for
+   the tools in progress to finish, then starts a new turn in the same
+   conversation. When the current turn needs to finish first, the message
+   goes out at its end.
 3. To change it, press Up in the empty box or click it.
 4. To send it now, press Send now or Enter in the empty box. This stops the
    current turn.

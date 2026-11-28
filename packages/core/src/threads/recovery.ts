@@ -1,13 +1,13 @@
 import { ACTIVE_THREAD_STATUSES } from '@boite/contracts';
-import type { RpcParams, ThreadId, Turn } from '@boite/contracts';
+import type { RpcParams, ThreadId, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable } from '../drivers/index.ts';
 import { notFound, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
-import { HANDOFF } from './handoff.ts';
+import { HANDOFF, type HandoffResult } from './handoff.ts';
 import { markQueued, settleStatus } from './lifecycle.ts';
 import { checkStoredEffort, checkStoredSpeed } from './selection.ts';
-import { announceFinished, finishTurn, userStopKey } from './turn-settlement.ts';
+import { announceFinished, finishProviderTurn, finishTurn, matchesProviderSession, userStopKey } from './turn-settlement.ts';
 import { addErrorPart, closeAsError, openTurnMessage } from './turn-error.ts';
 
 /** What a turn a dead core left behind says, once the next core has closed it. */
@@ -46,12 +46,13 @@ export class ThreadRecovery {
     const counts = { requeued: 0, held: 0, handedOver: 0, stopped: 0, failed: 0 };
     for (const turn of stuck) {
       const previous = turn.status;
-      if (previous === 'running' && this.#core.journal.getSetting(userStopKey(turn.id)) === true) {
-        this.#core.journal.db.transaction(() => {
+      if (this.#core.journal.getSetting(userStopKey(turn.id)) === true) {
+        const result = handoff.stoppedResult(turn.id);
+        this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
           handoff.forget(turn.threadId);
           this.#core.threads.resumes.forget(turn.threadId);
-          this.#closeStopped(turn, 'user-stop');
-        })();
+          this.#closeTurn(turn, 'stopped', 'user-stop', result);
+        })());
         counts.stopped += 1;
         continue;
       }
@@ -99,10 +100,17 @@ export class ThreadRecovery {
         continue;
       }
       if (previous === 'running' && inherited.get(turn.id) === 'running') {
-        // Killed during a restart handoff: the next turn of the thread resumes it, so this is no failure.
-        this.#core.journal.db.transaction(() => this.#closeStopped(turn, 'handed-over'))();
+        const queuedInput = handoff.inheritedQueuedInputOutcome(turn.id);
+        const completed = queuedInput?.queuedInputCompleted === true;
+        const recovered: Turn = !completed && turn.execution && queuedInput ? { ...turn, execution: {
+          ...turn.execution,
+          ...('queuedInputSession' in queuedInput ? { queuedInputSession: queuedInput.queuedInputSession } : { queuedInputInterrupted: true }),
+        } } : turn;
+        const status = completed ? 'done' : 'stopped';
+        this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => this.#closeTurn(recovered, status, 'handed-over', queuedInput))());
         counts.handedOver += 1;
-        this.#core.logs.info(`Turn ${turn.id} was stopped by a restart handoff; the thread's next turn resumes it`, { source: 'turns', event: 'turn.recovery.handed-over', threadId: turn.threadId, turnId: turn.id });
+        const next = queuedInput ? 'the composer queue owns the follow-up' : "the thread's next turn resumes it";
+        this.#core.logs.info(`Turn ${turn.id} was recovered as ${status} after a restart handoff. ${next}`, { source: 'turns', event: 'turn.recovery.handed-over', threadId: turn.threadId, turnId: turn.id });
         continue;
       }
       const blocker = previous === 'running' ? this.#core.threads.autoContinue.crashBlocker(turn) : null;
@@ -169,8 +177,8 @@ export class ThreadRecovery {
     return resumed;
   }
 
-  /** The previous core was stopping this turn when it was killed. */
-  #closeStopped(turn: Turn, cause: 'handed-over' | 'user-stop'): void {
+  /** The previous core did not commit the end of this turn. */
+  #closeTurn(turn: Turn, status: 'done' | 'stopped', cause: 'handed-over' | 'user-stop', result?: HandoffResult): void {
     const threadId = turn.threadId;
     for (const message of this.#core.journal.walkTurnMessages(threadId, turn.id, { blobs: false })) {
       if (message.state !== 'streaming') continue;
@@ -182,8 +190,16 @@ export class ThreadRecovery {
       );
       this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
     }
-    const stopped: Turn = { ...turn, status: 'stopped', finishedAt: Date.now() };
-    announceFinished(this.#core, stopped, finishTurn(this.#core, stopped, cause));
+    const finished: Turn = { ...turn, status, finishedAt: Date.now(), usage: turn.usage ?? result?.usage ?? null };
+    const { execution } = finished;
+    const sessionId = result?.sessionId;
+    const patch = sessionId === undefined || execution === undefined ? undefined : (current: ThreadSummary) =>
+      current.sessionId !== sessionId && matchesProviderSession(current, execution) ? { ...current, sessionId, sessionResumeAt: null } : current;
+    if (status === 'done') this.#core.threads.accountSessions.settledElsewhere(finished, sessionId ?? null, result?.cwd);
+    const settled = status === 'done'
+      ? finishProviderTurn(this.#core, finished, 'handed-over', patch)
+      : finishTurn(this.#core, finished, cause, patch);
+    announceFinished(this.#core, finished, settled);
   }
 
   #failStuckTurn(turn: Turn, reason: string): void {

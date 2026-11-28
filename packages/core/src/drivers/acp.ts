@@ -234,11 +234,11 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
         done: turn.done,
         ...(isGrok(ctx.provider) || ctx.protectedExecution ? {} : { setPermissionMode: (mode: TurnContext['thread']['permissionMode']) => running.setPermissionMode(turn, mode) }),
         ...(isGrok(ctx.provider) ? {} : { applySettings: (change: LiveTurnSettings) => running.applySettings(turn, change) }),
-        stop: (): void => {
-          running.stopTurn(turn);
-        },
-        // Plain ACP has no input while a prompt runs. Grok adds one; OpenCode 2
-        // takes it only over its native server, not over ACP behind a sandbox.
+        stop: reason => running.stopTurn(turn, reason),
+        // Grok and OpenCode 2's native server can steer the active prompt.
+        // With plain ACP, queued input must follow a cancelled prompt.
+        get outputRevision() { return turn.outputRevision; },
+        cancelForQueuedInput: (attachments) => steering !== 'grok' && !running.steersOpenCode() && running.cancelForQueuedInput(turn, attachments),
         get steer() {
           if (steering === 'grok') return (text: string) => running.steer(turn, text);
           if (steering === 'opencode' && running.steersOpenCode()) return steerOpenCode;

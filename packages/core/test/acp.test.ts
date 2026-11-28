@@ -1,27 +1,1146 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import type { SessionNotification } from '@agentclientprotocol/sdk/unstable';
-import type { MessagePart, PermissionMode, RpcEvents, Settings } from '@boite/contracts';
+import type { ComposerRecord, ImageAttachment, MessagePart, PermissionMode, RpcEvents, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
+import { hasComposerResult } from '../src/delegation/composer-results.ts';
 import { createAcpDriver } from '../src/drivers/acp.ts';
 import { runAcpLogin } from '../src/drivers/acp/login.ts';
 import type { AcpSdk } from '../src/drivers/acp/protocol.ts';
+import { AcpSession } from '../src/drivers/acp/session.ts';
 import { toolOutputText } from '../src/drivers/acp/turn.ts';
 import { sessionNotificationOf } from '../src/drivers/acp/updates.ts';
 import { stderrLines } from '../src/drivers/lines.ts';
-import { getDriver, setDriver } from '../src/drivers/index.ts';
-import { startTestCore, startTurn, waitFor } from './harness.ts';
+import { forgetProbes, getDriver, setDriver } from '../src/drivers/index.ts';
+import { withVacantCheckout } from '../src/checkout-removal.ts';
+import * as threadCwd from '../src/threads/cwd.ts';
+import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY, STOP_DEADLINE } from '../src/threads/turn-attempts.ts';
+import { echoThread, startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
 import { thrown } from './settle.ts';
 
 /** The fake ACP agent: a real ACP process over stdio, run by bun. */
 const FAKE_AGENT = fileURLToPath(new URL('./fixtures/acp-agent.ts', import.meta.url));
+
+test.each([
+  'antigravity', 'hermes', 'vibe', 'opencode', 'opencode-v2', 'local ACP',
+  'hermes with split delegation output', 'antigravity with a paused queue', 'antigravity without image support', 'antigravity ignoring cancellation',
+  'local ACP switching back to an account', 'local ACP reporting its first result', 'local ACP rejecting cancellation',
+  'local ACP rejecting cancellation with a paused follow-up', 'antigravity at capacity after cancellation with a paused follow-up',
+  'local ACP with an expired session', 'local ACP carrying a manually stopped prompt',
+  'local ACP receiving tool updates for a different session',
+  'local ACP reloading the same session after cancellation', 'local ACP with a blocked upload', 'local ACP with a disabled provider',
+  'local ACP rediscovering its model',
+  // Windows can lock a running process's working directory against renames.
+  ...(process.platform === 'win32' ? [] : ['local ACP whose working directory moved']),
+])('%s handles queued input when its parallel tools finish', async scenario => {
+  const client = await startCore({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const detached = scenario === 'hermes with split delegation output';
+  const paused = scenario === 'antigravity with a paused queue';
+  const noImages = scenario === 'antigravity without image support';
+  const ignoresCancel = scenario === 'antigravity ignoring cancellation';
+  const switchesBack = scenario === 'local ACP switching back to an account';
+  const spawned = scenario === 'local ACP reporting its first result';
+  const capacityAfterCancel = scenario === 'antigravity at capacity after cancellation with a paused follow-up';
+  const pausesOnCancel = capacityAfterCancel || scenario === 'local ACP rejecting cancellation with a paused follow-up';
+  const rejectsCancel = scenario === 'local ACP rejecting cancellation' || pausesOnCancel;
+  const expires = scenario === 'local ACP with an expired session';
+  const reloads = scenario === 'local ACP reloading the same session after cancellation';
+  const foreignTools = scenario === 'local ACP receiving tool updates for a different session';
+  const carriesStopped = reloads || scenario === 'local ACP carrying a manually stopped prompt';
+  const blockedUpload = scenario === 'local ACP with a blocked upload';
+  const disableProvider = scenario === 'local ACP with a disabled provider';
+  const rediscoverModel = scenario === 'local ACP rediscovering its model';
+  const movedFolder = scenario === 'local ACP whose working directory moved';
+  const refusesAtBoundary = noImages || blockedUpload || disableProvider;
+  const refusesInput = refusesAtBoundary || movedFolder;
+  const holds = detached || paused || refusesInput || ignoresCancel || switchesBack || spawned || rediscoverModel;
+  const provider = detached ? 'hermes' : scenario.startsWith('local ACP') ? 'local ACP' : holds || capacityAfterCancel ? 'antigravity' : scenario;
+  if (noImages) process.env['ACP_FAKE_NO_IMAGES'] = '1';
+  if (expires) process.env['ACP_FAKE_FORGET'] = '1';
+  let threadId: string;
+  if (provider === 'local ACP') {
+    const projectPath = movedFolder ? join(harness!.dataDir, 'project') : undefined;
+    if (projectPath) mkdirSync(projectPath);
+    threadId = await acpThread(client, rediscoverModel ? 'fake-fast' : undefined, undefined, projectPath);
+  }
+  else {
+    if (provider === 'opencode-v2') restoreDriver = setDriver('acp', createAcpDriver({
+      loadSdk: () => import('@agentclientprotocol/sdk/unstable'),
+      agentShim: process.execPath,
+    }));
+    const profile = { detect: {}, isolation: {}, executable: [{ kind: 'file' as const, value: process.execPath }], launch: { args: [FAKE_AGENT] } };
+    Object.assign(core.providers.require(provider), { auth: { kind: 'none' }, env: {}, seedFiles: undefined, profiles: { windows: profile, linux: profile, macos: profile } });
+    await client.call('providers.setEnabled', { providerId: provider, enabled: true });
+    const account = await client.call('accounts.add', { providerId: provider, label: 'Fixture' });
+    const project = await client.call('projects.add', { path: harness!.dataDir });
+    threadId = (await client.call('threads.create', { projectId: project.id, providerId: provider, accountId: account.id })).id;
+    await client.call('threads.subscribe', { threadId });
+  }
+  if (switchesBack) {
+    const { accountId } = core.threads.require(threadId);
+    const other = { ...core.accounts.require(accountId), id: 'second-account', label: 'Second' };
+    core.journal.putAccount(other);
+    await (await startTurn(client, threadId, 'Original account')).finished;
+    await client.call('threads.update', { threadId, accountId: other.id });
+    await (await startTurn(client, threadId, 'While the original account was away')).finished;
+    await client.call('threads.update', { threadId, accountId });
+  }
+  if (carriesStopped) {
+    await (await startTurn(client, threadId, 'Establish the session')).finished;
+    const manual = await startTurn(client, threadId, 'Previously stopped manual request [slow]');
+    await waitFor(() => fakeLog().includes('waiting for cancel'));
+    await client.call('turns.stop', { threadId });
+    expect((await manual.finished).status).toBe('stopped');
+  }
+  const priorTurns = switchesBack || carriesStopped ? 2 : 0;
+  if (spawned || scenario === 'local ACP') core.coordination.configure(threadId, { mode: 'brief', resources: '', remote: false, paused: false });
+  const pause = scenario === 'local ACP' ? spyOn(core.coordination, 'pause') : null;
+  const directives = [
+    detached && '[detached-delegation]', holds && '[finish-on-gate]', ignoresCancel && '[ignore-cancel]',
+    rejectsCancel && (capacityAfterCancel ? '[capacity-on-cancel]' : '[error-on-cancel]'),
+    expires && '[expire-on-cancel]', (reloads || pausesOnCancel) && '[confirm-on-gate]',
+    foreignTools && '[foreign-tools]',
+  ].filter(Boolean);
+  const prompt = ['[parallel-tools]', ...directives].join(' ');
+  const starterId = spawned ? threadId : null;
+  let turnId: string;
+  if (starterId) {
+    const child = await core.threads.spawns.spawn({ threadId: starterId, project: 'acp', prompt, requestId: 'first-acp-result' });
+    threadId = child.thread.id;
+    await client.call('threads.subscribe', { threadId });
+    turnId = child.turnId;
+  } else turnId = (await client.call('turns.start', { threadId, prompt })).id;
+  await waitFor(() => core.journal.listMessages(threadId).some(message => message.turnId === turnId && message.parts.some(part => part.type === 'tool' && part.toolId === 'second')));
+  const originalSession = core.threads.require(threadId).sessionId;
+  expect(originalSession).toBeString();
+  const priorLoads = countLogLines(fakeLog(), `loaded:${originalSession}`);
+  const attachment: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'shot.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+  const uploadRefusal = 'shared file policy: secret uploads require publication from an exact authorized host source';
+  if (blockedUpload) spyOn(core.sharedAccess, 'uploads').mockImplementation((id, files) => {
+    if (id === threadId && files.some(file => file.name === attachment.name)) throw new Error(uploadRefusal);
+  });
+  const { assetId } = await client.call('composer.asset.put', { attachment });
+  const firstTool = foreignTools
+    ? client.next('message.part', event => event.threadId === threadId && event.part.type === 'tool'
+      && event.part.toolId === 'first' && event.part.status === 'done', 10_000)
+    : client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+  const queued = [{
+    id: 'parallel-tools-follow-up', text: 'Use the new instructions',
+    attachments: provider === 'opencode' ? [] : [{ kind: attachment.kind, mimeType: attachment.mimeType, name: attachment.name, assetId }],
+  }];
+  const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused, queued } } });
+  expect(saved.accepted).toBe(true);
+  writeFileSync(`${logFile}.first`, 'ready');
+  await firstTool;
+  expect(core.journal.getTurn(turnId)?.status).toBe('running');
+  expect(fakeLog()).not.toContain('session/cancel');
+  if (foreignTools) {
+    const tools = core.journal.listMessages(threadId).filter(message => message.turnId === turnId)
+      .flatMap(message => message.parts).filter(part => part.type === 'tool');
+    expect(tools.map(part => [part.toolId, part.status])).toEqual([['first', 'done'], ['second', 'running']]);
+  }
+  if (disableProvider) await client.call('providers.setEnabled', { providerId: 'acp-fake', enabled: false });
+  if (rediscoverModel) forgetProbes({ providerId: 'acp-fake', accountId: core.threads.require(threadId).accountId });
+  if (movedFolder) {
+    const { cwd } = core.threads.require(threadId);
+    renameSync(cwd, `${cwd}-moved`);
+  }
+  const lastTool = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+  writeFileSync(`${logFile}.second`, 'ready');
+  await lastTool;
+  if (reloads || pausesOnCancel) {
+    await waitFor(() => fakeLog().includes('session/cancel'));
+    const setPaused = async (paused: boolean) => {
+      const record = core.composer.storage.get('inputs', threadId);
+      const result = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision,
+        value: { input: { text: '', attachments: [], paused, queued } } });
+      expect(result.accepted).toBe(true);
+    };
+    await setPaused(true);
+    writeFileSync(`${logFile}.end`, 'ready');
+    await waitFor(() => core.threads.runner.retryOf(threadId) !== null || !core.scheduler.state().running.some(item => item.turnId === turnId));
+    if (pausesOnCancel) {
+      expect(core.threads.runner.retryOf(threadId)).toBeNull();
+      expect(core.journal.getTurn(turnId)?.status).toBe('error');
+      expect(core.journal.getTurn(turnId)?.execution?.queuedInputInterrupted).toBe(true);
+      expect(core.threads.resumes.planned(threadId)).toBe(false);
+      expect(core.journal.listTurns(threadId)).toHaveLength(1);
+    } else {
+      expect(core.journal.getTurn(turnId)?.status).toBe('stopped');
+      getDriver('acp').releaseThread?.(threadId);
+      await waitFor(() => core.procs.liveCount(threadId) === 0);
+    }
+    await setPaused(false);
+  }
+  if (paused) {
+    const record = core.composer.storage.get('inputs', threadId);
+    await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision,
+      value: { input: { text: '', attachments: [], paused: false, queued } } });
+  }
+  if (refusesAtBoundary) {
+    await waitFor(() => fakeLog().includes('session/cancel') || core.composer.storage.get('inputs', threadId).value?.input.paused === true);
+    expect(fakeLog()).not.toContain('session/cancel');
+    expect(core.journal.getTurn(turnId)?.status).toBe('running');
+    const reason = disableProvider ? 'Fake ACP agent is turned off on this machine' : blockedUpload ? uploadRefusal : 'takes no images';
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued[0]?.request?.failed).toContain(reason);
+  }
+  if (holds) {
+    if (ignoresCancel) {
+      await waitFor(() => fakeLog().includes('session/cancel'));
+      // Outlast the manual ACP Stop grace while keeping the original prompt alive.
+      await Bun.sleep(3200);
+      expect(core.journal.getTurn(turnId)?.status).toBe('running');
+    } else {
+      await Bun.sleep(150);
+      expect(fakeLog()).not.toContain('session/cancel');
+    }
+    writeFileSync(`${logFile}.end`, 'ready');
+  }
+  await waitFor(() => core.journal.listTurns(threadId)[priorTurns + (refusesInput ? 0 : 1)]?.finishedAt != null);
+  if (movedFolder) {
+    await waitFor(() => core.composer.storage.get('inputs', threadId).value?.input.paused === true);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued[0]?.request?.failed).toContain('does not exist any more');
+  }
+  const current = await client.call('threads.get', { threadId });
+  expect(current.turns.slice(priorTurns).map(at => at.status)).toEqual(refusesInput ? ['done'] : [holds ? 'done' : rejectsCancel || expires ? 'error' : 'stopped', 'done']);
+  const finishedTools = current.messages.filter(message => message.turnId === turnId).flatMap(message => message.parts)
+    .flatMap(part => part.type === 'tool' && ['first', 'second'].includes(part.toolId) ? [part.status] : []);
+  expect(finishedTools).toEqual(['done', 'done']);
+  if (expires) {
+    expect(current.sessionId).toBeString();
+    expect(current.sessionId).not.toBe(originalSession);
+    expect(fakeLog()).toContain(`load-refused:${originalSession}`);
+    expect(fakeLog()).not.toContain(`prompt-refused:${originalSession}`);
+    const answer = current.messages.at(-1)?.parts[0];
+    expect(answer).toMatchObject({ type: 'text', text: expect.stringContaining('[parallel-tools]') });
+  } else expect(current.sessionId).toBe(originalSession);
+  if (!holds) expect(countLogLines(fakeLog(), `loaded:${originalSession}`)).toBe(priorLoads + (reloads || capacityAfterCancel ? 1 : 0));
+  if (rediscoverModel) expect(current.turns.at(-1)?.execution?.model).toBe('fake-fast');
+  if (switchesBack) expect(countLogLines(fakeLog(), 'account catch-up')).toBe(1);
+  if (carriesStopped) expect(countLogLines(fakeLog(), 'manual request catch-up')).toBe(reloads ? 2 : 1);
+  if (starterId) {
+    await waitFor(() => core.coordination.get(starterId).messages.some(letter => letter.from.threadId === threadId));
+    expect(core.coordination.get(starterId).messages.find(letter => letter.from.threadId === threadId)?.text).toContain(': done');
+  }
+  if (pause) expect(pause.mock.calls.some(([id, reason]) => id === threadId && (reason ?? 'stop') === 'stop')).toBe(false);
+  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(!holds || ignoresCancel ? 1 : 0);
+  expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(reloads || rejectsCancel ? 1 : 0);
+  expect(countLogLines(fakeLog(), `image image/png ${attachment.data.length}`)).toBe(provider === 'opencode' || refusesInput ? 0 : 1);
+  expect(current.messages.filter(message => message.role === 'user')).toHaveLength(priorTurns + (refusesInput ? 1 : 2));
+  expect(core.composer.storage.get('inputs', threadId).value?.input.queued.map(item => item.id)).toEqual(refusesInput ? ['parallel-tools-follow-up'] : []);
+}, 20_000);
+
+test.each([
+  ['permission restart', 'acknowledged'], ['permission restart', 'rejected'], ['permission restart', 'capacity'], ['agent update', 'capacity'],
+  ['core restart', 'acknowledged'], ['core restart', 'completed'], ['core restart', 'explicit stop'], ['core restart', 'explicit stop before acknowledgement'],
+  ['core restart', 'acknowledged after persistence rollback'],
+  ['core restart', 'acknowledged with terminal persistence unavailable'],
+  ['core restart', 'acknowledged during handoff with terminal persistence unavailable'],
+  ['core restart', 'completed with terminal persistence unavailable'],
+  ['core restart without session/load', 'completed with terminal persistence unavailable'],
+  ['core restart without session/load', 'acknowledged with terminal persistence unavailable'],
+  ['core restart with late Stop', 'completed with terminal persistence unavailable'],
+  ['core restart', 'explicit stop before acknowledgement with terminal persistence unavailable'],
+  ['core restart after switching away', 'completed with terminal persistence unavailable'],
+  ['core restart after switching back', 'completed with terminal persistence unavailable'],
+  ['core restart after switching away again', 'completed with terminal persistence unavailable'],
+  ['core restart of a subagent', 'acknowledged'],
+  ['core restart of a subagent followed by Stop', 'acknowledged'],
+  ['core restart of a subagent followed by Stop while its team is paused', 'acknowledged'],
+  ['core restart of a subagent followed by team Stop while paused', 'acknowledged'],
+  ['core restart while delivering the subagent Stop result', 'acknowledged'],
+  ['core restart while delivering the subagent Stop result to a paused team', 'acknowledged'],
+  ['targeted subagent Stop', 'acknowledged after persistence rollback'],
+  ['targeted subagent Stop before restart', 'acknowledged after persistence rollback'],
+  ['targeted subagent Stop before restart', 'acknowledged with terminal persistence unavailable'],
+  ['core restart of a subagent', 'acknowledged during handoff with terminal persistence unavailable'],
+  ['core restart of a workflow step', 'acknowledged'],
+  ['core restart of a workflow step followed by a queued goal', 'acknowledged'],
+  ['core restart of a workflow step after goal admission', 'acknowledged'],
+  ['core restart of a workflow step after prompt admission', 'acknowledged'],
+  ['core restart of a workflow step after loop admission', 'acknowledged'],
+  ['workflow step completion with a clean checkout', 'completed'],
+  ['workflow step completion during checkout removal', 'completed'],
+  ['workflow step completion during checkout removal followed by discard', 'completed'],
+  ['core restart of a workflow step', 'acknowledged during handoff with terminal persistence unavailable'],
+  ['core restart of a workflow step', 'completed with terminal persistence unavailable'],
+  ['core restart of a paused workflow step', 'completed with terminal persistence unavailable'],
+  ['core restart of a workflow step', 'explicit stop before acknowledgement with terminal persistence unavailable'],
+  ['core restart', 'rejected with terminal persistence unavailable'],
+  ['core restart', 'rejected with a blocked working-folder check'],
+  ['direct Stop', 'explicit stop before acknowledgement'],
+] as const)('ACP leaves the queue paused after cancellation during %s (%s)', async (interruption, outcome) => {
+  const shutdown = Promise.withResolvers<void>();
+  let client = await startCore({ warmProcessMinutes: 0 }, shutdown.resolve);
+  const noLoad = interruption === 'core restart without session/load';
+  const lateStop = interruption === 'core restart with late Stop';
+  const switchAgain = interruption === 'core restart after switching away again';
+  const switchAway = interruption === 'core restart after switching away' || switchAgain;
+  const switchBack = interruption === 'core restart after switching back' || switchAgain;
+  const restartAfterStop = interruption.startsWith('core restart while delivering the subagent Stop result');
+  const restartPausedTeam = interruption === 'core restart while delivering the subagent Stop result to a paused team';
+  const targetedStop = interruption.startsWith('targeted subagent Stop');
+  const restartTargetedStop = interruption === 'targeted subagent Stop before restart';
+  const subagent = interruption.startsWith('core restart of a subagent') || restartAfterStop || targetedStop;
+  const stopPausedTeam = interruption === 'core restart of a subagent followed by team Stop while paused';
+  const stopWhilePaused = stopPausedTeam || interruption === 'core restart of a subagent followed by Stop while its team is paused';
+  const stopFollowUp = interruption.startsWith('core restart of a subagent followed by Stop') || restartAfterStop || stopPausedTeam;
+  const restartGoal = interruption === 'core restart of a workflow step after goal admission';
+  const restartLoop = interruption === 'core restart of a workflow step after loop admission';
+  const restartPrompt = interruption === 'core restart of a workflow step after prompt admission' || restartLoop;
+  const removingCheckout = interruption.startsWith('workflow step completion during checkout removal');
+  const discardDuringRemoval = interruption.endsWith('checkout removal followed by discard');
+  const checkout = interruption === 'workflow step completion with a clean checkout' || removingCheckout;
+  const queuedGoal = interruption === 'core restart of a workflow step followed by a queued goal' || restartGoal;
+  const pausedWorkflow = interruption === 'core restart of a paused workflow step';
+  const workflow = interruption.startsWith('core restart of a workflow step') || pausedWorkflow || checkout ? await acpWorkflowStep(client, checkout) : undefined;
+  if (noLoad) process.env['ACP_FAKE_NO_LOAD'] = '1';
+  const threadId = workflow?.threadId ?? await (subagent ? acpSubagent(client) : acpThread(client));
+  const first = harness!;
+  let { core } = first;
+  const capacity = outcome === 'capacity';
+  const completed = outcome.startsWith('completed');
+  const rejected = outcome.startsWith('rejected');
+  const unavailable = outcome.endsWith('terminal persistence unavailable');
+  const reportsUsage = completed || (unavailable && !rejected);
+  const explicitStop = outcome.startsWith('explicit stop');
+  const { accountId } = core.threads.require(threadId);
+  const otherAccountId = 'second-account';
+  if (switchAway || switchBack) {
+    core.journal.putAccount({ ...core.accounts.require(accountId), id: otherAccountId, label: 'Other ACP' });
+    await (await startTurn(client, threadId, 'Earlier answer on the original account')).finished;
+  }
+  const previousTurns = core.journal.listTurns(threadId).length;
+  const originalSession = core.threads.require(threadId).sessionId;
+  if (capacity) Object.assign(core.providers.require('acp-fake'), { quirks: ['antigravity'] });
+  const directive = capacity ? ' [capacity-on-cancel]' : rejected ? ' [error-on-cancel]'
+    : completed ? ' [ignore-cancel] [finish-on-gate]'
+    : outcome === 'explicit stop' ? ' [ignore-cancel] [finish-on-gate]' : '';
+  const prompt = `[parallel-tools] [confirm-on-gate]${directive}${reportsUsage ? ' [usage]' : ''} Original request before the restart`;
+  const { id } = await client.call('turns.start', { threadId, prompt });
+  if (workflow) expect(core.workflows.get(workflow.rootId, workflow.runId).status).toBe('running');
+  if (!noLoad) await waitFor(() => core.threads.require(threadId).sessionId !== null);
+  const queued = [{ id: 'permission-race-follow-up', text: reportsUsage ? 'Queued after the mode change [usage]' : 'Queued after the mode change', attachments: [] }];
+  const setPaused = async (paused: boolean, entries = queued) => {
+    const current = core.composer.storage.get('inputs', threadId);
+    const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: current.revision,
+      value: { input: { text: '', attachments: [], paused, queued: entries } } });
+    expect(saved.accepted).toBe(true);
+  };
+  await setPaused(false);
+  writeFileSync(`${logFile}.first`, 'ready');
+  writeFileSync(`${logFile}.second`, 'ready');
+  await waitFor(() => fakeLog().includes('session/cancel'));
+  if (noLoad) expect(core.threads.require(threadId).sessionId).toBeNull();
+  if (queuedGoal) queued[0]!.text = '/goal Read the follow-up';
+  if (restartLoop) queued[0]!.text = '/loop 1x Read the follow-up';
+  await setPaused(true);
+  if (workflow && pausedWorkflow) {
+    const paused = await client.call('workflows.control', { threadId: workflow.rootId, runId: workflow.runId, action: 'pause' });
+    expect(paused.status).toBe('paused');
+  }
+  const stop = spyOn(core.threads.runner.handles.get(threadId)!, 'stop');
+  const duringHandoff = outcome === 'acknowledged during handoff with terminal persistence unavailable' || (explicitStop && unavailable);
+  const blockedFolderCheck = outcome === 'rejected with a blocked working-folder check';
+  const retrySettlement = unavailable || outcome === 'acknowledged after persistence rollback';
+  const rolledBack = Promise.withResolvers<void>();
+  const checkingFolder = Promise.withResolvers<void>();
+  const folder = Promise.withResolvers<boolean>();
+  const check = blockedFolderCheck ? spyOn(threadCwd, 'folderPresent').mockImplementationOnce(() => {
+    checkingFolder.resolve();
+    return folder.promise;
+  }) : undefined;
+  const checkoutReserved = Promise.withResolvers<void>();
+  const releaseCheckout = Promise.withResolvers<void>();
+  const removeCheckout = core.worktrees.remove.bind(core.worktrees);
+  const remove = removingCheckout ? spyOn(core.worktrees, 'remove').mockImplementation(async (...args) => {
+    if (args[0] === threadId) await withVacantCheckout(core, args[1], args[2].path, async () => {
+      checkoutReserved.resolve();
+      await releaseCheckout.promise;
+    }, [], threadId);
+    return removeCheckout(...args);
+  }) : undefined;
+  const putTurn = core.journal.putTurn.bind(core.journal);
+  let handoff: unknown;
+  let terminalWrites = 0;
+  const persist = retrySettlement || blockedFolderCheck ? spyOn(core.journal, 'putTurn').mockImplementation(turn => {
+    if (turn.id === id && (turn.status === 'stopped' || turn.status === 'error' || turn.status === 'done')) {
+      terminalWrites += 1;
+      if (retrySettlement && (terminalWrites === 1 || unavailable)) {
+        rolledBack.resolve();
+        throw new Error('injected terminal write failure');
+      }
+    }
+    putTurn(turn);
+  }) : undefined;
+  let restartCore: Promise<void> | undefined;
+  if (interruption === 'permission restart') {
+    const refusal = `${logFile}.refuse-mode`;
+    writeFileSync(refusal, 'ready');
+    await client.call('threads.update', { threadId, permissionMode: 'plan' });
+    await waitFor(() => stop.mock.calls.length > 0);
+    rmSync(refusal);
+  } else if (interruption === 'agent update') {
+    spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
+    expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
+    await waitFor(() => stop.mock.calls.length > 0);
+  } else if ((retrySettlement && !targetedStop) || blockedFolderCheck) {
+    const restart = async () => {
+      if (switchAway || switchBack) await client.call('threads.update', { threadId, accountId: otherAccountId });
+      if (switchBack) expect(await client.call('threads.update', { threadId, accountId, requireSavedSession: true })).toMatchObject({ sessionId: originalSession });
+      if (switchAgain) await client.call('threads.update', { threadId, accountId: otherAccountId });
+      const deadline = { ...STOP_DEADLINE };
+      try {
+        // An agent still answering over stdio needs time to report cancellation.
+        if (unavailable || blockedFolderCheck) Object.assign(STOP_DEADLINE, { ms: duringHandoff ? 2_000 : 20, forceMs: 20 });
+        expect(core.requestHandoffShutdown(0)).toBe('accepted');
+      } finally { Object.assign(STOP_DEADLINE, deadline); }
+      if (lateStop) expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+      await shutdown.promise;
+      if (unavailable || blockedFolderCheck) expect(core.journal.getTurn(id)?.status).toBe('running');
+      handoff = core.journal.getSetting('restart-handoff');
+      if (blockedFolderCheck) await core.drain(0);
+      await closeForHandoff(first);
+    };
+    restartCore = duringHandoff ? restart() : (blockedFolderCheck ? checkingFolder.promise : rolledBack.promise).then(restart);
+  } else if (checkout || targetedStop) {
+    // Let the turn finish on its own while the composer is paused.
+  } else if (interruption === 'core restart' || subagent || workflow) {
+    restartCore = closeForHandoff(first);
+    await waitFor(() => stop.mock.calls.length > 0);
+    if (explicitStop) expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+  } else expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+  if (explicitStop && unavailable) expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+  writeFileSync(`${logFile}.end`, 'ready');
+  let next: TestCore | undefined;
+  let last: TestCore | undefined;
+  try {
+    if (targetedStop) {
+      await rolledBack.promise;
+      const rootId = core.threads.require(threadId).parentThreadId!;
+      const settling = Promise.withResolvers<void>();
+      const settle = restartTargetedStop && !unavailable
+        ? spyOn(core.delegation.worktrees, 'settle').mockReturnValueOnce(settling.promise) : undefined;
+      try {
+        expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
+        if (!unavailable) await waitFor(() => core.journal.getTurn(id)?.finishedAt != null);
+        if (restartTargetedStop) {
+          const draining = core.drain(0);
+          if (unavailable) core.journal.db.query("UPDATE delegation_messages SET status = 'received', data = json_set(data, '$.status', 'received') WHERE root_id = ? AND sender_id = ?").run(rootId, threadId);
+          await draining;
+          await first.server.stop();
+          const closing = first.core.close();
+          try { await waitFor(() => core.stopping); }
+          finally { settling.resolve(); await closing; }
+          last = await startTestCore({ dataDir: first.dataDir });
+          core = last.core;
+          if (unavailable) {
+            expect(core.delegation.config(rootId)).toMatchObject({ paused: true, pausedBy: 'restart' });
+            client = await last.connect();
+            await client.call('delegation.configure', { threadId: rootId, config: { ...core.delegation.config(rootId), paused: false } });
+          }
+        }
+      } finally { settling.resolve(); settle?.mockRestore(); }
+      const letters = () => core.journal.db.query('SELECT request_id FROM delegation_messages WHERE sender_id = ? AND request_id = ?').all(threadId, `result:${id}`);
+      expect(core.journal.getTurn(id)).toMatchObject({ status: 'stopped' });
+      expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBeUndefined();
+      expect(core.delegation.get(rootId).settlement).toBe('settled');
+      if (restartTargetedStop) await waitFor(() => letters().length > 0);
+      expect(letters()).toHaveLength(1);
+      return;
+    }
+    if (restartCore !== undefined) {
+      await restartCore;
+      if (blockedFolderCheck) {
+        folder.resolve(true);
+        await waitFor(() => first.core.scheduler.state().running.length === 0);
+      }
+      next = await startTestCore({ dataDir: first.dataDir });
+      core = next.core;
+      client = await next.connect();
+    } else await waitFor(() => core.journal.getTurn(id)?.finishedAt != null);
+    if (retrySettlement || blockedFolderCheck) await waitFor(() => !core.journal.getSetting('restart-handoff'));
+    expect(core.journal.getTurn(id)?.status).toBe(completed && !lateStop ? 'done' : capacity ? 'error' : 'stopped');
+    expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
+    if (workflow) expect(core.workflows.get(workflow.rootId, workflow.runId).nodes[0]?.instances[0]?.status).toBe(completed ? 'done' : explicitStop ? 'stopped' : 'running');
+    expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
+    const execution = core.journal.getTurn(id)?.execution;
+    expect(execution?.queuedInputSession).toEqual(outcome.startsWith('acknowledged') ? expect.any(String) : undefined);
+    expect(execution?.queuedInputInterrupted).toBe(rejected || capacity ? true : undefined);
+    expect(countLogLines(fakeLog(), 'session/prompt')).toBe(previousTurns + 1);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+    expect(core.threads.runner.retryOf(threadId)).toBeNull();
+    if (noLoad && !completed) expect(core.threads.require(threadId)).toMatchObject({ sessionId: execution?.queuedInputSession });
+    if (reportsUsage && unavailable) {
+      expect(core.journal.getTurn(id)?.usage).toMatchObject({
+        inputTokens: 8, outputTokens: 4, cacheReadTokens: 2, cacheWriteTokens: 0, buckets: 1, costUsdEquivalent: 0.0042,
+      });
+    }
+    // Older cores understand interruption and can still read the rest of the handoff.
+    if (lateStop || (explicitStop && unavailable)) expect(handoff).toMatchObject({ turns: [] });
+    else if (completed && unavailable) expect(handoff).toMatchObject({
+      turns: [expect.objectContaining({ turnId: id, queuedInput: expect.objectContaining({ queuedInputInterrupted: true }) })],
+    });
+    if (unavailable) expect(terminalWrites).toBeGreaterThan(1);
+    else if (retrySettlement) expect(terminalWrites).toBe(2);
+    else if (blockedFolderCheck) expect(terminalWrites).toBe(0);
+
+    if (checkout) {
+      const worktree = core.delegation.worktrees.get(threadId)!;
+      if (removingCheckout) {
+        await checkoutReserved.promise;
+        expect(core.worktrees.reservations.holder(worktree.path)).toBe(worktree.path);
+        await setPaused(false);
+        const checked = Promise.withResolvers<void>();
+        const off = core.bus.onCommitted((name, payload) => {
+          if (name === 'composer.updated' && (payload as ComposerRecord).id === threadId && (payload as ComposerRecord).value?.input.paused) checked.resolve();
+        });
+        try {
+          await Promise.race([checked.promise, Bun.sleep(100)]);
+          expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
+          if (discardDuringRemoval) await setPaused(false, []);
+        } finally { off(); releaseCheckout.resolve(); }
+        if (discardDuringRemoval) {
+          await core.delegation.worktrees.settle(threadId);
+          expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+          expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
+          return;
+        }
+      } else {
+        await waitFor(() => core.delegation.worktrees.get(threadId)?.state === 'removed');
+        expect(existsSync(worktree.path)).toBe(false);
+        await setPaused(false);
+      }
+      await waitFor(() => core.journal.listTurns(threadId)[previousTurns + 1]?.status === 'done'
+        || core.composer.storage.get('inputs', threadId).value?.input.paused === true);
+      expect(core.journal.listTurns(threadId)[previousTurns + 1]?.status).toBe('done');
+      return;
+    }
+    if (workflow && restartPrompt) {
+      const hold = spyOn(core.updates, 'holds').mockImplementation(provider => provider === 'acp-fake');
+      try {
+        await setPaused(false);
+        await waitFor(() => core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
+        if (restartLoop) await waitFor(() => core.activity.get(threadId).loop?.history?.[0]?.status === 'running');
+        const admitted = core.journal.listTurns(threadId).at(-1)!;
+        expect(admitted).toMatchObject({ status: 'queued', startedAt: null });
+        await closeForHandoff(next!);
+        last = await startTestCore({ dataDir: first.dataDir });
+        core = last.core;
+        await waitFor(() => ['done', 'error', 'stopped'].includes(core.journal.getTurn(admitted.id)?.status ?? ''));
+        expect(core.journal.getTurn(admitted.id)?.status).toBe('done');
+        expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 2);
+        const messages = [...core.journal.walkTurnMessages(threadId, admitted.id)];
+        expect(messages.find(message => message.role === 'user')?.parts).toEqual([
+          expect.objectContaining({ type: 'text', text: expect.stringContaining(restartLoop ? '/loop Read the follow-up' : queued[0]!.text) }),
+        ]);
+        if (restartLoop) expect(core.activity.get(threadId).loop).toMatchObject({
+          status: 'complete', iterations: 1, history: [{ turnId: admitted.id, status: 'done' }],
+        });
+        expect(core.workflows.get(workflow.rootId, workflow.runId).status).toBe('done');
+      } finally { hold.mockRestore(); }
+      return;
+    }
+    if (workflow && restartGoal) {
+      const closing = Promise.withResolvers<Promise<void>>();
+      const off = core.bus.onCommitted((name, payload) => {
+        const record = payload as ComposerRecord;
+        if (name === 'composer.updated' && record.id === threadId && record.value?.input.queued.length === 0) {
+          off();
+          closing.resolve(closeForHandoff(next!));
+        }
+      });
+      try {
+        await setPaused(false);
+        await closing.promise;
+      } finally { off(); }
+      last = await startTestCore({ dataDir: first.dataDir });
+      core = last.core;
+      expect(core.activity.get(threadId).goal).toMatchObject({ status: 'paused', iterations: 0 });
+      expect(core.workflows.get(workflow.rootId, workflow.runId)).toMatchObject({ status: 'running', nodes: [{ instances: [{ status: 'running' }] }] });
+      expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
+      client = await last.connect();
+      await client.call('threads.activity.control', { threadId, kind: 'goal', action: 'resume' });
+      await waitFor(() => core.workflows.get(workflow.rootId, workflow.runId).status === 'done');
+      return;
+    }
+    if (stopFollowUp) {
+      const rootId = core.threads.require(threadId).parentThreadId!;
+      const letters = () => (core.journal.db.query('SELECT data FROM delegation_messages WHERE sender_id = ? AND request_id = ?').all(threadId, `result:${id}`) as { data: string }[])
+        .map(row => JSON.parse(row.data));
+      expect(letters()).toEqual([]);
+      if (restartAfterStop) {
+        const settling = Promise.withResolvers<void>();
+        const settle = spyOn(core.delegation.worktrees, 'settle').mockReturnValueOnce(settling.promise);
+        try {
+          expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
+          expect(letters()).toEqual([]);
+          const closing = restartPausedTeam ? (async () => {
+            const draining = core.drain(0);
+            core.journal.db.query("UPDATE delegation_messages SET status = 'received', data = json_set(data, '$.status', 'received') WHERE root_id = ? AND sender_id = ?").run(rootId, threadId);
+            await draining;
+            await next!.server.stop();
+            await core.close();
+          })() : closeForHandoff(next!);
+          await waitFor(() => core.stopping);
+          settling.resolve();
+          await closing;
+        } finally { settling.resolve(); settle.mockRestore(); }
+        last = await startTestCore({ dataDir: first.dataDir });
+        core = last.core;
+        client = await last.connect();
+        if (restartPausedTeam) {
+          expect(core.delegation.config(rootId)).toMatchObject({ paused: true, pausedBy: 'restart' });
+          expect(letters()).toEqual([]);
+          await client.call('delegation.configure', { threadId: rootId, config: { ...core.delegation.config(rootId), paused: false } });
+        }
+        await waitFor(() => letters().length > 0);
+      } else {
+        const config = core.delegation.config(rootId);
+        if (stopWhilePaused) core.journal.setSetting(`delegation:${rootId}`, { ...config, paused: true, pausedBy: 'restart' });
+        expect(await client.call('delegation.stop', { threadId: rootId, ...(!stopPausedTeam ? { agentId: threadId } : {}) })).toEqual({ stopped: 1 });
+        if (stopWhilePaused) {
+          expect(hasComposerResult(core, id)).toBe(!stopPausedTeam);
+          expect(letters()).toEqual([]);
+          await client.call('delegation.configure', { threadId: rootId, config });
+          if (!stopPausedTeam) await waitFor(() => letters().length > 0);
+        }
+      }
+      expect(letters()).toEqual(stopPausedTeam ? [] : [expect.objectContaining({ origin: 'result', to: { coreId: 'local', threadId: rootId } })]);
+      await setPaused(true, []);
+      expect(letters()).toHaveLength(stopPausedTeam ? 0 : 1);
+      expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
+      return;
+    }
+    if (workflow && pausedWorkflow) {
+      await waitFor(() => core.workflows.get(workflow.rootId, workflow.runId).delivered === true);
+      expect(core.workflows.get(workflow.rootId, workflow.runId)).toMatchObject({ status: 'done', delivered: true, nodes: [{ status: 'done' }] });
+    }
+    if (workflow && queuedGoal) {
+      const statuses: string[] = [];
+      const off = core.bus.onCommitted((name, payload) => {
+        if (name === 'workflows.changed' && (payload as RpcEvents['workflows.changed']).threadId === workflow.rootId) {
+          statuses.push(core.workflows.get(workflow.rootId, workflow.runId).status);
+        }
+      });
+      try {
+        await setPaused(false);
+        await waitFor(() => core.journal.listTurns(threadId)[previousTurns + 1]?.status === 'done');
+        expect(statuses).not.toContain('failed');
+        expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+      } finally { off(); }
+      return;
+    }
+    if (switchAway) {
+      expect(core.threads.require(threadId)).toMatchObject({ accountId: otherAccountId, sessionId: null });
+      expect(core.threads.accountSessions.saved(threadId, accountId)?.after.turnId).toBe(id);
+      const restored = await client.call('threads.update', { threadId, accountId, requireSavedSession: true });
+      expect(restored.sessionId).toBe(originalSession);
+    }
+    await setPaused(false);
+    await waitFor(() => core.journal.listTurns(threadId)[previousTurns + 1]?.status === 'done');
+    if (workflow) await waitFor(() => core.workflows.get(workflow.rootId, workflow.runId).status === 'done');
+    if (reportsUsage) expect(core.journal.listTurns(threadId)[previousTurns + 1]?.usage?.costUsdEquivalent).toBeCloseTo(0.0042, 10);
+    if (noLoad) {
+      const thread = await client.call('threads.get', { threadId });
+      const answer = thread.messages.at(-1)?.parts.find(part => part.type === 'text');
+      const text = answer?.type === 'text' ? answer.text : '';
+      expect(text).toContain('<conversation-history>');
+      expect(text).toContain('Original request before the restart');
+    }
+    expect(countLogLines(fakeLog(), 'session/prompt')).toBe(previousTurns + 2);
+    if (switchAway || switchBack) expect(fakeLog()).not.toContain('account catch-up');
+    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(noLoad || (completed && !lateStop) ? 0 : 1);
+    expect(setModeCount('plan')).toBe(interruption === 'permission restart' ? 1 : 0);
+  } finally {
+    folder.resolve(true);
+    releaseCheckout.resolve();
+    remove?.mockRestore();
+    check?.mockRestore();
+    persist?.mockRestore();
+    await last?.stop();
+    await next?.stop();
+  }
+}, 20_000);
+
+test.each([
+  'the final checkpoint', 'a persistence retry', 'the final checkpoint before restart', 'the final checkpoint before a post-settlement restart',
+] as const)('an explicit Stop during %s overrides an acknowledged ACP queued cancellation', async phase => {
+  const started = await startThread({ warmProcessMinutes: 0 });
+  const { threadId } = started;
+  const first = harness!;
+  let { client } = started;
+  let { core } = first;
+  const afterSettlement = phase === 'the final checkpoint before a post-settlement restart';
+  const restart = phase === 'the final checkpoint before restart' || afterSettlement;
+  const { id } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] [confirm-on-gate]' });
+  const queued = [{ id: 'late-stop-follow-up', text: 'Queued before Stop', attachments: [] }];
+  const setPaused = async (paused: boolean) => {
+    const current = core.composer.storage.get('inputs', threadId);
+    const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: current.revision,
+      value: { input: { text: '', attachments: [], paused, queued } } });
+    expect(saved.accepted).toBe(true);
+  };
+  await setPaused(false);
+  writeFileSync(`${logFile}.first`, 'ready');
+  writeFileSync(`${logFile}.second`, 'ready');
+  await waitFor(() => fakeLog().includes('session/cancel'));
+  await setPaused(true);
+
+  const checkpoint = Promise.withResolvers<void>();
+  const end = phase !== 'a persistence retry' ? spyOn(core.threads.codeCheckpoints, 'end').mockReturnValueOnce(checkpoint.promise) : undefined;
+  const moveFinished = Promise.withResolvers<void>();
+  const move = afterSettlement ? spyOn(core.threads.moves, 'applyWaiting').mockReturnValueOnce(moveFinished.promise) : undefined;
+  const putTurn = core.journal.putTurn.bind(core.journal);
+  let writeFailed = false;
+  const persist = phase === 'a persistence retry' ? spyOn(core.journal, 'putTurn').mockImplementation(turn => {
+    if (turn.id === id && turn.status === 'stopped') {
+      writeFailed = true;
+      throw new Error('terminal write unavailable');
+    }
+    putTurn(turn);
+  }) : undefined;
+  try {
+    writeFileSync(`${logFile}.end`, 'ready');
+    if (end) await waitFor(() => end.mock.calls.some(([turnId]) => turnId === id));
+    else await waitFor(() => writeFailed);
+    expect(core.threads.runner.handles.has(threadId)).toBe(false);
+    expect(core.journal.getTurn(id)?.status).toBe('running');
+    expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    if (move) {
+      checkpoint.resolve();
+      await waitFor(() => move.mock.calls.some(([thread]) => thread === threadId));
+      expect(core.journal.getTurn(id)?.status).toBe('stopped');
+      expect(core.scheduler.state().running.some(run => run.turnId === id)).toBe(true);
+      const handoff = core.threads.handoff.begin(0);
+      expect(core.journal.getSetting('restart-handoff')).toMatchObject({ turns: [] });
+      await handoff;
+    } else if (restart) void core.threads.handoff.begin(0);
+  } finally {
+    checkpoint.resolve();
+    moveFinished.resolve();
+    move?.mockRestore();
+    end?.mockRestore();
+    persist?.mockRestore();
+  }
+  let next: TestCore | undefined;
+  try {
+    if (restart) {
+      await closeForHandoff(first);
+      next = await startTestCore({ dataDir: first.dataDir });
+      core = next.core;
+      client = await next.connect();
+    }
+    await waitFor(() => core.journal.getTurn(id)?.status === 'stopped');
+    expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBeUndefined();
+    expect(core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
+
+    await setPaused(false);
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
+    expect(countLogLines(fakeLog(), 'initialize')).toBe(restart ? 2 : 1);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+  } finally { await next?.stop(); }
+}, 20_000);
+
+test.each(['restart', 'agent update on the warm process', 'manual recovery', 'manual recovery with an agent update before dispatch', 'manual recovery with an agent update after dispatch'])('ACP %s during a queued follow-up recovers both requests on the loaded session', async method => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const first = harness!;
+  const earlierRequest = 'Earlier request from before the follow-up';
+  const currentRequest = 'Follow-up request still running at restart';
+  const { id: earlier } = await client.call('turns.start', { threadId, prompt: `[parallel-tools] ${earlierRequest}` });
+  await waitFor(() => first.core.threads.require(threadId).sessionId !== null);
+  const sessionId = first.core.threads.require(threadId).sessionId;
+  const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'restart-follow-up', text: `[slow] ${currentRequest}`, attachments: [] }] } } });
+  expect(saved.accepted).toBe(true);
+  writeFileSync(`${logFile}.first`, 'ready');
+  writeFileSync(`${logFile}.second`, 'ready');
+  await waitFor(() => fakeLog().includes('waiting for cancel'));
+  expect(first.core.journal.getTurn(earlier)?.status).toBe('stopped');
+  const followUp = first.core.journal.lastTurn(threadId)!;
+  expect(followUp.status).toBe('running');
+  expect(countLogLines(fakeLog(), 'initialize')).toBe(1);
+  expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(0);
+
+  const updateBeforePrompt = method === 'manual recovery with an agent update before dispatch';
+  const updateDuringResume = updateBeforePrompt || method === 'manual recovery with an agent update after dispatch';
+  const updateInFollowUp = method === 'agent update on the warm process';
+  let next = first;
+  if (method === 'restart') {
+    await closeForHandoff(first);
+    next = await startTestCore({ dataDir: first.dataDir });
+  } else if (updateInFollowUp) {
+    spyOn(first.core.updates, 'wantsPause').mockReturnValueOnce(true);
+    expect(first.core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
+  } else {
+    await client.call('turns.stop', { threadId });
+    await waitFor(() => !first.core.scheduler.state().running.some(item => item.turnId === followUp.id));
+    const stopped = first.core.journal.getTurn(followUp.id)!;
+    expect(stopped.status).toBe('stopped');
+    first.core.threads.resumes.offer(stopped, { kind: 'interrupted' });
+    const hold = `${logFile}.${updateBeforePrompt ? 'hold-load' : 'hold-prompt'}`;
+    if (updateDuringResume) writeFileSync(hold, 'ready');
+    await client.call('turns.resume', { threadId, turnId: stopped.id });
+    if (updateDuringResume) {
+      await waitFor(() => updateBeforePrompt ? fakeLog().includes('holding session/load') : countLogLines(fakeLog(), 'waiting for cancel') === 2);
+      rmSync(hold);
+      const { core } = first;
+      spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
+      expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
+    }
+  }
+  try {
+    const { journal } = next.core;
+    const index = updateInFollowUp ? 1 : 2;
+    await waitFor(() => journal.listTurns(threadId)[index]?.status === 'done');
+    const resumed = journal.listTurns(threadId)[index]!;
+    expect(resumed.execution?.operation).toBe(updateInFollowUp ? undefined : 'resume');
+    expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(updateDuringResume ? 2 : 1);
+    const response = [...journal.walkTurnMessages(threadId, resumed.id)].filter(message => message.role === 'assistant')
+      .flatMap(message => message.parts).map(part => part.type === 'text' ? part.text : '').join('');
+    expect(response.split(earlierRequest)).toHaveLength(2);
+    expect(response.split(currentRequest)).toHaveLength(2);
+
+    const after = await startTurn(await next.connect(), threadId, 'New request after the restart');
+    expect((await after.finished).status).toBe('done');
+    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+  } finally { if (next !== first) await next.stop(); }
+}, 20_000);
+
+test.each([
+  ['capacity retry', 'loaded'], ['agent update', 'loaded'],
+  ['capacity retry', 'lost'], ['agent update', 'lost'],
+] as const)('an ACP %s recovers interrupted input when its native session is %s', async (method, session) => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const { core, dataDir } = harness!;
+  const image: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'pixel.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+  const pictured = client.next('turn.finished', turn => turn.threadId === threadId);
+  await client.call('turns.start', { threadId, prompt: 'Earlier image', attachments: [image] });
+  expect((await pictured).status).toBe('done');
+  const sessionId = core.threads.require(threadId).sessionId ?? '';
+  expect(sessionId).not.toBe('');
+
+  if (session === 'loaded') {
+    writeDescriptor(dataDir, false);
+    expect((await client.call('providers.reload', {})).rejected).toEqual([]);
+  }
+  Object.assign(core.providers.require('acp-fake'), { quirks: ['antigravity'] });
+
+  const delays = CAPACITY_RETRY.delaysMs;
+  CAPACITY_RETRY.delaysMs = [30];
+  try {
+    const { id } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] Interrupted request' });
+    const finished = client.next('turn.finished', turn => turn.threadId === threadId && turn.id !== id);
+    const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+      value: { input: { text: '', attachments: [], paused: false, queued: [
+        { id: 'follow-up', text: method === 'capacity retry' ? '[capacity-after-text] Queued follow-up' : '[slow] Queued follow-up', attachments: [] },
+      ] } } });
+    expect(saved.accepted).toBe(true);
+    if (session === 'lost') {
+      await waitFor(() => fakeLog().includes(`loaded:${sessionId}`));
+      writeFileSync(`${logFile}.forget-load`, 'ready');
+    }
+    writeFileSync(`${logFile}.first`, 'ready');
+    writeFileSync(`${logFile}.second`, 'ready');
+    if (method === 'agent update') {
+      await waitFor(() => fakeLog().includes('waiting for cancel'));
+      spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
+      expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
+    }
+    const continued = await finished;
+    expect(continued).toMatchObject({ status: 'done', error: null });
+    expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBe(sessionId);
+    expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(session === 'loaded' ? 2 : 1);
+    expect(countLogLines(fakeLog(), 'session/prompt')).toBe(4);
+    expect(countLogLines(fakeLog(), `image image/png ${image.data.length}`)).toBe(session === 'loaded' ? 1 : 2);
+    if (session === 'loaded') expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(1);
+    else {
+      expect(countLogLines(fakeLog(), `load-refused:${sessionId}`)).toBe(1);
+      const messages = [...core.journal.walkTurnMessages(threadId, continued.id)];
+      const answer = messages.filter(message => message.role === 'assistant').at(-1)?.parts
+        .map(part => part.type === 'text' ? part.text : '').join('') ?? '';
+      const note = method === 'capacity retry' ? CAPACITY_CONTINUE_PROMPT : 'Boite paused this turn between two tool calls';
+      expect(answer.split(note)).toHaveLength(2);
+      const history = /<conversation-history>\n([\s\S]*?)\n<\/conversation-history>/.exec(answer)?.[1];
+      expect(history).toContain('Interrupted request');
+      expect(history).toMatch(/\[assistant, (?:complete|error)\]\n[^\n]*Queued follow-up/);
+      expect(answer.slice(answer.indexOf('</conversation-history>'))).not.toContain('Queued follow-up');
+    }
+  } finally { CAPACITY_RETRY.delaysMs = delays; }
+}, 20_000);
+
+test('two ACP restarts recover the source attachment after the first resume acquired a native session', async () => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const first = harness!;
+  const image: ImageAttachment = { kind: 'image', mimeType: 'image/png', name: 'target.png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+  process.env['ACP_FAKE_HANG_INIT'] = '1';
+  await client.call('turns.start', { threadId, prompt: 'Use this attachment', attachments: [image] });
+  await waitFor(() => fakeLog().includes('initialize'));
+  expect(first.core.threads.require(threadId).sessionId).toBeNull();
+  await closeForHandoff(first);
+
+  delete process.env['ACP_FAKE_HANG_INIT'];
+  const hold = `${logFile}.hold-prompt`;
+  writeFileSync(hold, 'ready');
+  const second = await startTestCore({ dataDir: first.dataDir });
+  let third: TestCore | undefined;
+  try {
+    await waitFor(() => fakeLog().includes('waiting for cancel') && second.core.threads.require(threadId).sessionId !== null);
+    const sessionId = second.core.threads.require(threadId).sessionId;
+    const imageLog = `image image/png ${image.data.length}`;
+    expect(countLogLines(fakeLog(), imageLog)).toBe(1);
+    await closeForHandoff(second);
+    rmSync(hold);
+    third = await startTestCore({ dataDir: first.dataDir });
+    await waitFor(() => third!.core.journal.listTurns(threadId)[2]?.status === 'done');
+    expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(1);
+    expect(countLogLines(fakeLog(), imageLog)).toBe(2);
+  } finally {
+    await third?.stop();
+    await second.stop();
+  }
+}, 20_000);
+
+async function closeForHandoff(current: TestCore): Promise<void> {
+  await current.core.threads.handoff.begin(0);
+  await current.core.drain();
+  await current.server.stop();
+  await current.core.close();
+}
+
+test.each(['another tool finishes', 'the user sends now'])('ACP delivers queued input when %s during a working-folder check', async action => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const sendNow = action === 'the user sends now';
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: sendNow ? '[parallel-tools]' : '[parallel-tools] [third-tool]' });
+  const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'third-tool-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
+  expect(accepted).toBe(true);
+  const folder = Promise.withResolvers<boolean>();
+  const nextFolder = Promise.withResolvers<boolean>();
+  const check = spyOn(threadCwd, 'folderPresent').mockImplementationOnce(() => folder.promise);
+  if (!sendNow) check.mockImplementationOnce(() => nextFolder.promise);
+  try {
+    const first = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+    writeFileSync(`${logFile}.first`, 'ready');
+    await first;
+    writeFileSync(`${logFile}.second`, 'ready');
+    await waitFor(() => check.mock.calls.length === 1);
+    if (sendNow) {
+      const record = core.composer.storage.get('inputs', threadId);
+      const forced = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: record.revision, value: record.value, sendNow: true });
+      expect(forced.accepted).toBe(true);
+    } else {
+      const completed = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+      writeFileSync(`${logFile}.third`, 'ready');
+      await completed;
+      await waitFor(() => check.mock.calls.length === 2);
+      expect(fakeLog()).not.toContain('session/cancel');
+      nextFolder.resolve(true);
+    }
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
+    folder.resolve(true);
+    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['stopped', 'done']);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
+  } finally {
+    folder.resolve(true);
+    nextFolder.resolve(true);
+    check.mockRestore();
+  }
+}, 20_000);
+
+test.each([
+  ['a manual grant during the working-folder check', 'default', false],
+  ['a manual grant before the other tool finishes', 'default', true],
+  ['a YOLO grant before the other tool finishes', 'yolo', true],
+] as const)('ACP waits for the permitted tool after %s', async (_scenario, mode, beforeCompletion) => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 }, undefined, mode);
+  const core = harness!.core;
+  const prompt = '[parallel-tools] [third-tool] [third-tool-permission]' + (beforeCompletion ? ' [permission-before-second]' : '');
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt });
+  const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'third-tool-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
+  expect(accepted).toBe(true);
+  const folder = Promise.withResolvers<boolean>();
+  const check = spyOn(threadCwd, 'folderPresent').mockImplementationOnce(() => folder.promise);
+  const cancel = spyOn(AcpSession.prototype, 'cancelForQueuedInput');
+  try {
+    const first = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+    writeFileSync(`${logFile}.first`, 'ready');
+    await first;
+    const finishSecondTool = async () => {
+      writeFileSync(`${logFile}.second`, 'ready');
+      await waitFor(() => check.mock.calls.length === 1);
+    };
+    if (!beforeCompletion) await finishSecondTool();
+    const requested = mode === 'yolo' ? null : client.next('permission.requested', request => request.threadId === threadId, 10_000);
+    writeFileSync(`${logFile}.permission`, 'ready');
+    if (requested !== null) await client.call('permissions.answer', { requestId: (await requested).id, decision: 'allow' });
+    await waitFor(() => fakeLog().includes('third tool allowed'));
+    if (beforeCompletion) await finishSecondTool();
+    folder.resolve(true);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    if (beforeCompletion) expect(cancel).not.toHaveReturnedWith(true);
+    else expect(cancel).not.toHaveBeenCalled();
+
+    writeFileSync(`${logFile}.third`, 'ready');
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
+    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['stopped', 'done']);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
+  } finally {
+    folder.resolve(true);
+    check.mockRestore();
+    cancel.mockRestore();
+  }
+}, 20_000);
+
+test('ACP delivers queued input after two completed tools arrive in one write', async () => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools] [batched-tool-ends]' });
+  await waitFor(() => fakeLog().includes('waiting for batched tools'));
+  const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'batched-tool-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
+  expect(accepted).toBe(true);
+  writeFileSync(`${logFile}.batch`, 'ready');
+  await waitFor(() => core.journal.listMessages(threadId).filter(message => message.turnId === turnId)
+    .flatMap(message => message.parts).filter(part => part.type === 'tool' && part.status === 'done').length === 2);
+  await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
+  expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['stopped', 'done']);
+  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+  expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
+}, 20_000);
+
+test.each([
+  ['text', '[answer-on-gate]'], ['image', '[answer-on-gate] [image-answer]'],
+  ['foreign text', '[answer-on-gate] [foreign-answer]'],
+  ['native compaction', '[compacting]'], ['native compaction followed by another tool', '[compacting] [third-tool]'],
+])('ACP handles %s at the queued-input boundary', async (output, directives) => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: `[parallel-tools] [finish-on-gate] ${directives}` });
+  const { accepted } = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'answer-follow-up', text: 'Use the new instructions', attachments: [] }] } } });
+  expect(accepted).toBe(true);
+  const folder = Promise.withResolvers<boolean>();
+  const check = spyOn(threadCwd, 'folderPresent').mockImplementationOnce(() => folder.promise);
+  try {
+    const first = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+    writeFileSync(`${logFile}.first`, 'ready');
+    await first;
+    writeFileSync(`${logFile}.second`, 'ready');
+    await waitFor(() => check.mock.calls.length === 1);
+    const foreign = output === 'foreign text';
+    if (output === 'text' || output === 'image' || foreign) {
+      const answer = output === 'image'
+        ? client.next('thread.activity', event => event.threadId === threadId && event.activity.tasks.some(task => task.text === 'Send image'), 10_000)
+        : client.next('message.delta', event => event.threadId === threadId && event.text.includes('already streaming'), 10_000);
+      writeFileSync(`${logFile}.answer`, 'ready');
+      await answer;
+    }
+    folder.resolve(true);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const anotherTool = directives.includes('[third-tool]');
+    if (anotherTool) {
+      const completed = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+      writeFileSync(`${logFile}.third`, 'ready');
+      await completed;
+    } else if (!foreign) writeFileSync(`${logFile}.end`, 'ready');
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null);
+    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual([anotherTool || foreign ? 'stopped' : 'done', 'done']);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(anotherTool || foreign ? 1 : 0);
+  } finally {
+    folder.resolve(true);
+    check.mockRestore();
+  }
+}, 20_000);
+
+test.each(['succeeds after a pause', 'fails after a pause', 'fails after a move'])('ACP rechecks queued delivery when the working-folder check %s', async change => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools]' });
+  const queued = [{ id: 'paused-after-cancel', text: 'Use the new instructions', attachments: [] }];
+  const originalFolder = core.journal.getThread(threadId)!.cwd;
+  const setPaused = async (paused: boolean) => {
+    const { revision, value } = core.composer.storage.get('inputs', threadId);
+    const input = value?.input ?? { text: '', attachments: [], queued, paused: false };
+    const result = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: revision,
+      value: { ...value, input: { ...input, paused } } });
+    expect(result.accepted).toBe(true);
+  };
+  await setPaused(false);
+  const folder = Promise.withResolvers<void>();
+  const check = spyOn(threadCwd, 'ensureThreadCwd').mockImplementationOnce(() => folder.promise);
+  try {
+    const first = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+    writeFileSync(`${logFile}.first`, 'ready');
+    await first;
+    writeFileSync(`${logFile}.second`, 'ready');
+    await waitFor(() => check.mock.calls.length === 1);
+    expect(core.journal.getTurn(turnId)?.status).toBe('stopped');
+    if (change === 'fails after a move') {
+      const path = join(harness!.dataDir, 'elsewhere');
+      mkdirSync(path);
+      const project = await client.call('projects.add', { path });
+      expect(await client.call('threads.move', { threadId, projectId: project.id })).toMatchObject({ cwd: path });
+    } else await setPaused(true);
+    if (change === 'succeeds after a pause') folder.resolve();
+    else folder.reject(new threadCwd.ThreadCwdGone(threadId, originalFolder));
+    if (change !== 'fails after a move') {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(core.journal.listTurns(threadId)).toHaveLength(1);
+      const input = core.composer.storage.get('inputs', threadId).value?.input;
+      expect(input).toMatchObject({ paused: true, queued });
+      expect(input?.queued[0]?.request?.failed).toBeUndefined();
+      expect(core.composer.storage.delivery(queued[0]!.id)).toBeNull();
+      await setPaused(false);
+    }
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.finishedAt != null || core.composer.storage.get('inputs', threadId).value?.input.paused === true);
+    expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['stopped', 'done']);
+    expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+    expect(core.composer.storage.get('inputs', threadId).value?.input.queued ?? []).toEqual([]);
+  } finally {
+    folder.resolve();
+    check.mockRestore();
+  }
+}, 20_000);
+
+test('ACP compaction activity replayed on load does not block queued input', async () => {
+  const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+  const core = harness!.core;
+  const first = await startTurn(client, threadId, 'Create a session', 10_000);
+  expect((await first.finished).status).toBe('done');
+  const sessionId = core.journal.getThread(threadId)!.sessionId;
+  expect(sessionId).not.toBeNull();
+  writeFileSync(`${logFile}.replay-compaction`, 'ready');
+  const { id: turnId } = await client.call('turns.start', { threadId, prompt: '[parallel-tools]' });
+  const queued = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0,
+    value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'after-replay', text: 'Use the new instructions', attachments: [] }] } } });
+  expect(queued.accepted).toBe(true);
+  const completed = client.next('turn.toolCompleted', event => event.turnId === turnId, 10_000);
+  writeFileSync(`${logFile}.first`, 'ready');
+  await completed;
+  writeFileSync(`${logFile}.second`, 'ready');
+  await waitFor(() => core.journal.listTurns(threadId)[2]?.finishedAt != null);
+  expect(core.journal.listTurns(threadId).map(turn => turn.status)).toEqual(['done', 'stopped', 'done']);
+  expect(countLogLines(fakeLog(), `loaded:${sessionId}`)).toBe(1);
+  expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
+  expect(countLogLines(fakeLog(), 'client advertises compaction summaries')).toBe(0);
+}, 20_000);
 
 test('ACP named task calls reach the native team without exposing the side conversation', async () => {
   const { client, threadId } = await startThread();
@@ -136,8 +1255,8 @@ async function sdkWithUpdateSeam(): Promise<{ sdk: AcpSdk; send: (notification: 
   };
 }
 
-async function startCore(settings?: Partial<Settings>): Promise<CoreClient> {
-  const started = await startTestCore(settings === undefined ? {} : { settings });
+async function startCore(settings?: Partial<Settings>, onShutdown?: () => void): Promise<CoreClient> {
+  const started = await startTestCore({ settings, onShutdown });
   harness = started;
   logFile = join(started.dataDir, 'acp-fake.log');
   // `spawnChild` gets `process.env` plus the account environment, so this is
@@ -151,7 +1270,7 @@ function fakeLog(): string {
 }
 
 /** A user descriptor for the fake agent: `protocol: "acp"`, launched as `bun <fixture>`. */
-function writeDescriptor(dataDir: string): void {
+function writeDescriptor(dataDir: string, images = true): void {
   writeScriptedProvider(dataDir, FAKE_AGENT, {
     id: 'acp-fake',
     schemaVersion: 1,
@@ -167,21 +1286,21 @@ function writeDescriptor(dataDir: string): void {
       approvals: true,
       hooks: false,
       checkpoint: false,
-      images: true,
+      images,
       planMode: false,
       resume: true,
     },
   });
 }
 
-async function acpAccount(client: CoreClient): Promise<{ dataDir: string; projectId: string; accountId: string }> {
+async function acpAccount(client: CoreClient, projectPath?: string): Promise<{ dataDir: string; projectId: string; accountId: string }> {
   const dataDir = harness?.dataDir ?? '';
   writeDescriptor(dataDir);
   const loaded = await client.call('providers.reload', {});
   expect(loaded.rejected).toEqual([]);
   expect(loaded.loaded.some((provider) => provider.id === 'acp-fake' && provider.available)).toBe(true);
 
-  const project = await client.call('projects.add', { path: dataDir, name: 'acp' });
+  const project = await client.call('projects.add', { path: projectPath ?? dataDir, name: 'acp' });
   const account = await client.call('accounts.add', {
     providerId: 'acp-fake',
     label: 'Fake',
@@ -190,8 +1309,8 @@ async function acpAccount(client: CoreClient): Promise<{ dataDir: string; projec
   return { dataDir, projectId: project.id, accountId: account.id };
 }
 
-async function acpThread(client: CoreClient, model?: string, permissionMode?: PermissionMode): Promise<string> {
-  const { projectId, accountId } = await acpAccount(client);
+async function acpThread(client: CoreClient, model?: string, permissionMode?: PermissionMode, projectPath?: string): Promise<string> {
+  const { projectId, accountId } = await acpAccount(client, projectPath);
   // A model the descriptor does not carry is only accepted once the agent has
   // listed it, which is what the picker does before it offers it.
   if (model !== undefined && model !== 'default') {
@@ -209,6 +1328,49 @@ async function acpThread(client: CoreClient, model?: string, permissionMode?: Pe
   });
   await client.call('threads.subscribe', { threadId: thread.id });
   return thread.id;
+}
+
+async function acpSubagent(client: CoreClient): Promise<string> {
+  const { accountId } = await acpAccount(client);
+  const { threadId } = await echoThread(harness!, client, 'Parent');
+  await client.call('delegation.configure', { threadId, config: {
+    ...harness!.core.delegation.config(threadId),
+    profiles: [{ id: 'acp', name: 'ACP', providerId: 'acp-fake', accountId, model: 'default', effort: null }],
+  } });
+  const { thread } = await client.call('delegation.spawn', { threadId, profileId: 'acp', task: 'First delegated turn', requestId: 'acp-subagent' });
+  await waitFor(() => harness!.core.threads.require(thread.id).archived);
+  return thread.id;
+}
+
+async function acpWorkflowStep(client: CoreClient, worktree = false): Promise<{ rootId: string; runId: string; threadId: string }> {
+  const h = harness!;
+  const path = worktree ? join(h.dataDir, 'git-project') : undefined;
+  if (path) {
+    mkdirSync(path);
+    for (const args of [['init', '-q'], ['-c', 'user.name=Boite test', '-c', 'user.email=test@boite.invalid', 'commit', '-q', '--allow-empty', '-m', 'fixture']]) {
+      const git = Bun.spawnSync(['git', ...args], { cwd: path, stderr: 'pipe' });
+      if (!git.success) throw new Error(git.stderr.toString());
+    }
+  }
+  const { accountId, projectId } = await acpAccount(client, path);
+  const rootId = worktree ? (await client.call('threads.create', {
+    projectId, providerId: 'echo', accountId: (await client.call('accounts.list', {})).find(account => account.providerId === 'echo')!.id,
+    title: 'Workflow parent',
+  })).id : (await echoThread(h, client, 'Workflow parent')).threadId;
+  await client.call('delegation.configure', { threadId: rootId, config: {
+    ...h.core.delegation.config(rootId),
+    profiles: [{ id: 'acp', name: 'ACP', providerId: 'acp-fake', accountId, model: 'default', effort: null }],
+  } });
+  const run = await client.call('workflows.start', { threadId: rootId, requestId: 'acp-workflow', plan: {
+    name: 'ACP workflow', steps: [{ id: 'step', profile: 'acp', task: 'First attempt [internal]', worktree }],
+  } });
+  await waitFor(() => h.core.workflows.get(rootId, run.id).status === 'failed');
+  const threadId = h.core.workflows.get(rootId, run.id).nodes[0]!.instances[0]!.threadId!;
+  if (worktree) {
+    // An explicit follow-up opens the managed checkout before starting ACP.
+    await h.core.delegation.worktrees.enter(threadId);
+  }
+  return { rootId, runId: run.id, threadId };
 }
 
 /** A fresh core with one ACP thread on it, the opening of most tests here. */

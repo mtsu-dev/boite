@@ -32,6 +32,9 @@ const BACKGROUND_RECHECK_MS = 30_000;
 /** The review a reviewer conversation's first turn answers. */
 interface ReviewRun { threadId: string; generation: number; round: number }
 
+const composerFollowUpKey = (threadId: string) => `activity-composer-follow-up:${threadId}`;
+type ComposerFollowUp = { turnId: string; requestId: string; kind: 'goal' | 'loop' };
+
 /** Activity survives reconnects; a restarted core requires an explicit resume. */
 export class ActivityStore {
   readonly #states = new Map<string, ThreadActivity>();
@@ -82,7 +85,13 @@ export class ActivityStore {
       if (review?.reviewerThreadId) { this.#reviewers.add(review.reviewerThreadId); review.reviewerThreadId = null; changed = true; }
       if (saved.goal?.checklist && this.tracker.adopt(thread.id, saved.goal.checklist)) changed = true;
       for (const run of saved.loop?.history ?? []) {
-        if (run.status === 'running') { run.status = 'error'; run.summary = 'Core restarted before this iteration finished.'; run.finishedAt = Date.now(); changed = true; }
+        if (run.status !== 'running') continue;
+        const turn = core.journal.getTurn(run.turnId);
+        if (turn?.threadId === thread.id && core.threads.handoff.requeues(turn)) {
+          this.#ownTurns.set(turn.id, { kind: 'loop', generation: 0, iteration: run.iteration });
+          continue;
+        }
+        run.status = 'error'; run.summary = 'Core restarted before this iteration finished.'; run.finishedAt = Date.now(); changed = true;
       }
       this.#states.set(thread.id, saved);
       if (changed) this.#save(thread.id);
@@ -114,6 +123,7 @@ export class ActivityStore {
         this.#modelsRead.delete(threadId);
         this.#clearTimer(threadId);
         this.#states.delete(threadId);
+        core.journal.deleteSetting(composerFollowUpKey(threadId));
         core.journal.deleteSetting(`activity:${threadId}`);
         core.journal.deleteSetting(`activity-input:${threadId}`);
         core.journal.deleteSetting(`activity:shared:${threadId}`);
@@ -187,7 +197,21 @@ export class ActivityStore {
   /** A user's turn an automatic goal took as its first: the agent hears the goal's rules on it. */
   autoGoalTurn(turnId: string): boolean { return this.#ownTurns.get(turnId)?.kind === 'goal'; }
 
-  set(params: RpcParams<'threads.activity.set'>, sharedClaim?: {sharedProjectId: string; cardId: string; claimId: string}, executionChoice?: ComposerChoice, auto = false): ThreadActivity {
+  /** The interrupted child waits for this specific admitted activity to start. */
+  composerFollowUp(threadId: string): ComposerFollowUp | undefined {
+    const state = this.#states.get(threadId);
+    if (!state?.goal && !state?.loop) return undefined;
+    const followUp = this.#core.journal.getSetting(composerFollowUpKey(threadId)) as ComposerFollowUp | undefined;
+    const item = followUp && state[followUp.kind];
+    return item && item.status !== 'complete' ? followUp : undefined;
+  }
+
+  #releaseComposerFollowUp(threadId: string): void {
+    this.#core.journal.deleteSetting(composerFollowUpKey(threadId));
+    this.#core.bus.whenCommitted(() => this.#core.delegation.composerQueueEmptied(threadId));
+  }
+
+  set(params: RpcParams<'threads.activity.set'>, sharedClaim?: {sharedProjectId: string; cardId: string; claimId: string}, executionChoice?: ComposerChoice, auto = false, followUp?: Omit<ComposerFollowUp, 'kind'>): ThreadActivity {
     const thread = this.#core.journal.getThread(params.threadId);
     if (!thread || thread.archived) throw refused('activity requires an existing, unarchived thread');
     const attachments = params.attachments ?? [];
@@ -195,6 +219,7 @@ export class ActivityStore {
     if (attachments.length) checkAttachments(attachments, this.#core.providers.require(thread.providerId));
     if (attachments.length && Number(!!params.goal) + Number(!!params.loop) !== 1) throw invalidParams('attachments require exactly one new goal or loop');
     const state = this.get(params.threadId);
+    const waiting = this.composerFollowUp(params.threadId);
     if (params.goal !== undefined) {
       if (params.goal !== null && (typeof params.goal.objective !== 'string' || !params.goal.objective.trim())) throw invalidParams('goal.objective must be non-empty text');
       if (params.goal && params.goal.review !== undefined && typeof params.goal.review !== 'boolean') throw invalidParams('goal.review must be a boolean');
@@ -226,6 +251,9 @@ export class ActivityStore {
     else this.#core.journal.deleteSetting(`activity-choice:${params.threadId}`);
     this.#saveAttachments(params.threadId, pending);
     this.#states.set(params.threadId, state);
+    if (followUp) this.#core.journal.setSetting(composerFollowUpKey(params.threadId), { ...followUp, kind: params.loop ? 'loop' : 'goal' });
+    // Editing a pending activity keeps its place as the child's next instruction.
+    else if (waiting && params[waiting.kind] === null) this.#releaseComposerFollowUp(params.threadId);
     this.#save(params.threadId);
     if (params.goal !== undefined) {
       if (state.goal?.checklist) this.tracker.begin(params.threadId);
@@ -242,6 +270,7 @@ export class ActivityStore {
     if (params.action === 'resume' && thread.archived) throw refused('cannot resume activity on an archived thread');
     const state = this.get(params.threadId);
     const item = state[params.kind];
+    const waiting = this.composerFollowUp(params.threadId);
     if (!item) throw refused(`this thread has no ${params.kind}`);
     if (params.action === 'resume' && params.kind === 'loop' && state.loop?.maxIterations && state.loop.iterations >= state.loop.maxIterations) throw refused('this loop has finished all its iterations; start a new loop');
     if (params.action === 'complete' && params.kind !== 'goal') throw invalidParams('only a goal can be completed');
@@ -270,6 +299,7 @@ export class ActivityStore {
     // A paused goal's checklist still follows the conversation; a removed or finished one stops, on the state just stored.
     if (params.kind === 'goal' && (params.action === 'remove' || params.action === 'complete')) { this.tracker.stop(params.threadId); this.#bounced.delete(params.threadId); }
     this.#save(params.threadId);
+    if ((params.action === 'remove' || params.action === 'complete') && waiting?.kind === params.kind) this.#releaseComposerFollowUp(params.threadId);
     this.#schedule(params.threadId, 0);
     return this.get(params.threadId);
   }
@@ -448,7 +478,15 @@ export class ActivityStore {
       }
       const checklist = list?.items.length ? { open: list.items.filter(item => item.status === 'open').map(item => item.text), bounced: this.#bounced.delete(threadId) } : undefined;
       const turnActivity: ActivityTurn = { kind, iteration, ...(feedback ? { review: feedback } : {}), ...(checklist ? { checklist } : {}) };
-      const turn = this.#core.threads.startTurn(threadId, { prompt, attachments: pending[kind] ?? [] }, { kind: 'goal', activity: turnActivity }, { choice });
+      const followUp = this.composerFollowUp(threadId);
+      const requestId = followUp?.kind === kind ? followUp.requestId : undefined;
+      const turn = this.#core.threads.startTurn(threadId, { prompt, attachments: pending[kind] ?? [] }, { kind: 'goal', activity: turnActivity, requestId }, {
+        choice,
+        ...(requestId ? { persistAdmission: () => {
+          this.#core.journal.deleteSetting(composerFollowUpKey(threadId));
+          return () => {};
+        } } : {}),
+      });
       delete pending[kind];
       this.#saveAttachments(threadId, pending);
       this.#ownTurns.set(turn.id, { kind, generation: this.#generations.get(`${threadId}:${kind}`) ?? 0, iteration });

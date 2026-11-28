@@ -30,7 +30,7 @@ export interface ChildState {
   worktree?: DelegationWorktree;
   /** Its project's name on the member. */
   project?: string;
-  /** Its last turn was cut by a restart of the member, whose next core continues it: no result yet. Absent once that stop is final. */
+  /** Its cut turn will continue or is waiting for a queued follow-up. Absent once that stop is final. */
   restarting?: true;
   /** The turn targeted by this workflow stop, even after a new turn starts. */
   workflowStop?: { seq: number; turn: Pick<Turn, 'id' | 'finishedAt' | 'usage'> };
@@ -48,7 +48,7 @@ export interface Report {
   at: number;
   state?: ChildState;
   removed?: true;
-  letter?: { origin: 'result' | 'question' | 'agent'; requestId: string; text: string; checkpoint?: true };
+  letter?: { origin: 'result' | 'question' | 'agent'; requestId: string; text: string; checkpoint?: true; owed?: true };
 }
 
 /**
@@ -56,7 +56,8 @@ export interface Report {
  * in the order the caller asked it: the member applies it once, and never
  * after one it applied later, however often or late it arrives.
  */
-export interface Stop { key: string; seq: number; parentId: string; childId: string; retire?: true; workflow?: true }
+export interface Stop { key: string; seq: number; parentId: string; childId: string; retire?: true; workflow?: true; silent?: true }
+export type StopIntent = Pick<Stop, 'seq' | 'retire' | 'workflow' | 'silent'>;
 
 /** The caller's record of a child on another machine. `childId` is null until that machine answered or reported. */
 export interface RemoteChild {
@@ -85,6 +86,43 @@ export interface RemoteChild {
 
 /** The member's link from a child here to its parent on another machine. `stop`: the number of the last stop applied to it. */
 export interface ParentLink { coreId: string; machine: string; parentId: string; title: string; projectId: string; project: string; requestId: string; fingerprint: string; at: number; stop?: number; workflowStop?: { seq: number; turnId: string } }
+
+export function stopSequence(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw invalidParams(`${field}: expected the stop's number`);
+  return value;
+}
+
+/** The number of the last stop applied to a child here, 0 when none was. */
+export function appliedStop(link: ParentLink | undefined): number {
+  return typeof link?.stop === 'number' ? link.stop : 0;
+}
+
+function attachedStop(raw: Record<string, unknown>): StopIntent {
+  return { seq: stopSequence(raw.stop, 'delegation.letter.stop'), workflow: raw.workflowStop === true ? true : undefined, silent: raw.silentStop === true ? true : undefined };
+}
+
+export function attachedStops(raw: Record<string, unknown>): StopIntent[] {
+  if (raw.stop === undefined) return [];
+  const latest = attachedStop(raw);
+  if (raw.earlierStops === undefined) return [latest];
+  if (!Array.isArray(raw.earlierStops)) throw invalidParams('delegation.letter.earlierStops: expected a list');
+  const stops = [...raw.earlierStops.map(entry => attachedStop(entry ?? {})), latest];
+  if (stops.some((stop, index) => index > 0 && stop.seq <= stops[index - 1]!.seq)) {
+    throw invalidParams('delegation.letter.earlierStops: expected stops in increasing order before the latest stop');
+  }
+  return stops;
+}
+
+/** Keep the latest Stop in the original fields for members on an earlier version. */
+export function stopsForLetter(entries: Stop[], childId: string) {
+  const earlier = entries.filter(stop => stop.childId === childId).sort((a, b) => a.seq - b.seq);
+  const latest = earlier.pop();
+  if (!latest) return {};
+  return {
+    stop: latest.seq, workflowStop: latest.workflow, silentStop: latest.silent,
+    ...(earlier.length ? { earlierStops: earlier.map(stop => ({ stop: stop.seq, workflowStop: stop.workflow, silentStop: stop.silent })) } : {}),
+  };
+}
 
 export function trackWorkflowStop(record: RemoteChild, next: () => number): number {
   if (record.workflowStop !== undefined) return record.workflowStop;

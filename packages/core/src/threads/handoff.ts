@@ -1,12 +1,15 @@
-import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type RpcEventName, type RpcEvents, type ThreadId, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
+import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type RpcEventName, type RpcEvents, type ThreadId, type ThreadSummary, type Turn, type TurnId, type Usage } from '@boite/contracts';
+import { admittedComposerTurn } from '../composer-storage.ts';
 import { messageExcerpt } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 import { waitForVersion } from '../providers/versions.ts';
 import type { ThreadStore } from '../threads.ts';
 import { RESUME_TEXT } from './resume-text.ts';
+import { composerOwnsFollowUp } from './stopped-input.ts';
 import type { TurnInput } from './turn-origin.ts';
 import { STOP_DEADLINE } from './turn-runner.ts';
+import { reportSettlementError, userStopKey, userStopResultKey } from './turn-settlement.ts';
 
 /**
  * `graceMs`: how long a running tool call may take to finish before its turn is
@@ -24,15 +27,68 @@ const KEY = 'restart-handoff';
 const REQUEST_START = '\n\nThe request that turn was answering, as conversation history:\n\n<interrupted-user-messages>\n';
 const REQUEST_END = '\n</interrupted-user-messages>';
 
-interface Entry { turnId: TurnId; threadId: ThreadId; was: 'running' | 'queued'; admittedTurnId?: TurnId }
+export interface HandoffResult {
+  usage: Usage | null;
+  sessionId?: string;
+  cwd?: string;
+}
+
+export type QueuedInputOutcome = HandoffResult & (
+  | { queuedInputSession: string; queuedInputCompleted?: never }
+  // Older cores understand the interruption flag and can still open the handoff.
+  | { queuedInputInterrupted: true; queuedInputCompleted?: true }
+);
+
+interface Entry {
+  turnId: TurnId;
+  threadId: ThreadId;
+  was: 'running' | 'queued';
+  admittedTurnId?: TurnId;
+  queuedInput?: QueuedInputOutcome;
+}
+interface LiveEntry extends Entry { composerOnly?: true }
 interface HandoffRecord { at: number; turns: Entry[] }
+
+function readUsage(value: unknown): Usage | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const usage = value as Partial<Usage>;
+  const tokens = [usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.cacheWriteTokens];
+  if (!tokens.every(Number.isFinite) || (usage.cacheWriteHourTokens !== undefined && !Number.isFinite(usage.cacheWriteHourTokens))
+    || (usage.costUsdEquivalent !== null && !Number.isFinite(usage.costUsdEquivalent))
+    || (usage.buckets !== undefined && usage.buckets !== 1)) return null;
+  return usage as Usage;
+}
+
+function readHandoffResult(value: unknown): HandoffResult | undefined {
+  if (typeof value !== 'object' || value === null) return;
+  return {
+    usage: readUsage('usage' in value ? value.usage : null),
+    sessionId: 'sessionId' in value && typeof value.sessionId === 'string' ? value.sessionId
+      : 'queuedInputSession' in value && typeof value.queuedInputSession === 'string' ? value.queuedInputSession : undefined,
+    cwd: 'cwd' in value && typeof value.cwd === 'string' ? value.cwd : undefined,
+  };
+}
+
+function readQueuedInputOutcome(value: unknown): QueuedInputOutcome | undefined {
+  if (typeof value !== 'object' || value === null) return;
+  const metadata = readHandoffResult(value)!;
+  if ('queuedInputSession' in value && typeof value.queuedInputSession === 'string') return { ...metadata, queuedInputSession: value.queuedInputSession };
+  if ('queuedInputInterrupted' in value && value.queuedInputInterrupted === true) {
+    return {
+      ...metadata,
+      queuedInputInterrupted: true,
+      queuedInputCompleted: 'queuedInputCompleted' in value && value.queuedInputCompleted === true ? true : undefined,
+    };
+  }
+}
 
 function isRecord(value: unknown): value is HandoffRecord {
   if (typeof value !== 'object' || value === null) return false;
   const record = value as Partial<HandoffRecord>;
   return typeof record.at === 'number' && Array.isArray(record.turns) && record.turns.every(entry =>
     typeof entry?.turnId === 'string' && typeof entry.threadId === 'string' && (entry.was === 'running' || entry.was === 'queued')
-    && (entry.admittedTurnId === undefined || typeof entry.admittedTurnId === 'string'));
+    && (entry.admittedTurnId === undefined || typeof entry.admittedTurnId === 'string')
+    && (entry.queuedInput === undefined || (entry.was === 'running' && readQueuedInputOutcome(entry.queuedInput) !== undefined)));
 }
 
 /**
@@ -49,7 +105,9 @@ export class RestartHandoff {
   /** Tool calls in flight per thread, as `messageId:partIndex`, with when each started. */
   readonly #tools = new Map<ThreadId, Map<string, number>>();
   /** What this core hands over, once `begin` ran. */
-  #entries: Map<TurnId, Entry> | null = null;
+  #entries: Map<TurnId, LiveEntry> | null = null;
+  /** The composer owns the follow-up while the runner still owns the terminal write. */
+  readonly #queuedInputOutcomes = new Map<TurnId, QueuedInputOutcome>();
   /** Running turns still to end before this core may exit. */
   readonly #pending = new Map<TurnId, ThreadId>();
   readonly #asked = new Set<TurnId>();
@@ -96,9 +154,10 @@ export class RestartHandoff {
     this.#tools.delete(threadId);
   }
 
-  /** Whether this handoff resumes that turn on the next core itself. */
+  /** Whether the handoff record carries this turn to the next core. */
   carries(turnId: TurnId): boolean {
-    return this.#entries?.has(turnId) ?? false;
+    const entry = this.#entries?.get(turnId);
+    return entry !== undefined && (!entry.composerOnly || entry.queuedInput !== undefined);
   }
 
   /** A queued turn this handoff carries to the next core stays queued through shutdown. */
@@ -106,11 +165,63 @@ export class RestartHandoff {
     return this.#entries?.get(turnId)?.was === 'queued' || this.inheritedTurns().get(turnId) === 'queued';
   }
 
+  /** Keep the composer in charge of the follow-up if settlement cannot commit in time. */
+  recordQueuedInputOutcome(turnId: TurnId, outcome: QueuedInputOutcome): void {
+    this.#queuedInputOutcomes.set(turnId, outcome);
+    this.#saveQueuedInputOutcome(turnId, outcome);
+  }
+
+  releaseQueuedInputOutcome(turnId: TurnId): void {
+    const outcome = this.#queuedInputOutcomes.get(turnId);
+    // Retry a failed handoff write before dropping the outcome from memory.
+    if (outcome !== undefined) this.#saveQueuedInputOutcome(turnId, outcome);
+    this.#queuedInputOutcomes.delete(turnId);
+  }
+
+  /** Cancel the continuation while preserving a known result's session and accounting. */
+  recordUserStop(turnId: TurnId): void {
+    const { journal } = this.#core;
+    const outcome = this.#queuedInputOutcomes.get(turnId) ?? this.#entries?.get(turnId)?.queuedInput;
+    journal.db.transaction(() => {
+      journal.setSetting(userStopKey(turnId), true);
+      if (outcome) journal.setSetting(userStopResultKey(turnId), outcome);
+    })();
+  }
+
+  /** A provider may send its session and usage after the user already stopped the turn. */
+  recordStoppedResult(turn: Turn, result: HandoffResult): void {
+    const { journal } = this.#core;
+    if (journal.isClosed() || (result.sessionId === undefined && result.usage === null)) return;
+    try {
+      if (journal.getSetting(userStopKey(turn.id)) === true) journal.setSetting(userStopResultKey(turn.id), result);
+    } catch (error) {
+      reportSettlementError(this.#core, turn.threadId, turn.id, 'user stop result', error);
+    }
+  }
+
+  stoppedResult(turnId: TurnId): HandoffResult | undefined {
+    return readHandoffResult(this.#core.journal.getSetting(userStopResultKey(turnId)))
+      ?? this.inheritedQueuedInputOutcome(turnId);
+  }
+
+  #saveQueuedInputOutcome(turnId: TurnId, outcome: QueuedInputOutcome): void {
+    const entry = this.#entries?.get(turnId);
+    if (entry?.was !== 'running' || entry.queuedInput === outcome || this.#core.journal.isClosed()) return;
+    entry.queuedInput = outcome;
+    try { this.#save(); }
+    catch (error) {
+      delete entry.queuedInput;
+      reportSettlementError(this.#core, entry.threadId, turnId, 'restart handoff queued input', error);
+    }
+  }
+
   /** The user stopped the thread himself: that turn is his to send again. */
   forget(threadId: ThreadId): boolean {
     let changed = false;
     for (const entry of this.#entries?.values() ?? []) {
-      if (entry.threadId === threadId) changed = this.#entries!.delete(entry.turnId) || changed;
+      if (entry.threadId !== threadId) continue;
+      changed = this.carries(entry.turnId) || changed;
+      this.#entries!.delete(entry.turnId);
     }
     if (this.#inherited !== null) {
       const remaining = this.#inherited.turns.filter(entry => entry.threadId !== threadId);
@@ -134,15 +245,22 @@ export class RestartHandoff {
     const state = this.#core.scheduler.state();
     this.#entries = new Map();
     for (const run of state.running) {
+      // Post-turn work can hold the scheduler slot after the turn has settled.
+      if (this.#core.journal.getTurn(run.turnId)?.status !== 'running') continue;
       this.#pending.set(run.turnId, run.threadId);
-      if (this.#resumable(run.turnId, run.threadId, 'running')) this.#entries.set(run.turnId, { turnId: run.turnId, threadId: run.threadId, was: 'running' });
+      const mode = this.#handoffMode(run.turnId, run.threadId, 'running');
+      if (mode !== null) {
+        const queuedInput = this.#queuedInputOutcomes.get(run.turnId);
+        this.#entries.set(run.turnId, { turnId: run.turnId, threadId: run.threadId, was: 'running', queuedInput, composerOnly: mode === 'composer' ? true : undefined });
+      }
     }
     for (const waiting of state.queued) {
       if (waiting.queueHold) continue;
-      if (this.#resumable(waiting.turnId, waiting.threadId, 'queued')) this.#entries.set(waiting.turnId, { turnId: waiting.turnId, threadId: waiting.threadId, was: 'queued' });
+      if (this.#handoffMode(waiting.turnId, waiting.threadId, 'queued') === 'resume') this.#entries.set(waiting.turnId, { turnId: waiting.turnId, threadId: waiting.threadId, was: 'queued' });
     }
     this.#save();
-    this.#core.log('info', `restart handoff: ${this.#pending.size} running and ${state.queued.length} queued turns, ${this.#entries.size} of them resume on the next start`);
+    const carried = [...this.#entries.keys()].filter(turnId => this.carries(turnId)).length;
+    this.#core.log('info', `restart handoff: ${this.#pending.size} running and ${state.queued.length} queued turns, ${carried} carried to the next start`);
 
     const { promise, resolve } = Promise.withResolvers<void>();
     this.#finished = promise;
@@ -180,9 +298,14 @@ export class RestartHandoff {
     }));
   }
 
+  inheritedQueuedInputOutcome(turnId: TurnId): QueuedInputOutcome | undefined {
+    return readQueuedInputOutcome(this.#inherited?.turns.find(entry => entry.turnId === turnId)?.queuedInput);
+  }
+
   /** Whether a queued turn of the previous core can go back in line as it is. */
   requeues(turn: Turn): boolean {
-    return turn.status === 'queued' && !turn.queueHold && this.inheritedTurns().get(turn.id) === 'queued' && this.#resumable(turn.id, turn.threadId, 'queued');
+    return turn.status === 'queued' && !turn.queueHold && this.inheritedTurns().get(turn.id) === 'queued'
+      && this.#handoffMode(turn.id, turn.threadId, 'queued') === 'resume';
   }
 
   /**
@@ -200,7 +323,7 @@ export class RestartHandoff {
       const admitted = this.#admitted(entry);
       const turn = this.#core.journal.getTurn(admitted ?? entry.turnId);
       const thread = this.#core.journal.getThread(entry.threadId);
-      if (turn === null || thread === null || !this.#resumable(turn.id, thread.id, admitted === null ? entry.was : 'queued')) {
+      if (turn === null || thread === null || this.#handoffMode(turn.id, thread.id, admitted === null ? entry.was : 'queued') !== 'resume') {
         this.#consume(entry);
         continue;
       }
@@ -211,14 +334,17 @@ export class RestartHandoff {
           this.#core.scheduler.enqueue(turn, turn.execution?.accountId ?? thread.accountId, { recovering: true });
           resumed += 1;
         } else if (admitted === null && entry.was === 'running' && turn.status === 'stopped') {
-          // The core may have stopped after committing a new turn, before observing its start.
-          if (this.#core.journal.lastTurn(thread.id, true)?.id !== turn.id) {
+          // The planned turn may have handed over to the composer, or a newer turn may already be committed.
+          if (composerOwnsFollowUp(turn)
+            || this.#core.journal.lastTurn(thread.id, true)?.id !== turn.id) {
             this.#consume(entry);
             continue;
           }
           const read = this.#core.providers.pendingVersion(thread.providerId);
           if (waitForVersion(read, this.#versionReads, () => this.resume())) continue;
-          const continuation = this.#threads.startTurn(thread.id, this.continuation(turn), { kind: 'resume', reason: 'handoff', requestId: this.#requestId(entry) });
+          const continuation = this.#threads.startTurn(thread.id, this.continuation(turn), {
+            kind: 'resume', reason: 'handoff', requestId: this.#requestId(entry),
+          });
           this.#remember(entry, continuation.id);
           resumed += 1;
         } else this.#consume(entry);
@@ -289,13 +415,22 @@ export class RestartHandoff {
       ? `\n\nThe thread's task list at resume:\n${tasks.map(task => `- [${task.status}] ${task.text}`).join('\n')}`
       : '';
     const prompt = `${lead}${checklist}${text ? `${REQUEST_START}${text}${REQUEST_END}` : ''}`;
+    const resumeSourceTurnId = turn.status === 'done' ? undefined
+      : turn.execution?.resumeSourceTurnId ?? (turn.execution?.operation === undefined ? turn.id : undefined);
+    const input: TurnInput = { prompt, ...(resumeSourceTurnId === undefined ? {} : { resumeSourceTurnId }) };
     const thread = journal.getThread(turn.threadId);
     const attachments: Attachment[] = [];
     // A fresh session reads these messages through conversation history.
-    if (!thread?.sessionId) return { prompt };
+    if (!thread?.sessionId) return input;
+    const attachmentMessages = opening ? [opening, ...requests] : requests;
+    // The previous resume may have loaded its attachments from history when it opened a fresh session.
+    if (resumeSourceTurnId !== undefined && opening && !opening.parts.some(part => part.type === 'file' || part.type === 'image')) {
+      const original = [...journal.walkTurnMessages(turn.threadId, resumeSourceTurnId, { blobs: false })];
+      attachmentMessages.unshift(...original.filter(message => message.role === 'user'));
+    }
     const images = this.#core.providers.require(thread.providerId).capabilities.images;
     let room = ATTACHMENTS_TOTAL_MAX_BYTES;
-    for (const message of (opening ? [opening, ...requests] : requests).toReversed()) {
+    for (const message of attachmentMessages.toReversed()) {
       for (let index = message.parts.length - 1; index >= 0 && attachments.length < ATTACHMENTS_PER_TURN; index--) {
         const stored = message.parts[index]!;
         if (stored.type !== 'file' && !(stored.type === 'image' && images)) continue;
@@ -309,21 +444,28 @@ export class RestartHandoff {
           : { kind: 'file', mimeType: part.mimeType, data: part.data, name: part.name });
       }
     }
-    return { prompt, attachments };
+    return { ...input, attachments };
   }
 
   /**
    * Sub-threads belong to delegation and workflows, which carry their own
    * work across a handoff (`Delegation.resumeAfterRestart`,
    * `Workflows.resumeAfterRestart`) and
-   * pause after a crash. A compaction or a coordination wake is not worth repeating.
+   * pause after a crash. Carry a child's queued-input outcome only so the
+   * composer can recover it. A compaction or coordination wake stays behind.
    */
-  #resumable(turnId: TurnId, threadId: ThreadId, was: Entry['was']): boolean {
+  #handoffMode(turnId: TurnId, threadId: ThreadId, was: Entry['was']): 'resume' | 'composer' | null {
     const turn = this.#core.journal.getTurn(turnId);
     const thread: ThreadSummary | null = this.#core.journal.getThread(threadId);
-    if (turn === null || thread === null || thread.archived || thread.parentThreadId) return false;
+    if (turn === null || thread === null || thread.archived) return null;
+    if (was === 'running' && this.#core.journal.getSetting(userStopKey(turnId)) === true) return null;
     const operation = turn.execution?.operation;
-    return operation === undefined || operation === 'resume' || (was === 'running' && operation === 'background');
+    if (thread.parentThreadId) {
+      if (operation !== undefined) return null;
+      if (was === 'running') return 'composer';
+      return admittedComposerTurn(this.#core, threadId, turnId) ? 'resume' : null;
+    }
+    return operation === undefined || operation === 'resume' || (was === 'running' && operation === 'background') ? 'resume' : null;
   }
 
   #stopWhenBetweenTools(turnId: TurnId, threadId: ThreadId): void {
@@ -335,7 +477,7 @@ export class RestartHandoff {
     if (this.#asked.has(turnId)) return;
     this.#asked.add(turnId);
     // False when the turn ended in the same tick: its `turn.finished` clears it.
-    this.#threads.stopRunning(threadId);
+    this.#threads.stopRunning(threadId, 'restart');
   }
 
   #turnStarted(turn: Turn): void {
@@ -372,7 +514,8 @@ export class RestartHandoff {
 
   #save(): void {
     if (this.#entries === null || this.#core.journal.isClosed()) return;
-    const held = (this.#inherited?.turns ?? []).filter(entry => !this.#entries!.has(this.#admitted(entry) ?? entry.turnId));
-    this.#core.journal.setSetting(KEY, { at: Date.now(), turns: [...this.#entries.values(), ...held] } satisfies HandoffRecord);
+    const turns = [...this.#entries.values()].filter(entry => this.carries(entry.turnId)).map(({ composerOnly, ...entry }) => entry);
+    const held = (this.#inherited?.turns ?? []).filter(entry => !this.carries(this.#admitted(entry) ?? entry.turnId));
+    this.#core.journal.setSetting(KEY, { at: Date.now(), turns: [...turns, ...held] } satisfies HandoffRecord);
   }
 }

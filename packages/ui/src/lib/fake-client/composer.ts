@@ -1,7 +1,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import {
   answerAttachmentError, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, composerActivity, composerBatch, composerBytes, composerInputThreadId,
-  composerPage, composerRevision, COMPOSER_RECORD_MAX_BYTES, decodedBytes, isComposerActivity, isComposerKey, privateTerminalComposerId, RpcErrorCode,
+  attachmentError, composerPage, composerRevision, COMPOSER_RECORD_MAX_BYTES, decodedBytes, isComposerActivity, isComposerKey, previewReferencesError, privateTerminalComposerId, providerSupportsSteering, RpcErrorCode,
   type Attachment, type ComposerChoice, type ComposerCursor, type ComposerQueuedPrompt, type ComposerRecord, type ComposerValue, type RpcEventName, type RpcEvents,
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
@@ -28,7 +28,7 @@ export class FakeComposerState {
   readonly assetOwners = new Map<string, FakeContext>();
   private pending = false;
   private methods = new Map<FakeContext, () => FakeMethods>();
-  private boundaries = new Map<string, string>();
+  private boundaries = new Map<string, RpcEvents['turn.toolCompleted'] & { fresh: boolean }>();
   private forced = new Map<string, string>();
 
   attach(ctx: FakeContext, methods: () => FakeMethods): void {
@@ -80,8 +80,12 @@ export class FakeComposerState {
   observe<E extends RpcEventName>(ctx: FakeContext, event: E, payload: RpcEvents[E]): void {
     if (event === 'composer.updated') return;
     if (event === 'turn.toolCompleted') {
-      const boundary = payload as RpcEvents['turn.toolCompleted'];
-      if (this.records.get(keyOf('inputs', boundary.threadId))?.value?.input.queued.length) this.boundaries.set(boundary.threadId, boundary.boundary);
+      const boundary = { ...payload as RpcEvents['turn.toolCompleted'], fresh: true };
+      if (this.records.get(keyOf('inputs', boundary.threadId))?.value?.input.queued.length) {
+        this.boundaries.set(boundary.threadId, boundary);
+        this.schedule(ctx);
+        queueMicrotask(() => { boundary.fresh = false; });
+      }
     }
     if (event === 'thread.removed') {
       const { threadId, undoable } = payload as RpcEvents['thread.removed'];
@@ -133,7 +137,10 @@ export class FakeComposerState {
       return;
     }
     const boundary = this.boundaries.get(row.id);
-    if (running && (head.request || isComposerActivity(head.text) || !boundary || head.afterBoundary === boundary)) return;
+    const turn = running ? thread.turns.findLast(item => item.status === 'running') : undefined;
+    if (running && (!turn || boundary?.turnId !== turn.id || head.afterBoundary === boundary.boundary || head.request || isComposerActivity(head.text)
+      || !sameExecutionChoice(choiceOf({ ...thread, ...turn.execution }), choiceOf(head.choice ?? thread))
+      || (turn.execution?.selectionVersion ?? 0) !== (thread.selectionVersion ?? 0))) return;
     const batch = composerBatch(value.input.queued, id => {
       const asset = this.assets.get(id);
       if (!asset) throw refusal(`assetId ${id}: expected an uploaded composer attachment`);
@@ -144,9 +151,20 @@ export class FakeComposerState {
     try {
       const payload = { prompt: batch.text, attachments: batch.attachments, previewReferences: batch.previewReferences };
       const requestId = head.request?.id ?? head.id;
-      if (running) {
-        const turn = thread.turns.findLast(turn => turn.status === 'running');
-        if (!turn || !sameExecutionChoice(choiceOf({ ...thread, ...turn.execution }), choiceOf(head.choice ?? thread))) return;
+      if (turn) {
+        const provider = ctx.providers.find(item => item.id === (turn.execution?.providerId ?? thread.providerId));
+        if (provider?.protocol === 'acp' && !providerSupportsSteering(provider)) {
+          if (!boundary?.fresh || turn.execution?.operation || thread.activity?.goal?.status === 'active' || thread.activity?.loop?.status === 'active'
+            || (thread.background?.length ?? 0) > 0 || ctx.inFlight.get(threadId)?.cancelled !== false
+            || thread.messages.some(message => message.turnId === turn.id && message.parts.some(part => part.type === 'tool'
+              && (part.status === 'running' || part.nativeAgents?.some(agent => agent.status === 'running'))))) return;
+          const error = attachmentError(payload.attachments, provider)?.message ?? previewReferencesError(payload.previewReferences, payload.prompt);
+          if (error) throw refusal(error);
+          this.boundaries.delete(row.id);
+          await ctx.stopTurn(threadId);
+          this.schedule(ctx);
+          return;
+        }
         const outcome = await methods['turns.steer']({ threadId, turnId: turn.id, ...payload, clientRequestId: requestId, expectedSelectionVersion: thread.selectionVersion ?? 0 });
         if (!outcome.accepted) { this.boundaries.delete(row.id); return; }
       } else {

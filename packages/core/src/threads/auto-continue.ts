@@ -139,7 +139,7 @@ export class AutoContinues {
    */
   turnFinished(thread: ThreadSummary, turn: Turn, result: TurnResult): void {
     if (this.#closed || this.#core.stopping || !this.#eligible(thread, turn)) return;
-    if (turn.status === 'stopped') {
+    if (turn.status === 'stopped' || result.queuedInputInterrupted) {
       this.#resumes.forget(thread.id);
       return;
     }
