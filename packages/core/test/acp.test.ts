@@ -244,12 +244,17 @@ test.each([
   ['core restart', 'acknowledged with terminal persistence unavailable'],
   ['core restart', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart', 'completed with terminal persistence unavailable'],
+  ['core restart without session/load', 'completed with terminal persistence unavailable'],
+  ['core restart with late Stop', 'completed with terminal persistence unavailable'],
   ['core restart', 'rejected with terminal persistence unavailable'],
   ['core restart', 'rejected with a blocked working-folder check'],
   ['direct Stop', 'explicit stop before acknowledgement'],
 ] as const)('ACP leaves the queue paused after cancellation during %s (%s)', async (interruption, outcome) => {
   const shutdown = Promise.withResolvers<void>();
   let client = await startCore({ warmProcessMinutes: 0 }, shutdown.resolve);
+  const noLoad = interruption === 'core restart without session/load';
+  const lateStop = interruption === 'core restart with late Stop';
+  if (noLoad) process.env['ACP_FAKE_NO_LOAD'] = '1';
   const threadId = await acpThread(client);
   const first = harness!;
   let { core } = first;
@@ -262,9 +267,9 @@ test.each([
   const directive = capacity ? ' [capacity-on-cancel]' : rejected ? ' [error-on-cancel]'
     : completed ? ' [ignore-cancel] [finish-on-gate] [usage]'
     : outcome === 'explicit stop' ? ' [ignore-cancel] [finish-on-gate]' : '';
-  const prompt = `[parallel-tools] [confirm-on-gate]${directive}`;
+  const prompt = `[parallel-tools] [confirm-on-gate]${directive} Original request before the restart`;
   const { id } = await client.call('turns.start', { threadId, prompt });
-  await waitFor(() => core.threads.require(threadId).sessionId !== null);
+  if (!noLoad) await waitFor(() => core.threads.require(threadId).sessionId !== null);
   const queued = [{ id: 'permission-race-follow-up', text: completed ? 'Queued after the mode change [usage]' : 'Queued after the mode change', attachments: [] }];
   const setPaused = async (paused: boolean) => {
     const current = core.composer.storage.get('inputs', threadId);
@@ -276,6 +281,7 @@ test.each([
   writeFileSync(`${logFile}.first`, 'ready');
   writeFileSync(`${logFile}.second`, 'ready');
   await waitFor(() => fakeLog().includes('session/cancel'));
+  if (noLoad) expect(core.threads.require(threadId).sessionId).toBeNull();
   await setPaused(true);
   const stop = spyOn(core.threads.runner.handles.get(threadId)!, 'stop');
   const duringHandoff = outcome === 'acknowledged during handoff with terminal persistence unavailable';
@@ -320,6 +326,7 @@ test.each([
         if (unavailable || blockedFolderCheck) Object.assign(STOP_DEADLINE, { ms: duringHandoff ? 2_000 : 20, forceMs: 20 });
         expect(core.requestHandoffShutdown(0)).toBe('accepted');
       } finally { Object.assign(STOP_DEADLINE, deadline); }
+      if (lateStop) expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
       await shutdown.promise;
       if (unavailable || blockedFolderCheck) expect(core.journal.getTurn(id)?.status).toBe('running');
       handoff = core.journal.getSetting('restart-handoff');
@@ -346,7 +353,7 @@ test.each([
       client = await next.connect();
     } else await waitFor(() => countLogLines(fakeLog(), 'session/prompt') > 1 || core.journal.getTurn(id)?.finishedAt != null);
     if (retrySettlement || blockedFolderCheck) await waitFor(() => !core.journal.getSetting('restart-handoff'));
-    expect(core.journal.getTurn(id)?.status).toBe(completed ? 'done' : capacity ? 'error' : 'stopped');
+    expect(core.journal.getTurn(id)?.status).toBe(completed && !lateStop ? 'done' : capacity ? 'error' : 'stopped');
     expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
     expect(core.journal.listTurns(threadId)).toHaveLength(1);
     const execution = core.journal.getTurn(id)?.execution;
@@ -356,11 +363,12 @@ test.each([
     expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
     expect(core.threads.runner.retryOf(threadId)).toBeNull();
     if (completed && unavailable) {
-      // Older cores understand interruption and can still read the rest of the handoff.
-      expect({ usage: core.journal.getTurn(id)?.usage, handoff }).toMatchObject({
-        usage: { inputTokens: 8, outputTokens: 4, cacheReadTokens: 2, cacheWriteTokens: 0, buckets: 1, costUsdEquivalent: 0.0042 },
-        handoff: { turns: [expect.objectContaining({ turnId: id, queuedInput: expect.objectContaining({ queuedInputInterrupted: true }) })] },
+      expect(core.journal.getTurn(id)?.usage).toMatchObject({
+        inputTokens: 8, outputTokens: 4, cacheReadTokens: 2, cacheWriteTokens: 0, buckets: 1, costUsdEquivalent: 0.0042,
       });
+      // Older cores understand interruption and can still read the rest of the handoff.
+      if (lateStop) expect(handoff).toMatchObject({ turns: [] });
+      else expect(handoff).toMatchObject({ turns: [expect.objectContaining({ turnId: id, queuedInput: expect.objectContaining({ queuedInputInterrupted: true }) })] });
     }
     if (unavailable) expect(terminalWrites).toBeGreaterThan(1);
     else if (retrySettlement) expect(terminalWrites).toBe(2);
@@ -369,8 +377,15 @@ test.each([
     await setPaused(false);
     await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
     if (completed) expect(core.journal.listTurns(threadId)[1]?.usage?.costUsdEquivalent).toBeCloseTo(0.0042, 10);
+    if (noLoad) {
+      const thread = await client.call('threads.get', { threadId });
+      const answer = thread.messages.at(-1)?.parts.find(part => part.type === 'text');
+      const text = answer?.type === 'text' ? answer.text : '';
+      expect(text).toContain('<conversation-history>');
+      expect(text).toContain('Original request before the restart');
+    }
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(2);
-    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(completed ? 0 : 1);
+    expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(completed && !lateStop ? 0 : 1);
     expect(setModeCount('plan')).toBe(interruption === 'permission restart' ? 1 : 0);
   } finally {
     folder.resolve(true);

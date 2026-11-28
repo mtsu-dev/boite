@@ -55,7 +55,7 @@ import { messagePage, threadSnapshot, type MessagePage } from './threads/snapsho
 import { checkEffort, checkModel, checkSpeed, defaultModel, selectionFor } from './threads/selection.ts';
 import { TurnContexts } from './threads/turn-context.ts';
 import { TurnRunner } from './threads/turn-runner.ts';
-import { markQueuedStopped, userStopKey } from './threads/turn-settlement.ts';
+import { markQueuedStopped } from './threads/turn-settlement.ts';
 import { ThreadFocus } from './threads/focus.ts';
 import { ThreadListLog } from './threads/list-changes.ts';
 import { ProgressState } from './threads/progress.ts';
@@ -729,7 +729,7 @@ export class ThreadStore {
   stopTurn(threadId: ThreadId): boolean {
     this.require(threadId);
     const running = this.#core.journal.runningTurn(threadId);
-    if (running) this.#core.journal.setSetting(userStopKey(running.id), true);
+    if (running) this.handoff.recordUserStop(running.id);
     const handoffCancelled = this.handoff.forget(threadId);
     this.cacheKeepalive.forget(threadId);
     // Stop on a thread waiting for a usage limit to reset, or for the wake its agent scheduled, means: do not resume it.

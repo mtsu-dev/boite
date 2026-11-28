@@ -24,6 +24,7 @@ export type TurnClose = 'settled' | 'never-started' | 'crashed' | 'handed-over' 
 
 /** Explicit Stop survives the gap between its acknowledgement and native settlement. */
 export function userStopKey(turnId: TurnId): string { return `turn-user-stop:${turnId}`; }
+export function userStopResultKey(turnId: TurnId): string { return `turn-user-stop-result:${turnId}`; }
 
 interface Finished { thread: ThreadSummary | null; owned: boolean; toolsClosed: number }
 
@@ -40,7 +41,10 @@ export function finishTurn(core: Core, finished: Turn, cause: TurnClose, patch?:
   const toolsClosed = finished.status !== 'done' ? closeTools(core, threadId, finished.id) : 0;
   const type = cause !== 'settled' && finished.status === 'stopped' ? 'turn.stopped' : 'turn.finished';
   core.journal.append({ type, threadId, version: 1, payload: finished }, () => core.journal.putTurn(finished));
-  if (finished.startedAt !== null) core.journal.deleteSetting(userStopKey(finished.id));
+  if (finished.startedAt !== null) {
+    core.journal.deleteSetting(userStopKey(finished.id));
+    if (finished.status === 'stopped') core.journal.deleteSetting(userStopResultKey(finished.id));
+  }
   // In the same transaction: the next turn knows whether the brain's instructions go again.
   brainContextEnded(core, finished);
   coordinationGuideEnded(core, finished);
@@ -124,6 +128,12 @@ function ownsTurn(owned: Turn | null, { queued, running, started }: Settlement):
     .every(field => owned.execution?.[field] === running.execution?.[field]);
 }
 
+/** A change of session or account prevents a late result from replacing it. */
+export function matchesProviderSession(current: ThreadSummary, previous: Pick<ThreadSummary, 'sessionGeneration' | 'sessionId' | 'providerId' | 'accountId'>): boolean {
+  return (current.sessionGeneration ?? 0) === (previous.sessionGeneration ?? 0)
+    && current.sessionId === previous.sessionId && current.providerId === previous.providerId && current.accountId === previous.accountId;
+}
+
 /** The settled turn's row and its thread's: the session and the prompt cache it ended with. */
 function finishThread(core: Core, { thread, finished, result }: Settlement): Completion & { toolsClosed: number } {
   // A turn of the account the thread left: the session it saved there now ends with this turn.
@@ -131,8 +141,7 @@ function finishThread(core: Core, { thread, finished, result }: Settlement): Com
   let sameSession = false;
   const done = finishProviderTurn(core, finished, 'settled', current => {
     // Changing the next picker does not grant this result access to the new session.
-    sameSession = (current.sessionGeneration ?? 0) === (thread.sessionGeneration ?? 0)
-      && current.sessionId === thread.sessionId && current.providerId === thread.providerId && current.accountId === thread.accountId;
+    sameSession = matchesProviderSession(current, thread);
     const sessionId = sameSession ? result.sessionId ?? current.sessionId : current.sessionId;
     return {
       ...current, sessionId,

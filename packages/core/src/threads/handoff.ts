@@ -7,7 +7,7 @@ import type { ThreadStore } from '../threads.ts';
 import { RESUME_TEXT } from './resume-text.ts';
 import type { TurnInput } from './turn-origin.ts';
 import { STOP_DEADLINE } from './turn-runner.ts';
-import { reportSettlementError, userStopKey } from './turn-settlement.ts';
+import { reportSettlementError, userStopKey, userStopResultKey } from './turn-settlement.ts';
 
 /**
  * `graceMs`: how long a running tool call may take to finish before its turn is
@@ -25,9 +25,11 @@ const KEY = 'restart-handoff';
 const REQUEST_START = '\n\nThe request that turn was answering, as conversation history:\n\n<interrupted-user-messages>\n';
 const REQUEST_END = '\n</interrupted-user-messages>';
 
-export type QueuedInputOutcome = { queuedInputSession: string } | { queuedInputInterrupted: true }
-  // Older cores understand the interruption flag and can still open the handoff.
-  | { queuedInputInterrupted: true; queuedInputCompleted: true; usage: Usage | null };
+// Older cores understand the interruption flag and can still open the handoff.
+type CompletedQueuedInputOutcome = { queuedInputInterrupted: true; queuedInputCompleted: true; usage: Usage | null; sessionId?: string };
+export type QueuedInputOutcome =
+  | (({ queuedInputSession: string } | { queuedInputInterrupted: true }) & { queuedInputCompleted?: never })
+  | CompletedQueuedInputOutcome;
 
 interface Entry {
   turnId: TurnId;
@@ -53,7 +55,12 @@ function readQueuedInputOutcome(value: unknown): QueuedInputOutcome | undefined 
   if ('queuedInputSession' in value && typeof value.queuedInputSession === 'string') return { queuedInputSession: value.queuedInputSession };
   if ('queuedInputInterrupted' in value && value.queuedInputInterrupted === true) {
     if ('queuedInputCompleted' in value && value.queuedInputCompleted === true) {
-      return { queuedInputInterrupted: true, queuedInputCompleted: true, usage: readCompletedUsage('usage' in value ? value.usage : null) };
+      return {
+        queuedInputInterrupted: true,
+        queuedInputCompleted: true,
+        usage: readCompletedUsage('usage' in value ? value.usage : null),
+        sessionId: 'sessionId' in value && typeof value.sessionId === 'string' ? value.sessionId : undefined,
+      };
     }
     return { queuedInputInterrupted: true };
   }
@@ -152,6 +159,22 @@ export class RestartHandoff {
     // Retry a failed handoff write before dropping the outcome from memory.
     if (outcome !== undefined) this.#saveQueuedInputOutcome(turnId, outcome);
     this.#queuedInputOutcomes.delete(turnId);
+  }
+
+  /** Cancel the continuation without losing the completed result's session or accounting. */
+  recordUserStop(turnId: TurnId): void {
+    const { journal } = this.#core;
+    const outcome = this.#queuedInputOutcomes.get(turnId) ?? this.#entries?.get(turnId)?.queuedInput;
+    journal.db.transaction(() => {
+      journal.setSetting(userStopKey(turnId), true);
+      if (outcome?.queuedInputCompleted === true) journal.setSetting(userStopResultKey(turnId), outcome);
+    })();
+  }
+
+  stoppedQueuedInputResult(turnId: TurnId): CompletedQueuedInputOutcome | undefined {
+    const outcome = readQueuedInputOutcome(this.#core.journal.getSetting(userStopResultKey(turnId)))
+      ?? this.inheritedQueuedInputOutcome(turnId);
+    if (outcome?.queuedInputCompleted === true) return outcome;
   }
 
   #saveQueuedInputOutcome(turnId: TurnId, outcome: QueuedInputOutcome): void {

@@ -46,9 +46,11 @@ server listens, each eligible entry is handled separately:
   an error part, then gets the same continuation.
 - If an ACP attempt ended after a queued-input cancellation was requested, the
   handoff keeps the outcome when the terminal write misses the deadline.
-  Recovery records a completed answer and its reported usage, or closes an
-  acknowledged cancellation or interruption as stopped. The composer owns the
-  follow-up and respects its pause. Older cores that support interrupted queued
+  Recovery records a completed answer, its reported usage, and the session if
+  the thread still owns it. It closes an acknowledged cancellation or
+  interruption as stopped. An explicit Stop keeps any completed session and
+  usage while recovering the turn as stopped. The composer owns the follow-up
+  and respects its pause. Older cores that support interrupted queued
   input read a completed outcome as an interruption and can still recover the
   other turns in the handoff.
 
