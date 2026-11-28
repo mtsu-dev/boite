@@ -1,12 +1,13 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createLogAnonymizer, formatLogDuration, formatLogLine, parseLogRecord, RpcErrorCode, validateDiagnosticReport } from '@boite/contracts';
+import { ATTACHMENT_MAX_BYTES, createLogAnonymizer, formatLogDuration, formatLogLine, parseLogRecord, RPC_MAX_FRAME_BYTES, RpcErrorCode, validateDiagnosticReport } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import type { Core } from '../src/core.ts';
 import { Diagnostics, renderIssueBody } from '../src/diagnostics.ts';
 import { echoThread, startTestCore } from './harness.ts';
+import { rejection } from './settle.ts';
 
 test('the anonymizer replaces paths, names, addresses and private hosts and keeps ids and public services', () => {
   const anonymizer = createLogAnonymizer({
@@ -142,6 +143,7 @@ test('agents read anonymized diagnostics of the app and their own family, until 
       expect((await owner.call('diagnostics.logs', { threadId, minLevel: 'warn' })).map(record => record.event)).not.toContain('test.theirs');
       // The text is the agent's; the file's folder names the owner's home.
       expect(exported.path).toBeNull();
+      expect((await rejection(agent.call('diagnostics.exportFile', {}))).reason).toMatchObject({ rpc: { code: RpcErrorCode.Refused } });
       expect((await owner.call('diagnostics.export', {})).path).not.toBeNull();
       expect(summary.environment.providers.some(provider => provider.id === 'echo')).toBe(true);
       await owner.call('settings.set', { agentLogAccess: false });
@@ -150,6 +152,82 @@ test('agents read anonymized diagnostics of the app and their own family, until 
         catch (error) { expect((error as Error).message).toContain('turned off agent access'); }
       }
     } finally { agent.close(); }
+  } finally { await harness.stop(); }
+});
+
+test('the desktop ticket streams the complete large anonymized export with the usual file retention and permissions', async () => {
+  const harness = await startTestCore();
+  try {
+    const owner = await harness.connect();
+    const directory = join(harness.core.logs.directory, 'exports');
+    mkdirSync(directory);
+    for (let i = 0; i < 10; i += 1) writeFileSync(join(directory, `boite-diagnostics-20000101-000000-00${i}.txt`), 'older synthetic export\n');
+    const detail = 'synthetic accented é log data '.repeat(119);
+    const loggedPath = join(harness.dataDir, 'test.log');
+    for (let batch = 0; batch < 4; batch += 1) {
+      for (let line = 0; line < 400; line += 1) {
+        harness.core.logs.info(`${batch * 400 + line} ${detail} ${loggedPath}`, { source: 'test', event: 'test.large-export' });
+      }
+      await harness.core.logs.flush();
+    }
+    expect((await rejection(owner.call('diagnostics.exportFile', { path: harness.dataDir } as never))).reason).toMatchObject({ rpc: { code: RpcErrorCode.InvalidParams } });
+    const report = await owner.call('diagnostics.exportFile', {});
+    expect(report.bytes).toBeGreaterThan(ATTACHMENT_MAX_BYTES);
+    expect(report.text).toBeUndefined();
+    expect(report.url).toMatch(/^\/file\/[A-Za-z0-9_-]+$/);
+    const response = await fetch(`${harness.url}${report.url}`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toContain(report.name);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    const downloaded = Buffer.from(await response.arrayBuffer());
+    const file = join(directory, report.name);
+    expect(downloaded.length).toBe(report.bytes);
+    expect(downloaded.equals(readFileSync(file))).toBe(true);
+    const text = downloaded.toString('utf8');
+    expect(text.includes(harness.dataDir)).toBe(false);
+    expect(text.match(/test\.large-export/g)).toHaveLength(1_600);
+    expect(text.includes('1599 synthetic accented é log data')).toBe(true);
+    const names = readdirSync(directory).sort();
+    expect(names).toHaveLength(10);
+    expect(names.at(-1)).toBe(report.name);
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
+    rmSync(file);
+    expect((await fetch(`${harness.url}${report.url}`)).status).toBe(404);
+  } finally { await harness.stop(); }
+});
+
+test('the desktop can download a report over the RPC limit when the core cannot write its export', async () => {
+  const harness = await startTestCore();
+  try {
+    const owner = await harness.connect();
+    const blockedDirectory = join(harness.core.logs.directory, 'exports');
+    writeFileSync(blockedDirectory, 'exports is a file, so the core cannot create an export there');
+    const detail = `${'synthetic accented é log data '.repeat(119)} ${join(harness.dataDir, 'test.log')}`;
+    for (let batch = 0; batch < 8; batch += 1) {
+      for (let line = 0; line < 400; line += 1) {
+        harness.core.logs.info(`${batch * 400 + line} ${detail}`, { source: 'test', event: 'test.fallback-export' });
+      }
+      await harness.core.logs.flush();
+    }
+    for (let file = 0; file < 3; file += 1) {
+      const rows = Array.from({ length: 450 }, (_, line) => JSON.stringify({ id: `shell-${file}-${line}`, runId: 'test-shell', at: Date.now(), level: 'info', source: 'test', event: 'test.fallback-export', message: `${file}:${line} ${detail}` }));
+      writeFileSync(join(harness.core.logs.directory, `shell.${file}.ndjson`), `${rows.join('\n')}\n`);
+    }
+    const report = await owner.call('diagnostics.exportFile', {});
+    expect(report.bytes).toBeGreaterThan(RPC_MAX_FRAME_BYTES);
+    expect(report.text).toBeUndefined();
+    const response = await fetch(`${harness.url}${report.url}`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toContain(report.name);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    const data = Buffer.from(await response.arrayBuffer());
+    expect(data.length).toBe(report.bytes);
+    const text = data.toString('utf8');
+    expect(text.includes(harness.dataDir)).toBe(false);
+    expect(text.match(/test\.fallback-export/g)).toHaveLength(4_550);
+    expect(text.includes('2:449 synthetic accented é log data')).toBe(true);
+    harness.core.fileTickets.forgetAll();
+    expect((await fetch(`${harness.url}${report.url}`)).status).toBe(404);
   } finally { await harness.stop(); }
 });
 
@@ -262,6 +340,7 @@ test('clients report their own errors as ui records, bounded per connection, and
       expect(invented?.threadId).toBeUndefined();
       try { await phone.call('diagnostics.summary', {}); throw new Error('accepted'); }
       catch (error) { expect((error as { rpc?: { code: number } }).rpc?.code).toBe(RpcErrorCode.Refused); }
+      expect((await rejection(phone.call('diagnostics.exportFile', {}))).reason).toMatchObject({ rpc: { code: RpcErrorCode.Refused } });
     } finally { phone.close(); }
     try { await owner.call('diagnostics.report', { records: [] }); throw new Error('accepted'); }
     catch (error) { expect((error as { rpc?: { code: number } }).rpc?.code).toBe(RpcErrorCode.InvalidParams); }

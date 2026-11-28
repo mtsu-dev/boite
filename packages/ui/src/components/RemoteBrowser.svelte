@@ -15,7 +15,7 @@
   /**
    * One tab of the browser the conversation's agent drives on the machine that
    * runs it, watched and driven from any client. Without `tabId`, the agent's
-   * active tab.
+   * active tab. AgentBrowserSurface keys this viewer by tab and profile.
    */
   let { store, threadId, tabId }: { store: Store; threadId: string; tabId?: string } = $props();
   let paused = $state(false), busy = $state(false), error = $state(''), text = $state('');
@@ -114,7 +114,6 @@
   }
   const pushed = () => !pullOnly && store.core?.features?.browserStream === true && typeof store.client?.frames === 'function';
   $effect(() => { void requestWidth; void pixelRatio; untrack(() => stream?.resized()); });
-  $effect(() => { void tabId; untrack(() => { if (stream || pullOnly) { pullOnly = false; resume(); } }); });
   // A list stays with the page it was tapped on.
   $effect(() => { if (choice && (!frame || frame.width !== choice.tap.width || frame.height !== choice.tap.height || paused)) choice = null; });
 

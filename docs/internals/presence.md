@@ -128,7 +128,7 @@ next pass sets it again.
 
 Boite opens no connection off the machine for this: it writes to local
 sockets. The chat app then publishes the status to its own service, and it
-fetches the logo from Discord's CDN by the asset key. Network flow row 49
+fetches the logo from Discord's CDN by the asset key. Network flow row 50
 lists it ([network](network.md)).
 
 ## Tests

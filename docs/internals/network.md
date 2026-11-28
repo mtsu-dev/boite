@@ -61,7 +61,8 @@ the OpenCode server, protected bridges, health checks).
 | 46 | Worktree default branch lookup | The selected Git remote of the project | Making a worktree that starts from the project's default branch | Git HEAD lookup and, if the commit is missing, a fetch using the repository's Git configuration | Only for repositories with a remote | Use a project without a remote to work locally | None: initiated by creating a worktree in a project with a configured remote |
 | 47 | Model prices | `models.dev/api.json` | The first price lookup when the cached rates are missing or a day old; a lookup of an unknown model, at most once an hour and once per model; an hour after a failure | GET with the user agent `boite` and the stored ETag, IP | On | None | `modelPrices: false` |
 | 48 | Boite-managed MCP servers | The configured HTTP endpoint or the destinations opened by a configured stdio server | A connection test or an enabled server's first handshake, then tool requests | MCP messages and configured credentials; stdio launchers such as `npx` can download packages | No, install a server first | Disable or remove it in MCP Servers | `mcp: false` |
-| 49 | Discord rich presence | The chat apps on this computer (Discord, Vesktop and other arRPC clients, a bridge to Fluxer), through local sockets `discord-ipc-N`; each publishes it to its own service, and Discord fetches the logo asset from its CDN | While the `discord-presence` experiment is on and the desktop app runs | Discord application id, `Playing Boite`, the number of agents at work, their models, how many wait, the start time; project names only when Show project names is on | No: an experiment, off by default, absent from a Release | Settings > Experiments: Discord rich presence off | None yet: experimental, cut from a Release build |
+| 49 | Anonymized log download | The core selected in desktop Diagnostics, directly or through a group relay | Export anonymized logs | Short-lived file ticket; the core returns its anonymized report | No | Do not click | The export requires owner access; the connection follows the core's network policy |
+| 50 | Discord rich presence | The chat apps on this computer (Discord, Vesktop and other arRPC clients, a bridge to Fluxer), through local sockets `discord-ipc-N`; each publishes it to its own service, and Discord fetches the logo asset from its CDN | While the `discord-presence` experiment is on and the desktop app runs | Discord application id, `Playing Boite`, the number of agents at work, their models, how many wait, the start time; project names only when Show project names is on | No: an experiment, off by default, absent from a Release | Settings > Experiments: Discord rich presence off | None yet: experimental, cut from a Release build |
 
 ## Flows with no user switch
 
@@ -82,7 +83,7 @@ Each one is either blocked by a policy key or started by the user:
   `providers.allow` or in `providers.deny`; for an allowed provider they run
   only on the user's click, since choosing the agent is the administrator's
   decision and installing it is the user's.
-- Rows 31, 37, 44 and 46: user-initiated toward a destination the user chose, as
+- Rows 31, 37, 44, 46 and 49: user-initiated toward a destination the user chose, as
   the table says.
-- Row 48, the Discord rich presence: off by default and cut from a Release;
+- Row 50, the Discord rich presence: off by default and cut from a Release;
   it needs a policy key before it leaves the experiments.

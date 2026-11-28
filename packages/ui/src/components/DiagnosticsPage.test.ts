@@ -1,9 +1,15 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
-import { RpcErrorCode, type CoreLogRecord, type CoreLogsQuery } from '@boite/contracts';
+import { invoke } from '@tauri-apps/api/core';
+import { ATTACHMENT_MAX_BYTES, RpcErrorCode, type CoreLogRecord, type CoreLogsQuery } from '@boite/contracts';
 import { RpcFailure } from '../lib/client';
 import DiagnosticsPage from './DiagnosticsPage.svelte';
 import type { Store } from '../lib/store.svelte';
+
+vi.mock('@tauri-apps/api/core', async importOriginal => ({
+  ...await importOriginal<typeof import('@tauri-apps/api/core')>(),
+  invoke: vi.fn(),
+}));
 
 let running: Record<string, unknown> | null = null;
 
@@ -13,6 +19,10 @@ afterEach(() => {
   document.body.innerHTML = '';
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.mocked(invoke).mockReset();
+  delete (navigator as { share?: unknown }).share;
+  delete (navigator as { canShare?: unknown }).canShare;
 });
 
 /** `core.logs` as the core answers it: newest first, `since` and `until` inclusive, at most `limit`. */
@@ -73,6 +83,106 @@ test('a core older than the anonymized log names its machine and turns off the e
   expect((document.querySelector('[data-testid=diagnostics-report]') as HTMLButtonElement).disabled).toBe(true);
   expect(document.body.textContent).not.toContain('unknown method');
   expect(call.mock.calls.map(([method]) => method)).not.toContain('diagnostics.export');
+});
+
+test('the desktop saves an anonymized export over 5 MiB through its file ticket', async () => {
+  vi.stubGlobal('__TAURI_INTERNALS__', {});
+  const endpointUrl = 'http://127.0.0.1:4311';
+  const name = 'boite-diagnostics-test.txt';
+  const url = `/file/${'a'.repeat(64)}`;
+  const text = 'Synthetic anonymized report.\n'.repeat(200_000);
+  const bytes = new TextEncoder().encode(text).byteLength;
+  expect(bytes).toBeGreaterThan(ATTACHMENT_MAX_BYTES);
+  let refusal: string | null = null;
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === 'save_attachment' && ArrayBuffer.isView(args) && args.byteLength > ATTACHMENT_MAX_BYTES) {
+      refusal = `body: expected at most ${ATTACHMENT_MAX_BYTES} bytes, got ${args.byteLength}`;
+      throw new Error(refusal);
+    }
+    return { path: `/Downloads/${name}`, opened: false } as never;
+  });
+  const call = vi.fn(async (method: string) => {
+    if (method === 'diagnostics.exportFile') return { name, bytes, url };
+    if (method === 'diagnostics.export') return { name, text };
+    if (method === 'core.logs') return [];
+    return new Promise(() => {});
+  });
+  const store = { client: { call }, endpointUrl, owner: true, connection: 'ready', threads: [], settings: null } as unknown as Store;
+  running = mount(DiagnosticsPage, { target: document.body, props: { store } });
+  await settle();
+  document.querySelector<HTMLButtonElement>('[data-testid=diagnostics-export]')!.click();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=diagnostics-export-note]')).not.toBeNull());
+  expect(refusal).toBeNull();
+  expect(vi.mocked(invoke).mock.calls.map(([command]) => command)).toEqual(['save_attachment_url']);
+  expect(vi.mocked(invoke).mock.calls[0]?.[1]).toEqual({ name, url: `${endpointUrl}${url}`, open: false });
+  expect(document.querySelector('[data-testid=diagnostics-export-note]')?.textContent).toContain(`Saved ${name}`);
+});
+
+test.each([
+  { repeats: 1, note: 'Saved boite-diagnostics-test.txt' },
+  { repeats: 200_000, note: 'Update it in Settings, Machines and updates' },
+])('a desktop connected to an older core shows $note', async ({ repeats, note }) => {
+  vi.stubGlobal('__TAURI_INTERNALS__', {});
+  vi.stubGlobal('matchMedia', () => ({ matches: false }));
+  vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: vi.fn(() => 'blob:diagnostics'), revokeObjectURL: vi.fn() }));
+  const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const name = 'boite-diagnostics-test.txt';
+  const text = 'Synthetic report with accents é.\n'.repeat(repeats);
+  const body = new TextEncoder().encode(text);
+  vi.mocked(invoke).mockResolvedValue({ path: `/Downloads/${name}`, opened: false });
+  const call = vi.fn(async (method: string) => {
+    if (method === 'diagnostics.exportFile') throw new RpcFailure({ code: RpcErrorCode.MethodNotFound, message: `unknown method ${method}` });
+    if (method === 'diagnostics.export') return { name, text };
+    if (method === 'core.logs') return [];
+    return new Promise(() => {});
+  });
+  const store = { client: { call }, endpointUrl: 'http://127.0.0.1:4311', owner: true, connection: 'ready', threads: [], settings: null } as unknown as Store;
+  running = mount(DiagnosticsPage, { target: document.body, props: { store } });
+  await settle();
+  document.querySelector<HTMLButtonElement>('[data-testid=diagnostics-export]')!.click();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=diagnostics-export-note]')).not.toBeNull());
+  expect(document.querySelector('[data-testid=diagnostics-export-note]')?.textContent).toContain(note);
+  expect(call.mock.calls.filter(([method]) => method.startsWith('diagnostics.export')).map(([method]) => method)).toEqual(['diagnostics.exportFile', 'diagnostics.export']);
+  expect(download).not.toHaveBeenCalled();
+  if (body.byteLength <= ATTACHMENT_MAX_BYTES) {
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('save_attachment', body, expect.objectContaining({ headers: { 'x-boite-name': name, 'x-boite-open': '0' } }));
+  } else {
+    expect(invoke).not.toHaveBeenCalled();
+  }
+});
+
+test.each(['browser', 'phone'] as const)('the %s still receives the full text export', async platform => {
+  const name = 'boite-diagnostics-test.txt';
+  const text = 'Synthetic report with accents é.\n';
+  const createObjectURL = vi.fn((_file: File) => 'blob:diagnostics');
+  const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const share = vi.fn(async (_data: ShareData) => {});
+  vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL, revokeObjectURL: vi.fn() }));
+  vi.stubGlobal('matchMedia', () => ({ matches: platform === 'phone' }));
+  Object.assign(navigator, { canShare: () => true, share });
+  const call = vi.fn(async (method: string) => {
+    if (method === 'diagnostics.export') return { name, text };
+    if (method === 'core.logs') return [];
+    return new Promise(() => {});
+  });
+  const store = { client: { call }, endpointUrl: 'https://core.example', owner: true, connection: 'ready', threads: [], settings: null } as unknown as Store;
+  running = mount(DiagnosticsPage, { target: document.body, props: { store } });
+  await settle();
+  document.querySelector<HTMLButtonElement>('[data-testid=diagnostics-export]')!.click();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=diagnostics-export-note]')?.textContent).toContain(name));
+  expect(call.mock.calls.filter(([method]) => method.startsWith('diagnostics.export')).map(([method]) => method)).toEqual(['diagnostics.export']);
+  expect(invoke).not.toHaveBeenCalled();
+  if (platform === 'phone') {
+    expect(share).toHaveBeenCalledOnce();
+    const file = share.mock.calls[0]?.[0].files?.[0];
+    expect(file?.name).toBe(name);
+    expect(await file?.text()).toBe(text);
+  } else {
+    expect(download).toHaveBeenCalledOnce();
+    const file = createObjectURL.mock.calls[0]?.[0];
+    expect(file?.name).toBe(name);
+    expect(await file?.text()).toBe(text);
+  }
 });
 
 test('a problem says when it was last seen in one sentence, the relative time carrying its own "ago"', async () => {

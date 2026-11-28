@@ -51,7 +51,7 @@ Windows registry policies are not read yet; the file is the only source.
 | `quotaReads` | `false` | No quota read sends an account's token to its provider. Limits rows read "disabled" with the reason; quota resets are refused. |
 | `plugins.install` | `false` | No plugin install, reinstall or update, from the catalog or from a Git URL. Installed plugins keep running. |
 | `plugins.recommended` | `false` | The recommended plugins' Git sources are never fetched for update checks. |
-| `issueReports` | `false` | Report an issue is refused; nothing goes to GitHub. |
+| `issueReports` | `false` | Report an issue is refused; nothing goes to GitHub. The owner can still export anonymized logs from the selected core. |
 | `dictation` | `"local"`, `"off"` | `local` refuses cloud transcription engines and the cloud fallback. `off` refuses dictation and its downloads. |
 | `previews.remoteResources` | `false` | Agent-made HTML previews and views may load only their own files: a content security policy blocks remote scripts, images, styles, fonts and requests. |
 | `agentBrowser` | `false`, or `{ "searchUrl": "https://...{query}..." }` | `false` refuses every agent browser command, from an agent, the CLI or the panel. `searchUrl` is the address used for text typed in the browser's address bar that is not a URL; it must be https and contain `{query}`. |

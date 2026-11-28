@@ -26,6 +26,25 @@ beforeEach(async () => {
 });
 afterEach(async () => { agent?.close(); await harness?.stop(); });
 
+test('snapshot tickets evict old reports under the shared budget and expire even after being read', () => {
+  const tickets = new FileTickets();
+  const now = Date.now();
+  const data = new Uint8Array(ARTIFACT_MAX_BYTES / 16);
+  const file = { data, name: 'report.txt', mime: 'text/plain' };
+  const ordinary = tickets.mintBytes('ordinary', () => file, now);
+  try {
+    // Reuse the backing buffer to exercise the cumulative limit without allocating it in the test.
+    const snapshots = Array.from({ length: 17 }, () => tickets.mintSnapshot(file, now));
+    expect(tickets.bytes(snapshots[0]!, now)).toBeNull();
+    expect(tickets.bytes(snapshots[1]!, now)?.data).toBe(data);
+    const last = snapshots[16]!;
+    expect(tickets.bytes(last, now + FILE_TICKET_TTL_MS - 1)?.noStore).toBe(true);
+    expect(tickets.bytes(ordinary, now + FILE_TICKET_TTL_MS - 1)).toBe(file);
+    expect(tickets.bytes(last, now + FILE_TICKET_TTL_MS)).toBeNull();
+    expect(tickets.bytes(ordinary, now + FILE_TICKET_TTL_MS)).toBe(file);
+  } finally { tickets.forgetAll(); }
+});
+
 test('agent CLI publishes immutable PDF bytes and subscribed clients receive the card', async () => {
   await client.call('threads.subscribe', { threadId });
   const path = join(harness.dataDir, 'report with spaces.pdf');
