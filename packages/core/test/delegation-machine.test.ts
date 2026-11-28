@@ -1,9 +1,10 @@
-import { afterEach, expect, spyOn, test } from 'bun:test';
+import { afterEach, expect, jest, spyOn, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { mergeWorkingChildren, RpcErrorCode, threadState, workingChildren, type DelegatedAgent, type ModelInfo, type RpcParams, type ThreadSummary } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect, type CoreClient } from '../src/client.ts';
+import { Outbox } from '../src/delegation/outbox.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { invalidParams } from '../src/errors.ts';
@@ -630,10 +631,12 @@ test('a retried remote Stop cancels old mail and leaves later questions open', a
   const { thread: child } = await spawn('Read HOLD-ON', '--project', 'notes');
   await waitFor(() => held.has(child.id));
   const turn = pc.core.journal.runningTurn(child.id)!;
-  const requestId = 'before-stop';
-  await owner.call('delegation.send', { threadId, toThreadId: child.id, requestId, text: 'Check the old index' });
-  const mail = () => pc.core.journal.db.query('SELECT status FROM delegation_messages WHERE recipient_id = ? AND request_id = ?').get(child.id, requestId);
-  expect(mail()).toEqual({ status: 'received' });
+  const pending = 101;
+  for (let i = 0; i < pending; i++) {
+    await owner.call('delegation.send', { threadId, toThreadId: child.id, requestId: `before-stop-${i}`, text: `Check page ${i}` });
+  }
+  const mail = (status: 'received' | 'rejected') => pc.core.journal.db.query('SELECT count(*) AS count FROM delegation_messages WHERE recipient_id = ? AND status = ?').get(child.id, status);
+  expect(mail('received')).toEqual({ count: pending });
   const pause = pc.core.coordination.pause.bind(pc.core.coordination);
   pc.core.coordination.pause = () => {
     pc.core.coordination.pause = pause;
@@ -659,8 +662,41 @@ test('a retried remote Stop cancels old mail and leaves later questions open', a
   desk.core.coordination.request = request;
   await desk.core.delegation.remote.flush(pcId);
   expect(desk.core.delegation.remote.waiting(pcId).stops).toBe(0);
-  expect(mail()).toEqual({ status: 'rejected' });
+  expect(mail('rejected')).toEqual({ count: pending });
   expect(await pcOwner.call('questions.list', { threadId: child.id })).toEqual([expect.objectContaining({ id: questionId, turnId: later.id })]);
+});
+
+test('an outbox retries pending mail after the acknowledgement write fails', async () => {
+  const { pc, deskId } = await setup();
+  const acknowledged = Promise.withResolvers<void>();
+  const sent: string[][] = [];
+  const outbox = new Outbox(pc.core, 'test-report:', (_peer, entries) => {
+    sent.push(entries.map(entry => entry.key));
+    return sent.length === 1 ? acknowledged.promise : Promise.resolve();
+  });
+  jest.useFakeTimers();
+  try {
+    outbox.push(deskId, { key: 'state:child' });
+    const delivery = thrown(outbox.flush(deskId));
+    outbox.push(deskId, { key: 'result:turn' });
+    jest.advanceTimersByTime(1_000);
+    expect(sent).toEqual([['state:child']]);
+
+    pc.core.journal.db.exec(`CREATE TEMP TRIGGER reject_ack BEFORE INSERT ON settings
+      WHEN NEW.key = 'test-report:${deskId}' BEGIN SELECT RAISE(ABORT, 'injected acknowledgement write failure'); END`);
+    acknowledged.resolve();
+    try { expect(await delivery).toThrow('injected acknowledgement write failure'); }
+    finally { pc.core.journal.db.exec('DROP TRIGGER reject_ack'); }
+    expect(outbox.entries(deskId).map(entry => entry.key)).toEqual(['state:child', 'result:turn']);
+
+    jest.advanceTimersByTime(15_000);
+    await Promise.resolve();
+    expect(sent).toEqual([['state:child'], ['state:child', 'result:turn']]);
+    expect(outbox.entries(deskId)).toEqual([]);
+  } finally {
+    outbox.close();
+    jest.useRealTimers();
+  }
 });
 
 test('retrying Stop cleanup keeps the result already owed to a paused parent', async () => {

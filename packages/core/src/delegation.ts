@@ -440,8 +440,8 @@ export class Delegation {
     if (!marks.quiet) this.#kick(recipient.id);
     return letter;
   }
-  #letters(threadId: string, status: AgentLetter['status']): AgentLetter[] {
-    return (this.#core.journal.db.query('SELECT data FROM delegation_messages WHERE recipient_id = ? AND status = ? ORDER BY created_at, rowid LIMIT 100').all(threadId, status) as LetterRow[]).map(row => JSON.parse(row.data) as AgentLetter);
+  #letters(threadId: string, status: AgentLetter['status'], limit = 100): AgentLetter[] {
+    return (this.#core.journal.db.query('SELECT data FROM delegation_messages WHERE recipient_id = ? AND status = ? ORDER BY created_at, rowid LIMIT ?').all(threadId, status, limit) as LetterRow[]).map(row => JSON.parse(row.data) as AgentLetter);
   }
   #update(letter: AgentLetter, status: AgentLetter['status'], error: string | null = null): void {
     this.#core.journal.append({ type: 'delegation.delivery', threadId: letter.to.threadId, version: 1, payload: { id: letter.id, status, error } }, () => {
@@ -748,9 +748,9 @@ export class Delegation {
   /** Persists Stop and its result policy in the caller's transaction before it ends any live work. */
   #prepareStop(id: string, reportResult: boolean): () => boolean {
     const followUp = stageChildStop(this.#core, id, reportResult, this.#stepOwned(id));
-    // Reject mail already waiting when the Stop commits, even if live cleanup later yields to a new turn.
-    for (const letter of this.#letters(id, 'received')) this.#update(letter, 'rejected', 'Agent stopped');
-    for (const letter of this.#letters(id, 'uncertain')) {
+    // Reject all mail waiting when the Stop commits (SQLite LIMIT -1), even if live cleanup later yields to a new turn.
+    for (const letter of this.#letters(id, 'received', -1)) this.#update(letter, 'rejected', 'Agent stopped');
+    for (const letter of this.#letters(id, 'uncertain', -1)) {
       if (letter.error?.startsWith('Queued for provider turn ')) this.#update(letter, 'rejected', 'Agent stopped before provider delivery');
     }
     return () => this.#finishStop(id, followUp);

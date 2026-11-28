@@ -115,17 +115,19 @@ export class Outbox<T extends { key: string }> {
       if (!away) this.#core.log('warn', `${this.#prefix}${peer.name} refused ${batch.length} entries: ${messageOf(error)}`);
     } finally { this.#sending.delete(coreId); }
     if (this.#closed || this.#core.journal.isClosed()) return;
-    if (away) {
-      const attempt = this.#attempts.get(coreId) ?? 0;
-      this.#attempts.set(coreId, attempt + 1);
-      this.#schedule(coreId, RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]!);
-      return;
-    }
-    this.#attempts.delete(coreId);
+    if (away) return this.#retry(coreId);
     // An entry replaced while it was on its way stays, and goes next.
     const sent = new Map(batch.map(entry => [entry.key, JSON.stringify(entry)]));
-    this.#save(coreId, this.entries(coreId).filter(entry => sent.get(entry.key) !== JSON.stringify(entry)));
-    if (this.entries(coreId).length) this.#schedule(coreId, FLUSH_MS);
+    let pending: T[];
+    try {
+      pending = this.entries(coreId).filter(entry => sent.get(entry.key) !== JSON.stringify(entry));
+      this.#save(coreId, pending);
+    } catch (error) {
+      this.#retry(coreId);
+      throw error;
+    }
+    this.#attempts.delete(coreId);
+    if (pending.length) this.#schedule(coreId, FLUSH_MS);
   }
 
   close(): void {
@@ -137,6 +139,12 @@ export class Outbox<T extends { key: string }> {
   #save(coreId: string, entries: T[]): void {
     if (entries.length) this.#core.journal.setSetting(`${this.#prefix}${coreId}`, entries);
     else this.#core.journal.deleteSetting(`${this.#prefix}${coreId}`);
+  }
+
+  #retry(coreId: string): void {
+    const attempt = this.#attempts.get(coreId) ?? 0;
+    this.#attempts.set(coreId, attempt + 1);
+    this.#schedule(coreId, RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]!);
   }
 
   #schedule(coreId: string, delay: number): void {
