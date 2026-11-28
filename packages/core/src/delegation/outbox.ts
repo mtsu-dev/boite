@@ -29,14 +29,20 @@ function batchOf<T>(entries: T[]): T[] {
   return batch;
 }
 
-/** Complete the other entries even if one write fails. An idempotent batch can be replayed. */
-export function receiveOutboxBatch<T>(entries: T[], receive: (entry: T) => void, warn: (error: unknown) => void): boolean {
+/** Replay on failed writes, leaving later entries for the same ordered key until the retry. */
+export function receiveOutboxBatch<T>(entries: T[], receive: (entry: T) => void, warn: (error: unknown) => void, orderedBy?: (entry: T) => string | undefined): boolean {
+  const blocked = new Set<string>();
   let retry = false;
   for (const entry of entries) {
+    const key = orderedBy?.(entry);
+    if (key !== undefined && blocked.has(key)) continue;
     try { receive(entry); }
     catch (error) {
       warn(error);
-      if (!(error instanceof RpcFailure)) retry = true;
+      if (!(error instanceof RpcFailure)) {
+        retry = true;
+        if (key !== undefined) blocked.add(key);
+      }
     }
   }
   return retry;
@@ -56,14 +62,10 @@ export class Outbox<T extends { key: string }> {
   readonly #core: Core;
   readonly #prefix: string;
   readonly #deliver: (peer: CoordinationPeer, entries: T[]) => Promise<unknown>;
-  readonly #merge: (kept: T, next: T) => T;
-
-  constructor(core: Core, prefix: string, deliver: (peer: CoordinationPeer, entries: T[]) => Promise<unknown>,
-    merge: (kept: T, next: T) => T = (_kept, next) => next) {
+  constructor(core: Core, prefix: string, deliver: (peer: CoordinationPeer, entries: T[]) => Promise<unknown>) {
     this.#core = core;
     this.#prefix = prefix;
     this.#deliver = deliver;
-    this.#merge = merge;
   }
 
   entries(coreId: string): T[] { return (this.#core.journal.getSetting(`${this.#prefix}${coreId}`) as T[] | undefined) ?? []; }
@@ -71,8 +73,7 @@ export class Outbox<T extends { key: string }> {
   /** An entry replaces the one waiting under its key. */
   push(coreId: string, entry: T): void {
     const entries = this.entries(coreId);
-    const kept = entries.find(waiting => waiting.key === entry.key);
-    this.#save(coreId, [...entries.filter(waiting => waiting.key !== entry.key), kept ? this.#merge(kept, entry) : entry]);
+    this.#save(coreId, [...entries.filter(waiting => waiting.key !== entry.key), entry]);
     this.#schedule(coreId, FLUSH_MS);
   }
 

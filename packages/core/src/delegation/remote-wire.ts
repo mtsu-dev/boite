@@ -48,7 +48,7 @@ export interface Report {
   at: number;
   state?: ChildState;
   removed?: true;
-  letter?: { origin: 'result' | 'question' | 'agent'; requestId: string; text: string; checkpoint?: true };
+  letter?: { origin: 'result' | 'question' | 'agent'; requestId: string; text: string; checkpoint?: true; owed?: true };
 }
 
 /**
@@ -97,8 +97,31 @@ export function appliedStop(link: ParentLink | undefined): number {
   return typeof link?.stop === 'number' ? link.stop : 0;
 }
 
-export function attachedStop(raw: Record<string, unknown>): StopIntent {
+function attachedStop(raw: Record<string, unknown>): StopIntent {
   return { seq: stopSequence(raw.stop, 'delegation.letter.stop'), workflow: raw.workflowStop === true ? true : undefined, silent: raw.silentStop === true ? true : undefined };
+}
+
+export function attachedStops(raw: Record<string, unknown>): StopIntent[] {
+  if (raw.stop === undefined) return [];
+  const latest = attachedStop(raw);
+  if (raw.earlierStops === undefined) return [latest];
+  if (!Array.isArray(raw.earlierStops)) throw invalidParams('delegation.letter.earlierStops: expected a list');
+  const stops = [...raw.earlierStops.map(entry => attachedStop(entry ?? {})), latest];
+  if (stops.some((stop, index) => index > 0 && stop.seq <= stops[index - 1]!.seq)) {
+    throw invalidParams('delegation.letter.earlierStops: expected stops in increasing order before the latest stop');
+  }
+  return stops;
+}
+
+/** Keep the latest Stop in the original fields for members on an earlier version. */
+export function stopsForLetter(entries: Stop[], childId: string) {
+  const earlier = entries.filter(stop => stop.childId === childId).sort((a, b) => a.seq - b.seq);
+  const latest = earlier.pop();
+  if (!latest) return {};
+  return {
+    stop: latest.seq, workflowStop: latest.workflow, silentStop: latest.silent,
+    ...(earlier.length ? { earlierStops: earlier.map(stop => ({ stop: stop.seq, workflowStop: stop.workflow, silentStop: stop.silent })) } : {}),
+  };
 }
 
 export function trackWorkflowStop(record: RemoteChild, next: () => number): number {

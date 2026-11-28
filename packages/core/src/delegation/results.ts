@@ -67,14 +67,15 @@ export function sendChildResult(core: Core, turn: Turn, child: ThreadSummary, pa
   const result = delegation.result(turn, followUp && !delegation.delegated(child.id) ? 'thread' : 'delegate', RESULT_TEXT - head.length - 1 - tail.length);
   const text = `${`${head}\n${result ?? 'No text result was returned.'}`.slice(0, RESULT_TEXT - tail.length)}${tail}`;
   const requestId = `result:${turn.id}`;
+  const owed = hasComposerResult(core, turn.id);
   const send = () => {
-    if (remote) delegation.remote.letter(child.id, { origin: 'result', requestId, text, ...(checkpoint ? { checkpoint: true } : {}) });
+    if (remote) delegation.remote.letter(child.id, { origin: 'result', requestId, text, ...(checkpoint ? { checkpoint: true } : owed ? { owed: true } : {}) });
     else delegation.send({ threadId: child.id, toThreadId: parentId, requestId, text }, 'result', {
       ...(checkpoint ? { checkpoint: true } : {}), ...(quietResult(core, child.id, turn) ? { quiet: true } : {}),
     });
   };
   try {
-    if (hasComposerResult(core, turn.id)) core.bus.afterCommit(() => core.journal.db.transaction(() => {
+    if (owed) core.bus.afterCommit(() => core.journal.db.transaction(() => {
       send();
       clearComposerResult(core, turn.id);
     })());

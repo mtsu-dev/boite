@@ -722,7 +722,7 @@ export class Delegation {
     const live = () => this.#core.workflows.active(root.id)
       || (wake?.execution?.operation === 'delegation' && ['queued', 'running'].includes(wake.status))
       || children.some(row => childBusy(this.#core, this.#core.threads.require(row.thread_id)))
-      || this.remote.busy(root.id)
+      || this.remote.busy(root.id, true)
       || this.#core.journal.db.query("SELECT 1 FROM delegation_messages WHERE root_id = ? AND status = 'received' LIMIT 1").get(root.id) !== null;
     const pausing = !thread.parentThreadId && !agentId && live();
     if (pausing) this.#pause(root.id, by, at);

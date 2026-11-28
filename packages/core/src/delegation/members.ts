@@ -1,8 +1,8 @@
-import { delegationNeeds, threadBusy, type DelegatedAgent, type ThreadSummary } from '@boite/contracts';
+import { delegationNeeds, threadBusy, type AgentLetter, type DelegatedAgent, type ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { withLoad } from '../threads/records.ts';
 import { pendingComposerFollowUp, taskTurn } from './completion.ts';
-import type { ChildState } from './remote-wire.ts';
+import type { ChildState, RemoteChild } from './remote-wire.ts';
 import { turnResult } from './results.ts';
 
 /** Load and the derived live fields arrive in thread.updated without changing team history. */
@@ -31,6 +31,27 @@ export function localMember(core: Core, row: { thread_id: string; profile_id: st
     ...(needsInput ? { needsInput } : {}), ...(worktree ? { worktree } : {}) };
 }
 
+export function remoteMember(rootId: string, record: RemoteChild): DelegatedAgent {
+  const state = record.state!, childId = record.childId!;
+  const lastTurn = state.lastTurn;
+  const terminal = lastTurn !== null && !['queued', 'running'].includes(lastTurn.status) && !state.restarting;
+  const wait = state.thread.backgroundWait?.state;
+  return {
+    thread: { ...state.thread, parentThreadId: rootId }, profileId: record.profileId, task: record.task, lastTurn, result: state.result,
+    ...(terminal && wait !== 'waiting' ? { resultRef: { agentId: childId, turnId: lastTurn.id }, settlement: wait === 'interrupted' ? 'settled' as const : 'result_available' as const } : lastTurn === null ? { settlement: 'settled' as const } : {}),
+    ...(state.needsInput?.length ? { needsInput: state.needsInput } : {}), ...(state.worktree ? { worktree: state.worktree } : {}),
+    machine: { coreId: record.coreId, name: record.machine },
+  };
+}
+
+/** An unanswered start may already be working. A restart cut is still at work too. */
+export function remoteChildBusy(record: RemoteChild): boolean {
+  const state = record.state;
+  if (record.childId === null || !state) return !record.stopping;
+  return state.restarting === true || (state.lastTurn !== null && ['queued', 'running'].includes(state.lastTurn.status))
+    || ['queued', 'running', 'waiting'].includes(state.thread.status) || state.thread.backgroundWait?.state === 'waiting';
+}
+
 /** Questions in a child's own conversation that its parent needs to see. */
 export function childQuestions(core: Core, rootId: string): NonNullable<ThreadSummary['subagentQuestions']> {
   const local = [...new Set(core.threads.listQuestions().map(question => question.threadId))].flatMap(threadId => {
@@ -40,6 +61,15 @@ export function childQuestions(core: Core, rootId: string): NonNullable<ThreadSu
   const remote = core.delegation.remote.members(rootId, true).filter(agent => !agent.thread.archived && agent.needsInput?.some(input => input.kind === 'question'))
     .map(agent => ({ threadId: agent.thread.id, title: agent.thread.title, machine: agent.machine! }));
   return [...local, ...remote];
+}
+
+/** Expire mail about questions the member has already closed. */
+export function closeRemoteQuestions(core: Core, sender: string, state: ChildState, update: (letter: AgentLetter, status: 'expired', error: string) => void): void {
+  const open = new Set((state.needsInput ?? []).map(need => need.id));
+  const rows = core.journal.db.query("SELECT data, request_id FROM delegation_messages WHERE sender_id = ? AND request_id GLOB 'question:*' AND status = 'received'").all(sender) as { data: string; request_id: string }[];
+  for (const row of rows) {
+    if (!open.has(row.request_id.slice('question:'.length))) update(JSON.parse(row.data) as AgentLetter, 'expired', 'The question closed before it was delivered');
+  }
 }
 
 /** An unfinished turn or a child between turns with work still pending. */

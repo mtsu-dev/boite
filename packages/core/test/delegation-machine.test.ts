@@ -604,6 +604,143 @@ test('a remote Stop is retried when its intent could not be stored', async () =>
   expect(pc.core.delegation.remote.parentOf(child.id)?.stop).toBeGreaterThan(0);
 });
 
+test('a remote Stop resumes applying its committed intent after cleanup fails', async () => {
+  const { held } = answering();
+  const { desk, pc, owner, threadId, pcId, spawn } = await setup();
+  const { thread: child } = await spawn('Read HOLD-ON', '--project', 'notes');
+  await waitFor(() => held.has(child.id));
+  const turn = pc.core.journal.runningTurn(child.id)!;
+  const pause = pc.core.coordination.pause.bind(pc.core.coordination);
+  pc.core.coordination.pause = id => {
+    pc.core.coordination.pause = pause;
+    throw new Error(`injected coordination pause failure for ${id}`);
+  };
+  await owner.call('delegation.stop', { threadId, agentId: child.id });
+  await desk.core.delegation.remote.flush(pcId);
+  expect(pc.core.journal.getSetting(userStopKey(turn.id))).toBe(true);
+  expect(desk.core.delegation.remote.waiting(pcId).stops).toBe(1);
+  await desk.core.delegation.remote.flush(pcId);
+  expect(held.has(child.id)).toBe(false);
+  await waitFor(() => pc.core.journal.getTurn(turn.id)?.status === 'stopped');
+});
+
+test.each(['before delivery', 'after delivery', 'with a write retry', 'between two targeted Stops of a queued turn'] as const)('an owed remote result survives team Stop %s', async when => {
+  const { held, wakes } = answering();
+  const { desk, pc, owner, threadId, deskId, pcId, spawn } = await setup();
+  const queued = when === 'between two targeted Stops of a queued turn';
+  if (queued) {
+    const updating = spyOn(pc.core.updates, 'holds').mockReturnValue(true);
+    restores.push(() => updating.mockRestore());
+  }
+  const { thread: child } = await spawn('Read HOLD-ON', '--project', 'notes');
+  const current = () => pc.core.journal.listTurns(child.id).at(-1);
+  await waitFor(() => queued ? current()?.status === 'queued' : held.has(child.id));
+  const turn = current()!;
+  const config = desk.core.delegation.config(threadId);
+  const report = pc.core.coordination.request.bind(pc.core.coordination);
+  let away = true;
+  pc.core.coordination.request = (peer, operation, payload) => operation === 'delegation.report' && away
+    ? Promise.reject(new Error('parent offline')) : report(peer, operation, payload);
+  await owner.call('delegation.stop', { threadId, agentId: child.id });
+  if (when === 'after delivery') await desk.core.delegation.remote.flush(pcId);
+  await owner.call('delegation.stop', { threadId });
+  expect(desk.core.delegation.config(threadId).paused).toBe(true);
+  if (queued) await owner.call('delegation.stop', { threadId, agentId: child.id });
+  if (when === 'with a write retry') {
+    const record = pc.core.threads.handoff.recordUserStop.bind(pc.core.threads.handoff);
+    pc.core.threads.handoff.recordUserStop = () => {
+      pc.core.threads.handoff.recordUserStop = record;
+      throw new Error('injected targeted Stop write failure');
+    };
+    await desk.core.delegation.remote.flush(pcId);
+    expect(held.has(child.id)).toBe(true);
+  }
+  await desk.core.delegation.remote.flush(pcId);
+  await waitFor(() => pc.core.journal.getTurn(turn.id)?.status === 'stopped');
+  await waitFor(() => pc.core.delegation.remote.waiting(deskId).reports > 0);
+  away = false;
+  await pc.core.delegation.remote.flush(deskId);
+  const letters = () => desk.core.journal.db.query('SELECT status FROM delegation_messages WHERE sender_id = ? AND request_id = ?')
+    .all(`${pcId}:${child.id}`, `result:${turn.id}`);
+  expect(letters()).toEqual([{ status: 'received' }]);
+  expect(wakes(threadId)).toBe(0);
+  await owner.call('delegation.configure', { threadId, config });
+  await waitFor(() => wakes(threadId) === 1);
+  expect(letters()).toHaveLength(1);
+});
+
+test('a remote instruction applies pending Stops in order before opening its own turn', async () => {
+  const { held } = answering();
+  const { desk, pc, owner, threadId, deskId, pcId, spawn } = await setup();
+  const { thread: child } = await spawn('Read HOLD-ON', '--project', 'notes');
+  await waitFor(() => held.has(child.id));
+  const first = pc.core.journal.runningTurn(child.id)!;
+  const request = desk.core.coordination.request.bind(desk.core.coordination);
+  let away = true;
+  desk.core.coordination.request = (peer, operation, payload) => operation === 'delegation.stop' && away
+    ? Promise.reject(new Error('Stop batch delayed')) : request(peer, operation, payload);
+  const config = desk.core.delegation.config(threadId);
+  await owner.call('delegation.stop', { threadId, agentId: child.id });
+  await owner.call('delegation.stop', { threadId });
+  await owner.call('delegation.configure', { threadId, config });
+  await owner.call('delegation.send', { threadId, toThreadId: child.id, requestId: 'new-page', text: 'Read another page HOLD-ON' });
+  await waitFor(() => held.has(child.id) && pc.core.journal.runningTurn(child.id)?.id !== first.id);
+  const second = pc.core.journal.runningTurn(child.id)!;
+  await pc.core.delegation.remote.flush(deskId);
+  const result = (turnId: string) => desk.core.journal.db.query('SELECT 1 FROM delegation_messages WHERE sender_id = ? AND request_id = ?')
+    .get(`${pcId}:${child.id}`, `result:${turnId}`);
+  expect(result(first.id)).not.toBeNull();
+  await owner.call('delegation.stop', { threadId });
+  expect(desk.core.delegation.remote.waiting(pcId).stops).toBeGreaterThan(0);
+  away = false;
+  await desk.core.delegation.remote.flush(pcId);
+  await waitFor(() => pc.core.journal.getTurn(second.id)?.status === 'stopped');
+  await owner.call('delegation.configure', { threadId, config });
+  await pc.core.delegation.remote.flush(deskId);
+  expect(result(second.id)).toBeNull();
+});
+
+test('a team Stop waits for an unnamed remote child to report', async () => {
+  const { held } = answering();
+  const { desk, pc, owner, threadId, pcId, deskId, machine, cli, childrenOnPc } = await setup();
+  const request = desk.core.coordination.request.bind(desk.core.coordination);
+  desk.core.coordination.request = async (peer, operation, payload) => {
+    const answer = await request(peer, operation, payload);
+    if (operation === 'delegation.start') throw new Error('lost start reply');
+    return answer;
+  };
+  const report = pc.core.coordination.request.bind(pc.core.coordination);
+  let away = true;
+  pc.core.coordination.request = (peer, operation, payload) => operation === 'delegation.report' && away
+    ? Promise.reject(new Error('parent offline')) : report(peer, operation, payload);
+  expect((await cli(['delegate', 'spawn', 'Read HOLD-ON', '--machine', machine, '--project', 'notes', '--request-id', 'stop-lost'])).err).toContain('lost start reply');
+  const child = childrenOnPc()[0]!;
+  await waitFor(() => held.has(child.id));
+  expect(desk.core.delegation.remote.record(threadId, 'stop-lost')?.childId).toBeNull();
+  expect(await owner.call('delegation.stop', { threadId })).toEqual({ stopped: 1 });
+  expect(desk.core.delegation.config(threadId).paused).toBe(true);
+  away = false;
+  await pc.core.delegation.remote.flush(deskId);
+  await desk.core.delegation.remote.flush(pcId);
+  expect(held.has(child.id)).toBe(false);
+});
+
+test('a null remote letter does not block the report batch', async () => {
+  const { held } = answering();
+  const { desk, pc, threadId, deskId, pcId, spawn } = await setup();
+  const { thread: child } = await spawn('Read HOLD-ON', '--project', 'notes');
+  await waitFor(() => held.has(child.id));
+  const peer = pc.core.group.peers().find(member => member.coreId === deskId)!;
+  const link = pc.core.delegation.remote.parentOf(child.id)!;
+  const base = { parentId: threadId, childId: child.id, requestId: link.requestId, at: Date.now() };
+  const result = await pc.core.coordination.request(peer, 'delegation.report', { reports: [
+    { ...base, letter: null }, { ...base, letter: { origin: 'agent', requestId: 'valid-letter', text: 'A valid letter' } },
+  ] });
+  expect(result).toEqual({ ok: true });
+  expect(desk.core.journal.db.query('SELECT 1 FROM delegation_messages WHERE sender_id = ? AND request_id = ?')
+    .get(`${pcId}:${child.id}`, 'valid-letter')).not.toBeNull();
+});
+
 test.each(['running', 'queued'] as const)('a remote team Stop of a %s turn sends no result when the parent resumes before reports arrive', async status => {
   const { held } = answering();
   const { desk, pc, owner, threadId, deskId, pcId, spawn } = await setup();
