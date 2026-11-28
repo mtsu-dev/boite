@@ -26,7 +26,7 @@ import type { Settings } from './settings.ts';
  * feature leaves this list once nothing reads its id: an app or a core that
  * hears an id it does not know drops it.
  */
-export const EXPERIMENT_IDS = ['resident-agents', 'draft-backdrop', 'contacts', 'teams', 'auto-goal', 'session-import', 'background-compaction', 'device-stream'] as const;
+export const EXPERIMENT_IDS = ['resident-agents', 'draft-backdrop', 'contacts', 'teams', 'auto-goal', 'session-import', 'background-compaction', 'device-stream', 'discord-presence'] as const;
 export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
 
 /**
@@ -63,6 +63,7 @@ export const EXPERIMENT_STAGES: Record<ExperimentId, FeatureStage> = {
   'session-import': 'nightly',
   'background-compaction': 'nightly',
   'device-stream': 'nightly',
+  'discord-presence': 'nightly',
 };
 
 /**
@@ -71,7 +72,7 @@ export const EXPERIMENT_STAGES: Record<ExperimentId, FeatureStage> = {
  * not connected yet changes nothing. Each names its setting and the value it
  * reads as in a build below its tag (`holdExperimentalSettings`). The
  * Experiments page shows them beside the app's switches and writes the
- * setting. The others (`teams`, `session-import`, `draft-backdrop`) are an
+ * setting. The others (`teams`, `session-import`, `draft-backdrop`, `discord-presence`) are an
  * app's choice, and the core gates its side of them on its own version
  * (`featureRuns`), whatever an app reports.
  */
@@ -155,6 +156,7 @@ declare global {
   const __BOITE_HAS_AUTO_GOAL__: boolean | undefined;
   const __BOITE_HAS_CONTACTS__: boolean | undefined;
   const __BOITE_HAS_TEAMS__: boolean | undefined;
+  const __BOITE_HAS_DISCORD_PRESENCE__: boolean | undefined;
 }
 
 /** The kind this bundle was compiled as, or null when it runs from source. */
@@ -185,13 +187,16 @@ export function featureDefines(version: string | null | undefined, stages: Recor
  * gives, in the module its lazy entry loads; `scripts/ci/feature-cut.ts`
  * fails a build whose bundle holds the marker of a feature above its kind,
  * and one that lost the marker of a feature it must hold. The new thread
- * background is drawn by the app alone, so the core has nothing of it to cut.
+ * background is drawn by the app alone, so the core has nothing of it to cut;
+ * the rich presence has a part on each side: the app's words and settings,
+ * the core's connection to the chat apps.
  */
 export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boolean }>> = {
   'draft-backdrop': { ui: true, core: false },
   'auto-goal': { ui: true, core: true },
   contacts: { ui: true, core: false },
   teams: { ui: true, core: true },
+  'discord-presence': { ui: true, core: true },
 };
 
 const MARKED: string[] = [];

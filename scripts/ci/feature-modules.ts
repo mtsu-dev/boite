@@ -72,6 +72,19 @@ export const FEATURE_MODULES: Partial<Record<ExperimentId, { ui: string[]; core:
       'packages/core/src/teams/snapshots.ts',
       'packages/core/src/teams/store.ts',
       'packages/core/src/team-cli.ts',
+      ],
+    },
+  'discord-presence': {
+    ui: [
+      'packages/ui/src/components/presence/PresenceSettings.svelte',
+      'packages/ui/src/lib/presence/activity.ts',
+      'packages/ui/src/lib/presence/feature.ts',
+      'packages/ui/src/lib/presence/publisher.svelte.ts',
+    ],
+    core: [
+      'packages/core/src/presence/ipc.ts',
+      'packages/core/src/presence/rpc.ts',
+      'packages/core/src/presence/service.ts',
     ],
   },
 };
@@ -81,6 +94,7 @@ export const FEATURE_DIRECTORIES: Partial<Record<ExperimentId, string[]>> = {
   contacts: ['packages/ui/src/components/home', 'packages/ui/src/components/shared'],
   'draft-backdrop': ['packages/ui/src/components/backdrop', 'packages/ui/src/lib/backdrop'],
   teams: ['packages/ui/src/components/teams', 'packages/core/src/teams'],
+  'discord-presence': ['packages/ui/src/components/presence', 'packages/ui/src/lib/presence', 'packages/core/src/presence'],
 };
 
 /** Files of those directories that every build holds. */

@@ -29,6 +29,10 @@ export const strings = {
     'device-stream': {
       title: 'Live device stream',
       hint: 'The Device panel plays an Android phone plugged into this machine as live video through scrcpy, and sends touches, keys, text and the clipboard through it. Applies to this machine. Not ready for everyday use'
+    },
+    'discord-presence': {
+      title: 'Discord rich presence',
+      hint: 'Shows Playing Boite in your Discord profile, with what your agents are doing: their number, their models and how long they have been working. Works with Discord, Vesktop, Legcord and the other clients that read rich presence, and with any app that reads the same socket, such as the bridges to Fluxer. Desktop app only'
     }
   }
 } as const;

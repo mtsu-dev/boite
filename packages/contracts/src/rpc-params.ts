@@ -1,6 +1,7 @@
 import type { RpcMethodName, RpcMethods } from './index.ts';
 import { checkSettingsPatch } from './settings-validation.ts';
 import { streamChannelsProblem } from './stream-channels.ts';
+import { presenceParamsProblem } from './presence.ts';
 import { MESSAGE_SEARCH_QUERY_LIMIT, MESSAGE_SEARCH_RESULT_LIMIT } from './message-search.ts';
 
 export type RpcParamsCheck<T = unknown> =
@@ -60,6 +61,10 @@ const RPC_PARAMS: { readonly [M in RpcMethodName]?: (params: unknown) => RpcPara
   'messages.list': params => {
     const problem = checkProjectionFlags(params, true);
     return problem ? { ok: false, ...problem } : { ok: true, params: params as RpcMethods['messages.list']['params'] };
+  },
+  'presence.set': params => {
+    const problem = presenceParamsProblem(params);
+    return problem ? { ok: false, ...problem } : { ok: true, params: params as RpcMethods['presence.set']['params'] };
   },
   'messages.toolPart': params => {
     const diffsOnly = (params as { diffsOnly?: unknown } | null)?.diffsOnly;

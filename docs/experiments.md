@@ -3,13 +3,15 @@
 Experiments are features that are not finished yet. They can change or
 disappear, so each one has a switch in Settings, Experiments.
 
-Seven experiments exist today: the [new thread background](#new-thread-background),
+Eight experiments exist today: the [new thread background](#new-thread-background),
 [Contacts](contacts.md), [Teams](mochis.md#teams),
 [automatic goals](goals.md#automatic-goals), session import,
-[background compaction](context.md) and the
-[live device stream](devices.md#live-device-stream). The last six were on in
-every build for a few days from 2026-11-20 and came back here on 2026-11-26:
-they had not been tried enough in real use.
+[background compaction](context.md), the
+[live device stream](devices.md#live-device-stream) and the
+[Discord rich presence](#discord-rich-presence). Contacts, Teams, automatic
+goals, session import, background compaction and the live device stream were
+on in every build for a few days from 2026-11-20 and came back here on
+2026-11-26: they had not been tried enough in real use.
 
 ## Where they exist
 
@@ -63,6 +65,27 @@ read.
 The pick belongs to the device. A device that asks for reduced motion gets a
 still picture. On a device whose browser cannot draw it, the screen stays as
 it was.
+
+## Discord rich presence
+
+Your Discord profile shows "Playing Boite" while the desktop app is open,
+with what your agents do: how many work, on which models, how many wait for
+your answer, and for how long. Friends who open your profile also see a
+button to Boite's page.
+
+1. In Settings, Experiments, turn on Discord rich presence.
+2. Open Discord. The status appears within 15 seconds.
+
+Under the switch, a preview shows what your friends see, and a line says
+which apps show it now. Project names stay hidden unless you turn on Show
+project names. Private conversations are never counted. When you turn the
+switch off or close the app, the status goes away.
+
+It works with the Discord app and its Canary and PTB builds, and with
+Vesktop, Legcord, Equibop, WebCord and other clients that show a Discord
+status. Root and Fluxer have no way to show one yet: a Fluxer user can run a
+community bridge that copies it, and Boite shows it there and in Discord at
+the same time. Only the desktop app sets it, on the computer it runs on.
 
 ## Finished experiments
 

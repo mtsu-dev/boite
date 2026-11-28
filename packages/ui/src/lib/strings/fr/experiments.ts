@@ -30,6 +30,10 @@ export const fr: Translation = {
     'device-stream': {
       title: 'Flux en direct de l’appareil',
       hint: 'Le panneau Appareil affiche en vidéo un téléphone Android branché à cette machine via scrcpy, et lui envoie les touchers, les touches, le texte et le presse-papiers. S’applique à cette machine. Pas encore prêt pour un usage quotidien'
+    },
+    'discord-presence': {
+      title: 'Statut Discord',
+      hint: 'Affiche « Joue à Boite » dans votre profil Discord, avec ce que font vos agents : leur nombre, leurs modèles et depuis combien de temps ils travaillent. Marche avec Discord, Vesktop, Legcord et les autres clients qui lisent ce statut, et avec toute application qui lit le même canal, comme les passerelles vers Fluxer. Application de bureau seulement'
     }
   }
 };

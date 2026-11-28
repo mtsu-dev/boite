@@ -81,6 +81,7 @@ import { strings as controls } from './strings/en/controls';
 import { strings as settings } from './strings/en/settings';
 import { strings as keyboard } from './strings/en/keyboard';
 import { strings as experiments } from './strings/en/experiments';
+import { strings as presence } from './strings/en/presence';
 import { strings as features } from './strings/en/features';
 import { strings as quotas } from './strings/en/quotas';
 import { strings as harnessUpdates } from './strings/en/harnessUpdates';
@@ -183,6 +184,7 @@ export const strings = {
   ...settings,
   ...keyboard,
   ...experiments,
+  ...presence,
   ...features,
   ...quotas,
   ...harnessUpdates,
