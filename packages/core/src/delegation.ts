@@ -764,10 +764,11 @@ export class Delegation {
     const turn = this.#core.scheduler.stop(id), busy = turn || waiting || queuedFollowUp;
     closeQuestions(this.#core, id, 'the core, since the subagent was stopped');
     this.#core.threads.releaseAgent(id);
-    // A turn it stops settles its worktree as it ends, and a workflow step's run settles its own; one at rest settles now.
-    if (!turn && !this.#core.workflows.owns(id)) void this.worktrees.settle(id);
-    if (queuedFollowUp) this.#core.workflows.finishComposerTurn(last);
-    else this.#core.workflows.stepStopped(id);
+    // Turn completion and workflows settle their own worktrees.
+    if (!turn && !queuedFollowUp && !this.#core.workflows.owns(id)) void this.worktrees.settle(id);
+    if (!queuedFollowUp) this.#core.workflows.stepStopped(id);
+    else if (this.#core.workflows.owns(id)) this.#core.workflows.finishComposerTurn(last);
+    else this.#finished(last);
     for (const letter of this.#letters(id, 'received')) this.#update(letter, 'rejected', 'Agent stopped');
     for (const letter of this.#letters(id, 'uncertain')) {
       if (letter.error?.startsWith('Queued for provider turn ')) this.#update(letter, 'rejected', 'Agent stopped before provider delivery');

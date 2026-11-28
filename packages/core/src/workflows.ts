@@ -758,6 +758,7 @@ export class Workflows {
     if (this.#closed || this.#core.journal.isClosed()) return 0;
     const runs = this.#runsWhere("status = 'running'");
     for (const run of runs) this.#advance(run.id);
+    for (const run of this.#runsWhere("status = 'paused'")) this.#settle(run.id);
     for (const run of this.#runsWhere("status IN ('done', 'failed') AND json_extract(data, '$.delivered') = 0")) this.#deliver(run.id);
     return runs.length;
   }

@@ -252,10 +252,13 @@ test.each([
   ['core restart after switching back', 'completed with terminal persistence unavailable'],
   ['core restart after switching away again', 'completed with terminal persistence unavailable'],
   ['core restart of a subagent', 'acknowledged'],
+  ['core restart of a subagent followed by Stop', 'acknowledged'],
   ['core restart of a subagent', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart of a workflow step', 'acknowledged'],
+  ['core restart of a workflow step followed by a queued goal', 'acknowledged'],
   ['core restart of a workflow step', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart of a workflow step', 'completed with terminal persistence unavailable'],
+  ['core restart of a paused workflow step', 'completed with terminal persistence unavailable'],
   ['core restart of a workflow step', 'explicit stop before acknowledgement with terminal persistence unavailable'],
   ['core restart', 'rejected with terminal persistence unavailable'],
   ['core restart', 'rejected with a blocked working-folder check'],
@@ -268,8 +271,11 @@ test.each([
   const switchAgain = interruption === 'core restart after switching away again';
   const switchAway = interruption === 'core restart after switching away' || switchAgain;
   const switchBack = interruption === 'core restart after switching back' || switchAgain;
-  const subagent = interruption === 'core restart of a subagent';
-  const workflow = interruption === 'core restart of a workflow step' ? await acpWorkflowStep(client) : undefined;
+  const subagent = interruption.startsWith('core restart of a subagent');
+  const stopFollowUp = interruption === 'core restart of a subagent followed by Stop';
+  const queuedGoal = interruption === 'core restart of a workflow step followed by a queued goal';
+  const pausedWorkflow = interruption === 'core restart of a paused workflow step';
+  const workflow = interruption.startsWith('core restart of a workflow step') || pausedWorkflow ? await acpWorkflowStep(client) : undefined;
   if (noLoad) process.env['ACP_FAKE_NO_LOAD'] = '1';
   const threadId = workflow?.threadId ?? await (subagent ? acpSubagent(client) : acpThread(client));
   const first = harness!;
@@ -297,10 +303,10 @@ test.each([
   if (workflow) expect(core.workflows.get(workflow.rootId, workflow.runId).status).toBe('running');
   if (!noLoad) await waitFor(() => core.threads.require(threadId).sessionId !== null);
   const queued = [{ id: 'permission-race-follow-up', text: reportsUsage ? 'Queued after the mode change [usage]' : 'Queued after the mode change', attachments: [] }];
-  const setPaused = async (paused: boolean) => {
+  const setPaused = async (paused: boolean, entries = queued) => {
     const current = core.composer.storage.get('inputs', threadId);
     const saved = await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: current.revision,
-      value: { input: { text: '', attachments: [], paused, queued } } });
+      value: { input: { text: '', attachments: [], paused, queued: entries } } });
     expect(saved.accepted).toBe(true);
   };
   await setPaused(false);
@@ -308,7 +314,12 @@ test.each([
   writeFileSync(`${logFile}.second`, 'ready');
   await waitFor(() => fakeLog().includes('session/cancel'));
   if (noLoad) expect(core.threads.require(threadId).sessionId).toBeNull();
+  if (queuedGoal) queued[0]!.text = '/goal Read the follow-up';
   await setPaused(true);
+  if (workflow && pausedWorkflow) {
+    const paused = await client.call('workflows.control', { threadId: workflow.rootId, runId: workflow.runId, action: 'pause' });
+    expect(paused.status).toBe('paused');
+  }
   const stop = spyOn(core.threads.runner.handles.get(threadId)!, 'stop');
   const duringHandoff = outcome === 'acknowledged during handoff with terminal persistence unavailable' || (explicitStop && unavailable);
   const blockedFolderCheck = outcome === 'rejected with a blocked working-folder check';
@@ -408,6 +419,37 @@ test.each([
     else if (retrySettlement) expect(terminalWrites).toBe(2);
     else if (blockedFolderCheck) expect(terminalWrites).toBe(0);
 
+    if (stopFollowUp) {
+      const rootId = core.threads.require(threadId).parentThreadId!;
+      const letters = () => (core.journal.db.query('SELECT data FROM delegation_messages WHERE sender_id = ? AND request_id = ?').all(threadId, `result:${id}`) as { data: string }[])
+        .map(row => JSON.parse(row.data));
+      expect(letters()).toEqual([]);
+      expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
+      expect(letters()).toEqual([expect.objectContaining({ origin: 'result', to: { coreId: 'local', threadId: rootId } })]);
+      await setPaused(true, []);
+      expect(letters()).toHaveLength(1);
+      expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 1);
+      return;
+    }
+    if (workflow && pausedWorkflow) {
+      await waitFor(() => core.workflows.get(workflow.rootId, workflow.runId).delivered === true);
+      expect(core.workflows.get(workflow.rootId, workflow.runId)).toMatchObject({ status: 'done', delivered: true, nodes: [{ status: 'done' }] });
+    }
+    if (workflow && queuedGoal) {
+      const statuses: string[] = [];
+      const off = core.bus.onCommitted((name, payload) => {
+        if (name === 'workflows.changed' && (payload as RpcEvents['workflows.changed']).threadId === workflow.rootId) {
+          statuses.push(core.workflows.get(workflow.rootId, workflow.runId).status);
+        }
+      });
+      try {
+        await setPaused(false);
+        await waitFor(() => core.journal.listTurns(threadId)[previousTurns + 1]?.status === 'done');
+        expect(statuses).not.toContain('failed');
+        expect(core.composer.storage.get('inputs', threadId).value?.input.queued).toEqual([]);
+      } finally { off(); }
+      return;
+    }
     if (switchAway) {
       expect(core.threads.require(threadId)).toMatchObject({ accountId: otherAccountId, sessionId: null });
       expect(core.threads.accountSessions.saved(threadId, accountId)?.after.turnId).toBe(id);

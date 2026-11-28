@@ -144,7 +144,8 @@ export class ComposerStorage {
     if (privateOwner) {
       if (privateOwner.id !== excludeConnection) privateOwner.sendEvent('composer.updated', structuredClone(record));
     } else this.#core.bus.emit('composer.updated', structuredClone(record), { excludeConnection, composerRevision: composerRevision(record, previous, () => bytes) });
-    if (previous.value?.input.queued.length && !value?.input.queued.length) this.#queueEmptied(record);
+    // An admitted activity can have a delivery receipt before its first turn starts.
+    if (!value?.input.queued.length && previous.value?.input.queued.some(item => this.delivery(item.id)?.status !== 'delivered')) this.#queueEmptied(record);
     return record;
   }
 
