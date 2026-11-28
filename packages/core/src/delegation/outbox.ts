@@ -62,10 +62,12 @@ export class Outbox<T extends { key: string }> {
   readonly #core: Core;
   readonly #prefix: string;
   readonly #deliver: (peer: CoordinationPeer, entries: T[]) => Promise<unknown>;
-  constructor(core: Core, prefix: string, deliver: (peer: CoordinationPeer, entries: T[]) => Promise<unknown>) {
+  readonly #replace?: (pending: T, entry: T) => T;
+  constructor(core: Core, prefix: string, deliver: (peer: CoordinationPeer, entries: T[]) => Promise<unknown>, replace?: (pending: T, entry: T) => T) {
     this.#core = core;
     this.#prefix = prefix;
     this.#deliver = deliver;
+    this.#replace = replace;
   }
 
   entries(coreId: string): T[] { return (this.#core.journal.getSetting(`${this.#prefix}${coreId}`) as T[] | undefined) ?? []; }
@@ -73,7 +75,8 @@ export class Outbox<T extends { key: string }> {
   /** An entry replaces the one waiting under its key. */
   push(coreId: string, entry: T): void {
     const entries = this.entries(coreId);
-    this.#save(coreId, [...entries.filter(waiting => waiting.key !== entry.key), entry]);
+    const pending = entries.find(waiting => waiting.key === entry.key);
+    this.#save(coreId, [...entries.filter(waiting => waiting.key !== entry.key), pending && this.#replace ? this.#replace(pending, entry) : entry]);
     this.#schedule(coreId, FLUSH_MS);
   }
 

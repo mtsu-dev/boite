@@ -741,13 +741,18 @@ export class Delegation {
   }
   /** Stops one child: final until an explicit new instruction, so no restart continues it, and a parent elsewhere hears so. True when it was at work. */
   #halt(id: string, reportResult = true): boolean {
-    const stop = this.#core.journal.db.transaction(() => this.#prepareStop(id, reportResult))();
+    const stop = this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => this.#prepareStop(id, reportResult))());
     return stop();
   }
 
   /** Persists Stop and its result policy in the caller's transaction before it ends any live work. */
   #prepareStop(id: string, reportResult: boolean): () => boolean {
     const followUp = stageChildStop(this.#core, id, reportResult, this.#stepOwned(id));
+    // Reject mail already waiting when the Stop commits, even if live cleanup later yields to a new turn.
+    for (const letter of this.#letters(id, 'received')) this.#update(letter, 'rejected', 'Agent stopped');
+    for (const letter of this.#letters(id, 'uncertain')) {
+      if (letter.error?.startsWith('Queued for provider turn ')) this.#update(letter, 'rejected', 'Agent stopped before provider delivery');
+    }
     return () => this.#finishStop(id, followUp);
   }
 
@@ -767,10 +772,6 @@ export class Delegation {
     if (!turn && !followUp && !this.#core.workflows.owns(id)) void this.worktrees.settle(id);
     if (followUp) this.#finishComposerFollowUp(followUp);
     else this.#core.workflows.stepStopped(id);
-    for (const letter of this.#letters(id, 'received')) this.#update(letter, 'rejected', 'Agent stopped');
-    for (const letter of this.#letters(id, 'uncertain')) {
-      if (letter.error?.startsWith('Queued for provider turn ')) this.#update(letter, 'rejected', 'Agent stopped before provider delivery');
-    }
     this.remote.state(id);
     return busy;
   }

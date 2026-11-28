@@ -91,10 +91,7 @@ export class RemoteDelegation {
   #closed = false;
   /** The number of a stop or letter asked from here. */
   readonly #stopSeq = risingClock();
-  /**
-   * The time of a report sent from here: the parent ignores one older than what
-   * it holds, so a clock set back would silence this child, final result included.
-   */
+  /** The parent ignores older reports, even when the sender's clock moves back. */
   readonly #reportAt = risingClock();
   readonly #boot: ReturnType<typeof setTimeout>;
 
@@ -104,7 +101,8 @@ export class RemoteDelegation {
   constructor(core: Core, host: RemoteHost) {
     this.#core = core;
     this.#host = host;
-    this.#reports = new Outbox(core, REPORTS, (peer, reports) => core.coordination.request(peer, 'delegation.report', { reports }));
+    this.#reports = new Outbox(core, REPORTS, (peer, reports) => core.coordination.request(peer, 'delegation.report', { reports }),
+      (pending, report) => pending.letter?.owed === true && report.letter?.owed !== true ? { ...report, letter: pending.letter } : report);
     this.#stops = new Outbox(core, STOPS, (peer, stops) => core.coordination.request(peer, 'delegation.stop', { stops: stops.sort((a, b) => a.seq - b.seq) }));
     for (const { key } of this.#keys(RECORDS)) this.#roots.add(key.slice(RECORDS.length));
     for (const { key } of this.#keys(PARENT)) {
@@ -869,11 +867,11 @@ export class RemoteDelegation {
       const next = { ...link, stop: seq, ...(turnId ? { workflowStop: { seq, turnId } } : {}) };
       const target = this.#core.scheduler.stopTarget(childId);
       const lastTurnId = this.#core.journal.lastTurn(childId)?.id;
-      const perform = this.#core.journal.db.transaction(() => {
+      const perform = this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
         const perform = this.#host.prepareStop(childId, silent !== true);
         this.#core.journal.setSetting(`${PARENT}${childId}`, next);
         return perform;
-      })();
+      })());
       this.#parents.set(childId, next);
       this.#committedStops.set(childId, { target, lastTurnId, perform });
       busy = this.#finishCommittedStop(childId) || busy;
