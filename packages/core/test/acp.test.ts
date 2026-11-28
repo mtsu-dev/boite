@@ -238,9 +238,10 @@ test.each([
 }, 20_000);
 
 test.each([
-  ['permission', 'acknowledged'], ['permission', 'rejected'], ['permission', 'capacity'], ['update', 'capacity'],
-  ['core', 'acknowledged'], ['core', 'completed'], ['core', 'explicit stop'], ['core', 'explicit stop before acknowledgement'],
-] as const)('an ACP %s restart leaves the queue paused after cancellation (%s)', async (restart, outcome) => {
+  ['permission restart', 'acknowledged'], ['permission restart', 'rejected'], ['permission restart', 'capacity'], ['agent update', 'capacity'],
+  ['core restart', 'acknowledged'], ['core restart', 'completed'], ['core restart', 'explicit stop'], ['core restart', 'explicit stop before acknowledgement'],
+  ['direct Stop', 'explicit stop before acknowledgement'],
+] as const)('ACP leaves the queue paused after cancellation during %s (%s)', async (interruption, outcome) => {
   const started = await startThread({ warmProcessMinutes: 0 });
   const { threadId } = started;
   let { client } = started;
@@ -269,21 +270,21 @@ test.each([
   await setPaused(true);
   const stop = spyOn(core.threads.runner.handles.get(threadId)!, 'stop');
   let restartCore: Promise<void> | undefined;
-  if (restart === 'permission') {
+  if (interruption === 'permission restart') {
     const refusal = `${logFile}.refuse-mode`;
     writeFileSync(refusal, 'ready');
     await client.call('threads.update', { threadId, permissionMode: 'plan' });
     await waitFor(() => stop.mock.calls.length > 0);
     rmSync(refusal);
-  } else if (restart === 'update') {
+  } else if (interruption === 'agent update') {
     spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
     expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
     await waitFor(() => stop.mock.calls.length > 0);
-  } else {
+  } else if (interruption === 'core restart') {
     restartCore = closeForHandoff(first);
     await waitFor(() => stop.mock.calls.length > 0);
     if (explicitStop) expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
-  }
+  } else expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
   writeFileSync(`${logFile}.end`, 'ready');
   let next: TestCore | undefined;
   try {
@@ -307,7 +308,7 @@ test.each([
     await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(2);
     expect(countLogLines(fakeLog(), 'replayed interrupted prompt')).toBe(completed ? 0 : 1);
-    expect(setModeCount('plan')).toBe(restart === 'permission' ? 1 : 0);
+    expect(setModeCount('plan')).toBe(interruption === 'permission restart' ? 1 : 0);
   } finally { await next?.stop(); }
 }, 20_000);
 

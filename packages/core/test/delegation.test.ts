@@ -490,7 +490,7 @@ test('completion forwards bounded text without tools, paid summaries or duplicat
   expect(h.core.delegation.get(threadId).messages).toHaveLength(1);
 });
 
-test('a delegated letter settles in the same commit as the turn that received it', async () => {
+test.each(['retry', 'Stop before retry'] as const)('a delegated letter and its receiving turn settle together after %s', async action => {
   const runs = scripted();
   const { h, threadId, spawn } = await setup();
   const child = await spawn('settle-letter');
@@ -501,20 +501,30 @@ test('a delegated letter settles in the same commit as the turn that received it
   expect(letter.status).toBe('uncertain');
 
   const reader = new Database(join(h.dataDir, 'journal.db'), { readonly: true });
-  const committed = Promise.withResolvers<unknown>();
+  const read = () => reader.query(
+    'SELECT turns.status AS turn, delegation_messages.status AS letter FROM turns, delegation_messages WHERE turns.id = ? AND delegation_messages.id = ?',
+  ).get(turnId, letter.id);
+  const rolledBack = Promise.withResolvers<ReturnType<typeof read>>();
+  const committed = Promise.withResolvers<ReturnType<typeof read>>();
   const stageResult = h.core.threads.spawns.stageResult.bind(h.core.threads.spawns);
+  let failed = false;
   const stage = spyOn(h.core.threads.spawns, 'stageResult').mockImplementation(turn => {
     stageResult(turn);
-    if (turn.id === turnId) queueMicrotask(() => {
-      // Read the first committed state of the turn, before the runner resumes.
-      committed.resolve(reader.query(
-        'SELECT turns.status AS turn, delegation_messages.status AS letter FROM turns, delegation_messages WHERE turns.id = ? AND delegation_messages.id = ?',
-      ).get(turnId, letter.id));
-    });
+    if (turn.id !== turnId) return;
+    if (!failed) {
+      failed = true;
+      queueMicrotask(() => rolledBack.resolve(read()));
+      throw new Error('injected terminal transaction rollback');
+    }
+    // Read the newly committed state before the runner resumes.
+    queueMicrotask(() => committed.resolve(read()));
   });
   try {
     runs.get(threadId)!.finish('Result incorporated');
-    expect(await committed.promise).toEqual({ turn: 'done', letter: 'delivered' });
+    expect(await rolledBack.promise).toEqual({ turn: 'running', letter: 'uncertain' });
+    const stop = action === 'Stop before retry';
+    if (stop) expect(h.core.threads.stopTurn(threadId)).toBe(true);
+    expect(await committed.promise).toEqual(stop ? { turn: 'stopped', letter: 'uncertain' } : { turn: 'done', letter: 'delivered' });
   } finally { stage.mockRestore(); reader.close(); }
 });
 

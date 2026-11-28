@@ -294,6 +294,7 @@ export class AcpSession {
    */
   stopTurn(turn: AcpTurn, reason?: 'restart'): void {
     if (turn.settled) return;
+    const queuedCancelSent = turn.stoppedForQueuedInput;
     if (reason !== 'restart') turn.stoppedForQueuedInput = false;
     turn.markStopped();
     // Not begun: `runTurn` settles it the moment the queue reaches it.
@@ -304,7 +305,7 @@ export class AcpSession {
       return;
     }
     if (this.#stopTimer !== null) return;
-    if (!turn.stoppedForQueuedInput) this.#cancel();
+    if (!queuedCancelSent) this.#cancel();
     this.#stopTimer = setTimeout(() => {
       this.#stopTimer = null;
       if (!turn.settled) this.#drop();

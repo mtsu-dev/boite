@@ -43,6 +43,28 @@ test('terminal persistence recovers twice without replaying the provider or publ
   }
 });
 
+test('a Stop during persistence backoff clears the quiet flag from the failed attempt', async () => {
+  const h = await startTestCore();
+  const putTurn = h.core.journal.putTurn.bind(h.core.journal);
+  const failed = Promise.withResolvers<void>();
+  try {
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const turn = h.core.threads.startTurn(threadId, '[quiet] no news', { kind: 'event' });
+    h.core.journal.putTurn = next => {
+      if (next.id === turn.id && next.status === 'done' && next.quiet) {
+        failed.resolve();
+        throw new Error('injected terminal write failure');
+      }
+      putTurn(next);
+    };
+    await failed.promise;
+    expect(h.core.threads.stopTurn(threadId)).toBe(true);
+    await waitFor(() => h.core.journal.getTurn(turn.id)?.status === 'stopped');
+    expect(h.core.journal.getTurn(turn.id)?.quiet).toBeUndefined();
+  } finally { h.core.journal.putTurn = putTurn; await h.stop(); }
+});
+
 test.each(['stopped', 'queued', 'running', 'newer-running'] as const)('settlement does not overwrite a turn replaced with %s during backoff', async replacementKind => {
   const status = replacementKind === 'newer-running' ? 'stopped' : replacementKind;
   const h = await startTestCore();
